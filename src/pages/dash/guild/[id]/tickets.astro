@@ -1,0 +1,141 @@
+---
+export const prerender = false;
+import DashTickets from '../../../../components/DashTickets.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+}
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'create') {
+    const label = String(form.get('label') ?? '').trim().slice(0, 40);
+    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4) || null;
+    const parentChannelId = String(form.get('parent_channel_id') ?? '').trim() || null;
+
+    if (label) {
+      const key = `${normalizeKey(label)}-${Date.now().toString(36)}`;
+      const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ guild_id: id, key, label, emoji, parent_channel_id: parentChannelId }),
+      });
+      if (res.ok) saved = true;
+      else error = "Couldn't add that ticket type, try again.";
+    }
+  } else if (action === 'update') {
+    const categoryId = String(form.get('category_id') ?? '');
+    const label = String(form.get('label') ?? '').trim().slice(0, 40);
+    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4) || null;
+    const description = String(form.get('description') ?? '').trim().slice(0, 100) || null;
+    const buttonStyle = String(form.get('button_style') ?? 'primary');
+    const namingPattern = String(form.get('naming_pattern') ?? '').trim().slice(0, 50) || 'ticket-{number}';
+    const parentChannelId = String(form.get('parent_channel_id') ?? '').trim() || null;
+    const supportRoleIds = form.getAll('support_role_ids').map(String);
+    const pingRoleIds = form.getAll('ping_role_ids').map(String);
+    const maxOpenPerUser = Math.max(1, Math.min(10, Number(form.get('max_open_per_user') ?? 1) || 1));
+
+    const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        label, emoji, description, button_style: buttonStyle, naming_pattern: namingPattern, parent_channel_id: parentChannelId,
+        support_role_ids: supportRoleIds, ping_role_ids: pingRoleIds,
+        max_open_per_user: maxOpenPerUser,
+      }),
+    });
+    if (res.ok) saved = true;
+    else error = "Couldn't save that ticket type, try again.";
+  } else if (action === 'delete') {
+    const categoryId = String(form.get('category_id') ?? '');
+    const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
+      method: 'DELETE',
+      headers: supabaseHeaders,
+    });
+    if (res.ok) saved = true;
+    else error = "Couldn't delete that ticket type, try again.";
+  }
+}
+
+const [categoriesRes, openTicketsRes, rolesRes, channelsRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+
+const rawCategories = categoriesRes.ok ? await categoriesRes.json() : [];
+const categories = rawCategories.map((c: any) => ({
+  id: c.id,
+  label: c.label,
+  emoji: c.emoji,
+  description: c.description,
+  buttonStyle: c.button_style ?? 'primary',
+  namingPattern: c.naming_pattern ?? 'ticket-{number}',
+  parentChannelId: c.parent_channel_id,
+  supportRoleIds: c.support_role_ids ?? [],
+  pingRoleIds: c.ping_role_ids ?? [],
+  maxOpenPerUser: c.max_open_per_user ?? 1,
+}));
+
+const rawOpenTickets = openTicketsRes.ok ? await openTicketsRes.json() : [];
+const openTickets = rawOpenTickets.map((t: any) => ({
+  id: t.id,
+  ticketNumber: t.ticket_number,
+  categoryLabel: t.ticket_categories?.label ?? 'Unknown',
+  openerId: t.opener_id,
+  claimedBy: t.claimed_by,
+  channelId: t.channel_id,
+}));
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channelCategories = allChannels
+  .filter((c: any) => c.type === 4)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+---
+<DashTickets
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  categories={categories}
+  roles={roles}
+  channelCategories={channelCategories}
+  openTickets={openTickets}
+  saved={saved}
+  error={error}
+/>

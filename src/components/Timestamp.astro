@@ -1,0 +1,172 @@
+---
+import { Icon } from 'astro-icon/components';
+import Base from '../layouts/Base.astro';
+import { useTranslations, type Locale } from '../i18n/ui';
+
+interface Props {
+  lang: Locale;
+}
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const p = t.toolsPage.timestamp;
+const intlLocale = lang === 'es' ? 'es-ES' : lang === 'pt-BR' ? 'pt-BR' : 'en-US';
+---
+<Base title={`${p.title} · Petto`} lang={lang}>
+  <main>
+    <section class="tool-sec">
+      <div class="wrap tool-wrap">
+        <div class="eyebrow">{p.eyebrow}</div>
+        <h1>{p.title}</h1>
+        <p class="tool-lede">{p.lede}</p>
+
+        <div class="tool-controls reveal">
+          <label>
+            <span>{p.dateLabel}</span>
+            <input type="date" id="tsDate" />
+          </label>
+          <label>
+            <span>{p.timeLabel}</span>
+            <input type="time" id="tsTime" step="1" />
+          </label>
+          <button class="btn btn-ghost btn-sm" id="tsNow" type="button">
+            <Icon name="ph:clock-fill" width="14" height="14" />
+            {p.nowButton}
+          </button>
+        </div>
+
+        <div class="ts-table reveal" id="tsTable" data-locale={intlLocale}>
+          <div class="ts-row ts-head">
+            <span>{p.formatCol}</span>
+            <span>{p.previewCol}</span>
+            <span>{p.codeCol}</span>
+            <span></span>
+          </div>
+          {p.styles.map((s) => (
+            <div class="ts-row" data-style={s.code}>
+              <span class="ts-label">{s.label}</span>
+              <span class="ts-preview" data-preview></span>
+              <code class="ts-code" data-code></code>
+              <button class="ts-copy" data-copy type="button">{p.copyLabel}</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  const dateInput = document.getElementById('tsDate') as HTMLInputElement;
+  const timeInput = document.getElementById('tsTime') as HTMLInputElement;
+  const nowBtn = document.getElementById('tsNow');
+  const table = document.getElementById('tsTable');
+  const locale = table?.dataset.locale || 'en-US';
+  const rows = Array.from(document.querySelectorAll('.ts-row[data-style]'));
+  const copyLabels = new Map<HTMLElement, string>();
+  rows.forEach((row) => {
+    const btn = row.querySelector('[data-copy]') as HTMLElement;
+    if (btn) copyLabels.set(btn, btn.textContent || 'Copy');
+  });
+
+  function pad(n: number) { return String(n).padStart(2, '0'); }
+
+  function setNow() {
+    const d = new Date();
+    dateInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    timeInput.value = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    render();
+  }
+
+  function relativeText(deltaSeconds: number) {
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    const abs = Math.abs(deltaSeconds);
+    const units: [number, Intl.RelativeTimeFormatUnit][] = [
+      [60, 'second'], [60, 'minute'], [24, 'hour'], [7, 'day'], [4.345, 'week'], [12, 'month'], [Infinity, 'year'],
+    ];
+    let value = deltaSeconds;
+    let unit: Intl.RelativeTimeFormatUnit = 'second';
+    let acc = 1;
+    for (const [size, u] of units) {
+      if (abs < acc * size) { unit = u; value = Math.round(deltaSeconds / acc); break; }
+      acc *= size;
+      unit = u;
+    }
+    if (abs >= acc) value = Math.round(deltaSeconds / acc);
+    return rtf.format(value, unit);
+  }
+
+  function render() {
+    if (!dateInput.value || !timeInput.value) return;
+    const dt = new Date(`${dateInput.value}T${timeInput.value}`);
+    if (isNaN(dt.getTime())) return;
+    const unix = Math.floor(dt.getTime() / 1000);
+
+    rows.forEach((row) => {
+      const style = (row as HTMLElement).dataset.style!;
+      const code = `<t:${unix}:${style}>`;
+      const codeEl = row.querySelector('[data-code]');
+      const previewEl = row.querySelector('[data-preview]');
+      if (codeEl) codeEl.textContent = code;
+
+      let preview = '';
+      if (style === 't') preview = dt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+      else if (style === 'T') preview = dt.toLocaleTimeString(locale);
+      else if (style === 'd') preview = dt.toLocaleDateString(locale);
+      else if (style === 'D') preview = dt.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+      else if (style === 'f') preview = `${dt.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })} ${dt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}`;
+      else if (style === 'F') preview = `${dt.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} ${dt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}`;
+      else if (style === 'R') preview = relativeText(unix - Math.floor(Date.now() / 1000));
+      if (previewEl) previewEl.textContent = preview;
+    });
+  }
+
+  document.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('.ts-row');
+      const code = row?.querySelector('[data-code]')?.textContent;
+      if (!code) return;
+      try {
+        await navigator.clipboard.writeText(code);
+        const original = copyLabels.get(btn as HTMLElement) || 'Copy';
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = original; }, 1200);
+      } catch {
+        // Clipboard permission denied, nothing to fall back to.
+      }
+    });
+  });
+
+  dateInput?.addEventListener('input', render);
+  timeInput?.addEventListener('input', render);
+  nowBtn?.addEventListener('click', setNow);
+  setNow();
+  setInterval(() => { if (document.getElementById('tsTable')) render(); }, 30000);
+</script>
+
+<style>
+  .tool-sec { padding: 64px 0 110px; }
+  .tool-wrap { max-width: 780px; }
+  .tool-sec h1 { font-size: 32px; margin: 14px 0 12px; }
+  .tool-lede { color: var(--text-muted); font-size: 15.5px; line-height: 1.65; max-width: 60ch; margin-bottom: 32px; }
+
+  .tool-controls { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 32px; }
+  .tool-controls label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .tool-controls input { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 14px; }
+  .tool-controls .btn { gap: 7px; }
+
+  .ts-table { border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; }
+  .ts-row { display: grid; grid-template-columns: 130px 1fr 1fr 60px; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-soft); }
+  .ts-row:last-child { border-bottom: none; }
+  .ts-head { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); background: var(--bg-raise); }
+  .ts-label { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .ts-preview { font-size: 13.5px; color: var(--text-muted); }
+  .ts-code { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 3px 7px; border-radius: 6px; width: fit-content; }
+  .ts-copy { border: 1px solid var(--border); background: var(--card); color: var(--text-muted); border-radius: 7px; padding: 6px 0; font-size: 12px; cursor: pointer; font-family: var(--sans); }
+  .ts-copy:hover { color: var(--text); border-color: var(--text-dim); }
+
+  @media (max-width: 700px) {
+    .ts-row { grid-template-columns: 1fr; gap: 4px; }
+    .ts-head { display: none; }
+    .ts-copy { justify-self: start; padding: 6px 14px; }
+  }
+</style>

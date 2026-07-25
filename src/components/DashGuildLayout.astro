@@ -1,0 +1,684 @@
+---
+import { Icon } from 'astro-icon/components';
+import Base from '../layouts/Base.astro';
+import { useTranslations } from '../i18n/ui';
+import { canManageGuild, guildIconUrl } from '../utils/discord';
+
+interface Props {
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  user: { username: string; avatar: string | null; accessToken?: string };
+  active: string;
+  pageTitle: string;
+}
+const { guildId, guildName, guildIcon, user, active, pageTitle } = Astro.props;
+
+// Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
+// different server doesn't need a round trip through /dash/manage every time.
+interface SwitcherGuild { id: string; name: string; icon: string | null }
+let switcherGuilds: SwitcherGuild[] = [];
+if (user.accessToken) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  });
+  const discordGuilds = guildsRes.ok ? await guildsRes.json() : [];
+  const manageable = discordGuilds.filter(canManageGuild);
+  if (manageable.length > 0 && supabaseUrl && supabaseKey) {
+    const ids = manageable.map((g: any) => g.id).join(',');
+    const activeRes = await fetch(`${supabaseUrl}/rest/v1/guilds?select=guild_id&guild_id=in.(${ids})`, {
+      headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+    });
+    const activeIds = new Set(activeRes.ok ? (await activeRes.json()).map((r: any) => r.guild_id) : []);
+    switcherGuilds = manageable
+      .filter((g: any) => activeIds.has(g.id))
+      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g) }))
+      .sort((a: SwitcherGuild, b: SwitcherGuild) => a.name.localeCompare(b.name));
+  }
+}
+
+const t = useTranslations('en');
+const categories = t.commandsPage.categories.filter((c) => c.id !== 'info');
+const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+const catIcon: Record<string, string> = {
+  moderation: 'ph:shield-check-fill',
+  tickets: 'ph:ticket-fill',
+  leveling: 'ph:chart-line-up-fill',
+  giveaways: 'ph:gift-fill',
+  automation: 'ph:robot-fill',
+  community: 'ph:users-three-fill',
+  onboarding: 'ph:hand-waving-fill',
+  logging: 'ph:notebook-fill',
+  setup: 'ph:gear-fill',
+};
+const catLabel: Record<string, string> = { setup: 'General' };
+
+interface NavItem { id: string; href: string; icon: string; label: string; }
+
+const groups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Dashboard',
+    items: [
+      { id: 'overview', href: `/dash/guild/${guildId}/overview`, icon: 'ph:squares-four-fill', label: 'Overview' },
+      { id: 'customize', href: `/dash/guild/${guildId}/customize`, icon: 'ph:sparkle-fill', label: 'Customize' },
+      { id: 'embeds', href: `/dash/guild/${guildId}/embeds`, icon: 'ph:chat-circle-dots-fill', label: 'Embeds' },
+      { id: 'setup', href: `/dash/guild/${guildId}/general`, icon: catIcon.setup, label: 'General' },
+    ],
+  },
+  {
+    label: 'Moderation',
+    items: ['moderation', 'automation', 'logging'].filter((id) => catById[id]).map((id) => ({
+      id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], label: catLabel[id] ?? catById[id].title,
+    })),
+  },
+  {
+    label: 'Community',
+    items: ['tickets', 'leveling', 'giveaways', 'community', 'onboarding'].filter((id) => catById[id]).map((id) => ({
+      id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], label: catLabel[id] ?? catById[id].title,
+    })),
+  },
+];
+---
+<Base title={`${pageTitle} · ${guildName} · Petto`} active="dash" appShell>
+  <main>
+    <section class="dgl-sec">
+      <div class="wrap dgl-wrap">
+        <div class="dgl-layout">
+          <aside class="dgl-side reveal">
+            <div class="dgl-switcher-wrap">
+              <button type="button" class="dgl-switcher" id="dgl-switcher-btn" aria-expanded="false">
+                <img src={guildIcon} alt="" />
+                <div class="dgl-switcher-text">
+                  <span class="dgl-switcher-eyebrow">Server</span>
+                  <span class="dgl-switcher-name">{guildName}</span>
+                </div>
+                <Icon name="ph:caret-up-down" width="13" height="13" />
+              </button>
+              <div class="dgl-switcher-panel" id="dgl-switcher-panel" hidden>
+                {switcherGuilds.length > 0 && (
+                  <div class="dgl-switcher-list">
+                    {switcherGuilds.map((g) => (
+                      <a href={`/dash/guild/${g.id}/overview`} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
+                        {g.icon ? <img src={g.icon} alt="" /> : <div class="dgl-switcher-item-fallback"><Icon name="ph:buildings-fill" width="14" height="14" /></div>}
+                        <span>{g.name}</span>
+                        {g.id === guildId && <Icon name="ph:check-fill" width="13" height="13" />}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <a href="/dash/manage" class="dgl-switcher-all">
+                  <Icon name="ph:squares-four-fill" width="14" height="14" />
+                  Manage all servers
+                </a>
+              </div>
+            </div>
+
+            <button type="button" class="dgl-mobile-toggle" id="dgl-mobile-toggle" aria-expanded="false">
+              <span>
+                <Icon name={groups.flatMap((g) => g.items).find((i) => i.id === active)?.icon ?? 'ph:squares-four-fill'} width="15" height="15" />
+                {groups.flatMap((g) => g.items).find((i) => i.id === active)?.label ?? pageTitle}
+              </span>
+              <Icon name="ph:caret-down" width="14" height="14" class="dgl-mobile-toggle-caret" />
+            </button>
+
+            <nav class="dgl-nav" id="dgl-sidenav">
+              {groups.map((group) => (
+                <div class="dgl-group">
+                  <div class="dgl-label">{group.label}</div>
+                  {group.items.map((item) => (
+                    <a href={item.href} class:list={['dgl-link', { active: active === item.id }]}>
+                      <Icon name={item.icon} width="15" height="15" />
+                      {item.label}
+                    </a>
+                  ))}
+                </div>
+              ))}
+            </nav>
+
+            <div class="dgl-side-user">
+              {user.avatar ? <img src={user.avatar} alt="" /> : <div class="dgl-side-user-fallback"><Icon name="ph:user-fill" width="14" height="14" /></div>}
+              <span>{user.username}</span>
+              <a href="/dash/logout" title="Log out"><Icon name="ph:sign-out-fill" width="14" height="14" /></a>
+            </div>
+          </aside>
+
+          <div class="dgl-content reveal" id="dgl-content">
+            <slot />
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="dgl-progress" id="dgl-progress"></div>
+
+  <div class="dgl-savebar" id="dgl-savebar">
+    <Icon name="ph:floppy-disk-fill" width="18" height="18" class="dgl-savebar-icon" />
+    <span class="dgl-savebar-text">You have unsaved changes</span>
+    <div class="dgl-savebar-actions">
+      <button type="button" class="dgl-savebar-discard" data-savebar-discard>Discard</button>
+      <button type="button" class="dgl-savebar-save" data-savebar-save>
+        <Icon name="ph:check-fill" width="14" height="14" />
+        Save changes
+      </button>
+    </div>
+  </div>
+</Base>
+
+<script is:inline>
+  (function () {
+    function bindUploadLabels(root) {
+      root.querySelectorAll('input[type="file"]').forEach((input) => {
+        if (input.dataset.labelBound) return;
+        input.dataset.labelBound = '1';
+        var label = input.closest('label');
+        var span = label ? label.querySelector('span') : null;
+        var defaultText = span ? span.textContent : '';
+        input.addEventListener('change', function () {
+          if (span) span.textContent = (input.files && input.files[0] ? input.files[0].name : defaultText);
+        });
+      });
+    }
+
+    function bindFocusButtons(root) {
+      root.querySelectorAll('[data-focus]').forEach((btn) => {
+        if (btn.dataset.focusBound) return;
+        btn.dataset.focusBound = '1';
+        btn.addEventListener('click', function () {
+          var target = root.querySelector('#' + btn.dataset.focus);
+          if (!target) return;
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          target.focus({ preventScroll: true });
+        });
+      });
+    }
+
+    function bindResetButtons(root) {
+      root.querySelectorAll('[data-reset]').forEach((btn) => {
+        if (btn.dataset.resetBound) return;
+        btn.dataset.resetBound = '1';
+        btn.addEventListener('click', function () {
+          btn.dataset.reset.split(',').forEach(function (id) {
+            var el = root.querySelector('#' + id.trim());
+            if (el) el.value = '';
+          });
+        });
+      });
+    }
+
+    // --- unsaved-changes save bar: tracks whichever form the user last touched, blocks
+    // in-app navigation away from it (shakes instead), and doubles as the always-visible
+    // "Save" control so users don't have to scroll down to a form's own submit button. ---
+    var dirtyForm = null;
+    var saveBar = document.getElementById('dgl-savebar');
+    var saveBarBtn = saveBar ? saveBar.querySelector('[data-savebar-save]') : null;
+    var discardBtn = saveBar ? saveBar.querySelector('[data-savebar-discard]') : null;
+
+    function showSaveBar() { if (saveBar) saveBar.classList.add('show'); }
+    function hideSaveBar() { if (saveBar) saveBar.classList.remove('show'); dirtyForm = null; }
+    function shakeSaveBar() {
+      if (!saveBar) return;
+      saveBar.classList.add('show');
+      saveBar.classList.remove('shake');
+      void saveBar.offsetWidth;
+      saveBar.classList.add('shake');
+    }
+
+    function bindDirtyTracking(root) {
+      root.querySelectorAll('form').forEach(function (form) {
+        if (form.dataset.dirtyBound) return;
+        form.dataset.dirtyBound = '1';
+        // File-upload forms do a real page reload on submit anyway (see bindForms), no point tracking those.
+        if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
+        form.addEventListener('input', function () { dirtyForm = form; showSaveBar(); });
+        form.addEventListener('change', function () { dirtyForm = form; showSaveBar(); });
+      });
+    }
+
+    if (saveBarBtn) saveBarBtn.addEventListener('click', function () {
+      if (!dirtyForm) return;
+      if (dirtyForm.requestSubmit) dirtyForm.requestSubmit();
+      else dirtyForm.submit();
+    });
+    if (discardBtn) discardBtn.addEventListener('click', function () {
+      if (dirtyForm) dirtyForm.reset();
+      hideSaveBar();
+    });
+
+    // Anything that leaves the app entirely (header links, closing the tab, refresh) goes
+    // through the browser's native unload flow, so it's the one place a blanket guard fits.
+    window.addEventListener('beforeunload', function (e) {
+      if (dirtyForm) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    function bindSwitcherMenu() {
+      var btn = document.getElementById('dgl-switcher-btn');
+      var panel = document.getElementById('dgl-switcher-panel');
+      if (!btn || !panel) return;
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (dirtyForm) { shakeSaveBar(); return; }
+        var isOpen = !panel.hidden;
+        panel.hidden = !isOpen ? false : true;
+        btn.classList.toggle('open', !isOpen);
+        btn.setAttribute('aria-expanded', String(!isOpen));
+      });
+      document.addEventListener('click', function (e) {
+        if (!panel.hidden && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+          panel.hidden = true;
+          btn.classList.remove('open');
+          btn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+    bindSwitcherMenu();
+
+    var mobileToggle = document.getElementById('dgl-mobile-toggle');
+    var dglSide = document.querySelector('.dgl-side');
+    mobileToggle?.addEventListener('click', function () {
+      var isOpen = dglSide?.classList.contains('open');
+      dglSide?.classList.toggle('open', !isOpen);
+      mobileToggle.setAttribute('aria-expanded', String(!isOpen));
+    });
+    // Collapse the mobile nav back down once a link inside it is actually followed,
+    // otherwise it stays open covering the freshly-loaded page.
+    document.querySelectorAll('.dgl-nav').forEach(function (nav) {
+      nav.addEventListener('click', function (e) {
+        if (e.target.closest('a')) dglSide?.classList.remove('open');
+      });
+    });
+
+    function bindNavGuard(root) {
+      root.querySelectorAll('.dgl-link, .dgl-switcher-item, .dgl-switcher-all, .dgl-side-user a').forEach(function (a) {
+        if (a.dataset.navGuardBound) return;
+        a.dataset.navGuardBound = '1';
+        a.addEventListener('click', function (e) {
+          if (dirtyForm) { e.preventDefault(); shakeSaveBar(); }
+        });
+      });
+    }
+
+    // --- thin top-of-page progress bar shown while an AJAX navigation/save is in flight ---
+    var progressEl = document.getElementById('dgl-progress');
+    var progressHideTimer = null;
+    function startProgress() {
+      if (!progressEl) return;
+      clearTimeout(progressHideTimer);
+      progressEl.style.transition = 'none';
+      progressEl.style.width = '0%';
+      progressEl.classList.add('active');
+      void progressEl.offsetWidth;
+      progressEl.style.transition = 'width 0.4s ease, opacity 0.25s ease';
+      progressEl.style.width = '70%';
+    }
+    function finishProgress() {
+      if (!progressEl) return;
+      progressEl.style.width = '100%';
+      progressHideTimer = setTimeout(function () {
+        progressEl.classList.remove('active');
+        progressEl.style.width = '0%';
+      }, 260);
+    }
+
+    function swapContent(html, pushUrl) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('dgl-content');
+      var current = document.getElementById('dgl-content');
+      if (!fresh || !current) return false;
+      // The fresh node carries the server-rendered "reveal" class (opacity:0 until an
+      // IntersectionObserver, set up once at initial page load, adds "in"). That observer
+      // never sees this node since it didn't exist yet, so without this it would replace
+      // visible content with a permanently invisible one on every save/nav.
+      fresh.classList.add('in');
+      current.replaceWith(fresh);
+      initContent(fresh);
+      if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
+      fresh.scrollIntoView({ block: 'nearest' });
+      return true;
+    }
+
+    function updateActiveLink(href) {
+      document.querySelectorAll('.dgl-link').forEach(function (a) {
+        a.classList.toggle('active', a.getAttribute('href') === href);
+      });
+    }
+
+    function bindDglLinks(root) {
+      root.querySelectorAll('.dgl-link').forEach(function (a) {
+        if (a.dataset.dglNavBound) return;
+        a.dataset.dglNavBound = '1';
+        a.addEventListener('click', function (e) {
+          if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
+          var href = a.getAttribute('href');
+          if (!href) return;
+          e.preventDefault();
+          startProgress();
+          fetch(href, { method: 'GET' })
+            .then(function (res) { return res.text(); })
+            .then(function (html) {
+              var ok = swapContent(html, href);
+              if (ok) updateActiveLink(href);
+              finishProgress();
+            })
+            .catch(function () { window.location.href = href; });
+        });
+      });
+    }
+
+    function bindQueryLinks(root) {
+      root.querySelectorAll('a[href^="?"], a[href^="' + window.location.pathname + '?"]').forEach((a) => {
+        if (a.dataset.ajaxBound) return;
+        a.dataset.ajaxBound = '1';
+        a.addEventListener('click', function (e) {
+          if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
+          e.preventDefault();
+          var url = a.getAttribute('href');
+          startProgress();
+          fetch(url, { method: 'GET' })
+            .then(function (res) { return res.text(); })
+            .then(function (html) { swapContent(html, url); finishProgress(); })
+            .catch(function () { window.location.href = url; });
+        });
+      });
+    }
+
+    function bindForms(root) {
+      root.querySelectorAll('form[method="POST" i]').forEach((form) => {
+        if (form.dataset.ajaxBound) return;
+        // File-upload forms (multipart) submit normally, a real page reload, on purpose:
+        // AJAX-swapping a page that just changed an avatar/banner leaves stale cached images
+        // and broke the whole Customize form, so those get the plain, reliable path instead.
+        if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
+        form.dataset.ajaxBound = '1';
+        form.addEventListener('submit', function (e) {
+          var submitter = e.submitter;
+          var confirmMsg = submitter && submitter.dataset ? submitter.dataset.confirm : null;
+          if (confirmMsg && !window.confirm(confirmMsg)) { e.preventDefault(); return; }
+          e.preventDefault();
+          var btn = submitter && submitter.tagName === 'BUTTON' ? submitter : form.querySelector('button[type="submit"]');
+          var originalText = btn ? btn.textContent : null;
+          if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+          if (saveBarBtn && dirtyForm === form) { saveBarBtn.disabled = true; }
+          startProgress();
+
+          var fd = submitter ? new FormData(form, submitter) : new FormData(form);
+          fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd })
+            .then(function (res) { return res.text(); })
+            .then(function (html) {
+              var ok = swapContent(html, null);
+              if (ok) hideSaveBar();
+              if (!ok && btn) { btn.disabled = false; btn.textContent = originalText; }
+              if (saveBarBtn) saveBarBtn.disabled = false;
+              finishProgress();
+            })
+            .catch(function () {
+              if (btn) { btn.disabled = false; btn.textContent = originalText; }
+              if (saveBarBtn) saveBarBtn.disabled = false;
+              finishProgress();
+            });
+        });
+      });
+    }
+
+    function bindFilterLists(root) {
+      root.querySelectorAll('[data-filterable]').forEach((wrap) => {
+        if (wrap.dataset.filterBound) return;
+        wrap.dataset.filterBound = '1';
+        var input = wrap.querySelector('[data-filter-input]');
+        var list = wrap.querySelector('[data-filter-list]');
+        if (!input || !list) return;
+        input.addEventListener('input', function () {
+          var q = input.value.trim().toLowerCase();
+          list.querySelectorAll('label').forEach(function (label) {
+            label.style.display = !q || label.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+          });
+        });
+      });
+    }
+
+    function bindVarMenus(root) {
+      root.querySelectorAll('[data-varmenu]').forEach((wrap) => {
+        if (wrap.dataset.varmenuBound) return;
+        wrap.dataset.varmenuBound = '1';
+        var btn = wrap.querySelector('[data-varmenu-toggle]');
+        var panel = wrap.querySelector('[data-varmenu-panel]');
+        if (!btn || !panel) return;
+
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var isOpen = !panel.hidden;
+          document.querySelectorAll('[data-varmenu-panel]').forEach((p) => { p.hidden = true; });
+          document.querySelectorAll('.dgl-varbtn.open').forEach((b) => b.classList.remove('open'));
+          if (!isOpen) {
+            // The scrollable dashboard panel clips regular absolute positioning once the button
+            // isn't near the top, so this is placed with fixed coords from the button's real
+            // screen position instead of relying on a positioned ancestor.
+            var r = btn.getBoundingClientRect();
+            panel.style.position = 'fixed';
+            panel.style.top = Math.min(r.bottom + 6, window.innerHeight - 20) + 'px';
+            panel.style.left = Math.min(r.left, window.innerWidth - 316) + 'px';
+            panel.hidden = false;
+            btn.classList.add('open');
+          }
+        });
+
+        panel.querySelectorAll('[data-var-token]').forEach((row) => {
+          row.addEventListener('click', function () {
+            var tok = row.dataset.varToken;
+            var reset = function () { row.classList.remove('copied'); };
+            (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(tok) : Promise.reject())
+              .then(function () { row.classList.add('copied'); setTimeout(reset, 1200); })
+              .catch(function () {});
+          });
+        });
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('[data-varmenu-panel]').forEach((p) => {
+        if (!p.hidden && !p.closest('[data-varmenu]').contains(e.target)) p.hidden = true;
+      });
+      document.querySelectorAll('.dgl-varbtn.open').forEach((b) => {
+        if (!b.closest('[data-varmenu]').contains(e.target)) b.classList.remove('open');
+      });
+    });
+
+    function initContent(root) {
+      bindForms(root);
+      bindUploadLabels(root);
+      bindFocusButtons(root);
+      bindQueryLinks(root);
+      bindResetButtons(root);
+      bindFilterLists(root);
+      bindVarMenus(root);
+      bindDirtyTracking(root);
+    }
+
+    window.addEventListener('popstate', function (e) {
+      if (dirtyForm) {
+        // The URL already changed by the time popstate fires, push it back so the address
+        // bar matches what's actually on screen instead of silently navigating away.
+        window.history.pushState({ dglAjax: true }, '', window.location.href);
+        shakeSaveBar();
+        return;
+      }
+      startProgress();
+      fetch(window.location.pathname + window.location.search, { method: 'GET' })
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          swapContent(html, null);
+          updateActiveLink(window.location.pathname + window.location.search);
+          finishProgress();
+        })
+        .catch(function () { window.location.reload(); });
+    });
+
+    var content = document.getElementById('dgl-content');
+    if (content) initContent(content);
+    // The sidebar (nav links, server switcher, logout) never gets replaced by swapContent,
+    // so these only need binding once, not on every navigation like initContent's binders.
+    bindNavGuard(document);
+    bindDglLinks(document);
+
+    function syncHeaderHeight() {
+      var header = document.querySelector('header.nav');
+      if (header) document.documentElement.style.setProperty('--dgl-header-h', header.offsetHeight + 'px');
+    }
+    syncHeaderHeight();
+    window.addEventListener('resize', syncHeaderHeight);
+  })();
+</script>
+
+<style>
+  .dgl-sec { padding: 28px 0; }
+  .dgl-wrap { max-width: none; padding-left: 40px; padding-right: 40px; }
+
+  .dgl-layout { display: grid; grid-template-columns: 216px 1fr; gap: 24px; align-items: start; }
+  .dgl-side {
+    position: sticky; top: calc(var(--dgl-header-h, 60px) + 28px);
+    height: calc(100vh - var(--dgl-header-h, 60px) - 56px);
+    display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 16px; background: var(--card); overflow: hidden;
+  }
+  .dgl-switcher-wrap { position: relative; border-bottom: 1px solid var(--border-soft); }
+  .dgl-switcher {
+    display: flex; align-items: center; gap: 10px; padding: 14px; width: 100%;
+    background: none; border: none; text-align: left; cursor: pointer; font-family: var(--sans);
+  }
+  .dgl-switcher:hover, .dgl-switcher.open { background: var(--card-hover); }
+  .dgl-switcher img { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
+  .dgl-switcher-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .dgl-switcher-eyebrow { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); }
+  .dgl-switcher-name { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher :global(svg) { color: var(--text-dim); flex-shrink: 0; }
+  .dgl-switcher.open .dgl-switcher-icon,
+  .dgl-switcher.open :global(svg:last-child) { transform: rotate(180deg); }
+
+  .dgl-switcher-panel {
+    position: absolute; top: calc(100% + 6px); left: 10px; right: 10px; z-index: 50;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 18px 40px -14px rgba(0,0,0,0.55); padding: 6px; overflow: hidden;
+  }
+  .dgl-switcher-list { max-height: 260px; overflow-y: auto; }
+  .dgl-switcher-item {
+    display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px;
+    text-decoration: none; color: var(--text-muted); font-size: 13px;
+  }
+  .dgl-switcher-item:hover { background: var(--card-hover); color: var(--text); }
+  .dgl-switcher-item.current { color: var(--accent); background: var(--accent-soft); }
+  .dgl-switcher-item img, .dgl-switcher-item-fallback { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+  .dgl-switcher-item-fallback { display: flex; align-items: center; justify-content: center; background: var(--bg-raise); color: var(--text-dim); }
+  .dgl-switcher-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item :global(svg:last-child) { flex-shrink: 0; color: var(--accent); }
+  .dgl-switcher-all {
+    display: flex; align-items: center; gap: 9px; padding: 9px; margin-top: 4px; border-top: 1px solid var(--border-soft);
+    text-decoration: none; color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+  }
+  .dgl-switcher-all:hover { color: var(--text); }
+
+  .dgl-mobile-toggle {
+    display: none; align-items: center; justify-content: space-between; width: 100%; padding: 12px 14px;
+    background: none; border: none; border-bottom: 1px solid var(--border-soft); color: var(--text); font-family: var(--sans);
+    font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  .dgl-mobile-toggle span { display: flex; align-items: center; gap: 8px; }
+  .dgl-mobile-toggle :global(svg:first-child) { color: var(--accent); }
+  .dgl-mobile-toggle-caret { transition: transform 0.18s ease; color: var(--text-dim); }
+  .dgl-side.open .dgl-mobile-toggle-caret { transform: rotate(180deg); }
+
+  .dgl-nav { padding: 12px 10px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .dgl-nav::-webkit-scrollbar { display: none; }
+  .dgl-group + .dgl-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
+  .dgl-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); padding: 0 10px; margin-bottom: 6px; }
+  .dgl-link { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text-muted); text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+  .dgl-link:hover { color: var(--text); background: var(--card-hover); }
+  .dgl-link.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .dgl-link :global(svg) { flex-shrink: 0; color: var(--text-dim); }
+  .dgl-link.active :global(svg) { color: var(--accent); }
+
+  .dgl-side-user { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border-soft); font-size: 12.5px; color: var(--text-muted); }
+  .dgl-side-user img, .dgl-side-user-fallback { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .dgl-side-user-fallback { display: flex; align-items: center; justify-content: center; background: var(--bg-raise); color: var(--text-dim); }
+  .dgl-side-user span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-side-user a { color: var(--text-dim); display: flex; }
+  .dgl-side-user a:hover { color: var(--red); }
+
+  .dgl-content {
+    min-width: 0; border: 1px solid var(--border); border-radius: 18px; background: var(--card);
+    padding: 28px 32px 40px; height: calc(100vh - var(--dgl-header-h, 60px) - 56px); overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .dgl-content::-webkit-scrollbar { display: none; }
+
+  @media (max-width: 880px) {
+    .dgl-layout { grid-template-columns: 1fr; }
+    .dgl-side { position: static; height: auto; max-height: none; }
+    .dgl-content { height: auto; overflow-y: visible; }
+
+    .dgl-mobile-toggle { display: flex; }
+    .dgl-nav, .dgl-side-user { display: none; }
+    .dgl-side.open .dgl-nav { display: flex; max-height: 50vh; }
+    .dgl-side.open .dgl-side-user { display: flex; }
+  }
+
+  .dgl-progress {
+    position: fixed; top: var(--dgl-header-h, 60px); left: 0; height: 2.5px; width: 0;
+    background: var(--accent); z-index: 80; opacity: 0; pointer-events: none;
+  }
+  .dgl-progress.active { opacity: 1; }
+
+  .dgl-savebar {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(14px);
+    display: flex; align-items: center; gap: 14px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 11px 14px 11px 18px; box-shadow: 0 18px 40px -14px rgba(0,0,0,0.55);
+    z-index: 70; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .dgl-savebar.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .dgl-savebar.shake { animation: dgl-savebar-shake 0.4s; }
+  .dgl-savebar :global(.dgl-savebar-icon) { color: var(--yellow); flex-shrink: 0; }
+  .dgl-savebar-text { font-size: 13.5px; color: var(--text); font-weight: 500; white-space: nowrap; }
+  .dgl-savebar-actions { display: flex; align-items: center; gap: 8px; }
+  .dgl-savebar-discard {
+    background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: 13px; font-weight: 600;
+    padding: 8px 14px; border-radius: 9px; cursor: pointer; font-family: var(--sans);
+  }
+  .dgl-savebar-discard:hover { color: var(--text); border-color: var(--text-dim); }
+  .dgl-savebar-save {
+    background: var(--text); color: var(--bg); border: none; font-size: 13px; font-weight: 700;
+    padding: 8px 16px; border-radius: 9px; cursor: pointer; font-family: var(--sans);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dgl-savebar-save:hover { opacity: 0.85; }
+  .dgl-savebar-save:disabled { opacity: 0.6; cursor: default; }
+
+  @keyframes dgl-savebar-shake {
+    10%, 90% { transform: translateX(calc(-50% - 1px)) translateY(0); }
+    20%, 80% { transform: translateX(calc(-50% + 2px)) translateY(0); }
+    30%, 50%, 70% { transform: translateX(calc(-50% - 4px)) translateY(0); }
+    40%, 60% { transform: translateX(calc(-50% + 4px)) translateY(0); }
+  }
+
+  @media (max-width: 600px) {
+    .dgl-savebar { left: 12px; right: 12px; bottom: 16px; transform: translateY(14px); width: auto; }
+    .dgl-savebar.show { transform: translateY(0); }
+    .dgl-savebar.shake { animation-name: dgl-savebar-shake-mobile; }
+    .dgl-savebar-text { white-space: normal; }
+  }
+
+  @keyframes dgl-savebar-shake-mobile {
+    10%, 90% { transform: translateY(0) translateX(-1px); }
+    20%, 80% { transform: translateY(0) translateX(2px); }
+    30%, 50%, 70% { transform: translateY(0) translateX(-4px); }
+    40%, 60% { transform: translateY(0) translateX(4px); }
+  }
+</style>
+
+<style is:global>
+  @media (max-width: 880px) {
+    body.dash-body { height: auto; overflow: visible; }
+  }
+</style>

@@ -1,0 +1,148 @@
+---
+export const prerender = false;
+import DashCustomize from '../../../../components/DashCustomize.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo, imageUrlToDataUri, fileToDataUri, setBotGuildProfile, getGuildMemberSelf, getBotProfile, getBotDescription } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+// Fetched up front, both to render the form and, on POST, to know whether the
+// avatar/banner actually changed, so an unrelated save (e.g. just editing the
+// description) never silently resets them back to the default.
+async function loadConfig() {
+  const res = await fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, { headers: supabaseHeaders });
+  const rows = res.ok ? await res.json() : [];
+  return rows[0] ?? { bot_nickname: null, bot_avatar_url: null, bot_banner_url: null, bot_description: null };
+}
+
+let saved = false;
+let error: string | null = null;
+let discordWarning = false;
+
+if (Astro.request.method === 'POST') {
+  const stored = await loadConfig();
+  const form = await Astro.request.formData();
+
+  const nickname = String(form.get('nickname') ?? '').trim().slice(0, 32);
+  const avatarUrl = String(form.get('avatar_url') ?? '').trim();
+  const avatarFile = form.get('avatar_file');
+  const bannerUrl = String(form.get('banner_url') ?? '').trim();
+  const bannerFile = form.get('banner_file');
+  const description = String(form.get('description') ?? '').trim().slice(0, 190);
+
+  let avatarDataUri: string | null | undefined;
+  let nextAvatarUrl = avatarUrl;
+  if (avatarFile instanceof File && avatarFile.size > 0) {
+    const result = await fileToDataUri(avatarFile);
+    if ('error' in result) error = result.error === 'too_large' ? 'avatar_too_large' : 'avatar_fetch_failed';
+    else { avatarDataUri = result.dataUri; nextAvatarUrl = ''; }
+  } else if (avatarUrl && avatarUrl !== (stored.bot_avatar_url ?? '')) {
+    const result = await imageUrlToDataUri(avatarUrl);
+    if ('error' in result) error = result.error === 'too_large' ? 'avatar_too_large' : 'avatar_fetch_failed';
+    else avatarDataUri = result.dataUri;
+  } else if (!avatarUrl && (stored.bot_avatar_url ?? '')) {
+    avatarDataUri = null; // was cleared
+  }
+
+  let bannerDataUri: string | null | undefined;
+  let nextBannerUrl = bannerUrl;
+  if (!error) {
+    if (bannerFile instanceof File && bannerFile.size > 0) {
+      const result = await fileToDataUri(bannerFile);
+      if ('error' in result) error = result.error === 'too_large' ? 'banner_too_large' : 'banner_fetch_failed';
+      else { bannerDataUri = result.dataUri; nextBannerUrl = ''; }
+    } else if (bannerUrl && bannerUrl !== (stored.bot_banner_url ?? '')) {
+      const result = await imageUrlToDataUri(bannerUrl);
+      if ('error' in result) error = result.error === 'too_large' ? 'banner_too_large' : 'banner_fetch_failed';
+      else bannerDataUri = result.dataUri;
+    } else if (!bannerUrl && (stored.bot_banner_url ?? '')) {
+      bannerDataUri = null; // was cleared
+    }
+  }
+
+  if (!error) {
+    // nick/avatar/banner/bio are all real Discord fields on the same "Modify Current Member"
+    // endpoint (bio confirmed against Discord's own docs, it's a genuine per-guild member bio,
+    // not just something we store on our side), applied together in one PATCH call.
+    const bioChanged = description !== (stored.bot_description ?? '');
+    if (nickname !== (stored.bot_nickname ?? '') || avatarDataUri !== undefined || bannerDataUri !== undefined || bioChanged) {
+      const applied = await setBotGuildProfile(id, botToken, { nick: nickname || null, avatarDataUri, bannerDataUri, bio: description || null });
+      if (!applied) discordWarning = true;
+    }
+
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/guilds`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        bot_nickname: nickname || null,
+        bot_avatar_url: nextAvatarUrl || null,
+        bot_banner_url: nextBannerUrl || null,
+        bot_description: description || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    if (dbRes.ok) saved = true;
+    else error = 'discord_rejected';
+  }
+}
+
+const [botProfile, globalDescription, config] = await Promise.all([
+  getBotProfile(botToken),
+  getBotDescription(botToken),
+  loadConfig(),
+]);
+const memberSelf = botProfile ? await getGuildMemberSelf(id, botToken, botProfile.id) : null;
+
+const nicknameValue = config.bot_nickname ?? '';
+const avatarUrlValue = config.bot_avatar_url ?? '';
+const bannerUrlValue = config.bot_banner_url ?? '';
+const descriptionValue = config.bot_description ?? '';
+const botUsername = botProfile?.username ?? 'Petto';
+
+const effectiveAvatar = memberSelf?.avatarUrl || botProfile?.avatarUrl || guildInfo.icon || '/assets/mascot-icon.png';
+const effectiveBanner = memberSelf?.bannerUrl || botProfile?.bannerUrl || null;
+// Discord's PATCH accepts and applies `bio`, confirmed live, but the GET member endpoint never
+// echoes it back, so our own database is the only place this can be read from afterward.
+const effectiveDescription = descriptionValue || globalDescription;
+---
+<DashCustomize
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  nickname={nicknameValue}
+  avatarUrl={avatarUrlValue}
+  effectiveAvatar={effectiveAvatar}
+  botUsername={botUsername}
+  bannerUrl={bannerUrlValue}
+  effectiveBanner={effectiveBanner}
+  description={descriptionValue}
+  effectiveDescription={effectiveDescription}
+  globalUsername={botProfile?.username ?? 'Petto'}
+  globalAvatar={botProfile?.avatarUrl}
+  globalBanner={botProfile?.bannerUrl}
+  globalDescription={globalDescription}
+  saved={saved}
+  discordWarning={discordWarning}
+  error={error}
+/>

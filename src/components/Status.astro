@@ -1,0 +1,274 @@
+---
+import { Icon } from 'astro-icon/components';
+import Base from '../layouts/Base.astro';
+import { useTranslations, type Locale } from '../i18n/ui';
+
+interface Props {
+  lang: Locale;
+}
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const s = t.simplePages.status;
+
+// SUPABASE_URL and SUPABASE_ANON_KEY are baked into the static page (not secret,
+// the anon key only has the read-only policies on bot_status/bot_host, see
+// schema.sql) so the browser can poll Supabase directly, no server round-trip.
+const supabaseUrl = process.env.SUPABASE_URL ?? '';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? '';
+
+const STALE_MS = 5 * 60 * 1000;
+
+async function supaGet(table: string) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  try {
+    const res = await fetch(`${url}/rest/v1/${table}?select=*`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length > 0 ? rows : null;
+  } catch {
+    return null;
+  }
+}
+
+function bucket(rawStatus: string, updatedAt: string, now: number) {
+  const staleAt = new Date(updatedAt).getTime() + STALE_MS;
+  if (staleAt < now) return 'offline';
+  if (rawStatus === 'Ready') return 'operational';
+  if (rawStatus === 'Disconnected') return 'offline';
+  return 'reconnecting';
+}
+
+function formatUptime(totalSeconds: number) {
+  const d = Math.floor(totalSeconds / 86400);
+  const h = Math.floor((totalSeconds % 86400) / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+const now = Date.now();
+const shardRows = await supaGet('bot_status');
+const shards = shardRows
+  ? (shardRows as any[]).sort((a, b) => a.shard_id - b.shard_id).map((r) => ({ id: r.shard_id, guildCount: r.guild_count, ping: r.ping_ms, state: bucket(r.status, r.updated_at, now) }))
+  : null;
+
+const hostRows = await supaGet('bot_host');
+const host = hostRows ? hostRows[0] : null;
+
+const stateLabel: Record<string, string> = {
+  operational: s.shardOperational,
+  offline: s.shardOffline,
+  reconnecting: s.shardReconnecting,
+};
+---
+<Base title={`${s.title} · Petto`} lang={lang}>
+  <main>
+    <section class="status-sec">
+      <div class="wrap status-wrap">
+        <div class="eyebrow">{s.pill}</div>
+        <h1><span class="status-hero-dot"></span>{s.heading}</h1>
+        <p class="status-desc">{s.desc}</p>
+
+        <div
+          id="statusBlock"
+          data-supabase-url={supabaseUrl}
+          data-supabase-key={supabaseAnonKey}
+          data-stale-ms={STALE_MS}
+          data-label-operational={s.shardOperational}
+          data-label-offline={s.shardOffline}
+          data-label-reconnecting={s.shardReconnecting}
+          data-label-servers={s.guildsCol}
+          data-label-ping={s.pingCol}
+          data-label-nodata={s.noShardData}
+          data-label-shard={s.shardName}
+          data-label-uptime={s.uptimeLabel}
+        >
+          <div class="status-block-head">
+            <span class="status-block-label">{s.shardsTitle}</span>
+            <span class="live-badge" id="liveBadge"><span class="live-dot"></span>{s.live}</span>
+          </div>
+
+          <div id="shardsContent" class="shard-grid">
+            {shards ? (
+              shards.map((sh) => (
+                <div class="shard-card" data-shard-id={sh.id}>
+                  <div class="shard-card-head">
+                    <Icon name="ph:cube-fill" class="shard-ic" />
+                    <span class="shard-name">{s.shardName} {sh.id}</span>
+                    <span class:list={['status-pill', sh.state]}>{stateLabel[sh.state] ?? s.shardUnknown}</span>
+                  </div>
+                  <div class="shard-card-stats">
+                    <div class="shard-stat"><span class="n">{sh.guildCount}</span><span class="l">{s.guildsCol}</span></div>
+                    <div class="shard-stat"><span class="n">{sh.ping != null ? `${sh.ping}` : 'n/a'}<em>ms</em></span><span class="l">{s.pingCol}</span></div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p class="no-shard-data">{s.noShardData}</p>
+            )}
+          </div>
+
+          <div class="status-block-label host-label">{s.hostTitle}</div>
+          <div id="hostContent" class="host-card">
+            {host ? (
+              <>
+                <div class="shard-stat"><span class="n">{formatUptime(host.uptime_seconds)}</span><span class="l">{s.uptimeLabel}</span></div>
+                <div class="shard-stat"><span class="n">{host.node_version}</span><span class="l">{s.nodeLabel}</span></div>
+              </>
+            ) : (
+              <p class="no-shard-data">{s.noShardData}</p>
+            )}
+          </div>
+        </div>
+
+        <div class="status-list">
+          {s.items.map((it) => (
+            <div class="status-row">
+              <span>{it.name}</span>
+              <span class:list={['status-pill', { ok: it.state === s.shardOperational }]}>{it.state}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  const block = document.getElementById('statusBlock');
+  const url = block?.dataset.supabaseUrl;
+  const key = block?.dataset.supabaseKey;
+  if (block && url && key) {
+    const staleMs = Number(block.dataset.staleMs || 300000);
+    const labels: Record<string, string> = {
+      operational: block.dataset.labelOperational || 'Operational',
+      offline: block.dataset.labelOffline || 'Offline',
+      reconnecting: block.dataset.labelReconnecting || 'Reconnecting',
+    };
+    const colServers = block.dataset.labelServers || 'Servers';
+    const colPing = block.dataset.labelPing || 'Ping';
+    const noDataText = block.dataset.labelNodata || '';
+    const shardWord = block.dataset.labelShard || 'Shard';
+    const uptimeWord = block.dataset.labelUptime || 'Uptime';
+    const shardsContent = document.getElementById('shardsContent');
+    const hostContent = document.getElementById('hostContent');
+    const liveBadge = document.getElementById('liveBadge');
+
+    function bucketState(rawStatus: string, updatedAt: string) {
+      const staleAt = new Date(updatedAt).getTime() + staleMs;
+      if (staleAt < Date.now()) return 'offline';
+      if (rawStatus === 'Ready') return 'operational';
+      if (rawStatus === 'Disconnected') return 'offline';
+      return 'reconnecting';
+    }
+
+    function formatUptime(totalSeconds: number) {
+      const d = Math.floor(totalSeconds / 86400);
+      const h = Math.floor((totalSeconds % 86400) / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      if (d > 0) return `${d}d ${h}h`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    function renderShards(rows: any[]) {
+      if (!shardsContent) return;
+      if (!rows.length) {
+        shardsContent.innerHTML = `<p class="no-shard-data">${noDataText}</p>`;
+        return;
+      }
+      shardsContent.innerHTML = rows
+        .sort((a, b) => a.shard_id - b.shard_id)
+        .map((r) => {
+          const state = bucketState(r.status, r.updated_at);
+          const ping = r.ping_ms != null ? `${r.ping_ms}` : 'n/a';
+          return `<div class="shard-card" data-shard-id="${r.shard_id}"><div class="shard-card-head"><span class="shard-name">${shardWord} ${r.shard_id}</span><span class="status-pill ${state}">${labels[state] ?? state}</span></div><div class="shard-card-stats"><div class="shard-stat"><span class="n">${r.guild_count}</span><span class="l">${colServers}</span></div><div class="shard-stat"><span class="n">${ping}<em>ms</em></span><span class="l">${colPing}</span></div></div></div>`;
+        })
+        .join('');
+    }
+
+    function renderHost(row: any) {
+      if (!hostContent || !row) return;
+      hostContent.innerHTML = `<div class="shard-stat"><span class="n">${formatUptime(row.uptime_seconds)}</span><span class="l">${uptimeWord}</span></div><div class="shard-stat"><span class="n">${row.node_version ?? ''}</span><span class="l">Node.js</span></div>`;
+    }
+
+    async function poll() {
+      try {
+        const [shardRes, hostRes] = await Promise.all([
+          fetch(`${url}/rest/v1/bot_status?select=*`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }),
+          fetch(`${url}/rest/v1/bot_host?select=*`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }),
+        ]);
+        if (shardRes.ok) {
+          const rows = await shardRes.json();
+          if (Array.isArray(rows)) renderShards(rows);
+        }
+        if (hostRes.ok) {
+          const rows = await hostRes.json();
+          if (Array.isArray(rows) && rows.length) renderHost(rows[0]);
+        }
+        liveBadge?.classList.add('on');
+      } catch {
+        // Silently keep whatever was last rendered; the next poll retries.
+      }
+    }
+
+    poll();
+    setInterval(poll, 10000);
+  }
+</script>
+
+<style>
+  .status-sec { padding: 90px 0 120px; }
+  .status-wrap { max-width: 640px; }
+  .status-sec h1 { font-size: 30px; margin: 14px 0 12px; display: flex; align-items: center; gap: 12px; }
+  .status-hero-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px var(--green-soft); flex-shrink: 0; }
+  .status-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; max-width: 54ch; margin-bottom: 34px; }
+  .status-block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .status-block-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+  .status-block-label.host-label { margin: 28px 0 10px; }
+  .live-badge { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); opacity: 0.4; transition: opacity 0.2s ease; }
+  .live-badge.on { opacity: 1; color: var(--green); }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .live-badge.on .live-dot { animation: livePulse 1.6s ease-in-out infinite; }
+  @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .shard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
+
+  /*
+   * Everything below is :global() on purpose. The live status script (see the <script> tag)
+   * rewrites #shardsContent/#hostContent via innerHTML every poll, and elements created that way
+   * never get Astro's scoped data-astro-cid attribute, so a normal scoped rule would only style
+   * the first server-rendered paint and then silently stop matching the instant the first poll()
+   * call (which fires immediately, not after the 10s interval) replaces that markup.
+   */
+  :global(.shard-card) { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--card); }
+  :global(.shard-card-head) { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  :global(.shard-card .shard-ic) { width: 15px; height: 15px; color: var(--text-dim); }
+  :global(.shard-name) { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
+  :global(.shard-card-stats) { display: flex; gap: 22px; }
+  :global(.shard-stat) { display: flex; flex-direction: column; gap: 3px; }
+  :global(.shard-stat .n) { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); }
+  :global(.shard-stat .n em) { font-family: var(--sans); font-style: normal; font-size: 12px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+  :global(.shard-stat .l) { font-size: 11.5px; color: var(--text-dim); }
+
+  .host-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--card); display: flex; gap: 28px; margin-bottom: 28px; }
+
+  .status-list { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 28px; }
+  .status-row { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; font-size: 14.5px; }
+  .status-row:not(:last-child) { border-bottom: 1px solid var(--border-soft); }
+  :global(.status-pill) { font-family: var(--mono); font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: var(--text-dim); background: var(--border-soft); }
+  :global(.status-pill.ok), :global(.status-pill.operational) { color: var(--green); background: var(--green-soft); }
+  :global(.status-pill.reconnecting) { color: var(--yellow); background: var(--yellow-soft); }
+  :global(.status-pill.offline) { color: var(--red); background: var(--red-soft); }
+  :global(.no-shard-data) { grid-column: 1 / -1; font-size: 14px; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 14px; padding: 16px 18px; margin: 0; line-height: 1.55; }
+
+  @media (max-width: 480px) {
+    .shard-grid { grid-template-columns: 1fr; }
+    .host-card { flex-wrap: wrap; gap: 20px; }
+  }
+</style>

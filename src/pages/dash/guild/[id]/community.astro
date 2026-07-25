@@ -1,0 +1,116 @@
+---
+export const prerender = false;
+import DashCommunity from '../../../../components/DashCommunity.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'report') {
+    await fetch(`${supabaseUrl}/rest/v1/report_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        channel_id: String(form.get('channel_id') ?? '').trim() || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  } else if (action === 'booster') {
+    const filteredWords = String(form.get('filtered_words') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
+    await fetch(`${supabaseUrl}/rest/v1/booster_role_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        base_role_id: String(form.get('base_role_id') ?? '').trim() || null,
+        role_limit: Math.max(1, Math.min(5, Number(form.get('role_limit') ?? 1) || 1)),
+        share_max: Math.max(0, Math.min(20, Number(form.get('share_max') ?? 0) || 0)),
+        filtered_words: filteredWords,
+        color_cooldown_ms: Math.max(0, Math.min(720, Number(form.get('color_cooldown_hours') ?? 0) || 0)) * 3600000,
+        icon_cooldown_ms: Math.max(0, Math.min(720, Number(form.get('icon_cooldown_hours') ?? 0) || 0)) * 3600000,
+        rename_cooldown_ms: Math.max(0, Math.min(720, Number(form.get('rename_cooldown_hours') ?? 0) || 0)) * 3600000,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  }
+}
+
+const [reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+
+const reportRows = reportRes.ok ? await reportRes.json() : [];
+const r = reportRows[0] ?? {};
+const report = { enabled: r.enabled ?? false, channelId: r.channel_id ?? null };
+
+const boosterRows = boosterRes.ok ? await boosterRes.json() : [];
+const b = boosterRows[0] ?? {};
+const booster = {
+  baseRoleId: b.base_role_id ?? null,
+  roleLimit: b.role_limit ?? 1,
+  shareMax: b.share_max ?? 0,
+  filteredWords: b.filtered_words ?? [],
+  colorCooldownHours: Math.round((b.color_cooldown_ms ?? 0) / 3600000),
+  iconCooldownHours: Math.round((b.icon_cooldown_ms ?? 0) / 3600000),
+  renameCooldownHours: Math.round((b.rename_cooldown_ms ?? 0) / 3600000),
+};
+
+const rawBoosterRoles = boosterRolesRes.ok ? await boosterRolesRes.json() : [];
+const boosterRoles = rawBoosterRoles.map((row: any) => ({ userId: row.user_id, roleId: row.role_id, color: row.color }));
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+---
+<DashCommunity
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  report={report}
+  booster={booster}
+  boosterRoles={boosterRoles}
+  roles={roles}
+  channels={channels}
+  saved={saved}
+/>

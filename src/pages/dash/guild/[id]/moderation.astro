@@ -1,0 +1,192 @@
+---
+export const prerender = false;
+import DashModeration from '../../../../components/DashModeration.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'config');
+
+  if (action === 'config') {
+    const bannedWords = String(form.get('banned_words') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
+    const immuneRoleIds = form.getAll('immune_role_ids').map(String);
+    const whitelistIds = String(form.get('whitelist_ids') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
+
+    await Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/automod_config`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          guild_id: id,
+          word_filter_enabled: form.get('word_filter_enabled') === 'on',
+          word_filter_action: String(form.get('word_filter_action') ?? 'warn'),
+          banned_words: bannedWords,
+          anti_spam_enabled: form.get('anti_spam_enabled') === 'on',
+          max_mentions: Math.max(1, Math.min(50, Number(form.get('max_mentions') ?? 5) || 5)),
+          anti_raid_enabled: form.get('anti_raid_enabled') === 'on',
+          raid_join_threshold: Math.max(2, Math.min(50, Number(form.get('raid_join_threshold') ?? 6) || 6)),
+          raid_window_seconds: Math.max(5, Math.min(120, Number(form.get('raid_window_seconds') ?? 10) || 10)),
+          raid_action: String(form.get('raid_action') ?? 'alert'),
+          anti_alt_enabled: form.get('anti_alt_enabled') === 'on',
+          anti_alt_min_age_days: Math.max(0, Math.min(365, Number(form.get('anti_alt_min_age_days') ?? 7) || 7)),
+          anti_alt_action: String(form.get('anti_alt_action') ?? 'kick'),
+          immune_role_ids: immuneRoleIds,
+          updated_at: new Date().toISOString(),
+        }),
+      }),
+      fetch(`${supabaseUrl}/rest/v1/antinuke_config`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          guild_id: id,
+          enabled: form.get('antinuke_enabled') === 'on',
+          action_threshold: Math.max(2, Math.min(30, Number(form.get('antinuke_action_threshold') ?? 5) || 5)),
+          window_seconds: Math.max(5, Math.min(120, Number(form.get('antinuke_window_seconds') ?? 10) || 10)),
+          whitelist_ids: whitelistIds,
+          updated_at: new Date().toISOString(),
+        }),
+      }),
+    ]);
+    saved = true;
+  } else if (action === 'add_silent_channel') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const silentAction = String(form.get('silent_action') ?? 'warn');
+    if (channelId) {
+      await fetch(`${supabaseUrl}/rest/v1/automod_silent_channels`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, action: silentAction }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_silent_channel') {
+    const channelId = String(form.get('channel_id') ?? '');
+    await fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'add_escalation') {
+    const warnCount = Math.max(1, Number(form.get('warn_count') ?? 0) || 0);
+    const escAction = String(form.get('esc_action') ?? 'mute');
+    const durationMinutes = Number(form.get('duration_minutes') ?? 0) || 0;
+    if (warnCount > 0) {
+      await fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          guild_id: id, warn_count: warnCount, action: escAction,
+          duration_ms: durationMinutes > 0 ? durationMinutes * 60000 : null,
+        }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_escalation') {
+    const warnCount = String(form.get('warn_count') ?? '');
+    await fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&warn_count=eq.${warnCount}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  }
+}
+
+const [automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=25`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+
+const automodRows = automodRes.ok ? await automodRes.json() : [];
+const a = automodRows[0] ?? {};
+const automod = {
+  wordFilterEnabled: a.word_filter_enabled ?? false,
+  wordFilterAction: a.word_filter_action ?? 'warn',
+  bannedWords: a.banned_words ?? [],
+  antiSpamEnabled: a.anti_spam_enabled ?? false,
+  maxMentions: a.max_mentions ?? 5,
+  antiRaidEnabled: a.anti_raid_enabled ?? false,
+  raidJoinThreshold: a.raid_join_threshold ?? 6,
+  raidWindowSeconds: a.raid_window_seconds ?? 10,
+  raidAction: a.raid_action ?? 'alert',
+  antiAltEnabled: a.anti_alt_enabled ?? false,
+  antiAltMinAgeDays: a.anti_alt_min_age_days ?? 7,
+  antiAltAction: a.anti_alt_action ?? 'kick',
+  immuneRoleIds: a.immune_role_ids ?? [],
+};
+
+const antinukeRows = antinukeRes.ok ? await antinukeRes.json() : [];
+const n = antinukeRows[0] ?? {};
+const antinuke = {
+  enabled: n.enabled ?? false,
+  actionThreshold: n.action_threshold ?? 5,
+  windowSeconds: n.window_seconds ?? 10,
+  whitelistIds: (n.whitelist_ids ?? []).join(', '),
+};
+
+const rawCases = casesRes.ok ? await casesRes.json() : [];
+const cases = rawCases.map((c: any) => ({
+  caseNumber: c.case_number, type: c.type, userId: c.user_id, moderatorId: c.moderator_id,
+  reason: c.reason, active: c.active, createdAt: c.created_at,
+}));
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+
+function channelName(channelId: string) {
+  return channels.find((c: any) => c.id === channelId)?.name ?? channelId;
+}
+
+const rawSilent = silentRes.ok ? await silentRes.json() : [];
+const silentChannels = rawSilent.map((s: any) => ({ channelId: s.channel_id, name: channelName(s.channel_id), action: s.action }));
+
+const rawEscalation = escalationRes.ok ? await escalationRes.json() : [];
+const escalationRules = rawEscalation.map((e: any) => ({
+  warnCount: e.warn_count, action: e.action,
+  durationMinutes: e.duration_ms ? Math.round(e.duration_ms / 60000) : null,
+}));
+---
+<DashModeration
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  automod={automod}
+  antinuke={antinuke}
+  cases={cases}
+  silentChannels={silentChannels}
+  escalationRules={escalationRules}
+  roles={roles}
+  channels={channels}
+  saved={saved}
+/>

@@ -1,0 +1,127 @@
+---
+export const prerender = false;
+import DashLogging from '../../../../components/DashLogging.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const EVENTS = ['sanctions', 'automod', 'verification', 'members', 'messages', 'voice', 'roles', 'channels', 'invites', 'emojis', 'tickets', 'server'];
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? 'routing');
+
+  if (action === 'add_ignored') {
+    const targetId = String(form.get('target_id') ?? '').trim();
+    if (targetId) {
+      await fetch(`${supabaseUrl}/rest/v1/log_ignored`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, target_id: targetId }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_ignored') {
+    const targetId = String(form.get('target_id') ?? '');
+    await fetch(`${supabaseUrl}/rest/v1/log_ignored?guild_id=eq.${id}&target_id=eq.${targetId}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else {
+    const entriesRes = await fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event,channel_id`, { headers: supabaseHeaders });
+    const currentEntries: { event: string; channel_id: string }[] = entriesRes.ok ? await entriesRes.json() : [];
+    const currentRouting: Record<string, string> = {};
+    for (const e of currentEntries) currentRouting[e.event] = e.channel_id;
+
+    const webhooksRes = await fetch(`${supabaseUrl}/rest/v1/log_webhooks?guild_id=eq.${id}&select=channel_id`, { headers: supabaseHeaders });
+    const existingWebhookChannels = new Set<string>((webhooksRes.ok ? await webhooksRes.json() : []).map((w: { channel_id: string }) => w.channel_id));
+
+    for (const eventId of EVENTS) {
+      const selected = String(form.get(`event_${eventId}`) ?? '').trim();
+      const previous = currentRouting[eventId];
+      if (selected === (previous ?? '')) continue;
+
+      if (previous) {
+        await fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&event=eq.${eventId}`, { method: 'DELETE', headers: supabaseHeaders });
+      }
+
+      if (!selected) continue;
+
+      if (!existingWebhookChannels.has(selected)) {
+        const whRes = await fetch(`https://discord.com/api/channels/${selected}/webhooks`, {
+          method: 'POST',
+          headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Petto Logs' }),
+        });
+        if (whRes.ok) {
+          const webhook = await whRes.json();
+          await fetch(`${supabaseUrl}/rest/v1/log_webhooks`, {
+            method: 'POST',
+            headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify({ guild_id: id, channel_id: selected, webhook_id: webhook.id, webhook_token: webhook.token }),
+          });
+          existingWebhookChannels.add(selected);
+        }
+      }
+
+      await fetch(`${supabaseUrl}/rest/v1/log_entries`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, channel_id: selected, event: eventId }),
+      });
+    }
+
+    saved = true;
+  }
+}
+
+const [entriesRes, ignoredRes, channelsRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event,channel_id`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/log_ignored?guild_id=eq.${id}&select=target_id`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+const entries: { event: string; channel_id: string }[] = entriesRes.ok ? await entriesRes.json() : [];
+const routing: Record<string, string> = {};
+for (const e of entries) routing[e.event] = e.channel_id;
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+
+function channelName(channelId: string) {
+  return channels.find((c: any) => c.id === channelId)?.name ?? null;
+}
+const rawIgnored = ignoredRes.ok ? await ignoredRes.json() : [];
+const ignoredIds = rawIgnored.map((r: any) => ({ targetId: r.target_id, channelName: channelName(r.target_id) }));
+---
+<DashLogging
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  channels={channels}
+  routing={routing}
+  ignoredIds={ignoredIds}
+  saved={saved}
+/>

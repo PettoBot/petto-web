@@ -1,0 +1,45 @@
+---
+export const prerender = false;
+import DashEmbeds from '../../../../components/DashEmbeds.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo, getGuildMemberSelf, getBotProfile } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+const botProfile = await getBotProfile(botToken);
+const memberSelf = botProfile ? await getGuildMemberSelf(id, botToken, botProfile.id) : null;
+const botName = memberSelf?.nick || botProfile?.username || 'Petto';
+const botIcon = memberSelf?.avatarUrl || botProfile?.avatarUrl || '/assets/mascot-icon.png';
+
+const templatesRes = await fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders });
+const templateNames = templatesRes.ok ? (await templatesRes.json()).map((t: any) => t.name) : [];
+const selected = new URL(Astro.request.url).searchParams.get('name') ?? templateNames[0] ?? '';
+---
+<DashEmbeds
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  botName={botName}
+  botIcon={botIcon}
+  templateNames={templateNames}
+  selected={selected}
+/>

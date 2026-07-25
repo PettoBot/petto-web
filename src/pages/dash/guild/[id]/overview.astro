@@ -1,0 +1,241 @@
+---
+export const prerender = false;
+import DashGuildOverview from '../../../../components/DashGuildOverview.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { guildIconUrl } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildRes = await fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, {
+  headers: { Authorization: `Bot ${botToken}` },
+});
+if (!guildRes.ok) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const guild = await guildRes.json();
+
+const supabaseHeaders = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
+const countHeaders = { ...supabaseHeaders, Prefer: 'count=exact' };
+
+function count(res: Response): number {
+  return Number(res.headers.get('content-range')?.split('/')[1] ?? '0');
+}
+
+// ── Activity date range, computed before the big fetch below so activity_stats can be pulled in the same batch ──
+const rangeDaysByKey: Record<string, number> = { week: 7, month: 30, year: 365 };
+const range = (['week', 'month', 'year'].includes(Astro.url.searchParams.get('range') ?? '') ? Astro.url.searchParams.get('range') : 'week') as 'week' | 'month' | 'year';
+const days = rangeDaysByKey[range];
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+const now = new Date();
+const startCurrent = new Date(now);
+startCurrent.setUTCDate(startCurrent.getUTCDate() - days + 1);
+const startPrevious = new Date(now);
+startPrevious.setUTCDate(startPrevious.getUTCDate() - days * 2 + 1);
+const currentCutoff = isoDate(startCurrent);
+
+// Every remaining fetch (Discord channels + all Supabase reads) is independent, so they all run
+// together instead of one after another, this was previously the biggest source of load time.
+const [
+  channelsRes,
+  guildsRes, automodRes, antinukeRes, levelRes, ticketCatRes,
+  giveawayActiveRes, logEntriesRes, commandsRes, respondersRes, reportRes,
+  welcomeRes, verificationRes, activityRes,
+] = await Promise.all([
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=word_filter_enabled,anti_spam_enabled,anti_raid_enabled,anti_alt_enabled`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/level_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id`, { headers: countHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event`, { headers: countHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=welcome_channel_id`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/activity_stats?guild_id=eq.${id}&day=gte.${isoDate(startPrevious)}&select=channel_id,day,messages,reactions,voice_seconds`, { headers: supabaseHeaders }),
+]);
+
+const channels = channelsRes.ok ? await channelsRes.json() : [];
+const textChannels = channels.filter((c: any) => c.type === 0).length;
+const voiceChannels = channels.filter((c: any) => c.type === 2).length;
+const categories = channels.filter((c: any) => c.type === 4).length;
+
+const stats = [
+  { icon: 'ph:users-three-fill', label: 'Members', value: (guild.approximate_member_count ?? 0).toLocaleString(), color: '#8399ff' },
+  { icon: 'ph:shield-fill', label: 'Roles', value: String(guild.roles?.length ?? 0), color: '#c792ea' },
+  { icon: 'ph:hash', label: 'Channels', value: String(channels.length), color: '#5eead4' },
+  { icon: 'ph:chat-circle-text-fill', label: 'Text channels', value: String(textChannels), color: '#7dd3fc' },
+  { icon: 'ph:speaker-high-fill', label: 'Voice channels', value: String(voiceChannels), color: '#f78fb3' },
+  { icon: 'ph:folder-fill', label: 'Categories', value: String(categories), color: '#ffb86c' },
+  { icon: 'ph:smiley-fill', label: 'Emojis', value: String(guild.emojis?.length ?? 0), color: '#fed53c' },
+  { icon: 'ph:sparkle-fill', label: 'Boosts', value: String(guild.premium_subscription_count ?? 0), color: '#fe6465' },
+  { icon: 'ph:trophy-fill', label: 'Boost level', value: `Level ${guild.premium_tier ?? 0}`, color: '#a5ea7a' },
+];
+
+const g = (await guildsRes.json())[0] ?? {};
+const am = (await automodRes.json())[0] ?? {};
+const an = (await antinukeRes.json())[0] ?? {};
+const lv = (await levelRes.json())[0] ?? {};
+const rp = (await reportRes.json())[0] ?? {};
+const we = (await welcomeRes.json())[0] ?? {};
+const vf = (await verificationRes.json())[0] ?? {};
+
+const automodOn = Boolean(am.word_filter_enabled || am.anti_spam_enabled || am.anti_raid_enabled || am.anti_alt_enabled);
+const ticketTypes = count(ticketCatRes);
+const giveawaysActive = count(giveawayActiveRes);
+const logRoutes = count(logEntriesRes);
+const commandCount = count(commandsRes);
+const responderCount = count(respondersRes);
+
+const modules = [
+  {
+    title: 'General', href: `/dash/guild/${id}/general`,
+    items: [
+      { label: 'Prefix', value: g.prefix ?? '!', ok: true },
+      { label: 'Mute role', value: g.mute_role_id ? 'set' : 'off', ok: Boolean(g.mute_role_id) },
+    ],
+  },
+  {
+    title: 'Moderation', href: `/dash/guild/${id}/moderation`,
+    items: [
+      { label: 'Automod', value: automodOn ? 'on' : 'off', ok: automodOn },
+      { label: 'Anti-nuke', value: an.enabled ? 'on' : 'off', ok: Boolean(an.enabled) },
+    ],
+  },
+  {
+    title: 'Leveling', href: `/dash/guild/${id}/leveling`,
+    items: [{ label: 'Status', value: lv.enabled ? 'on' : 'off', ok: Boolean(lv.enabled) }],
+  },
+  {
+    title: 'Tickets', href: `/dash/guild/${id}/tickets`,
+    items: [{ label: 'Support types', value: String(ticketTypes), ok: ticketTypes > 0 }],
+  },
+  {
+    title: 'Giveaways', href: `/dash/guild/${id}/giveaways`,
+    items: [{ label: 'Running now', value: String(giveawaysActive), ok: giveawaysActive > 0 }],
+  },
+  {
+    title: 'Automation', href: `/dash/guild/${id}/automation`,
+    items: [
+      { label: 'Custom commands', value: String(commandCount), ok: commandCount > 0 },
+      { label: 'Autoresponders', value: String(responderCount), ok: responderCount > 0 },
+    ],
+  },
+  {
+    title: 'Logging', href: `/dash/guild/${id}/logging`,
+    items: [{ label: 'Routed events', value: String(logRoutes), ok: logRoutes > 0 }],
+  },
+  {
+    title: 'Community', href: `/dash/guild/${id}/community`,
+    items: [{ label: 'Reports', value: rp.enabled ? 'on' : 'off', ok: Boolean(rp.enabled) }],
+  },
+  {
+    title: 'Onboarding', href: `/dash/guild/${id}/onboarding`,
+    items: [
+      { label: 'Welcome', value: we.welcome_channel_id ? 'on' : 'off', ok: Boolean(we.welcome_channel_id) },
+      { label: 'Verification', value: vf.enabled ? 'on' : 'off', ok: Boolean(vf.enabled) },
+    ],
+  },
+];
+
+// ── Activity: real per-day counters written by the bot (activity_stats), not fabricated ──
+const activityRows: { channel_id: string; day: string; messages: number; reactions: number; voice_seconds: number }[] = activityRes.ok ? await activityRes.json() : [];
+const currentRows = activityRows.filter((r) => r.day >= currentCutoff);
+const previousRows = activityRows.filter((r) => r.day < currentCutoff);
+
+function sum(rows: typeof activityRows, key: 'messages' | 'reactions' | 'voice_seconds') {
+  return rows.reduce((a, r) => a + r[key], 0);
+}
+
+const totalMessages = sum(currentRows, 'messages');
+const totalReactions = sum(currentRows, 'reactions');
+const totalVoiceHours = Math.round(sum(currentRows, 'voice_seconds') / 3600);
+const activeChannels = new Set(currentRows.filter((r) => r.messages > 0 || r.reactions > 0).map((r) => r.channel_id)).size;
+const hasData = totalMessages > 0 || totalReactions > 0 || sum(currentRows, 'voice_seconds') > 0;
+
+const prevMessages = sum(previousRows, 'messages');
+const prevReactions = sum(previousRows, 'reactions');
+const messagesDeltaPct = prevMessages > 0 ? ((totalMessages - prevMessages) / prevMessages) * 100 : null;
+const reactionsDeltaPct = prevReactions > 0 ? ((totalReactions - prevReactions) / prevReactions) * 100 : null;
+
+const buckets = new Map<string, { messages: number; reactions: number; voiceSeconds: number }>();
+for (const r of currentRows) {
+  let key = r.day;
+  if (range === 'year') {
+    const d = new Date(`${r.day}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+    key = isoDate(d);
+  }
+  const b = buckets.get(key) ?? { messages: 0, reactions: 0, voiceSeconds: 0 };
+  b.messages += r.messages;
+  b.reactions += r.reactions;
+  b.voiceSeconds += r.voice_seconds;
+  buckets.set(key, b);
+}
+const bucketList = [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, v]) => ({ label, ...v }));
+const points = bucketList.map(({ label, messages, reactions }) => ({ label, messages, reactions }));
+const messagesSpark = bucketList.map((b) => b.messages);
+const reactionsSpark = bucketList.map((b) => b.reactions);
+const voiceSpark = bucketList.map((b) => b.voiceSeconds);
+
+function channelName(channelId: string) {
+  return channels.find((c: any) => c.id === channelId)?.name ?? channelId;
+}
+const CHANNEL_COLORS = ['#8399ff', '#f78fb3', '#5eead4', '#ffb86c', '#c792ea', '#7dd3fc', '#fed53c', '#fe6465', '#a5ea7a'];
+function channelColor(channelId: string) {
+  let hash = 0;
+  for (let i = 0; i < channelId.length; i++) hash = (hash * 31 + channelId.charCodeAt(i)) >>> 0;
+  return CHANNEL_COLORS[hash % CHANNEL_COLORS.length];
+}
+function topChannels(key: 'messages' | 'reactions', total: number) {
+  const byChannel = new Map<string, number>();
+  for (const r of currentRows) byChannel.set(r.channel_id, (byChannel.get(r.channel_id) ?? 0) + r[key]);
+  const byChannelPrev = new Map<string, number>();
+  for (const r of previousRows) byChannelPrev.set(r.channel_id, (byChannelPrev.get(r.channel_id) ?? 0) + r[key]);
+
+  return [...byChannel.entries()]
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([channelId, v]) => {
+      const prev = byChannelPrev.get(channelId) ?? 0;
+      return {
+        name: channelName(channelId),
+        color: channelColor(channelId),
+        count: v,
+        pct: total > 0 ? (v / total) * 100 : 0,
+        deltaPct: prev > 0 ? ((v - prev) / prev) * 100 : null,
+      };
+    });
+}
+
+const activity = {
+  range, hasData, points,
+  messagesSpark, reactionsSpark, voiceSpark,
+  totalMessages, totalReactions, totalVoiceHours, activeChannels,
+  messagesDeltaPct, reactionsDeltaPct,
+  topMessageChannels: topChannels('messages', totalMessages),
+  topReactionChannels: topChannels('reactions', totalReactions),
+};
+---
+<DashGuildOverview
+  user={session}
+  guildId={id}
+  guildName={guild.name}
+  guildIcon={guildIconUrl(guild) ?? '/assets/mascot-icon.png'}
+  stats={stats}
+  modules={modules}
+  activity={activity}
+/>

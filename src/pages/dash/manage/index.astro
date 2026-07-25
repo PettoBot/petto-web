@@ -1,0 +1,49 @@
+---
+export const prerender = false;
+import DashManage from '../../../components/DashManage.astro';
+import { decodeSession } from '../../../utils/session';
+import { canManageGuild, guildIconUrl } from '../../../utils/discord';
+
+const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+const clientId = process.env.DISCORD_CLIENT_ID;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const cookie = Astro.cookies.get('petto_session')?.value;
+const session = cookie && clientSecret ? await decodeSession(cookie, clientSecret) : null;
+if (!session || session.expiresAt < Date.now()) {
+  return Astro.redirect('/dash');
+}
+
+const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
+  headers: { Authorization: `Bearer ${session.accessToken}` },
+});
+const discordGuilds = guildsRes.ok ? await guildsRes.json() : [];
+const manageable = discordGuilds.filter(canManageGuild);
+
+let botGuildIds = new Set<string>();
+if (manageable.length > 0 && supabaseUrl && supabaseKey) {
+  const ids = manageable.map((g: any) => g.id).join(',');
+  const res = await fetch(`${supabaseUrl}/rest/v1/guilds?select=guild_id&guild_id=in.(${ids})`, {
+    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+  });
+  if (res.ok) {
+    const rows = await res.json();
+    botGuildIds = new Set(rows.map((r: any) => r.guild_id));
+  }
+}
+
+const guilds = manageable
+  .map((g: any) => ({
+    id: g.id,
+    name: g.name,
+    icon: guildIconUrl(g),
+    tag: g.owner ? 'Owner' : 'Administrator',
+    active: botGuildIds.has(g.id),
+  }))
+  .sort((a: any, b: any) => Number(b.active) - Number(a.active));
+
+const inviteUrl = (guildId: string) =>
+  `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=8&scope=${encodeURIComponent('bot applications.commands')}&guild_id=${guildId}&disable_guild_select=true`;
+---
+<DashManage user={session} guilds={guilds} inviteUrl={inviteUrl} />

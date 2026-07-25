@@ -1,0 +1,35 @@
+import { defineConfig } from 'astro/config';
+import icon from 'astro-icon';
+import react from '@astrojs/react';
+import cloudflare from '@astrojs/cloudflare';
+import { config as loadEnv } from 'dotenv';
+import path from 'node:path';
+
+// Reuses the bot's own .env (one source of truth for Supabase/Discord credentials) instead
+// of duplicating secrets into this project. In dev this makes them available on
+// process.env for the dashboard's SSR routes too; in production those same variables need
+// to be set as Cloudflare Pages environment variables (Workers don't read .env files).
+loadEnv({ path: path.resolve('../petto bot 1/.env') });
+
+export default defineConfig({
+  integrations: [icon(), react()],
+  i18n: {
+    locales: ['en', 'es', 'pt-BR'],
+    defaultLocale: 'en',
+    routing: { prefixDefaultLocale: false },
+  },
+  // The whole marketing site stays static (prerendered); only src/pages/dash/** opts out
+  // via `export const prerender = false`, since it needs a live session per request.
+  output: 'hybrid',
+  adapter: cloudflare(),
+  // Docs moved to their own Mintlify site, every old in-repo docs URL (and its localized
+  // copies) now bounces straight there instead of 404ing.
+  redirects: {
+    '/docs': 'https://wiki.petto.sbs',
+    '/docs/[...slug]': 'https://wiki.petto.sbs',
+    '/es/docs': 'https://wiki.petto.sbs',
+    '/es/docs/[...slug]': 'https://wiki.petto.sbs',
+    '/pt-br/docs': 'https://wiki.petto.sbs',
+    '/pt-br/docs/[...slug]': 'https://wiki.petto.sbs',
+  },
+});

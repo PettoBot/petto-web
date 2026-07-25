@@ -1,0 +1,147 @@
+---
+export const prerender = false;
+import DashLeveling from '../../../../components/DashLeveling.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'config') {
+    const ignoredChannelIds = form.getAll('ignored_channel_ids').map(String);
+    await fetch(`${supabaseUrl}/rest/v1/level_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        xp_min: Math.max(1, Math.min(1000, Number(form.get('xp_min') ?? 15) || 15)),
+        xp_max: Math.max(1, Math.min(1000, Number(form.get('xp_max') ?? 25) || 25)),
+        cooldown_seconds: Math.max(0, Math.min(600, Number(form.get('cooldown_seconds') ?? 60) || 60)),
+        xp_per_vc_minute: Math.max(0, Math.min(1000, Number(form.get('xp_per_vc_minute') ?? 5) || 5)),
+        role_mode: String(form.get('role_mode') ?? 'highest'),
+        notify_mode: String(form.get('notify_mode') ?? 'reply'),
+        notify_channel_id: String(form.get('notify_channel_id') ?? '').trim() || null,
+        notify_message: String(form.get('notify_message') ?? '').trim().slice(0, 200) || '{EMOJI} {user} just leveled up to **{level}**!',
+        notify_embed: form.get('notify_embed') === 'on',
+        notify_every: Math.max(1, Math.min(50, Number(form.get('notify_every') ?? 1) || 1)),
+        ignored_channel_ids: ignoredChannelIds,
+        join_xp: Math.max(0, Math.min(1000000, Number(form.get('join_xp') ?? 0) || 0)),
+        join_level: Math.max(0, Math.min(1000, Number(form.get('join_level') ?? 0) || 0)),
+        curve_a: Math.max(0, Number(form.get('curve_a') ?? 1) || 1),
+        curve_b: Math.max(0, Number(form.get('curve_b') ?? 50) || 50),
+        curve_c: Math.max(0, Number(form.get('curve_c') ?? 100) || 100),
+        difficulty: Math.max(0.1, Number(form.get('difficulty') ?? 2.5) || 2.5),
+        rounding: Math.max(1, Number(form.get('rounding') ?? 50) || 50),
+        max_level: Math.max(1, Math.min(10000, Number(form.get('max_level') ?? 1000) || 1000)),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  } else if (action === 'add_reward') {
+    const level = Number(form.get('level') ?? 0);
+    const roleId = String(form.get('role_id') ?? '');
+    if (level > 0 && roleId) {
+      await fetch(`${supabaseUrl}/rest/v1/level_rewards`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, level, role_id: roleId }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_reward') {
+    const level = Number(form.get('level') ?? 0);
+    await fetch(`${supabaseUrl}/rest/v1/level_rewards?guild_id=eq.${id}&level=eq.${level}`, {
+      method: 'DELETE',
+      headers: supabaseHeaders,
+    });
+    saved = true;
+  }
+}
+
+const [configRes, rewardsRes, leaderboardRes, rolesRes, channelsRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/level_users?guild_id=eq.${id}&select=user_id,xp,level&order=xp.desc&limit=10`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+
+const configRows = configRes.ok ? await configRes.json() : [];
+const c = configRows[0] ?? {};
+const config = {
+  enabled: c.enabled ?? false,
+  xpMin: c.xp_min ?? 15,
+  xpMax: c.xp_max ?? 25,
+  xpPerVcMinute: c.xp_per_vc_minute ?? 5,
+  cooldownSeconds: c.cooldown_seconds ?? 60,
+  notifyMode: c.notify_mode ?? 'reply',
+  notifyChannelId: c.notify_channel_id ?? null,
+  notifyMessage: c.notify_message ?? '{EMOJI} {user} just leveled up to **{level}**!',
+  notifyEmbed: c.notify_embed ?? false,
+  notifyEvery: c.notify_every ?? 1,
+  roleMode: c.role_mode ?? 'highest',
+  ignoredChannelIds: c.ignored_channel_ids ?? [],
+  joinXp: c.join_xp ?? 0,
+  joinLevel: c.join_level ?? 0,
+  curveA: c.curve_a ?? 1,
+  curveB: c.curve_b ?? 50,
+  curveC: c.curve_c ?? 100,
+  difficulty: c.difficulty ?? 2.5,
+  rounding: c.rounding ?? 50,
+  maxLevel: c.max_level ?? 1000,
+};
+
+const rawRewards = rewardsRes.ok ? await rewardsRes.json() : [];
+const rewards = rawRewards.map((r: any) => ({ level: r.level, roleId: r.role_id }));
+
+const rawLeaderboard = leaderboardRes.ok ? await leaderboardRes.json() : [];
+const leaderboard = rawLeaderboard.map((row: any, i: number) => ({ rank: i + 1, userId: row.user_id, xp: row.xp, level: row.level }));
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+---
+<DashLeveling
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  config={config}
+  rewards={rewards}
+  roles={roles}
+  channels={channels}
+  leaderboard={leaderboard}
+  saved={saved}
+/>

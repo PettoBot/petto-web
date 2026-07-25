@@ -1,0 +1,169 @@
+---
+export const prerender = false;
+import DashAutomation from '../../../../components/DashAutomation.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'add_command') {
+    const name = String(form.get('name') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 32);
+    const response = String(form.get('response') ?? '').trim().slice(0, 500) || null;
+    const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
+    if (name && (response || embedTemplate)) {
+      await fetch(`${supabaseUrl}/rest/v1/custom_commands`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, name, response, embed_template: embedTemplate }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_command') {
+    await fetch(`${supabaseUrl}/rest/v1/custom_commands?id=eq.${form.get('id')}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'add_responder') {
+    const trigger = String(form.get('trigger') ?? '').trim().slice(0, 80);
+    const reply = String(form.get('reply') ?? '').trim().slice(0, 500);
+    const matchMode = String(form.get('match_mode') ?? 'contains');
+    const deleteTrigger = form.get('delete_trigger') === 'on';
+    const channelIds = form.getAll('channel_ids').map(String);
+    const replyType = String(form.get('reply_type') ?? 'text');
+    const embedColorRaw = String(form.get('embed_color') ?? '').trim().replace('#', '');
+    const embedColor = /^[0-9a-fA-F]{6}$/.test(embedColorRaw) ? parseInt(embedColorRaw, 16) : null;
+    const embedTitle = String(form.get('embed_title') ?? '').trim().slice(0, 100) || null;
+    const embedFooter = String(form.get('embed_footer') ?? '').trim().slice(0, 100) || null;
+    if (trigger && reply) {
+      await fetch(`${supabaseUrl}/rest/v1/auto_responders`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          guild_id: id, ar_id: crypto.randomUUID().slice(0, 8), trigger, reply, match_mode: matchMode,
+          delete_trigger: deleteTrigger, channel_ids: channelIds,
+          reply_type: replyType, embed_color: embedColor, embed_title: embedTitle, embed_footer: embedFooter,
+        }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_responder') {
+    await fetch(`${supabaseUrl}/rest/v1/auto_responders?ar_id=eq.${form.get('ar_id')}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'add_sticky') {
+    const channelId = String(form.get('channel_id') ?? '');
+    const content = String(form.get('content') ?? '').trim().slice(0, 500);
+    if (channelId && content) {
+      await fetch(`${supabaseUrl}/rest/v1/sticky_messages`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, content }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_sticky') {
+    await fetch(`${supabaseUrl}/rest/v1/sticky_messages?channel_id=eq.${form.get('channel_id')}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'add_reactionrole') {
+    const channelId = String(form.get('channel_id') ?? '');
+    const messageId = String(form.get('message_id') ?? '').trim();
+    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4);
+    const roleId = String(form.get('role_id') ?? '');
+    const mode = String(form.get('mode') ?? 'toggle');
+    if (channelId && messageId && emoji && roleId) {
+      await fetch(`${supabaseUrl}/rest/v1/reaction_roles`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: messageId, emoji, role_id: roleId, mode }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_reactionrole') {
+    await fetch(`${supabaseUrl}/rest/v1/reaction_roles?id=eq.${form.get('id')}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'add_disabled') {
+    const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
+    const channelId = String(form.get('channel_id') ?? '').trim() || null;
+    if (command) {
+      await fetch(`${supabaseUrl}/rest/v1/disabled_commands`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ guild_id: id, command, channel_id: channelId }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_disabled') {
+    await fetch(`${supabaseUrl}/rest/v1/disabled_commands?id=eq.${form.get('id')}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  }
+}
+
+const [commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes, rolesRes, channelsRes, embedTemplatesRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,channel_ids,reply_type,embed_color,embed_title,embed_footer&order=trigger.asc`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
+]);
+
+const customCommands = commandsRes.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template })) : [];
+const embedTemplateNames = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
+const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: any) => ({
+  id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, channelIds: a.channel_ids ?? [],
+  replyType: a.reply_type ?? 'text', embedColor: a.embed_color, embedTitle: a.embed_title, embedFooter: a.embed_footer,
+})) : [];
+const stickyMessages = stickyRes.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content })) : [];
+const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode })) : [];
+const disabledCommands = disabledRes.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+---
+<DashAutomation
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  customCommands={customCommands}
+  autoResponders={autoResponders}
+  stickyMessages={stickyMessages}
+  disabledCommands={disabledCommands}
+  reactionRoles={reactionRoles}
+  roles={roles}
+  channels={channels}
+  embedTemplateNames={embedTemplateNames}
+  saved={saved}
+/>

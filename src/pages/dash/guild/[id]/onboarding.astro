@@ -1,0 +1,180 @@
+---
+export const prerender = false;
+import DashOnboarding from '../../../../components/DashOnboarding.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'events') {
+    await fetch(`${supabaseUrl}/rest/v1/member_events_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        welcome_channel_id: String(form.get('welcome_channel_id') ?? '').trim() || null,
+        welcome_message: String(form.get('welcome_message') ?? '').trim().slice(0, 300) || null,
+        leave_channel_id: String(form.get('leave_channel_id') ?? '').trim() || null,
+        leave_message: String(form.get('leave_message') ?? '').trim().slice(0, 300) || null,
+        boost_channel_id: String(form.get('boost_channel_id') ?? '').trim() || null,
+        boost_message: String(form.get('boost_message') ?? '').trim().slice(0, 300) || null,
+        boost_level_message: String(form.get('boost_level_message') ?? '').trim().slice(0, 300) || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  } else if (action === 'verification') {
+    await fetch(`${supabaseUrl}/rest/v1/verification_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        unverified_role_id: String(form.get('unverified_role_id') ?? '').trim() || null,
+        verified_role_id: String(form.get('verified_role_id') ?? '').trim() || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  } else if (action === 'bump') {
+    await fetch(`${supabaseUrl}/rest/v1/bump_reminders`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        channel_id: String(form.get('channel_id') ?? '').trim() || null,
+        message: String(form.get('message') ?? '').trim().slice(0, 300) || "It's time to **/bump** the server!",
+        thankyou: String(form.get('thankyou') ?? '').trim().slice(0, 300) || '{user.mention} successfully bumped! Bump again {nextBump}.',
+        pingable: form.get('pingable') === 'on',
+        autolock: form.get('autolock') === 'on',
+        autoclean: form.get('autoclean') === 'on',
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  } else if (action === 'dm_join') {
+    await fetch(`${supabaseUrl}/rest/v1/member_events_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        dm_join_message: String(form.get('dm_join_message') ?? '').trim().slice(0, 300) || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
+  } else if (action === 'ping_on_join') {
+    const channelIds = form.getAll('channel_ids').map(String);
+    await fetch(`${supabaseUrl}/rest/v1/poj_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ guild_id: id, enabled: form.get('enabled') === 'on' }),
+    });
+    await fetch(`${supabaseUrl}/rest/v1/poj_channels?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    if (channelIds.length > 0) {
+      await fetch(`${supabaseUrl}/rest/v1/poj_channels`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify(channelIds.map((channelId) => ({ guild_id: id, channel_id: channelId }))),
+      });
+    }
+    saved = true;
+  }
+}
+
+const [eventsRes, verificationRes, bumpRes, pojConfigRes, pojChannelsRes, rolesRes, channelsRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/bump_reminders?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/poj_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/poj_channels?guild_id=eq.${id}&select=channel_id`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+
+const eventsRows = eventsRes.ok ? await eventsRes.json() : [];
+const e = eventsRows[0] ?? {};
+const memberEvents = {
+  welcomeChannelId: e.welcome_channel_id ?? null,
+  welcomeMessage: e.welcome_message ?? '',
+  leaveChannelId: e.leave_channel_id ?? null,
+  leaveMessage: e.leave_message ?? '',
+  boostChannelId: e.boost_channel_id ?? null,
+  boostMessage: e.boost_message ?? '',
+  boostLevelMessage: e.boost_level_message ?? '',
+};
+
+const verificationRows = verificationRes.ok ? await verificationRes.json() : [];
+const v = verificationRows[0] ?? {};
+const verification = { enabled: v.enabled ?? false, unverifiedRoleId: v.unverified_role_id ?? null, verifiedRoleId: v.verified_role_id ?? null };
+
+const bumpRows = bumpRes.ok ? await bumpRes.json() : [];
+const bmp = bumpRows[0] ?? {};
+const bump = {
+  channelId: bmp.channel_id ?? null,
+  message: bmp.message ?? '',
+  thankyou: bmp.thankyou ?? '',
+  pingable: bmp.pingable ?? false,
+  autolock: bmp.autolock ?? false,
+  autoclean: bmp.autoclean ?? false,
+};
+
+const dmJoin = { message: e.dm_join_message ?? '' };
+
+const pojConfigRows = pojConfigRes.ok ? await pojConfigRes.json() : [];
+const pojChannelsRows = pojChannelsRes.ok ? await pojChannelsRes.json() : [];
+const pingOnJoin = {
+  enabled: pojConfigRows[0]?.enabled ?? false,
+  channelIds: pojChannelsRows.map((row: any) => row.channel_id),
+};
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+---
+<DashOnboarding
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  memberEvents={memberEvents}
+  verification={verification}
+  bump={bump}
+  dmJoin={dmJoin}
+  pingOnJoin={pingOnJoin}
+  roles={roles}
+  channels={channels}
+  saved={saved}
+/>

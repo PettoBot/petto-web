@@ -1,0 +1,141 @@
+---
+export const prerender = false;
+import DashGiveaways from '../../../../components/DashGiveaways.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let saved = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'config') {
+    await fetch(`${supabaseUrl}/rest/v1/giveaway_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        entry_mode: String(form.get('entry_mode') ?? 'button'),
+        reaction: String(form.get('reaction') ?? '🎉').trim().slice(0, 4) || '🎉',
+        winner_message: String(form.get('winner_message') ?? '').trim().slice(0, 200) || null,
+        no_entries_message: String(form.get('no_entries_message') ?? '').trim().slice(0, 200) || null,
+        deny_message: String(form.get('deny_message') ?? '').trim().slice(0, 200) || null,
+        claim_time_message: String(form.get('claim_time_message') ?? '').trim().slice(0, 200) || null,
+        claim_time_over_message: String(form.get('claim_time_over_message') ?? '').trim().slice(0, 200) || null,
+        accept_message: String(form.get('accept_message') ?? '').trim().slice(0, 200) || null,
+      }),
+    });
+    saved = true;
+  } else if (action === 'add_preset') {
+    const name = String(form.get('name') ?? '').trim().slice(0, 40);
+    if (name) {
+      await fetch(`${supabaseUrl}/rest/v1/giveaway_presets`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ guild_id: id, name }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_preset') {
+    const presetId = String(form.get('preset_id') ?? '');
+    await fetch(`${supabaseUrl}/rest/v1/giveaway_presets?id=eq.${presetId}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'add_preset_role') {
+    const presetId = Number(form.get('preset_id') ?? 0);
+    const roleId = String(form.get('role_id') ?? '');
+    const entries = Math.max(1, Math.min(100, Number(form.get('entries') ?? 1) || 1));
+    const entriesStack = form.get('entries_stack') === 'on';
+    const claimTimeStack = form.get('claim_time_stack') === 'on';
+    if (presetId && roleId) {
+      await fetch(`${supabaseUrl}/rest/v1/giveaway_preset_roles`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ preset_id: presetId, role_id: roleId, entries, entries_stack: entriesStack, claim_time_stack: claimTimeStack }),
+      });
+      saved = true;
+    }
+  }
+}
+
+const [configRes, activeRes, presetsRes, rolesRes] = await Promise.all([
+  fetch(`${supabaseUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id,prize,winners_count,ends_at,host_id&order=ends_at.asc`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id,name&order=name.asc`, { headers: supabaseHeaders }),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+]);
+
+const configRows = configRes.ok ? await configRes.json() : [];
+const c = configRows[0] ?? {};
+const config = {
+  entryMode: c.entry_mode ?? 'button',
+  reaction: c.reaction ?? '🎉',
+  winnerMessage: c.winner_message ?? '',
+  noEntriesMessage: c.no_entries_message ?? '',
+  denyMessage: c.deny_message ?? '',
+  claimTimeMessage: c.claim_time_message ?? '',
+  claimTimeOverMessage: c.claim_time_over_message ?? '',
+  acceptMessage: c.accept_message ?? '',
+};
+
+const rawActive = activeRes.ok ? await activeRes.json() : [];
+const active = await Promise.all(
+  rawActive.map(async (g: any) => {
+    const countRes = await fetch(`${supabaseUrl}/rest/v1/giveaway_entries?giveaway_id=eq.${g.id}&select=user_id`, {
+      headers: { ...supabaseHeaders, Prefer: 'count=exact' },
+    });
+    const entries = countRes.ok ? (countRes.headers.get('content-range')?.split('/')[1] ?? '0') : '0';
+    return { id: g.id, prize: g.prize, winnersCount: g.winners_count, endsAt: g.ends_at, entries: Number(entries), hostId: g.host_id };
+  })
+);
+
+const rawPresets = presetsRes.ok ? await presetsRes.json() : [];
+const presetIds = rawPresets.map((p: any) => p.id);
+let rawPresetRoles: any[] = [];
+if (presetIds.length > 0) {
+  const presetRolesRes = await fetch(`${supabaseUrl}/rest/v1/giveaway_preset_roles?preset_id=in.(${presetIds.join(',')})&select=preset_id,role_id,entries,entries_stack,claim_time_stack`, { headers: supabaseHeaders });
+  rawPresetRoles = presetRolesRes.ok ? await presetRolesRes.json() : [];
+}
+const presets = rawPresets.map((p: any) => ({
+  id: p.id,
+  name: p.name,
+  roles: rawPresetRoles.filter((pr: any) => pr.preset_id === p.id).map((pr: any) => ({ roleId: pr.role_id, entries: pr.entries, entriesStack: pr.entries_stack ?? false, claimTimeStack: pr.claim_time_stack ?? false })),
+}));
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+---
+<DashGiveaways
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  config={config}
+  active={active}
+  presets={presets}
+  roles={roles}
+  saved={saved}
+/>
