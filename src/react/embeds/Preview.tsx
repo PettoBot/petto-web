@@ -30,20 +30,24 @@ export default function Preview({ data, botName, botIcon }: Props) {
                     {e.author.url ? <a href={e.author.url} target="_blank" rel="noopener noreferrer">{e.author.name}</a> : <span>{e.author.name}</span>}
                   </div>
                 )}
-                {e.title && (e.url ? <a className="ebr-embed-title" href={e.url} target="_blank" rel="noopener noreferrer">{e.title}</a> : <div className="ebr-embed-title">{e.title}</div>)}
-                {e.description && <div className="ebr-embed-desc">{renderDiscordMarkdown(e.description)}</div>}
-                {e.fields.length > 0 && (
-                  <div className="ebr-embed-fields">
-                    {e.fields.map((f, fi) => (
-                      <div key={fi} className={`ebr-embed-field${f.inline ? ' inline' : ''}`}>
-                        <div className="ebr-embed-field-name">{renderDiscordMarkdown(f.name)}</div>
-                        <div className="ebr-embed-field-value">{renderDiscordMarkdown(f.value)}</div>
+                <div className="ebr-embed-body">
+                  <div className="ebr-embed-main">
+                    {e.title && (e.url ? <a className="ebr-embed-title" href={e.url} target="_blank" rel="noopener noreferrer">{e.title}</a> : <div className="ebr-embed-title">{e.title}</div>)}
+                    {e.description && <div className="ebr-embed-desc">{renderDiscordMarkdown(e.description)}</div>}
+                    {e.fields.length > 0 && (
+                      <div className="ebr-embed-fields">
+                        {e.fields.map((f, fi) => (
+                          <div key={fi} className={`ebr-embed-field${f.inline ? ' inline' : ''}`}>
+                            <div className="ebr-embed-field-name">{renderDiscordMarkdown(f.name)}</div>
+                            <div className="ebr-embed-field-value">{renderDiscordMarkdown(f.value)}</div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
+                  {e.thumbnail && <img className="ebr-embed-thumb" src={e.thumbnail} alt="" />}
+                </div>
                 {e.image && <img className="ebr-embed-image" src={e.image} alt="" />}
-                {e.thumbnail && <img className="ebr-embed-thumb" src={e.thumbnail} alt="" />}
                 {(e.footer.text || e.timestamp) && (
                   <div className="ebr-embed-footer">
                     {e.footer.icon && <img src={e.footer.icon} alt="" />}
