@@ -1,4 +1,5 @@
 import { getGuildInfo } from './discord';
+import { runBatched } from './concurrency';
 
 const BANNER = [
   '  ██████╗ ███████╗████████╗████████╗ ██████╗ ',
@@ -40,31 +41,31 @@ export async function buildConfigYaml(id: string, botToken: string, supabaseUrl:
     logEntriesRes, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes,
     reportRes, boosterRes, memberEventsRes, verificationRes, bumpRes, pojRes,
     silentChannelsRes, escalationRes,
-  ] = await Promise.all([
-    fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id,bot_nickname,bot_avatar_url,bot_banner_url,bot_description,updated_at`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/bump_reminders?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/poj_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id`, { headers: countHeaders }),
-    fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count`, { headers: countHeaders }),
-  ]);
+  ] = await runBatched([
+    () => fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id,bot_nickname,bot_avatar_url,bot_banner_url,bot_description,updated_at`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/bump_reminders?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/poj_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id`, { headers: countHeaders }),
+    () => fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count`, { headers: countHeaders }),
+  ], 6);
 
   async function firstRow(res: Response) {
     const rows = res.ok ? await res.json() : [];
