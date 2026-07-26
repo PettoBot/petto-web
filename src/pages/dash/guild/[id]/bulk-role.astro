@@ -1,0 +1,128 @@
+---
+export const prerender = false;
+import DashBulkRole from '../../../../components/DashBulkRole.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+let error: string | null = null;
+let started = false;
+
+async function activeJobExists(): Promise<boolean> {
+  const res = await fetch(`${supabaseUrl}/rest/v1/bulk_role_jobs?guild_id=eq.${id}&status=in.(pending,running)&select=id&limit=1`, { headers: supabaseHeaders });
+  const rows = res.ok ? await res.json() : [];
+  return rows.length > 0;
+}
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'cancel') {
+    await fetch(`${supabaseUrl}/rest/v1/bulk_role_jobs?guild_id=eq.${id}&status=in.(pending,running)`, {
+      method: 'PATCH',
+      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({ status: 'cancelled', finished_at: new Date().toISOString() }),
+    });
+  } else if (action === 'start') {
+    if (await activeJobExists()) {
+      error = 'A bulk role job is already running for this server. Wait for it to finish or cancel it first.';
+    } else {
+      const targetRoleId = String(form.get('target_role_id') ?? '').trim();
+      const roleAction = String(form.get('role_action') ?? 'add') === 'remove' ? 'remove' : 'add';
+      const memberType = ['all', 'bots', 'humans'].includes(String(form.get('member_type'))) ? String(form.get('member_type')) : 'all';
+      const filterRoleIds = form.getAll('filter_role_ids').map(String);
+      const filterMode = String(form.get('filter_mode') ?? 'any') === 'all' ? 'all' : 'any';
+      const filterExclude = form.get('filter_exclude') === 'on';
+      const joinedAfterRaw = String(form.get('joined_after') ?? '').trim();
+      const joinedBeforeRaw = String(form.get('joined_before') ?? '').trim();
+      const notifyChannelId = String(form.get('notify_channel_id') ?? '').trim() || null;
+
+      if (!targetRoleId) {
+        error = 'Pick a role first.';
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/bulk_role_jobs`, {
+          method: 'POST',
+          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            guild_id: id,
+            action: roleAction,
+            target_role_id: targetRoleId,
+            member_type: memberType,
+            filter_role_ids: filterRoleIds,
+            filter_mode: filterMode,
+            filter_exclude: filterExclude,
+            joined_after: joinedAfterRaw || null,
+            joined_before: joinedBeforeRaw || null,
+            notify_channel_id: notifyChannelId,
+            started_by: session.userId,
+          }),
+        });
+        if (res.ok) started = true;
+        else error = "Couldn't start the job, try again.";
+      }
+    }
+  }
+}
+
+const [guildInfo, rolesRes, channelsRes, jobRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`${supabaseUrl}/rest/v1/bulk_role_jobs?guild_id=eq.${id}&order=created_at.desc&limit=1`, { headers: supabaseHeaders }),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: r.id, name: r.name }));
+
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels
+  .filter((c: any) => c.type === 0)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+
+const jobRows = jobRes.ok ? await jobRes.json() : [];
+const rawJob = jobRows[0] ?? null;
+const job = rawJob && {
+  id: rawJob.id,
+  action: rawJob.action,
+  targetRoleId: rawJob.target_role_id,
+  status: rawJob.status,
+  totalMembers: rawJob.total_members,
+  processedMembers: rawJob.processed_members,
+  successCount: rawJob.success_count,
+  errorCount: rawJob.error_count,
+  errorMessage: rawJob.error_message,
+};
+---
+<DashBulkRole
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  roles={roles}
+  channels={channels}
+  job={job}
+  started={started}
+  error={error}
+/>

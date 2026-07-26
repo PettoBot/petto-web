@@ -34,6 +34,7 @@ export const ui = {
           tagline: 'Where the people running Petto hang out.',
           items: [
             { icon: 'ph:headset-fill', title: 'Support server', desc: 'Ask questions, report bugs, talk to us directly.', href: 'https://petto.sbs/support', badge: '' },
+            { icon: 'ph:users-three-fill', title: 'Team', desc: 'Everyone who builds and moderates Petto.', href: '/team', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Status', desc: 'Live uptime for the bot and its systems.', href: '/status', badge: '' },
             { icon: 'ph:clock-counter-clockwise-fill', title: 'Changelog', desc: 'Every version, what changed and when.', href: '/changelog', badge: '' },
             { icon: 'ph:newspaper-fill', title: 'Blog', desc: 'Announcements and longer write-ups.', href: '/blog', badge: '' },
@@ -103,11 +104,14 @@ export const ui = {
       notPublished: 'Not published yet',
       seeAll: 'See every announcement',
       items: [
-        { title: 'blibot is moving 100% to Petto', desc: 'Every system blibot ever ran, rebuilt on a stack that will actually keep running.', date: 'May 13, 2026', category: 'Announcements', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
-        { title: 'The code behind Petto', desc: "What Petto actually runs on, and where the open-source question stands.", date: 'July 2, 2026', category: 'News', href: '/code', banner: '/assets/tetto-code-banner.svg' },
-        { title: 'New: a timestamp generator and a snowflake decoder', desc: 'Two web tools, no bot command or server needed for either.', date: 'July 15, 2026', category: 'News', href: '/tools', banner: '/assets/tools-banner.svg' },
-        { title: 'Interactive slash commands', desc: "The slash menu is reserved and waiting, first for game-style commands that don't fit a text prefix.", date: 'Coming soon', category: 'Roadmap', href: '', banner: '' },
-        { title: 'A real /giveaway embed builder', desc: 'Custom giveaway embeds still need to be seeded by hand today. That gets its own editor next.', date: 'Coming soon', category: 'Roadmap', href: '', banner: '' },
+        { title: "What Discord's 2026 API updates mean for bots like Petto", desc: "Social SDK 1.10, API v10, and why none of it breaks anything Petto does.", date: 'July 22, 2026', iso: '2026-07-22', category: 'Discord', href: '/discord-api-2026', banner: '/assets/discord-banner.svg' },
+        { title: 'Every Discord call is now end-to-end encrypted', desc: "What Discord's DAVE protocol rollout does and doesn't change for a server running Petto.", date: 'July 20, 2026', iso: '2026-07-20', category: 'Discord', href: '/discord-encryption', banner: '/assets/discord-banner.svg' },
+        { title: "Discord's new age verification, and what it means for admins", desc: "Teen-by-default accounts, explained, and how it relates to Petto's own /verify.", date: 'July 18, 2026', iso: '2026-07-18', category: 'Discord', href: '/discord-age-verification', banner: '/assets/discord-banner.svg' },
+        { title: 'New: a timestamp generator and a snowflake decoder', desc: 'Two web tools, no bot command or server needed for either.', date: 'July 15, 2026', iso: '2026-07-15', category: 'News', href: '/tools', banner: '/assets/tools-banner.svg' },
+        { title: 'The code behind Petto', desc: "What Petto actually runs on, and where the open-source question stands.", date: 'July 2, 2026', iso: '2026-07-02', category: 'News', href: '/code', banner: '/assets/tetto-code-banner.svg' },
+        { title: 'blibot is moving 100% to Petto', desc: 'Every system blibot ever ran, rebuilt on a stack that will actually keep running.', date: 'May 13, 2026', iso: '2026-05-13', category: 'Announcements', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
+        { title: 'Interactive slash commands', desc: "The slash menu is reserved and waiting, first for game-style commands that don't fit a text prefix.", date: 'Coming soon', iso: '', category: 'Roadmap', href: '', banner: '' },
+        { title: 'A real /giveaway embed builder', desc: 'Custom giveaway embeds still need to be seeded by hand today. That gets its own editor next.', date: 'Coming soon', iso: '', category: 'Roadmap', href: '', banner: '' },
       ],
     },
     newsPage: {
@@ -153,20 +157,20 @@ export const ui = {
         {
           key: 'shipped', label: 'Shipped', items: [
             { title: 'Core v0.1.0', desc: 'Moderation, tickets, leveling, giveaways, reaction roles, custom commands, invites, live status.', href: '/changelog' },
+            { title: 'Web dashboard', desc: 'Every module configurable from a browser, plus a real embed builder with a live preview.', href: '/dash' },
           ],
         },
         {
           key: 'testing', label: 'In testing', items: [
             { title: 'Nelu', desc: 'Anime-only bot. Built, not public yet.', href: '/nelu' },
             { title: 'AM', desc: 'AI-powered automoderation bot. Built, not public yet.', href: '/am' },
+            { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planned', items: [
-            { title: 'Web dashboard', desc: 'Configure Petto from a browser instead of only slash commands.', href: '' },
             { title: 'Petto Premium', desc: 'Extra giveaway slots, custom embed themes, priority support.', href: '/premium' },
             { title: 'Interactive slash commands', desc: "Game-style commands that don't fit a text prefix.", href: '' },
-            { title: 'A real /giveaway embed builder', desc: 'An editor for giveaway embeds instead of seeding them by hand.', href: '' },
           ],
         },
         {
@@ -537,7 +541,7 @@ export const ui = {
         items: [
           { name: 'Command handling', state: 'Operational' },
           { name: 'Database (Supabase)', state: 'Operational' },
-          { name: 'Web dashboard', state: 'Planned' },
+          { name: 'Web dashboard', state: 'Operational' },
         ],
         shardsTitle: 'Shards',
         shardCol: 'Shard',
@@ -707,6 +711,69 @@ export const ui = {
         s4h: 'What to do right now',
         s4p: 'Try them: the timestamp generator is at /timestamp, the snowflake decoder is at /snowflake.',
       },
+      discordEncryption: {
+        pill: 'Discord', title: 'Every Discord call is now end-to-end encrypted',
+        author: 'Petto Team', date: 'July 20, 2026',
+        h1: "Discord calls are end-to-end encrypted now, here's what changed",
+        lede: "As of March 2026, every standard voice and video call on Discord, DMs, group calls, and voice channels, is end-to-end encrypted by default, no setting to turn on. Here's what actually changed, and what it does and doesn't mean for a server running Petto.",
+        s1h: 'What actually changed',
+        s1p: "The encryption runs on DAVE, Discord's own open-source protocol, independently audited by Trail of Bits before launch. Each call uses a per-sender symmetric key shared only among participants, Discord itself has no access, and keys rotate every time someone joins or leaves. It now covers every platform Discord runs on, desktop, mobile, web, game consoles, and bots. The one exception is Stage channels, built for large public broadcasts rather than private conversation.",
+        facts: [
+          'Enabled by default since March 2026, nothing to turn on',
+          "Built on DAVE, Discord's own protocol, audited by Trail of Bits",
+          'Covers voice channels, DMs, group calls, and Go Live streams',
+          'Stage channels are the one exception, by design',
+        ],
+        ctaLabel: 'Browse what Petto can do', ctaHref: '/commands',
+        s2h: 'Does this change what Petto can see or log',
+        s2p: "No. DAVE encrypts the audio and video payload itself, not the gateway events Discord sends to bots. Petto still sees the same things it always did, who joined or left a voice channel, when, for how long, the same data behind Logging's voice events and the leveling system's voice XP. It was never able to hear or record actual call audio, encrypted or not.",
+        s3h: 'Do you need to change anything in your server',
+        s3p: "No. This isn't a per-server setting or a permission to configure, it's on for every call, everywhere, automatically.",
+        s4h: 'What to do right now',
+        s4p: "Nothing. This is context, not an action item, Petto's voice logging and leveling keep working exactly the same as before.",
+      },
+      discordAgeVerification: {
+        pill: 'Discord', title: "Discord's new age verification, and what it means for admins",
+        author: 'Petto Team', date: 'July 18, 2026',
+        h1: "Discord's teen-by-default rollout, explained for server admins",
+        lede: "Discord now treats every account as a teen by default until it's verified otherwise. It's a platform-wide, account-level system, separate from anything a server itself configures, here's what it actually restricts and what it doesn't.",
+        s1h: 'What actually changed',
+        s1p: "Since early 2026, unverified accounts get teen-safe defaults automatically: no DMs from people they don't share a server with, mature content blurred, and no access to channels or servers marked age-restricted. Adults unlock full access by verifying, a facial age scan or a government ID check, with more verification options (including Google Wallet and credit card checks) rolling out through the second half of 2026 as the global rollout expands.",
+        facts: [
+          'Every account starts teen-by-default, verification unlocks adult features',
+          'Unverified accounts can\'t DM strangers or see mature/age-restricted content',
+          'Verification is account-level (facial scan or ID), not something a server sets up',
+          'The full global rollout is staged through the second half of 2026',
+        ],
+        ctaLabel: 'See how Petto handles server verification', ctaHref: '/commands',
+        s2h: "Does this replace Petto's own /verify system",
+        s2p: "No, they solve different problems. Discord's age verification is account-level, it decides what a person can see and message across all of Discord. Petto's /verify is server-level, gating a specific server behind a rule-agreement or a captcha before granting a member role. A server can, and most will, still want its own verification even for accounts Discord has already age-verified.",
+        s3h: "What happens to members who haven't verified",
+        s3p: "Nothing changes about your server's setup. They just won't be able to see anything you've marked age-restricted, DM members they don't share a server with, or see unblurred mature content, restrictions Discord applies, not something Petto or a server admin has to configure.",
+        s4h: 'What to do right now',
+        s4p: "Nothing required. If a server has age-restricted channels, it's worth knowing unverified members won't be able to open them at all, that's Discord enforcing it, not a Petto setting.",
+      },
+      discordApi2026: {
+        pill: 'Discord', title: "What Discord's 2026 API updates mean for bots like Petto",
+        author: 'Petto Team', date: 'July 22, 2026',
+        h1: "Discord's 2026 API changes, and why Petto isn't affected",
+        lede: "Discord API v10 is still the current version bots build on, and 2026's updates have mostly landed in the Social SDK, used for game integrations, not the gateway and REST API a Discord bot like Petto actually runs on.",
+        s1h: "What's actually changing",
+        s1p: "Social SDK 1.10, shipping July 2026, moves the supported version window to 1.6 through 1.10, ending support for 1.5 and earlier. That SDK is for games embedding Discord's social layer directly, not for bots. On the bot side, API v10 keeps getting incremental refinements, permission handling, components, polls, none of it breaking.",
+        facts: [
+          'API v10 is still current, no forced migration for bots',
+          "Social SDK 1.10 (July 2026) is for game integrations, a different system than bot APIs",
+          'Versions 1.5 and earlier of the Social SDK are now end-of-life',
+          "None of this changes how Petto's commands or permissions work",
+        ],
+        ctaLabel: "See what's actually shipped in Petto", ctaHref: '/changelog',
+        s2h: 'Does this break anything Petto does',
+        s2p: "No. The Social SDK changes don't touch the gateway or REST API bots use at all, and API v10 refinements are additive, not breaking. Nothing here requires any change on Petto's end.",
+        s3h: 'Why post about this at all',
+        s3p: "Because the /code post already explains what Petto runs on, and staying current with what the platform underneath it is doing matters, even when the honest answer is \"this doesn't affect you.\"",
+        s4h: 'What to do right now',
+        s4p: "Nothing. Petto's own version history, the actual changes that do affect a server, lives at /changelog.",
+      },
     },
   },
   es: {
@@ -728,6 +795,7 @@ export const ui = {
           tagline: 'Donde está la gente que usa Petto.',
           items: [
             { icon: 'ph:headset-fill', title: 'Servidor de soporte', desc: 'Preguntas, reportes de bugs, contacto directo con nosotros.', href: 'https://petto.sbs/support', badge: '' },
+            { icon: 'ph:users-three-fill', title: 'Equipo', desc: 'Todos los que construyen y moderan Petto.', href: '/team', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Estado', desc: 'Uptime en vivo del bot y sus sistemas.', href: '/status', badge: '' },
             { icon: 'ph:clock-counter-clockwise-fill', title: 'Novedades del bot', desc: 'Cada versión, qué cambió y cuándo.', href: '/changelog', badge: '' },
             { icon: 'ph:newspaper-fill', title: 'Blog', desc: 'Anuncios y notas más largas.', href: '/blog', badge: '' },
@@ -797,11 +865,14 @@ export const ui = {
       notPublished: 'Todavía no publicado',
       seeAll: 'Ver todas las novedades',
       items: [
-        { title: 'blibot se muda 100% a Petto', desc: 'Cada sistema que blibot tuvo alguna vez, reconstruido sobre una base que sí se va a mantener andando.', date: '13 de mayo de 2026', category: 'Anuncios', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
-        { title: 'El código detrás de Petto', desc: 'Sobre qué corre Petto en realidad, y cómo está el tema del código abierto.', date: '2 de julio de 2026', category: 'Noticias', href: '/code', banner: '/assets/tetto-code-banner.svg' },
-        { title: 'Nuevo: un generador de timestamps y un decodificador de snowflake', desc: 'Dos herramientas web, ninguna necesita comando de bot ni servidor.', date: '15 de julio de 2026', category: 'Noticias', href: '/tools', banner: '/assets/tools-banner.svg' },
-        { title: 'Comandos slash interactivos', desc: 'El menú de slash está reservado y esperando, primero para comandos tipo juego que no entran en un prefijo de texto.', date: 'Próximamente', category: 'Roadmap', href: '', banner: '' },
-        { title: 'Un editor real de embeds de /giveaway', desc: 'Los embeds de sorteo todavía hay que cargarlos a mano hoy. Eso va a tener su propio editor después.', date: 'Próximamente', category: 'Roadmap', href: '', banner: '' },
+        { title: 'Qué significan las actualizaciones de API 2026 de Discord para bots como Petto', desc: 'Social SDK 1.10, API v10, y por qué nada de eso rompe algo de lo que hace Petto.', date: '22 de julio de 2026', iso: '2026-07-22', category: 'Discord', href: '/discord-api-2026', banner: '/assets/discord-banner.svg' },
+        { title: 'Todas las llamadas de Discord ahora tienen cifrado de extremo a extremo', desc: 'Qué cambia y qué no el despliegue del protocolo DAVE para un servidor que corre Petto.', date: '20 de julio de 2026', iso: '2026-07-20', category: 'Discord', href: '/discord-encryption', banner: '/assets/discord-banner.svg' },
+        { title: 'La nueva verificación de edad de Discord, y qué significa para los admins', desc: 'Las cuentas "teen por defecto", explicadas, y cómo se relacionan con el /verify propio de Petto.', date: '18 de julio de 2026', iso: '2026-07-18', category: 'Discord', href: '/discord-age-verification', banner: '/assets/discord-banner.svg' },
+        { title: 'Nuevo: un generador de timestamps y un decodificador de snowflake', desc: 'Dos herramientas web, ninguna necesita comando de bot ni servidor.', date: '15 de julio de 2026', iso: '2026-07-15', category: 'Noticias', href: '/tools', banner: '/assets/tools-banner.svg' },
+        { title: 'El código detrás de Petto', desc: 'Sobre qué corre Petto en realidad, y cómo está el tema del código abierto.', date: '2 de julio de 2026', iso: '2026-07-02', category: 'Noticias', href: '/code', banner: '/assets/tetto-code-banner.svg' },
+        { title: 'blibot se muda 100% a Petto', desc: 'Cada sistema que blibot tuvo alguna vez, reconstruido sobre una base que sí se va a mantener andando.', date: '13 de mayo de 2026', iso: '2026-05-13', category: 'Anuncios', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
+        { title: 'Comandos slash interactivos', desc: 'El menú de slash está reservado y esperando, primero para comandos tipo juego que no entran en un prefijo de texto.', date: 'Próximamente', iso: '', category: 'Roadmap', href: '', banner: '' },
+        { title: 'Un editor real de embeds de /giveaway', desc: 'Los embeds de sorteo todavía hay que cargarlos a mano hoy. Eso va a tener su propio editor después.', date: 'Próximamente', iso: '', category: 'Roadmap', href: '', banner: '' },
       ],
     },
     newsPage: {
@@ -847,20 +918,20 @@ export const ui = {
         {
           key: 'shipped', label: 'Lanzado', items: [
             { title: 'Base v0.1.0', desc: 'Moderación, tickets, niveles, sorteos, roles por reacción, comandos propios, invites, estado en vivo.', href: '/changelog' },
+            { title: 'Dashboard web', desc: 'Cada módulo configurable desde el navegador, más un editor de embeds real con preview en vivo.', href: '/dash' },
           ],
         },
         {
           key: 'testing', label: 'En pruebas', items: [
             { title: 'Nelu', desc: 'Bot solo de anime. Ya existe, todavía no es público.', href: '/nelu' },
             { title: 'AM', desc: 'Bot de automoderación con IA. Ya existe, todavía no es público.', href: '/am' },
+            { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planeado', items: [
-            { title: 'Dashboard web', desc: 'Configurar Petto desde el navegador, no solo con comandos slash.', href: '' },
             { title: 'Petto Premium', desc: 'Espacios extra de sorteo, temas de embed personalizados, soporte prioritario.', href: '/premium' },
             { title: 'Comandos slash interactivos', desc: 'Comandos tipo juego que no entran en un prefijo de texto.', href: '' },
-            { title: 'Un editor real de embeds de /giveaway', desc: 'Un editor para embeds de sorteo en vez de cargarlos a mano.', href: '' },
           ],
         },
         {
@@ -1231,7 +1302,7 @@ export const ui = {
         items: [
           { name: 'Procesamiento de comandos', state: 'Operativo' },
           { name: 'Base de datos (Supabase)', state: 'Operativo' },
-          { name: 'Dashboard web', state: 'Planeado' },
+          { name: 'Dashboard web', state: 'Operativo' },
         ],
         shardsTitle: 'Shards',
         shardCol: 'Shard',
@@ -1401,6 +1472,69 @@ export const ui = {
         s4h: 'Qué hacer ahora mismo',
         s4p: 'Probarlas: el generador de timestamps está en /timestamp, el decodificador de snowflake está en /snowflake.',
       },
+      discordEncryption: {
+        pill: 'Discord', title: 'Todas las llamadas de Discord ahora tienen cifrado de extremo a extremo',
+        author: 'Petto Team', date: '20 de julio de 2026',
+        h1: 'Las llamadas de Discord ya tienen cifrado de extremo a extremo, esto es lo que cambió',
+        lede: 'Desde marzo de 2026, toda llamada de voz y video estándar en Discord, DMs, llamadas grupales y canales de voz, tiene cifrado de extremo a extremo por defecto, sin ningún switch que activar. Esto es lo que cambió de verdad, y lo que sí y no significa para un servidor que corre Petto.',
+        s1h: 'Qué cambió en realidad',
+        s1p: 'El cifrado corre sobre DAVE, el protocolo propio de código abierto de Discord, auditado de forma independiente por Trail of Bits antes del lanzamiento. Cada llamada usa una clave simétrica por emisor compartida solo entre los participantes, Discord mismo no tiene acceso, y las claves rotan cada vez que alguien entra o sale. Ahora cubre cada plataforma donde corre Discord: escritorio, móvil, web, consolas de videojuegos, y bots. La única excepción son los canales Stage, pensados para transmisiones públicas grandes, no conversación privada.',
+        facts: [
+          'Activado por defecto desde marzo de 2026, no hay nada que prender',
+          'Corre sobre DAVE, el protocolo propio de Discord, auditado por Trail of Bits',
+          'Cubre canales de voz, DMs, llamadas grupales y streams de Go Live',
+          'Los canales Stage son la única excepción, a propósito',
+        ],
+        ctaLabel: 'Explorá qué puede hacer Petto',
+        s2h: 'Esto cambia lo que Petto puede ver o registrar',
+        s2p: 'No. DAVE cifra el audio y video en sí, no los eventos del gateway que Discord le manda a los bots. Petto sigue viendo lo mismo de siempre: quién entró o salió de un canal de voz, cuándo, por cuánto tiempo, el mismo dato detrás de los eventos de voz de Logging y el XP de voz del sistema de niveles. Nunca pudo escuchar o grabar el audio real de una llamada, cifrada o no.',
+        s3h: 'Hay que cambiar algo en el servidor',
+        s3p: 'No. No es una configuración por servidor ni un permiso que ajustar, está prendido para toda llamada, en todos lados, automáticamente.',
+        s4h: 'Qué hacer ahora mismo',
+        s4p: 'Nada. Esto es contexto, no una tarea pendiente, el logging de voz y el sistema de niveles de Petto siguen funcionando exactamente igual que antes.',
+      },
+      discordAgeVerification: {
+        pill: 'Discord', title: 'La nueva verificación de edad de Discord, y qué significa para los admins',
+        author: 'Petto Team', date: '18 de julio de 2026',
+        h1: 'El despliegue de "teen por defecto" de Discord, explicado para admins de servidor',
+        lede: 'Discord ahora trata a toda cuenta como adolescente por defecto hasta que se verifica lo contrario. Es un sistema de toda la plataforma, a nivel de cuenta, separado de cualquier cosa que configure el servidor en sí. Esto es lo que restringe en realidad y lo que no.',
+        s1h: 'Qué cambió en realidad',
+        s1p: 'Desde principios de 2026, las cuentas sin verificar reciben ajustes seguros para adolescentes automáticamente: sin DMs de gente con la que no comparten servidor, contenido maduro difuminado, y sin acceso a canales o servidores marcados como restringidos por edad. Los adultos desbloquean acceso completo verificándose, con un escaneo facial de edad o una verificación de documento de identidad, y más opciones de verificación (incluyendo Google Wallet y verificación de tarjeta de crédito) se van sumando durante la segunda mitad de 2026 a medida que se expande el despliegue global.',
+        facts: [
+          'Toda cuenta arranca como adolescente por defecto, la verificación desbloquea funciones de adulto',
+          'Las cuentas sin verificar no pueden mandar DM a desconocidos ni ver contenido maduro/restringido',
+          'La verificación es a nivel de cuenta (escaneo facial o ID), no algo que configura un servidor',
+          'El despliegue global completo se hace por etapas durante la segunda mitad de 2026',
+        ],
+        ctaLabel: 'Mirá cómo maneja Petto la verificación de servidor',
+        s2h: 'Esto reemplaza el sistema /verify propio de Petto',
+        s2p: 'No, resuelven problemas distintos. La verificación de edad de Discord es a nivel de cuenta, decide qué puede ver y a quién le puede escribir una persona en todo Discord. El /verify de Petto es a nivel de servidor, deja pasar a un servidor específico detrás de una aceptación de reglas o un captcha antes de dar el rol de miembro. Un servidor puede, y la mayoría va a querer, seguir teniendo su propia verificación incluso para cuentas que Discord ya verificó por edad.',
+        s3h: 'Qué pasa con los miembros que no se verificaron',
+        s3p: 'Nada cambia en la configuración del servidor. Simplemente no van a poder ver lo que hayas marcado como restringido por edad, mandar DM a miembros con los que no comparten servidor, o ver contenido maduro sin difuminar, restricciones que aplica Discord, no algo que Petto o un admin tenga que configurar.',
+        s4h: 'Qué hacer ahora mismo',
+        s4p: 'Nada obligatorio. Si un servidor tiene canales restringidos por edad, vale la pena saber que los miembros sin verificar no van a poder abrirlos directamente, eso lo hace cumplir Discord, no es una configuración de Petto.',
+      },
+      discordApi2026: {
+        pill: 'Discord', title: 'Qué significan las actualizaciones de API 2026 de Discord para bots como Petto',
+        author: 'Petto Team', date: '22 de julio de 2026',
+        h1: 'Los cambios de API 2026 de Discord, y por qué no afectan a Petto',
+        lede: 'La API v10 de Discord sigue siendo la versión actual sobre la que se construyen los bots, y las actualizaciones de 2026 aterrizaron sobre todo en el Social SDK, usado para integraciones de videojuegos, no en el gateway y la API REST sobre la que corre un bot como Petto.',
+        s1h: 'Qué está cambiando en realidad',
+        s1p: 'El Social SDK 1.10, que sale en julio de 2026, mueve la ventana de versiones soportadas a 1.6 hasta 1.10, terminando el soporte de 1.5 y anteriores. Ese SDK es para juegos que integran la capa social de Discord directamente, no para bots. Del lado de bots, la API v10 sigue recibiendo mejoras incrementales, manejo de permisos, componentes, encuestas, nada de eso rompe algo.',
+        facts: [
+          'La API v10 sigue vigente, no hay migración forzada para bots',
+          'El Social SDK 1.10 (julio 2026) es para integraciones de videojuegos, un sistema distinto a la API de bots',
+          'Las versiones 1.5 y anteriores del Social SDK ya no tienen soporte',
+          'Nada de esto cambia cómo funcionan los comandos o permisos de Petto',
+        ],
+        ctaLabel: 'Mirá qué se lanzó de verdad en Petto',
+        s2h: 'Esto rompe algo de lo que hace Petto',
+        s2p: 'No. Los cambios del Social SDK no tocan para nada el gateway ni la API REST que usan los bots, y las mejoras de la API v10 son aditivas, no rompen nada. Nada de esto requiere ningún cambio de parte de Petto.',
+        s3h: 'Por qué publicar esto',
+        s3p: 'Porque el post de /code ya explica sobre qué corre Petto, y mantenerse al día con lo que hace la plataforma de abajo importa, incluso cuando la respuesta honesta es "esto no te afecta".',
+        s4h: 'Qué hacer ahora mismo',
+        s4p: 'Nada. El historial de versiones propio de Petto, los cambios que sí afectan a un servidor, vive en /changelog.',
+      },
     },
   },
   'pt-BR': {
@@ -1422,6 +1556,7 @@ export const ui = {
           tagline: 'Onde está a galera que usa o Petto.',
           items: [
             { icon: 'ph:headset-fill', title: 'Servidor de suporte', desc: 'Tire dúvidas, reporte bugs, fale direto com a gente.', href: 'https://petto.sbs/support', badge: '' },
+            { icon: 'ph:users-three-fill', title: 'Equipe', desc: 'Todo mundo que constrói e modera o Petto.', href: '/team', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Status', desc: 'Uptime ao vivo do bot e seus sistemas.', href: '/status', badge: '' },
             { icon: 'ph:clock-counter-clockwise-fill', title: 'Changelog', desc: 'Cada versão, o que mudou e quando.', href: '/changelog', badge: '' },
             { icon: 'ph:newspaper-fill', title: 'Blog', desc: 'Anúncios e textos mais longos.', href: '/blog', badge: '' },
@@ -1491,11 +1626,14 @@ export const ui = {
       notPublished: 'Ainda não publicado',
       seeAll: 'Ver todas as novidades',
       items: [
-        { title: 'O blibot está migrando 100% para o Petto', desc: 'Cada sistema que o blibot já teve, reconstruído sobre uma base que realmente vai continuar funcionando.', date: '13 de maio de 2026', category: 'Anúncios', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
-        { title: 'O código por trás do Petto', desc: 'Sobre o que o Petto realmente roda, e como está a questão do código aberto.', date: '2 de julho de 2026', category: 'Notícias', href: '/code', banner: '/assets/tetto-code-banner.svg' },
-        { title: 'Novidade: um gerador de timestamps e um decodificador de snowflake', desc: 'Duas ferramentas web, nenhuma precisa de comando de bot nem de servidor.', date: '15 de julho de 2026', category: 'Notícias', href: '/tools', banner: '/assets/tools-banner.svg' },
-        { title: 'Comandos slash interativos', desc: 'O menu de slash está reservado e esperando, primeiro para comandos estilo jogo que não cabem num prefixo de texto.', date: 'Em breve', category: 'Roadmap', href: '', banner: '' },
-        { title: 'Um editor de verdade para embeds de /giveaway', desc: 'Os embeds de sorteio ainda precisam ser configurados manualmente hoje. Isso vai ganhar seu próprio editor em seguida.', date: 'Em breve', category: 'Roadmap', href: '', banner: '' },
+        { title: 'O que as atualizações de API 2026 do Discord significam pra bots como o Petto', desc: 'Social SDK 1.10, API v10, e por que nada disso quebra alguma coisa que o Petto faz.', date: '22 de julho de 2026', iso: '2026-07-22', category: 'Discord', href: '/discord-api-2026', banner: '/assets/discord-banner.svg' },
+        { title: 'Toda chamada do Discord agora tem criptografia de ponta a ponta', desc: 'O que muda e o que não muda no lançamento do protocolo DAVE pra um server que roda o Petto.', date: '20 de julho de 2026', iso: '2026-07-20', category: 'Discord', href: '/discord-encryption', banner: '/assets/discord-banner.svg' },
+        { title: 'A nova verificação de idade do Discord, e o que ela significa pros admins', desc: 'As contas "teen por padrão", explicadas, e como se relacionam com o /verify próprio do Petto.', date: '18 de julho de 2026', iso: '2026-07-18', category: 'Discord', href: '/discord-age-verification', banner: '/assets/discord-banner.svg' },
+        { title: 'Novidade: um gerador de timestamps e um decodificador de snowflake', desc: 'Duas ferramentas web, nenhuma precisa de comando de bot nem de servidor.', date: '15 de julho de 2026', iso: '2026-07-15', category: 'Notícias', href: '/tools', banner: '/assets/tools-banner.svg' },
+        { title: 'O código por trás do Petto', desc: 'Sobre o que o Petto realmente roda, e como está a questão do código aberto.', date: '2 de julho de 2026', iso: '2026-07-02', category: 'Notícias', href: '/code', banner: '/assets/tetto-code-banner.svg' },
+        { title: 'O blibot está migrando 100% para o Petto', desc: 'Cada sistema que o blibot já teve, reconstruído sobre uma base que realmente vai continuar funcionando.', date: '13 de maio de 2026', iso: '2026-05-13', category: 'Anúncios', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
+        { title: 'Comandos slash interativos', desc: 'O menu de slash está reservado e esperando, primeiro para comandos estilo jogo que não cabem num prefixo de texto.', date: 'Em breve', iso: '', category: 'Roadmap', href: '', banner: '' },
+        { title: 'Um editor de verdade para embeds de /giveaway', desc: 'Os embeds de sorteio ainda precisam ser configurados manualmente hoje. Isso vai ganhar seu próprio editor em seguida.', date: 'Em breve', iso: '', category: 'Roadmap', href: '', banner: '' },
       ],
     },
     newsPage: {
@@ -1541,20 +1679,20 @@ export const ui = {
         {
           key: 'shipped', label: 'Lançado', items: [
             { title: 'Base v0.1.0', desc: 'Moderação, tickets, níveis, sorteios, cargos por reação, comandos personalizados, convites, status ao vivo.', href: '/changelog' },
+            { title: 'Dashboard web', desc: 'Cada módulo configurável pelo navegador, mais um editor de embeds de verdade com preview ao vivo.', href: '/dash' },
           ],
         },
         {
           key: 'testing', label: 'Em teste', items: [
             { title: 'Nelu', desc: 'Bot só de anime. Já existe, ainda não é público.', href: '/nelu' },
             { title: 'AM', desc: 'Bot de automoderação com IA. Já existe, ainda não é público.', href: '/am' },
+            { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planejado', items: [
-            { title: 'Dashboard web', desc: 'Configurar o Petto pelo navegador, não só com comandos slash.', href: '' },
             { title: 'Petto Premium', desc: 'Espaços extras de sorteio, temas de embed personalizados, suporte prioritário.', href: '/premium' },
             { title: 'Comandos slash interativos', desc: 'Comandos estilo jogo que não cabem num prefixo de texto.', href: '' },
-            { title: 'Um editor de verdade para embeds de /giveaway', desc: 'Um editor para embeds de sorteio em vez de configurar manualmente.', href: '' },
           ],
         },
         {
@@ -1925,7 +2063,7 @@ export const ui = {
         items: [
           { name: 'Processamento de comandos', state: 'Operacional' },
           { name: 'Banco de dados (Supabase)', state: 'Operacional' },
-          { name: 'Dashboard web', state: 'Planejado' },
+          { name: 'Dashboard web', state: 'Operacional' },
         ],
         shardsTitle: 'Shards',
         shardCol: 'Shard',
@@ -2095,12 +2233,89 @@ export const ui = {
         s4h: 'O que fazer agora',
         s4p: 'Testar: o gerador de timestamps está em /timestamp, o decodificador de snowflake está em /snowflake.',
       },
+      discordEncryption: {
+        pill: 'Discord', title: 'Toda chamada do Discord agora tem criptografia de ponta a ponta',
+        author: 'Petto Team', date: '20 de julho de 2026',
+        h1: 'As chamadas do Discord agora têm criptografia de ponta a ponta, veja o que mudou',
+        lede: 'Desde março de 2026, toda chamada de voz e vídeo padrão no Discord, DMs, chamadas em grupo e canais de voz, tem criptografia de ponta a ponta por padrão, sem nenhuma opção pra ativar. Veja o que realmente mudou, e o que isso significa (e não significa) pra um server que roda o Petto.',
+        s1h: 'O que realmente mudou',
+        s1p: 'A criptografia roda sobre o DAVE, o protocolo próprio de código aberto do Discord, auditado de forma independente pela Trail of Bits antes do lançamento. Cada chamada usa uma chave simétrica por remetente compartilhada só entre os participantes, o próprio Discord não tem acesso, e as chaves giram toda vez que alguém entra ou sai. Agora cobre toda plataforma onde o Discord roda: desktop, mobile, web, consoles de video game e bots. A única exceção são os canais Stage, feitos pra transmissões públicas grandes, não conversa privada.',
+        facts: [
+          'Ativado por padrão desde março de 2026, não tem nada pra ligar',
+          'Roda sobre o DAVE, o protocolo próprio do Discord, auditado pela Trail of Bits',
+          'Cobre canais de voz, DMs, chamadas em grupo e streams de Go Live',
+          'Os canais Stage são a única exceção, de propósito',
+        ],
+        ctaLabel: 'Veja o que o Petto pode fazer',
+        s2h: 'Isso muda o que o Petto consegue ver ou registrar',
+        s2p: 'Não. O DAVE criptografa o áudio e vídeo em si, não os eventos do gateway que o Discord manda pros bots. O Petto continua vendo a mesma coisa de sempre: quem entrou ou saiu de um canal de voz, quando, por quanto tempo, o mesmo dado por trás dos eventos de voz do Logging e do XP de voz do sistema de níveis. Ele nunca conseguiu ouvir ou gravar o áudio real de uma chamada, criptografada ou não.',
+        s3h: 'Precisa mudar algo no server',
+        s3p: 'Não. Não é uma configuração por server nem uma permissão pra ajustar, está ligado pra toda chamada, em todo lugar, automaticamente.',
+        s4h: 'O que fazer agora',
+        s4p: 'Nada. Isso é contexto, não uma tarefa pendente, o logging de voz e o sistema de níveis do Petto continuam funcionando exatamente igual antes.',
+      },
+      discordAgeVerification: {
+        pill: 'Discord', title: 'A nova verificação de idade do Discord, e o que ela significa pros admins',
+        author: 'Petto Team', date: '18 de julho de 2026',
+        h1: 'O lançamento "teen por padrão" do Discord, explicado pra admins de server',
+        lede: 'O Discord agora trata toda conta como adolescente por padrão até ser verificada como adulta. É um sistema de toda a plataforma, a nível de conta, separado de qualquer coisa que o server configure. Veja o que isso realmente restringe e o que não restringe.',
+        s1h: 'O que realmente mudou',
+        s1p: 'Desde o início de 2026, contas não verificadas recebem configurações seguras pra adolescentes automaticamente: sem DMs de gente com quem não compartilham server, conteúdo adulto borrado, e sem acesso a canais ou servers marcados como restritos por idade. Adultos desbloqueiam acesso completo se verificando, com um escaneamento facial de idade ou verificação de documento, e mais opções de verificação (incluindo Google Wallet e verificação de cartão de crédito) vão chegando ao longo da segunda metade de 2026 conforme o lançamento global se expande.',
+        facts: [
+          'Toda conta começa como adolescente por padrão, a verificação desbloqueia recursos de adulto',
+          'Contas não verificadas não podem mandar DM pra desconhecidos nem ver conteúdo adulto/restrito',
+          'A verificação é a nível de conta (escaneamento facial ou ID), não algo que um server configura',
+          'O lançamento global completo é feito por etapas ao longo da segunda metade de 2026',
+        ],
+        ctaLabel: 'Veja como o Petto lida com verificação de server',
+        s2h: 'Isso substitui o sistema /verify próprio do Petto',
+        s2p: 'Não, eles resolvem problemas diferentes. A verificação de idade do Discord é a nível de conta, decide o que uma pessoa pode ver e pra quem pode mandar mensagem em todo o Discord. O /verify do Petto é a nível de server, libera a entrada num server específico depois de aceitar as regras ou um captcha antes de dar o cargo de membro. Um server pode, e a maioria vai querer, continuar tendo sua própria verificação mesmo pra contas que o Discord já verificou por idade.',
+        s3h: 'O que acontece com membros que não verificaram',
+        s3p: 'Nada muda na configuração do server. Eles só não vão conseguir ver o que você marcou como restrito por idade, mandar DM pra membros com quem não compartilham server, ou ver conteúdo adulto sem borrão, restrições que o Discord aplica, não algo que o Petto ou um admin precisa configurar.',
+        s4h: 'O que fazer agora',
+        s4p: 'Nada obrigatório. Se um server tem canais restritos por idade, vale saber que membros não verificados não vão conseguir abri-los, isso quem aplica é o Discord, não é uma configuração do Petto.',
+      },
+      discordApi2026: {
+        pill: 'Discord', title: 'O que as atualizações de API 2026 do Discord significam pra bots como o Petto',
+        author: 'Petto Team', date: '22 de julho de 2026',
+        h1: 'As mudanças de API 2026 do Discord, e por que elas não afetam o Petto',
+        lede: 'A API v10 do Discord continua sendo a versão atual sobre a qual os bots são construídos, e as atualizações de 2026 caíram principalmente no Social SDK, usado pra integrações de jogos, não no gateway e na API REST sobre a qual um bot como o Petto realmente roda.',
+        s1h: 'O que realmente está mudando',
+        s1p: 'O Social SDK 1.10, que sai em julho de 2026, move a janela de versões suportadas pra 1.6 até 1.10, encerrando o suporte pra 1.5 e anteriores. Esse SDK é pra jogos que integram a camada social do Discord diretamente, não pra bots. Do lado dos bots, a API v10 continua recebendo melhorias incrementais, tratamento de permissões, componentes, enquetes, nada disso quebra alguma coisa.',
+        facts: [
+          'A API v10 continua vigente, não tem migração forçada pra bots',
+          'O Social SDK 1.10 (julho 2026) é pra integrações de jogos, um sistema diferente da API de bots',
+          'As versões 1.5 e anteriores do Social SDK já não têm mais suporte',
+          'Nada disso muda como funcionam os comandos ou permissões do Petto',
+        ],
+        ctaLabel: 'Veja o que realmente saiu no Petto',
+        s2h: 'Isso quebra alguma coisa que o Petto faz',
+        s2p: 'Não. As mudanças do Social SDK não tocam em nada no gateway nem na API REST que os bots usam, e as melhorias da API v10 são aditivas, não quebram nada. Nada disso exige nenhuma mudança do lado do Petto.',
+        s3h: 'Por que publicar isso',
+        s3p: 'Porque o post de /code já explica sobre o que o Petto roda, e se manter atualizado com o que a plataforma por baixo está fazendo importa, mesmo quando a resposta honesta é "isso não te afeta".',
+        s4h: 'O que fazer agora',
+        s4p: 'Nada. O histórico de versões próprio do Petto, as mudanças que realmente afetam um server, fica em /changelog.',
+      },
     },
   },
 } as const;
 
 export function useTranslations(lang: Locale) {
   return ui[lang];
+}
+
+/**
+ * Release/blog entries newest-first. Sorted on the `iso` field rather than the human `date`
+ * string, which is localized prose ("July 22, 2026", "22 de julio de 2026") and unsortable.
+ * Entries with no date yet (roadmap "Coming soon" items) always sit at the end.
+ */
+export function sortedReleases(lang: Locale) {
+  return [...ui[lang].releases.items].sort((a, b) => {
+    if (!a.iso && !b.iso) return 0;
+    if (!a.iso) return 1;
+    if (!b.iso) return -1;
+    return b.iso.localeCompare(a.iso);
+  });
 }
 
 export function getLangFromUrl(url: URL): Locale {

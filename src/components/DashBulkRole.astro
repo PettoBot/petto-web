@@ -1,0 +1,214 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+
+interface Job {
+  id: number;
+  action: 'add' | 'remove';
+  targetRoleId: string;
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
+  totalMembers: number;
+  processedMembers: number;
+  successCount: number;
+  errorCount: number;
+  errorMessage: string | null;
+}
+
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  roles: { id: string; name: string }[];
+  channels: { id: string; name: string }[];
+  job: Job | null;
+  started: boolean;
+  error: string | null;
+}
+const { user, guildId, guildName, guildIcon, roles, channels, job, started, error } = Astro.props;
+
+function roleName(id: string) {
+  return roles.find((r) => r.id === id)?.name ?? id;
+}
+
+const jobActive = job ? ['pending', 'running'].includes(job.status) : false;
+const statusLabel: Record<string, string> = {
+  pending: 'Queued', running: 'Running', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed',
+};
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="bulk-role" pageTitle="Bulk Role">
+  <h1>Bulk Role</h1>
+  <p class="br-sub">Assign or remove a role for many members of <b>{guildName}</b> at once, filtered by role, join date, or member type.</p>
+
+  {started && <div class="br-flash br-flash-ok"><Icon name="ph:check-circle-fill" width="15" height="15" />Job started, it'll process in the background.</div>}
+  {error && <div class="br-flash br-flash-err"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
+
+  {job && (
+    <div class="br-card" id="br-status-card" data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-live={jobActive ? 'true' : 'false'}>
+      <div class="br-card-head">
+        <div class="br-card-icon" style={`--c:${jobActive ? '#fed53c' : job.status === 'completed' ? '#a5ea7a' : job.status === 'failed' ? '#fe6465' : '#8399ff'}`}>
+          <Icon name={jobActive ? 'ph:spinner-gap' : job.status === 'completed' ? 'ph:check-fill' : job.status === 'failed' ? 'ph:x-fill' : 'ph:prohibit-fill'} width="16" height="16" class={jobActive ? 'br-spin' : ''} />
+        </div>
+        <div class="br-card-title">
+          {job.action === 'add' ? 'Assigning' : 'Removing'} <span class="br-role-chip">{roleName(job.targetRoleId)}</span>
+          <span class="br-status-label" data-status-text>{statusLabel[job.status]}</span>
+        </div>
+        {jobActive && (
+          <form method="POST">
+            <input type="hidden" name="action" value="cancel" />
+            <button type="submit" class="btn btn-ghost btn-sm">Cancel</button>
+          </form>
+        )}
+      </div>
+
+      <div class="br-progress-track"><div class="br-progress-fill" data-progress-fill style={`width:${job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0}%`}></div></div>
+      <p class="br-progress-note" data-progress-note>
+        {job.status === 'pending' ? 'Waiting to start...' : `${job.processedMembers} / ${job.totalMembers} members processed, ${job.successCount} updated, ${job.errorCount} failed.`}
+      </p>
+      {job.errorMessage && <p class="br-error-note"><Icon name="ph:warning-fill" width="12" height="12" />{job.errorMessage}</p>}
+    </div>
+  )}
+
+  <form method="POST" class="br-form">
+    <input type="hidden" name="action" value="start" />
+    <div class="br-card">
+      <div class="br-card-head">
+        <div class="br-card-icon" style="--c:#8399ff"><Icon name="ph:users-three-fill" width="16" height="16" /></div>
+        <div class="br-card-title">Configure</div>
+      </div>
+
+      <div class="br-grid">
+        <div class="br-field">
+          <label>Role</label>
+          <select name="target_role_id" required disabled={jobActive}>
+            <option value="" disabled selected>Choose a role</option>
+            {roles.map((r) => <option value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <div class="br-field">
+          <label>Action</label>
+          <select name="role_action" disabled={jobActive}>
+            <option value="add">Assign the role</option>
+            <option value="remove">Remove the role</option>
+          </select>
+        </div>
+        <div class="br-field">
+          <label>Members</label>
+          <select name="member_type" disabled={jobActive}>
+            <option value="all">All members</option>
+            <option value="humans">Humans only</option>
+            <option value="bots">Bots only</option>
+          </select>
+        </div>
+        <div class="br-field">
+          <label>Notify channel (optional)</label>
+          <select name="notify_channel_id" disabled={jobActive}>
+            <option value="">None</option>
+            {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
+          </select>
+        </div>
+        <div class="br-field">
+          <label>Joined after (optional)</label>
+          <input type="date" name="joined_after" disabled={jobActive} />
+        </div>
+        <div class="br-field">
+          <label>Joined before (optional)</label>
+          <input type="date" name="joined_before" disabled={jobActive} />
+        </div>
+
+        <div class="br-field br-field-wide" data-filterable>
+          <label>Filter by existing roles (optional)</label>
+          <input type="text" class="dgl-filter-input" placeholder="Search roles..." data-filter-input disabled={jobActive} />
+          <div class="br-role-list" data-filter-list>
+            {roles.map((r) => (
+              <label class="br-role-item"><input type="checkbox" name="filter_role_ids" value={r.id} disabled={jobActive} />{r.name}</label>
+            ))}
+          </div>
+          <div class="br-filter-opts">
+            <label class="br-inline-check"><input type="radio" name="filter_mode" value="any" checked disabled={jobActive} />Has any of these</label>
+            <label class="br-inline-check"><input type="radio" name="filter_mode" value="all" disabled={jobActive} />Has all of these</label>
+            <label class="br-inline-check"><input type="checkbox" name="filter_exclude" disabled={jobActive} />Invert (members WITHOUT them instead)</label>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-accent btn-sm" disabled={jobActive}>
+        <Icon name="ph:play-fill" width="13" height="13" />
+        {jobActive ? 'A job is already running' : 'Start'}
+      </button>
+      <p class="br-hint">Runs once in the background, one job at a time per server. Large servers can take a few minutes, Discord's own rate limit paces it.</p>
+    </div>
+  </form>
+
+  <script>
+    (function () {
+      function poll(card) {
+        var url = card.dataset.statusUrl;
+        fetch(url)
+          .then(function (res) { return res.json(); })
+          .then(function (body) {
+            var job = body.job;
+            if (!job) return;
+            var fill = card.querySelector('[data-progress-fill]');
+            var note = card.querySelector('[data-progress-note]');
+            var statusText = card.querySelector('[data-status-text]');
+            var pct = job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0;
+            if (fill) fill.style.width = pct + '%';
+            if (note) note.textContent = job.status === 'pending' ? 'Waiting to start...' : (job.processedMembers + ' / ' + job.totalMembers + ' members processed, ' + job.successCount + ' updated, ' + job.errorCount + ' failed.');
+            if (statusText) statusText.textContent = job.status.charAt(0).toUpperCase() + job.status.slice(1);
+            if (job.status === 'pending' || job.status === 'running') {
+              setTimeout(function () { poll(card); }, 2000);
+            } else {
+              window.location.reload();
+            }
+          })
+          .catch(function () { setTimeout(function () { poll(card); }, 4000); });
+      }
+      var card = document.getElementById('br-status-card');
+      if (card && card.dataset.live === 'true') poll(card);
+    })();
+  </script>
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .br-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; max-width: 68ch; }
+  .br-sub b { color: var(--text); }
+
+  .br-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .br-flash-ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
+  .br-flash-err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
+
+  .br-card { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--card); max-width: 640px; }
+  .br-card + .br-card, .br-form { margin-top: 14px; }
+  .br-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .br-card-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
+  .br-card-title { flex: 1; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .br-role-chip { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; }
+  .br-status-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+
+  .br-spin { animation: br-spin 1s linear infinite; }
+  @keyframes br-spin { to { transform: rotate(360deg); } }
+
+  .br-progress-track { height: 7px; border-radius: 5px; background: var(--bg-raise); overflow: hidden; margin-top: 12px; }
+  .br-progress-fill { height: 100%; background: var(--accent); border-radius: 5px; transition: width 0.3s ease; }
+  .br-progress-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
+  .br-error-note { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--red); margin: 8px 0 0; }
+
+  .br-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; width: 100%; margin: 16px 0 18px; }
+  .br-field { display: flex; flex-direction: column; gap: 6px; }
+  .br-field-wide { grid-column: 1 / -1; }
+  .br-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .br-field input, .br-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13.5px; }
+  .br-field input:disabled, .br-field select:disabled { opacity: 0.55; }
+
+  .br-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 130px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
+  .br-role-item { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border-radius: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
+  .br-role-item:hover { background: var(--card-hover); color: var(--text); }
+  .br-role-item input { flex-shrink: 0; accent-color: var(--accent); }
+  .br-filter-opts { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+  .br-inline-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: normal; cursor: pointer; }
+  .br-inline-check input { accent-color: var(--accent); }
+
+  .br-hint { font-size: 11.5px; color: var(--text-dim); margin: 10px 0 0; }
+</style>

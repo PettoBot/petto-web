@@ -1,5 +1,6 @@
 import { decodeSession, type Session } from './session';
 import { canManageGuild } from './discord';
+import { getCachedUserGuilds } from './discordCache';
 
 export type GuildAuth = { session: Session } | { redirect: string };
 
@@ -10,10 +11,7 @@ export async function getGuildSession(astro: any, guildId: string): Promise<Guil
   const session = cookie && clientSecret ? await decodeSession(cookie, clientSecret) : null;
   if (!session || session.expiresAt < Date.now()) return { redirect: '/dash' };
 
-  const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
-    headers: { Authorization: `Bearer ${session.accessToken}` },
-  });
-  const discordGuilds = guildsRes.ok ? await guildsRes.json() : [];
+  const discordGuilds = await getCachedUserGuilds(session.accessToken);
   const target = discordGuilds.find((g: any) => g.id === guildId);
   if (!target || !canManageGuild(target)) return { redirect: '/dash/manage?error=no_access' };
 

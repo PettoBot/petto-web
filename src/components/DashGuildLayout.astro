@@ -3,6 +3,7 @@ import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import { useTranslations } from '../i18n/ui';
 import { canManageGuild, guildIconUrl } from '../utils/discord';
+import { getCachedUserGuilds } from '../utils/discordCache';
 
 interface Props {
   guildId: string;
@@ -21,10 +22,7 @@ let switcherGuilds: SwitcherGuild[] = [];
 if (user.accessToken) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
-    headers: { Authorization: `Bearer ${user.accessToken}` },
-  });
-  const discordGuilds = guildsRes.ok ? await guildsRes.json() : [];
+  const discordGuilds = await getCachedUserGuilds(user.accessToken);
   const manageable = discordGuilds.filter(canManageGuild);
   if (manageable.length > 0 && supabaseUrl && supabaseKey) {
     const ids = manageable.map((g: any) => g.id).join(',');
@@ -70,9 +68,12 @@ const groups: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'Moderation',
-    items: ['moderation', 'automation', 'logging'].filter((id) => catById[id]).map((id) => ({
-      id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], label: catLabel[id] ?? catById[id].title,
-    })),
+    items: [
+      ...['moderation', 'automation', 'logging'].filter((id) => catById[id]).map((id) => ({
+        id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], label: catLabel[id] ?? catById[id].title,
+      })),
+      { id: 'bulk-role', href: `/dash/guild/${guildId}/bulk-role`, icon: 'ph:users-three-fill', label: 'Bulk Role' },
+    ],
   },
   {
     label: 'Community',
@@ -302,25 +303,81 @@ const groups: { label: string; items: NavItem[] }[] = [
     }
 
     // --- thin top-of-page progress bar shown while an AJAX navigation/save is in flight ---
+    // Uses the Web Animations API instead of a CSS-transition+forced-reflow trick: that approach
+    // depends on the browser actually painting an intermediate frame before the next style change,
+    // which on a fast local fetch (finish() firing a tick after start()) often got skipped
+    // entirely, so the bar only ever appeared already at its end state. .animate() has no such
+    // race, the fill genuinely plays from 0 the moment it's called. ease-out (fast start) also
+    // makes the motion obvious immediately instead of CSS 'ease' easing into it gradually.
     var progressEl = document.getElementById('dgl-progress');
+    var progressFillAnim = null;
     var progressHideTimer = null;
+    var MIN_PROGRESS_MS = 450;
+    var progressStartedAt = 0;
     function startProgress() {
       if (!progressEl) return;
+      progressStartedAt = Date.now();
       clearTimeout(progressHideTimer);
-      progressEl.style.transition = 'none';
+      if (progressFillAnim) progressFillAnim.cancel();
+      progressEl.style.opacity = '1';
       progressEl.style.width = '0%';
-      progressEl.classList.add('active');
-      void progressEl.offsetWidth;
-      progressEl.style.transition = 'width 0.4s ease, opacity 0.25s ease';
-      progressEl.style.width = '70%';
+      progressFillAnim = progressEl.animate(
+        [{ width: '0%' }, { width: '78%' }],
+        { duration: MIN_PROGRESS_MS + 250, easing: 'cubic-bezier(0.1, 0.7, 0.2, 1)', fill: 'forwards' },
+      );
     }
     function finishProgress() {
       if (!progressEl) return;
-      progressEl.style.width = '100%';
-      progressHideTimer = setTimeout(function () {
-        progressEl.classList.remove('active');
-        progressEl.style.width = '0%';
-      }, 260);
+      var elapsed = Date.now() - progressStartedAt;
+      var wait = Math.max(0, MIN_PROGRESS_MS - elapsed);
+      setTimeout(function () {
+        if (progressFillAnim) progressFillAnim.cancel();
+        progressEl.style.width = '100%';
+        progressHideTimer = setTimeout(function () {
+          progressEl.style.opacity = '0';
+          progressEl.style.width = '0%';
+        }, 220);
+      }, wait);
+    }
+
+    // Each dashboard module ships its own scoped stylesheet, emitted as a <link>/<style> in
+    // that page's <head>, not inside #dgl-content. Swapping only the content fragment means a
+    // module's CSS never arrives unless that exact page already loaded once this session, so
+    // any first-time AJAX visit rendered completely unstyled. Sync the head assets in too.
+    function syncHeadAssets(freshHead) {
+      var existingHrefs = new Set();
+      document.querySelectorAll('head link[rel="stylesheet"]').forEach(function (l) { existingHrefs.add(l.href); });
+      freshHead.querySelectorAll('link[rel="stylesheet"]').forEach(function (link) {
+        if (!existingHrefs.has(link.href)) document.head.appendChild(link.cloneNode(true));
+      });
+      var existingStyleText = new Set();
+      document.querySelectorAll('head style').forEach(function (s) { existingStyleText.add(s.textContent); });
+      freshHead.querySelectorAll('style').forEach(function (style) {
+        if (!existingStyleText.has(style.textContent)) document.head.appendChild(style.cloneNode(true));
+      });
+    }
+
+    // Nodes inserted via replaceWith/innerHTML never execute their <script> tags, that's a
+    // DOM rule, not a bug. But a swapped-in page's shared chunks (e.g. Astro's client-island
+    // runtime, already loaded on the very first full page load) have the same src every time,
+    // re-inserting those repeatedly on every nav risks re-running/registering things that are
+    // only meant to happen once (custom elements, etc). Only ever run a given src once; inline
+    // scripts with no src are assumed per-instance (e.g. a hydration trigger) and always re-run.
+    var executedScriptSrcs = new Set();
+    document.querySelectorAll('script[src]').forEach(function (s) { executedScriptSrcs.add(s.src); });
+    function executeScripts(container) {
+      container.querySelectorAll('script').forEach(function (oldScript) {
+        if (oldScript.src) {
+          if (executedScriptSrcs.has(oldScript.src)) return;
+          executedScriptSrcs.add(oldScript.src);
+        }
+        var newScript = document.createElement('script');
+        for (var i = 0; i < oldScript.attributes.length; i++) {
+          newScript.setAttribute(oldScript.attributes[i].name, oldScript.attributes[i].value);
+        }
+        newScript.textContent = oldScript.textContent;
+        oldScript.replaceWith(newScript);
+      });
     }
 
     function swapContent(html, pushUrl) {
@@ -328,12 +385,14 @@ const groups: { label: string; items: NavItem[] }[] = [
       var fresh = doc.getElementById('dgl-content');
       var current = document.getElementById('dgl-content');
       if (!fresh || !current) return false;
+      syncHeadAssets(doc.head);
       // The fresh node carries the server-rendered "reveal" class (opacity:0 until an
       // IntersectionObserver, set up once at initial page load, adds "in"). That observer
       // never sees this node since it didn't exist yet, so without this it would replace
       // visible content with a permanently invisible one on every save/nav.
       fresh.classList.add('in');
       current.replaceWith(fresh);
+      executeScripts(fresh);
       initContent(fresh);
       if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
       fresh.scrollIntoView({ block: 'nearest' });
@@ -360,8 +419,8 @@ const groups: { label: string; items: NavItem[] }[] = [
             .then(function (res) { return res.text(); })
             .then(function (html) {
               var ok = swapContent(html, href);
-              if (ok) updateActiveLink(href);
-              finishProgress();
+              if (ok) { updateActiveLink(href); finishProgress(); }
+              else window.location.href = href;
             })
             .catch(function () { window.location.href = href; });
         });
@@ -379,7 +438,11 @@ const groups: { label: string; items: NavItem[] }[] = [
           startProgress();
           fetch(url, { method: 'GET' })
             .then(function (res) { return res.text(); })
-            .then(function (html) { swapContent(html, url); finishProgress(); })
+            .then(function (html) {
+              var ok = swapContent(html, url);
+              if (ok) finishProgress();
+              else window.location.href = url;
+            })
             .catch(function () { window.location.href = url; });
         });
       });
@@ -439,6 +502,19 @@ const groups: { label: string; items: NavItem[] }[] = [
       });
     }
 
+    function bindConfigPreview(root) {
+      root.querySelectorAll('[data-config-preview]').forEach((pre) => {
+        if (pre.dataset.previewBound) return;
+        pre.dataset.previewBound = '1';
+        var url = pre.dataset.configPreview;
+        var code = pre.querySelector('code');
+        fetch(url)
+          .then(function (res) { return res.ok ? res.text() : Promise.reject(); })
+          .then(function (text) { if (code) code.textContent = text; })
+          .catch(function () { if (code) code.textContent = "Couldn't load the preview, try refreshing."; });
+      });
+    }
+
     function bindVarMenus(root) {
       root.querySelectorAll('[data-varmenu]').forEach((wrap) => {
         if (wrap.dataset.varmenuBound) return;
@@ -495,6 +571,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       bindFilterLists(root);
       bindVarMenus(root);
       bindDirtyTracking(root);
+      bindConfigPreview(root);
     }
 
     window.addEventListener('popstate', function (e) {
@@ -509,9 +586,9 @@ const groups: { label: string; items: NavItem[] }[] = [
       fetch(window.location.pathname + window.location.search, { method: 'GET' })
         .then(function (res) { return res.text(); })
         .then(function (html) {
-          swapContent(html, null);
-          updateActiveLink(window.location.pathname + window.location.search);
-          finishProgress();
+          var ok = swapContent(html, null);
+          if (ok) { updateActiveLink(window.location.pathname + window.location.search); finishProgress(); }
+          else window.location.reload();
         })
         .catch(function () { window.location.reload(); });
     });
@@ -626,8 +703,8 @@ const groups: { label: string; items: NavItem[] }[] = [
   .dgl-progress {
     position: fixed; top: var(--dgl-header-h, 60px); left: 0; height: 2.5px; width: 0;
     background: var(--accent); z-index: 80; opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease;
   }
-  .dgl-progress.active { opacity: 1; }
 
   .dgl-savebar {
     position: fixed; bottom: 24px; left: 50%;
