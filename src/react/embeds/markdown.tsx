@@ -8,6 +8,17 @@ const nextKey = () => `k${key++}`;
 function renderInline(text: string): React.ReactNode[] {
   const rules: { re: RegExp; render: (m: RegExpMatchArray) => React.ReactNode }[] = [
     { re: /\{[a-zA-Z0-9_.:|-]+\}/, render: (m) => <span key={nextKey()} className="ebr-md-var">{m[0]}</span> },
+    {
+      re: /<(a?):(\w+):(\d+)>/,
+      render: (m) => (
+        <img
+          key={nextKey()}
+          src={`https://cdn.discordapp.com/emojis/${m[3]}.${m[1] ? 'gif' : 'png'}?size=32`}
+          alt={`:${m[2]}:`}
+          className="ebr-md-emoji"
+        />
+      ),
+    },
     { re: /\*\*(.+?)\*\*/, render: (m) => <strong key={nextKey()}>{renderInline(m[1])}</strong> },
     { re: /__(.+?)__/, render: (m) => <u key={nextKey()}>{renderInline(m[1])}</u> },
     { re: /~~(.+?)~~/, render: (m) => <s key={nextKey()}>{renderInline(m[1])}</s> },
