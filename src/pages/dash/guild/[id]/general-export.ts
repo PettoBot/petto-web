@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getGuildInfo } from '../../../../utils/discord';
+import { getEnv } from '../../../../utils/env';
 
 export const prerender = false;
 
@@ -14,9 +15,9 @@ const TABLES = [
 
 export const GET: APIRoute = async (context) => {
   const { id } = context.params as { id: string };
-  const botToken = process.env.DISCORD_TOKEN;
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const botToken = getEnv(context, 'DISCORD_TOKEN');
+  const supabaseUrl = getEnv(context, 'SUPABASE_URL');
+  const supabaseKey = getEnv(context, 'SUPABASE_SERVICE_ROLE_KEY');
 
   const auth = await getGuildSession(context, id);
   if ('redirect' in auth) return context.redirect(auth.redirect);

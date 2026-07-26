@@ -1,6 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
 
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
@@ -20,8 +21,8 @@ export const GET: APIRoute = async (astro) => {
   const session = await auth(astro, id);
   if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
 
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabaseUrl = getEnv(astro, 'SUPABASE_URL')!;
+  const supabaseKey = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY')!;
   const url = new URL(astro.request.url);
 
   if (url.searchParams.has('list')) {
@@ -43,8 +44,8 @@ export const POST: APIRoute = async (astro) => {
   const session = await auth(astro, id);
   if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
 
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabaseUrl = getEnv(astro, 'SUPABASE_URL')!;
+  const supabaseKey = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY')!;
   const body = await astro.request.json().catch(() => ({}));
   const action = String(body.action ?? '');
 

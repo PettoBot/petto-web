@@ -1,12 +1,13 @@
 import { decodeSession, type Session } from './session';
 import { canManageGuild } from './discord';
 import { getCachedUserGuilds } from './discordCache';
+import { getEnv } from './env';
 
 export type GuildAuth = { session: Session } | { redirect: string };
 
 /** Confirms the visitor is logged in and can actually manage this specific guild, via a live Discord check (never trusts the cookie alone for authorization). */
 export async function getGuildSession(astro: any, guildId: string): Promise<GuildAuth> {
-  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+  const clientSecret = getEnv(astro, 'DISCORD_CLIENT_SECRET');
   const cookie = astro.cookies.get('petto_session')?.value;
   const session = cookie && clientSecret ? await decodeSession(cookie, clientSecret) : null;
   if (!session || session.expiresAt < Date.now()) return { redirect: '/dash' };

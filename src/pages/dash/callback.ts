@@ -1,10 +1,11 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { encodeSession } from '../../utils/session';
+import { getEnv } from '../../utils/env';
 
-export const GET: APIRoute = async ({ url, redirect, cookies }) => {
-  const clientId = process.env.DISCORD_CLIENT_ID;
-  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
+  const clientId = getEnv({ locals }, 'DISCORD_CLIENT_ID');
+  const clientSecret = getEnv({ locals }, 'DISCORD_CLIENT_SECRET');
   if (!clientId || !clientSecret) return redirect('/dash?error=server_not_configured');
 
   const code = url.searchParams.get('code');
