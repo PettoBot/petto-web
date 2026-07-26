@@ -2,6 +2,7 @@ import { defineConfig } from 'astro/config';
 import icon from 'astro-icon';
 import react from '@astrojs/react';
 import cloudflare from '@astrojs/cloudflare';
+import sitemap from '@astrojs/sitemap';
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 
@@ -12,7 +13,14 @@ import path from 'node:path';
 loadEnv({ path: path.resolve('../petto bot 1/.env') });
 
 export default defineConfig({
-  integrations: [icon(), react()],
+  site: 'https://petto.sbs',
+  integrations: [
+    icon(),
+    react(),
+    // /dash/** is the authenticated dashboard, private and per-user, it has no business in a
+    // public sitemap or search results.
+    sitemap({ filter: (page) => !page.includes('/dash') }),
+  ],
   i18n: {
     locales: ['en', 'es', 'pt-BR'],
     defaultLocale: 'en',
