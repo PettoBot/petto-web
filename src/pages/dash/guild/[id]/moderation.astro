@@ -4,6 +4,7 @@ import DashModeration from '../../../../components/DashModeration.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -106,16 +107,16 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes] = await Promise.all([
-  getGuildInfo(id, botToken),
-  fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=25`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: supabaseHeaders }),
-  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
-  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-]);
+const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=25`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: supabaseHeaders }),
+  () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const automodRows = automodRes.ok ? await automodRes.json() : [];

@@ -4,6 +4,7 @@ import DashOnboarding from '../../../../components/DashOnboarding.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -104,16 +105,16 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, eventsRes, verificationRes, bumpRes, pojConfigRes, pojChannelsRes, rolesRes, channelsRes] = await Promise.all([
-  getGuildInfo(id, botToken),
-  fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/bump_reminders?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/poj_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/poj_channels?guild_id=eq.${id}&select=channel_id`, { headers: supabaseHeaders }),
-  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
-  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-]);
+const [guildInfo, eventsRes, verificationRes, bumpRes, pojConfigRes, pojChannelsRes, rolesRes, channelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/bump_reminders?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/poj_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/poj_channels?guild_id=eq.${id}&select=channel_id`, { headers: supabaseHeaders }),
+  () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const eventsRows = eventsRes.ok ? await eventsRes.json() : [];

@@ -4,6 +4,7 @@ import DashAutomation from '../../../../components/DashAutomation.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -117,17 +118,17 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes, rolesRes, channelsRes, embedTemplatesRes] = await Promise.all([
-  getGuildInfo(id, botToken),
-  fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,channel_ids,reply_type,embed_color,embed_title,embed_footer&order=trigger.asc`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
-  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
-  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-  fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
-]);
+const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,channel_ids,reply_type,embed_color,embed_title,embed_footer&order=trigger.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
+  () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
+], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const customCommands = commandsRes.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template })) : [];
