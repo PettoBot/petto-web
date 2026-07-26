@@ -9,6 +9,8 @@ interface Props {
   guildId: string;
   botName: string;
   botIcon: string;
+  userAvatarUrl: string;
+  guildIconUrl: string;
   initialTemplateNames: string[];
   initialSelected: string;
 }
@@ -18,7 +20,7 @@ async function api(guildId: string, path: string, init?: RequestInit) {
   return res;
 }
 
-export default function EmbedBuilderApp({ guildId, botName, botIcon, initialTemplateNames, initialSelected }: Props) {
+export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
   const [data, setData] = useState<TemplateData>(emptyTemplate());
@@ -137,7 +139,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, initialTemp
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">Preview</div>
-              <Preview data={data} botName={botName} botIcon={botIcon} />
+              <Preview data={data} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} />
             </div>
 
             <div className="ebr-form-col">

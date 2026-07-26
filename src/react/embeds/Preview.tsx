@@ -1,10 +1,23 @@
 import type { TemplateData } from './types';
 import { renderDiscordMarkdown } from './markdown';
 
-interface Props { data: TemplateData; botName: string; botIcon: string }
+interface Props { data: TemplateData; botName: string; botIcon: string; userAvatarUrl: string; guildIconUrl: string }
 
-export default function Preview({ data, botName, botIcon }: Props) {
+export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIconUrl }: Props) {
   const hasAnything = data.content || data.embeds.length > 0 || data.buttons.some((r) => r.some((b) => b.label));
+
+  // Image-URL fields (thumbnail/image/author/footer icons) can't be rendered inline like
+  // {user.mention} chips, an <img> needs a real src. Since you're logged into this exact
+  // guild, {user.avatar}/{guild.icon} (and their aliases) can resolve to the real thing
+  // instead of showing a broken image.
+  const ICON_TOKENS: Record<string, string> = {
+    '{user.avatar}': userAvatarUrl,
+    '{user_avatar}': userAvatarUrl,
+    '{user.display_avatar}': userAvatarUrl,
+    '{guild.icon}': guildIconUrl,
+    '{server_icon}': guildIconUrl,
+  };
+  const resolveIcon = (value: string) => ICON_TOKENS[value.trim()] ?? value;
 
   return (
     <div className="ebr-preview">
@@ -26,7 +39,7 @@ export default function Preview({ data, botName, botIcon }: Props) {
               <div key={i} className="ebr-embed" style={{ ['--ebr-c' as any]: color }}>
                 {e.author.name && (
                   <div className="ebr-embed-author">
-                    {e.author.icon && <img src={e.author.icon} alt="" />}
+                    {e.author.icon && <img src={resolveIcon(e.author.icon)} alt="" />}
                     {e.author.url ? <a href={e.author.url} target="_blank" rel="noopener noreferrer">{e.author.name}</a> : <span>{e.author.name}</span>}
                   </div>
                 )}
@@ -45,12 +58,12 @@ export default function Preview({ data, botName, botIcon }: Props) {
                       </div>
                     )}
                   </div>
-                  {e.thumbnail && <img className="ebr-embed-thumb" src={e.thumbnail} alt="" />}
+                  {e.thumbnail && <img className="ebr-embed-thumb" src={resolveIcon(e.thumbnail)} alt="" />}
                 </div>
-                {e.image && <img className="ebr-embed-image" src={e.image} alt="" />}
+                {e.image && <img className="ebr-embed-image" src={resolveIcon(e.image)} alt="" />}
                 {(e.footer.text || e.timestamp) && (
                   <div className="ebr-embed-footer">
-                    {e.footer.icon && <img src={e.footer.icon} alt="" />}
+                    {e.footer.icon && <img src={resolveIcon(e.footer.icon)} alt="" />}
                     <span>{e.footer.text}{e.footer.text && e.timestamp ? ' • Today at 12:00 PM' : e.timestamp ? 'Today at 12:00 PM' : ''}</span>
                   </div>
                 )}
