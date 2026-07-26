@@ -24,12 +24,11 @@ export default defineConfig({
   adapter: cloudflare(),
   // Docs moved to their own Mintlify site, every old in-repo docs URL (and its localized
   // copies) now bounces straight there instead of 404ing.
+  // Wildcard entries (/docs/[...slug]) are handled by public/_redirects instead: Astro
+  // writes those without a :splat placeholder in the destination, which Cloudflare rejects.
   redirects: {
     '/docs': 'https://wiki.petto.sbs',
-    '/docs/[...slug]': 'https://wiki.petto.sbs',
     '/es/docs': 'https://wiki.petto.sbs',
-    '/es/docs/[...slug]': 'https://wiki.petto.sbs',
     '/pt-br/docs': 'https://wiki.petto.sbs',
-    '/pt-br/docs/[...slug]': 'https://wiki.petto.sbs',
   },
 });
