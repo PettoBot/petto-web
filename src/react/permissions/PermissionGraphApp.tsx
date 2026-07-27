@@ -359,14 +359,21 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
               {(() => {
                 const gated = commands.filter((c) => (commandLevels[c.name] ?? 0) > 0);
                 const unlocked = gated.filter((c) => (commandLevels[c.name] ?? 0) <= selectedGroup.level);
-                const openCount = commands.length - gated.length;
+
+                if (gated.length === 0) {
+                  return (
+                    <>
+                      <label className="ps-label" style={{ marginTop: '14px' }}>Gated commands this unlocks</label>
+                      <p className="ps-empty">No command has a required level set yet, so all {commands.length} are still open to everyone regardless of this group. Grant one above to actually gate something.</p>
+                    </>
+                  );
+                }
                 return (
                   <>
                     <label className="ps-label" style={{ marginTop: '14px' }}>Gated commands this unlocks ({unlocked.length}/{gated.length})</label>
-                    <p className="ps-hint-small">Commands with no level set ({openCount}) are already open to everyone and aren't listed here.</p>
+                    <p className="ps-hint-small">{commands.length - gated.length} other commands have no level set and are already open to everyone.</p>
                     <div className="ps-member-list">
-                      {gated.length === 0 && <p className="ps-empty">No command has a required level set yet — everything's still open to everyone.</p>}
-                      {gated.length > 0 && unlocked.length === 0 && <p className="ps-empty">Level {selectedGroup.level} doesn't meet any gated command's level yet.</p>}
+                      {unlocked.length === 0 && <p className="ps-empty">Level {selectedGroup.level} doesn't meet any gated command's level yet.</p>}
                       {unlocked
                         .sort((a, b) => (commandLevels[b.name] ?? 0) - (commandLevels[a.name] ?? 0))
                         .map((c) => (
@@ -492,6 +499,11 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
 function GrantCommandRow({ commands, commandLevels, groupLevel, busy, onGrant }: { commands: CommandInfo[]; commandLevels: Record<string, number>; groupLevel: number; busy: boolean; onGrant: (name: string) => void }) {
   const [cmdName, setCmdName] = useState('');
   const notYetGranted = commands.filter((c) => (commandLevels[c.name] ?? 0) > groupLevel);
+
+  if (notYetGranted.length === 0) {
+    return <p className="ps-empty" style={{ marginBottom: '10px' }}>Every command's already at or below this group's level, nothing left to grant here.</p>;
+  }
+
   return (
     <div className="ps-add-member-row" style={{ marginBottom: '10px' }}>
       <select value={cmdName} onChange={(e) => setCmdName(e.target.value)}>
