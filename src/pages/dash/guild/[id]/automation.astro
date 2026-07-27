@@ -24,6 +24,7 @@ const supabaseHeaders = {
 };
 
 let saved = false;
+let reactionRoleError: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -91,16 +92,29 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'add_reactionrole') {
     const channelId = String(form.get('channel_id') ?? '');
     const messageId = String(form.get('message_id') ?? '').trim();
-    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4);
+    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 100);
     const roleId = String(form.get('role_id') ?? '');
     const mode = String(form.get('mode') ?? 'toggle');
     if (channelId && messageId && emoji && roleId) {
-      await fetch(`${supabaseUrl}/rest/v1/reaction_roles`, {
-        method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: messageId, emoji, role_id: roleId, mode }),
-      });
-      saved = true;
+      // The bot has to actually react to the message with this emoji first, otherwise there's
+      // nothing on the message for members to click, and the reactionAdd listener never fires.
+      // /reactionrole add does this via message.react(), the dashboard form needs to match it.
+      const customMatch = emoji.match(/^<a?:(\w+):(\d+)>$/);
+      const reactionParam = customMatch ? `${customMatch[1]}:${customMatch[2]}` : emoji;
+      const reactRes = await fetch(
+        `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(reactionParam)}/@me`,
+        { method: 'PUT', headers: { Authorization: `Bot ${botToken}` } },
+      );
+      if (!reactRes.ok) {
+        reactionRoleError = "Couldn't react to that message, check the channel, message ID, and emoji.";
+      } else {
+        await fetch(`${supabaseUrl}/rest/v1/reaction_roles`, {
+          method: 'POST',
+          headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: messageId, emoji, role_id: roleId, mode }),
+        });
+        saved = true;
+      }
     }
   } else if (action === 'delete_reactionrole') {
     await fetch(`${supabaseUrl}/rest/v1/reaction_roles?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
@@ -171,4 +185,5 @@ const channels = allChannels
   channels={channels}
   embedTemplateNames={embedTemplateNames}
   saved={saved}
+  reactionRoleError={reactionRoleError}
 />
