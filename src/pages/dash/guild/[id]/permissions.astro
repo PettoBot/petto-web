@@ -1,0 +1,100 @@
+---
+export const prerender = false;
+import DashPermissions from '../../../../components/DashPermissions.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { getAllCommands } from '../../../../utils/commandList';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const supabaseUrl = getEnv(Astro, 'SUPABASE_URL');
+const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const supabaseHeaders = {
+  apikey: supabaseKey,
+  Authorization: `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json',
+};
+
+const [guildInfo, rolesRes, groupsRes, levelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`${supabaseUrl}/rest/v1/permission_groups?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: supabaseHeaders }),
+], 4);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const ADMINISTRATOR = 1n << 3n;
+const MANAGE_GUILD = 1n << 5n;
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone')
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => {
+    const bits = BigInt(r.permissions ?? '0');
+    return {
+      id: r.id,
+      name: r.name,
+      isAdmin: (bits & ADMINISTRATOR) === ADMINISTRATOR,
+      isManageGuild: (bits & MANAGE_GUILD) === MANAGE_GUILD,
+    };
+  });
+
+let groups = groupsRes.ok ? await groupsRes.json() : [];
+
+// A guild always needs a base/@everyone node for the graph to have a center, create it on
+// first visit rather than forcing every page that touches permissions to know about this.
+let baseGroup = groups.find((g: any) => g.is_base);
+if (!baseGroup) {
+  const createRes = await fetch(`${supabaseUrl}/rest/v1/permission_groups`, {
+    method: 'POST',
+    headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify({ guild_id: id, name: '@everyone', level: 0, is_base: true }),
+  });
+  if (createRes.ok) {
+    const created = await createRes.json();
+    baseGroup = created[0];
+    groups = [...groups, baseGroup];
+  }
+}
+
+const groupIds = groups.map((g: any) => g.id);
+let members: any[] = [];
+if (groupIds.length) {
+  const memRes = await fetch(`${supabaseUrl}/rest/v1/permission_group_members?group_id=in.(${groupIds.join(',')})&select=*`, { headers: supabaseHeaders });
+  members = memRes.ok ? await memRes.json() : [];
+}
+const groupsWithMembers = groups.map((g: any) => ({
+  id: g.id,
+  name: g.name,
+  level: g.level,
+  isBase: g.is_base,
+  members: members.filter((m: any) => m.group_id === g.id).map((m: any) => ({ subjectType: m.subject_type, subjectId: m.subject_id })),
+}));
+
+const levelRows = levelsRes.ok ? await levelsRes.json() : [];
+const commandLevels: Record<string, number> = {};
+for (const row of levelRows) commandLevels[row.command_name] = row.required_level;
+
+const commands = getAllCommands();
+---
+<DashPermissions
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  roles={roles}
+  groups={groupsWithMembers}
+  commandLevels={commandLevels}
+  commands={commands}
+  currentUser={{ id: session.userId, name: session.username, avatarUrl: session.avatar ?? '/assets/mascot-icon.png' }}
+/>

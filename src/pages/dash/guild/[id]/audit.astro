@@ -1,0 +1,41 @@
+---
+export const prerender = false;
+import DashAuditLog from '../../../../components/DashAuditLog.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const supabaseUrl = getEnv(Astro, 'SUPABASE_URL');
+const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const supabaseHeaders = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' };
+
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const logRes = await fetch(`${supabaseUrl}/rest/v1/permission_audit_log?guild_id=eq.${id}&select=*&order=created_at.desc&limit=200`, { headers: supabaseHeaders });
+const rawEntries = logRes.ok ? await logRes.json() : [];
+const entries = rawEntries.map((e: any) => ({
+  id: e.id,
+  actorId: e.actor_id,
+  actorName: e.actor_name,
+  action: e.action,
+  summary: e.summary,
+  createdAt: e.created_at,
+}));
+---
+<DashAuditLog
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  entries={entries}
+/>
