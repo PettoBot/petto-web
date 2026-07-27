@@ -5,7 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
-import { buildPanelPayload, postOrRefreshPanelMessage, deletePanelMessage } from '../../../../utils/ticketPanel';
+import { buildPanelPayload, postOrRefreshPanelMessage, deletePanelMessage, type GuildVars } from '../../../../utils/ticketPanel';
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -27,6 +27,48 @@ const supabaseHeaders = {
   Authorization: `Bearer ${supabaseKey}`,
   'Content-Type': 'application/json',
 };
+
+let cachedGuildVars: GuildVars | null | undefined;
+/** Guild-level data for resolving {server_*}/{guild.*} tokens in a panel's embed template — fetched once per request, reused across every panel render. */
+async function getGuildVars(): Promise<GuildVars | null> {
+  if (cachedGuildVars !== undefined) return cachedGuildVars;
+  const [guildRes, channelsRes] = await Promise.all([
+    fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, { headers: { Authorization: `Bot ${botToken}` } }),
+    fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  ]);
+  if (!guildRes.ok) {
+    cachedGuildVars = null;
+    return null;
+  }
+  const g = await guildRes.json();
+  const channels = channelsRes.ok ? await channelsRes.json() : [];
+  cachedGuildVars = {
+    id: g.id,
+    name: g.name,
+    iconUrl: g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=512` : null,
+    bannerUrl: g.banner ? `https://cdn.discordapp.com/banners/${g.id}/${g.banner}.png?size=1024` : null,
+    ownerId: g.owner_id,
+    createdTimestamp: Number((BigInt(g.id) >> 22n) + 1420070400000n),
+    memberCount: g.approximate_member_count ?? 0,
+    roleCount: (g.roles ?? []).length,
+    channelCount: channels.length,
+    emojiCount: (g.emojis ?? []).length,
+    boostTier: g.premium_tier ?? 0,
+    boostCount: g.premium_subscription_count ?? 0,
+    vanityCode: g.vanity_url_code ?? null,
+    preferredLocale: g.preferred_locale ?? 'en-US',
+    maxMembers: g.max_members ?? 0,
+  };
+  return cachedGuildVars;
+}
+
+async function getTemplateData(name: string | null): Promise<any | null> {
+  if (!name) return null;
+  const res = await fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}&select=data`, { headers: supabaseHeaders });
+  if (!res.ok) return null;
+  const [row] = await res.json();
+  return row?.data ?? null;
+}
 
 let saved = false;
 let error: string | null = null;
@@ -92,26 +134,19 @@ if (Astro.request.method === 'POST') {
     const title = String(form.get('title') ?? '').trim().slice(0, 100) || null;
     const description = String(form.get('description') ?? '').trim().slice(0, 500) || null;
     const style = form.get('style') === 'select' ? 'select' : 'button';
+    const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
 
     if (channelId) {
       const createRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels`, {
         method: 'POST',
         headers: { ...supabaseHeaders, Prefer: 'return=representation' },
-        body: JSON.stringify({ guild_id: id, channel_id: channelId, title, description, style }),
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, title, description, style, embed_template: embedTemplate }),
       });
       if (createRes.ok) {
         const [panel] = await createRes.json();
-        const messageId = await postOrRefreshPanelMessage(botToken, channelId, null, buildPanelPayload({ title, description }, style, []));
-        if (messageId) {
-          await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panel.id}`, {
-            method: 'PATCH',
-            headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-            body: JSON.stringify({ message_id: messageId }),
-          });
-          saved = true;
-        } else {
-          error = 'Panel created, but I could not post it, check my permissions in that channel.';
-        }
+        const ok = await refreshPanelById(String(panel.id));
+        saved = ok;
+        if (!ok) error = 'Panel created, but I could not post it, check my permissions in that channel.';
       } else {
         error = "Couldn't create the panel, try again.";
       }
@@ -121,11 +156,12 @@ if (Astro.request.method === 'POST') {
     const title = String(form.get('title') ?? '').trim().slice(0, 100) || null;
     const description = String(form.get('description') ?? '').trim().slice(0, 500) || null;
     const style = form.get('style') === 'select' ? 'select' : 'button';
+    const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
 
     await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'PATCH',
       headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-      body: JSON.stringify({ title, description, style }),
+      body: JSON.stringify({ title, description, style, embed_template: embedTemplate }),
     });
     const ok = await refreshPanelById(panelId);
     saved = ok;
@@ -134,28 +170,14 @@ if (Astro.request.method === 'POST') {
     const panelId = String(form.get('panel_id') ?? '').trim();
     const newChannelId = String(form.get('channel_id') ?? '').trim();
     if (panelId && newChannelId) {
-      const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
-      const [panel] = panelRes.ok ? await panelRes.json() : [];
-      if (panel) {
-        await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, {
-          method: 'PATCH',
-          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-          body: JSON.stringify({ channel_id: newChannelId, message_id: null }),
-        });
-        const categoriesRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: supabaseHeaders });
-        const cats = categoriesRes.ok ? await categoriesRes.json() : [];
-        const messageId = await postOrRefreshPanelMessage(botToken, newChannelId, null, buildPanelPayload(panel, panel.style, cats));
-        if (messageId) {
-          await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, {
-            method: 'PATCH',
-            headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-            body: JSON.stringify({ message_id: messageId }),
-          });
-          saved = true;
-        } else {
-          error = 'Panel moved, but I could not post it there, check my permissions in that channel.';
-        }
-      }
+      await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ channel_id: newChannelId, message_id: null }),
+      });
+      const ok = await refreshPanelById(panelId);
+      saved = ok;
+      if (!ok) error = 'Panel moved, but I could not post it there, check my permissions in that channel.';
     }
   } else if (action === 'resend_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
@@ -215,7 +237,9 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   if (!panel) return false;
   const categoriesRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: supabaseHeaders });
   const cats = categoriesRes.ok ? await categoriesRes.json() : [];
-  const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats));
+  const templateData = await getTemplateData(panel.embed_template);
+  const guildVars = templateData ? await getGuildVars() : null;
+  const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats, templateData, guildVars));
   if (!messageId) return false;
   if (messageId !== panel.message_id) {
     await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
@@ -223,7 +247,7 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   return true;
 }
 
-const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes] = await runBatched([
+const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: supabaseHeaders }),
@@ -231,6 +255,7 @@ const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRe
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -284,8 +309,11 @@ const panels = rawPanels.map((p: any) => ({
   title: p.title,
   description: p.description,
   style: p.style ?? 'button',
+  embedTemplate: p.embed_template,
   categoryCount: categories.filter((c: any) => c.panelId === p.id).length,
 }));
+
+const embedTemplateNames: string[] = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 
 const settingsRows = settingsRes.ok ? await settingsRes.json() : [];
 const s = settingsRows[0] ?? {};
@@ -321,6 +349,7 @@ const settings = {
   roles={roles}
   channelCategories={channelCategories}
   textChannels={textChannels}
+  embedTemplateNames={embedTemplateNames}
   openTickets={openTickets}
   saved={saved}
   error={error}
