@@ -1,0 +1,75 @@
+---
+export const prerender = false;
+import DashSecurity from '../../../../components/DashSecurity.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { getAllCommands } from '../../../../utils/commandList';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const supabaseUrl = getEnv(Astro, 'SUPABASE_URL');
+const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const supabaseHeaders = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' };
+
+const [guildInfo, rolesRes, levelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`${supabaseUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: supabaseHeaders }),
+], 3);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const DANGEROUS_PERMS: { flag: bigint; label: string }[] = [
+  { flag: 1n << 5n, label: 'Manage Server' },
+  { flag: 1n << 28n, label: 'Manage Roles' },
+  { flag: 1n << 4n, label: 'Manage Channels' },
+  { flag: 1n << 2n, label: 'Ban Members' },
+  { flag: 1n << 1n, label: 'Kick Members' },
+  { flag: 1n << 40n, label: 'Timeout Members' },
+  { flag: 1n << 29n, label: 'Manage Webhooks' },
+  { flag: 1n << 13n, label: 'Manage Messages' },
+  { flag: 1n << 17n, label: 'Mention @everyone' },
+  { flag: 1n << 27n, label: 'Manage Nicknames' },
+];
+const ADMINISTRATOR = 1n << 3n;
+
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roleFindings = allRoles
+  .map((r: any) => {
+    const bits = BigInt(r.permissions ?? '0');
+    const isAdmin = (bits & ADMINISTRATOR) === ADMINISTRATOR;
+    const matched = isAdmin ? [] : DANGEROUS_PERMS.filter((p) => (bits & p.flag) === p.flag).map((p) => p.label);
+    const isEveryone = r.name === '@everyone';
+    let severity: 'critical' | 'high' | 'medium' | null = null;
+    if (isEveryone && (isAdmin || matched.length > 0)) severity = 'critical';
+    else if (isAdmin) severity = 'high';
+    else if (matched.length > 0) severity = 'medium';
+    return { id: r.id, name: r.name, isEveryone, isAdmin, matched, severity, position: r.position };
+  })
+  .filter((r: any) => r.severity)
+  .sort((a: any, b: any) => (b.severity === 'critical' ? 1 : 0) - (a.severity === 'critical' ? 1 : 0) || b.position - a.position);
+
+const levelRows = levelsRes.ok ? await levelsRes.json() : [];
+const commandLevels: Record<string, number> = {};
+for (const row of levelRows) commandLevels[row.command_name] = row.required_level;
+
+const commands = getAllCommands();
+const RISK_CATEGORIES = ['moderation', 'setup', 'automation'];
+const unrestrictedCommands = commands.filter((c) => RISK_CATEGORIES.includes(c.category) && !commandLevels[c.name]);
+---
+<DashSecurity
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  roleFindings={roleFindings}
+  unrestrictedCommands={unrestrictedCommands}
+/>

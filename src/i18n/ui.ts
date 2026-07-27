@@ -134,6 +134,16 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.2.0',
+          date: 'July 27, 2026',
+          items: [
+            'Permissions: a custom 0-100 authorization level per group, layered on top of Discord\'s own permissions, editable from an interactive chart on the dashboard',
+            '"Test as" simulator: pick a role or paste a user ID and instantly see which commands they can and can\'t run',
+            'Security page: flags roles carrying Administrator or Manage Server, and commands with no custom level set yet',
+            'Audit Log: every permission change is now recorded with who made it and when',
+          ],
+        },
+        {
           version: '0.1.0',
           date: 'May 20, 2026',
           items: [
@@ -894,6 +904,16 @@ export const ui = {
       lede: 'Petto todavía no tiene una historia larga, esta es de verdad la primera versión. Los lanzamientos que vengan se van a ir agregando acá.',
       latest: 'Última',
       entries: [
+        {
+          version: '0.2.0',
+          date: '27 de julio de 2026',
+          items: [
+            'Permisos: un nivel de autorización personalizado de 0 a 100 por grupo, en capas sobre los permisos nativos de Discord, editable desde un gráfico interactivo en la dashboard',
+            'Simulador "Probar como...": elegí un rol o pegá un ID de usuario y al instante ves qué comandos puede y no puede usar',
+            'Página de Seguridad: marca roles con Administrator o Manage Server, y comandos sin nivel personalizado configurado',
+            'Audit Log: cada cambio de permisos ahora queda registrado con quién lo hizo y cuándo',
+          ],
+        },
         {
           version: '0.1.0',
           date: '20 de mayo de 2026',

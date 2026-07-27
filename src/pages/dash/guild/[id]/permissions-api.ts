@@ -1,0 +1,122 @@
+export const prerender = false;
+import type { APIRoute } from 'astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+
+function headers(supabaseKey: string) {
+  return { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' };
+}
+
+async function auth(astro: any, id: string) {
+  const result = await getGuildSession(astro, id);
+  return 'redirect' in result ? null : result.session;
+}
+
+async function fetchGroups(supabaseUrl: string, supabaseKey: string, guildId: string) {
+  const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?guild_id=eq.${guildId}&select=*&order=id.asc`, { headers: headers(supabaseKey) });
+  const groups = res.ok ? await res.json() : [];
+  if (!groups.length) return [];
+  const ids = groups.map((g: any) => g.id).join(',');
+  const memRes = await fetch(`${supabaseUrl}/rest/v1/permission_group_members?group_id=in.(${ids})&select=*`, { headers: headers(supabaseKey) });
+  const members = memRes.ok ? await memRes.json() : [];
+  return groups.map((g: any) => ({ ...g, members: members.filter((m: any) => m.group_id === g.id) }));
+}
+
+export const POST: APIRoute = async (astro) => {
+  const { id } = astro.params as { id: string };
+  const session = await auth(astro, id);
+  if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+
+  const supabaseUrl = getEnv(astro, 'SUPABASE_URL')!;
+  const supabaseKey = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY')!;
+  const body = await astro.request.json().catch(() => ({}));
+  const action = String(body.action ?? '');
+  const h = headers(supabaseKey);
+
+  async function fail(res: Response, fallback: string) {
+    const text = await res.text().catch(() => '');
+    return new Response(JSON.stringify({ error: `${fallback} (${res.status}): ${text.slice(0, 300)}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  async function groupName(groupId: number): Promise<string> {
+    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?id=eq.${groupId}&select=name,is_base`, { headers: h });
+    if (!res.ok) return `group #${groupId}`;
+    const rows = await res.json();
+    if (!rows[0]) return `group #${groupId}`;
+    return rows[0].is_base ? '@everyone' : rows[0].name;
+  }
+
+  async function logAudit(logAction: string, summary: string) {
+    await fetch(`${supabaseUrl}/rest/v1/permission_audit_log`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({ guild_id: id, actor_id: session.userId, actor_name: session.username, action: logAction, summary }),
+    }).catch(() => {});
+  }
+
+  if (action === 'create_group') {
+    const name = String(body.name ?? '').trim().slice(0, 60);
+    if (!name) return new Response(JSON.stringify({ error: 'name required' }), { status: 400 });
+    const level = Math.max(0, Math.min(100, Number(body.level) || 0));
+    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({ guild_id: id, name, level }),
+    });
+    if (!res.ok) return fail(res, "Couldn't create the group, maybe it already exists or the permission_groups table isn't set up yet");
+    await logAudit('create_group', `Created group "${name}"`);
+  } else if (action === 'delete_group') {
+    const name = await groupName(Number(body.groupId));
+    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}&is_base=eq.false`, { method: 'DELETE', headers: h });
+    if (!res.ok) return fail(res, "Couldn't delete the group");
+    await logAudit('delete_group', `Deleted group "${name}"`);
+  } else if (action === 'update_group_level') {
+    const level = Math.max(0, Math.min(100, Number(body.level) || 0));
+    const name = await groupName(Number(body.groupId));
+    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({ level }),
+    });
+    if (!res.ok) return fail(res, "Couldn't update the group's level, the permission_groups table may not exist yet");
+    await logAudit('update_group_level', `Set "${name}" to level ${level}`);
+  } else if (action === 'add_member') {
+    const subjectType = body.subjectType === 'user' ? 'user' : 'role';
+    const subjectId = String(body.subjectId ?? '').trim();
+    if (!subjectId) return new Response(JSON.stringify({ error: 'subjectId required' }), { status: 400 });
+    const name = await groupName(Number(body.groupId));
+    const res = await fetch(`${supabaseUrl}/rest/v1/permission_group_members`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ group_id: Number(body.groupId), subject_type: subjectType, subject_id: subjectId }),
+    });
+    if (!res.ok) return fail(res, "Couldn't add that member, the permission_group_members table may not exist yet");
+    await logAudit('add_member', `Added ${subjectType} ${subjectId} to "${name}"`);
+  } else if (action === 'remove_member') {
+    const name = await groupName(Number(body.groupId));
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/permission_group_members?group_id=eq.${Number(body.groupId)}&subject_type=eq.${body.subjectType}&subject_id=eq.${encodeURIComponent(String(body.subjectId ?? ''))}`,
+      { method: 'DELETE', headers: h },
+    );
+    if (!res.ok) return fail(res, "Couldn't remove that member");
+    await logAudit('remove_member', `Removed ${body.subjectType} ${body.subjectId} from "${name}"`);
+  } else if (action === 'set_command_level') {
+    const commandName = String(body.commandName ?? '').trim();
+    if (!commandName) return new Response(JSON.stringify({ error: 'commandName required' }), { status: 400 });
+    const level = Math.max(0, Math.min(100, Number(body.level) || 0));
+    const res = await fetch(`${supabaseUrl}/rest/v1/command_permission_levels`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ guild_id: id, command_name: commandName, required_level: level, updated_at: new Date().toISOString() }),
+    });
+    if (!res.ok) return fail(res, "Couldn't set the command's level, the command_permission_levels table may not exist yet");
+    await logAudit('set_command_level', `Set /${commandName} to required level ${level}`);
+  } else {
+    return new Response(JSON.stringify({ error: 'unknown action' }), { status: 400 });
+  }
+
+  const groups = await fetchGroups(supabaseUrl, supabaseKey, id);
+  const levelsRes = await fetch(`${supabaseUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: h });
+  const levels = levelsRes.ok ? await levelsRes.json() : [];
+  return new Response(JSON.stringify({ ok: true, groups, levels }), { headers: { 'Content-Type': 'application/json' } });
+};
