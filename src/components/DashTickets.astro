@@ -4,6 +4,8 @@ import DashGuildLayout from './DashGuildLayout.astro';
 
 interface TicketCategory {
   id: number;
+  panelId: number | null;
+  key: string;
   label: string;
   emoji: string | null;
   description: string | null;
@@ -13,6 +15,35 @@ interface TicketCategory {
   supportRoleIds: string[];
   pingRoleIds: string[];
   maxOpenPerUser: number;
+}
+interface Panel {
+  id: number;
+  channelId: string;
+  messageId: string | null;
+  title: string | null;
+  description: string | null;
+  style: string;
+  categoryCount: number;
+}
+interface TicketSettings {
+  claimMode: string;
+  pingOnClaim: boolean;
+  rolesToAddOnClaim: string[];
+  closeRequiresSupportRole: boolean;
+  closeRequiresReason: boolean;
+  hideClosingUser: boolean;
+  dmUserOnClose: boolean;
+  defaultCloseReason: string;
+  logStaffMessageCounts: boolean;
+  autocloseLeave: boolean;
+  autocloseInactivityEnabled: boolean;
+  autocloseInactivityHours: number;
+  ratingEnabled: boolean;
+  ratingMode: string;
+  ratingLogChannelId: string;
+  openedLogChannelId: string;
+  closedLogChannelId: string;
+  blockedRoleIds: string[];
 }
 interface OpenTicket {
   id: number;
@@ -29,20 +60,83 @@ interface Props {
   guildName: string;
   guildIcon: string;
   categories: TicketCategory[];
+  panels: Panel[];
+  settings: TicketSettings;
   roles: { id: string; name: string }[];
   channelCategories: { id: string; name: string }[];
+  textChannels: { id: string; name: string }[];
   openTickets: OpenTicket[];
   saved: boolean;
   error?: string | null;
 }
-const { user, guildId, guildName, guildIcon, categories, roles, channelCategories, openTickets, saved, error } = Astro.props;
+const { user, guildId, guildName, guildIcon, categories, panels, settings, roles, channelCategories, textChannels, openTickets, saved, error } = Astro.props;
+function channelName(id: string | null) {
+  return textChannels.find((c) => c.id === id)?.name ?? id;
+}
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="tickets" pageTitle="Tickets">
   <h1>Tickets</h1>
-  <p class="tk-sub">The support types members pick from in <b>{guildName}</b>, who gets pinged, and where tickets land. Post the panel itself with <code>/ticket panel</code>, everything else is here.</p>
+  <p class="tk-sub">Panels, support types, and how tickets close, all configured for <b>{guildName}</b> from here. <code>/ticket</code> in Discord still works for everything, this is the same data.</p>
 
   {saved && <div class="tk-flash tk-flash-ok"><Icon name="ph:check-circle-fill" width="15" height="15" />Saved.</div>}
   {error && <div class="tk-flash tk-flash-err"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
+
+  <div class="tk-section">
+    <h2><Icon name="ph:squares-four-fill" width="15" height="15" />Panels <span class="tk-count">{panels.length}</span></h2>
+    <p class="tk-section-note">The message members click to open a ticket. Editing/resending re-posts it in place; moving posts a fresh one in the new channel.</p>
+    {panels.length === 0 && <p class="tk-empty-note">No panels yet, create one below.</p>}
+
+    <div class="tk-panel-grid">
+      {panels.map((p) => (
+        <div class="tk-panel-card">
+          <form method="POST" class="tk-panel-form">
+            <input type="hidden" name="panel_id" value={p.id} />
+            <div class="tk-panel-head">
+              <input type="text" name="title" value={p.title ?? ''} maxlength="100" placeholder="Panel title" class="tk-panel-title" />
+              <span class="tk-panel-chan">#{channelName(p.channelId)}</span>
+            </div>
+            <textarea name="description" rows="2" maxlength="500" placeholder="Panel description">{p.description ?? ''}</textarea>
+            <div class="tk-panel-row">
+              <select name="style">
+                <option value="button" selected={p.style === 'button'}>Buttons (max 5 types)</option>
+                <option value="select" selected={p.style === 'select'}>Dropdown (up to 25 types)</option>
+              </select>
+              <span class="tk-panel-cats">{p.categoryCount} type{p.categoryCount !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="tk-panel-actions">
+              <button type="submit" name="action" value="update_panel" class="btn btn-ghost btn-sm">Save</button>
+            </div>
+          </form>
+          <form method="POST" class="tk-panel-move">
+            <input type="hidden" name="panel_id" value={p.id} />
+            <select name="channel_id">
+              {textChannels.map((c) => <option value={c.id} selected={c.id === p.channelId}>#{c.name}</option>)}
+            </select>
+            <button type="submit" name="action" value="move_panel" class="btn btn-ghost btn-sm">Move</button>
+          </form>
+          <div class="tk-panel-actions">
+            <form method="POST"><input type="hidden" name="panel_id" value={p.id} /><button type="submit" name="action" value="resend_panel" class="btn btn-ghost btn-sm">Resend</button></form>
+            <form method="POST"><input type="hidden" name="panel_id" value={p.id} /><button type="submit" name="action" value="delete_panel" class="tk-cat-del" title="Delete this panel" formnovalidate><Icon name="ph:trash-fill" width="14" height="14" /></button></form>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <form method="POST" class="tk-add-form">
+      <input type="hidden" name="action" value="create_panel" />
+      <select name="channel_id" required>
+        <option value="" disabled selected>Channel</option>
+        {textChannels.map((c) => <option value={c.id}>#{c.name}</option>)}
+      </select>
+      <input type="text" name="title" placeholder="Title (optional)" maxlength="100" />
+      <input type="text" name="description" placeholder="Description (optional)" maxlength="500" />
+      <select name="style">
+        <option value="button">Buttons</option>
+        <option value="select">Dropdown</option>
+      </select>
+      <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />Create panel</button>
+    </form>
+  </div>
 
   <div class="tk-section">
     <h2><Icon name="ph:ticket-fill" width="15" height="15" />Support types</h2>
@@ -58,6 +152,14 @@ const { user, guildId, guildName, guildIcon, categories, roles, channelCategorie
             <button type="submit" name="action" value="delete" class="tk-cat-del" title="Delete this type" formnovalidate>
               <Icon name="ph:trash-fill" width="14" height="14" />
             </button>
+          </div>
+
+          <div class="tk-cat-row">
+            <label>Panel</label>
+            <select name="panel_id">
+              <option value="">None (not on any panel)</option>
+              {panels.map((p) => <option value={p.id} selected={p.id === cat.panelId}>{p.title || `#${channelName(p.channelId)}`}</option>)}
+            </select>
           </div>
 
           <div class="tk-cat-row">
@@ -129,11 +231,117 @@ const { user, guildId, guildName, guildIcon, categories, roles, channelCategorie
       <input type="hidden" name="action" value="create" />
       <input type="text" name="label" placeholder="e.g. Report a player" maxlength="40" required />
       <input type="text" name="emoji" placeholder="🎫" maxlength="4" class="tk-emoji-input" />
+      <select name="panel_id">
+        <option value="">No panel yet</option>
+        {panels.map((p) => <option value={p.id}>{p.title || `#${channelName(p.channelId)}`}</option>)}
+      </select>
       <select name="parent_channel_id">
         <option value="">Server default category</option>
         {channelCategories.map((c) => <option value={c.id}>{c.name}</option>)}
       </select>
       <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />Add</button>
+    </form>
+  </div>
+
+  <div class="tk-section">
+    <h2><Icon name="ph:gear-six-fill" width="15" height="15" />Settings</h2>
+    <form method="POST" class="tk-settings-form">
+      <input type="hidden" name="action" value="save_settings" />
+
+      <div class="tk-settings-grid">
+        <div class="tk-set-card">
+          <div class="tk-set-head">Claiming</div>
+          <div class="tk-cat-row">
+            <label>Claim mode</label>
+            <select name="claim_mode">
+              <option value="shared" selected={settings.claimMode === 'shared'}>Shared — any staff can still act on a claimed ticket</option>
+              <option value="exclusive" selected={settings.claimMode === 'exclusive'}>Exclusive — only the claimer (or an admin) can act on it</option>
+            </select>
+          </div>
+          <label class="tk-check"><input type="checkbox" name="ping_on_claim" checked={settings.pingOnClaim} />Ping the ticket opener when claimed</label>
+          <div class="tk-cat-row" data-filterable>
+            <label>Roles to add on claim</label>
+            <input type="text" class="dgl-filter-input" placeholder="Search roles..." data-filter-input />
+            <div class="tk-role-list" data-filter-list>
+              {roles.map((r) => <label class="tk-role-item"><input type="checkbox" name="roles_to_add_on_claim" value={r.id} checked={settings.rolesToAddOnClaim.includes(r.id)} />{r.name}</label>)}
+            </div>
+          </div>
+        </div>
+
+        <div class="tk-set-card">
+          <div class="tk-set-head">Closing</div>
+          <label class="tk-check"><input type="checkbox" name="close_requires_support_role" checked={settings.closeRequiresSupportRole} />Only support roles can close (not the opener)</label>
+          <label class="tk-check"><input type="checkbox" name="close_requires_reason" checked={settings.closeRequiresReason} />Require a reason to close</label>
+          <label class="tk-check"><input type="checkbox" name="hide_closing_user" checked={settings.hideClosingUser} />Hide who closed it from the opener</label>
+          <label class="tk-check"><input type="checkbox" name="dm_user_on_close" checked={settings.dmUserOnClose} />DM the opener with the transcript on close</label>
+          <div class="tk-cat-row">
+            <label>Default close reason</label>
+            <input type="text" name="default_close_reason" value={settings.defaultCloseReason} maxlength="300" placeholder="Used when no reason is given" />
+          </div>
+          <label class="tk-check"><input type="checkbox" name="log_staff_message_counts" checked={settings.logStaffMessageCounts} />Log staff reply counts in the closed-ticket log</label>
+        </div>
+
+        <div class="tk-set-card">
+          <div class="tk-set-head">Autoclose</div>
+          <label class="tk-check"><input type="checkbox" name="autoclose_leave" checked={settings.autocloseLeave} />Close a member's tickets when they leave</label>
+          <label class="tk-check"><input type="checkbox" name="autoclose_inactivity_enabled" checked={settings.autocloseInactivityEnabled} />Close tickets after a period of inactivity</label>
+          <div class="tk-cat-row">
+            <label>Inactivity period (hours)</label>
+            <input type="number" name="autoclose_inactivity_hours" value={settings.autocloseInactivityHours} min="1" max="720" />
+          </div>
+        </div>
+
+        <div class="tk-set-card">
+          <div class="tk-set-head">Ratings</div>
+          <label class="tk-check"><input type="checkbox" name="rating_enabled" checked={settings.ratingEnabled} />Let members rate a ticket after it closes</label>
+          <div class="tk-cat-row">
+            <label>Rating mode</label>
+            <select name="rating_mode">
+              <option value="rating_only" selected={settings.ratingMode === 'rating_only'}>Stars only</option>
+              <option value="rating_comment" selected={settings.ratingMode === 'rating_comment'}>Stars + optional comment</option>
+            </select>
+          </div>
+          <div class="tk-cat-row">
+            <label>Rating log channel</label>
+            <select name="rating_log_channel_id">
+              <option value="">None</option>
+              {textChannels.map((c) => <option value={c.id} selected={c.id === settings.ratingLogChannelId}>#{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div class="tk-set-card">
+          <div class="tk-set-head">Logging</div>
+          <div class="tk-cat-row">
+            <label>Opened tickets log channel</label>
+            <select name="opened_log_channel_id">
+              <option value="">None</option>
+              {textChannels.map((c) => <option value={c.id} selected={c.id === settings.openedLogChannelId}>#{c.name}</option>)}
+            </select>
+          </div>
+          <div class="tk-cat-row">
+            <label>Closed tickets log channel</label>
+            <select name="closed_log_channel_id">
+              <option value="">None</option>
+              {textChannels.map((c) => <option value={c.id} selected={c.id === settings.closedLogChannelId}>#{c.name}</option>)}
+            </select>
+          </div>
+          <p class="tk-row-hint">Separate from <code>/logs add tickets</code>, which still works alongside these.</p>
+        </div>
+
+        <div class="tk-set-card">
+          <div class="tk-set-head">Blocked roles</div>
+          <p class="tk-row-hint">Can't open new tickets. Doesn't affect tickets they already have.</p>
+          <div class="tk-cat-row" data-filterable>
+            <input type="text" class="dgl-filter-input" placeholder="Search roles..." data-filter-input />
+            <div class="tk-role-list" data-filter-list>
+              {roles.map((r) => <label class="tk-role-item"><input type="checkbox" name="blocked_role_ids" value={r.id} checked={settings.blockedRoleIds.includes(r.id)} />{r.name}</label>)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-accent btn-sm">Save settings</button>
     </form>
   </div>
 
@@ -210,4 +418,29 @@ const { user, guildId, guildName, guildIcon, categories, roles, channelCategorie
   .tk-open-claimed { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--green); }
   .tk-open-link { margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--accent); text-decoration: none; font-size: 12.5px; }
   .tk-open-link:hover { text-decoration: underline; }
+
+  .tk-section-note { font-size: 12.5px; color: var(--text-dim); margin: -6px 0 14px; max-width: 62ch; }
+
+  .tk-panel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .tk-panel-card { border: 1px solid var(--border); border-radius: 13px; padding: 14px; background: var(--card); display: flex; flex-direction: column; gap: 10px; }
+  .tk-panel-form { display: flex; flex-direction: column; gap: 8px; }
+  .tk-panel-head { display: flex; align-items: center; gap: 8px; }
+  .tk-panel-title { flex: 1; border: 1px solid var(--border); background: var(--bg-raise); font-size: 13.5px; font-weight: 600; color: var(--text); padding: 6px 8px; border-radius: 7px; font-family: var(--sans); }
+  .tk-panel-chan { font-family: var(--mono); font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+  .tk-panel-form textarea { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 12.5px; resize: vertical; }
+  .tk-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .tk-panel-row select { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 12.5px; }
+  .tk-panel-cats { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+  .tk-panel-actions { display: flex; align-items: center; gap: 8px; }
+  .tk-panel-move { display: flex; gap: 8px; }
+  .tk-panel-move select { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 12.5px; }
+
+  .tk-settings-form { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+  .tk-settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; width: 100%; }
+  .tk-set-card { border: 1px solid var(--border); border-radius: 13px; padding: 15px; background: var(--card); display: flex; flex-direction: column; gap: 11px; }
+  .tk-set-head { font-size: 13px; font-weight: 600; color: var(--text); }
+  .tk-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); }
+  .tk-check input { flex-shrink: 0; accent-color: var(--accent); }
+  .tk-row-hint { font-size: 11.5px; color: var(--text-dim); margin: 0; line-height: 1.5; }
+  .tk-row-hint code { font-family: var(--mono); color: var(--accent); }
 </style>

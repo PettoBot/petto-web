@@ -4,6 +4,8 @@ import DashTickets from '../../../../components/DashTickets.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { buildPanelPayload, postOrRefreshPanelMessage, deletePanelMessage } from '../../../../utils/ticketPanel';
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -37,16 +39,19 @@ if (Astro.request.method === 'POST') {
     const label = String(form.get('label') ?? '').trim().slice(0, 40);
     const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4) || null;
     const parentChannelId = String(form.get('parent_channel_id') ?? '').trim() || null;
+    const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
     if (label) {
       const key = `${normalizeKey(label)}-${Date.now().toString(36)}`;
       const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories`, {
         method: 'POST',
         headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-        body: JSON.stringify({ guild_id: id, key, label, emoji, parent_channel_id: parentChannelId }),
+        body: JSON.stringify({ guild_id: id, key, label, emoji, parent_channel_id: parentChannelId, panel_id: panelId }),
       });
-      if (res.ok) saved = true;
-      else error = "Couldn't add that ticket type, try again.";
+      if (res.ok) {
+        saved = true;
+        if (panelId) await refreshPanelById(panelId);
+      } else error = "Couldn't add that ticket type, try again.";
     }
   } else if (action === 'update') {
     const categoryId = encodeURIComponent(String(form.get('category_id') ?? ''));
@@ -59,6 +64,7 @@ if (Astro.request.method === 'POST') {
     const supportRoleIds = form.getAll('support_role_ids').map(String);
     const pingRoleIds = form.getAll('ping_role_ids').map(String);
     const maxOpenPerUser = Math.max(1, Math.min(10, Number(form.get('max_open_per_user') ?? 1) || 1));
+    const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
     const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
       method: 'PATCH',
@@ -66,11 +72,13 @@ if (Astro.request.method === 'POST') {
       body: JSON.stringify({
         label, emoji, description, button_style: buttonStyle, naming_pattern: namingPattern, parent_channel_id: parentChannelId,
         support_role_ids: supportRoleIds, ping_role_ids: pingRoleIds,
-        max_open_per_user: maxOpenPerUser,
+        max_open_per_user: maxOpenPerUser, panel_id: panelId,
       }),
     });
-    if (res.ok) saved = true;
-    else error = "Couldn't save that ticket type, try again.";
+    if (res.ok) {
+      saved = true;
+      if (panelId) await refreshPanelById(panelId);
+    } else error = "Couldn't save that ticket type, try again.";
   } else if (action === 'delete') {
     const categoryId = encodeURIComponent(String(form.get('category_id') ?? ''));
     const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
@@ -79,21 +87,158 @@ if (Astro.request.method === 'POST') {
     });
     if (res.ok) saved = true;
     else error = "Couldn't delete that ticket type, try again.";
+  } else if (action === 'create_panel') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const title = String(form.get('title') ?? '').trim().slice(0, 100) || null;
+    const description = String(form.get('description') ?? '').trim().slice(0, 500) || null;
+    const style = form.get('style') === 'select' ? 'select' : 'button';
+
+    if (channelId) {
+      const createRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, title, description, style }),
+      });
+      if (createRes.ok) {
+        const [panel] = await createRes.json();
+        const messageId = await postOrRefreshPanelMessage(botToken, channelId, null, buildPanelPayload({ title, description }, style, []));
+        if (messageId) {
+          await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panel.id}`, {
+            method: 'PATCH',
+            headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+            body: JSON.stringify({ message_id: messageId }),
+          });
+          saved = true;
+        } else {
+          error = 'Panel created, but I could not post it, check my permissions in that channel.';
+        }
+      } else {
+        error = "Couldn't create the panel, try again.";
+      }
+    }
+  } else if (action === 'update_panel') {
+    const panelId = String(form.get('panel_id') ?? '').trim();
+    const title = String(form.get('title') ?? '').trim().slice(0, 100) || null;
+    const description = String(form.get('description') ?? '').trim().slice(0, 500) || null;
+    const style = form.get('style') === 'select' ? 'select' : 'button';
+
+    await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({ title, description, style }),
+    });
+    const ok = await refreshPanelById(panelId);
+    saved = ok;
+    if (!ok) error = "Panel saved, but I couldn't update the posted message, check my permissions.";
+  } else if (action === 'move_panel') {
+    const panelId = String(form.get('panel_id') ?? '').trim();
+    const newChannelId = String(form.get('channel_id') ?? '').trim();
+    if (panelId && newChannelId) {
+      const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+      const [panel] = panelRes.ok ? await panelRes.json() : [];
+      if (panel) {
+        await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, {
+          method: 'PATCH',
+          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({ channel_id: newChannelId, message_id: null }),
+        });
+        const categoriesRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: supabaseHeaders });
+        const cats = categoriesRes.ok ? await categoriesRes.json() : [];
+        const messageId = await postOrRefreshPanelMessage(botToken, newChannelId, null, buildPanelPayload(panel, panel.style, cats));
+        if (messageId) {
+          await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, {
+            method: 'PATCH',
+            headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+            body: JSON.stringify({ message_id: messageId }),
+          });
+          saved = true;
+        } else {
+          error = 'Panel moved, but I could not post it there, check my permissions in that channel.';
+        }
+      }
+    }
+  } else if (action === 'resend_panel') {
+    const panelId = String(form.get('panel_id') ?? '').trim();
+    const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+    const [panel] = panelRes.ok ? await panelRes.json() : [];
+    if (panel) {
+      await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+      await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: null }) });
+      const ok = await refreshPanelById(panelId);
+      saved = ok;
+      if (!ok) error = "Couldn't resend the panel, check my permissions in that channel.";
+    }
+  } else if (action === 'delete_panel') {
+    const panelId = String(form.get('panel_id') ?? '').trim();
+    const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+    const [panel] = panelRes.ok ? await panelRes.json() : [];
+    if (panel) await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+    await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'save_settings') {
+    const roleIds = (name: string) => form.getAll(name).map(String);
+    const clampHours = Math.max(1, Math.min(720, Number(form.get('autoclose_inactivity_hours') ?? 168) || 168));
+    await fetch(`${supabaseUrl}/rest/v1/ticket_settings`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        claim_mode: form.get('claim_mode') === 'exclusive' ? 'exclusive' : 'shared',
+        ping_on_claim: form.get('ping_on_claim') === 'on',
+        roles_to_add_on_claim: roleIds('roles_to_add_on_claim'),
+        close_requires_support_role: form.get('close_requires_support_role') === 'on',
+        close_requires_reason: form.get('close_requires_reason') === 'on',
+        hide_closing_user: form.get('hide_closing_user') === 'on',
+        dm_user_on_close: form.get('dm_user_on_close') === 'on',
+        default_close_reason: String(form.get('default_close_reason') ?? '').trim().slice(0, 300) || null,
+        log_staff_message_counts: form.get('log_staff_message_counts') === 'on',
+        autoclose_leave: form.get('autoclose_leave') === 'on',
+        autoclose_inactivity_enabled: form.get('autoclose_inactivity_enabled') === 'on',
+        autoclose_inactivity_hours: clampHours,
+        rating_enabled: form.get('rating_enabled') === 'on',
+        rating_mode: form.get('rating_mode') === 'rating_comment' ? 'rating_comment' : 'rating_only',
+        rating_log_channel_id: String(form.get('rating_log_channel_id') ?? '').trim() || null,
+        opened_log_channel_id: String(form.get('opened_log_channel_id') ?? '').trim() || null,
+        closed_log_channel_id: String(form.get('closed_log_channel_id') ?? '').trim() || null,
+        blocked_role_ids: roleIds('blocked_role_ids'),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
   }
 }
 
-const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes] = await Promise.all([
-  getGuildInfo(id, botToken),
-  fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: supabaseHeaders }),
-  fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
-  fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-]);
+/** Re-renders a panel's live message from its current title/description/style/categories — used after any change that could affect what's shown (category add/edit tied to this panel, panel edit, resend). */
+async function refreshPanelById(panelId: string): Promise<boolean> {
+  const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+  const [panel] = panelRes.ok ? await panelRes.json() : [];
+  if (!panel) return false;
+  const categoriesRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: supabaseHeaders });
+  const cats = categoriesRes.ok ? await categoriesRes.json() : [];
+  const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats));
+  if (!messageId) return false;
+  if (messageId !== panel.message_id) {
+    await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
+  }
+  return true;
+}
+
+const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: supabaseHeaders }),
+  () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  () => fetch(`${supabaseUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const rawCategories = categoriesRes.ok ? await categoriesRes.json() : [];
 const categories = rawCategories.map((c: any) => ({
   id: c.id,
+  panelId: c.panel_id,
+  key: c.key,
   label: c.label,
   emoji: c.emoji,
   description: c.description,
@@ -126,6 +271,44 @@ const channelCategories = allChannels
   .filter((c: any) => c.type === 4)
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
+const textChannels = allChannels
+  .filter((c: any) => c.type === 0 || c.type === 5)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+
+const rawPanels = panelsRes.ok ? await panelsRes.json() : [];
+const panels = rawPanels.map((p: any) => ({
+  id: p.id,
+  channelId: p.channel_id,
+  messageId: p.message_id,
+  title: p.title,
+  description: p.description,
+  style: p.style ?? 'button',
+  categoryCount: categories.filter((c: any) => c.panelId === p.id).length,
+}));
+
+const settingsRows = settingsRes.ok ? await settingsRes.json() : [];
+const s = settingsRows[0] ?? {};
+const settings = {
+  claimMode: s.claim_mode ?? 'shared',
+  pingOnClaim: s.ping_on_claim ?? false,
+  rolesToAddOnClaim: s.roles_to_add_on_claim ?? [],
+  closeRequiresSupportRole: s.close_requires_support_role ?? false,
+  closeRequiresReason: s.close_requires_reason ?? false,
+  hideClosingUser: s.hide_closing_user ?? false,
+  dmUserOnClose: s.dm_user_on_close ?? true,
+  defaultCloseReason: s.default_close_reason ?? '',
+  logStaffMessageCounts: s.log_staff_message_counts ?? false,
+  autocloseLeave: s.autoclose_leave ?? false,
+  autocloseInactivityEnabled: s.autoclose_inactivity_enabled ?? false,
+  autocloseInactivityHours: s.autoclose_inactivity_hours ?? 168,
+  ratingEnabled: s.rating_enabled ?? false,
+  ratingMode: s.rating_mode ?? 'rating_only',
+  ratingLogChannelId: s.rating_log_channel_id ?? '',
+  openedLogChannelId: s.opened_log_channel_id ?? '',
+  closedLogChannelId: s.closed_log_channel_id ?? '',
+  blockedRoleIds: s.blocked_role_ids ?? [],
+};
 ---
 <DashTickets
   user={session}
@@ -133,8 +316,11 @@ const channelCategories = allChannels
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
   categories={categories}
+  panels={panels}
+  settings={settings}
   roles={roles}
   channelCategories={channelCategories}
+  textChannels={textChannels}
   openTickets={openTickets}
   saved={saved}
   error={error}
