@@ -30,6 +30,15 @@ interface Activity {
   topReactionChannels: TopChannel[];
 }
 
+interface ModPoint { label: string; bans: number; other: number; }
+interface Moderation {
+  hasData: boolean;
+  points: ModPoint[];
+  totals: { bans: number; other: number };
+  totalActions: number;
+  deltaPct: number | null;
+}
+
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string;
@@ -38,8 +47,9 @@ interface Props {
   stats: Stat[];
   modules: Module[];
   activity: Activity;
+  moderation: Moderation;
 }
-const { user, guildId, guildName, guildIcon, stats, modules, activity } = Astro.props;
+const { user, guildId, guildName, guildIcon, stats, modules, activity, moderation } = Astro.props;
 
 const CHART_W = 760;
 const CHART_H = 180;
@@ -63,6 +73,26 @@ const messagesSparkPath = sparkPath(activity.messagesSpark);
 const reactionsSparkPath = sparkPath(activity.reactionsSpark);
 const voiceSparkPath = sparkPath(activity.voiceSpark);
 
+// Catmull-Rom → cubic Bezier, gives the line a gentle curve through every point instead of
+// straight segments, without ever overshooting past a point's own value (unlike a spline fit).
+function smoothPath(pts: { x: number; y: number }[]) {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`;
+  let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 function pointsFor(key: 'messages' | 'reactions') {
   const n = activity.points.length;
   return activity.points.map((p, i) => {
@@ -73,22 +103,21 @@ function pointsFor(key: 'messages' | 'reactions') {
 }
 
 function pathFor(key: 'messages' | 'reactions') {
-  const pts = pointsFor(key);
-  if (pts.length < 2) return '';
-  return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  return smoothPath(pointsFor(key));
 }
 function areaFor(key: 'messages' | 'reactions') {
   const pts = pointsFor(key);
   if (pts.length < 2) return '';
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  return `${line} L${pts[pts.length - 1].x.toFixed(1)},${CHART_H} L${pts[0].x.toFixed(1)},${CHART_H} Z`;
+  return `${smoothPath(pts)} L${pts[pts.length - 1].x.toFixed(1)},${CHART_H} L${pts[0].x.toFixed(1)},${CHART_H} Z`;
 }
 const messagesPath = pathFor('messages');
 const reactionsPath = pathFor('reactions');
 const messagesArea = areaFor('messages');
 const reactionsArea = areaFor('reactions');
-const messagesDot = singlePoint ? pointsFor('messages')[0] : null;
-const reactionsDot = singlePoint ? pointsFor('reactions')[0] : null;
+const messagesPts = pointsFor('messages');
+const reactionsPts = pointsFor('reactions');
+const messagesDot = singlePoint ? messagesPts[0] : null;
+const reactionsDot = singlePoint ? reactionsPts[0] : null;
 
 function formatLabel(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -107,6 +136,46 @@ const axisLabels =
     : [];
 
 const yTicks = [1, 0.75, 0.5, 0.25, 0].map((f) => Math.round(maxVal * f));
+
+// ── Moderation chart: same geometry approach as the activity chart above, own scale ──
+const modMaxVal = Math.max(1, ...moderation.points.map((p) => Math.max(p.bans, p.other)));
+const modSinglePoint = moderation.points.length === 1;
+function modPointsFor(key: 'bans' | 'other') {
+  const n = moderation.points.length;
+  return moderation.points.map((p, i) => {
+    const x = n === 1 ? CHART_W / 2 : (i / (n - 1)) * CHART_W;
+    const y = CHART_H - (p[key] / modMaxVal) * (CHART_H - 10) - 5;
+    return { x, y };
+  });
+}
+function modPathFor(key: 'bans' | 'other') {
+  return smoothPath(modPointsFor(key));
+}
+function modAreaFor(key: 'bans' | 'other') {
+  const pts = modPointsFor(key);
+  if (pts.length < 2) return '';
+  return `${smoothPath(pts)} L${pts[pts.length - 1].x.toFixed(1)},${CHART_H} L${pts[0].x.toFixed(1)},${CHART_H} Z`;
+}
+const bansPath = modPathFor('bans');
+const otherPath = modPathFor('other');
+const bansArea = modAreaFor('bans');
+const otherArea = modAreaFor('other');
+const bansPts = modPointsFor('bans');
+const otherPts = modPointsFor('other');
+const bansDot = modSinglePoint ? bansPts[0] : null;
+const otherDot = modSinglePoint ? otherPts[0] : null;
+
+const modHoverPoints = moderation.points.map((p) => ({ bans: p.bans, other: p.other, displayLabel: formatLabel(p.label) }));
+const modN = moderation.points.length;
+const modAxisLabelCount = Math.min(AXIS_LABEL_COUNT, modN);
+const modAxisLabels =
+  modAxisLabelCount > 1
+    ? [...new Set(Array.from({ length: modAxisLabelCount }, (_, i) => Math.round((i * (modN - 1)) / (modAxisLabelCount - 1))))].map((i) => ({
+        pct: (i / (modN - 1)) * 100,
+        text: formatLabel(moderation.points[i].label),
+      }))
+    : [];
+const modYTicks = [1, 0.75, 0.5, 0.25, 0].map((f) => Math.round(modMaxVal * f));
 
 const totalEngagement = activity.totalMessages + activity.totalReactions;
 const prevEngagement =
@@ -171,6 +240,8 @@ function fmtDelta(pct: number | null) {
               <path d={reactionsArea} fill="url(#dgo-grad-reactions)" stroke="none" />
               <path d={messagesPath} class="dgo-line dgo-line-messages" />
               <path d={reactionsPath} class="dgo-line dgo-line-reactions" />
+              {messagesPts.map((p) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-messages" />)}
+              {reactionsPts.map((p) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-reactions" />)}
             </svg>
             <div id="dgo-hover-guide" class="dgo-hover-guide"></div>
             <div id="dgo-hover-dot-messages" class="dgo-hdot dgo-hdot-messages"></div>
@@ -204,6 +275,132 @@ function fmtDelta(pct: number | null) {
           <span><i class="dgo-dot dgo-dot-reactions"></i>Reactions</span>
         </div>
       </div>
+
+      {moderation.hasData && (
+        <div class="dgo-chart-card">
+          <div class="dgo-chart-head">
+            <div class="dgo-chart-eyebrow">Moderation actions</div>
+            <div class="dgo-chart-big">{moderation.totalActions.toLocaleString()}</div>
+            {fmtDelta(moderation.deltaPct) && <div class:list={['dgo-metric-delta', { down: (moderation.deltaPct ?? 0) < 0 }]}>{fmtDelta(moderation.deltaPct)} vs previous period</div>}
+          </div>
+          <div class="dgo-chart-row">
+            <div class="dgo-chart-axis">
+              {modYTicks.map((v) => <span>{v.toLocaleString()}</span>)}
+            </div>
+            <div class="dgo-chart-wrap" id="dgo-mod-chart-wrap">
+              <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} preserveAspectRatio="none" class="dgo-chart" id="dgo-mod-chart-svg">
+                <defs>
+                  <linearGradient id="dgo-grad-bans" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--red)" stop-opacity="0.32" />
+                    <stop offset="100%" stop-color="var(--red)" stop-opacity="0" />
+                  </linearGradient>
+                  <linearGradient id="dgo-grad-other" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                {[0.25, 0.5, 0.75].map((f) => <line x1="0" x2={CHART_W} y1={CHART_H * f} y2={CHART_H * f} class="dgo-gridline" />)}
+                <path d={bansArea} fill="url(#dgo-grad-bans)" stroke="none" />
+                <path d={otherArea} fill="url(#dgo-grad-other)" stroke="none" />
+                <path d={bansPath} class="dgo-line dgo-line-bans" />
+                <path d={otherPath} class="dgo-line dgo-line-other" />
+                {bansPts.map((p) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-bans" />)}
+                {otherPts.map((p) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-other" />)}
+              </svg>
+              <div id="dgo-mod-hover-guide" class="dgo-hover-guide"></div>
+              <div id="dgo-mod-hover-dot-bans" class="dgo-hdot dgo-hdot-bans"></div>
+              <div id="dgo-mod-hover-dot-other" class="dgo-hdot dgo-hdot-other"></div>
+              {bansDot && <div class="dgo-hdot dgo-hdot-bans" style={`left:${(bansDot.x / CHART_W) * 100}%;top:${(bansDot.y / CHART_H) * 100}%`} />}
+              {otherDot && <div class="dgo-hdot dgo-hdot-other" style={`left:${(otherDot.x / CHART_W) * 100}%;top:${(otherDot.y / CHART_H) * 100}%`} />}
+              {!modSinglePoint && (
+                <div class="dgo-tooltip" id="dgo-mod-tooltip">
+                  <div class="dgo-tt-date" id="dgo-mod-tt-date"></div>
+                  <div class="dgo-tt-row"><i class="dgo-dot dgo-dot-bans"></i><span id="dgo-mod-tt-bans"></span> bans</div>
+                  <div class="dgo-tt-row"><i class="dgo-dot dgo-dot-other"></i><span id="dgo-mod-tt-other"></span> other actions</div>
+                </div>
+              )}
+            </div>
+          </div>
+          {!modSinglePoint && (
+            <div class="dgo-chart-dates">
+              {modAxisLabels.map((l, i) => (
+                <span
+                  class:list={{ first: i === 0, last: i === modAxisLabels.length - 1 }}
+                  style={i > 0 && i < modAxisLabels.length - 1 ? `left:${l.pct}%` : undefined}
+                >
+                  {l.text}
+                </span>
+              ))}
+            </div>
+          )}
+          {modSinglePoint && <p class="dgo-chart-note">Just one day tracked so far, the line fills in as more days come in.</p>}
+          <div class="dgo-legend">
+            <span><i class="dgo-dot dgo-dot-bans"></i>Bans</span>
+            <span><i class="dgo-dot dgo-dot-other"></i>Other actions (kicks, mutes, warns)</span>
+          </div>
+        </div>
+      )}
+
+      {moderation.hasData && !modSinglePoint && (
+        <script is:inline define:vars={{ points: modHoverPoints, chartW: CHART_W, chartH: CHART_H }}>
+          (function () {
+            const wrap = document.getElementById('dgo-mod-chart-wrap');
+            const svg = document.getElementById('dgo-mod-chart-svg');
+            const guide = document.getElementById('dgo-mod-hover-guide');
+            const dotBans = document.getElementById('dgo-mod-hover-dot-bans');
+            const dotOther = document.getElementById('dgo-mod-hover-dot-other');
+            const tooltip = document.getElementById('dgo-mod-tooltip');
+            const ttDate = document.getElementById('dgo-mod-tt-date');
+            const ttBans = document.getElementById('dgo-mod-tt-bans');
+            const ttOther = document.getElementById('dgo-mod-tt-other');
+            if (!wrap || !svg || !guide || points.length < 2) return;
+
+            const maxVal = Math.max(1, ...points.map((p) => Math.max(p.bans, p.other)));
+            const n = points.length;
+            const yFor = (v) => chartH - (v / maxVal) * (chartH - 10) - 5;
+            const xFor = (i) => (i / (n - 1)) * chartW;
+
+            function show(e) {
+              const wrapRect = wrap.getBoundingClientRect();
+              const relX = ((e.clientX - wrapRect.left) / wrapRect.width) * chartW;
+              let idx = Math.round((relX / chartW) * (n - 1));
+              idx = Math.max(0, Math.min(n - 1, idx));
+              const p = points[idx];
+              const xPct = (xFor(idx) / chartW) * 100;
+              const yBansPct = (yFor(p.bans) / chartH) * 100;
+              const yOtherPct = (yFor(p.other) / chartH) * 100;
+
+              guide.style.left = `${xPct}%`;
+              guide.style.opacity = '1';
+              dotBans.style.left = `${xPct}%`;
+              dotBans.style.top = `${yBansPct}%`;
+              dotBans.style.opacity = '1';
+              dotOther.style.left = `${xPct}%`;
+              dotOther.style.top = `${yOtherPct}%`;
+              dotOther.style.opacity = '1';
+
+              if (tooltip) {
+                ttDate.textContent = p.displayLabel;
+                ttBans.textContent = p.bans.toLocaleString();
+                ttOther.textContent = p.other.toLocaleString();
+                const pxX = (xFor(idx) / chartW) * wrapRect.width;
+                let left = pxX + 14;
+                if (left + 150 > wrapRect.width) left = pxX - 164;
+                tooltip.style.left = `${left}px`;
+                tooltip.style.opacity = '1';
+              }
+            }
+            function hide() {
+              guide.style.opacity = '0';
+              dotBans.style.opacity = '0';
+              dotOther.style.opacity = '0';
+              if (tooltip) tooltip.style.opacity = '0';
+            }
+            svg.addEventListener('pointermove', show);
+            svg.addEventListener('pointerleave', hide);
+          })();
+        </script>
+      )}
 
       {!singlePoint && (
         <script is:inline define:vars={{ points: hoverPoints, chartW: CHART_W, chartH: CHART_H }}>
@@ -388,10 +585,19 @@ function fmtDelta(pct: number | null) {
   .dgo-line { fill: none; stroke-width: 2; }
   .dgo-line-messages { stroke: var(--accent); }
   .dgo-line-reactions { stroke: #f78fb3; }
+  .dgo-marker { stroke: var(--card); stroke-width: 1.5; }
+  .dgo-marker-messages { fill: var(--accent); }
+  .dgo-marker-reactions { fill: #f78fb3; }
+  .dgo-line-bans { stroke: var(--red); }
+  .dgo-line-other { stroke: var(--accent); }
+  .dgo-marker-bans { fill: var(--red); }
+  .dgo-marker-other { fill: var(--accent); }
   .dgo-hdot { position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 2px solid var(--card); }
   .dgo-hdot-messages { background: var(--accent); }
   .dgo-hdot-reactions { background: #f78fb3; }
-  #dgo-hover-dot-messages, #dgo-hover-dot-reactions { left: 0; top: 0; opacity: 0; transition: opacity 0.08s; }
+  .dgo-hdot-bans { background: var(--red); }
+  .dgo-hdot-other { background: var(--accent); }
+  #dgo-hover-dot-messages, #dgo-hover-dot-reactions, #dgo-mod-hover-dot-bans, #dgo-mod-hover-dot-other { left: 0; top: 0; opacity: 0; transition: opacity 0.08s; }
   .dgo-hover-guide { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-left: 1px dashed var(--border); opacity: 0; transition: opacity 0.08s; pointer-events: none; }
   .dgo-chart-dates { position: relative; height: 16px; font-size: 11px; color: var(--text-dim); margin: 6px 0 0 52px; }
   .dgo-chart-dates span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
@@ -407,6 +613,8 @@ function fmtDelta(pct: number | null) {
   .dgo-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .dgo-dot-messages { background: var(--accent); }
   .dgo-dot-reactions { background: #f78fb3; }
+  .dgo-dot-bans { background: var(--red); }
+  .dgo-dot-other { background: var(--accent); }
 
   .dgo-metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 30px; }
   .dgo-metric { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--card); overflow: hidden; }
