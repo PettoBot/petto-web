@@ -30,6 +30,15 @@ interface Activity {
   topReactionChannels: TopChannel[];
 }
 
+interface ModPoint { label: string; bans: number; other: number; }
+interface Moderation {
+  hasData: boolean;
+  points: ModPoint[];
+  totals: { bans: number; other: number };
+  totalActions: number;
+  deltaPct: number | null;
+}
+
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string;
@@ -38,8 +47,9 @@ interface Props {
   stats: Stat[];
   modules: Module[];
   activity: Activity;
+  moderation: Moderation;
 }
-const { user, guildId, guildName, guildIcon, stats, modules, activity } = Astro.props;
+const { user, guildId, guildName, guildIcon, stats, modules, activity, moderation } = Astro.props;
 
 const CHART_W = 760;
 const CHART_H = 180;
@@ -63,6 +73,32 @@ const messagesSparkPath = sparkPath(activity.messagesSpark);
 const reactionsSparkPath = sparkPath(activity.reactionsSpark);
 const voiceSparkPath = sparkPath(activity.voiceSpark);
 
+// Catmull-Rom → cubic Bezier, gives the line a gentle curve through every point instead of
+// straight segments. Control points are clamped to each segment's own [min,max] y-range, so a
+// sharp spike in the data (small counts jumping 1→6→1) can never make the curve overshoot past
+// its own endpoints — a plain Catmull-Rom does exactly that and produces wild, off-chart shapes.
+function smoothPath(pts: { x: number; y: number }[]) {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`;
+  let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+    let c1x = p1.x + (p2.x - p0.x) / 6;
+    let c1y = p1.y + (p2.y - p0.y) / 6;
+    let c2x = p2.x - (p3.x - p1.x) / 6;
+    let c2y = p2.y - (p3.y - p1.y) / 6;
+    const yLo = Math.min(p1.y, p2.y);
+    const yHi = Math.max(p1.y, p2.y);
+    c1y = Math.max(yLo, Math.min(yHi, c1y));
+    c2y = Math.max(yLo, Math.min(yHi, c2y));
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 function pointsFor(key: 'messages' | 'reactions') {
   const n = activity.points.length;
   return activity.points.map((p, i) => {
@@ -73,29 +109,30 @@ function pointsFor(key: 'messages' | 'reactions') {
 }
 
 function pathFor(key: 'messages' | 'reactions') {
-  const pts = pointsFor(key);
-  if (pts.length < 2) return '';
-  return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  return smoothPath(pointsFor(key));
 }
 function areaFor(key: 'messages' | 'reactions') {
   const pts = pointsFor(key);
   if (pts.length < 2) return '';
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  return `${line} L${pts[pts.length - 1].x.toFixed(1)},${CHART_H} L${pts[0].x.toFixed(1)},${CHART_H} Z`;
+  return `${smoothPath(pts)} L${pts[pts.length - 1].x.toFixed(1)},${CHART_H} L${pts[0].x.toFixed(1)},${CHART_H} Z`;
 }
 const messagesPath = pathFor('messages');
 const reactionsPath = pathFor('reactions');
 const messagesArea = areaFor('messages');
 const reactionsArea = areaFor('reactions');
-const messagesDot = singlePoint ? pointsFor('messages')[0] : null;
-const reactionsDot = singlePoint ? pointsFor('reactions')[0] : null;
+const messagesPts = pointsFor('messages');
+const reactionsPts = pointsFor('reactions');
+const messagesDot = singlePoint ? messagesPts[0] : null;
+const reactionsDot = singlePoint ? reactionsPts[0] : null;
 
 function formatLabel(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 const hoverPoints = activity.points.map((p) => ({ messages: p.messages, reactions: p.reactions, displayLabel: formatLabel(p.label) }));
 
-const AXIS_LABEL_COUNT = 6;
+// Show every date up to 20 points (week/month views), only thin them out past that (year view,
+// ~52 weekly buckets) where labeling every single one would just overlap into unreadable mush.
+const AXIS_LABEL_COUNT = 20;
 const n = activity.points.length;
 const axisLabelCount = Math.min(AXIS_LABEL_COUNT, n);
 const axisLabels =
@@ -107,6 +144,46 @@ const axisLabels =
     : [];
 
 const yTicks = [1, 0.75, 0.5, 0.25, 0].map((f) => Math.round(maxVal * f));
+
+// ── Moderation chart: same geometry approach as the activity chart above, own scale ──
+const modMaxVal = Math.max(1, ...moderation.points.map((p) => Math.max(p.bans, p.other)));
+const modSinglePoint = moderation.points.length === 1;
+function modPointsFor(key: 'bans' | 'other') {
+  const n = moderation.points.length;
+  return moderation.points.map((p, i) => {
+    const x = n === 1 ? CHART_W / 2 : (i / (n - 1)) * CHART_W;
+    const y = CHART_H - (p[key] / modMaxVal) * (CHART_H - 10) - 5;
+    return { x, y };
+  });
+}
+function modPathFor(key: 'bans' | 'other') {
+  return smoothPath(modPointsFor(key));
+}
+function modAreaFor(key: 'bans' | 'other') {
+  const pts = modPointsFor(key);
+  if (pts.length < 2) return '';
+  return `${smoothPath(pts)} L${pts[pts.length - 1].x.toFixed(1)},${CHART_H} L${pts[0].x.toFixed(1)},${CHART_H} Z`;
+}
+const bansPath = modPathFor('bans');
+const otherPath = modPathFor('other');
+const bansArea = modAreaFor('bans');
+const otherArea = modAreaFor('other');
+const bansPts = modPointsFor('bans');
+const otherPts = modPointsFor('other');
+const bansDot = modSinglePoint ? bansPts[0] : null;
+const otherDot = modSinglePoint ? otherPts[0] : null;
+
+const modHoverPoints = moderation.points.map((p) => ({ bans: p.bans, other: p.other, displayLabel: formatLabel(p.label) }));
+const modN = moderation.points.length;
+const modAxisLabelCount = Math.min(AXIS_LABEL_COUNT, modN);
+const modAxisLabels =
+  modAxisLabelCount > 1
+    ? [...new Set(Array.from({ length: modAxisLabelCount }, (_, i) => Math.round((i * (modN - 1)) / (modAxisLabelCount - 1))))].map((i) => ({
+        pct: (i / (modN - 1)) * 100,
+        text: formatLabel(moderation.points[i].label),
+      }))
+    : [];
+const modYTicks = [1, 0.75, 0.5, 0.25, 0].map((f) => Math.round(modMaxVal * f));
 
 const totalEngagement = activity.totalMessages + activity.totalReactions;
 const prevEngagement =
@@ -167,10 +244,12 @@ function fmtDelta(pct: number | null) {
                 </linearGradient>
               </defs>
               {[0.25, 0.5, 0.75].map((f) => <line x1="0" x2={CHART_W} y1={CHART_H * f} y2={CHART_H * f} class="dgo-gridline" />)}
-              <path d={messagesArea} fill="url(#dgo-grad-messages)" stroke="none" />
-              <path d={reactionsArea} fill="url(#dgo-grad-reactions)" stroke="none" />
-              <path d={messagesPath} class="dgo-line dgo-line-messages" />
-              <path d={reactionsPath} class="dgo-line dgo-line-reactions" />
+              <path d={messagesArea} fill="url(#dgo-grad-messages)" stroke="none" class="dgo-area" />
+              <path d={reactionsArea} fill="url(#dgo-grad-reactions)" stroke="none" class="dgo-area" />
+              <path d={messagesPath} pathLength="1" class="dgo-line dgo-line-messages" />
+              <path d={reactionsPath} pathLength="1" class="dgo-line dgo-line-reactions" style="animation-delay:0.15s" />
+              {messagesPts.map((p, i) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-messages" style={`animation-delay:${0.5 + i * 0.03}s`} />)}
+              {reactionsPts.map((p, i) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-reactions" style={`animation-delay:${0.55 + i * 0.03}s`} />)}
             </svg>
             <div id="dgo-hover-guide" class="dgo-hover-guide"></div>
             <div id="dgo-hover-dot-messages" class="dgo-hdot dgo-hdot-messages"></div>
@@ -204,6 +283,132 @@ function fmtDelta(pct: number | null) {
           <span><i class="dgo-dot dgo-dot-reactions"></i>Reactions</span>
         </div>
       </div>
+
+      {moderation.hasData && (
+        <div class="dgo-chart-card">
+          <div class="dgo-chart-head">
+            <div class="dgo-chart-eyebrow">Moderation actions</div>
+            <div class="dgo-chart-big">{moderation.totalActions.toLocaleString()}</div>
+            {fmtDelta(moderation.deltaPct) && <div class:list={['dgo-metric-delta', { down: (moderation.deltaPct ?? 0) < 0 }]}>{fmtDelta(moderation.deltaPct)} vs previous period</div>}
+          </div>
+          <div class="dgo-chart-row">
+            <div class="dgo-chart-axis">
+              {modYTicks.map((v) => <span>{v.toLocaleString()}</span>)}
+            </div>
+            <div class="dgo-chart-wrap" id="dgo-mod-chart-wrap">
+              <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} preserveAspectRatio="none" class="dgo-chart" id="dgo-mod-chart-svg">
+                <defs>
+                  <linearGradient id="dgo-grad-bans" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--red)" stop-opacity="0.32" />
+                    <stop offset="100%" stop-color="var(--red)" stop-opacity="0" />
+                  </linearGradient>
+                  <linearGradient id="dgo-grad-other" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                {[0.25, 0.5, 0.75].map((f) => <line x1="0" x2={CHART_W} y1={CHART_H * f} y2={CHART_H * f} class="dgo-gridline" />)}
+                <path d={bansArea} fill="url(#dgo-grad-bans)" stroke="none" class="dgo-area" />
+                <path d={otherArea} fill="url(#dgo-grad-other)" stroke="none" class="dgo-area" />
+                <path d={bansPath} pathLength="1" class="dgo-line dgo-line-bans" />
+                <path d={otherPath} pathLength="1" class="dgo-line dgo-line-other" style="animation-delay:0.15s" />
+                {bansPts.map((p, i) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-bans" style={`animation-delay:${0.5 + i * 0.03}s`} />)}
+                {otherPts.map((p, i) => <circle cx={p.x} cy={p.y} r="3" class="dgo-marker dgo-marker-other" style={`animation-delay:${0.55 + i * 0.03}s`} />)}
+              </svg>
+              <div id="dgo-mod-hover-guide" class="dgo-hover-guide"></div>
+              <div id="dgo-mod-hover-dot-bans" class="dgo-hdot dgo-hdot-bans"></div>
+              <div id="dgo-mod-hover-dot-other" class="dgo-hdot dgo-hdot-other"></div>
+              {bansDot && <div class="dgo-hdot dgo-hdot-bans" style={`left:${(bansDot.x / CHART_W) * 100}%;top:${(bansDot.y / CHART_H) * 100}%`} />}
+              {otherDot && <div class="dgo-hdot dgo-hdot-other" style={`left:${(otherDot.x / CHART_W) * 100}%;top:${(otherDot.y / CHART_H) * 100}%`} />}
+              {!modSinglePoint && (
+                <div class="dgo-tooltip" id="dgo-mod-tooltip">
+                  <div class="dgo-tt-date" id="dgo-mod-tt-date"></div>
+                  <div class="dgo-tt-row"><i class="dgo-dot dgo-dot-bans"></i><span id="dgo-mod-tt-bans"></span> bans</div>
+                  <div class="dgo-tt-row"><i class="dgo-dot dgo-dot-other"></i><span id="dgo-mod-tt-other"></span> other actions</div>
+                </div>
+              )}
+            </div>
+          </div>
+          {!modSinglePoint && (
+            <div class="dgo-chart-dates">
+              {modAxisLabels.map((l, i) => (
+                <span
+                  class:list={{ first: i === 0, last: i === modAxisLabels.length - 1 }}
+                  style={i > 0 && i < modAxisLabels.length - 1 ? `left:${l.pct}%` : undefined}
+                >
+                  {l.text}
+                </span>
+              ))}
+            </div>
+          )}
+          {modSinglePoint && <p class="dgo-chart-note">Just one day tracked so far, the line fills in as more days come in.</p>}
+          <div class="dgo-legend">
+            <span><i class="dgo-dot dgo-dot-bans"></i>Bans</span>
+            <span><i class="dgo-dot dgo-dot-other"></i>Other actions (kicks, mutes, warns)</span>
+          </div>
+        </div>
+      )}
+
+      {moderation.hasData && !modSinglePoint && (
+        <script is:inline define:vars={{ points: modHoverPoints, chartW: CHART_W, chartH: CHART_H }}>
+          (function () {
+            const wrap = document.getElementById('dgo-mod-chart-wrap');
+            const svg = document.getElementById('dgo-mod-chart-svg');
+            const guide = document.getElementById('dgo-mod-hover-guide');
+            const dotBans = document.getElementById('dgo-mod-hover-dot-bans');
+            const dotOther = document.getElementById('dgo-mod-hover-dot-other');
+            const tooltip = document.getElementById('dgo-mod-tooltip');
+            const ttDate = document.getElementById('dgo-mod-tt-date');
+            const ttBans = document.getElementById('dgo-mod-tt-bans');
+            const ttOther = document.getElementById('dgo-mod-tt-other');
+            if (!wrap || !svg || !guide || points.length < 2) return;
+
+            const maxVal = Math.max(1, ...points.map((p) => Math.max(p.bans, p.other)));
+            const n = points.length;
+            const yFor = (v) => chartH - (v / maxVal) * (chartH - 10) - 5;
+            const xFor = (i) => (i / (n - 1)) * chartW;
+
+            function show(e) {
+              const wrapRect = wrap.getBoundingClientRect();
+              const relX = ((e.clientX - wrapRect.left) / wrapRect.width) * chartW;
+              let idx = Math.round((relX / chartW) * (n - 1));
+              idx = Math.max(0, Math.min(n - 1, idx));
+              const p = points[idx];
+              const xPct = (xFor(idx) / chartW) * 100;
+              const yBansPct = (yFor(p.bans) / chartH) * 100;
+              const yOtherPct = (yFor(p.other) / chartH) * 100;
+
+              guide.style.left = `${xPct}%`;
+              guide.style.opacity = '1';
+              dotBans.style.left = `${xPct}%`;
+              dotBans.style.top = `${yBansPct}%`;
+              dotBans.style.opacity = '1';
+              dotOther.style.left = `${xPct}%`;
+              dotOther.style.top = `${yOtherPct}%`;
+              dotOther.style.opacity = '1';
+
+              if (tooltip) {
+                ttDate.textContent = p.displayLabel;
+                ttBans.textContent = p.bans.toLocaleString();
+                ttOther.textContent = p.other.toLocaleString();
+                const pxX = (xFor(idx) / chartW) * wrapRect.width;
+                let left = pxX + 14;
+                if (left + 150 > wrapRect.width) left = pxX - 164;
+                tooltip.style.left = `${left}px`;
+                tooltip.classList.add('show');
+              }
+            }
+            function hide() {
+              guide.style.opacity = '0';
+              dotBans.style.opacity = '0';
+              dotOther.style.opacity = '0';
+              if (tooltip) tooltip.classList.remove('show');
+            }
+            svg.addEventListener('pointermove', show);
+            svg.addEventListener('pointerleave', hide);
+          })();
+        </script>
+      )}
 
       {!singlePoint && (
         <script is:inline define:vars={{ points: hoverPoints, chartW: CHART_W, chartH: CHART_H }}>
@@ -251,14 +456,14 @@ function fmtDelta(pct: number | null) {
                 let left = pxX + 14;
                 if (left + 150 > wrapRect.width) left = pxX - 164;
                 tooltip.style.left = `${left}px`;
-                tooltip.style.opacity = '1';
+                tooltip.classList.add('show');
               }
             }
             function hide() {
               guide.style.opacity = '0';
               dotMsg.style.opacity = '0';
               dotReact.style.opacity = '0';
-              if (tooltip) tooltip.style.opacity = '0';
+              if (tooltip) tooltip.classList.remove('show');
             }
             svg.addEventListener('pointermove', show);
             svg.addEventListener('pointerleave', hide);
@@ -385,21 +590,45 @@ function fmtDelta(pct: number | null) {
   .dgo-chart-wrap { position: relative; flex: 1; min-width: 0; }
   .dgo-chart { width: 100%; height: 160px; display: block; cursor: crosshair; }
   .dgo-gridline { stroke: var(--border-soft); stroke-width: 1; }
-  .dgo-line { fill: none; stroke-width: 2; }
+  .dgo-line {
+    fill: none; stroke-width: 2; stroke-dasharray: 1; stroke-dashoffset: 1;
+    animation: dgo-draw 1s cubic-bezier(0.16,1,0.3,1) forwards;
+  }
+  @keyframes dgo-draw { to { stroke-dashoffset: 0; } }
+  .dgo-marker { opacity: 0; transform-box: fill-box; transform-origin: center; animation: dgo-marker-in 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+  @keyframes dgo-marker-in { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+  .dgo-chart-card { animation: dgo-card-in 0.3s cubic-bezier(0.16,1,0.3,1); }
+  @keyframes dgo-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .dgo-area { opacity: 0; animation: dgo-area-in 0.6s ease-out 0.3s forwards; }
+  @keyframes dgo-area-in { to { opacity: 1; } }
   .dgo-line-messages { stroke: var(--accent); }
   .dgo-line-reactions { stroke: #f78fb3; }
-  .dgo-hdot { position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 2px solid var(--card); }
+  .dgo-line-bans { stroke: var(--red); }
+  .dgo-line-other { stroke: var(--accent); }
+  .dgo-marker { stroke: var(--card); stroke-width: 1.5; }
+  .dgo-marker-messages { fill: var(--accent); }
+  .dgo-marker-reactions { fill: #f78fb3; }
+  .dgo-marker-bans { fill: var(--red); }
+  .dgo-marker-other { fill: var(--accent); }
+  .dgo-hdot { position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; border: 2px solid var(--card); transition: left 0.09s ease-out, top 0.09s ease-out, opacity 0.08s; }
   .dgo-hdot-messages { background: var(--accent); }
   .dgo-hdot-reactions { background: #f78fb3; }
-  #dgo-hover-dot-messages, #dgo-hover-dot-reactions { left: 0; top: 0; opacity: 0; transition: opacity 0.08s; }
-  .dgo-hover-guide { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-left: 1px dashed var(--border); opacity: 0; transition: opacity 0.08s; pointer-events: none; }
+  .dgo-hdot-bans { background: var(--red); }
+  .dgo-hdot-other { background: var(--accent); }
+  #dgo-hover-dot-messages, #dgo-hover-dot-reactions, #dgo-mod-hover-dot-bans, #dgo-mod-hover-dot-other { left: 0; top: 0; opacity: 0; transition: opacity 0.08s; }
+  .dgo-hover-guide { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-left: 1px dashed var(--border); opacity: 0; transition: opacity 0.08s, left 0.09s ease-out; pointer-events: none; }
   .dgo-chart-dates { position: relative; height: 16px; font-size: 11px; color: var(--text-dim); margin: 6px 0 0 52px; }
   .dgo-chart-dates span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
   .dgo-chart-dates span.first { left: 0 !important; transform: none; }
   .dgo-chart-dates span.last { left: auto !important; right: 0; transform: none; }
   .dgo-chart-note { font-size: 11.5px; color: var(--text-dim); margin: -4px 0 8px; }
 
-  .dgo-tooltip { position: absolute; top: 6px; opacity: 0; transition: opacity 0.08s; pointer-events: none; background: var(--bg-raise); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; min-width: 140px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .dgo-tooltip {
+    position: absolute; top: 6px; opacity: 0; transform: translateY(4px) scale(0.96); transform-origin: top left;
+    transition: opacity 0.14s ease-out, transform 0.14s ease-out, left 0.09s ease-out; pointer-events: none;
+    background: var(--bg-raise); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; min-width: 140px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .dgo-tooltip.show { opacity: 1; transform: none; }
   .dgo-tt-date { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
   .dgo-tt-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); margin-top: 3px; }
   .dgo-legend { display: flex; gap: 16px; margin-top: 10px; }
