@@ -22,6 +22,7 @@ let guild: any = null;
 let stats: any[] = [];
 let modules: any[] = [];
 let activity: any = null;
+let moderation: any = { hasData: false, points: [], totals: { bans: 0, other: 0 }, totalActions: 0, deltaPct: null };
 
 try {
 
@@ -59,7 +60,7 @@ const [
   channelsRes,
   guildsRes, automodRes, antinukeRes, levelRes, ticketCatRes,
   giveawayActiveRes, logEntriesRes, commandsRes, respondersRes, reportRes,
-  welcomeRes, verificationRes, activityRes,
+  welcomeRes, verificationRes, activityRes, modActionsRes,
 ] = await runBatched([
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id`, { headers: supabaseHeaders }),
@@ -75,6 +76,7 @@ const [
   () => fetch(`${supabaseUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=welcome_channel_id`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/activity_stats?guild_id=eq.${id}&day=gte.${isoDate(startPrevious)}&select=channel_id,day,messages,reactions,voice_seconds`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/mod_actions?guild_id=eq.${id}&created_at=gte.${startPrevious.toISOString()}&select=type,created_at`, { headers: supabaseHeaders }),
 ], 6);
 
 const channels = channelsRes.ok ? await channelsRes.json() : [];
@@ -240,6 +242,51 @@ activity = {
   topReactionChannels: topChannels('reactions', totalReactions),
 };
 
+// ── Moderation: real case history from mod_actions, bucketed the same way as activity.
+// Two series on one shared "actions per day" axis — bans specifically, and every other case
+// type folded into "Other actions" rather than a 4th/5th low-signal line. ──
+type ModKind = 'bans' | 'other';
+const modRows: { type: string; created_at: string }[] = modActionsRes.ok ? await modActionsRes.json() : [];
+function bucketKeyFor(iso: string) {
+  const day = iso.slice(0, 10);
+  if (range !== 'year') return day;
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return isoDate(d);
+}
+function kindFor(t: string): ModKind {
+  return t === 'ban' || t === 'tempban' ? 'bans' : 'other';
+}
+const modCurrentRows = modRows.filter((r) => r.created_at >= new Date(currentCutoff).toISOString());
+const modPreviousRows = modRows.filter((r) => r.created_at < new Date(currentCutoff).toISOString());
+
+const modBuckets = new Map<string, Record<ModKind, number>>();
+for (const r of modCurrentRows) {
+  const kind = kindFor(r.type);
+  const key = bucketKeyFor(r.created_at);
+  const b = modBuckets.get(key) ?? { bans: 0, other: 0 };
+  b[kind] += 1;
+  modBuckets.set(key, b);
+}
+const modPoints = [...modBuckets.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, v]) => ({ label, ...v }));
+
+function modTotal(rows: typeof modRows, kind: ModKind) {
+  return rows.reduce((a, r) => a + (kindFor(r.type) === kind ? 1 : 0), 0);
+}
+const modTotals = { bans: modTotal(modCurrentRows, 'bans'), other: modTotal(modCurrentRows, 'other') };
+const modPrevTotals = { bans: modTotal(modPreviousRows, 'bans'), other: modTotal(modPreviousRows, 'other') };
+const modTotalActions = modTotals.bans + modTotals.other;
+const modPrevTotalActions = modPrevTotals.bans + modPrevTotals.other;
+const modDeltaPct = modPrevTotalActions > 0 ? ((modTotalActions - modPrevTotalActions) / modPrevTotalActions) * 100 : null;
+
+moderation = {
+  hasData: modTotalActions > 0,
+  points: modPoints,
+  totals: modTotals,
+  totalActions: modTotalActions,
+  deltaPct: modDeltaPct,
+};
+
 } catch (err: any) {
   pageError = (err?.stack || err?.message || String(err));
   console.error('overview.astro failed for guild', id, err);
@@ -256,5 +303,6 @@ activity = {
     stats={stats}
     modules={modules}
     activity={activity}
+    moderation={moderation}
   />
 )}
