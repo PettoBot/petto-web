@@ -59,16 +59,39 @@ if (Astro.request.method === 'POST') {
       }),
     });
     saved = true;
+  } else if (action === 'reputation') {
+    await fetch(`${supabaseUrl}/rest/v1/reputation_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        cooldown_hours: Math.max(0, Math.min(720, Number(form.get('cooldown_hours') ?? 24) || 0)),
+      }),
+    });
+    saved = true;
+  } else if (action === 'reset_reputation') {
+    const userId = String(form.get('user_id') ?? '').trim();
+    if (userId) {
+      await fetch(`${supabaseUrl}/rest/v1/reputation`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, user_id: userId, points: 0 }),
+      });
+      saved = true;
+    }
   }
 }
 
-const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes] = await Promise.all([
+const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: supabaseHeaders }),
   fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`${supabaseUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: supabaseHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -102,6 +125,11 @@ const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
+
+const repConfigRows = reputationConfigRes.ok ? await reputationConfigRes.json() : [];
+const rc = repConfigRows[0] ?? {};
+const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hours ?? 24 };
+const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
 ---
 <DashCommunity
   user={session}
@@ -114,4 +142,6 @@ const channels = allChannels
   roles={roles}
   channels={channels}
   saved={saved}
+  reputation={reputation}
+  reputationTop={reputationTop}
 />
