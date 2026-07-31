@@ -134,6 +134,18 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.2.1',
+          date: 'July 31, 2026',
+          items: [
+            'Overview dashboard: smoother animated charts with every date labeled, plus a new Moderation actions chart (bans vs. everything else)',
+            '`/rep`: a simple reputation system, members give each other points on a cooldown, with a leaderboard on the dashboard',
+            '`/softban`: ban then immediately unban, to wipe a member\'s recent messages without a lasting ban',
+            '`/poll`: a button-driven poll builder with a live preview, question/options/image editable before posting, single or multiple choice, optional auto-close',
+            'Autoresponders can now reply directly to the triggering message, restrict to specific roles, ping the triggering user, and actually notify any @role/@user typed into the reply',
+            'Autoresponders can now be edited from the dashboard, not just added or removed',
+          ],
+        },
+        {
           version: '0.2.0',
           date: 'July 27, 2026',
           items: [
@@ -904,6 +916,18 @@ export const ui = {
       lede: 'Petto todavía no tiene una historia larga, esta es de verdad la primera versión. Los lanzamientos que vengan se van a ir agregando acá.',
       latest: 'Última',
       entries: [
+        {
+          version: '0.2.1',
+          date: '31 de julio de 2026',
+          items: [
+            'Dashboard de Overview: gráficos animados más suaves con todas las fechas etiquetadas, más un nuevo gráfico de Acciones de moderación (bans vs. el resto)',
+            '`/rep`: un sistema simple de reputación, los miembros se dan puntos entre sí con un cooldown, con un ranking en la dashboard',
+            '`/softban`: banea y desbanea al instante, para limpiar los mensajes recientes de un miembro sin dejarlo baneado',
+            '`/poll`: un creador de encuestas con botones y vista previa en vivo, pregunta/opciones/imagen editables antes de publicar, elección única o múltiple, cierre automático opcional',
+            'Los autoresponders ahora pueden responder directamente al mensaje que los activó, restringirse a roles específicos, pinguear al usuario que los activó, y notificar de verdad cualquier @rol/@usuario escrito en la respuesta',
+            'Los autoresponders ahora se pueden editar desde la dashboard, no solo agregar o borrar',
+          ],
+        },
         {
           version: '0.2.0',
           date: '27 de julio de 2026',
