@@ -3,6 +3,7 @@ import './embeds.css';
 import FormatToolbar from './FormatToolbar';
 import Preview from './Preview';
 import VariablesPanel from './VariablesPanel';
+import EmbedColorPicker from './EmbedColorPicker';
 import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, normalizeTemplateData } from './types';
 
 interface Props {
@@ -175,7 +176,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                   <div className="ebr-row-pair">
                     <div className="ebr-field">
                       <label>Color</label>
-                      <input type="color" value={e.color != null ? `#${e.color.toString(16).padStart(6, '0')}` : '#8399ff'} onChange={(ev) => updateEmbed(activeEmbed, { color: parseInt(ev.target.value.slice(1), 16) })} />
+                      <EmbedColorPicker value={e.color} onChange={(color) => updateEmbed(activeEmbed, { color })} />
                     </div>
                     <div className="ebr-field">
                       <label>Title link URL</label>
