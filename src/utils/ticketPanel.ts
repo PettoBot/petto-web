@@ -198,6 +198,7 @@ export async function postOrRefreshPanelMessage(
       body: JSON.stringify(payload),
     });
     if (editRes.ok) return existingMessageId;
+    console.warn('[ticket-panel] Discord message edit failed', { channelId, messageId: existingMessageId, status: editRes.status });
     // Message was deleted out from under us, or the panel moved channels — fall through to posting fresh.
   }
 
@@ -206,7 +207,10 @@ export async function postOrRefreshPanelMessage(
     headers,
     body: JSON.stringify(payload),
   });
-  if (!createRes.ok) return null;
+  if (!createRes.ok) {
+    console.error('[ticket-panel] Discord message create failed', { channelId, status: createRes.status });
+    return null;
+  }
   const message = await createRes.json();
   return message.id ?? null;
 }
@@ -218,5 +222,7 @@ export async function deletePanelMessage(botToken: string, channelId: string, me
     headers: { Authorization: `Bot ${botToken}` },
   }).catch(() => null);
   // A missing Discord message is already in the desired state.
-  return Boolean(res && (res.ok || res.status === 404));
+  const ok = Boolean(res && (res.ok || res.status === 404));
+  if (!ok) console.error('[ticket-panel] Discord message delete failed', { channelId, messageId, status: res?.status ?? 'network-error' });
+  return ok;
 }

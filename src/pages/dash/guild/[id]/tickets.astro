@@ -28,6 +28,10 @@ const supabaseHeaders = {
   'Content-Type': 'application/json',
 };
 
+function logTicketPanel(event: string, details: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ scope: 'ticket-panel', event, guildId: id, ...details }));
+}
+
 let cachedGuildVars: GuildVars | null | undefined;
 /** Guild-level data for resolving {server_*}/{guild.*} tokens in a panel's embed template — fetched once per request, reused across every panel render. */
 async function getGuildVars(): Promise<GuildVars | null> {
@@ -175,8 +179,8 @@ if (Astro.request.method === 'POST') {
       headers: { ...supabaseHeaders, Prefer: 'return=representation' },
       body: JSON.stringify({ title, description, style, embed_template: embedTemplate }),
     });
-    const updated = updateRes.ok ? await updateRes.json().catch(() => []) : [];
-    if (!updateRes.ok || !Array.isArray(updated) || updated.length === 0) {
+    logTicketPanel('update-panel-database', { panelId, status: updateRes.status, ok: updateRes.ok });
+    if (!updateRes.ok) {
       error = "Couldn't save that panel.";
     } else {
       const ok = await refreshPanelById(panelId);
@@ -189,6 +193,7 @@ if (Astro.request.method === 'POST') {
     if (panelId && newChannelId) {
       const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
       const [panel] = panelRes.ok ? await panelRes.json() : [];
+      logTicketPanel('move-panel-load', { panelId, status: panelRes.status, found: Boolean(panel) });
       const oldMessageDeleted = panel ? await deletePanelMessage(botToken, panel.channel_id, panel.message_id) : false;
       if (!panel) {
         error = 'That panel was not found.';
@@ -200,8 +205,8 @@ if (Astro.request.method === 'POST') {
         headers: { ...supabaseHeaders, Prefer: 'return=representation' },
         body: JSON.stringify({ channel_id: newChannelId, message_id: null }),
         });
-        const moved = moveRes.ok ? await moveRes.json().catch(() => []) : [];
-        if (!moveRes.ok || !Array.isArray(moved) || moved.length === 0) {
+        logTicketPanel('move-panel-database', { panelId, newChannelId, status: moveRes.status, ok: moveRes.ok });
+        if (!moveRes.ok) {
           error = "Couldn't move that panel.";
         } else {
           const ok = await refreshPanelById(panelId);
@@ -214,14 +219,16 @@ if (Astro.request.method === 'POST') {
     const panelId = String(form.get('panel_id') ?? '').trim();
     const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
+    logTicketPanel('resend-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
     if (panel) {
       const oldMessageDeleted = await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+      logTicketPanel('resend-panel-discord-delete', { panelId, ok: oldMessageDeleted });
       if (!oldMessageDeleted) {
         error = "Couldn't remove the old panel message, so it was not resent.";
       } else {
         const clearRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=representation' }, body: JSON.stringify({ message_id: null }) });
-        const cleared = clearRes.ok ? await clearRes.json().catch(() => []) : [];
-        if (!clearRes.ok || !Array.isArray(cleared) || cleared.length === 0) {
+        logTicketPanel('resend-panel-clear-message-id', { panelId, status: clearRes.status, ok: clearRes.ok });
+        if (!clearRes.ok) {
           error = "Couldn't prepare the panel for resend.";
         } else {
           const ok = await refreshPanelById(panelId);
@@ -234,15 +241,19 @@ if (Astro.request.method === 'POST') {
     const panelId = String(form.get('panel_id') ?? '').trim();
     const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
+    logTicketPanel('delete-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
     if (panel) await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
     const deleteRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'DELETE',
       headers: { ...supabaseHeaders, Prefer: 'return=representation' },
     });
+    logTicketPanel('delete-panel-database', { panelId, status: deleteRes.status, ok: deleteRes.ok });
     if (deleteRes.ok) {
-      const deleted = await deleteRes.json().catch(() => []);
-      if (Array.isArray(deleted) && deleted.length > 0) saved = true;
-      else error = 'That panel was not found or was already deleted.';
+      const verifyRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const [remaining] = verifyRes.ok ? await verifyRes.json().catch(() => []) : [];
+      logTicketPanel('delete-panel-verify', { panelId, status: verifyRes.status, stillPresent: Boolean(remaining) });
+      if (!remaining) saved = true;
+      else error = 'The panel delete was accepted but the panel is still present. Check Cloudflare logs.';
     } else {
       error = "Couldn't delete that panel. Try again or check the dashboard logs.";
     }
