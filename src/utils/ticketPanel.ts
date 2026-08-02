@@ -211,10 +211,12 @@ export async function postOrRefreshPanelMessage(
   return message.id ?? null;
 }
 
-export async function deletePanelMessage(botToken: string, channelId: string, messageId: string | null): Promise<void> {
-  if (!messageId) return;
-  await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+export async function deletePanelMessage(botToken: string, channelId: string, messageId: string | null): Promise<boolean> {
+  if (!messageId) return true;
+  const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bot ${botToken}` },
-  }).catch(() => {});
+  }).catch(() => null);
+  // A missing Discord message is already in the desired state.
+  return Boolean(res && (res.ok || res.status === 404));
 }

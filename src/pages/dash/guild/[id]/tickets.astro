@@ -170,37 +170,65 @@ if (Astro.request.method === 'POST') {
     const style = form.get('style') === 'select' ? 'select' : 'button';
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
 
-    await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+    const updateRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'PATCH',
-      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      headers: { ...supabaseHeaders, Prefer: 'return=representation' },
       body: JSON.stringify({ title, description, style, embed_template: embedTemplate }),
     });
-    const ok = await refreshPanelById(panelId);
-    saved = ok;
-    if (!ok) error = "Panel saved, but I couldn't update the posted message, check my permissions.";
+    const updated = updateRes.ok ? await updateRes.json().catch(() => []) : [];
+    if (!updateRes.ok || !Array.isArray(updated) || updated.length === 0) {
+      error = "Couldn't save that panel.";
+    } else {
+      const ok = await refreshPanelById(panelId);
+      saved = ok;
+      if (!ok) error = "Panel saved, but I couldn't update the posted message, check my permissions.";
+    }
   } else if (action === 'move_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
     const newChannelId = String(form.get('channel_id') ?? '').trim();
     if (panelId && newChannelId) {
-      await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+      const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+      const [panel] = panelRes.ok ? await panelRes.json() : [];
+      const oldMessageDeleted = panel ? await deletePanelMessage(botToken, panel.channel_id, panel.message_id) : false;
+      if (!panel) {
+        error = 'That panel was not found.';
+      } else if (!oldMessageDeleted) {
+        error = "Couldn't remove the old panel message, so it was not moved.";
+      } else {
+        const moveRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
         method: 'PATCH',
-        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        headers: { ...supabaseHeaders, Prefer: 'return=representation' },
         body: JSON.stringify({ channel_id: newChannelId, message_id: null }),
-      });
-      const ok = await refreshPanelById(panelId);
-      saved = ok;
-      if (!ok) error = 'Panel moved, but I could not post it there, check my permissions in that channel.';
+        });
+        const moved = moveRes.ok ? await moveRes.json().catch(() => []) : [];
+        if (!moveRes.ok || !Array.isArray(moved) || moved.length === 0) {
+          error = "Couldn't move that panel.";
+        } else {
+          const ok = await refreshPanelById(panelId);
+          saved = ok;
+          if (!ok) error = 'Panel moved, but I could not post it there, check my permissions in that channel.';
+        }
+      }
     }
   } else if (action === 'resend_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
     const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     if (panel) {
-      await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
-      await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: null }) });
-      const ok = await refreshPanelById(panelId);
-      saved = ok;
-      if (!ok) error = "Couldn't resend the panel, check my permissions in that channel.";
+      const oldMessageDeleted = await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+      if (!oldMessageDeleted) {
+        error = "Couldn't remove the old panel message, so it was not resent.";
+      } else {
+        const clearRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=representation' }, body: JSON.stringify({ message_id: null }) });
+        const cleared = clearRes.ok ? await clearRes.json().catch(() => []) : [];
+        if (!clearRes.ok || !Array.isArray(cleared) || cleared.length === 0) {
+          error = "Couldn't prepare the panel for resend.";
+        } else {
+          const ok = await refreshPanelById(panelId);
+          saved = ok;
+          if (!ok) error = "Couldn't resend the panel, check my permissions in that channel.";
+        }
+      }
     }
   } else if (action === 'delete_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
