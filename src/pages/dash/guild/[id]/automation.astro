@@ -165,16 +165,34 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'delete_disabled') {
     await fetch(`${supabaseUrl}/rest/v1/disabled_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
     saved = true;
+  } else if (action === 'add_autothread') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const nameTemplate = String(form.get('name_template') ?? '').trim().slice(0, 100) || '{user_name}';
+    const messageText = String(form.get('message_text') ?? '').trim().slice(0, 500) || null;
+    const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
+    const archiveMinutes = Number(form.get('archive_minutes')) || 60;
+    if (channelId) {
+      await fetch(`${supabaseUrl}/rest/v1/auto_threads`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, name_template: nameTemplate, message_text: messageText, embed_template: embedTemplate, archive_minutes: archiveMinutes }),
+      });
+      saved = true;
+    }
+  } else if (action === 'delete_autothread') {
+    await fetch(`${supabaseUrl}/rest/v1/auto_threads?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
   }
 }
 
-const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
+const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes, autoThreadsRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: supabaseHeaders }),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
@@ -190,6 +208,7 @@ const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: a
 const stickyMessages = stickyRes.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content })) : [];
 const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode })) : [];
 const disabledCommands = disabledRes.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
+const autoThreads = autoThreadsRes.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles
@@ -213,6 +232,7 @@ const channels = allChannels
   stickyMessages={stickyMessages}
   disabledCommands={disabledCommands}
   reactionRoles={reactionRoles}
+  autoThreads={autoThreads}
   roles={roles}
   channels={channels}
   embedTemplateNames={embedTemplateNames}
