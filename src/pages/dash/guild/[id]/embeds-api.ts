@@ -77,8 +77,14 @@ export const POST: APIRoute = async (astro) => {
     if (!name) return new Response(JSON.stringify({ error: 'missing name' }), { status: 400 });
     const res = await fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}`, {
       method: 'DELETE',
-      headers: headers(supabaseKey),
+      headers: { ...headers(supabaseKey), Prefer: 'return=representation' },
     });
+    if (res.ok) {
+      const deleted = await res.json().catch(() => []);
+      if (!Array.isArray(deleted) || deleted.length === 0) {
+        return new Response(JSON.stringify({ error: 'template not found' }), { status: 404 });
+      }
+    }
     return new Response(JSON.stringify({ ok: res.ok }), { status: res.ok ? 200 : 500 });
   }
 

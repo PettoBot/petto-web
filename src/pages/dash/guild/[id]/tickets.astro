@@ -122,13 +122,25 @@ if (Astro.request.method === 'POST') {
       if (panelId) await refreshPanelById(panelId);
     } else error = "Couldn't save that ticket type, try again.";
   } else if (action === 'delete') {
-    const categoryId = encodeURIComponent(String(form.get('category_id') ?? ''));
+    const rawCategoryId = String(form.get('category_id') ?? '').trim();
+    const categoryId = encodeURIComponent(rawCategoryId);
+    const categoryRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: supabaseHeaders });
+    const [category] = categoryRes.ok ? await categoryRes.json() : [];
     const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
       method: 'DELETE',
-      headers: supabaseHeaders,
+      headers: { ...supabaseHeaders, Prefer: 'return=representation' },
     });
-    if (res.ok) saved = true;
-    else error = "Couldn't delete that ticket type, try again.";
+    if (res.ok) {
+      const deleted = await res.json().catch(() => []);
+      if (Array.isArray(deleted) && deleted.length > 0) {
+        saved = true;
+        if (category?.panel_id) await refreshPanelById(String(category.panel_id));
+      } else {
+        error = 'That ticket type was not found or was already deleted.';
+      }
+    } else {
+      error = "Couldn't delete that ticket type. It may still be referenced by existing tickets.";
+    }
   } else if (action === 'create_panel') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const title = String(form.get('title') ?? '').trim().slice(0, 100) || null;
