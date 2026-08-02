@@ -6,7 +6,7 @@
 // Embed templates: a panel can point at a saved /embed template's `data` (same shape
 // embedBuilder.js's normalize()/buildOneEmbed() render in the bot), rendered here with
 // resolveGuildVariables() below. Only guild-level {server_*}/{guild.*} tokens resolve, not
-// user/channel/message/leveling/giveaway/bump ones — a panel isn't opened by any one member, it
+// user/channel/message/leveling/giveaway/bump ones, a panel isn't opened by any one member, it
 // has no such context to resolve against, same reason the bot's own /ticket panel create renders
 // it with only {guild, channel} in ctx.
 
@@ -77,7 +77,7 @@ export interface GuildVars {
   maxMembers: number;
 }
 
-/** Guild-only subset of the bot's embedVariables.js resolve() — see file header for why user/channel/message tokens aren't included. */
+/** Guild-only subset of the bot's embedVariables.js resolve(), see file header for why user/channel/message tokens aren't included. */
 export function resolveGuildVariables(text: string, g: GuildVars): string {
   if (!text) return text;
   const created = new Date(g.createdTimestamp);
@@ -199,7 +199,7 @@ export async function postOrRefreshPanelMessage(
     });
     if (editRes.ok) return existingMessageId;
     console.warn('[ticket-panel] Discord message edit failed', { channelId, messageId: existingMessageId, status: editRes.status });
-    // Message was deleted out from under us, or the panel moved channels — fall through to posting fresh.
+    // Message was deleted out from under us, or the panel moved channels, fall through to posting fresh.
   }
 
   const createRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
