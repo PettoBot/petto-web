@@ -14,6 +14,10 @@ interface StickyMessage { channelId: string; content: string; }
 interface DisabledCommand { id: number; command: string; channelId: string | null; }
 interface ReactionRole { id: number; messageId: string; emoji: string; roleId: string; mode: string; }
 interface AutoThread { channelId: string; nameTemplate: string; messageText: string | null; embedTemplate: string | null; archiveMinutes: number; }
+interface CommandAlias { id: number; name: string; command: string; }
+interface AutoTimer { id: number; channelId: string; intervalMs: number; message: string; nextRunAt: string; }
+interface StarboardSettings { channel_id: string | null; threshold: number; emoji: string; selfstar: boolean; timestamp: boolean; jumpurl: boolean; attachments: boolean; ignoredChannelIds: string[]; ignoredRoleIds: string[]; ignoredUserIds: string[]; }
+interface VoiceMasterSettings { creatorChannelId: string; panelChannelId: string; panelMessageId: string | null; categoryId: string | null; defaultLimit: number; defaultName: string; }
 
 interface Props {
   user: { username: string; avatar: string | null };
@@ -31,8 +35,15 @@ interface Props {
   embedTemplateNames: string[];
   saved: boolean;
   reactionRoleError?: string | null;
+  error?: string | null;
+  aliases: CommandAlias[];
+  timers: AutoTimer[];
+  starboard: StarboardSettings | null;
+  voiceMaster: VoiceMasterSettings | null;
+  voiceChannels: { id: string; name: string }[];
+  channelCategories: { id: string; name: string }[];
 }
-const { user, guildId, guildName, guildIcon, customCommands, autoResponders, stickyMessages, disabledCommands, reactionRoles, autoThreads, roles, channels, embedTemplateNames, saved, reactionRoleError } = Astro.props;
+const { user, guildId, guildName, guildIcon, customCommands, autoResponders, stickyMessages, disabledCommands, reactionRoles, autoThreads, roles, channels, embedTemplateNames, saved, reactionRoleError, error, aliases, timers, starboard, voiceMaster, voiceChannels, channelCategories } = Astro.props;
 
 const ARCHIVE_LABELS: Record<number, string> = { 60: '1 hour', 1440: '1 day', 4320: '3 days', 10080: '1 week' };
 
@@ -48,6 +59,76 @@ function roleName(id: string) {
   <p class="am-sub">Reaction roles, custom commands, autoresponders, sticky messages, and disabled commands in <b>{guildName}</b>.</p>
 
   {saved && <div class="am-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />Saved.</div>}
+  {error && <div class="am-error"><Icon name="ph:warning-fill" width="13" height="13" />{error}</div>}
+
+  <div class="am-section am-feature-section">
+    <h2><span class="am-h2-icon" style="--c:#f9c8d9"><Icon name="ph:sliders-horizontal-fill" width="14" height="14" /></span>Bleed-style server tools</h2>
+    <p class="am-hint am-feature-lede">These settings use the same database as the prefix commands, so changes made here and in Discord stay synchronized.</p>
+  </div>
+
+  <div class="am-section">
+    <h2><span class="am-h2-icon" style="--c:#c792ea"><Icon name="ph:command-fill" width="14" height="14" /></span>Command aliases <span class="am-count">{aliases.length}</span></h2>
+    <div class="am-list">
+      {aliases.map((a) => (
+        <div class="am-row">
+          <code class="am-row-key">!{a.name}</code><span class="am-row-val" title={a.command}>{a.command}</span>
+          <form method="POST"><input type="hidden" name="action" value="delete_alias" /><input type="hidden" name="name" value={a.name} /><button type="submit" class="am-del"><Icon name="ph:trash-fill" width="13" height="13" /></button></form>
+        </div>
+      ))}
+    </div>
+    <form method="POST" class="am-add">
+      <input type="hidden" name="action" value="add_alias" /><input type="text" name="name" placeholder="Shortcut" maxlength="32" required />
+      <input type="text" name="command" placeholder="Target command, e.g. warn {0} repeated spam" maxlength="500" required />
+      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />Add</button>
+    </form>
+    <p class="am-hint">Aliases are prefix-only. Use <code>{'{0}'}</code>, <code>{'{1}'}</code>, and so on for typed arguments.</p>
+  </div>
+
+  <div class="am-section">
+    <h2><span class="am-h2-icon" style="--c:#5eead4"><Icon name="ph:timer-fill" width="14" height="14" /></span>Repeating timers <span class="am-count">{timers.length}</span></h2>
+    <div class="am-list">
+      {timers.map((t) => (
+        <div class="am-row">
+          <span class="am-row-key">#{channelName(t.channelId)}</span><span class="am-row-mode">{Math.round(t.intervalMs / 60000)} min</span><span class="am-row-val" title={t.message}>{t.message}</span>
+          <form method="POST"><input type="hidden" name="action" value="delete_timer" /><input type="hidden" name="id" value={t.id} /><button type="submit" class="am-del"><Icon name="ph:trash-fill" width="13" height="13" /></button></form>
+        </div>
+      ))}
+    </div>
+    <form method="POST" class="am-add am-add-wide">
+      <input type="hidden" name="action" value="add_timer" /><div class="am-add-row"><select name="channel_id" required><option value="" disabled selected>Channel</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select><input type="number" name="interval_minutes" min="10" max="525600" value="10" required /><span class="am-inline-label">minutes</span></div>
+      <input type="text" name="message" placeholder="Message to send repeatedly" maxlength="2000" required /><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />Add timer</button>
+    </form>
+    <p class="am-hint">Minimum interval: 10 minutes. One timer per channel, matching Bleed's timer behavior.</p>
+  </div>
+
+  <div class="am-section">
+    <h2><span class="am-h2-icon" style="--c:#fed53c"><Icon name="ph:star-fill" width="14" height="14" /></span>Starboard</h2>
+    <form method="POST" class="am-add am-add-wide">
+      <input type="hidden" name="action" value="save_starboard" />
+      <div class="am-add-row"><select name="channel_id"><option value="">Disabled / no channel</option>{channels.map((c) => <option value={c.id} selected={c.id === starboard?.channel_id}>#{c.name}</option>)}</select><input type="number" name="threshold" min="1" max="100" value={starboard?.threshold ?? 3} required /><input type="text" name="emoji" maxlength="100" value={starboard?.emoji ?? '⭐'} placeholder="Emoji" required /></div>
+      <label class="am-check"><input type="checkbox" name="selfstar" checked={starboard?.selfstar ?? false} />Count the message author's own reaction</label>
+      <label class="am-check"><input type="checkbox" name="timestamp" checked={starboard?.timestamp ?? true} />Show the original timestamp</label>
+      <label class="am-check"><input type="checkbox" name="jumpurl" checked={starboard?.jumpurl ?? true} />Include a jump link to the original</label>
+      <label class="am-check"><input type="checkbox" name="attachments" checked={starboard?.attachments ?? true} />Include attachments and images</label>
+      <div class="am-channel-scope"><span class="am-channel-scope-label">Ignored channels</span><MultiSelect name="ignored_channel_ids" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={starboard?.ignoredChannelIds ?? []} placeholder="Search channels..." /></div>
+      <div class="am-channel-scope"><span class="am-channel-scope-label">Ignored roles</span><MultiSelect name="ignored_role_ids" options={roles.map((r) => ({ id: r.id, name: r.name }))} selected={starboard?.ignoredRoleIds ?? []} placeholder="Search roles..." /></div>
+      <input type="text" name="ignored_user_ids" value={(starboard?.ignoredUserIds ?? []).join(', ')} placeholder="Ignored member IDs, comma-separated" maxlength="260" />
+      <div class="am-feature-actions"><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />Save starboard</button><button type="submit" name="action" value="disable_starboard" class="am-del-text"><Icon name="ph:prohibit-fill" width="12" height="12" />Disable</button></div>
+    </form>
+    <p class="am-hint">The bot reposts messages after the selected emoji reaches the threshold and updates the count when reactions change.</p>
+  </div>
+
+  <div class="am-section">
+    <h2><span class="am-h2-icon" style="--c:#8399ff"><Icon name="ph:speaker-high-fill" width="14" height="14" /></span>VoiceMaster</h2>
+    <form method="POST" class="am-add am-add-wide">
+      <input type="hidden" name="action" value="save_voicemaster" />
+      <div class="am-add-row"><select name="creator_channel_id" required><option value="" disabled selected>Join-to-create voice channel</option>{voiceChannels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.creatorChannelId}>{c.name}</option>)}</select><select name="panel_channel_id" required><option value="" disabled selected>Panel text channel</option>{channels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.panelChannelId}>#{c.name}</option>)}</select></div>
+      <div class="am-add-row"><select name="category_id"><option value="">Use creator category</option>{channelCategories.map((c) => <option value={c.id} selected={c.id === voiceMaster?.categoryId}>{c.name}</option>)}</select><input type="number" name="default_limit" min="0" max="99" value={voiceMaster?.defaultLimit ?? 0} placeholder="Default limit" /><input type="text" name="default_name" maxlength="100" value={voiceMaster?.defaultName ?? '{user.name}'} placeholder="Name template" /></div>
+      <label class="am-check"><input type="checkbox" name="resend_panel" />Delete and resend the panel message</label>
+      <div class="am-feature-actions"><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />Save VoiceMaster</button>{voiceMaster && <button type="submit" name="action" value="disable_voicemaster" class="am-del-text"><Icon name="ph:prohibit-fill" width="12" height="12" />Disable</button>}</div>
+    </form>
+    <p class="am-hint">Users join the creator channel, receive a temporary channel, and manage it from the panel or <code>!vc</code>.</p>
+  </div>
 
   <div class="am-section">
     <h2><span class="am-h2-icon" style="--c:#8399ff"><Icon name="ph:terminal-window-fill" width="14" height="14" /></span>Custom commands <span class="am-count">{customCommands.length}</span></h2>
@@ -305,7 +386,7 @@ function roleName(id: string) {
       )}
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />Add</button>
     </form>
-    <p class="am-hint">Starts a thread off every new message in the channel — good for support/showcase channels where each message deserves its own conversation.</p>
+    <p class="am-hint">Starts a thread off every new message in the channel, good for support/showcase channels where each message deserves its own conversation.</p>
   </div>
 
   <div class="am-section">
@@ -342,6 +423,10 @@ function roleName(id: string) {
 
   .am-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
   .am-error { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--red); background: var(--red-soft); border: 1px solid var(--red); border-radius: 9px; padding: 8px 12px; margin: 0 0 10px; }
+  .am-feature-section { background: linear-gradient(135deg, color-mix(in srgb, #f9c8d9 8%, var(--bg-raise)), var(--bg-raise)); }
+  .am-feature-lede { margin: -2px 0 0; }
+  .am-feature-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 4px; }
+  .am-inline-label { color: var(--text-dim); font-size: 12px; align-self: center; }
 
   .am-section { border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raise); padding: 18px 20px; margin-bottom: 20px; max-width: 720px; }
   .am-count { font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-weight: 400; }
@@ -367,6 +452,7 @@ function roleName(id: string) {
 
   .am-add-wide { flex-direction: column; align-items: flex-start; gap: 12px; }
   .am-add-row { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .am-add-row > input, .am-add-row > select { flex: 1 1 150px; min-width: 0; }
   .am-check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); }
   .am-embed-fields { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
   .am-channel-scope { width: 100%; max-width: 320px; }

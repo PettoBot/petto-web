@@ -95,7 +95,7 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
   const roleById = (roleId: string) => roles.find((r) => r.id === roleId);
   const roleName = (roleId: string) => roleById(roleId)?.name ?? roleId;
 
-  // What's the highest group level a role/user qualifies for — same rule the bot itself uses:
+  // What's the highest group level a role/user qualifies for, same rule the bot itself uses:
   // highest level across every group they belong to, directly or through a role, base included.
   function effectiveLevel(subject: { type: 'role' | 'user'; id: string } | null): number | null {
     if (!subject) return null;
@@ -484,9 +484,9 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
             <div className="ps-panel ps-panel-empty">
               <p>Click a ring segment on the chart to view or edit it.</p>
               <ul>
-                <li><span className="ps-swatch" style={{ '--c': GROUP_COLOR } as any} /> Inner ring — groups</li>
-                <li><span className="ps-swatch ps-swatch-band" /> Middle band — categories</li>
-                <li><span className="ps-swatch ps-swatch-bar" /> Outer bars — commands, taller = higher level required</li>
+                <li><span className="ps-swatch" style={{ '--c': GROUP_COLOR } as any} /> Inner ring, groups</li>
+                <li><span className="ps-swatch ps-swatch-band" /> Middle band, categories</li>
+                <li><span className="ps-swatch ps-swatch-bar" /> Outer bars, commands, taller = higher level required</li>
               </ul>
             </div>
           )}
