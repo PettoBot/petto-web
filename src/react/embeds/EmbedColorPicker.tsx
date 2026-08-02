@@ -117,22 +117,36 @@ export default function EmbedColorPicker({ value, onChange }: Props) {
     onChange(parseInt(normalized.slice(1), 16));
   }
 
-  function setFromSv(event: React.PointerEvent<HTMLCanvasElement>) {
+  function setFromSvPoint(clientX: number, clientY: number) {
     const canvas = svRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const next = { ...hsv, s: clamp((event.clientX - rect.left) / rect.width, 0, 1), v: 1 - clamp((event.clientY - rect.top) / rect.height, 0, 1) };
+    const next = { ...hsv, s: clamp((clientX - rect.left) / rect.width, 0, 1), v: 1 - clamp((clientY - rect.top) / rect.height, 0, 1) };
     setHsv(next);
     commit(rgbToHex(hsvToRgb(next)));
   }
 
-  function setFromHue(event: React.PointerEvent<HTMLCanvasElement>) {
+  function setFromHuePoint(clientX: number) {
     const canvas = hueRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const next = { ...hsv, h: clamp((event.clientX - rect.left) / rect.width, 0, 1) * 360 };
+    const next = { ...hsv, h: clamp((clientX - rect.left) / rect.width, 0, 1) * 360 };
     setHsv(next);
     commit(rgbToHex(hsvToRgb(next)));
+  }
+
+  function drag(update: (event: PointerEvent) => void, event: React.PointerEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+    update(event.nativeEvent);
+    const move = (moveEvent: PointerEvent) => update(moveEvent);
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
   }
 
   function updateRgb(channel: keyof Rgb, raw: string) {
@@ -151,11 +165,11 @@ export default function EmbedColorPicker({ value, onChange }: Props) {
       {open && (
         <div className="ebr-color-panel" onMouseDown={(event) => event.stopPropagation()}>
           <div className="ebr-color-sv-wrap">
-            <canvas ref={svRef} width={260} height={150} onPointerDown={setFromSv} />
+            <canvas ref={svRef} width={260} height={150} onPointerDown={(event) => drag((point) => setFromSvPoint(point.clientX, point.clientY), event)} />
             <span className="ebr-color-sv-thumb" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }} />
           </div>
           <div className="ebr-color-hue-wrap">
-            <canvas ref={hueRef} width={260} height={12} onPointerDown={setFromHue} />
+            <canvas ref={hueRef} width={260} height={12} onPointerDown={(event) => drag((point) => setFromHuePoint(point.clientX), event)} />
             <span className="ebr-color-hue-thumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
           </div>
           <div className="ebr-color-fields">
