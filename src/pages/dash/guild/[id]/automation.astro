@@ -26,6 +26,7 @@ const supabaseHeaders = {
 let saved = false;
 let reactionRoleError: string | null = null;
 let error: string | null = null;
+const COUNTER_OPTIONS = ['members', 'users_only', 'bots_only', 'pending_members', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'boosts', 'booster_count'];
 
 async function deleteDiscordMessage(channelId: string | null, messageId: string | null) {
   if (!channelId || !messageId) return true;
@@ -240,6 +241,51 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'delete_reaction_messages') {
     await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: supabaseHeaders });
     saved = true;
+  } else if (action === 'create_webhook') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const name = String(form.get('name') ?? '').trim().slice(0, 80);
+    if (channelId && name) {
+      const createRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/webhooks`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (createRes.ok) {
+        const webhook = await createRes.json();
+        const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name ?? name, created_by: session.userId }) });
+        saved = dbRes.ok;
+      } else error = 'Could not create the webhook. Check Manage Webhooks in that channel.';
+    }
+  } else if (action === 'send_webhook') {
+    const localId = String(form.get('webhook_id') ?? '').trim();
+    const message = String(form.get('message') ?? '').trim().slice(0, 2000);
+    const username = String(form.get('username') ?? '').trim().slice(0, 80) || undefined;
+    const avatarUrl = String(form.get('avatar_url') ?? '').trim() || undefined;
+    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token`, { headers: supabaseHeaders });
+    const [row] = rowRes.ok ? await rowRes.json() : [];
+    if (row && message) {
+      const sendRes = await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}?wait=true`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message, username, avatar_url: avatarUrl }) });
+      saved = sendRes.ok;
+    }
+  } else if (action === 'delete_webhook') {
+    const localId = String(form.get('id') ?? '').trim();
+    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token`, { headers: supabaseHeaders });
+    const [row] = rowRes.ok ? await rowRes.json() : [];
+    if (row) await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}`, { method: 'DELETE' }).catch(() => {});
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = dbRes.ok;
+  } else if (action === 'create_counter') {
+    const option = String(form.get('option') ?? '').trim().toLowerCase();
+    const type = String(form.get('type') ?? 'voice').trim();
+    const typeCode: Record<string, number> = { voice: 2, text: 0, category: 4, announce: 5, stage: 13 };
+    if (COUNTER_OPTIONS.includes(option) && typeCode[type] != null) {
+      const channelRes = await fetch(`https://discord.com/api/v10/guilds/${id}/channels`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `Counter: ${option}`, type: typeCode[type] }) });
+      if (channelRes.ok) {
+        const channel = await channelRes.json();
+        const dbRes = await fetch(`${supabaseUrl}/rest/v1/server_counters`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: session.userId }) });
+        saved = dbRes.ok;
+      } else error = 'Could not create the counter channel. Check Manage Channels.';
+    }
+  } else if (action === 'delete_counter') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const res = await fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = res.ok;
   } else if (action === 'add_disabled') {
     const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
     const channelId = String(form.get('channel_id') ?? '').trim() || null;
@@ -335,7 +381,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
+const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: supabaseHeaders }),
@@ -349,6 +395,8 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
   () => fetch(`${supabaseUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
@@ -373,6 +421,8 @@ const starboardRows = starboardRes.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
 const voiceRows = voiceMasterRes.ok ? await voiceMasterRes.json() : [];
 const voiceMaster = voiceRows[0] ? { creatorChannelId: voiceRows[0].creator_channel_id, panelChannelId: voiceRows[0].panel_channel_id, panelMessageId: voiceRows[0].panel_message_id, categoryId: voiceRows[0].category_id, defaultLimit: voiceRows[0].default_limit ?? 0, defaultName: voiceRows[0].default_name ?? '{user.name}' } : null;
+const managedWebhooks = webhooksRes.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id })) : [];
+const serverCounters = countersRes.ok ? (await countersRes.json()).map((c: any) => ({ id: c.id, channelId: c.channel_id, option: c.counter_option, type: c.channel_type })) : [];
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles
@@ -413,4 +463,6 @@ const channelCategories = allChannels.filter((c: any) => c.type === 4).sort((a: 
   voiceMaster={voiceMaster}
   voiceChannels={voiceChannels}
   channelCategories={channelCategories}
+  managedWebhooks={managedWebhooks}
+  serverCounters={serverCounters}
 />
