@@ -12,11 +12,20 @@ export function guildIconUrl(guild: { id: string; icon?: string | null }, size =
 }
 
 /** Lightweight guild lookup (name + icon only) via the bot token, shared by every dashboard section page for the sidebar/breadcrumb without repeating the full stats fetch each time. */
+const GUILD_INFO_TTL_MS = 20_000;
+const guildInfoCache = new Map<string, { value: { id: string; name: string; icon: string | null }; expiresAt: number }>();
+
 export async function getGuildInfo(guildId: string, botToken: string): Promise<{ id: string; name: string; icon: string | null } | null> {
+  const cacheKey = `${botToken}:${guildId}`;
+  const cached = guildInfoCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
   const res = await fetch(`https://discord.com/api/guilds/${guildId}`, { headers: { Authorization: `Bot ${botToken}` } });
   if (!res.ok) return null;
   const guild = await res.json();
-  return { id: guild.id, name: guild.name, icon: guildIconUrl(guild) };
+  const value = { id: guild.id, name: guild.name, icon: guildIconUrl(guild) };
+  guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS });
+  return value;
 }
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
