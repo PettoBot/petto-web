@@ -16,7 +16,11 @@ interface TicketCategory {
   supportRoleIds: string[];
   pingRoleIds: string[];
   maxOpenPerUser: number;
+  formId: number | null;
+  requiredRoleIds: string[];
 }
+interface TicketForm { id: number; name: string; title: string; fields: { type: string; id: string; label: string; placeholder?: string; required?: boolean }[]; }
+interface TicketBlacklistEntry { id: number; target_type: string; target_id: string; reason: string | null; }
 interface Panel {
   id: number;
   channelId: string;
@@ -68,15 +72,20 @@ interface Props {
   channelCategories: { id: string; name: string }[];
   textChannels: { id: string; name: string }[];
   embedTemplateNames: string[];
+  forms: TicketForm[];
+  blacklist: TicketBlacklistEntry[];
   openTickets: OpenTicket[];
   saved: boolean;
   error?: string | null;
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, openTickets, saved, error, section } = Astro.props;
-const sectionMeta: Record<string, string> = { panels: 'Ticket panels', types: 'Support types', settings: 'Ticket settings', open: 'Open tickets' };
+const { user, guildId, guildName, guildIcon, categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, saved, error, section } = Astro.props;
+const sectionMeta: Record<string, string> = { panels: 'Ticket panels', types: 'Support types', forms: 'Ticket forms', access: 'Ticket access', settings: 'Ticket settings', open: 'Open tickets' };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'panels';
 const selectedTitle = sectionMeta[selectedSection];
+function formFieldSpec(form: TicketForm) {
+  return form.fields.map((field) => `${field.type}|${field.id}|${field.label}|${field.placeholder ?? ''}|${field.required === false ? 'optional' : 'required'}`).join(';');
+}
 function channelName(id: string | null) {
   return textChannels.find((c) => c.id === id)?.name ?? id;
 }
@@ -231,6 +240,19 @@ function channelName(id: string | null) {
             <input type="number" name="max_open_per_user" value={cat.maxOpenPerUser} min="1" max="10" />
           </div>
 
+          <div class="tk-cat-row">
+            <label>Intake form</label>
+            <select name="form_id">
+              <option value="">No form</option>
+              {forms.map((form) => <option value={form.id} selected={String(form.id) === String(cat.formId)}>{form.name} · {form.title}</option>)}
+            </select>
+          </div>
+
+          <div class="tk-cat-row">
+            <label>Required roles</label>
+            <MultiSelect name="required_role_ids" options={roles} selected={cat.requiredRoleIds} placeholder="Search roles..." />
+          </div>
+
           <button type="submit" name="action" value="update" class="btn btn-ghost btn-sm">Save this type</button>
         </form>
       ))}
@@ -252,6 +274,54 @@ function channelName(id: string | null) {
         {channelCategories.map((c) => <option value={c.id}>{c.name}</option>)}
       </select>
       <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />Add</button>
+    </form>
+    {forms.length === 0 && <p class="tk-row-hint">Create forms in Discord with <code>!ticket form create</code>, then assign them here.</p>}
+  </div>
+
+  <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'forms' }]}>
+    <h2><Icon name="ph:clipboard-text-fill" width="15" height="15" />Ticket forms <span class="tk-count">{forms.length}</span></h2>
+    <p class="tk-section-note">Reusable intake forms shown before a form-backed ticket opens. Use the same field syntax as Discord: <code>type|id|label|placeholder|required;...</code>.</p>
+    <div class="tk-cat-grid">
+      {forms.map((form) => (
+        <form method="POST" class="tk-cat-card">
+          <input type="hidden" name="form_id" value={form.id} />
+          <input type="hidden" name="form_name" value={form.name} />
+          <input type="hidden" name="action" value="update_ticket_form" />
+          <div class="tk-cat-head"><input type="text" name="form_name_display" value={form.name} disabled class="tk-cat-label" /></div>
+          <div class="tk-cat-row"><label>Modal title</label><input type="text" name="form_title" value={form.title} maxlength="45" required /></div>
+          <div class="tk-cat-row"><label>Fields</label><textarea name="form_fields" rows="3" placeholder="short_text|email|Email|you@example.com|required;long_text|issue|What happened?|Describe it here|required">{formFieldSpec(form)}</textarea></div>
+          <div class="tk-panel-actions"><button type="submit" class="btn btn-ghost btn-sm">Save form</button></div>
+        </form>
+        <form method="POST" class="tk-panel-actions"><input type="hidden" name="action" value="delete_ticket_form" /><input type="hidden" name="form_id" value={form.id} /><button type="submit" class="tk-cat-del">Delete form</button></form>
+      ))}
+    </div>
+    <form method="POST" class="tk-add-form">
+      <input type="hidden" name="action" value="create_ticket_form" />
+      <input type="text" name="form_name" placeholder="Form name" maxlength="50" required />
+      <input type="text" name="form_title" placeholder="Modal title" maxlength="45" value="Ticket details" required />
+      <input type="text" name="form_fields" placeholder="short_text|details|What happened?|Describe it|required" required />
+      <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />Create form</button>
+    </form>
+    {forms.length === 0 && <p class="tk-row-hint">No forms yet. Create one here, then assign it to a support type.</p>}
+  </div>
+
+  <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'access' }]}>
+    <h2><Icon name="ph:prohibit-fill" width="15" height="15" />Ticket access <span class="tk-count">{blacklist.length}</span></h2>
+    <p class="tk-section-note">Block a user or role from opening tickets. Role entries apply to every member with that role.</p>
+    <div class="tk-open-list">
+      {blacklist.map((entry) => (
+        <div class="tk-open-row">
+          <div><span class="tk-open-num">{entry.target_type}</span><code>{entry.target_id}</code>{entry.reason && <span class="tk-row-hint">{entry.reason}</span>}</div>
+          <form method="POST"><input type="hidden" name="action" value="remove_ticket_blacklist" /><input type="hidden" name="target_type" value={entry.target_type} /><input type="hidden" name="target_id" value={entry.target_id} /><button type="submit" class="btn btn-ghost btn-sm">Remove</button></form>
+        </div>
+      ))}
+    </div>
+    <form method="POST" class="tk-add-form">
+      <input type="hidden" name="action" value="add_ticket_blacklist" />
+      <select name="target_type"><option value="user">User ID</option><option value="role">Role ID</option></select>
+      <input type="text" name="target_id" placeholder="Discord ID" inputmode="numeric" pattern="[0-9]{5,25}" required />
+      <input type="text" name="reason" placeholder="Reason (optional)" maxlength="300" />
+      <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />Block</button>
     </form>
   </div>
 
