@@ -51,10 +51,9 @@ export const ui = {
     hero: {
       eyebrow: 'Discord bot · actively developed',
       headline: 'One bot, not eight admin tabs open.',
-      lede: 'Moderation, tickets, leveling, giveaways, reaction roles, and custom commands, all running on one bot with a real database, not a dashboard promise you never open.',
+      lede: 'Moderation, tickets, leveling, giveaways, and custom commands all live in one bot. Set it up once, then get back to running your community.',
       cta1: 'Add to Discord',
       cta2: 'Browse commands',
-      note: 'Configurable prefix per server · no credit card · open codebase',
     },
     announce: {
       pill: 'Announcements',
@@ -185,7 +184,7 @@ export const ui = {
     roadmapPage: {
       eyebrow: 'Roadmap',
       title: "What's planned, in the open.",
-      lede: 'No fixed dates, this moves as fast as one person building it in their spare time allows. Order within each column is not a priority ranking.',
+      lede: 'There are no fixed dates. This is built in real spare time, so priorities can move. The columns show status, not a ranking within each stage.',
       columns: [
         {
           key: 'shipped', label: 'Shipped', items: [
@@ -846,10 +845,9 @@ export const ui = {
     hero: {
       eyebrow: 'Bot de Discord · en desarrollo activo',
       headline: 'Un bot, no ocho pestañas de panel abiertas.',
-      lede: 'Moderación, tickets, niveles, sorteos, roles por reacción y comandos propios, todo en un solo bot con base de datos real, no una promesa de dashboard que nunca abres.',
+      lede: 'Moderación, tickets, niveles, sorteos y comandos propios viven en un solo bot. Lo configuras una vez y vuelves a ocuparte de tu comunidad.',
       cta1: 'Agregar a Discord',
       cta2: 'Ver comandos',
-      note: 'Prefijo configurable por servidor · sin tarjeta de crédito · código abierto',
     },
     announce: {
       pill: 'Anuncios',
@@ -980,7 +978,7 @@ export const ui = {
     roadmapPage: {
       eyebrow: 'Roadmap',
       title: 'Lo que está planeado, a la vista.',
-      lede: 'Sin fechas fijas, esto avanza tan rápido como le alcanza el tiempo libre a una sola persona armándolo. El orden dentro de cada columna no es un ranking de prioridad.',
+      lede: 'No hay fechas fijas. Esto se construye en tiempo libre, así que las prioridades pueden cambiar. Las columnas muestran el estado, no un ranking interno.',
       columns: [
         {
           key: 'shipped', label: 'Lanzado', items: [
@@ -1641,10 +1639,9 @@ export const ui = {
     hero: {
       eyebrow: 'Bot de Discord · em desenvolvimento ativo',
       headline: 'Um bot só, não oito abas de painel abertas.',
-      lede: 'Moderação, tickets, níveis, sorteios, cargos por reação e comandos personalizados, tudo rodando em um único bot com banco de dados de verdade, não uma promessa de painel que você nunca abre.',
+      lede: 'Moderação, tickets, níveis, sorteios e comandos personalizados ficam em um só bot. Você configura uma vez e volta a cuidar da sua comunidade.',
       cta1: 'Adicionar ao Discord',
       cta2: 'Ver comandos',
-      note: 'Prefixo configurável por servidor · sem cartão de crédito · código aberto',
     },
     announce: {
       pill: 'Anúncios',
@@ -1775,7 +1772,7 @@ export const ui = {
     roadmapPage: {
       eyebrow: 'Roadmap',
       title: 'O que está planejado, em aberto.',
-      lede: 'Sem datas fixas, isso avança tão rápido quanto o tempo livre de uma pessoa só construindo isso permite. A ordem dentro de cada coluna não é um ranking de prioridade.',
+      lede: 'Não há datas fixas. O projeto é construído no tempo livre, então as prioridades podem mudar. As colunas mostram o estágio, não uma ordem de importância.',
       columns: [
         {
           key: 'shipped', label: 'Lançado', items: [

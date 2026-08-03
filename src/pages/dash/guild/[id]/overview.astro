@@ -26,9 +26,16 @@ let moderation: any = { hasData: false, points: [], totals: { bans: 0, other: 0 
 
 try {
 
-const guildRes = await fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, {
-  headers: { Authorization: `Bot ${botToken}` },
-});
+// These two Discord reads are independent. Starting them together removes one full
+// network round trip from the first dashboard render.
+const [guildRes, channelsRes] = await Promise.all([
+  fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, {
+    headers: { Authorization: `Bot ${botToken}` },
+  }),
+  fetch(`https://discord.com/api/guilds/${id}/channels`, {
+    headers: { Authorization: `Bot ${botToken}` },
+  }),
+]);
 if (!guildRes.ok) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 guild = await guildRes.json();
 
@@ -54,15 +61,12 @@ const startPrevious = new Date(now);
 startPrevious.setUTCDate(startPrevious.getUTCDate() - days * 2 + 1);
 const currentCutoff = isoDate(startCurrent);
 
-// Every remaining fetch (Discord channels + all Supabase reads) is independent, so they all run
-// together instead of one after another, this was previously the biggest source of load time.
+// Every Supabase read is independent, so they all run together instead of one after another.
 const [
-  channelsRes,
   guildsRes, automodRes, antinukeRes, levelRes, ticketCatRes,
   giveawayActiveRes, logEntriesRes, commandsRes, respondersRes, reportRes,
   welcomeRes, verificationRes, activityRes, modActionsRes,
 ] = await runBatched([
-  () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=word_filter_enabled,anti_spam_enabled,anti_raid_enabled,anti_alt_enabled`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
