@@ -215,9 +215,13 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'add_reaction_trigger') {
     const emoji = String(form.get('emoji') ?? '').trim().slice(0, 100);
     const trigger = String(form.get('trigger') ?? '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 80);
+    const matchMode = String(form.get('match_mode') ?? 'contains');
+    const channelIds = form.getAll('trigger_channel_ids').map(String);
+    const roleIds = form.getAll('trigger_role_ids').map(String);
+    const cooldownSeconds = Math.max(0, Math.min(86400, Number(form.get('cooldown_seconds') ?? 0) || 0));
     const common = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'can', 'do', 'for', 'from', 'get', 'go', 'have', 'he', 'hey', 'hi', 'i', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'our', 'so', 'that', 'the', 'this', 'to', 'was', 'we', 'what', 'when', 'where', 'who', 'why', 'will', 'with', 'you', 'your']);
     if (emoji && trigger.length >= 2 && !common.has(trigger)) {
-      const res = await fetch(`${supabaseUrl}/rest/v1/reaction_triggers`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, emoji, trigger, owner_id: session.userId }) });
+      const res = await fetch(`${supabaseUrl}/rest/v1/reaction_triggers`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, emoji, trigger, owner_id: session.userId, match_mode: matchMode, channel_ids: channelIds, role_ids: roleIds, case_sensitive: form.get('case_sensitive') === 'on', cooldown_seconds: cooldownSeconds }) });
       saved = res.ok;
       if (!res.ok) error = 'That emoji and trigger may already be configured.';
     } else {
@@ -229,6 +233,13 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'reset_reaction_triggers') {
     await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
     saved = true;
+  } else if (action === 'edit_reaction_trigger') {
+    const triggerId = String(form.get('id') ?? '').trim();
+    const channelIds = form.getAll('trigger_channel_ids').map(String);
+    const roleIds = form.getAll('trigger_role_ids').map(String);
+    const patch = { match_mode: String(form.get('match_mode') ?? 'contains'), channel_ids: channelIds, role_ids: roleIds, case_sensitive: form.get('case_sensitive') === 'on', cooldown_seconds: Math.max(0, Math.min(86400, Number(form.get('cooldown_seconds') ?? 0) || 0)), enabled: form.get('enabled') === 'on' };
+    const res = await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?id=eq.${encodeURIComponent(triggerId)}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+    saved = res.ok;
   } else if (action === 'save_reaction_messages') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const emojis = [...new Set(form.getAll('emojis').map(String).map((value) => value.trim()).filter(Boolean))].slice(0, 3);
@@ -244,11 +255,14 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'create_webhook') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const name = String(form.get('name') ?? '').trim().slice(0, 80);
+    const defaultUsername = String(form.get('default_username') ?? '').trim().slice(0, 80) || null;
+    const defaultAvatarUrl = String(form.get('default_avatar_url') ?? '').trim() || null;
+    const defaultMessage = String(form.get('default_message') ?? '').trim().slice(0, 2000) || null;
     if (channelId && name) {
       const createRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/webhooks`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
       if (createRes.ok) {
         const webhook = await createRes.json();
-        const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name ?? name, created_by: session.userId }) });
+        const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name ?? name, created_by: session.userId, default_username: defaultUsername, default_avatar_url: defaultAvatarUrl, default_message: defaultMessage }) });
         saved = dbRes.ok;
       } else error = 'Could not create the webhook. Check Manage Webhooks in that channel.';
     }
@@ -257,11 +271,32 @@ if (Astro.request.method === 'POST') {
     const message = String(form.get('message') ?? '').trim().slice(0, 2000);
     const username = String(form.get('username') ?? '').trim().slice(0, 80) || undefined;
     const avatarUrl = String(form.get('avatar_url') ?? '').trim() || undefined;
-    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token`, { headers: supabaseHeaders });
+    const embedTitle = String(form.get('embed_title') ?? '').trim().slice(0, 256) || undefined;
+    const embedDescription = String(form.get('embed_description') ?? '').trim().slice(0, 4096) || undefined;
+    const embedColor = String(form.get('embed_color') ?? '').trim().replace('#', '');
+    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token,default_message,default_username,default_avatar_url,default_embed`, { headers: supabaseHeaders });
     const [row] = rowRes.ok ? await rowRes.json() : [];
-    if (row && message) {
-      const sendRes = await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}?wait=true`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message, username, avatar_url: avatarUrl }) });
+    const embed = embedTitle || embedDescription ? { ...(embedTitle ? { title: embedTitle } : {}), ...(embedDescription ? { description: embedDescription } : {}), ...( /^[0-9a-fA-F]{6}$/.test(embedColor) ? { color: parseInt(embedColor, 16) } : {}) } : row?.default_embed;
+    if (row && (message || row.default_message || embed)) {
+      const sendRes = await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}?wait=true`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message || row.default_message || undefined, username: username || row.default_username || undefined, avatar_url: avatarUrl || row.default_avatar_url || undefined, embeds: embed ? [embed] : undefined }) });
       saved = sendRes.ok;
+    }
+  } else if (action === 'edit_webhook') {
+    const localId = String(form.get('id') ?? '').trim();
+    const patch = { name: String(form.get('name') ?? '').trim().slice(0, 80), default_username: String(form.get('default_username') ?? '').trim().slice(0, 80) || null, default_avatar_url: String(form.get('default_avatar_url') ?? '').trim() || null, default_message: String(form.get('default_message') ?? '').trim().slice(0, 2000) || null, enabled: form.get('enabled') === 'on' };
+    const res = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+    saved = res.ok;
+  } else if (action === 'duplicate_webhook') {
+    const localId = String(form.get('id') ?? '').trim();
+    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+    const [row] = rowRes.ok ? await rowRes.json() : [];
+    if (row) {
+      const createRes = await fetch(`https://discord.com/api/v10/channels/${row.channel_id}/webhooks`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${row.name} copy`.slice(0, 80) }) });
+      if (createRes.ok) {
+        const webhook = await createRes.json();
+        const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: row.channel_id, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name, created_by: session.userId, default_username: row.default_username, default_avatar_url: row.default_avatar_url, default_message: row.default_message, default_embed: row.default_embed }) });
+        saved = dbRes.ok;
+      }
     }
   } else if (action === 'delete_webhook') {
     const localId = String(form.get('id') ?? '').trim();
@@ -273,18 +308,29 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'create_counter') {
     const option = String(form.get('option') ?? '').trim().toLowerCase();
     const type = String(form.get('type') ?? 'voice').trim();
+    const parentId = String(form.get('parent_id') ?? '').trim() || null;
+    const nameTemplate = String(form.get('name_template') ?? '{option}: {value}').trim().slice(0, 100) || '{option}: {value}';
+    const prefix = String(form.get('prefix') ?? '').slice(0, 30);
+    const suffix = String(form.get('suffix') ?? '').slice(0, 30);
+    const intervalSeconds = Math.max(60, Math.min(86400, Number(form.get('interval_seconds') ?? 60) || 60));
     const typeCode: Record<string, number> = { voice: 2, text: 0, category: 4, announce: 5, stage: 13 };
     if (COUNTER_OPTIONS.includes(option) && typeCode[type] != null) {
-      const channelRes = await fetch(`https://discord.com/api/v10/guilds/${id}/channels`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `Counter: ${option}`, type: typeCode[type] }) });
+      const channelRes = await fetch(`https://discord.com/api/v10/guilds/${id}/channels`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${prefix}${option}${suffix}`.slice(0, 100), type: typeCode[type], parent_id: parentId }) });
       if (channelRes.ok) {
         const channel = await channelRes.json();
-        const dbRes = await fetch(`${supabaseUrl}/rest/v1/server_counters`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: session.userId }) });
+        const dbRes = await fetch(`${supabaseUrl}/rest/v1/server_counters`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: session.userId, parent_id: parentId, name_template: nameTemplate, prefix, suffix, interval_seconds: intervalSeconds }) });
         saved = dbRes.ok;
       } else error = 'Could not create the counter channel. Check Manage Channels.';
     }
   } else if (action === 'delete_counter') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const res = await fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = res.ok;
+  } else if (action === 'edit_counter') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const patch = { name_template: String(form.get('name_template') ?? '{option}: {value}').trim().slice(0, 100) || '{option}: {value}', prefix: String(form.get('prefix') ?? '').slice(0, 30), suffix: String(form.get('suffix') ?? '').slice(0, 30), interval_seconds: Math.max(60, Math.min(86400, Number(form.get('interval_seconds') ?? 60) || 60)), parent_id: String(form.get('parent_id') ?? '').trim() || null, enabled: form.get('enabled') === 'on' };
+    const res = await fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+    if (res.ok && patch.parent_id) await fetch(`https://discord.com/api/v10/channels/${channelId}`, { method: 'PATCH', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_id: patch.parent_id }) }).catch(() => {});
     saved = res.ok;
   } else if (action === 'add_disabled') {
     const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
@@ -387,7 +433,7 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
   () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id&order=trigger.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: supabaseHeaders }),
@@ -395,8 +441,8 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
   () => fetch(`${supabaseUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id&order=id.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id,default_username,default_avatar_url,default_message,default_embed,enabled&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type,name_template,prefix,suffix,parent_id,interval_seconds,enabled&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
@@ -411,7 +457,7 @@ const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: a
 })) : [];
 const stickyMessages = stickyRes.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content })) : [];
 const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode })) : [];
-const reactionTriggers = reactionTriggersRes.ok ? (await reactionTriggersRes.json()).map((r: any) => ({ id: r.id, emoji: r.emoji, trigger: r.trigger, ownerId: r.owner_id })) : [];
+const reactionTriggers = reactionTriggersRes.ok ? (await reactionTriggersRes.json()).map((r: any) => ({ id: r.id, emoji: r.emoji, trigger: r.trigger, ownerId: r.owner_id, matchMode: r.match_mode ?? 'contains', channelIds: r.channel_ids ?? [], roleIds: r.role_ids ?? [], caseSensitive: r.case_sensitive ?? false, cooldownSeconds: r.cooldown_seconds ?? 0, enabled: r.enabled !== false })) : [];
 const reactionMessages = reactionMessagesRes.ok ? (await reactionMessagesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id, emojis: r.emojis ?? [] })) : [];
 const disabledCommands = disabledRes.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
 const autoThreads = autoThreadsRes.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
@@ -421,8 +467,8 @@ const starboardRows = starboardRes.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
 const voiceRows = voiceMasterRes.ok ? await voiceMasterRes.json() : [];
 const voiceMaster = voiceRows[0] ? { creatorChannelId: voiceRows[0].creator_channel_id, panelChannelId: voiceRows[0].panel_channel_id, panelMessageId: voiceRows[0].panel_message_id, categoryId: voiceRows[0].category_id, defaultLimit: voiceRows[0].default_limit ?? 0, defaultName: voiceRows[0].default_name ?? '{user.name}' } : null;
-const managedWebhooks = webhooksRes.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id })) : [];
-const serverCounters = countersRes.ok ? (await countersRes.json()).map((c: any) => ({ id: c.id, channelId: c.channel_id, option: c.counter_option, type: c.channel_type })) : [];
+const managedWebhooks = webhooksRes.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id, defaultUsername: w.default_username, defaultAvatarUrl: w.default_avatar_url, defaultMessage: w.default_message, enabled: w.enabled !== false })) : [];
+const serverCounters = countersRes.ok ? (await countersRes.json()).map((c: any) => ({ id: c.id, channelId: c.channel_id, option: c.counter_option, type: c.channel_type, nameTemplate: c.name_template ?? '{option}: {value}', prefix: c.prefix ?? '', suffix: c.suffix ?? '', parentId: c.parent_id, intervalSeconds: c.interval_seconds ?? 60, enabled: c.enabled !== false })) : [];
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles
