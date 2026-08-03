@@ -11,6 +11,15 @@ function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 }
 
+function parseTicketFormFields(spec: string) {
+  const fields = spec.split(';').map((part) => part.trim()).filter(Boolean).map((part, index) => {
+    const [type, fieldId, label, placeholder, required] = part.split('|').map((value) => value?.trim());
+    return { type: type || 'short_text', id: fieldId || `field_${index + 1}`, label: label || '', placeholder: placeholder || '', required: required !== 'optional' && required !== 'false' };
+  });
+  if (fields.length < 1 || fields.length > 5 || fields.some((field) => !['short_text', 'long_text'].includes(field.type) || !field.id || !field.label)) return null;
+  return fields;
+}
+
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'panels';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -111,6 +120,9 @@ if (Astro.request.method === 'POST') {
     const parentChannelId = String(form.get('parent_channel_id') ?? '').trim() || null;
     const supportRoleIds = form.getAll('support_role_ids').map(String);
     const pingRoleIds = form.getAll('ping_role_ids').map(String);
+    const requiredRoleIds = form.getAll('required_role_ids').map(String);
+    const formIdRaw = String(form.get('form_id') ?? '').trim();
+    const formId = formIdRaw ? Number(formIdRaw) : null;
     const maxOpenPerUser = Math.max(1, Math.min(10, Number(form.get('max_open_per_user') ?? 1) || 1));
     const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
@@ -120,13 +132,47 @@ if (Astro.request.method === 'POST') {
       body: JSON.stringify({
         label, emoji, description, button_style: buttonStyle, naming_pattern: namingPattern, parent_channel_id: parentChannelId,
         support_role_ids: supportRoleIds, ping_role_ids: pingRoleIds,
-        max_open_per_user: maxOpenPerUser, panel_id: panelId,
+        max_open_per_user: maxOpenPerUser, panel_id: panelId, form_id: Number.isFinite(formId) ? formId : null, required_role_ids: requiredRoleIds,
       }),
     });
     if (res.ok) {
       saved = true;
       if (panelId) await refreshPanelById(panelId);
     } else error = "Couldn't save that ticket type, try again.";
+  } else if (action === 'create_ticket_form' || action === 'update_ticket_form') {
+    const name = String(form.get('form_name') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 50);
+    const title = String(form.get('form_title') ?? 'Ticket details').trim().slice(0, 45) || 'Ticket details';
+    const fields = parseTicketFormFields(String(form.get('form_fields') ?? ''));
+    if (!name || !fields) {
+      error = 'Use 1–5 valid fields: type|id|label|placeholder|required;...';
+    } else {
+      const formPayload = { guild_id: id, name, title, fields };
+      const endpoint = action === 'create_ticket_form'
+        ? `${supabaseUrl}/rest/v1/ticket_forms`
+        : `${supabaseUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}`;
+      const res = await fetch(endpoint, { method: action === 'create_ticket_form' ? 'POST' : 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(action === 'create_ticket_form' ? formPayload : { title, fields, updated_at: new Date().toISOString() }) });
+      if (res.ok) saved = true;
+      else error = "Couldn't save that ticket form, try again.";
+    }
+  } else if (action === 'delete_ticket_form') {
+    const formId = String(form.get('form_id') ?? '').trim();
+    const res = await fetch(`${supabaseUrl}/rest/v1/ticket_forms?id=eq.${encodeURIComponent(formId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: { ...supabaseHeaders, Prefer: 'return=minimal' } });
+    if (res.ok) saved = true;
+    else error = "Couldn't delete that ticket form.";
+  } else if (action === 'add_ticket_blacklist' || action === 'remove_ticket_blacklist') {
+    const targetType = form.get('target_type') === 'role' ? 'role' : 'user';
+    const targetId = String(form.get('target_id') ?? '').trim();
+    if (!/^\d{5,25}$/.test(targetId)) {
+      error = 'Enter a valid Discord user or role ID.';
+    } else if (action === 'add_ticket_blacklist') {
+      const res = await fetch(`${supabaseUrl}/rest/v1/ticket_blacklist`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, target_type: targetType, target_id: targetId, reason: String(form.get('reason') ?? '').trim().slice(0, 300) || null }) });
+      if (res.ok) saved = true;
+      else error = "Couldn't add that ticket blacklist entry.";
+    } else {
+      const res = await fetch(`${supabaseUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&target_type=eq.${targetType}&target_id=eq.${targetId}`, { method: 'DELETE', headers: { ...supabaseHeaders, Prefer: 'return=minimal' } });
+      if (res.ok) saved = true;
+      else error = "Couldn't remove that ticket blacklist entry.";
+    }
   } else if (action === 'delete') {
     const rawCategoryId = String(form.get('category_id') ?? '').trim();
     const categoryId = encodeURIComponent(rawCategoryId);
@@ -309,7 +355,7 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   return true;
 }
 
-const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes] = await runBatched([
+const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: supabaseHeaders }),
@@ -318,6 +364,8 @@ const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRe
   () => fetch(`${supabaseUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&select=id,name,title&order=name.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&select=id,target_type,target_id,reason&order=id.asc`, { headers: supabaseHeaders }),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -335,6 +383,8 @@ const categories = rawCategories.map((c: any) => ({
   supportRoleIds: c.support_role_ids ?? [],
   pingRoleIds: c.ping_role_ids ?? [],
   maxOpenPerUser: c.max_open_per_user ?? 1,
+  formId: c.form_id ?? null,
+  requiredRoleIds: c.required_role_ids ?? [],
 }));
 
 const rawOpenTickets = openTicketsRes.ok ? await openTicketsRes.json() : [];
@@ -376,6 +426,8 @@ const panels = rawPanels.map((p: any) => ({
 }));
 
 const embedTemplateNames: string[] = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
+const forms = ticketFormsRes.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? 'Ticket details', fields: f.fields ?? [] })) : [];
+const blacklist = ticketBlacklistRes.ok ? await ticketBlacklistRes.json() : [];
 
 const settingsRows = settingsRes.ok ? await settingsRes.json() : [];
 const s = settingsRows[0] ?? {};
@@ -412,6 +464,8 @@ const settings = {
   channelCategories={channelCategories}
   textChannels={textChannels}
   embedTemplateNames={embedTemplateNames}
+  forms={forms}
+  blacklist={blacklist}
   openTickets={openTickets}
   saved={saved}
   error={error}
