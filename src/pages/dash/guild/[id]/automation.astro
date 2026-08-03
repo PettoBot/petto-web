@@ -35,6 +35,44 @@ async function deleteDiscordMessage(channelId: string | null, messageId: string 
   return res.ok || res.status === 404;
 }
 
+function discordButtonEmoji(value: string) {
+  const custom = value.match(/^<a?:(\w+):(\d+)>$/);
+  return custom
+    ? { id: custom[2], name: custom[1], animated: value.startsWith('<a:') }
+    : { name: value };
+}
+
+async function syncReactionRoleButtons(channelId: string, messageId: string) {
+  const base = 'https://discord.com/api/v10/channels/' + channelId + '/messages/' + messageId;
+  const messageRes = await fetch(base, { headers: { Authorization: 'Bot ' + botToken } });
+  if (!messageRes.ok) return { ok: false, message: "Couldn't fetch that message." };
+  const message = await messageRes.json();
+  const foreignComponents = (message.components ?? []).some((row: any) => (row.components ?? []).some((component: any) => component.custom_id && !String(component.custom_id).startsWith('rr:')));
+  if (foreignComponents) return { ok: false, message: 'That message already has another component panel. Use a message without buttons or selects for button roles.' };
+
+  const rowsUrl = supabaseUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&message_id=eq.' + encodeURIComponent(messageId) + '&interaction_type=eq.button&select=id,emoji,role_id,mode,button_label&order=id.asc';
+  const rowsRes = await fetch(rowsUrl, { headers: supabaseHeaders });
+  if (!rowsRes.ok) return { ok: false, message: "Couldn't read the button role configuration." };
+  const rows = await rowsRes.json();
+  if (rows.length > 25) return { ok: false, message: 'A message can have at most 25 button roles.' };
+
+  const buttons = rows.map((row: any) => ({
+    type: 2,
+    custom_id: 'rr:' + row.id,
+    style: row.mode === 'add' ? 3 : row.mode === 'remove' ? 4 : 1,
+    label: String(row.button_label || 'Role').trim().slice(0, 80) || 'Role',
+    emoji: discordButtonEmoji(row.emoji),
+  }));
+  const components = [] as any[];
+  for (let index = 0; index < buttons.length; index += 5) components.push({ type: 1, components: buttons.slice(index, index + 5) });
+  const editRes = await fetch(base, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bot ' + botToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ components }),
+  });
+  return editRes.ok ? { ok: true, message: '' } : { ok: false, message: "Couldn't update the message components." };
+}
+
 async function postVoiceMasterPanel(channelId: string) {
   const emoji = {
     leave: { id: '1533576199354454197', name: 'pe_leave' },
@@ -189,30 +227,42 @@ if (Astro.request.method === 'POST') {
     const emoji = String(form.get('emoji') ?? '').trim().slice(0, 100);
     const roleId = String(form.get('role_id') ?? '');
     const mode = String(form.get('mode') ?? 'toggle');
+    const interactionType = String(form.get('interaction_type') ?? 'reaction') === 'button' ? 'button' : 'reaction';
+    const buttonLabel = String(form.get('button_label') ?? '').trim().slice(0, 80) || null;
     if (channelId && messageId && emoji && roleId) {
-      // The bot has to actually react to the message with this emoji first, otherwise there's
-      // nothing on the message for members to click, and the reactionAdd listener never fires.
-      // /reactionrole add does this via message.react(), the dashboard form needs to match it.
-      const customMatch = emoji.match(/^<a?:(\w+):(\d+)>$/);
-      const reactionParam = customMatch ? `${customMatch[1]}:${customMatch[2]}` : emoji;
-      const reactRes = await fetch(
-        `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(reactionParam)}/@me`,
-        { method: 'PUT', headers: { Authorization: `Bot ${botToken}` } },
-      );
-      if (!reactRes.ok) {
-        reactionRoleError = "Couldn't react to that message, check the channel, message ID, and emoji.";
-      } else {
-        await fetch(`${supabaseUrl}/rest/v1/reaction_roles`, {
+      if (interactionType === 'reaction') {
+        const customMatch = emoji.match(/^<a?:(\w+):(\d+)>$/);
+        const reactionParam = customMatch ? customMatch[1] + ':' + customMatch[2] : emoji;
+        const reactUrl = 'https://discord.com/api/v10/channels/' + channelId + '/messages/' + messageId + '/reactions/' + encodeURIComponent(reactionParam) + '/@me';
+        const reactRes = await fetch(reactUrl, { method: 'PUT', headers: { Authorization: 'Bot ' + botToken } });
+        if (!reactRes.ok) reactionRoleError = "Couldn't react to that message, check the channel, message ID, and emoji.";
+      }
+      if (!reactionRoleError) {
+        const insertRes = await fetch(supabaseUrl + '/rest/v1/reaction_roles', {
           method: 'POST',
           headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-          body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: messageId, emoji, role_id: roleId, mode }),
+          body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: messageId, emoji, role_id: roleId, mode, interaction_type: interactionType, button_label: interactionType === 'button' ? buttonLabel : null }),
         });
-        saved = true;
+        if (!insertRes.ok) reactionRoleError = "Couldn't save that role binding.";
+        else if (interactionType === 'button') {
+          const sync = await syncReactionRoleButtons(channelId, messageId);
+          if (!sync.ok) reactionRoleError = sync.message;
+        }
+        saved = !reactionRoleError;
       }
     }
   } else if (action === 'delete_reactionrole') {
-    await fetch(`${supabaseUrl}/rest/v1/reaction_roles?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
-    saved = true;
+    const roleBindingId = String(form.get('id') ?? '');
+    const oldUrl = supabaseUrl + '/rest/v1/reaction_roles?id=eq.' + encodeURIComponent(roleBindingId) + '&guild_id=eq.' + id + '&select=channel_id,message_id,interaction_type';
+    const oldRes = await fetch(oldUrl, { headers: supabaseHeaders });
+    const oldRows = oldRes.ok ? await oldRes.json() : [];
+    const deleteUrl = supabaseUrl + '/rest/v1/reaction_roles?id=eq.' + encodeURIComponent(roleBindingId) + '&guild_id=eq.' + id;
+    const deleteRes = await fetch(deleteUrl, { method: 'DELETE', headers: supabaseHeaders });
+    if (deleteRes.ok && oldRows[0]?.interaction_type === 'button') {
+      const sync = await syncReactionRoleButtons(oldRows[0].channel_id, oldRows[0].message_id);
+      if (!sync.ok) reactionRoleError = sync.message;
+    }
+    saved = deleteRes.ok && !reactionRoleError;
   } else if (action === 'add_reaction_trigger') {
     const emoji = String(form.get('emoji') ?? '').trim().slice(0, 100);
     const trigger = String(form.get('trigger') ?? '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 80);
@@ -433,7 +483,7 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
   () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
+  () => fetch(supabaseUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
@@ -457,7 +507,7 @@ const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: a
   replyType: a.reply_type ?? 'text', embedColor: a.embed_color, embedTitle: a.embed_title, embedFooter: a.embed_footer, embedTemplate: a.embed_template,
 })) : [];
 const stickyMessages = stickyRes.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content })) : [];
-const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode })) : [];
+const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode, interactionType: r.interaction_type ?? 'reaction', buttonLabel: r.button_label ?? null })) : [];
 const reactionTriggers = reactionTriggersRes.ok ? (await reactionTriggersRes.json()).map((r: any) => ({ id: r.id, emoji: r.emoji, trigger: r.trigger, ownerId: r.owner_id, matchMode: r.match_mode ?? 'contains', channelIds: r.channel_ids ?? [], roleIds: r.role_ids ?? [], caseSensitive: r.case_sensitive ?? false, cooldownSeconds: r.cooldown_seconds ?? 0, enabled: r.enabled !== false })) : [];
 const reactionMessages = reactionMessagesRes.ok ? (await reactionMessagesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id, emojis: r.emojis ?? [] })) : [];
 const disabledCommands = disabledRes.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
