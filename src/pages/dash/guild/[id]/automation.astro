@@ -211,6 +211,35 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'delete_reactionrole') {
     await fetch(`${supabaseUrl}/rest/v1/reaction_roles?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
     saved = true;
+  } else if (action === 'add_reaction_trigger') {
+    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 100);
+    const trigger = String(form.get('trigger') ?? '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 80);
+    const common = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'can', 'do', 'for', 'from', 'get', 'go', 'have', 'he', 'hey', 'hi', 'i', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'our', 'so', 'that', 'the', 'this', 'to', 'was', 'we', 'what', 'when', 'where', 'who', 'why', 'will', 'with', 'you', 'your']);
+    if (emoji && trigger.length >= 2 && !common.has(trigger)) {
+      const res = await fetch(`${supabaseUrl}/rest/v1/reaction_triggers`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, emoji, trigger, owner_id: session.userId }) });
+      saved = res.ok;
+      if (!res.ok) error = 'That emoji and trigger may already be configured.';
+    } else {
+      error = 'Use an emoji and a specific trigger phrase (common one-word triggers are blocked).';
+    }
+  } else if (action === 'delete_reaction_trigger') {
+    await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'reset_reaction_triggers') {
+    await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
+  } else if (action === 'save_reaction_messages') {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const emojis = [...new Set(form.getAll('emojis').map(String).map((value) => value.trim()).filter(Boolean))].slice(0, 3);
+    if (channelId) {
+      const res = emojis.length
+        ? await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, emojis }) })
+        : await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: supabaseHeaders });
+      saved = res.ok;
+    }
+  } else if (action === 'delete_reaction_messages') {
+    await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: supabaseHeaders });
+    saved = true;
   } else if (action === 'add_disabled') {
     const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
     const channelId = String(form.get('channel_id') ?? '').trim() || null;
@@ -306,12 +335,14 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
+const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&select=id,message_id,emoji,role_id,mode`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id&order=trigger.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: supabaseHeaders }),
   () => fetch(`${supabaseUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: supabaseHeaders }),
@@ -332,6 +363,8 @@ const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: a
 })) : [];
 const stickyMessages = stickyRes.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content })) : [];
 const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode })) : [];
+const reactionTriggers = reactionTriggersRes.ok ? (await reactionTriggersRes.json()).map((r: any) => ({ id: r.id, emoji: r.emoji, trigger: r.trigger, ownerId: r.owner_id })) : [];
+const reactionMessages = reactionMessagesRes.ok ? (await reactionMessagesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id, emojis: r.emojis ?? [] })) : [];
 const disabledCommands = disabledRes.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
 const autoThreads = autoThreadsRes.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
 const aliases = aliasesRes.ok ? (await aliasesRes.json()).map((a: any) => ({ id: a.id, name: a.name, command: a.command })) : [];
@@ -365,6 +398,8 @@ const channelCategories = allChannels.filter((c: any) => c.type === 4).sort((a: 
   stickyMessages={stickyMessages}
   disabledCommands={disabledCommands}
   reactionRoles={reactionRoles}
+  reactionTriggers={reactionTriggers}
+  reactionMessages={reactionMessages}
   autoThreads={autoThreads}
   roles={roles}
   channels={channels}

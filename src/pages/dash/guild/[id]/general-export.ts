@@ -8,7 +8,7 @@ export const prerender = false;
 const TABLES = [
   'guilds', 'automod_config', 'antinuke_config', 'level_config', 'level_rewards',
   'ticket_categories', 'giveaway_config', 'giveaway_presets', 'log_entries',
-  'custom_commands', 'auto_responders', 'sticky_messages', 'reaction_roles', 'disabled_commands',
+  'custom_commands', 'auto_responders', 'sticky_messages', 'reaction_roles', 'reaction_triggers', 'reaction_message_configs', 'disabled_commands',
   'report_config', 'booster_role_config', 'member_events_config', 'verification_config',
   'bump_reminders', 'poj_config', 'poj_channels',
 ];
