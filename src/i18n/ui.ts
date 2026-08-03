@@ -134,6 +134,17 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.2.2',
+          date: 'August 2, 2026',
+          items: [
+            'Automation tools: configurable reaction triggers with contains, starts-with, ends-with, and exact matching, channel/role scopes, cooldowns, and per-message reactions',
+            'Webhooks and live counters: create, send, edit, and manage webhook defaults, plus channel counters with templates, intervals, and parent categories from the dashboard',
+            'Prefix command coverage: aliases are available across commands, and role resolution now accepts partial role names instead of requiring an exact match',
+            'VoiceMaster: the temporary voice-channel panel now uses the new Components V2 layout, custom Petto emojis, and a reliable resend flow',
+            'Help and errors: command details now show aliases, parameters, permissions, syntax, examples, and pagination; warning cards explain missing permissions, disabled commands, and invalid subcommands without pinging the author',
+          ],
+        },
+        {
           version: '0.2.1',
           date: 'July 31, 2026',
           items: [
@@ -917,6 +928,17 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.2.2',
+          date: '2 de agosto de 2026',
+          items: [
+            'Herramientas de automatización: triggers de reacción configurables con coincidencia contains, starts-with, ends-with o exact, alcance por canal/rol, cooldowns y reacciones por mensaje',
+            'Webhooks y counters en vivo: crear, enviar, editar y administrar defaults de webhooks, más counters de canales con plantillas, intervalos y categorías padre desde la dashboard',
+            'Cobertura de comandos con prefijo: ahora hay alias para todos los comandos y la resolución de roles acepta nombres parciales en vez de exigir coincidencia exacta',
+            'VoiceMaster: el panel de canales de voz temporales ahora usa el layout nuevo de Components V2, emojis personalizados de Petto y un flujo de reenvío confiable',
+            'Help y errores: los detalles muestran aliases, parámetros, permisos, sintaxis, ejemplos y paginación; las alertas explican permisos faltantes, comandos desactivados y subcomandos inválidos sin pinguear al autor',
+          ],
+        },
+        {
           version: '0.2.1',
           date: '31 de julio de 2026',
           items: [
@@ -1699,6 +1721,39 @@ export const ui = {
       lede: 'O Petto ainda não tem uma história longa, esta é de verdade a primeira versão. Os próximos lançamentos vão entrando aqui.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.2.2',
+          date: '2 de agosto de 2026',
+          items: [
+            'Ferramentas de automação: gatilhos de reação configuráveis com correspondência contains, starts-with, ends-with ou exact, escopo por canal/cargo, cooldowns e reações por mensagem',
+            'Webhooks e counters ao vivo: criar, enviar, editar e gerenciar padrões de webhooks, além de counters de canais com templates, intervalos e categorias pai pelo dashboard',
+            'Cobertura dos comandos com prefixo: agora existem aliases para todos os comandos e a busca de cargos aceita nomes parciais em vez de exigir correspondência exata',
+            'VoiceMaster: o painel de canais de voz temporários agora usa o novo layout de Components V2, emojis personalizados do Petto e um fluxo confiável para reenviar o painel',
+            'Help e erros: os detalhes mostram aliases, parâmetros, permissões, sintaxe, exemplos e paginação; os alertas explicam permissões faltantes, comandos desativados e subcomandos inválidos sem marcar o autor',
+          ],
+        },
+        {
+          version: '0.2.1',
+          date: '31 de julho de 2026',
+          items: [
+            'Dashboard de Overview: gráficos animados mais suaves com todas as datas marcadas, além de um novo gráfico de ações de moderação (bans vs. todo o resto)',
+            '`/rep`: um sistema simples de reputação, com membros dando pontos uns aos outros em cooldown e ranking no dashboard',
+            '`/softban`: bane e remove o ban imediatamente para limpar mensagens recentes sem manter o banimento',
+            '`/poll`: criador de enquetes com botões e preview ao vivo, pergunta/opções/imagem editáveis antes de publicar, escolha única ou múltipla e fechamento automático opcional',
+            'Autoresponders agora podem responder diretamente à mensagem que os acionou, limitar por cargos, marcar o usuário acionador e notificar @cargo/@usuário escrito na resposta',
+            'Autoresponders agora podem ser editados pelo dashboard, não apenas adicionados ou removidos',
+          ],
+        },
+        {
+          version: '0.2.0',
+          date: '27 de julho de 2026',
+          items: [
+            'Permissões: nível de autorização personalizado de 0 a 100 por grupo, sobreposto às permissões do Discord e editável por um gráfico interativo no dashboard',
+            'Simulador "Testar como": escolha um cargo ou cole um ID de usuário para ver instantaneamente quais comandos podem ser usados',
+            'Página de Segurança: sinaliza cargos com Administrator ou Manage Server e comandos sem nível personalizado definido',
+            'Audit Log: cada alteração de permissão agora registra quem fez e quando',
+          ],
+        },
         {
           version: '0.1.0',
           date: '20 de maio de 2026',
