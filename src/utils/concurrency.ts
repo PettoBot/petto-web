@@ -4,8 +4,16 @@
  * at the same time in a single request, overview.astro hit this by firing 14
  * fetches in one Promise.all (Discord + 13 Supabase calls).
  */
-export async function runBatched<T>(tasks: (() => Promise<T>)[], concurrency = 6): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
+type TaskResult<T> = T extends () => Promise<infer R> ? R : never;
+type BatchedResults<T extends readonly (() => Promise<any>)[]> = {
+  [K in keyof T]: TaskResult<T[K]>;
+};
+
+export async function runBatched<const T extends readonly (() => Promise<any>)[]>(
+  tasks: T,
+  concurrency = 6,
+): Promise<BatchedResults<T>> {
+  const results: unknown[] = new Array(tasks.length);
   let next = 0;
   async function worker() {
     while (next < tasks.length) {
@@ -14,5 +22,5 @@ export async function runBatched<T>(tasks: (() => Promise<T>)[], concurrency = 6
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
-  return results;
+  return results as BatchedResults<T>;
 }

@@ -263,6 +263,9 @@ const groups: { label: string; items: NavItem[] }[] = [
     // in-app navigation away from it (shakes instead), and doubles as the always-visible
     // "Save" control so users don't have to scroll down to a form's own submit button. ---
     var dirtyForm = null;
+    // Resetting a form also refreshes custom widgets by dispatching change events.
+    // Those synthetic events must not be mistaken for a new user edit.
+    var resettingForm = false;
     var saveBar = document.getElementById('dgl-savebar');
     var saveBarBtn = saveBar ? saveBar.querySelector('[data-savebar-save]') : null;
     var discardBtn = saveBar ? saveBar.querySelector('[data-savebar-discard]') : null;
@@ -283,8 +286,16 @@ const groups: { label: string; items: NavItem[] }[] = [
         form.dataset.dirtyBound = '1';
         // File-upload forms do a real page reload on submit anyway (see bindForms), no point tracking those.
         if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
-        form.addEventListener('input', function () { dirtyForm = form; showSaveBar(); });
-        form.addEventListener('change', function () { dirtyForm = form; showSaveBar(); });
+        form.addEventListener('input', function () {
+          if (resettingForm) return;
+          dirtyForm = form;
+          showSaveBar();
+        });
+        form.addEventListener('change', function () {
+          if (resettingForm) return;
+          dirtyForm = form;
+          showSaveBar();
+        });
       });
     }
 
@@ -296,19 +307,24 @@ const groups: { label: string; items: NavItem[] }[] = [
     if (discardBtn) discardBtn.addEventListener('click', function () {
       if (dirtyForm) {
         var form = dirtyForm;
-        form.reset();
-        // Native reset restores hidden widget values but not their visual chips/thumbs.
-        form.querySelectorAll('[data-multiselect] input[type="checkbox"]').forEach(function (cb) {
-          cb.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-        form.querySelectorAll('[data-colorpicker]').forEach(function (picker) {
-          var valueInput = picker.querySelector('[data-cp-value]');
-          var hexInput = picker.querySelector('[data-cp-hex]');
-          if (valueInput && hexInput) {
-            hexInput.value = valueInput.value;
-            hexInput.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        });
+        resettingForm = true;
+        try {
+          form.reset();
+          // Native reset restores hidden widget values but not their visual chips/thumbs.
+          form.querySelectorAll('[data-multiselect] input[type="checkbox"]').forEach(function (cb) {
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+          form.querySelectorAll('[data-colorpicker]').forEach(function (picker) {
+            var valueInput = picker.querySelector('[data-cp-value]');
+            var hexInput = picker.querySelector('[data-cp-hex]');
+            if (valueInput && hexInput) {
+              hexInput.value = valueInput.value;
+              hexInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          });
+        } finally {
+          resettingForm = false;
+        }
       }
       hideSaveBar();
     });
@@ -474,19 +490,46 @@ const groups: { label: string; items: NavItem[] }[] = [
       if (toggleSpan && activeLink) toggleSpan.innerHTML = activeLink.innerHTML;
     }
 
+    // Keep the next dashboard section ready while the user is deciding where to go.
+    // The cache is memory-only and is cleared after a save, so it never persists stale
+    // configuration across a meaningful write.
+    var prefetchedPages = new Map();
+    function prefetchPage(href) {
+      if (dirtyForm || prefetchedPages.has(href)) return;
+      var request = fetch(href, { method: 'GET' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('prefetch failed');
+          return res.text();
+        })
+        .catch(function () {
+          prefetchedPages.delete(href);
+          return null;
+        });
+      prefetchedPages.set(href, request);
+    }
+    function getPageHtml(href) {
+      if (!prefetchedPages.has(href)) prefetchPage(href);
+      var request = prefetchedPages.get(href);
+      return request || fetch(href, { method: 'GET' }).then(function (res) { return res.text(); });
+    }
+
     function bindDglLinks(root) {
       root.querySelectorAll('.dgl-link').forEach(function (a) {
         if (a.dataset.dglNavBound) return;
         a.dataset.dglNavBound = '1';
+        var href = a.getAttribute('href');
+        if (href) {
+          a.addEventListener('mouseenter', function () { prefetchPage(href); }, { passive: true });
+          a.addEventListener('focus', function () { prefetchPage(href); }, { passive: true });
+        }
         a.addEventListener('click', function (e) {
           if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
-          var href = a.getAttribute('href');
           if (!href) return;
           e.preventDefault();
           startProgress();
-          fetch(href, { method: 'GET' })
-            .then(function (res) { return res.text(); })
+          getPageHtml(href)
             .then(function (html) {
+              if (!html) throw new Error('navigation failed');
               var ok = swapContent(html, href);
               if (ok) { updateActiveLink(href); finishProgress(); }
               else window.location.href = href;
@@ -541,7 +584,10 @@ const groups: { label: string; items: NavItem[] }[] = [
             .then(function (res) { return res.text(); })
             .then(function (html) {
               var ok = swapContent(html, null);
-              if (ok) hideSaveBar();
+              if (ok) {
+                prefetchedPages.clear();
+                hideSaveBar();
+              }
               if (!ok && btn) { btn.disabled = false; btn.textContent = originalText; }
               if (saveBarBtn) saveBarBtn.disabled = false;
               finishProgress();
