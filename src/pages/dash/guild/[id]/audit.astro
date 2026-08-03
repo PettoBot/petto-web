@@ -7,30 +7,77 @@ import { getGuildInfo } from '../../../../utils/discord';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-const supabaseUrl = getEnv(Astro, 'SUPABASE_URL');
-const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
 
-if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
-
-const supabaseHeaders = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' };
+if (!botToken) return Astro.redirect('/dash/manage?error=server_not_configured');
 
 const guildInfo = await getGuildInfo(id, botToken);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-const logRes = await fetch(`${supabaseUrl}/rest/v1/permission_audit_log?guild_id=eq.${id}&select=*&order=created_at.desc&limit=200`, { headers: supabaseHeaders });
-const rawEntries = logRes.ok ? await logRes.json() : [];
-const entries = rawEntries.map((e: any) => ({
-  id: e.id,
-  actorId: e.actor_id,
-  actorName: e.actor_name,
-  action: e.action,
-  summary: e.summary,
-  createdAt: e.created_at,
-}));
+const ACTION_LABELS: Record<number, string> = {
+  1: 'Created a channel', 2: 'Updated a channel', 3: 'Deleted a channel',
+  10: 'Created a permission overwrite', 11: 'Updated a permission overwrite', 12: 'Deleted a permission overwrite',
+  20: 'Kicked a member', 21: 'Pruned members', 22: 'Banned a member', 23: 'Unbanned a member', 24: 'Updated a member', 25: 'Updated a member role',
+  26: 'Moved a member', 27: 'Disconnected a member', 28: 'Added a bot',
+  30: 'Created a role', 31: 'Updated a role', 32: 'Deleted a role',
+  40: 'Created an invite', 41: 'Updated an invite', 42: 'Deleted an invite',
+  50: 'Created a webhook', 51: 'Updated a webhook', 52: 'Deleted a webhook',
+  60: 'Created an emoji', 61: 'Updated an emoji', 62: 'Deleted an emoji',
+  72: 'Updated the server', 73: 'Updated the server MFA level', 74: 'Updated the server integrations',
+  80: 'Created an integration', 81: 'Updated an integration', 82: 'Deleted an integration',
+  83: 'Created a stage instance', 84: 'Updated a stage instance', 85: 'Deleted a stage instance',
+  90: 'Created a sticker', 91: 'Updated a sticker', 92: 'Deleted a sticker',
+  100: 'Created an event', 101: 'Updated an event', 102: 'Deleted an event',
+  110: 'Created a thread', 111: 'Updated a thread', 112: 'Deleted a thread',
+  120: 'Created an application command', 121: 'Updated an application command', 122: 'Deleted an application command',
+  140: 'Created an AutoMod rule', 141: 'Updated an AutoMod rule', 142: 'Deleted an AutoMod rule',
+  143: 'AutoMod blocked a message', 144: 'AutoMod flagged a message', 145: 'AutoMod timed out a member',
+  150: 'Created a creator monetization request', 151: 'Accepted creator monetization terms',
+  163: 'Created an onboarding prompt', 164: 'Updated an onboarding prompt', 165: 'Deleted an onboarding prompt', 166: 'Created onboarding', 167: 'Updated onboarding',
+};
+const ACTION_KEYS: Record<number, string> = {
+  1: 'create_group', 2: 'update_group_level', 20: 'remove_member', 21: 'remove_member', 22: 'delete_group', 23: 'add_member', 24: 'update_group_level', 25: 'update_group_level',
+  30: 'create_group', 31: 'update_group_level', 32: 'delete_group', 50: 'create_group', 51: 'update_group_level', 52: 'delete_group', 72: 'update_group_level',
+};
+
+function snowflakeDate(id: string): string {
+  try {
+    return new Date(Number((BigInt(id) >> 22n) + 1420070400000n)).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
+const auditRes = await fetch(`https://discord.com/api/v10/guilds/${id}/audit-logs?limit=100`, { headers: { Authorization: `Bot ${botToken}` } });
+let auditError: string | null = null;
+let entries: any[] = [];
+if (auditRes.ok) {
+  const payload = await auditRes.json();
+  const users = new Map((payload.users ?? []).map((u: any) => [u.id, u.global_name ?? u.username ?? u.id]));
+  entries = (payload.audit_log_entries ?? []).map((e: any) => {
+    const changes = Array.isArray(e.changes) ? e.changes : [];
+    const nameChange = changes.find((c: any) => c.key === 'name');
+    const targetUser = e.target_id ? users.get(e.target_id) : null;
+    const target = targetUser ? String(targetUser) : nameChange?.new_value ?? nameChange?.old_value ?? e.target_id ?? '';
+    return {
+      id: e.id,
+      actorId: e.user_id ?? null,
+      actorName: users.get(e.user_id) ?? (e.user_id ? `User ${e.user_id}` : 'Discord'),
+      actionKey: ACTION_KEYS[e.action_type] ?? '',
+      action: ACTION_LABELS[e.action_type] ?? `Administrative action (${e.action_type})`,
+      target: target ? String(target) : '',
+      reason: e.reason ?? null,
+      createdAt: snowflakeDate(e.id),
+    };
+  });
+} else if (auditRes.status === 403) {
+  auditError = 'Petto needs the View Audit Log permission in this server.';
+} else {
+  auditError = `Discord could not return the audit log (HTTP ${auditRes.status}).`;
+}
 ---
 <DashAuditLog
   user={session}
@@ -38,4 +85,5 @@ const entries = rawEntries.map((e: any) => ({
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
   entries={entries}
+  error={auditError}
 />
