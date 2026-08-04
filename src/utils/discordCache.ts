@@ -10,12 +10,22 @@ export async function getCachedUserGuilds(accessToken: string): Promise<any[]> {
   const hit = cache.get(accessToken);
   if (hit && hit.expiresAt > Date.now()) return hit.data;
 
-  const res = await fetch('https://discord.com/api/users/@me/guilds', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const data = res.ok ? await res.json() : [];
-  cache.set(accessToken, { data, expiresAt: Date.now() + TTL_MS });
-  return data;
+  try {
+    const res = await fetch('https://discord.com/api/users/@me/guilds', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error(`Discord guild list failed with ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Discord guild list was not an array');
+    cache.set(accessToken, { data, expiresAt: Date.now() + TTL_MS });
+    return data;
+  } catch (error) {
+    // A transient Discord/API failure must never look like a real empty server list.
+    // Keep a recently successful response useful during a short outage, otherwise let
+    // the caller render a retryable error instead of sending the user to a wrong page.
+    if (hit?.data && Date.now() - (hit.expiresAt - TTL_MS) < 60_000) return hit.data;
+    throw error;
+  }
 }
 
 // Which guilds the bot is *currently* in, straight from Discord. The `guilds` Supabase table
