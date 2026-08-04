@@ -429,14 +429,25 @@ const groups: { label: string; items: NavItem[] }[] = [
     function syncHeadAssets(freshHead) {
       var existingHrefs = new Set();
       document.querySelectorAll('head link[rel="stylesheet"]').forEach(function (l) { existingHrefs.add(l.href); });
+      var stylesheetLoads = [];
       freshHead.querySelectorAll('link[rel="stylesheet"]').forEach(function (link) {
-        if (!existingHrefs.has(link.href)) document.head.appendChild(link.cloneNode(true));
+        if (existingHrefs.has(link.href)) return;
+        var clone = link.cloneNode(true);
+        stylesheetLoads.push(new Promise(function (resolve) {
+          var settled = false;
+          function done() { if (settled) return; settled = true; resolve(); }
+          clone.addEventListener('load', done, { once: true });
+          clone.addEventListener('error', done, { once: true });
+          window.setTimeout(done, 1800);
+          document.head.appendChild(clone);
+        }));
       });
       var existingStyleText = new Set();
       document.querySelectorAll('head style').forEach(function (s) { existingStyleText.add(s.textContent); });
       freshHead.querySelectorAll('style').forEach(function (style) {
         if (!existingStyleText.has(style.textContent)) document.head.appendChild(style.cloneNode(true));
       });
+      return Promise.all(stylesheetLoads);
     }
 
     // Nodes inserted via replaceWith/innerHTML never execute their <script> tags, that's a
@@ -466,19 +477,22 @@ const groups: { label: string; items: NavItem[] }[] = [
       var doc = new DOMParser().parseFromString(html, 'text/html');
       var fresh = doc.getElementById('dgl-content');
       var current = document.getElementById('dgl-content');
-      if (!fresh || !current) return false;
-      syncHeadAssets(doc.head);
-      // The fresh node carries the server-rendered "reveal" class (opacity:0 until an
-      // IntersectionObserver, set up once at initial page load, adds "in"). That observer
-      // never sees this node since it didn't exist yet, so without this it would replace
-      // visible content with a permanently invisible one on every save/nav.
-      fresh.classList.add('in');
-      current.replaceWith(fresh);
-      executeScripts(fresh);
-      initContent(fresh);
-      if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
-      fresh.scrollIntoView({ block: 'nearest' });
-      return true;
+      if (!fresh || !current) return Promise.resolve(false);
+      // Keep the current section on screen until the new module stylesheet is ready.
+      // Otherwise the fresh HTML briefly paints unstyled before its Astro CSS arrives.
+      return syncHeadAssets(doc.head).then(function () {
+        // The fresh node carries the server-rendered "reveal" class (opacity:0 until an
+        // IntersectionObserver, set up once at initial page load, adds "in"). That observer
+        // never sees this node since it didn't exist yet, so without this it would replace
+        // visible content with a permanently invisible one on every save/nav.
+        fresh.classList.add('in');
+        current.replaceWith(fresh);
+        executeScripts(fresh);
+        initContent(fresh);
+        if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
+        fresh.scrollIntoView({ block: 'nearest' });
+        return true;
+      });
     }
 
     function updateActiveLink(href) {
@@ -532,7 +546,9 @@ const groups: { label: string; items: NavItem[] }[] = [
           getPageHtml(href)
             .then(function (html) {
               if (!html) throw new Error('navigation failed');
-              var ok = swapContent(html, href);
+              return swapContent(html, href);
+            })
+            .then(function (ok) {
               if (ok) { updateActiveLink(href); finishProgress(); }
               else window.location.href = href;
             })
@@ -553,7 +569,9 @@ const groups: { label: string; items: NavItem[] }[] = [
           fetch(url, { method: 'GET' })
             .then(function (res) { return res.text(); })
             .then(function (html) {
-              var ok = swapContent(html, url);
+              return swapContent(html, url);
+            })
+            .then(function (ok) {
               if (ok) { updateActiveLink(url); finishProgress(); }
               else window.location.href = url;
             })
@@ -585,7 +603,9 @@ const groups: { label: string; items: NavItem[] }[] = [
           fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd })
             .then(function (res) { return res.text(); })
             .then(function (html) {
-              var ok = swapContent(html, null);
+              return swapContent(html, null);
+            })
+            .then(function (ok) {
               if (ok) {
                 prefetchedPages.clear();
                 hideSaveBar();
@@ -999,7 +1019,9 @@ const groups: { label: string; items: NavItem[] }[] = [
       fetch(window.location.pathname + window.location.search, { method: 'GET' })
         .then(function (res) { return res.text(); })
         .then(function (html) {
-          var ok = swapContent(html, null);
+          return swapContent(html, null);
+        })
+        .then(function (ok) {
           if (ok) { updateActiveLink(window.location.pathname + window.location.search); finishProgress(); }
           else window.location.reload();
         })
@@ -1108,11 +1130,11 @@ const groups: { label: string; items: NavItem[] }[] = [
     .dgl-sec { padding: 16px 0 32px; }
     .dgl-wrap { padding-left: 16px; padding-right: 16px; }
     .dgl-layout { grid-template-columns: 1fr; gap: 12px; }
-    /* position:relative (not static) so this establishes its own stacking context, otherwise
-       the switcher dropdown's z-index only wins locally and still paints behind .dgl-content,
-       which gets its own context from the .reveal fade-in's opacity/transform. */
-    .dgl-side { position: relative; z-index: 10; height: auto; max-height: none; overflow: visible; border-radius: 14px; }
+    /* Keep the mobile sidebar in normal flow. The switcher panel is static below its
+       button, so it can never cover the section content while opening. */
+    .dgl-side { position: relative; z-index: auto; height: auto; max-height: none; overflow: visible; border-radius: 14px; }
     .dgl-content { height: auto; overflow-y: visible; border-radius: 14px; padding: 22px 18px 104px; }
+    .dgl-switcher-panel { position: static; width: auto; margin: 6px 10px 10px; box-shadow: none; }
 
     .dgl-mobile-toggle { display: flex; }
     .dgl-nav, .dgl-side-user { display: none; }
