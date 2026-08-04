@@ -43,12 +43,13 @@ function logTicketPanel(event: string, details: Record<string, unknown> = {}) {
 }
 
 let cachedGuildVars: GuildVars | null | undefined;
-/** Guild-level data for resolving {server_*}/{guild.*} tokens in a panel's embed template, fetched once per request, reused across every panel render. */
+/** Guild and target-channel data for resolving the same panel variables as the bot. */
 async function getGuildVars(): Promise<GuildVars | null> {
   if (cachedGuildVars !== undefined) return cachedGuildVars;
-  const [guildRes, channelsRes] = await Promise.all([
+  const [guildRes, channelsRes, prefixRes] = await Promise.all([
     fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, { headers: { Authorization: `Bot ${botToken}` } }),
     fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+    fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: supabaseHeaders }),
   ]);
   if (!guildRes.ok) {
     cachedGuildVars = null;
@@ -56,6 +57,13 @@ async function getGuildVars(): Promise<GuildVars | null> {
   }
   const g = await guildRes.json();
   const channels = channelsRes.ok ? await channelsRes.json() : [];
+  const prefixRows = prefixRes.ok ? await prefixRes.json() : [];
+  const channelVars = Object.fromEntries(channels.map((channel: any) => [channel.id, {
+    id: channel.id,
+    name: channel.name ?? '',
+    topic: channel.topic ?? null,
+    createdTimestamp: Number((BigInt(channel.id) >> 22n) + 1420070400000n),
+  }]));
   cachedGuildVars = {
     id: g.id,
     name: g.name,
@@ -72,6 +80,8 @@ async function getGuildVars(): Promise<GuildVars | null> {
     vanityCode: g.vanity_url_code ?? null,
     preferredLocale: g.preferred_locale ?? 'en-US',
     maxMembers: g.max_members ?? 0,
+    prefix: prefixRows[0]?.prefix ?? '/',
+    channels: channelVars,
   };
   return cachedGuildVars;
 }

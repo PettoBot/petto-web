@@ -4,11 +4,8 @@
 // like one posted with /ticket panel create.
 //
 // Embed templates: a panel can point at a saved /embed template's `data` (same shape
-// embedBuilder.js's normalize()/buildOneEmbed() render in the bot), rendered here with
-// resolveGuildVariables() below. Only guild-level {server_*}/{guild.*} tokens resolve, not
-// user/channel/message/leveling/giveaway/bump ones, a panel isn't opened by any one member, it
-// has no such context to resolve against, same reason the bot's own /ticket panel create renders
-// it with only {guild, channel} in ctx.
+// embedBuilder.js's normalize()/buildOneEmbed() render in the bot). A panel has guild and
+// target-channel context, but no member, message, leveling or giveaway context.
 
 const BUTTON_STYLE = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;
 
@@ -75,24 +72,51 @@ export interface GuildVars {
   vanityCode: string | null;
   preferredLocale: string;
   maxMembers: number;
+  prefix: string;
+  channels: Record<string, ChannelVars>;
 }
 
-/** Guild-only subset of the bot's embedVariables.js resolve(), see file header for why user/channel/message tokens aren't included. */
-export function resolveGuildVariables(text: string, g: GuildVars): string {
+export interface ChannelVars {
+  id: string;
+  name: string;
+  topic: string | null;
+  createdTimestamp: number;
+}
+
+/** Resolves every guild and target-channel token that the bot can resolve for a ticket panel. */
+export function resolveGuildVariables(text: string, g: GuildVars, channelId?: string): string {
   if (!text) return text;
   const created = new Date(g.createdTimestamp);
+  const channel = channelId ? g.channels[channelId] : undefined;
+  const channelCreated = channel ? new Date(channel.createdTimestamp) : null;
+  const boostRequired = [0, 2, 7, 14][Math.min(Math.max(g.boostTier + 1, 0), 3)] ?? 14;
+  const nextBoostLevel = Math.min(g.boostTier + 1, 3);
+  const boostUntil = Math.max(0, boostRequired - g.boostCount);
+  const unavailable = 'N/A';
   const map: Record<string, string> = {
     '{server_name}': g.name,
     '{server_id}': g.id,
+    '{server_prefix}': g.prefix,
     '{server_membercount}': String(g.memberCount),
+    '{server_membercount_ordinal}': ordinal(g.memberCount),
+    '{server_membercount_nobots}': unavailable,
+    '{server_membercount_nobots_ordinal}': unavailable,
+    '{server_botcount}': unavailable,
+    '{server_botcount_ordinal}': unavailable,
     '{server_icon}': g.iconUrl ?? '',
     '{server_rolecount}': String(g.roleCount),
     '{server_channelcount}': String(g.channelCount),
+    '{server_randommember}': unavailable,
+    '{server_randommember_tag}': unavailable,
+    '{server_randommember_nobots}': unavailable,
     '{server_owner}': `<@${g.ownerId}>`,
     '{server_owner_id}': g.ownerId,
     '{server_createdate}': created.toLocaleDateString('en-US'),
     '{server_boostlevel}': String(g.boostTier),
     '{server_boostcount}': String(g.boostCount),
+    '{server_nextboostlevel}': String(nextBoostLevel),
+    '{server_nextboostlevel_required}': String(boostRequired),
+    '{server_nextboostlevel_until_required}': String(boostUntil),
     '{guild.name}': g.name,
     '{guild.id}': g.id,
     '{guild.count}': String(g.memberCount),
@@ -109,12 +133,25 @@ export function resolveGuildVariables(text: string, g: GuildVars): string {
     '{guild.vanity}': g.vanityCode ? `discord.gg/${g.vanityCode}` : 'N/A',
     '{guild.region}': g.preferredLocale,
     '{guild.max_members}': String(g.maxMembers),
+    '{channel}': channel ? `<#${channel.id}>` : unavailable,
+    '{channel.mention}': channel ? `<#${channel.id}>` : unavailable,
+    '{channel.name}': channel?.name ?? unavailable,
+    '{channel.id}': channel?.id ?? unavailable,
+    '{channel.topic}': channel?.topic ?? unavailable,
+    '{channel_name}': channel?.name ?? unavailable,
+    '{channel_createdate}': channelCreated ? channelCreated.toLocaleDateString('en-US') : unavailable,
     '{newline}': '\n',
     '{separator}': '──────────────────────',
   };
   let out = text;
   for (const [token, value] of Object.entries(map)) out = out.split(token).join(value);
   return out;
+}
+
+function ordinal(n: number): string {
+  const suffix = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${suffix[(v - 20) % 10] ?? suffix[v] ?? suffix[0]}`;
 }
 
 /** Same `data` shape embedBuilder.js's normalize() reads: either a dashboard multi-embed doc ({content, embeds, buttons}) or an older single-embed doc with fields at the top level. */
@@ -124,8 +161,8 @@ function normalizeTemplateData(data: any): { content: string; embeds: any[]; but
   return { content: '', embeds: looksLikeEmbed ? [data] : [], buttons: [] };
 }
 
-function buildEmbedFromData(e: any, g: GuildVars) {
-  const r = (s: string | undefined | null) => (s ? resolveGuildVariables(s, g) : undefined);
+function buildEmbedFromData(e: any, g: GuildVars, channelId: string) {
+  const r = (s: string | undefined | null) => (s ? resolveGuildVariables(s, g, channelId) : undefined);
   const embed: Record<string, unknown> = {};
   if (e.title) embed.title = r(e.title);
   if (e.description) embed.description = r(e.description);
@@ -151,7 +188,7 @@ function buildLinkButtonRows(buttons: any[][]) {
 }
 
 export function buildPanelPayload(
-  panel: { title: string | null; description: string | null },
+  panel: { title: string | null; description: string | null; channel_id?: string },
   style: string,
   categories: PanelCategory[],
   templateData: any | null,
@@ -164,8 +201,8 @@ export function buildPanelPayload(
     const templateRows = buildLinkButtonRows(buttons);
     const rows = [...templateRows, ...(categoryRow ? [categoryRow] : [])].slice(0, 5);
     return {
-      content: content ? resolveGuildVariables(content, guildVars) : undefined,
-      embeds: embeds.slice(0, 10).map((e) => buildEmbedFromData(e, guildVars)),
+      content: content ? resolveGuildVariables(content, guildVars, panel.channel_id) : undefined,
+      embeds: embeds.slice(0, 10).map((e) => buildEmbedFromData(e, guildVars, panel.channel_id ?? '')),
       components: rows,
     };
   }
