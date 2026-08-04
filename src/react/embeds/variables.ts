@@ -1,6 +1,5 @@
-// Every token here must exist verbatim in the `map` inside src/utils/embedVariables.js in the
-// bot (petto bot 1), that file is the single source of truth, never invent one that resolve()
-// doesn't handle. Kept in sync by hand with petto-web's own VariableHelp.astro.
+// Keep this list aligned with the bot's resolver. The choose and range tokens are handled by
+// dedicated patterns, while context-only tokens resolve only in the events that provide them.
 export interface VarDef { tok: string; desc: string }
 export interface VarGroup { label: string; vars: VarDef[] }
 
@@ -135,13 +134,6 @@ export const VARIABLE_GROUPS: VarGroup[] = [
       { tok: '{gw.reaction}', desc: 'The entry emoji, if using reaction mode' },
       { tok: '{gw.entry_mode}', desc: '"react with" or "click on", matches entry mode' },
       { tok: '{gw.preset}', desc: 'The bonus-entry roles list, if a preset is used' },
-    ],
-  },
-  {
-    label: 'Bump',
-    vars: [
-      { tok: '{user.mention}', desc: 'Only in bump messages: mentions whoever bumped' },
-      { tok: '{nextBump}', desc: 'Relative time until the next bump is allowed' },
     ],
   },
   {
