@@ -25,6 +25,59 @@ const supabaseHeaders = {
 };
 
 let saved = false;
+let pollError: string | null = null;
+
+const discordHeaders = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
+const pollLetters = Array.from({ length: 10 }, (_, i) => String.fromCodePoint(0x1f1e6 + i));
+
+interface PollRecord {
+  id: number;
+  channel_id: string;
+  message_id: string;
+  creator_id: string;
+  question: string;
+  options: string[];
+  image: string | null;
+  multi: boolean;
+  ends_at: string | null;
+  closed: boolean;
+  created_at: string;
+}
+
+function pollPayload(poll: Pick<PollRecord, 'id' | 'question' | 'options' | 'image' | 'multi' | 'closed'>, counts: number[], voters: number) {
+  const block = (char: string, count: number) => char.repeat(Math.max(0, count));
+  const lines = [`### 📊 ${poll.question}`, ''];
+  poll.options.forEach((option, index) => {
+    const count = counts[index] ?? 0;
+    const pct = voters > 0 ? Math.round((count / voters) * 100) : 0;
+    const filled = Math.round((pct / 100) * 12);
+    lines.push(`${pollLetters[index]} **${option}**`, `${block('█', filled)}${block('░', 12 - filled)}  ${pct}% (${count})`, '');
+  });
+  lines.push(`-# ${voters} vote${voters === 1 ? '' : 's'} · ${poll.multi ? 'multiple choice' : 'single choice'}${poll.closed ? ' · closed' : ''}`);
+
+  const components: any[] = [{ type: 17, accent_color: poll.closed ? 0x8b8fa3 : 0x8399ff, components: [{ type: 10, content: lines.join('\n') }] }];
+  if (poll.image) components[0].components.push({ type: 12, items: [{ media: { url: poll.image } }] });
+  if (!poll.closed) {
+    for (let start = 0; start < poll.options.length; start += 5) {
+      components.push({
+        type: 1,
+        components: poll.options.slice(start, start + 5).map((_, offset) => {
+          const index = start + offset;
+          return { type: 2, custom_id: `plv_vote::${poll.id}::${index}`, style: 2, label: String(index + 1), emoji: { name: pollLetters[index] } };
+        }),
+      });
+    }
+    components.push({ type: 1, components: [{ type: 2, custom_id: `plv_close::${poll.id}`, style: 4, label: 'End poll' }] });
+  }
+  return { flags: 1 << 15, components };
+}
+
+async function editPollMessage(poll: PollRecord, counts: number[], voters: number) {
+  const response = await fetch(`https://discord.com/api/v10/channels/${poll.channel_id}/messages/${poll.message_id}`, {
+    method: 'PATCH', headers: discordHeaders, body: JSON.stringify(pollPayload(poll, counts, voters)),
+  });
+  return response.ok;
+}
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -81,10 +134,67 @@ if (Astro.request.method === 'POST') {
       });
       saved = true;
     }
+  } else if (action === 'create_poll') {
+    const question = String(form.get('question') ?? '').trim().slice(0, 200);
+    const options = String(form.get('options') ?? '').split(/\r?\n/).map((option) => option.trim().slice(0, 80)).filter(Boolean).slice(0, 10);
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const rawImage = String(form.get('image') ?? '').trim();
+    const image = /^https?:\/\//i.test(rawImage) ? rawImage.slice(0, 1000) : null;
+    const durationMinutes = Math.max(0, Math.min(60 * 24 * 365, Number(form.get('duration_minutes') ?? 0) || 0));
+    if (!question || options.length < 2 || !channelId) {
+      pollError = 'Add a question, a channel, and at least two options.';
+    } else {
+      const endsAt = durationMinutes > 0 ? new Date(Date.now() + durationMinutes * 60_000).toISOString() : null;
+      const insertRes = await fetch(`${supabaseUrl}/rest/v1/polls`, {
+        method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: 'pending', creator_id: session.userId, question, options, image, multi: form.get('multi') === 'on', ends_at: endsAt }),
+      });
+      const poll = insertRes.ok ? (await insertRes.json())[0] as PollRecord | undefined : undefined;
+      if (!poll) {
+        pollError = 'The poll could not be saved.';
+      } else {
+        const messageRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+          method: 'POST', headers: discordHeaders,
+          body: JSON.stringify(pollPayload(poll, new Array(options.length).fill(0), 0)),
+        });
+        if (!messageRes.ok) {
+          await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+          pollError = 'Discord could not publish the poll. Check the channel and the bot permissions.';
+        } else {
+          const message = await messageRes.json();
+          const finalizeRes = await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, {
+            method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: message.id }),
+          });
+          if (!finalizeRes.ok) {
+            await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${message.id}`, { method: 'DELETE', headers: { Authorization: discordHeaders.Authorization } });
+            await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+            pollError = 'The poll was published but could not be linked to the dashboard.';
+          } else {
+            saved = true;
+          }
+        }
+      }
+    }
+  } else if (action === 'close_poll') {
+    const pollId = Number(form.get('poll_id') ?? 0);
+    if (Number.isInteger(pollId) && pollId > 0) {
+      const pollRes = await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${pollId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+      const poll = pollRes.ok ? (await pollRes.json())[0] as PollRecord | undefined : undefined;
+      if (poll && !poll.closed) {
+        const voteRes = await fetch(`${supabaseUrl}/rest/v1/poll_votes?poll_id=eq.${poll.id}&select=choices`, { headers: supabaseHeaders });
+        const votes = voteRes.ok ? await voteRes.json() : [];
+        const counts = new Array(poll.options.length).fill(0);
+        for (const vote of votes) for (const choice of vote.choices ?? []) if (choice >= 0 && choice < counts.length) counts[choice] += 1;
+        await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ closed: true }) });
+        poll.closed = true;
+        await editPollMessage(poll, counts, votes.length);
+        saved = true;
+      }
+    }
   }
 }
 
-const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes] = await Promise.all([
+const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, pollsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
@@ -93,6 +203,7 @@ const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes,
   fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   fetch(`${supabaseUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,created_at&order=created_at.desc&limit=20`, { headers: supabaseHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -131,6 +242,16 @@ const repConfigRows = reputationConfigRes.ok ? await reputationConfigRes.json() 
 const rc = repConfigRows[0] ?? {};
 const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hours ?? 24 };
 const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
+const rawPolls: PollRecord[] = pollsRes.ok ? await pollsRes.json() : [];
+const pollIds = rawPolls.map((poll) => poll.id).filter((pollId) => Number.isInteger(pollId));
+const pollVotesRes = pollIds.length > 0 ? await fetch(`${supabaseUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: supabaseHeaders }) : null;
+const pollVotes = pollVotesRes?.ok ? await pollVotesRes.json() : [];
+const polls = rawPolls.map((poll) => {
+  const votes = pollVotes.filter((vote: any) => String(vote.poll_id) === String(poll.id));
+  const counts = new Array(poll.options.length).fill(0);
+  for (const vote of votes) for (const choice of vote.choices ?? []) if (choice >= 0 && choice < counts.length) counts[choice] += 1;
+  return { ...poll, voters: votes.length, counts };
+});
 ---
 <DashCommunity
   user={session}
@@ -145,5 +266,7 @@ const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: 
   saved={saved}
   reputation={reputation}
   reputationTop={reputationTop}
+  polls={polls}
+  pollError={pollError}
   section={section}
 />

@@ -15,6 +15,7 @@ interface BoosterConfig {
 interface BoosterRole { userId: string; roleId: string; color: string | null; }
 interface ReputationConfig { enabled: boolean; cooldownHours: number; }
 interface ReputationRow { userId: string; points: number; }
+interface Poll { id: number; channel_id: string; message_id: string; question: string; options: string[]; image: string | null; multi: boolean; ends_at: string | null; closed: boolean; created_at: string; voters: number; counts: number[]; }
 
 interface Props {
   user: { username: string; avatar: string | null };
@@ -29,11 +30,13 @@ interface Props {
   saved: boolean;
   reputation: ReputationConfig;
   reputationTop: ReputationRow[];
+  polls: Poll[];
+  pollError: string | null;
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, report, booster, boosterRoles, roles, channels, saved, reputation, reputationTop, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, report, booster, boosterRoles, roles, channels, saved, reputation, reputationTop, polls, pollError, section } = Astro.props;
 
-const sectionMeta: Record<string, string> = { settings: 'Community settings', reputation: 'Reputation leaderboard', boosters: 'Active booster roles' };
+const sectionMeta: Record<string, string> = { settings: 'Community settings', reputation: 'Reputation leaderboard', boosters: 'Active booster roles', polls: 'Polls' };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
 
@@ -160,6 +163,73 @@ function roleName(id: string) {
       </div>
     </div>
   )}
+
+  <div class:list={['cm-section cm-polls', { 'cm-section-hidden': selectedSection !== 'polls' }]}>
+    <div class="cm-polls-head">
+      <div>
+        <h2>Create a poll</h2>
+        <p class="cm-section-sub">Publish a button-voted poll directly to a channel. Members can change their vote until you close it.</p>
+      </div>
+    </div>
+    {pollError && <div class="cm-error"><Icon name="ph:warning-fill" width="15" height="15" />{pollError}</div>}
+    <form method="POST" class="cm-card cm-poll-create">
+      <input type="hidden" name="action" value="create_poll" />
+      <div class="cm-row">
+        <label>Question</label>
+        <input type="text" name="question" maxlength="200" placeholder="What should we build next?" required />
+      </div>
+      <div class="cm-row">
+        <label>Options</label>
+        <textarea name="options" rows="5" maxlength="800" placeholder="One option per line\nA new command\nA dashboard module" required></textarea>
+        <span class="cm-help">Use 2 to 10 options. Each option can be up to 80 characters.</span>
+      </div>
+      <div class="cm-row-pair">
+        <div class="cm-row">
+          <label>Channel</label>
+          <select name="channel_id" required>
+            <option value="" disabled selected>Choose a channel</option>
+            {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
+          </select>
+        </div>
+        <div class="cm-row">
+          <label>Auto-close in minutes</label>
+          <input type="number" name="duration_minutes" min="0" max="525600" placeholder="0 = never" />
+        </div>
+      </div>
+      <div class="cm-row">
+        <label>Image URL <span class="cm-label-muted">optional</span></label>
+        <input type="url" name="image" maxlength="1000" placeholder="https://..." />
+      </div>
+      <label class="cm-check"><input type="checkbox" name="multi" />Allow members to choose more than one option</label>
+      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />Publish poll</button>
+    </form>
+
+    <div class="cm-polls-existing">
+      <h2>Recent polls <span class="cm-count">{polls.length}</span></h2>
+      {polls.length === 0 ? (
+        <div class="cm-empty"><Icon name="ph:chart-bar" width="18" height="18" /><span>No polls have been published in this server yet.</span></div>
+      ) : (
+        <div class="cm-poll-list">
+          {polls.map((poll) => {
+            const total = poll.voters;
+            return (
+              <article class:list={['cm-poll-card', { closed: poll.closed }]}>
+                <div class="cm-poll-card-head"><div><h3>{poll.question}</h3><p>#{channels.find((c) => c.id === poll.channel_id)?.name ?? poll.channel_id} · {total} voter{total === 1 ? '' : 's'} · {poll.closed ? 'Closed' : 'Open'}</p></div><span class="cm-poll-status">{poll.closed ? 'Closed' : 'Live'}</span></div>
+                <div class="cm-poll-options">
+                  {poll.options.map((option, index) => {
+                    const count = poll.counts[index] ?? 0;
+                    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                    return <div class="cm-poll-option"><div class="cm-poll-option-line"><span>{index + 1}. {option}</span><b>{count} · {pct}%</b></div><div class="cm-poll-bar"><i style={`width:${pct}%`} /></div></div>;
+                  })}
+                </div>
+                {!poll.closed && <form method="POST"><input type="hidden" name="action" value="close_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-del-text"><Icon name="ph:stop-circle-fill" width="13" height="13" />End poll</button></form>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  </div>
 </DashGuildLayout>
 
 <style>
@@ -192,6 +262,7 @@ function roleName(id: string) {
   .cm-row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
 
   .cm-section { margin-bottom: 30px; }
+  .cm-section-sub { font-size: 12.5px; color: var(--text-dim); margin: -6px 0 18px; max-width: 68ch; line-height: 1.5; }
   .cm-section-hidden { display: none; }
   .cm-count { font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-weight: 400; }
   .cm-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-width: 420px; }
@@ -202,6 +273,30 @@ function roleName(id: string) {
   .cm-rep-points { margin-left: auto; font-family: var(--mono); color: var(--accent); font-size: 12px; }
   .cm-rep-reset { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; border-radius: 6px; display: flex; }
   .cm-rep-reset:hover { color: var(--red); background: var(--red-soft); }
+  .cm-error { display: flex; align-items: center; gap: 8px; color: var(--red); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); border-radius: 9px; padding: 10px 12px; margin: 0 0 16px; font-size: 12.5px; }
+  .cm-polls-head h2 { margin-bottom: 8px; }
+  .cm-poll-create { max-width: 700px; margin-bottom: 30px; }
+  .cm-poll-create textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 110px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
+  .cm-help, .cm-label-muted { font-size: 11px; color: var(--text-dim); font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .cm-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+  .cm-check input { accent-color: var(--accent); }
+  .cm-polls-existing h2 { margin-bottom: 14px; }
+  .cm-poll-list { display: grid; gap: 12px; max-width: 700px; }
+  .cm-poll-card { border: 1px solid var(--border); border-radius: 13px; padding: 15px 16px; background: var(--card); }
+  .cm-poll-card.closed { opacity: 0.72; }
+  .cm-poll-card-head { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; margin-bottom: 14px; }
+  .cm-poll-card h3 { font-size: 14px; line-height: 1.35; margin: 0 0 5px; color: var(--text); }
+  .cm-poll-card p { font-size: 11.5px; color: var(--text-dim); margin: 0; }
+  .cm-poll-status { flex-shrink: 0; border: 1px solid var(--border); border-radius: 999px; padding: 4px 8px; color: var(--accent); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .cm-poll-card.closed .cm-poll-status { color: var(--text-dim); }
+  .cm-poll-options { display: grid; gap: 9px; margin-bottom: 14px; }
+  .cm-poll-option-line { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-muted); }
+  .cm-poll-option-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-poll-option-line b { flex-shrink: 0; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; font-weight: 500; }
+  .cm-poll-bar { height: 5px; margin-top: 5px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
+  .cm-poll-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+  .cm-del-text { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: transparent; color: var(--red); font: 600 12px var(--sans); cursor: pointer; }
+  .cm-empty { display: flex; align-items: center; gap: 8px; max-width: 700px; border: 1px dashed var(--border); border-radius: 12px; padding: 18px; color: var(--text-dim); font-size: 12.5px; }
 
   @media (max-width: 480px) {
     .cm-row-pair { grid-template-columns: 1fr; }
