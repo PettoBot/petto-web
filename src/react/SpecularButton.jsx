@@ -75,7 +75,8 @@ export default function SpecularButton({
   speed = 0.35,
   followMouse = true,
   proximity = 250,
-  autoAnimate = false,
+  autoAnimate = true,
+  transparent = false,
   disabled = false,
   onClick,
   className = '',
@@ -221,6 +222,7 @@ export default function SpecularButton({
       '--sb-blur': `${blur}px`,
       '--sb-text-color': textColor,
       '--sb-base-color': baseColor,
+      '--sb-surface': transparent ? 'transparent' : undefined,
     },
   };
 
