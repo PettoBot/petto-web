@@ -160,13 +160,17 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
   const entitlementId = saved[0]?.id;
   if (!entitlementId) throw new Error('Supabase Premium upsert returned no entitlement ID.');
 
-  if (status === 'expired' || (status === 'canceled' && !periodValid)) {
+  // Release paid slots as soon as the entitlement is not active. The dashboard
+  // also fails closed, but keeping assignments active here could make them
+  // reappear after a stale cache or let pending requests be fulfilled while a
+  // subscription is past due, paused, canceled, or expired.
+  if (status !== 'active' || !periodValid) {
     await fetch(`${config.url}/rest/v1/premium_slot_assignments?entitlement_id=eq.${entitlementId}&status=eq.active`, {
       method: 'PATCH',
       headers: supabaseHeaders(config.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
     });
-  } else if (periodValid && ['active', 'past_due', 'canceled'].includes(status)) {
+  } else if (status === 'active') {
     await fulfillPending(astro, entitlementId, userId, slotLimit);
   }
   return true;
