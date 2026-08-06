@@ -399,17 +399,17 @@ export const ui = {
         {
           id: 'leveling', title: 'Leveling', desc: 'XP curve, multipliers, and rewards, all configurable.',
           guide: {
-            intro: 'Leveling tracks XP per member with a curve and rewards you control, not a fixed formula.',
+            intro: 'Leveling tracks message and voice XP separately, with curves, rewards, and announcements you control instead of one fixed formula.',
             steps: [
-              'Set the XP rate, curve, and cooldown with /level config.',
+              'Set message or voice XP, curves, caps, announcements, and cooldowns from /level and the dashboard.',
               'Add role rewards at specific levels, and multipliers per role or channel.',
-              'Members check their own progress with /rank, or the server ranking with /top.',
+              'Members check message progress with /rank, or add type:voice for voice rank and leaderboard data.',
             ],
           },
           cmds: [
             ['level', '/level config [rate] [curve] [cooldown]', 'Admin config: XP rate, curve, cooldown, rewards, multipliers.'],
-            ['rank', '/rank [user]', "Your (or someone else's) level card."],
-            ['top', '/top [page]', 'Paginated XP leaderboard.'],
+            ['rank', '/rank [user] [type]', "Your (or someone else's) message or voice level card."],
+            ['top', '/top [page] [type]', 'Paginated message or voice XP leaderboard.'],
           ],
         },
         {
@@ -1195,15 +1195,15 @@ export const ui = {
           guide: {
             intro: 'Niveles registra XP por miembro con una curva y recompensas que controlas tú, no una fórmula fija.',
             steps: [
-              'Define la tasa de XP, la curva, y el cooldown con /level config.',
+            'Define por separado el XP de mensajes y voz, sus curvas, límites, avisos y cooldowns desde /level y la dashboard.',
               'Agrega recompensas de rol en niveles específicos, y multiplicadores por rol o canal.',
-              'Los miembros revisan su progreso con /rank, o el ranking del servidor con /top.',
+            'Los miembros revisan mensajes con /rank, o usan type:voice para consultar su rango y el leaderboard de voz.',
             ],
           },
           cmds: [
             ['level', '/level config [rate] [curve] [cooldown]', 'Config de admin: tasa de XP, curva, cooldown, recompensas, multiplicadores.'],
-            ['rank', '/rank [user]', 'Tu tarjeta de nivel (o la de alguien más).'],
-            ['top', '/top [page]', 'Leaderboard de XP paginado.'],
+            ['rank', '/rank [user] [type]', 'Tu tarjeta de nivel de mensajes o voz, o la de alguien más.'],
+            ['top', '/top [page] [type]', 'Leaderboard paginado de XP de mensajes o voz.'],
           ],
         },
         {
@@ -1989,15 +1989,15 @@ export const ui = {
           guide: {
             intro: 'Níveis registra XP por membro com uma curva e recompensas que você controla, não uma fórmula fixa.',
             steps: [
-              'Defina a taxa de XP, a curva, e o cooldown com /level config.',
+            'Defina separadamente o XP de mensagens e voz, suas curvas, limites, avisos e cooldowns em /level e no dashboard.',
               'Adicione recompensas de cargo em níveis específicos, e multiplicadores por cargo ou canal.',
-              'Os membros conferem o próprio progresso com /rank, ou o ranking do servidor com /top.',
+            'Os membros conferem mensagens com /rank, ou usam type:voice para consultar o rank e o ranking de voz.',
             ],
           },
           cmds: [
             ['level', '/level config [rate] [curve] [cooldown]', 'Config de admin: taxa de XP, curva, cooldown, recompensas, multiplicadores.'],
-            ['rank', '/rank [user]', 'Seu cartão de nível (ou o de outra pessoa).'],
-            ['top', '/top [page]', 'Ranking de XP paginado.'],
+            ['rank', '/rank [user] [type]', 'Seu cartão de nível de mensagens ou voz, ou o de outra pessoa.'],
+            ['top', '/top [page] [type]', 'Ranking paginado de XP de mensagens ou voz.'],
           ],
         },
         {
