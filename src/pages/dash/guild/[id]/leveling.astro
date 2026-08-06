@@ -47,6 +47,7 @@ if (Astro.request.method === 'POST') {
         notify_channel_id: String(form.get('notify_channel_id') ?? '').trim() || null,
         notify_message: String(form.get('notify_message') ?? '').trim().slice(0, 200) || '{EMOJI} {user} just leveled up to **{level}**!',
         notify_embed: form.get('notify_embed') === 'on',
+        notify_embed_template: String(form.get('notify_embed_template') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_') || null,
         notify_every: Math.max(1, Math.min(50, Number(form.get('notify_every') ?? 1) || 1)),
         ignored_channel_ids: ignoredChannelIds,
         join_xp: Math.max(0, Math.min(1000000, Number(form.get('join_xp') ?? 0) || 0)),
@@ -82,13 +83,14 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, configRes, rewardsRes, leaderboardRes, rolesRes, channelsRes] = await Promise.all([
+const [guildInfo, configRes, rewardsRes, leaderboardRes, rolesRes, channelsRes, embedTemplatesRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${supabaseUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/level_users?guild_id=eq.${id}&select=user_id,xp,level&order=xp.desc&limit=10`, { headers: supabaseHeaders }),
   fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -104,6 +106,7 @@ const config = {
   notifyChannelId: c.notify_channel_id ?? null,
   notifyMessage: c.notify_message ?? '{EMOJI} {user} just leveled up to **{level}**!',
   notifyEmbed: c.notify_embed ?? false,
+  notifyEmbedTemplate: c.notify_embed_template ?? '',
   notifyEvery: c.notify_every ?? 1,
   roleMode: c.role_mode ?? 'highest',
   ignoredChannelIds: c.ignored_channel_ids ?? [],
@@ -134,6 +137,9 @@ const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
+
+const embedTemplates = embedTemplatesRes.ok ? await embedTemplatesRes.json() : [];
+const embedTemplateNames = embedTemplates.map((template: any) => template.name).filter(Boolean);
 ---
 <DashLeveling
   user={session}
@@ -145,6 +151,7 @@ const channels = allChannels
   roles={roles}
   channels={channels}
   leaderboard={leaderboard}
+  embedTemplateNames={embedTemplateNames}
   saved={saved}
   section={section}
 />

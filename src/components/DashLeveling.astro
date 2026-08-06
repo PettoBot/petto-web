@@ -14,6 +14,7 @@ interface Config {
   notifyChannelId: string | null;
   notifyMessage: string;
   notifyEmbed: boolean;
+  notifyEmbedTemplate: string;
   notifyEvery: number;
   roleMode: string;
   ignoredChannelIds: string[];
@@ -39,13 +40,15 @@ interface Props {
   roles: { id: string; name: string }[];
   channels: { id: string; name: string }[];
   leaderboard: LeaderboardRow[];
+  embedTemplateNames: string[];
   saved: boolean;
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, config, rewards, roles, channels, leaderboard, saved, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, config, rewards, roles, channels, leaderboard, embedTemplateNames, saved, section } = Astro.props;
 const sectionMeta: Record<string, string> = { settings: 'Leveling settings', rewards: 'Level rewards', leaderboard: 'Leaderboard' };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
+const curvePreviewLevels = [1, 2, 3, 4, 5, 7, 10, 25, 50, 100, 200];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'settings' ? 'leveling' : `leveling-${selectedSection}`} pageTitle={selectedTitle}>
   <h1>{selectedTitle}</h1>
@@ -107,16 +110,33 @@ const selectedTitle = sectionMeta[selectedSection];
       <div class="lv-field lv-field-wide">
         <label>Announcement message</label>
         <input type="text" name="notify_message" value={config.notifyMessage} maxlength="200" />
-        <p class="lv-hint"><code>{'{EMOJI}'}</code> is also available, it becomes a star.</p>
+        <p class="lv-hint"><code>{'{EMOJI}'}</code> adds the level-up icon. Use the variables below to personalize it.</p>
         <VariableHelp />
+      </div>
+      <div class="lv-notify-layout lv-field-wide">
+        <div class="lv-notify-template">
+          <div class="lv-field">
+            <label>Saved embed template</label>
+            <select name="notify_embed_template">
+              <option value="" selected={!config.notifyEmbedTemplate}>Use the message above</option>
+              {embedTemplateNames.map((name) => <option value={name} selected={name === config.notifyEmbedTemplate}>{name}</option>)}
+            </select>
+            <p class="lv-hint">Create and edit templates from <a href={`/dash/guild/${guildId}/embeds`}>Embeds</a>. The template can use the same leveling variables.</p>
+          </div>
+          <label class="lv-inline-check"><input type="checkbox" name="notify_embed" checked={config.notifyEmbed} />Use a simple embed when no template is selected</label>
+        </div>
+        <div class="lv-notify-preview" data-notify-preview>
+          <div class="lv-preview-top"><span class="lv-preview-avatar">P</span><div><strong>Petto</strong><span class="lv-preview-bot">BOT</span><small>Today at 12:00 PM</small></div></div>
+          <div class="lv-preview-body" data-preview-body>
+            <strong data-preview-title>Level up!</strong>
+            <span data-preview-text>{config.notifyMessage}</span>
+            <small data-preview-label>Message preview</small>
+          </div>
+        </div>
       </div>
       <div class="lv-field">
         <label>Announce every N levels</label>
         <input type="number" name="notify_every" value={config.notifyEvery} min="1" max="50" />
-      </div>
-      <div class="lv-field">
-        <label>Announcement style</label>
-        <label class="lv-inline-check"><input type="checkbox" name="notify_embed" checked={config.notifyEmbed} />Send as an embed</label>
       </div>
       <div class="lv-field">
         <label>XP on join</label>
@@ -133,37 +153,67 @@ const selectedTitle = sectionMeta[selectedSection];
       </div>
     </div>
 
-    <details class="lv-advanced">
-      <summary><Icon name="ph:function-fill" width="14" height="14" />Advanced: XP curve</summary>
-      <p class="lv-hint lv-advanced-warn">Changes how much total XP each level requires. Only touch this if you know what you're doing, existing members' levels are recalculated against the new curve.</p>
-      <div class="lv-grid">
-        <div class="lv-field">
-          <label>Curve A</label>
-          <input type="number" name="curve_a" value={config.curveA} step="0.1" min="0" />
+    <div class="lv-advanced lv-curve-editor" data-curve-editor>
+      <div class="lv-curve-head">
+        <div>
+          <div class="lv-curve-title"><Icon name="ph:chart-line-up" width="16" height="16" />XP curve</div>
+          <p class="lv-hint">Shape the progression and see the result before saving. Existing XP is interpreted with the new curve.</p>
         </div>
-        <div class="lv-field">
-          <label>Curve B</label>
-          <input type="number" name="curve_b" value={config.curveB} step="0.1" min="0" />
+        <div class="lv-curve-stats"><span>Lv.10 <b data-curve-stat="10">n/a</b></span><span>Lv.25 <b data-curve-stat="25">n/a</b></span><span>Lv.50 <b data-curve-stat="50">n/a</b></span></div>
+      </div>
+      <div class="lv-curve-layout">
+        <div class="lv-curve-controls">
+          <div class="lv-formula" aria-label="XP formula">
+            <span>XP(L) =</span>
+            <label><input type="number" name="curve_a" value={config.curveA} step="0.1" min="0" aria-label="Curve A" /> L<sup>3</sup></label>
+            <span>+</span>
+            <label><input type="number" name="curve_b" value={config.curveB} step="0.1" min="0" aria-label="Curve B" /> L<sup>2</sup></label>
+            <span>+</span>
+            <label><input type="number" name="curve_c" value={config.curveC} step="0.1" min="0" aria-label="Curve C" /> L</label>
+          </div>
+          <div class="lv-preset-row">
+            <div class="lv-field">
+              <label>Curve preset</label>
+              <select data-curve-preset>
+                <option value="custom">Custom</option>
+                <option value="balanced">Balanced</option>
+                <option value="quick">Quick start</option>
+                <option value="long">Long progression</option>
+              </select>
+            </div>
+            <p class="lv-preset-description" data-curve-preset-description>Adjust the values above to create your own curve.</p>
+          </div>
+          <div class="lv-curve-options">
+            <div class="lv-field"><label>Difficulty</label><input type="number" name="difficulty" value={config.difficulty} step="0.1" min="0.1" /></div>
+            <div class="lv-field"><label>Round to nearest</label><input type="number" name="rounding" value={config.rounding} min="1" /></div>
+            <div class="lv-field"><label>Max level</label><input type="number" name="max_level" value={config.maxLevel} min="1" max="10000" /></div>
+          </div>
+          <p class="lv-hint lv-advanced-warn">A higher difficulty or steeper curve means members need more XP for each level. Rounding keeps totals readable.</p>
         </div>
-        <div class="lv-field">
-          <label>Curve C</label>
-          <input type="number" name="curve_c" value={config.curveC} step="0.1" min="0" />
-        </div>
-        <div class="lv-field">
-          <label>Difficulty</label>
-          <input type="number" name="difficulty" value={config.difficulty} step="0.1" min="0.1" />
-        </div>
-        <div class="lv-field">
-          <label>Rounding</label>
-          <input type="number" name="rounding" value={config.rounding} min="1" />
-        </div>
-        <div class="lv-field">
-          <label>Max level</label>
-          <input type="number" name="max_level" value={config.maxLevel} min="1" max="10000" />
+        <div class="lv-curve-chart" aria-label="Live XP curve preview">
+          <svg viewBox="0 0 620 270" role="img" aria-labelledby="curve-title curve-desc" preserveAspectRatio="none">
+            <title id="curve-title">XP required by level</title>
+            <desc id="curve-desc">Live preview of the XP curve from level zero to fifty.</desc>
+            <g class="lv-chart-grid">
+              <line x1="44" y1="24" x2="600" y2="24" /><line x1="44" y1="78" x2="600" y2="78" /><line x1="44" y1="132" x2="600" y2="132" /><line x1="44" y1="186" x2="600" y2="186" /><line x1="44" y1="240" x2="600" y2="240" />
+              <line x1="44" y1="24" x2="44" y2="240" /><line x1="155" y1="24" x2="155" y2="240" /><line x1="266" y1="24" x2="266" y2="240" /><line x1="377" y1="24" x2="377" y2="240" /><line x1="488" y1="24" x2="488" y2="240" /><line x1="600" y1="24" x2="600" y2="240" />
+            </g>
+            <path class="lv-chart-area" data-curve-area d="M44 240 L600 240 Z" />
+            <path class="lv-chart-line" data-curve-line d="M44 240 L600 24" />
+            <text x="44" y="260">0</text><text x="266" y="260">20</text><text x="488" y="260">40</text><text x="586" y="260">50</text>
+            <text x="10" y="30" data-curve-axis="max">n/a</text><text x="10" y="244">0</text>
+          </svg>
         </div>
       </div>
-    </details>
-
+      <div class="lv-curve-table-wrap">
+        <table class="lv-curve-table">
+          <thead><tr><th>Level</th><th>Total XP</th><th>Total messages</th><th>Total cooldown</th></tr></thead>
+          <tbody>
+            {curvePreviewLevels.map((level) => <tr data-curve-row={level}><td>{level}</td><td data-curve-total>n/a</td><td data-curve-messages>n/a</td><td data-curve-cooldown>n/a</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+    </div>
     <button type="submit" class="btn btn-accent btn-sm">Save changes</button>
   </form>
 
@@ -211,6 +261,89 @@ const selectedTitle = sectionMeta[selectedSection];
   </div>
 </DashGuildLayout>
 
+<script>
+  // @ts-nocheck
+  const form = document.querySelector('form.lv-form');
+  if (form) {
+    const control = (name) => form.elements.namedItem(name);
+    const number = (name, fallback) => {
+      const value = Number.parseFloat(control(name)?.value);
+      return Number.isFinite(value) ? value : fallback;
+    };
+    const format = (value) => Math.max(0, Math.round(value)).toLocaleString('en-US');
+    const totalXp = (level) => {
+      if (level <= 0) return 0;
+      const raw = (number('curve_a', 1) * level ** 3 + number('curve_b', 50) * level ** 2 + number('curve_c', 100) * level) * number('difficulty', 2.5);
+      const rounding = number('rounding', 50);
+      return rounding <= 0 ? Math.round(raw) : Math.round(raw / rounding) * rounding;
+    };
+    const updateCurve = () => {
+      const points = Array.from({ length: 51 }, (_, level) => totalXp(level));
+      const max = Math.max(points[50], 1);
+      const x = (level) => 44 + (level / 50) * 556;
+      const y = (value) => 240 - (value / max) * 216;
+      const line = points.map((value, level) => `${level ? 'L' : 'M'}${x(level).toFixed(1)} ${y(value).toFixed(1)}`).join(' ');
+      const lineNode = form.querySelector('[data-curve-line]');
+      const areaNode = form.querySelector('[data-curve-area]');
+      lineNode?.setAttribute('d', line);
+      areaNode?.setAttribute('d', `${line} L600 240 L44 240 Z`);
+      form.querySelector('[data-curve-axis="max"]')?.replaceChildren(document.createTextNode(format(max)));
+      [10, 25, 50].forEach((level) => form.querySelector(`[data-curve-stat="${level}"]`)?.replaceChildren(document.createTextNode(`${format(totalXp(level))} XP`)));
+      form.querySelectorAll('[data-curve-row]').forEach((row) => {
+        const level = Number(row.dataset.curveRow);
+        const current = totalXp(level);
+        const messages = Math.max(0, Math.ceil(current / Math.max(number('xp_max', 25), 1)));
+        const cooldown = Math.max(0, Math.round(messages * number('cooldown_seconds', 60)));
+        row.querySelector('[data-curve-total]').textContent = `${format(current)} XP`;
+        row.querySelector('[data-curve-messages]').textContent = `~${format(messages)}`;
+        row.querySelector('[data-curve-cooldown]').textContent = cooldown >= 3600 ? `~${(cooldown / 3600).toFixed(1)}h` : `~${format(cooldown)}s`;
+      });
+    };
+    const curvePresets = {
+      balanced: { a: 1, b: 50, c: 100, difficulty: 2.5, rounding: 50, description: 'A steady curve for general-purpose communities.' },
+      quick: { a: 0.4, b: 28, c: 80, difficulty: 1.8, rounding: 25, description: 'Early levels feel fast while high levels still matter.' },
+      long: { a: 1.6, b: 70, c: 120, difficulty: 3.2, rounding: 100, description: 'A slower progression for long-running servers.' },
+    };
+    const updatePresetDescription = () => {
+      const preset = form.querySelector('[data-curve-preset]')?.value;
+      const description = form.querySelector('[data-curve-preset-description]');
+      description.textContent = curvePresets[preset]?.description || 'Adjust the values above to create your own curve.';
+    };
+    form.querySelector('[data-curve-preset]')?.addEventListener('change', (event) => {
+      const preset = curvePresets[event.target.value];
+      if (preset) {
+        control('curve_a').value = preset.a;
+        control('curve_b').value = preset.b;
+        control('curve_c').value = preset.c;
+        control('difficulty').value = preset.difficulty;
+        control('rounding').value = preset.rounding;
+      }
+      updatePresetDescription();
+      updateCurve();
+    });
+    const updateNotifyPreview = () => {
+      const input = control('notify_message');
+      const template = control('notify_embed_template');
+      const embed = control('notify_embed');
+      const preview = form.querySelector('[data-notify-preview]');
+      const text = form.querySelector('[data-preview-text]');
+      const label = form.querySelector('[data-preview-label]');
+      const title = form.querySelector('[data-preview-title]');
+      const value = (input?.value || '{EMOJI} {user} just leveled up to **{level}**!')
+        .replaceAll('{user}', '@liam').replaceAll('{level}', '12').replaceAll('{level_xp}', '4,250').replaceAll('{level_xp_needed}', '1,750').replaceAll('{level_rank}', '#3').replaceAll('{EMOJI}', '✦');
+      text.textContent = value;
+      title.textContent = template?.value ? 'Member reached a new level' : 'Level up!';
+      preview?.classList.toggle('is-embed', Boolean(embed?.checked || template?.value));
+      label.textContent = template?.value ? `Saved embed: ${template.value}` : embed?.checked ? 'Embed preview' : 'Message preview';
+    };
+    form.addEventListener('input', () => { updateCurve(); updateNotifyPreview(); });
+    form.addEventListener('change', updateNotifyPreview);
+    updateCurve();
+    updatePresetDescription();
+    updateNotifyPreview();
+  }
+</script>
+
 <style>
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
@@ -220,7 +353,7 @@ const selectedTitle = sectionMeta[selectedSection];
 
   .lv-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
 
-  .lv-form { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; margin-bottom: 40px; max-width: 760px; width: 100%; }
+  .lv-form { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; margin-bottom: 40px; max-width: 980px; width: 100%; }
 
   .lv-card { border: 1px solid var(--border); border-radius: 13px; padding: 15px; background: var(--card); display: flex; flex-direction: column; gap: 8px; width: 100%; }
   .lv-card-head { display: flex; align-items: center; gap: 10px; }
@@ -252,17 +385,65 @@ const selectedTitle = sectionMeta[selectedSection];
   .lv-hint { font-size: 11.5px; color: var(--text-dim); margin: 0; }
   .lv-hint code { font-family: var(--mono); color: var(--accent); }
   .lv-inline-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: normal; }
+  .lv-inline-check input { accent-color: var(--accent); }
+
+  .lv-notify-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr); gap: 14px; align-items: stretch; }
+  .lv-notify-template { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-width: 0; }
+  .lv-notify-template a { color: var(--accent); }
+  .lv-notify-preview { min-width: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise); overflow: hidden; transition: border-color .18s, box-shadow .18s; }
+  .lv-notify-preview.is-embed { border-color: color-mix(in srgb, var(--accent) 65%, var(--border)); box-shadow: inset 3px 0 var(--accent); }
+  .lv-preview-top { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); font: 10px var(--mono); }
+  .lv-preview-top > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .lv-preview-top strong { color: var(--text); font: 600 12px var(--sans); }
+  .lv-preview-top small { flex-basis: 100%; color: var(--text-dim); font-size: 10px; }
+  .lv-preview-avatar { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--accent) 20%, var(--bg-raise)); color: var(--accent); font-weight: 700; }
+  .lv-preview-bot { border-radius: 4px; padding: 2px 4px; background: var(--accent); color: var(--bg); font: 9px var(--mono); }
+  .lv-preview-body { display: flex; flex-direction: column; gap: 7px; padding: 14px; font-size: 12px; line-height: 1.5; }
+  .lv-preview-body strong { color: var(--text); font-size: 13px; }
+  .lv-preview-body span { color: var(--text-muted); overflow-wrap: anywhere; }
+  .lv-preview-body small { color: var(--text-dim); font: 10px var(--mono); }
 
   .lv-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 130px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
   .lv-role-item { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 5px 7px; border-radius: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
   .lv-role-item:hover { background: var(--card-hover); color: var(--text); }
   .lv-role-item input { flex-shrink: 0; accent-color: var(--accent); }
 
-  .lv-advanced { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; width: 100%; }
+  .lv-advanced { border: 1px solid var(--border); border-radius: 13px; padding: 18px; width: 100%; background: var(--card); }
   .lv-advanced summary { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); cursor: pointer; }
   .lv-advanced summary :global(svg) { color: var(--accent); }
   .lv-advanced[open] summary { margin-bottom: 12px; }
   .lv-advanced-warn { margin: 0 0 12px; max-width: 60ch; }
+
+  .lv-curve-editor { display: flex; flex-direction: column; gap: 18px; }
+  .lv-curve-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+  .lv-curve-title { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 15px; font-weight: 700; }
+  .lv-curve-title :global(svg) { color: var(--accent); }
+  .lv-curve-head .lv-hint { margin-top: 6px; }
+  .lv-curve-stats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+  .lv-curve-stats span { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; color: var(--text-dim); font: 10px var(--mono); }
+  .lv-curve-stats b { color: var(--text); font-size: 12px; }
+  .lv-curve-layout { display: grid; grid-template-columns: minmax(230px, .72fr) minmax(0, 1.28fr); gap: 20px; align-items: stretch; }
+  .lv-curve-controls { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .lv-formula { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--text-muted); font: 12px var(--mono); line-height: 1.8; }
+  .lv-formula label { display: inline-flex; align-items: center; gap: 5px; color: var(--text); font: 12px var(--mono); text-transform: none; letter-spacing: normal; }
+  .lv-formula input { width: 66px; border: 1px solid var(--border); border-radius: 7px; padding: 7px 6px; background: var(--bg-raise); color: var(--text); font: 12px var(--mono); }
+  .lv-curve-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+  .lv-curve-options input { min-width: 0; }
+  .lv-preset-row { display: flex; align-items: flex-end; gap: 12px; }
+  .lv-preset-row .lv-field { width: min(220px, 100%); flex-shrink: 0; }
+  .lv-preset-description { margin: 0 0 8px; color: var(--text-dim); font-size: 11.5px; line-height: 1.45; }
+  .lv-curve-chart { min-width: 0; min-height: 250px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-raise); padding: 8px 10px 2px 0; }
+  .lv-curve-chart svg { display: block; width: 100%; height: 250px; overflow: visible; }
+  .lv-chart-grid line { stroke: var(--border-soft); stroke-width: 1; }
+  .lv-chart-area { fill: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .lv-chart-line { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 3px 5px color-mix(in srgb, var(--accent) 25%, transparent)); }
+  .lv-curve-chart text { fill: var(--text-dim); font: 10px var(--mono); }
+  .lv-curve-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .lv-curve-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; }
+  .lv-curve-table th { padding: 9px 11px; text-align: left; color: var(--text-dim); background: color-mix(in srgb, var(--bg-raise) 65%, transparent); font: 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+  .lv-curve-table td { padding: 9px 11px; color: var(--text-muted); border-top: 1px solid var(--border-soft); }
+  .lv-curve-table td:first-child, .lv-curve-table td:nth-child(2) { color: var(--text); font-weight: 600; }
+  .lv-curve-table tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 
   .lv-section { margin-bottom: 40px; }
   .lv-empty-note { font-size: 13px; color: var(--text-dim); }
@@ -291,5 +472,17 @@ const selectedTitle = sectionMeta[selectedSection];
 
   @media (max-width: 620px) {
     .lv-grid { grid-template-columns: 1fr; }
+    .lv-notify-layout, .lv-curve-layout { grid-template-columns: 1fr; }
+    .lv-curve-head { flex-direction: column; }
+    .lv-curve-stats { justify-content: flex-start; }
+    .lv-curve-options { grid-template-columns: 1fr 1fr; }
+    .lv-preset-row { align-items: stretch; flex-direction: column; gap: 7px; }
+    .lv-preset-row .lv-field { width: 100%; }
+    .lv-preset-description { margin: 0; }
+  }
+
+  @media (max-width: 420px) {
+    .lv-curve-options { grid-template-columns: 1fr; }
+    .lv-advanced { padding: 14px; }
   }
 </style>
