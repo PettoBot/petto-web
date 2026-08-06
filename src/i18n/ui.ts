@@ -201,7 +201,7 @@ export const ui = {
         },
         {
           key: 'planned', label: 'Planned', items: [
-            { title: 'Petto Premium', desc: 'Extra giveaway slots, custom embed themes, priority support.', href: '/premium' },
+            { title: 'Petto Premium', desc: 'Extra giveaway slots, more automation capacity, priority support.', href: '/premium' },
             { title: 'Interactive slash commands', desc: "Game-style commands that don't fit a text prefix.", href: '' },
           ],
         },
@@ -569,7 +569,7 @@ export const ui = {
       comingSoon: { pill: 'Coming soon', backHome: 'Back to home' },
       nelu: { title: 'Nelu', desc: 'An anime-only bot, focused on character search, quotes, and waifu-style commands. The route is live, the bot is not, yet.' },
       am: { title: 'AM', desc: 'An AI-powered automoderation bot: context-aware spam and toxicity detection instead of a static word list. The route is live, the bot is not, yet.' },
-      premium: { title: 'Premium', desc: 'Petto Premium is planned but not live yet. Extra giveaway slots, custom embed themes, and priority support are the current short list. Pricing and perks land here once it ships.' },
+      premium: { title: 'Premium', desc: 'Petto Premium adds extra giveaway slots, more automation capacity, and priority support. Embeds stay available to every server.' },
       status: {
         title: 'Status',
         pill: 'petto · status',
@@ -999,7 +999,7 @@ export const ui = {
         },
         {
           key: 'planned', label: 'Planeado', items: [
-            { title: 'Petto Premium', desc: 'Espacios extra de sorteo, temas de embed personalizados, soporte prioritario.', href: '/premium' },
+            { title: 'Petto Premium', desc: 'Espacios extra de sorteo, más capacidad de automatización y soporte prioritario.', href: '/premium' },
             { title: 'Comandos slash interactivos', desc: 'Comandos tipo juego que no entran en un prefijo de texto.', href: '' },
           ],
         },
@@ -1367,7 +1367,7 @@ export const ui = {
       comingSoon: { pill: 'Próximamente', backHome: 'Volver al inicio' },
       nelu: { title: 'Nelu', desc: 'Un bot solo de anime, enfocado en búsqueda de personajes, frases y comandos estilo waifu. La ruta ya existe, el bot todavía no.' },
       am: { title: 'AM', desc: 'Un bot de automoderación con IA: detección de spam y toxicidad que entiende contexto, no una lista fija de palabras. La ruta ya existe, el bot todavía no.' },
-      premium: { title: 'Premium', desc: 'Petto Premium está planeado pero todavía no existe. Espacios extra de sorteo, temas de embed personalizados y soporte prioritario son la lista corta por ahora. Los precios y beneficios se van a poner acá cuando se lance.' },
+      premium: { title: 'Premium', desc: 'Petto Premium suma espacios extra de sorteo, más capacidad de automatización y soporte prioritario. Los embeds siguen disponibles para todos los servers.' },
       status: {
         title: 'Estado',
         pill: 'petto · estado',
@@ -1797,7 +1797,7 @@ export const ui = {
         },
         {
           key: 'planned', label: 'Planejado', items: [
-            { title: 'Petto Premium', desc: 'Espaços extras de sorteio, temas de embed personalizados, suporte prioritário.', href: '/premium' },
+            { title: 'Petto Premium', desc: 'Espaços extras de sorteio, mais capacidade de automação e suporte prioritário.', href: '/premium' },
             { title: 'Comandos slash interativos', desc: 'Comandos estilo jogo que não cabem num prefixo de texto.', href: '' },
           ],
         },
@@ -2165,7 +2165,7 @@ export const ui = {
       comingSoon: { pill: 'Em breve', backHome: 'Voltar ao início' },
       nelu: { title: 'Nelu', desc: 'Um bot só de anime, focado em busca de personagens, frases e comandos estilo waifu. A rota já existe, o bot ainda não.' },
       am: { title: 'AM', desc: 'Um bot de automoderação com IA: detecção de spam e toxicidade que entende contexto, não uma lista fixa de palavras. A rota já existe, o bot ainda não.' },
-      premium: { title: 'Premium', desc: 'O Petto Premium está planejado mas ainda não existe. Espaços extras de sorteio, temas de embed personalizados e suporte prioritário são a lista curta por enquanto. Preços e benefícios entram aqui quando for lançado.' },
+      premium: { title: 'Premium', desc: 'O Petto Premium adiciona espaços extras de sorteio, mais capacidade de automação e suporte prioritário. Os embeds continuam disponíveis para todos os servers.' },
       status: {
         title: 'Status',
         pill: 'petto · status',
