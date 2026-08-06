@@ -40,6 +40,9 @@ There is no test suite. `npm run build` is the real check that nothing is broken
 | `SUPABASE_URL` | Where every guild config lives. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side reads/writes. Bypasses RLS, never expose to the browser. |
 | `SUPABASE_ANON_KEY` | Baked into `/status` so the browser can poll bot uptime directly. Read-only by policy. |
+| `POLAR_ACCESS_TOKEN` | Secret used server-side to create a checkout tied to the logged-in Discord user. |
+| `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
+| `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. Defaults to the owner ID in the code. |
 
 ---
 
@@ -52,6 +55,12 @@ that are easy to miss:
   dashboard, not just locally.
 - **`/team` needs `DISCORD_TOKEN` at build time**, not only at runtime, since it fetches each team
   member's live Discord profile while the site is being built.
+- **Premium secrets belong in Cloudflare Pages/Workers**, not in the bot's public `.env.example`:
+  add `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, and the existing
+  Discord OAuth secrets as encrypted variables. The public product IDs and checkout link are kept
+  in `wrangler.toml`.
+- **Owner grants** are available at `/dash/admin` only for the configured Discord owner ID. A
+  user grant gives an account permanent slots; a server grant activates that server immediately.
 
 ---
 
