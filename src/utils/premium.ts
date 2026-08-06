@@ -210,6 +210,7 @@ export async function resetGuildPremiumCustomization(astro: any, guildId: string
   const guildResponse = await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, {
     headers: headers(settings.key),
   }).catch(() => null);
+  if (!guildResponse?.ok) return false;
   const guildRows = guildResponse?.ok ? await guildResponse.json() as Array<Record<string, string | null>> : [];
   const hasCustomization = Boolean(guildRows[0]?.bot_nickname || guildRows[0]?.bot_avatar_url || guildRows[0]?.bot_banner_url || guildRows[0]?.bot_description);
 
