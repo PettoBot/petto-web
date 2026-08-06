@@ -4,6 +4,7 @@ import DashGiveaways from '../../../../components/DashGiveaways.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
+import { hasPremiumForGuild } from '../../../../utils/premium';
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
@@ -14,6 +15,8 @@ const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
+const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
+const giveawayPresetLimit = premiumActive ? 15 : 3;
 
 if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
@@ -49,12 +52,16 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'add_preset') {
     const name = String(form.get('name') ?? '').trim().slice(0, 40);
     if (name) {
-      await fetch(`${supabaseUrl}/rest/v1/giveaway_presets`, {
-        method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-        body: JSON.stringify({ guild_id: id, name }),
-      });
-      saved = true;
+      const countRes = await fetch(`${supabaseUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const current = countRes.ok ? await countRes.json() : null;
+      if (current && current.length < giveawayPresetLimit) {
+        const res = await fetch(`${supabaseUrl}/rest/v1/giveaway_presets`, {
+          method: 'POST',
+          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({ guild_id: id, name }),
+        });
+        saved = res.ok;
+      }
     }
   } else if (action === 'delete_preset') {
     const presetId = encodeURIComponent(String(form.get('preset_id') ?? ''));
@@ -138,6 +145,7 @@ const roles = allRoles
   active={active}
   presets={presets}
   roles={roles}
+  premiumActive={premiumActive}
   saved={saved}
   section={section}
 />

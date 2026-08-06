@@ -6,6 +6,7 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { buildPanelPayload, postOrRefreshPanelMessage, deletePanelMessage, type GuildVars } from '../../../../utils/ticketPanel';
+import { hasPremiumForGuild } from '../../../../utils/premium';
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -29,6 +30,8 @@ const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
+const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
+const ticketCategoryLimit = premiumActive ? 20 : 5;
 
 if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
@@ -109,6 +112,15 @@ if (Astro.request.method === 'POST') {
     const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
     if (label) {
+      const countRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const current = countRes.ok ? await countRes.json() : null;
+      if (!current) {
+        error = "Couldn't check the ticket type limit, try again.";
+      } else if (current.length >= ticketCategoryLimit) {
+        error = premiumActive
+          ? `You have reached the ${ticketCategoryLimit} ticket type limit.`
+          : 'The Free plan includes 5 ticket types. Premium unlocks up to 20.';
+      } else {
       const key = `${normalizeKey(label)}-${Date.now().toString(36)}`;
       const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories`, {
         method: 'POST',
@@ -119,6 +131,7 @@ if (Astro.request.method === 'POST') {
         saved = true;
         if (panelId) await refreshPanelById(panelId);
       } else error = "Couldn't add that ticket type, try again.";
+      }
     }
   } else if (action === 'update') {
     const categoryId = encodeURIComponent(String(form.get('category_id') ?? ''));
@@ -479,5 +492,6 @@ const settings = {
   openTickets={openTickets}
   saved={saved}
   error={error}
+  premiumActive={premiumActive}
   section={section}
 />

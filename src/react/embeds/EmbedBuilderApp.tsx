@@ -14,6 +14,7 @@ interface Props {
   guildIconUrl: string;
   initialTemplateNames: string[];
   initialSelected: string;
+  premiumActive: boolean;
 }
 
 async function api(guildId: string, path: string, init?: RequestInit) {
@@ -21,7 +22,7 @@ async function api(guildId: string, path: string, init?: RequestInit) {
   return res;
 }
 
-export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected }: Props) {
+export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, premiumActive }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
   const [data, setData] = useState<TemplateData>(emptyTemplate());
@@ -31,6 +32,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [dirty, setDirty] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const templateLimit = premiumActive ? 30 : 3;
+  const templateAtLimit = names.length >= templateLimit;
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -126,10 +129,18 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
               {n}
             </button>
           ))}
-          <form className="ebr-create" onSubmit={handleCreate}>
-            <input type="text" placeholder="new-template-name" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button type="submit" className="btn btn-ghost btn-sm">+ New</button>
-          </form>
+          <div className="ebr-limit-note">{names.length}/{templateLimit} themes{!premiumActive && <span> · Premium unlocks 30</span>}</div>
+          {templateAtLimit ? (
+            <div className="ebr-premium-limit">
+              <strong>{premiumActive ? 'Theme limit reached' : 'Free theme limit reached'}</strong>
+              {!premiumActive && <a href={`/dash/premium?guild_id=${guildId}`}>Unlock Premium</a>}
+            </div>
+          ) : (
+            <form className="ebr-create" onSubmit={handleCreate}>
+              <input type="text" placeholder="new-template-name" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <button type="submit" className="btn btn-ghost btn-sm">+ New</button>
+            </form>
+          )}
         </aside>
 
         {!selected ? (
