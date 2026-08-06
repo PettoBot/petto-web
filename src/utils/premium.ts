@@ -98,6 +98,12 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
   };
 }
 
+/** Returns whether this account has an active Premium slot on this guild. */
+export async function hasPremiumForGuild(astro: any, userId: string, guildId: string): Promise<boolean> {
+  const snapshot = await getPremiumSnapshot(astro, userId);
+  return snapshot.assignments.some((assignment) => assignment.guild_id === guildId);
+}
+
 /** Creates a short-lived Polar checkout tied to this Discord user. */
 export async function createPremiumCheckout(astro: any, userId: string, plan: string): Promise<string | null> {
   const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
