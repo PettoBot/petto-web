@@ -156,7 +156,54 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
   if (!settings || !/^\d{15,22}$/.test(userId) || !/^\d{15,22}$/.test(guildId)) return false;
 
   try {
-    const response = await fetch(`${settings.url}/rest/v1/premium_slot_requests`, {
+    const entitlements = await read<Pick<PremiumEntitlement, 'id' | 'provider' | 'slot_limit' | 'current_period_end'>>(
+      astro,
+      'premium_entitlements',
+      `user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id,provider,slot_limit,current_period_end&order=updated_at.desc&limit=1`,
+    );
+    const entitlement = entitlements[0];
+    const entitlementIsActive = Boolean(entitlement && (!entitlement.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now()));
+
+    // Manual grants are already active. Assigning a server should therefore
+    // take effect immediately instead of waiting for a Polar webhook that will
+    // never arrive for a manually granted entitlement.
+    if (entitlementIsActive && entitlement?.provider === 'manual') {
+      const activeAssignments = await read<{ id: number; user_id: string; guild_id: string }>(
+        astro,
+        'premium_slot_assignments',
+        `entitlement_id=eq.${entitlement.id}&status=eq.active&select=id,user_id,guild_id`,
+      );
+      if (activeAssignments.some((assignment) => assignment.guild_id === guildId)) return true;
+
+      const serverAssignments = await read<{ id: number; user_id: string }>(
+        astro,
+        'premium_slot_assignments',
+        `guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active&select=id,user_id`,
+      );
+      if (serverAssignments.some((assignment) => assignment.user_id !== userId)) return false;
+      if (activeAssignments.length >= Math.max(0, entitlement.slot_limit)) return false;
+
+      // Move an old assignment from a previous manual grant onto the current
+      // user entitlement instead of leaving the server attached to stale data.
+      const previousAssignmentResponse = await fetch(`${settings.url}/rest/v1/premium_slot_assignments?user_id=eq.${encodeURIComponent(userId)}&guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active`, {
+        method: 'PATCH',
+        headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
+      });
+      if (!previousAssignmentResponse.ok) return false;
+
+      const assignmentResponse = await fetch(`${settings.url}/rest/v1/premium_slot_assignments?on_conflict=entitlement_id,guild_id`, {
+        method: 'POST',
+        headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify({ entitlement_id: entitlement.id, user_id: userId, guild_id: guildId, status: 'active', released_at: null }),
+      });
+      return assignmentResponse.ok;
+    }
+
+    // Paid accounts may have selected servers before Polar confirms the
+    // subscription. Explicitly target the unique key so a canceled request is
+    // reopened instead of failing with a duplicate-key error.
+    const response = await fetch(`${settings.url}/rest/v1/premium_slot_requests?on_conflict=user_id,guild_id`, {
       method: 'POST',
       headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify({ user_id: userId, guild_id: guildId, status: 'pending', updated_at: new Date().toISOString() }),
