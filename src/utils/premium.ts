@@ -81,7 +81,10 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
 
   const entitlement = entitlements[0] ?? null;
   const periodValid = !entitlement?.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now();
-  const entitlementIsActive = ['active', 'past_due', 'canceled'].includes(entitlement?.status ?? '') && periodValid;
+  // Only an active entitlement unlocks Premium. A past-due or canceled
+  // entitlement must immediately fall back to Free so every dashboard module
+  // and server-specific gate stays fail-closed.
+  const entitlementIsActive = entitlement?.status === 'active' && periodValid;
   const activeAssignments = entitlementIsActive
     ? assignments.filter((assignment) => assignment.status === 'active' && assignment.entitlement_id === entitlement.id)
     : [];
