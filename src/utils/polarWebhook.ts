@@ -1,4 +1,5 @@
 import { getEnv } from './env';
+import { resetGuildPremiumCustomization } from './premium';
 
 const SUBSCRIPTION_EVENTS = new Set([
   'subscription.created',
@@ -165,6 +166,17 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
   // reappear after a stale cache or let pending requests be fulfilled while a
   // subscription is past due, paused, canceled, or expired.
   if (status !== 'active' || !periodValid) {
+    const activeAssignmentsResponse = await fetch(`${config.url}/rest/v1/premium_slot_assignments?entitlement_id=eq.${entitlementId}&status=eq.active&select=guild_id`, {
+      headers: supabaseHeaders(config.key),
+    });
+    const activeAssignments = activeAssignmentsResponse.ok
+      ? await activeAssignmentsResponse.json() as Array<{ guild_id: string }>
+      : [];
+
+    // Revert every currently assigned server before releasing its slot. This
+    // makes expiry/cancellation restore the Free profile even when nobody
+    // opens the Customize page afterward.
+    await Promise.all(activeAssignments.map(({ guild_id }) => resetGuildPremiumCustomization(astro, guild_id)));
     await fetch(`${config.url}/rest/v1/premium_slot_assignments?entitlement_id=eq.${entitlementId}&status=eq.active`, {
       method: 'PATCH',
       headers: supabaseHeaders(config.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),

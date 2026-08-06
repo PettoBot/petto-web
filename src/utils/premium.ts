@@ -197,3 +197,44 @@ export async function releasePremiumServer(astro: any, userId: string, guildId: 
     return false;
   }
 }
+
+/**
+ * Removes the effective server-specific Premium profile. The values are
+ * intentionally cleared from the shared config too, so the bot, dashboard
+ * exports and Discord all agree that the guild is back on the Free plan.
+ */
+export async function resetGuildPremiumCustomization(astro: any, guildId: string): Promise<boolean> {
+  const settings = config(astro);
+  if (!settings || !/^\d{15,22}$/.test(String(guildId))) return false;
+
+  const guildResponse = await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, {
+    headers: headers(settings.key),
+  }).catch(() => null);
+  const guildRows = guildResponse?.ok ? await guildResponse.json() as Array<Record<string, string | null>> : [];
+  const hasCustomization = Boolean(guildRows[0]?.bot_nickname || guildRows[0]?.bot_avatar_url || guildRows[0]?.bot_banner_url || guildRows[0]?.bot_description);
+
+  const databaseReset = !hasCustomization || await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}`, {
+    method: 'PATCH',
+    headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+    body: JSON.stringify({
+      bot_nickname: null,
+      bot_avatar_url: null,
+      bot_banner_url: null,
+      bot_description: null,
+      updated_at: new Date().toISOString(),
+    }),
+  }).then((response) => response.ok).catch(() => false);
+
+  const botToken = getEnv(astro, 'DISCORD_TOKEN');
+  if (!botToken) return databaseReset;
+
+  if (!hasCustomization) return databaseReset;
+
+  const discordReset = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nick: null, avatar: null, banner: null, bio: null }),
+  }).then((response) => response.ok).catch(() => false);
+
+  return databaseReset && discordReset;
+}
