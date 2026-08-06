@@ -62,6 +62,33 @@ if (Astro.request.method === 'POST') {
       }),
     });
     saved = true;
+  } else if (action === 'voice_config') {
+    const ignoredChannelIds = form.getAll('voice_ignored_channel_ids').map(String);
+    await fetch(`${supabaseUrl}/rest/v1/level_config`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        voice_enabled: form.get('voice_enabled') === 'on',
+        xp_per_vc_minute: Math.max(0, Math.min(1000, Number(form.get('voice_xp_per_minute') ?? 5) || 5)),
+        voice_curve_a: Math.max(0, Number(form.get('voice_curve_a') ?? 1) || 1),
+        voice_curve_b: Math.max(0, Number(form.get('voice_curve_b') ?? 50) || 50),
+        voice_curve_c: Math.max(0, Number(form.get('voice_curve_c') ?? 100) || 100),
+        voice_difficulty: Math.max(0.1, Number(form.get('voice_difficulty') ?? 2.5) || 2.5),
+        voice_rounding: Math.max(1, Number(form.get('voice_rounding') ?? 50) || 50),
+        voice_max_level: Math.max(1, Math.min(10000, Number(form.get('voice_max_level') ?? 1000) || 1000)),
+        voice_notify_mode: String(form.get('voice_notify_mode') ?? 'off'),
+        voice_notify_channel_id: String(form.get('voice_notify_channel_id') ?? '').trim() || null,
+        voice_notify_message: String(form.get('voice_notify_message') ?? '').trim().slice(0, 200) || '{EMOJI} {user} reached voice level **{level}**!',
+        voice_notify_embed: form.get('voice_notify_embed') === 'on',
+        voice_notify_embed_template: String(form.get('voice_notify_embed_template') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_') || null,
+        voice_notify_every: Math.max(1, Math.min(50, Number(form.get('voice_notify_every') ?? 1) || 1)),
+        voice_role_mode: String(form.get('voice_role_mode') ?? 'highest'),
+        voice_ignored_channel_ids: ignoredChannelIds,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = true;
   } else if (action === 'add_reward') {
     const level = Number(form.get('level') ?? 0);
     const roleId = String(form.get('role_id') ?? '');
@@ -83,11 +110,12 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, configRes, rewardsRes, leaderboardRes, rolesRes, channelsRes, embedTemplatesRes] = await Promise.all([
+const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, rolesRes, channelsRes, embedTemplatesRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${supabaseUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: supabaseHeaders }),
   fetch(`${supabaseUrl}/rest/v1/level_users?guild_id=eq.${id}&select=user_id,xp,level&order=xp.desc&limit=10`, { headers: supabaseHeaders }),
+  fetch(`${supabaseUrl}/rest/v1/level_users?guild_id=eq.${id}&voice_xp=gt.0&select=user_id,voice_xp,voice_level,vc_minutes&order=voice_xp.desc&limit=10`, { headers: supabaseHeaders }),
   fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
   fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
@@ -119,12 +147,82 @@ const config = {
   rounding: c.rounding ?? 50,
   maxLevel: c.max_level ?? 1000,
 };
+const voiceConfig = {
+  enabled: c.voice_enabled ?? config.enabled,
+  xpPerMinute: c.xp_per_vc_minute ?? 5,
+  curveA: c.voice_curve_a ?? 1,
+  curveB: c.voice_curve_b ?? 50,
+  curveC: c.voice_curve_c ?? 100,
+  difficulty: c.voice_difficulty ?? 2.5,
+  rounding: c.voice_rounding ?? 50,
+  maxLevel: c.voice_max_level ?? 1000,
+  notifyMode: c.voice_notify_mode ?? 'off',
+  notifyChannelId: c.voice_notify_channel_id ?? null,
+  notifyMessage: c.voice_notify_message ?? '{EMOJI} {user} reached voice level **{level}**!',
+  notifyEmbed: c.voice_notify_embed ?? false,
+  notifyEmbedTemplate: c.voice_notify_embed_template ?? '',
+  notifyEvery: c.voice_notify_every ?? 1,
+  roleMode: c.voice_role_mode ?? config.roleMode,
+  ignoredChannelIds: c.voice_ignored_channel_ids ?? [],
+};
 
 const rawRewards = rewardsRes.ok ? await rewardsRes.json() : [];
 const rewards = rawRewards.map((r: any) => ({ level: r.level, roleId: r.role_id }));
 
 const rawLeaderboard = leaderboardRes.ok ? await leaderboardRes.json() : [];
-const leaderboard = rawLeaderboard.map((row: any, i: number) => ({ rank: i + 1, userId: row.user_id, xp: row.xp, level: row.level }));
+const leaderboard = await Promise.all(rawLeaderboard.map(async (row: any, i: number) => {
+  const userId = String(row.user_id ?? '');
+  let member: any = null;
+  if (/^\d{15,25}$/.test(userId)) {
+    try {
+      const memberRes = await fetch(`https://discord.com/api/guilds/${id}/members/${userId}`, {
+        headers: { Authorization: `Bot ${botToken}` },
+      });
+      if (memberRes.ok) member = await memberRes.json();
+    } catch {
+      member = null;
+    }
+  }
+  const discordUser = member?.user ?? {};
+  const username = discordUser.username ?? '';
+  const displayName = member?.nick || discordUser.global_name || username || `Member ${userId.slice(-4)}`;
+  const avatarUrl = discordUser.avatar
+    ? `https://cdn.discordapp.com/avatars/${userId}/${discordUser.avatar}.png?size=64`
+    : `https://cdn.discordapp.com/embed/avatars/${Number(userId || 0) % 6}.png`;
+  return {
+    rank: i + 1,
+    userId,
+    displayName,
+    username,
+    avatarUrl,
+    xp: Number(row.xp ?? 0),
+    level: Number(row.level ?? 0),
+  };
+}));
+const rawVoiceLeaderboard = voiceLeaderboardRes.ok ? await voiceLeaderboardRes.json() : [];
+const voiceLeaderboard = await Promise.all(rawVoiceLeaderboard.map(async (row: any, i: number) => {
+  const userId = String(row.user_id ?? '');
+  let member: any = null;
+  if (/^\d{15,25}$/.test(userId)) {
+    try {
+      const memberRes = await fetch(`https://discord.com/api/guilds/${id}/members/${userId}`, { headers: { Authorization: `Bot ${botToken}` } });
+      if (memberRes.ok) member = await memberRes.json();
+    } catch {
+      member = null;
+    }
+  }
+  const discordUser = member?.user ?? {};
+  return {
+    rank: i + 1,
+    userId,
+    displayName: member?.nick || discordUser.global_name || discordUser.username || `Member ${userId.slice(-4)}`,
+    username: discordUser.username ?? '',
+    avatarUrl: discordUser.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${discordUser.avatar}.png?size=64` : `https://cdn.discordapp.com/embed/avatars/${Number(userId || 0) % 6}.png`,
+    xp: Number(row.voice_xp ?? 0),
+    level: Number(row.voice_level ?? 0),
+    voiceMinutes: Number(row.vc_minutes ?? 0),
+  };
+}));
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles
@@ -135,6 +233,10 @@ const roles = allRoles
 const allChannels = channelsRes.ok ? await channelsRes.json() : [];
 const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
+const voiceChannels = allChannels
+  .filter((c: any) => c.type === 2 || c.type === 13)
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
 
@@ -150,7 +252,10 @@ const embedTemplateNames = embedTemplates.map((template: any) => template.name).
   rewards={rewards}
   roles={roles}
   channels={channels}
+  voiceChannels={voiceChannels}
   leaderboard={leaderboard}
+  voiceConfig={voiceConfig}
+  voiceLeaderboard={voiceLeaderboard}
   embedTemplateNames={embedTemplateNames}
   saved={saved}
   section={section}
