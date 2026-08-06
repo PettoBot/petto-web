@@ -5,6 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
+import { hasPremiumForGuild } from '../../../../utils/premium';
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'overview';
@@ -15,6 +16,9 @@ const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
+const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
+const customCommandLimit = premiumActive ? 100 : 25;
+const responderLimit = premiumActive ? 75 : 15;
 
 if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
@@ -135,12 +139,23 @@ if (Astro.request.method === 'POST') {
     const response = String(form.get('response') ?? '').trim().slice(0, 500) || null;
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (name && (response || embedTemplate)) {
-      await fetch(`${supabaseUrl}/rest/v1/custom_commands`, {
-        method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ guild_id: id, name, response, embed_template: embedTemplate }),
-      });
-      saved = true;
+      const countRes = await fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const current = countRes.ok ? await countRes.json() : null;
+      if (!current) {
+        error = "Couldn't check the custom command limit, try again.";
+      } else if (current.length >= customCommandLimit) {
+        error = premiumActive
+          ? `You have reached the ${customCommandLimit} custom command limit.`
+          : 'The Free plan includes 25 custom commands. Premium unlocks up to 100.';
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/custom_commands`, {
+          method: 'POST',
+          headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ guild_id: id, name, response, embed_template: embedTemplate }),
+        });
+        if (res.ok) saved = true;
+        else error = "Couldn't save that custom command, try again.";
+      }
     }
   } else if (action === 'delete_command') {
     await fetch(`${supabaseUrl}/rest/v1/custom_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
@@ -161,18 +176,27 @@ if (Astro.request.method === 'POST') {
     const embedFooter = String(form.get('embed_footer') ?? '').trim().slice(0, 100) || null;
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (trigger && (reply || embedTemplate)) {
-      await fetch(`${supabaseUrl}/rest/v1/auto_responders`, {
-        method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
-        body: JSON.stringify({
-          guild_id: id, ar_id: crypto.randomUUID().slice(0, 8), trigger, reply, match_mode: matchMode,
-          delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
-          channel_ids: channelIds, role_ids: roleIds,
-          reply_type: replyType, embed_color: embedColor, embed_title: embedTitle, embed_footer: embedFooter,
-          embed_template: embedTemplate,
-        }),
-      });
-      saved = true;
+      const countRes = await fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const current = countRes.ok ? await countRes.json() : null;
+      if (!current) {
+        error = "Couldn't check the autoresponder limit, try again.";
+      } else if (current.length >= responderLimit) {
+        error = premiumActive ? 'You have reached the 75 autoresponder limit.' : 'The Free plan includes 15 autoresponders. Premium unlocks up to 75.';
+      } else {
+        const res = await fetch(`${supabaseUrl}/rest/v1/auto_responders`, {
+          method: 'POST',
+          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            guild_id: id, ar_id: crypto.randomUUID().slice(0, 8), trigger, reply, match_mode: matchMode,
+            delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
+            channel_ids: channelIds, role_ids: roleIds,
+            reply_type: replyType, embed_color: embedColor, embed_title: embedTitle, embed_footer: embedFooter,
+            embed_template: embedTemplate,
+          }),
+        });
+        if (res.ok) saved = true;
+        else error = "Couldn't save that autoresponder, try again.";
+      }
     }
   } else if (action === 'edit_responder') {
     const arId = String(form.get('ar_id') ?? '');
@@ -541,6 +565,7 @@ const channelCategories = allChannels.filter((c: any) => c.type === 4).sort((a: 
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
   customCommands={customCommands}
+  premiumActive={premiumActive}
   autoResponders={autoResponders}
   stickyMessages={stickyMessages}
   disabledCommands={disabledCommands}

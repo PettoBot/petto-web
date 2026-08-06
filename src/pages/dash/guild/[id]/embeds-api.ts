@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
+import { hasPremiumForGuild } from '../../../../utils/premium';
 
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
@@ -43,6 +44,7 @@ export const POST: APIRoute = async (astro) => {
   const { id } = astro.params as { id: string };
   const session = await auth(astro, id);
   if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+  const premiumActive = await hasPremiumForGuild(astro, session.userId, id);
 
   const supabaseUrl = getEnv(astro, 'SUPABASE_URL')!;
   const supabaseKey = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY')!;
@@ -52,6 +54,13 @@ export const POST: APIRoute = async (astro) => {
   if (action === 'create') {
     const name = normalizeName(String(body.name ?? '').trim().slice(0, 40));
     if (!name) return new Response(JSON.stringify({ error: 'name required' }), { status: 400 });
+    const listRes = await fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name`, { headers: headers(supabaseKey) });
+    if (!listRes.ok) return new Response(JSON.stringify({ error: "Couldn't check the embed theme limit." }), { status: 500 });
+    const current = await listRes.json();
+    const limit = premiumActive ? 30 : 3;
+    if (current.length >= limit) {
+      return new Response(JSON.stringify({ error: premiumActive ? 'You have reached the 30 embed theme limit.' : 'The Free plan includes 3 embed themes. Premium unlocks 30.' }), { status: 403 });
+    }
     const res = await fetch(`${supabaseUrl}/rest/v1/embed_templates`, {
       method: 'POST',
       headers: { ...headers(supabaseKey), Prefer: 'return=minimal' },
