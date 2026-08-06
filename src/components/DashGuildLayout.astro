@@ -6,21 +6,25 @@ import { useTranslations } from '../i18n/ui';
 import { canManageGuild, guildIconUrl } from '../utils/discord';
 import { getCachedUserGuilds, getCachedBotGuildIds } from '../utils/discordCache';
 import { getEnv } from '../utils/env';
+import { getPremiumSnapshot } from '../utils/premium';
 
 interface Props {
   guildId: string;
   guildName: string;
   guildIcon: string;
-  user: { username: string; avatar: string | null; accessToken?: string };
+  user: { userId?: string; username: string; avatar: string | null; accessToken?: string };
   active: string;
   pageTitle: string;
   premiumActive?: boolean;
 }
 const { guildId, guildName, guildIcon, user, active, pageTitle, premiumActive = false } = Astro.props;
+const premiumSnapshot = user.userId ? await getPremiumSnapshot(Astro, user.userId) : null;
+const premiumGuildIds = new Set(premiumSnapshot?.assignments.map((assignment) => assignment.guild_id) ?? []);
+const resolvedPremiumActive = premiumActive || premiumGuildIds.has(guildId);
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
 // different server doesn't need a round trip through /dash/manage every time.
-interface SwitcherGuild { id: string; name: string; icon: string | null }
+interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean }
 let switcherGuilds: SwitcherGuild[] = [];
 if (user.accessToken) {
   const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -30,7 +34,7 @@ if (user.accessToken) {
     const activeIds = await getCachedBotGuildIds(botToken);
     switcherGuilds = manageable
       .filter((g: any) => activeIds.has(g.id))
-      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g) }))
+      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id) }))
       .sort((a: SwitcherGuild, b: SwitcherGuild) => a.name.localeCompare(b.name));
   }
 }
@@ -154,7 +158,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                 <img src={guildIcon} alt="" />
                 <div class="dgl-switcher-text">
                   <span class="dgl-switcher-eyebrow">Server</span>
-                  <span class="dgl-switcher-name">{guildName}</span>
+                  <span class="dgl-switcher-name-row"><span class="dgl-switcher-name">{guildName}</span>{resolvedPremiumActive && <span class="dgl-server-premium"><Icon name="ph:crown-fill" width="11" height="11" />Premium</span>}</span>
                 </div>
                 <Icon name="ph:caret-up-down" width="13" height="13" />
               </button>
@@ -165,6 +169,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                       <a href={`/dash/guild/${g.id}/overview`} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
                         {g.icon ? <img src={g.icon} alt="" /> : <div class="dgl-switcher-item-fallback"><Icon name="ph:buildings-fill" width="14" height="14" /></div>}
                         <span>{g.name}</span>
+                        {g.premium && <span class="dgl-switcher-premium"><Icon name="ph:crown-fill" width="11" height="11" />Premium</span>}
                         {g.id === guildId && <Icon name="ph:check-fill" width="13" height="13" />}
                       </a>
                     ))}
@@ -190,10 +195,10 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                 <div class="dgl-group">
                   <div class="dgl-label">{group.label}</div>
                   {group.items.map((item) => (
-                    <a href={item.href} class:list={['dgl-link', { active: active === item.id }]} aria-label={item.premium && !premiumActive ? `${item.label}, Premium required` : undefined}>
+                    <a href={item.href} class:list={['dgl-link', { active: active === item.id }]} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
                       {item.uicon ? <i class={`dgl-uicon fi ${item.icon}`} aria-hidden="true" /> : stableLevelingItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
                       {item.label}
-                      {item.premium && <Icon name="ph:crown-fill" width="12" height="12" class="dgl-premium-crown" aria-hidden="true" />}
+                {item.premium && <Icon name="ph:crown-fill" width="12" height="12" class="dgl-premium-crown" aria-hidden="true" />}
                     </a>
                   ))}
                 </div>
@@ -1075,7 +1080,9 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   .dgl-switcher img { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
   .dgl-switcher-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .dgl-switcher-eyebrow { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); }
-  .dgl-switcher-name { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-name-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .dgl-switcher-name { min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-server-premium, .dgl-switcher-premium { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 42%, var(--border)); border-radius: 999px; font-family: var(--mono); font-size: 9px; font-weight: 700; line-height: 1; padding: 4px 6px; }
   .dgl-switcher :global(svg) { color: var(--text-dim); flex-shrink: 0; }
   .dgl-switcher.open .dgl-switcher-icon,
   .dgl-switcher.open :global(svg:last-child) { transform: rotate(180deg); }
@@ -1094,7 +1101,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   .dgl-switcher-item.current { color: var(--accent); background: var(--accent-soft); }
   .dgl-switcher-item img, .dgl-switcher-item-fallback { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
   .dgl-switcher-item-fallback { display: flex; align-items: center; justify-content: center; background: var(--bg-raise); color: var(--text-dim); }
-  .dgl-switcher-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item > span:not(.dgl-switcher-premium) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item .dgl-switcher-premium { font-size: 8px; padding: 3px 5px; }
   .dgl-switcher-item :global(svg:last-child) { flex-shrink: 0; color: var(--accent); }
   .dgl-switcher-all {
     display: flex; align-items: center; gap: 9px; padding: 9px; margin-top: 4px; border-top: 1px solid var(--border-soft);
