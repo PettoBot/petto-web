@@ -133,6 +133,17 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.3.0',
+          date: 'August 6, 2026',
+          items: [
+            'Petto Premium: account-level plans with Polar checkout, 1, 3, or 5 server slots, selectable servers, billing portal access, and a safe return to Free when an entitlement ends',
+            'Premium controls in the dashboard: server cards show Premium status, slots can be selected or released, and Premium-only modules explain what is locked instead of leaving an empty page',
+            'Free stays useful: moderation, leveling, tickets, giveaways, the dashboard, and the embed builder remain available without Premium; embeds are unlimited for every server',
+            'Prefix management for the owner: `!premium status`, `!premium grant`, `!premium assign`, `!premium unassign`, and `!premium revoke` manage account Premium without creating a slash command',
+            'Safer lifecycle handling: inactive Premium releases its server slots and restores Premium-only customization instead of leaving stale settings behind',
+          ],
+        },
+        {
           version: '0.2.2',
           date: 'August 2, 2026',
           items: [
@@ -931,6 +942,17 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.3.0',
+          date: '6 de agosto de 2026',
+          items: [
+            'Petto Premium: planes por cuenta con checkout de Polar, 1, 3 o 5 slots de server, selección de servers, portal de facturación y regreso seguro a Free cuando termina el entitlement',
+            'Controles de Premium en la dashboard: las cards muestran el estado Premium, los slots se pueden seleccionar o liberar y los módulos Premium explican qué está bloqueado en vez de dejar páginas vacías',
+            'Free sigue siendo útil: moderación, leveling, tickets, sorteos, la dashboard y el editor de embeds siguen disponibles sin Premium; los embeds son ilimitados para todos los servers',
+            'Gestión por prefijo para el owner: `!premium status`, `!premium grant`, `!premium assign`, `!premium unassign` y `!premium revoke` administran el Premium de la cuenta sin crear un comando slash',
+            'Ciclo más seguro: cuando Premium deja de estar activo, libera sus slots y restaura la personalización exclusiva en vez de dejar configuraciones viejas',
+          ],
+        },
+        {
           version: '0.2.2',
           date: '2 de agosto de 2026',
           items: [
@@ -1728,6 +1750,17 @@ export const ui = {
       lede: 'O Petto ainda não tem uma história longa, esta é de verdade a primeira versão. Os próximos lançamentos vão entrando aqui.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.3.0',
+          date: '6 de agosto de 2026',
+          items: [
+            'Petto Premium: planos por conta com checkout da Polar, 1, 3 ou 5 slots de servidor, seleção de servidores, portal de cobrança e retorno seguro ao Free quando o entitlement termina',
+            'Controles de Premium no dashboard: os cards mostram o status Premium, os slots podem ser selecionados ou liberados e os módulos Premium explicam o que está bloqueado em vez de deixar páginas vazias',
+            'O Free continua útil: moderação, leveling, tickets, sorteios, o dashboard e o editor de embeds continuam disponíveis sem Premium; os embeds são ilimitados para todos os servidores',
+            'Gestão por prefixo para o owner: `!premium status`, `!premium grant`, `!premium assign`, `!premium unassign` e `!premium revoke` gerenciam o Premium da conta sem criar um comando slash',
+            'Ciclo mais seguro: quando o Premium deixa de estar ativo, os slots são liberados e a personalização exclusiva é restaurada em vez de deixar configurações antigas',
+          ],
+        },
         {
           version: '0.2.2',
           date: '2 de agosto de 2026',
