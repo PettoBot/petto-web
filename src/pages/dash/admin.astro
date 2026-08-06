@@ -1,0 +1,44 @@
+---
+export const prerender = false;
+import DashPremiumAdmin from '../../components/DashPremiumAdmin.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+import { grantManualPremium, isPettoOwner, listManualPremium, revokeManualPremium } from '../../utils/premiumAdmin';
+
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!isPettoOwner(Astro, session.userId)) return Astro.redirect('/dash/manage?error=forbidden');
+
+let actionError: string | undefined;
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) {
+    actionError = 'invalid';
+  } else {
+    const form = await Astro.request.formData();
+    const action = String(form.get('action') ?? '');
+    if (action === 'grant') {
+      const result = await grantManualPremium(Astro, session.userId, {
+        targetType: String(form.get('target_type') ?? ''),
+        userId: String(form.get('user_id') ?? ''),
+        guildId: String(form.get('guild_id') ?? ''),
+        slotLimit: Number(form.get('slot_limit') ?? 0),
+      });
+      if (result.ok) return Astro.redirect('/dash/admin?saved=1');
+      actionError = result.code;
+    } else if (action === 'revoke') {
+      const ok = await revokeManualPremium(Astro, session.userId, Number(form.get('entitlement_id') ?? 0));
+      if (ok) return Astro.redirect('/dash/admin?saved=1');
+      actionError = 'database';
+    } else {
+      actionError = 'invalid';
+    }
+  }
+}
+
+const error = actionError;
+const saved = Astro.url.searchParams.get('saved') === '1';
+const grants = await listManualPremium(Astro);
+---
+
+<DashPremiumAdmin user={session} grants={grants} error={error} saved={saved} />
