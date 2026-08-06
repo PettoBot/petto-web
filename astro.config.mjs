@@ -65,6 +65,10 @@ export default defineConfig({
   // The whole marketing site stays static (prerendered); only src/pages/dash/** opts out
   // via `export const prerender = false`, since it needs a live session per request.
   output: 'hybrid',
+  // Dynamic dashboard routes must carry their component styles in the Worker
+  // response. Without this, Cloudflare can render the HTML while the SSR page
+  // misses the generated CSS asset link and appears as unstyled markup.
+  build: { inlineStylesheets: 'always' },
   adapter: cloudflare(),
   // Docs moved to their own Mintlify site, every old in-repo docs URL (and its localized
   // copies) now bounces straight there instead of 404ing.
