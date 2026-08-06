@@ -8,7 +8,7 @@ import { runBatched } from '../../../../utils/concurrency';
 import { getAllCommands } from '../../../../utils/commandList';
 
 const { id } = Astro.params as { id: string };
-const section = Astro.url.searchParams.get('section') ?? 'elevated';
+const section = Astro.url.searchParams.get('section') ?? 'score';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const supabaseUrl = getEnv(Astro, 'SUPABASE_URL');
 const supabaseKey = getEnv(Astro, 'SUPABASE_SERVICE_ROLE_KEY');
@@ -21,11 +21,15 @@ if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/mana
 
 const supabaseHeaders = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' };
 
-const [guildInfo, rolesRes, levelsRes] = await runBatched([
+const [guildInfo, rolesRes, levelsRes, automodRes, antinukeRes, verificationRes, logsRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`${supabaseUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: supabaseHeaders }),
-], 3);
+  () => fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=anti_spam_enabled,anti_raid_enabled`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  () => fetch(`${supabaseUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=id&limit=1`, { headers: supabaseHeaders }),
+], 7);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const DANGEROUS_PERMS: { flag: bigint; label: string }[] = [
@@ -65,6 +69,31 @@ for (const row of levelRows) commandLevels[row.command_name] = row.required_leve
 const commands = getAllCommands();
 const RISK_CATEGORIES = ['moderation', 'setup', 'automation'];
 const unrestrictedCommands = commands.filter((c) => RISK_CATEGORIES.includes(c.category) && !commandLevels[c.name]);
+
+const automodRows = automodRes.ok ? await automodRes.json() : [];
+const antinukeRows = antinukeRes.ok ? await antinukeRes.json() : [];
+const verificationRows = verificationRes.ok ? await verificationRes.json() : [];
+const logRows = logsRes.ok ? await logsRes.json() : [];
+const automod = automodRows[0] ?? {};
+const protection = {
+  antinuke: Boolean(antinukeRows[0]?.enabled),
+  antiSpam: Boolean(automod.anti_spam_enabled),
+  antiRaid: Boolean(automod.anti_raid_enabled),
+  verification: Boolean(verificationRows[0]?.enabled),
+  logs: logRows.length > 0,
+};
+let securityScore = 100;
+const recommendations: string[] = [];
+const everyoneFinding = roleFindings.find((role: any) => role.isEveryone);
+const adminCount = roleFindings.filter((role: any) => role.isAdmin && !role.isEveryone).length;
+if (everyoneFinding) { securityScore -= 30; recommendations.push('@everyone tiene permisos elevados.'); }
+if (adminCount > 0) { securityScore -= Math.min(30, adminCount * 10); recommendations.push(`${adminCount} rol(es) tienen Administrator.`); }
+if (!protection.antinuke) { securityScore -= 15; recommendations.push('Activa anti-nuke para responder a ataques destructivos.'); }
+if (!protection.antiSpam) { securityScore -= 10; recommendations.push('Activa anti-spam para bloquear flooding y menciones masivas.'); }
+if (!protection.antiRaid) { securityScore -= 10; recommendations.push('Activa anti-raid para detectar oleadas de entradas.'); }
+if (!protection.verification) { securityScore -= 5; recommendations.push('Activa la verificación de entrada.'); }
+if (!protection.logs) { securityScore -= 10; recommendations.push('Configura al menos un canal de auditoría.'); }
+securityScore = Math.max(0, securityScore);
 ---
 <DashSecurity
   user={session}
@@ -73,5 +102,8 @@ const unrestrictedCommands = commands.filter((c) => RISK_CATEGORIES.includes(c.c
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
   roleFindings={roleFindings}
   unrestrictedCommands={unrestrictedCommands}
+  securityScore={securityScore}
+  protection={protection}
+  recommendations={recommendations}
   section={section}
 />
