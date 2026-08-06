@@ -190,6 +190,7 @@ export const ui = {
           key: 'shipped', label: 'Shipped', items: [
             { title: 'Core v0.1.0', desc: 'Moderation, tickets, leveling, giveaways, reaction roles, custom commands, invites, live status.', href: '/changelog' },
             { title: 'Web dashboard', desc: 'Every module configurable from a browser, plus a real embed builder with a live preview.', href: '/dash' },
+            { title: 'Petto Premium', desc: 'Optional account subscription with Polar checkout, selectable server slots, billing portal, and fail-closed Free fallback.', href: '/premium' },
           ],
         },
         {
@@ -201,7 +202,6 @@ export const ui = {
         },
         {
           key: 'planned', label: 'Planned', items: [
-            { title: 'Petto Premium', desc: 'Extra giveaway slots, more automation capacity, priority support.', href: '/premium' },
             { title: 'Interactive slash commands', desc: "Game-style commands that don't fit a text prefix.", href: '' },
           ],
         },
@@ -218,7 +218,7 @@ export const ui = {
       title: 'Common questions, answered once.',
       lede: "If something isn't covered here, the support server is the fastest way to actually get an answer.",
       items: [
-        { q: 'Is Petto free?', a: 'Yes. Every system Petto has today is free. Petto Premium is planned but not live, and nothing will ever be charged without that being announced first.' },
+        { q: 'Is Petto free?', a: 'Yes. Petto keeps its core moderation, leveling, tickets, giveaways, embeds, and dashboard useful for every server. Premium adds higher limits and server-level extras; payment is handled securely through Polar.' },
         { q: 'How do I add Petto to my server?', a: 'The "Add to Discord" button at the top of the home page. You need the Manage Server permission on the server you\'re adding it to.' },
         { q: 'Prefix or slash commands?', a: 'Both. Every command works identically with the server\'s configured prefix or as a slash command, whichever you prefer.' },
         { q: 'Is my server\'s data safe?', a: 'Data lives in a real Postgres database (via Supabase), not a spreadsheet or a JSON file. See the Privacy Policy for exactly what is and isn\'t stored.' },
@@ -606,7 +606,7 @@ export const ui = {
           ['Eligibility', "You need to meet Discord's own minimum age requirement (13, or higher where local law requires it) to use Discord, and by extension Petto. Server owners are responsible for making sure their members meet that requirement too."],
           ['Your server, your responsibility', 'Server owners and admins are responsible for how they configure Petto on their server: automated messages, custom commands, reaction roles, moderation actions, and anything else set up through it. Petto executes what it is configured to do; it does not review configuration for intent.'],
           ['Acceptable use', 'Petto may not be used to harass, spam, distribute illegal content, evade a ban or Discord Trust & Safety action, or automate abuse against Discord or any third-party service Petto connects to. Access can be revoked from a server or user found doing this.'],
-          ['Petto Premium and payments', 'Premium is planned, not live. Once it exists, these terms will be updated with the actual pricing, refund policy, and what a subscription includes, before any payment is ever collected.'],
+          ['Petto Premium and payments', 'Petto Premium is an optional paid subscription managed through Polar. The current price, billing interval, included server slots, renewal, cancellation, and any refund terms are shown at checkout before payment. You can manage payment details, invoices, receipts, and cancellation from the billing portal.'],
           ['Third-party services', 'Petto runs on top of Discord, Supabase, and Cloudflare, among others (see the Credits section on the home page). Using Petto also means your use is subject to those providers, most directly Discord\'s own Terms of Service and Community Guidelines.'],
           ['Intellectual property', 'The Petto name, the duck mascot, and this site\'s content belong to the Petto project. The code Petto is built with is credited, not claimed; third-party tools and libraries keep their own licenses.'],
           ['No warranty', 'Petto is offered without any warranty of uptime, accuracy, or fitness for a particular purpose. Back up anything you cannot afford to lose, and do not depend on Petto as the only copy of anything important to your server.'],
@@ -988,6 +988,7 @@ export const ui = {
           key: 'shipped', label: 'Lanzado', items: [
             { title: 'Base v0.1.0', desc: 'Moderación, tickets, niveles, sorteos, roles por reacción, comandos propios, invites, estado en vivo.', href: '/changelog' },
             { title: 'Dashboard web', desc: 'Cada módulo configurable desde el navegador, más un editor de embeds real con preview en vivo.', href: '/dash' },
+            { title: 'Petto Premium', desc: 'Suscripción opcional con checkout de Polar, slots de server seleccionables, portal de facturación y regreso seguro a Free.', href: '/premium' },
           ],
         },
         {
@@ -999,7 +1000,6 @@ export const ui = {
         },
         {
           key: 'planned', label: 'Planeado', items: [
-            { title: 'Petto Premium', desc: 'Espacios extra de sorteo, más capacidad de automatización y soporte prioritario.', href: '/premium' },
             { title: 'Comandos slash interactivos', desc: 'Comandos tipo juego que no entran en un prefijo de texto.', href: '' },
           ],
         },
@@ -1016,9 +1016,9 @@ export const ui = {
       title: 'Preguntas comunes, respondidas una vez.',
       lede: 'Si algo no está acá, el servidor de soporte es la forma más rápida de conseguir una respuesta real.',
       items: [
-        { q: '¿Petto es gratis?', a: 'Sí. Todo sistema que tiene Petto hoy es gratis. Petto Premium está planeado pero todavía no existe, y nunca se va a cobrar nada sin que eso se anuncie antes.' },
+        { q: '¿Petto es gratis?', a: 'Sí. Petto mantiene gratis y útil para todos sus sistemas principales: moderación, leveling, tickets, sorteos, embeds y dashboard. Premium suma límites más altos y extras por server; el pago se gestiona de forma segura con Polar.' },
         { q: '¿Cómo agrego Petto a mi servidor?', a: 'El botón "Agregar a Discord" arriba en la página de inicio. Necesitas el permiso de Administrar servidor en el servidor donde lo agregas.' },
-        { q: '¿Prefijo o comandos slash?', a: 'Petto usa el prefijo configurable del servidor. Los comandos son solo por prefijo, no slash.' },
+        { q: '¿Prefijo o comandos slash?', a: 'Los comandos de Petto funcionan tanto con el prefijo configurable del servidor como con comandos slash, según el comando y la instalación.' },
         { q: '¿Mis datos están seguros?', a: 'Los datos viven en una base de datos Postgres real (vía Supabase), no en una planilla ni un archivo JSON. Revisa la Política de privacidad para ver exactamente qué se guarda y qué no.' },
         { q: '¿Qué pasó con blibot?', a: 'Se mudó 100% a Petto: cada sistema que tenía blibot, reconstruido desde cero. Lee el anuncio completo en el Blog.' },
         { q: '¿Qué son Nelu y AM?', a: 'Dos bots separados hechos por el mismo equipo: Nelu (solo de anime) y AM (automoderación con IA). Los dos ya existen y se están probando, ninguno es público todavía.' },
@@ -1404,7 +1404,7 @@ export const ui = {
           ['Elegibilidad', 'Necesitás cumplir con la edad mínima que exige Discord (13 años, o más donde la ley local lo requiera) para usar Discord, y por extensión Petto. Los dueños de servidor son responsables de que sus miembros también cumplan con eso.'],
           ['Tu servidor, tu responsabilidad', 'Los dueños y admins de servidor son responsables de cómo configuran Petto: mensajes automáticos, comandos propios, roles por reacción, acciones de moderación, y cualquier otra cosa armada a través de él. Petto ejecuta lo que se le configura; no revisa la configuración buscando intención.'],
           ['Uso aceptable', 'Petto no se puede usar para acosar, hacer spam, distribuir contenido ilegal, evadir un baneo o una acción de Trust & Safety de Discord, o automatizar abuso contra Discord o cualquier servicio de terceros al que Petto se conecte. Se puede revocar el acceso a un servidor o usuario que haga esto.'],
-          ['Petto Premium y pagos', 'Premium está planeado, todavía no existe. Cuando exista, estos términos se van a actualizar con el precio real, la política de reembolsos, y qué incluye una suscripción, antes de cobrar nada.'],
+          ['Petto Premium y pagos', 'Petto Premium es una suscripción opcional gestionada mediante Polar. El precio, el intervalo de cobro, los slots incluidos, la renovación, la cancelación y las condiciones de reembolso aparecen en el checkout antes de pagar. Los datos de pago, facturas, recibos y cancelación se administran desde el portal de facturación.'],
           ['Servicios de terceros', 'Petto corre sobre Discord, Supabase y Cloudflare, entre otros (ver la sección de Créditos en la página de inicio). Usar Petto también implica que tu uso está sujeto a esos proveedores, sobre todo a los Términos de servicio y Guías de la comunidad propios de Discord.'],
           ['Propiedad intelectual', 'El nombre Petto, la mascota del pato y el contenido de este sitio pertenecen al proyecto Petto. El código con el que está hecho Petto se acredita, no se reclama; las herramientas y librerías de terceros mantienen sus propias licencias.'],
           ['Sin garantía', 'Petto se ofrece sin ninguna garantía de uptime, exactitud, o idoneidad para un propósito particular. Guardá una copia de todo lo que no puedas permitirte perder, y no dependas de Petto como la única copia de algo importante para tu servidor.'],
@@ -1814,7 +1814,7 @@ export const ui = {
       title: 'Perguntas comuns, respondidas uma vez.',
       lede: 'Se algo não estiver aqui, o servidor de suporte é a forma mais rápida de conseguir uma resposta de verdade.',
       items: [
-        { q: 'O Petto é gratuito?', a: 'Sim. Todo sistema que o Petto tem hoje é gratuito. O Petto Premium está planejado mas ainda não existe, e nada nunca vai ser cobrado sem isso ser anunciado antes.' },
+        { q: 'O Petto é gratuito?', a: 'Sim. O Petto mantém grátis e útil para todos os sistemas principais: moderação, leveling, tickets, sorteios, embeds e dashboard. O Premium adiciona limites maiores e extras por server; o pagamento é gerenciado com segurança pela Polar.' },
         { q: 'Como adiciono o Petto ao meu servidor?', a: 'O botão "Adicionar ao Discord" no topo da página inicial. Você precisa da permissão Gerenciar Servidor no servidor onde está adicionando.' },
         { q: 'Prefixo ou comandos slash?', a: 'O Petto usa o prefixo configurável do servidor. Os comandos são apenas por prefixo, não slash.' },
         { q: 'Os dados do meu servidor estão seguros?', a: 'Os dados vivem em um banco de dados Postgres de verdade (via Supabase), não em uma planilha ou um arquivo JSON. Veja a Política de privacidade para saber exatamente o que é guardado e o que não é.' },
@@ -2202,7 +2202,7 @@ export const ui = {
           ['Elegibilidade', 'Você precisa atender à idade mínima exigida pelo próprio Discord (13 anos, ou mais onde a lei local exigir) para usar o Discord, e por extensão o Petto. Os donos de servidor são responsáveis por garantir que seus membros também atendam a isso.'],
           ['Seu servidor, sua responsabilidade', 'Donos e admins de servidor são responsáveis por como configuram o Petto: mensagens automáticas, comandos personalizados, cargos por reação, ações de moderação, e qualquer outra coisa montada através dele. O Petto executa o que é configurado; ele não revisa a configuração buscando intenção.'],
           ['Uso aceitável', 'O Petto não pode ser usado para assediar, fazer spam, distribuir conteúdo ilegal, driblar um banimento ou uma ação de Trust & Safety do Discord, ou automatizar abuso contra o Discord ou qualquer serviço de terceiros ao qual o Petto se conecte. O acesso pode ser revogado de um servidor ou usuário que faça isso.'],
-          ['Petto Premium e pagamentos', 'O Premium está planejado, ainda não existe. Quando existir, estes termos serão atualizados com o preço real, a política de reembolso, e o que uma assinatura inclui, antes de qualquer cobrança.'],
+          ['Petto Premium e pagamentos', 'O Petto Premium é uma assinatura opcional gerenciada pela Polar. O preço, intervalo de cobrança, slots incluídos, renovação, cancelamento e condições de reembolso aparecem no checkout antes do pagamento. Dados de pagamento, faturas, recibos e cancelamento podem ser gerenciados pelo portal de cobrança.'],
           ['Serviços de terceiros', 'O Petto roda sobre Discord, Supabase e Cloudflare, entre outros (veja a seção de Créditos na página inicial). Usar o Petto também significa que seu uso está sujeito a esses provedores, principalmente aos próprios Termos de Serviço e Diretrizes da Comunidade do Discord.'],
           ['Propriedade intelectual', 'O nome Petto, o mascote pato e o conteúdo deste site pertencem ao projeto Petto. O código com que o Petto é feito é creditado, não reivindicado; as ferramentas e bibliotecas de terceiros mantêm suas próprias licenças.'],
           ['Sem garantia', 'O Petto é oferecido sem nenhuma garantia de uptime, precisão, ou adequação a um propósito específico. Faça backup de tudo que você não pode se dar ao luxo de perder, e não dependa do Petto como a única cópia de algo importante para o seu servidor.'],

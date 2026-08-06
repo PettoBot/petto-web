@@ -10,6 +10,9 @@ export interface PremiumEntitlement {
   status: Exclude<PremiumStatus, 'free'>;
   slot_limit: number;
   current_period_end: string | null;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface PremiumAssignment {
@@ -36,6 +39,7 @@ export interface PremiumSnapshot {
   requests: PremiumRequest[];
   slotsUsed: number;
   slotsTotal: number;
+  history: PremiumEntitlement[];
 }
 
 const DEFAULT_POLAR_PRODUCTS: Record<string, string> = {
@@ -57,6 +61,12 @@ function headers(key: string, extra: Record<string, string> = {}): HeadersInit {
   return { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json', ...extra };
 }
 
+function polarApiBase(astro: any): string {
+  return (getEnv(astro, 'POLAR_SERVER') || 'production').toLowerCase() === 'sandbox'
+    ? 'https://sandbox-api.polar.sh'
+    : 'https://api.polar.sh';
+}
+
 async function read<T>(astro: any, table: string, query: string): Promise<T[]> {
   const settings = config(astro);
   if (!settings) return [];
@@ -70,11 +80,24 @@ async function read<T>(astro: any, table: string, query: string): Promise<T[]> {
   }
 }
 
+async function releaseExpiredEntitlement(astro: any, entitlementId: number, assignments: PremiumAssignment[]): Promise<void> {
+  const settings = config(astro);
+  if (!settings || !assignments.length) return;
+  await Promise.all(assignments.map(async (assignment) => {
+    await resetGuildPremiumCustomization(astro, assignment.guild_id);
+    await fetch(`${settings.url}/rest/v1/premium_slot_assignments?id=eq.${assignment.id}&status=eq.active`, {
+      method: 'PATCH',
+      headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
+    }).catch(() => null);
+  }));
+}
+
 /** Reads the account's Premium state from the primary Supabase database. */
 export async function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
   const encodedUser = encodeURIComponent(userId);
   const [entitlements, assignments, requests] = await Promise.all([
-    read<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=in.(active,pending,past_due)&select=id,user_id,provider,plan_key,status,slot_limit,current_period_end&order=created_at.desc&limit=1`),
+    read<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=in.(active,pending,past_due,canceled,expired)&select=id,user_id,provider,plan_key,status,slot_limit,current_period_end,created_at,updated_at,metadata&order=created_at.desc&limit=25`),
     read<PremiumAssignment>(astro, 'premium_slot_assignments', `user_id=eq.${encodedUser}&select=id,entitlement_id,user_id,guild_id,status,assigned_at,released_at&order=assigned_at.desc`),
     read<PremiumRequest>(astro, 'premium_slot_requests', `user_id=eq.${encodedUser}&status=eq.pending&select=id,user_id,guild_id,status&order=created_at.desc`),
   ]);
@@ -91,6 +114,11 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
   const status: PremiumStatus = entitlement?.status === 'active' && !periodValid ? 'expired' : entitlement?.status ?? 'free';
   const slotsTotal = entitlementIsActive ? Math.max(0, entitlement.slot_limit) : 0;
 
+  if (entitlement?.status === 'active' && !periodValid) {
+    const staleAssignments = assignments.filter((assignment) => assignment.status === 'active' && assignment.entitlement_id === entitlement.id);
+    await releaseExpiredEntitlement(astro, entitlement.id, staleAssignments);
+  }
+
   return {
     status,
     entitlement,
@@ -98,6 +126,7 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
     requests,
     slotsUsed: activeAssignments.length,
     slotsTotal,
+    history: entitlements,
   };
 }
 
@@ -118,9 +147,7 @@ export async function createPremiumCheckout(astro: any, userId: string, plan: st
   if (!productId || !['1', '3', '5'].includes(slots) || !['month', 'year'].includes(interval)) return null;
 
   const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
-  const apiBase = (getEnv(astro, 'POLAR_SERVER') || 'production').toLowerCase() === 'sandbox'
-    ? 'https://sandbox-api.polar.sh'
-    : 'https://api.polar.sh';
+  const apiBase = polarApiBase(astro);
 
   try {
     const response = await fetch(`${apiBase}/v1/checkouts`, {
@@ -137,6 +164,26 @@ export async function createPremiumCheckout(astro: any, userId: string, plan: st
     if (!response.ok) return null;
     const data = await response.json();
     return typeof data.url === 'string' ? data.url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Creates a short-lived hosted Polar Customer Portal session for this Discord user. */
+export async function createPremiumCustomerPortalSession(astro: any, userId: string): Promise<string | null> {
+  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
+  if (!token || !/^\d{15,22}$/.test(userId)) return null;
+
+  const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
+  try {
+    const response = await fetch(`${polarApiBase(astro)}/v1/customer-sessions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ external_customer_id: userId, return_url: `${origin}/dash/premium` }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.customer_portal_url === 'string' ? data.customer_portal_url : null;
   } catch {
     return null;
   }
@@ -164,10 +211,10 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
     const entitlement = entitlements[0];
     const entitlementIsActive = Boolean(entitlement && (!entitlement.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now()));
 
-    // Manual grants are already active. Assigning a server should therefore
-    // take effect immediately instead of waiting for a Polar webhook that will
-    // never arrive for a manually granted entitlement.
-    if (entitlementIsActive && entitlement?.provider === 'manual') {
+    // An active entitlement is authoritative for both paid and manual grants.
+    // Selecting a server after activation should take effect immediately; only
+    // selections made before billing is confirmed remain pending.
+    if (entitlementIsActive && entitlement) {
       const activeAssignments = await read<{ id: number; user_id: string; guild_id: string }>(
         astro,
         'premium_slot_assignments',
@@ -183,8 +230,8 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
       if (serverAssignments.some((assignment) => assignment.user_id !== userId)) return false;
       if (activeAssignments.length >= Math.max(0, entitlement.slot_limit)) return false;
 
-      // Move an old assignment from a previous manual grant onto the current
-      // user entitlement instead of leaving the server attached to stale data.
+      // Move an old assignment from a previous entitlement onto the current
+      // one instead of leaving the server attached to stale billing data.
       const previousAssignmentResponse = await fetch(`${settings.url}/rest/v1/premium_slot_assignments?user_id=eq.${encodeURIComponent(userId)}&guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active`, {
         method: 'PATCH',
         headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
@@ -197,6 +244,13 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
         headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
         body: JSON.stringify({ entitlement_id: entitlement.id, user_id: userId, guild_id: guildId, status: 'active', released_at: null }),
       });
+      if (assignmentResponse.ok) {
+        await fetch(`${settings.url}/rest/v1/premium_slot_requests?user_id=eq.${encodeURIComponent(userId)}&guild_id=eq.${encodeURIComponent(guildId)}&status=eq.pending`, {
+          method: 'PATCH',
+          headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+          body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() }),
+        }).catch(() => null);
+      }
       return assignmentResponse.ok;
     }
 
@@ -239,7 +293,10 @@ export async function releasePremiumServer(astro: any, userId: string, guildId: 
       headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
     });
-    return response.ok;
+    if (!response.ok) return false;
+    // Removing a slot is also an explicit return to Free for that server.
+    await resetGuildPremiumCustomization(astro, guildId);
+    return true;
   } catch {
     return false;
   }

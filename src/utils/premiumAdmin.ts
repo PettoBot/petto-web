@@ -1,4 +1,5 @@
 import { getEnv } from './env';
+import { resetGuildPremiumCustomization } from './premium';
 
 export const PETTO_OWNER_ID = '293504726505357312';
 
@@ -169,6 +170,8 @@ export async function revokeManualPremium(astro: any, actorId: string, entitleme
   const config = settings(astro);
   if (!config) return false;
   const now = new Date().toISOString();
+  const assignments = await read<{ guild_id: string }>(astro, 'premium_slot_assignments', `entitlement_id=eq.${entitlementId}&status=eq.active&select=guild_id`);
+  await Promise.all(assignments.map((assignment) => resetGuildPremiumCustomization(astro, assignment.guild_id)));
   const entitlementResponse = await fetch(`${config.url}/rest/v1/premium_entitlements?id=eq.${entitlementId}&provider=eq.manual`, {
     method: 'PATCH',
     headers: headers(config.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
