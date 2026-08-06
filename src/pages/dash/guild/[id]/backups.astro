@@ -1,0 +1,46 @@
+---
+export const prerender = false;
+import DashBackups from '../../../../components/DashBackups.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getGuildInfo } from '../../../../utils/discord';
+import { getEnv } from '../../../../utils/env';
+import { callPettoVault } from '../../../../utils/pettoBotApi';
+
+const { id } = Astro.params as { id: string };
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+if (!botToken) return Astro.redirect('/dash/manage?error=server_not_configured');
+const guildInfo = await getGuildInfo(id, botToken);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+let message: string | null = null;
+let error: string | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const body: Record<string, unknown> = { user_id: session.userId, action };
+  if (action === 'create') body.label = String(form.get('label') ?? '').trim();
+  if (action === 'schedule') { body.hours = Number(form.get('hours')); body.retention = Number(form.get('retention')); }
+  const result = await callPettoVault(Astro, id, session.userId, { method: 'POST', body: JSON.stringify(body) });
+  if (result.ok) message = action === 'create' ? 'Backup created.' : action === 'schedule' ? 'Automatic backup schedule saved.' : 'Automatic backups disabled.';
+  else error = result.error === 'not_configured' ? 'Vault is not connected to the dashboard yet.' : 'Petto could not complete that Vault action.';
+}
+
+const result = await callPettoVault(Astro, id, session.userId);
+const vault = result.ok ? result.payload : null;
+if (!result.ok && !error) error = result.error === 'not_configured' ? 'Vault is not connected to the dashboard yet.' : null;
+---
+<DashBackups
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  backups={vault?.backups ?? []}
+  audit={vault?.audit ?? []}
+  schedule={vault?.schedule ?? null}
+  connected={Boolean(vault)}
+  message={message}
+  error={error}
+ />
