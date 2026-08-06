@@ -13,6 +13,15 @@ const SUBSCRIPTION_EVENTS = new Set([
   'subscription.revoked',
 ]);
 
+const PRODUCT_SLOT_LIMITS: Record<string, number> = {
+  '15621107-ba45-4f62-a648-636f23c0f9e3': 1,
+  'da48d960-a600-461a-b251-8cb684b1cb5f': 1,
+  'b7636ff3-c73a-4274-9850-3d4446e3df11': 3,
+  '1dc59fa1-f358-4172-9327-a61069882366': 3,
+  '1ec97d11-63af-4573-af09-3075567c4cc7': 5,
+  '5361b1ef-97e2-470d-8fe3-25da2b49aeeb': 5,
+};
+
 function settings(astro: any): { url: string; key: string } | null {
   const url = getEnv(astro, 'SUPABASE_URL');
   const key = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY');
@@ -82,9 +91,12 @@ function userIdFrom(subscription: any, metadata: Record<string, any>): string | 
   return /^\d{15,22}$/.test(id) ? id : null;
 }
 
-function statusFor(type: string, status: string | undefined): 'pending' | 'active' | 'past_due' | 'canceled' | 'expired' {
+function statusFor(type: string, status: string | undefined, periodEnd: string | null, cancelAtPeriodEnd: boolean): 'pending' | 'active' | 'past_due' | 'canceled' | 'expired' {
   if (type === 'subscription.revoked') return 'expired';
-  if (type === 'subscription.canceled' || type === 'subscription.paused') return 'canceled';
+  // Polar emits subscription.canceled when a customer schedules an end-of-period
+  // cancellation. Keep access active until that period really ends.
+  if ((type === 'subscription.canceled' || status === 'canceled') && cancelAtPeriodEnd && periodEnd && new Date(periodEnd).getTime() > Date.now()) return 'active';
+  if (type === 'subscription.canceled' || type === 'subscription.paused' || status === 'canceled') return 'canceled';
   if (type === 'subscription.past_due') return 'past_due';
   if (type === 'subscription.active' || type === 'subscription.uncanceled' || type === 'subscription.resumed') return 'active';
   if (status === 'active' || status === 'trialing') return 'active';
@@ -92,6 +104,27 @@ function statusFor(type: string, status: string | undefined): 'pending' | 'activ
   if (status === 'canceled' || status === 'unpaid' || status === 'paused') return 'canceled';
   if (status === 'incomplete_expired') return 'expired';
   return 'pending';
+}
+
+async function trimExcessAssignments(astro: any, entitlementId: number, slotLimit: number): Promise<void> {
+  const config = settings(astro);
+  if (!config) return;
+  const response = await fetch(`${config.url}/rest/v1/premium_slot_assignments?entitlement_id=eq.${entitlementId}&status=eq.active&select=id,guild_id,assigned_at&order=assigned_at.asc`, {
+    headers: supabaseHeaders(config.key),
+  });
+  if (!response.ok) return;
+  const assignments = await response.json() as Array<{ id: number; guild_id: string; assigned_at: string }>;
+  const excess = assignments.slice(Math.max(0, slotLimit));
+  if (!excess.length) return;
+
+  await Promise.all(excess.map(async (assignment) => {
+    await resetGuildPremiumCustomization(astro, assignment.guild_id);
+    await fetch(`${config.url}/rest/v1/premium_slot_assignments?id=eq.${assignment.id}&status=eq.active`, {
+      method: 'PATCH',
+      headers: supabaseHeaders(config.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
+    });
+  }));
 }
 
 async function fulfillPending(astro: any, entitlementId: number, userId: string, slotLimit: number): Promise<void> {
@@ -134,10 +167,12 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
   const metadata = { ...(subscription.product?.metadata ?? {}), ...(subscription.metadata ?? {}) };
   const userId = userIdFrom(subscription, metadata);
   if (!userId || !subscription.id) return true;
-  const slotValue = Number(metadata.slot_limit ?? metadata.slotLimit ?? 1);
+  const productId = String(subscription.product_id ?? subscription.product?.id ?? '');
+  const slotValue = Number(metadata.slot_limit ?? metadata.slotLimit ?? PRODUCT_SLOT_LIMITS[productId] ?? 1);
   const slotLimit = Number.isInteger(slotValue) && slotValue > 0 ? slotValue : 1;
   const periodEnd = iso(subscription.current_period_end ?? subscription.ends_at);
-  const status = statusFor(event.type, subscription.status);
+  const cancelAtPeriodEnd = Boolean(subscription.cancel_at_period_end ?? subscription.cancelAtPeriodEnd);
+  const status = statusFor(event.type, subscription.status, periodEnd, cancelAtPeriodEnd);
   const periodValid = !periodEnd || new Date(periodEnd).getTime() > Date.now();
   const row = {
     user_id: userId,
@@ -147,7 +182,7 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
     status,
     slot_limit: slotLimit,
     current_period_end: periodEnd,
-    metadata: { polar_event: event.type, product_id: subscription.product_id ?? null, checkout_id: subscription.checkout_id ?? null, polar: event.data },
+    metadata: { polar_event: event.type, product_id: productId || null, checkout_id: subscription.checkout_id ?? null, cancel_at_period_end: cancelAtPeriodEnd, polar: event.data },
     updated_at: new Date().toISOString(),
   };
 
@@ -183,6 +218,7 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
       body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
     });
   } else if (status === 'active') {
+    await trimExcessAssignments(astro, entitlementId, slotLimit);
     await fulfillPending(astro, entitlementId, userId, slotLimit);
   }
   return true;
