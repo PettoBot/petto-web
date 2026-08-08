@@ -45,71 +45,95 @@ let discordWarning = false;
 
 if (Astro.request.method === 'POST') {
   if (!premiumActive) return Astro.redirect(`/dash/premium?guild_id=${encodeURIComponent(id)}&error=premium_required`);
-  const stored = await loadConfig();
   const form = await Astro.request.formData();
+  const resetField = String(form.get('reset_field') ?? '').trim();
 
-  const nickname = String(form.get('nickname') ?? '').trim().slice(0, 32);
-  const avatarUrl = String(form.get('avatar_url') ?? '').trim();
-  const avatarFile = form.get('avatar_file');
-  const bannerUrl = String(form.get('banner_url') ?? '').trim();
-  const bannerFile = form.get('banner_file');
-  const description = String(form.get('description') ?? '').trim().slice(0, 190);
+  // Reset buttons are independent actions. They must persist immediately and
+  // must not accidentally save other unsaved fields from the form at the same
+  // time (for example, an avatar reset must not also save a draft nickname).
+  if (['nickname', 'avatar', 'banner', 'description'].includes(resetField)) {
+    const resetPatch = {
+      nickname: { discord: { nick: null }, database: { bot_nickname: null } },
+      avatar: { discord: { avatarDataUri: null }, database: { bot_avatar_url: null } },
+      banner: { discord: { bannerDataUri: null }, database: { bot_banner_url: null } },
+      description: { discord: { bio: null }, database: { bot_description: null } },
+    }[resetField] as { discord: Parameters<typeof setBotGuildProfile>[2]; database: Record<string, null> };
 
-  let avatarDataUri: string | null | undefined;
-  let nextAvatarUrl = avatarUrl;
-  if (avatarFile instanceof File && avatarFile.size > 0) {
-    const result = await fileToDataUri(avatarFile);
-    if ('error' in result) error = result.error === 'too_large' ? 'avatar_too_large' : 'avatar_fetch_failed';
-    else { avatarDataUri = result.dataUri; nextAvatarUrl = ''; }
-  } else if (avatarUrl && avatarUrl !== (stored.bot_avatar_url ?? '')) {
-    const result = await imageUrlToDataUri(avatarUrl);
-    if ('error' in result) error = result.error === 'too_large' ? 'avatar_too_large' : 'avatar_fetch_failed';
-    else avatarDataUri = result.dataUri;
-  } else if (!avatarUrl && (stored.bot_avatar_url ?? '')) {
-    avatarDataUri = null; // was cleared
-  }
+    const applied = await setBotGuildProfile(id, botToken, resetPatch.discord);
+    if (!applied) discordWarning = true;
 
-  let bannerDataUri: string | null | undefined;
-  let nextBannerUrl = bannerUrl;
-  if (!error) {
-    if (bannerFile instanceof File && bannerFile.size > 0) {
-      const result = await fileToDataUri(bannerFile);
-      if ('error' in result) error = result.error === 'too_large' ? 'banner_too_large' : 'banner_fetch_failed';
-      else { bannerDataUri = result.dataUri; nextBannerUrl = ''; }
-    } else if (bannerUrl && bannerUrl !== (stored.bot_banner_url ?? '')) {
-      const result = await imageUrlToDataUri(bannerUrl);
-      if ('error' in result) error = result.error === 'too_large' ? 'banner_too_large' : 'banner_fetch_failed';
-      else bannerDataUri = result.dataUri;
-    } else if (!bannerUrl && (stored.bot_banner_url ?? '')) {
-      bannerDataUri = null; // was cleared
-    }
-  }
-
-  if (!error) {
-    // nick/avatar/banner/bio are all real Discord fields on the same "Modify Current Member"
-    // endpoint (bio confirmed against Discord's own docs, it's a genuine per-guild member bio,
-    // not just something we store on our side), applied together in one PATCH call.
-    const bioChanged = description !== (stored.bot_description ?? '');
-    if (nickname !== (stored.bot_nickname ?? '') || avatarDataUri !== undefined || bannerDataUri !== undefined || bioChanged) {
-      const applied = await setBotGuildProfile(id, botToken, { nick: nickname || null, avatarDataUri, bannerDataUri, bio: description || null });
-      if (!applied) discordWarning = true;
-    }
-
-    const dbRes = await fetch(`${supabaseUrl}/rest/v1/guilds`, {
-      method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({
-        guild_id: id,
-        bot_nickname: nickname || null,
-        bot_avatar_url: nextAvatarUrl || null,
-        bot_banner_url: nextBannerUrl || null,
-        bot_description: description || null,
-        updated_at: new Date().toISOString(),
-      }),
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({ ...resetPatch.database, updated_at: new Date().toISOString() }),
     });
-
     if (dbRes.ok) saved = true;
     else error = 'discord_rejected';
+  } else {
+    const stored = await loadConfig();
+
+    const nickname = String(form.get('nickname') ?? '').trim().slice(0, 32);
+    const avatarUrl = String(form.get('avatar_url') ?? '').trim();
+    const avatarFile = form.get('avatar_file');
+    const bannerUrl = String(form.get('banner_url') ?? '').trim();
+    const bannerFile = form.get('banner_file');
+    const description = String(form.get('description') ?? '').trim().slice(0, 190);
+
+    let avatarDataUri: string | null | undefined;
+    let nextAvatarUrl = avatarUrl;
+    if (avatarFile instanceof File && avatarFile.size > 0) {
+      const result = await fileToDataUri(avatarFile);
+      if ('error' in result) error = result.error === 'too_large' ? 'avatar_too_large' : 'avatar_fetch_failed';
+      else { avatarDataUri = result.dataUri; nextAvatarUrl = ''; }
+    } else if (avatarUrl && avatarUrl !== (stored.bot_avatar_url ?? '')) {
+      const result = await imageUrlToDataUri(avatarUrl);
+      if ('error' in result) error = result.error === 'too_large' ? 'avatar_too_large' : 'avatar_fetch_failed';
+      else avatarDataUri = result.dataUri;
+    } else if (!avatarUrl && (stored.bot_avatar_url ?? '')) {
+      avatarDataUri = null; // was cleared
+    }
+
+    let bannerDataUri: string | null | undefined;
+    let nextBannerUrl = bannerUrl;
+    if (!error) {
+      if (bannerFile instanceof File && bannerFile.size > 0) {
+        const result = await fileToDataUri(bannerFile);
+        if ('error' in result) error = result.error === 'too_large' ? 'banner_too_large' : 'banner_fetch_failed';
+        else { bannerDataUri = result.dataUri; nextBannerUrl = ''; }
+      } else if (bannerUrl && bannerUrl !== (stored.bot_banner_url ?? '')) {
+        const result = await imageUrlToDataUri(bannerUrl);
+        if ('error' in result) error = result.error === 'too_large' ? 'banner_too_large' : 'banner_fetch_failed';
+        else bannerDataUri = result.dataUri;
+      } else if (!bannerUrl && (stored.bot_banner_url ?? '')) {
+        bannerDataUri = null; // was cleared
+      }
+    }
+
+    if (!error) {
+      // nick/avatar/banner/bio are all real Discord fields on the same "Modify Current Member"
+      // endpoint, applied together in one PATCH call.
+      const bioChanged = description !== (stored.bot_description ?? '');
+      if (nickname !== (stored.bot_nickname ?? '') || avatarDataUri !== undefined || bannerDataUri !== undefined || bioChanged) {
+        const applied = await setBotGuildProfile(id, botToken, { nick: nickname || null, avatarDataUri, bannerDataUri, bio: description || null });
+        if (!applied) discordWarning = true;
+      }
+
+      const dbRes = await fetch(`${supabaseUrl}/rest/v1/guilds`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          guild_id: id,
+          bot_nickname: nickname || null,
+          bot_avatar_url: nextAvatarUrl || null,
+          bot_banner_url: nextBannerUrl || null,
+          bot_description: description || null,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+
+      if (dbRes.ok) saved = true;
+      else error = 'discord_rejected';
+    }
   }
 }
 
