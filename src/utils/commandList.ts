@@ -8,7 +8,6 @@ export interface CommandInfo {
 }
 
 // Flattened from the same English commandsPage data the /commands page renders, so this list
-// never drifts from what's actually documented. Some `cmds` entries are really subcommands
 // (e.g. "ticket panel"), the interaction dispatcher only ever sees the top-level command name
 // Discord sent (e.g. "ticket"), so that's what's used as the id here, deduped to one node.
 export function getAllCommands(): CommandInfo[] {
