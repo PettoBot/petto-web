@@ -69,6 +69,14 @@ export default defineConfig({
   // response. Without this, Cloudflare can render the HTML while the SSR page
   // misses the generated CSS asset link and appears as unstyled markup.
   build: { inlineStylesheets: 'always' },
+  // El JavaScript del navegador siempre puede inspeccionarse; esto endurece el build,
+  // no lo convierte en código secreto: lo mantiene minificado y sin source maps.
+  vite: {
+    build: {
+      minify: 'esbuild',
+      sourcemap: false,
+    },
+  },
   adapter: cloudflare(),
   // Docs moved to their own Mintlify site, every old in-repo docs URL (and its localized
   // copies) now bounces straight there instead of 404ing.
