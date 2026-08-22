@@ -133,6 +133,14 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.3.0-2',
+          date: 'August 22, 2026',
+          items: [
+            'Operational visibility: Petto now records Discord REST rate limits with sanitized routes, retry timing, and bucket limits so bursty workloads can be diagnosed without exposing sensitive URLs',
+            'Repeated rate-limit events are grouped for one minute to keep operational logs useful instead of noisy',
+          ],
+        },
+        {
           version: '0.3.0',
           date: 'August 6, 2026',
           items: [
@@ -942,6 +950,14 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.3.0-2',
+          date: '22 de agosto de 2026',
+          items: [
+            'Visibilidad operativa: Petto ahora registra los límites REST de Discord con rutas sanitizadas, tiempos de reintento y límites del bucket para diagnosticar cargas altas sin exponer URLs sensibles',
+            'Los eventos repetidos de rate limit se agrupan durante un minuto para mantener útiles los logs operativos sin llenarlos de ruido',
+          ],
+        },
+        {
           version: '0.3.0',
           date: '6 de agosto de 2026',
           items: [
@@ -1750,6 +1766,14 @@ export const ui = {
       lede: 'O Petto ainda não tem uma história longa, esta é de verdade a primeira versão. Os próximos lançamentos vão entrando aqui.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.3.0-2',
+          date: '22 de agosto de 2026',
+          items: [
+            'Visibilidade operacional: o Petto agora registra limites REST do Discord com rotas sanitizadas, tempo de retry e limite do bucket para diagnosticar picos de carga sem expor URLs sensíveis',
+            'Eventos repetidos de rate limit são agrupados por um minuto para manter os logs operacionais úteis sem enchê-los de ruído',
+          ],
+        },
         {
           version: '0.3.0',
           date: '6 de agosto de 2026',
