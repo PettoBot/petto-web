@@ -133,6 +133,16 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.4.0',
+          date: 'August 24, 2026',
+          items: [
+            'Prefix and moderation improvements: custom prefixes are case-insensitive and accept optional spacing, while moderation targets support mentions, Discord IDs, exact usernames, and exact display names with ambiguity protection',
+            'Honeypot protection: a Components V2 bait panel with bundled Petto artwork, persistent trigger counts, configurable softban/ban/kick actions, moderation cases, and separate automod detection logs',
+            'Petto Vault backups: a Components V2 action menu with loading states, audited creation/export/restore/scheduling, safety backups before restores, and backup numbers scoped independently to each server',
+            'Dashboard and setup hardening: backup numbers no longer expose global database IDs, and AutoMod setup remains explicit and permission-aware',
+          ],
+        },
+        {
           version: '0.3.0-2',
           date: 'August 22, 2026',
           items: [
@@ -950,6 +960,16 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.4.0',
+          date: '24 de agosto de 2026',
+          items: [
+            'Mejoras de prefijos y moderación: los prefijos personalizados ignoran mayúsculas y aceptan espacios opcionales; los objetivos aceptan menciones, IDs de Discord, usernames exactos y display names exactos con protección contra ambigüedad',
+            'Protección Honeypot: panel Components V2 con arte de Petto incluido, contadores persistentes, acciones configurables de softban/ban/kick, casos de moderación y logs automod separados',
+            'Backups de Petto Vault: menú de acciones Components V2 con estados de carga, creación/exportación/restauración/schedules auditados, copias de seguridad previas a restore y números independientes por servidor',
+            'Dashboard y setup más seguros: los números de backup ya no exponen IDs globales de base de datos y AutoMod sigue siendo explícito y consciente de permisos',
+          ],
+        },
+        {
           version: '0.3.0-2',
           date: '22 de agosto de 2026',
           items: [
@@ -1766,6 +1786,16 @@ export const ui = {
       lede: 'O Petto ainda não tem uma história longa, esta é de verdade a primeira versão. Os próximos lançamentos vão entrando aqui.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.4.0',
+          date: '24 de agosto de 2026',
+          items: [
+            'Melhorias de prefixo e moderação: prefixos personalizados ignoram maiúsculas e aceitam espaços opcionais; alvos aceitam menções, IDs do Discord, usernames exatos e display names exatos com proteção contra ambiguidade',
+            'Proteção Honeypot: painel Components V2 com arte do Petto incluída, contadores persistentes, ações configuráveis de softban/ban/kick, casos de moderação e logs automod separados',
+            'Backups do Petto Vault: menu de ações Components V2 com estados de carregamento, criação/exportação/restauração/agendamento auditados, cópias de segurança antes de restores e números independentes por servidor',
+            'Dashboard e setup mais seguros: os números de backup não expõem mais IDs globais do banco e o AutoMod continua explícito e consciente das permissões',
+          ],
+        },
         {
           version: '0.3.0-2',
           date: '22 de agosto de 2026',
