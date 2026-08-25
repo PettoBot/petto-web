@@ -7,9 +7,6 @@ export interface CommandInfo {
   desc: string;
 }
 
-// Flattened from the same English commandsPage data the /commands page renders, so this list
-// (e.g. "ticket panel"), the interaction dispatcher only ever sees the top-level command name
-// Discord sent (e.g. "ticket"), so that's what's used as the id here, deduped to one node.
 export function getAllCommands(): CommandInfo[] {
   const t = useTranslations('en');
   const seen = new Set<string>();

@@ -26,6 +26,7 @@ const supabaseHeaders = {
 
 let saved = false;
 let pollError: string | null = null;
+let saveError: string | null = null;
 
 const discordHeaders = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
 const pollLetters = Array.from({ length: 10 }, (_, i) => String.fromCodePoint(0x1f1e6 + i));
@@ -84,17 +85,26 @@ if (Astro.request.method === 'POST') {
   const action = String(form.get('action') ?? '');
 
   if (action === 'report') {
-    await fetch(`${supabaseUrl}/rest/v1/report_config`, {
-      method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({
-        guild_id: id,
-        enabled: form.get('enabled') === 'on',
-        channel_id: String(form.get('channel_id') ?? '').trim() || null,
-        updated_at: new Date().toISOString(),
-      }),
-    });
-    saved = true;
+    const enabled = form.get('enabled') === 'on';
+    const channelId = String(form.get('channel_id') ?? '').trim() || null;
+    if (enabled && !channelId) {
+      saveError = 'Choose a report channel before enabling reports.';
+    } else {
+      const reportSaveRes = await fetch(`${supabaseUrl}/rest/v1/report_config`, {
+        method: 'POST',
+        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          guild_id: id,
+          enabled,
+          channel_id: channelId,
+          anonymous_reporting_enabled: form.get('anonymous_reporting_enabled') === 'on',
+          urgent_role_id: String(form.get('urgent_role_id') ?? '').trim() || null,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      if (reportSaveRes.ok) saved = true;
+      else saveError = 'Report settings could not be saved. Make sure the latest report database migration is applied.';
+    }
   } else if (action === 'booster') {
     const filteredWords = String(form.get('filtered_words') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
     await fetch(`${supabaseUrl}/rest/v1/booster_role_config`, {
@@ -209,7 +219,12 @@ if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const reportRows = reportRes.ok ? await reportRes.json() : [];
 const r = reportRows[0] ?? {};
-const report = { enabled: r.enabled ?? false, channelId: r.channel_id ?? null };
+const report = {
+  enabled: r.enabled ?? false,
+  channelId: r.channel_id ?? null,
+  anonymousReportingEnabled: r.anonymous_reporting_enabled ?? false,
+  urgentRoleId: r.urgent_role_id ?? null,
+};
 
 const boosterRows = boosterRes.ok ? await boosterRes.json() : [];
 const b = boosterRows[0] ?? {};
@@ -264,6 +279,7 @@ const polls = rawPolls.map((poll) => {
   roles={roles}
   channels={channels}
   saved={saved}
+  saveError={saveError}
   reputation={reputation}
   reputationTop={reputationTop}
   polls={polls}

@@ -202,7 +202,6 @@ export default function SpecularButton({
         gl.getExtension('WEBGL_lose_context')?.loseContext();
       };
     } catch {
-      // The CSS surface remains usable on browsers without WebGL or ResizeObserver.
       cancelAnimationFrame(raf);
       resizeObserver?.disconnect();
       return undefined;
