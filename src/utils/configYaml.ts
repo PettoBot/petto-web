@@ -19,12 +19,6 @@ function yamlScalar(v: unknown): string {
   return `'${String(v).replace(/'/g, "''")}'`;
 }
 
-/**
- * The full "current configuration" YAML preview shown on the General page, every module's
- * settings, not just this page's. Deliberately isolated from general.astro (which only needs
- * 3 fetches for its actual form) since this alone needs ~23 parallel Supabase reads, expensive
- * enough that it's fetched lazily client-side instead of blocking the page's initial render.
- */
 export async function buildConfigYaml(id: string, botToken: string, supabaseUrl: string, supabaseKey: string): Promise<string | null> {
   const guildInfo = await getGuildInfo(id, botToken);
   if (!guildInfo) return null;
@@ -179,6 +173,8 @@ logging:
 community:
   reports_enabled: ${y(rp.enabled ?? false)}
   reports_channel_id: ${y(rp.channel_id ?? null)}
+  reports_anonymous_reporting_enabled: ${y(rp.anonymous_reporting_enabled ?? false)}
+  reports_urgent_role_id: ${y(rp.urgent_role_id ?? null)}
   booster_role_limit: ${y(br.role_limit ?? 1)}
   booster_share_max: ${y(br.share_max ?? 0)}
   booster_color_cooldown_ms: ${y(br.color_cooldown_ms ?? 0)}

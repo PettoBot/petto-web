@@ -1,11 +1,3 @@
-// Mirrors the bot's ticketCards.js buildPanelRows() closely enough that buttons/selects created
-// here still carry the exact custom_id shape the bot's interactionCreate.js dispatcher expects
-// (tk_open::<key> / tk_open_select), so a panel posted from the dashboard opens tickets exactly
-// like one posted with /ticket panel create.
-//
-// Embed templates: a panel can point at a saved /embed template's `data` (same shape
-// embedBuilder.js's normalize()/buildOneEmbed() render in the bot). A panel has guild and
-// target-channel context, but no member, message, leveling or giveaway context.
 
 const BUTTON_STYLE = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;
 
@@ -83,7 +75,6 @@ export interface ChannelVars {
   createdTimestamp: number;
 }
 
-/** Resolves every guild and target-channel token that the bot can resolve for a ticket panel. */
 export function resolveGuildVariables(text: string, g: GuildVars, channelId?: string): string {
   if (!text) return text;
   const created = new Date(g.createdTimestamp);
@@ -154,7 +145,6 @@ function ordinal(n: number): string {
   return `${n}${suffix[(v - 20) % 10] ?? suffix[v] ?? suffix[0]}`;
 }
 
-/** Same `data` shape embedBuilder.js's normalize() reads: either a dashboard multi-embed doc ({content, embeds, buttons}) or an older single-embed doc with fields at the top level. */
 function normalizeTemplateData(data: any): { content: string; embeds: any[]; buttons: any[][] } {
   if (Array.isArray(data?.embeds)) return { content: data.content ?? '', embeds: data.embeds, buttons: data.buttons ?? [] };
   const looksLikeEmbed = data?.title || data?.description || data?.author?.name || data?.footer?.text || data?.fields?.length || data?.image || data?.thumbnail || data?.color != null;
@@ -219,7 +209,6 @@ export function buildPanelPayload(
   };
 }
 
-/** Posts a fresh message (or edits the existing one in place if still there), returns the live message id. */
 export async function postOrRefreshPanelMessage(
   botToken: string,
   channelId: string,
@@ -236,7 +225,6 @@ export async function postOrRefreshPanelMessage(
     });
     if (editRes.ok) return existingMessageId;
     console.warn('[ticket-panel] Discord message edit failed', { channelId, messageId: existingMessageId, status: editRes.status });
-    // Message was deleted out from under us, or the panel moved channels, fall through to posting fresh.
   }
 
   const createRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
@@ -258,7 +246,6 @@ export async function deletePanelMessage(botToken: string, channelId: string, me
     method: 'DELETE',
     headers: { Authorization: `Bot ${botToken}` },
   }).catch(() => null);
-  // A missing Discord message is already in the desired state.
   const ok = Boolean(res && (res.ok || res.status === 404));
   if (!ok) console.error('[ticket-panel] Discord message delete failed', { channelId, messageId, status: res?.status ?? 'network-error' });
   return ok;

@@ -14,9 +14,6 @@ const WRAPS: { label: string; before: string; after: string; title: string }[] =
   { label: '"', before: '> ', after: '', title: 'Quote' },
 ];
 
-/** Wraps (or, with no selection, inserts a placeholder wrapped in) the current textarea/input
- * selection with markdown syntax. The {variable} reference lives in its own static
- * VariablesPanel now, not a per-field popup, one less place for positioning bugs to hide. */
 export default function FormatToolbar({ targetRef, onChange }: Props) {
   function applyWrap(before: string, after: string) {
     const el = targetRef.current;

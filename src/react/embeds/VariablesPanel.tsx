@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import { VARIABLE_GROUPS } from './variables';
 
-/** Static, always-in-flow reference of every {variable} token, one per builder (not one per
- * field) so there's nothing to position, click a row to copy it, then paste it into whichever
- * field needs it. */
 export default function VariablesPanel() {
   const [copied, setCopied] = useState<string | null>(null);
   const [open, setOpen] = useState(false);

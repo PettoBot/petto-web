@@ -1,9 +1,3 @@
-/**
- * Runs fetch-like tasks with a concurrency cap. Cloudflare Workers close the
- * response with "connection limit" once too many outbound connections are open
- * at the same time in a single request, overview.astro hit this by firing 14
- * fetches in one Promise.all (Discord + 13 Supabase calls).
- */
 type TaskResult<T> = T extends () => Promise<infer R> ? R : never;
 type BatchedResults<T extends readonly (() => Promise<any>)[]> = {
   [K in keyof T]: TaskResult<T[K]>;
