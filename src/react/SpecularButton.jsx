@@ -4,39 +4,6 @@ import './SpecularButton.css';
 
 const PAD = 20;
 
-/**
- * @typedef {Object} SpecularButtonProps
- * @property {import('react').ReactNode} [children]
- * @property {string} [href]
- * @property {string} [target]
- * @property {string} [rel]
- * @property {string} [form]
- * @property {string} [name]
- * @property {string} [value]
- * @property {string} [ariaLabel]
- * @property {'sm'|'md'|'lg'} [size]
- * @property {number} [radius]
- * @property {string} [tint]
- * @property {number} [tintOpacity]
- * @property {number} [blur]
- * @property {string} [textColor]
- * @property {string} [lineColor]
- * @property {string} [baseColor]
- * @property {number} [intensity]
- * @property {number} [shineSize]
- * @property {number} [shineFade]
- * @property {number} [thickness]
- * @property {number} [speed]
- * @property {boolean} [followMouse]
- * @property {number} [proximity]
- * @property {boolean} [autoAnimate]
- * @property {boolean} [transparent]
- * @property {boolean} [disabled]
- * @property {(event: import('react').MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => void} [onClick]
- * @property {string} [className]
- * @property {'button'|'submit'|'reset'} [type]
- */
-
 const VERT = `#version 300 es
 in vec2 position;
 void main() {
@@ -84,7 +51,6 @@ void main() {
 }
 `;
 
-/** @param {SpecularButtonProps} props */
 export default function SpecularButton({
   children = 'Get Started',
   href = undefined,
