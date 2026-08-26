@@ -129,9 +129,19 @@ export const ui = {
     changelogPage: {
       eyebrow: 'Changelog',
       title: 'Every version, what changed and when.',
-      lede: "Petto doesn't have a long history yet, this is genuinely the first version. Future releases land here as they ship.",
+      lede: "Petto's release history, with the changes that actually shipped and when they landed.",
       latest: 'Latest',
       entries: [
+        {
+          version: '0.4.1',
+          date: 'August 26, 2026',
+          items: [
+            'Reports: improved the report system, added `/report config`, added the urgent moderator role selector, and connected the new settings to Community Configs',
+            'Report cards now preserve the reported message link, text, and image attachments when available',
+            'Premium and reliability: fixed the server-switching issue and improved audit-log caching, retries, fallbacks, media-change detection, and event error handling',
+            'Profile tools: `!ui` and `!userinfo` now show fresh profile data, banners, avatars, roles, badges, timestamps, and profile links',
+          ],
+        },
         {
           version: '0.4.0',
           date: 'August 24, 2026',
@@ -148,6 +158,14 @@ export const ui = {
           items: [
             'Operational visibility: Petto now records Discord REST rate limits with sanitized routes, retry timing, and bucket limits so bursty workloads can be diagnosed without exposing sensitive URLs',
             'Repeated rate-limit events are grouped for one minute to keep operational logs useful instead of noisy',
+          ],
+        },
+        {
+          version: '0.3.0-1',
+          date: 'August 13, 2026',
+          items: [
+            'Added the Vanity system with a contribution from the Petto community',
+            'See the [original release notes](https://wiki.petto.sbs/changelog#2026-08-13) for the full Vanity context',
           ],
         },
         {
@@ -956,9 +974,19 @@ export const ui = {
     changelogPage: {
       eyebrow: 'Novedades del bot',
       title: 'Cada versión, qué cambió y cuándo.',
-      lede: 'Petto todavía no tiene una historia larga, esta es de verdad la primera versión. Los lanzamientos que vengan se van a ir agregando acá.',
+      lede: 'El historial de versiones de Petto, con los cambios que realmente se publicaron y cuándo llegaron.',
       latest: 'Última',
       entries: [
+        {
+          version: '0.4.1',
+          date: '26 de agosto de 2026',
+          items: [
+            'Reportes: se mejoró el sistema, se añadió `/report config`, el selector de rol de moderadores urgentes y la conexión con Community Configs',
+            'Las cards de reportes ahora conservan el enlace, el texto y las imágenes del mensaje reportado cuando están disponibles',
+            'Premium y confiabilidad: se corrigió el cambio de servidor y se mejoraron la caché de audit logs, los reintentos, los fallbacks, la detección de cambios multimedia y el manejo central de errores',
+            'Perfil: `!ui` y `!userinfo` ahora muestran datos frescos, banners, avatares, roles, badges, timestamps y enlaces del perfil',
+          ],
+        },
         {
           version: '0.4.0',
           date: '24 de agosto de 2026',
@@ -975,6 +1003,14 @@ export const ui = {
           items: [
             'Visibilidad operativa: Petto ahora registra los límites REST de Discord con rutas sanitizadas, tiempos de reintento y límites del bucket para diagnosticar cargas altas sin exponer URLs sensibles',
             'Los eventos repetidos de rate limit se agrupan durante un minuto para mantener útiles los logs operativos sin llenarlos de ruido',
+          ],
+        },
+        {
+          version: '0.3.0-1',
+          date: '13 de agosto de 2026',
+          items: [
+            'Se añadió el sistema Vanity con una contribución de la comunidad de Petto',
+            'Consulta las [notas originales de la release](https://wiki.petto.sbs/changelog#2026-08-13) para ver todo el contexto de Vanity',
           ],
         },
         {
@@ -1783,9 +1819,19 @@ export const ui = {
     changelogPage: {
       eyebrow: 'Novidades do bot',
       title: 'Cada versão, o que mudou e quando.',
-      lede: 'O Petto ainda não tem uma história longa, esta é de verdade a primeira versão. Os próximos lançamentos vão entrando aqui.',
+      lede: 'O histórico de versões do Petto, com as mudanças que realmente foram publicadas e quando chegaram.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.4.1',
+          date: '26 de agosto de 2026',
+          items: [
+            'Reports: o sistema foi melhorado, `/report config` foi adicionado, junto com o seletor de cargo de moderadores urgentes e a integração com Community Configs',
+            'Os cards de reports agora preservam o link, o texto e as imagens da mensagem denunciada quando disponíveis',
+            'Premium e confiabilidade: corrigido o problema de troca de servidor e melhorados cache de audit logs, retries, fallbacks, detecção de mudanças de mídia e tratamento central de erros',
+            'Perfil: `!ui` e `!userinfo` agora mostram dados atualizados, banners, avatares, cargos, badges, timestamps e links de perfil',
+          ],
+        },
         {
           version: '0.4.0',
           date: '24 de agosto de 2026',
@@ -1802,6 +1848,14 @@ export const ui = {
           items: [
             'Visibilidade operacional: o Petto agora registra limites REST do Discord com rotas sanitizadas, tempo de retry e limite do bucket para diagnosticar picos de carga sem expor URLs sensíveis',
             'Eventos repetidos de rate limit são agrupados por um minuto para manter os logs operacionais úteis sem enchê-los de ruído',
+          ],
+        },
+        {
+          version: '0.3.0-1',
+          date: '13 de agosto de 2026',
+          items: [
+            'Adicionado o sistema Vanity com uma contribuição da comunidade do Petto',
+            'Veja as [notas originais da release](https://wiki.petto.sbs/changelog#2026-08-13) para todo o contexto do Vanity',
           ],
         },
         {
