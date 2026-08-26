@@ -319,9 +319,8 @@ export async function releasePremiumServer(astro: any, userId: string, guildId: 
 }
 
 /**
- * Removes the effective server-specific Premium profile. The values are
- * intentionally cleared from the shared config too, so the bot, dashboard
- * exports and Discord all agree that the guild is back on the Free plan.
+ * Removes only the Premium server profile. Nicknames are a free identity aid,
+ * so they remain in the shared config and in Discord when Premium ends.
  */
 export async function resetGuildPremiumCustomization(astro: any, guildId: string): Promise<boolean> {
   const settings = config(astro);
@@ -332,29 +331,23 @@ export async function resetGuildPremiumCustomization(astro: any, guildId: string
   }).catch(() => null);
   if (!guildResponse?.ok) return false;
   const guildRows = guildResponse?.ok ? await guildResponse.json() as Array<Record<string, string | null>> : [];
-  const hasCustomization = Boolean(guildRows[0]?.bot_nickname || guildRows[0]?.bot_avatar_url || guildRows[0]?.bot_banner_url || guildRows[0]?.bot_description);
+  const hasPremiumCustomization = Boolean(guildRows[0]?.bot_avatar_url || guildRows[0]?.bot_banner_url || guildRows[0]?.bot_description);
 
-  const databaseReset = !hasCustomization || await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}`, {
+  const databaseReset = !hasPremiumCustomization || await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}`, {
     method: 'PATCH',
     headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-    body: JSON.stringify({
-      bot_nickname: null,
-      bot_avatar_url: null,
-      bot_banner_url: null,
-      bot_description: null,
-      updated_at: new Date().toISOString(),
-    }),
+    body: JSON.stringify({ bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() }),
   }).then((response) => response.ok).catch(() => false);
 
   const botToken = getEnv(astro, 'DISCORD_TOKEN');
   if (!botToken) return databaseReset;
 
-  if (!hasCustomization) return databaseReset;
+  if (!hasPremiumCustomization) return databaseReset;
 
   const discordReset = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
     method: 'PATCH',
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nick: null, avatar: null, banner: null, bio: null }),
+    body: JSON.stringify({ avatar: null, banner: null, bio: null }),
   }).then((response) => response.ok).catch(() => false);
 
   return databaseReset && discordReset;
