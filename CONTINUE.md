@@ -1,6 +1,6 @@
 # Continuar en otra PC — Petto Web (dashboard + sitio)
 
-Este doc es para retomar el trabajo en `petto-web` (este repo) en otra máquina.
+Este doc es para retomar el trabajo en `petto-web` (este repo) en otra máquina con Claude Code.
 Hay un hermano de este doc en el repo del bot (`petto-bot`) con el mismo propósito.
 
 ## Setup en la PC nueva
@@ -91,7 +91,7 @@ preguntale al usuario qué sigue en vez de asumir. Cosas que podrían valer una 
 - No hay test suite automatizado en ninguno de los dos repos, solo `npm run build`.
 - El bot se despliega a mano (tar.gz), sin CI/CD real todavía.
 
-## Prompt para continuar en la PC nueva
+## Prompt para pegarle a Claude Code al arrancar en la PC nueva
 
 ```
 Segui trabajando en el dashboard de Petto (Astro 4 + React islands, Cloudflare). Leé CONTINUE.md
