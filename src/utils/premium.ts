@@ -93,6 +93,13 @@ async function releaseExpiredEntitlement(astro: any, entitlementId: number, assi
   }));
 }
 
+function isActiveEntitlement(entitlement: PremiumEntitlement): boolean {
+  if (entitlement.status !== 'active') return false;
+  if (!entitlement.current_period_end) return true;
+  const periodEnd = new Date(entitlement.current_period_end).getTime();
+  return Number.isFinite(periodEnd) && periodEnd > Date.now();
+}
+
 /** Reads the account's Premium state from the primary Supabase database. */
 export async function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
   const encodedUser = encodeURIComponent(userId);
@@ -102,22 +109,26 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
     read<PremiumRequest>(astro, 'premium_slot_requests', `user_id=eq.${encodedUser}&status=eq.pending&select=id,user_id,guild_id,status&order=created_at.desc`),
   ]);
 
-  const entitlement = entitlements[0] ?? null;
-  const periodValid = !entitlement?.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now();
-  // Only an active entitlement unlocks Premium. A past-due or canceled
-  // entitlement must immediately fall back to Free so every dashboard module
-  // and server-specific gate stays fail-closed.
-  const entitlementIsActive = entitlement?.status === 'active' && periodValid;
-  const activeAssignments = entitlementIsActive
-    ? assignments.filter((assignment) => assignment.status === 'active' && assignment.entitlement_id === entitlement.id)
-    : [];
-  const status: PremiumStatus = entitlement?.status === 'active' && !periodValid ? 'expired' : entitlement?.status ?? 'free';
-  const slotsTotal = entitlementIsActive ? Math.max(0, entitlement.slot_limit) : 0;
+  const activeEntitlements = entitlements.filter(isActiveEntitlement);
+  const activeEntitlementIds = new Set(activeEntitlements.map((candidate) => candidate.id));
+  const latest = entitlements[0] ?? null;
+  const entitlement = activeEntitlements.find((candidate) => assignments.some((assignment) => assignment.status === 'active' && assignment.entitlement_id === candidate.id))
+    ?? activeEntitlements[0]
+    ?? null;
+  const activeAssignments = assignments.filter((assignment) => assignment.status === 'active' && activeEntitlementIds.has(assignment.entitlement_id));
+  const status: PremiumStatus = entitlement
+    ? 'active'
+    : latest?.status === 'active' && latest.current_period_end && !isActiveEntitlement(latest)
+      ? 'expired'
+      : latest?.status ?? 'free';
+  const slotsTotal = activeEntitlements.reduce((total, candidate) => total + Math.max(0, candidate.slot_limit), 0);
 
-  if (entitlement?.status === 'active' && !periodValid) {
-    const staleAssignments = assignments.filter((assignment) => assignment.status === 'active' && assignment.entitlement_id === entitlement.id);
-    await releaseExpiredEntitlement(astro, entitlement.id, staleAssignments);
-  }
+  const staleEntitlements = entitlements.filter((candidate) => candidate.status === 'active' && !activeEntitlementIds.has(candidate.id));
+  await Promise.all(staleEntitlements.map((candidate) => releaseExpiredEntitlement(
+    astro,
+    candidate.id,
+    assignments.filter((assignment) => assignment.status === 'active' && assignment.entitlement_id === candidate.id),
+  )));
 
   return {
     status,
@@ -132,8 +143,13 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
 
 /** Returns whether this account has an active Premium slot on this guild. */
 export async function hasPremiumForGuild(astro: any, userId: string, guildId: string): Promise<boolean> {
-  const snapshot = await getPremiumSnapshot(astro, userId);
-  return snapshot.assignments.some((assignment) => assignment.guild_id === guildId);
+  const encodedUser = encodeURIComponent(userId);
+  const [entitlements, assignments] = await Promise.all([
+    read<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=eq.active&select=id,status,slot_limit,current_period_end`),
+    read<PremiumAssignment>(astro, 'premium_slot_assignments', `user_id=eq.${encodedUser}&guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active&select=entitlement_id,guild_id,status`),
+  ]);
+  const activeEntitlementIds = new Set(entitlements.filter(isActiveEntitlement).map((entitlement) => entitlement.id));
+  return assignments.some((assignment) => activeEntitlementIds.has(assignment.entitlement_id));
 }
 
 /** Creates a short-lived Polar checkout tied to this Discord user. */
