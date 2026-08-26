@@ -1,3 +1,9 @@
+// Signed session cookie for the dashboard login. Not encrypted, just tamper-evident:
+// the HMAC signature means a forged/edited cookie fails verification outright, and the
+// real security boundary is Discord itself (every request re-checks access with the
+// stored access_token, so a bad cookie can only fail closed, never grant someone else's
+// guilds). Uses Web Crypto only (no Node `Buffer`) so it runs the same in `astro dev`
+// and in the Cloudflare Workers runtime.
 
 export interface Session {
   userId: string;

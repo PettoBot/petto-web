@@ -1,3 +1,5 @@
+// Keep this list aligned with the bot's resolver. The choose and range tokens are handled by
+// dedicated patterns, while context-only tokens resolve only in the events that provide them.
 export interface VarDef { tok: string; desc: string }
 export interface VarGroup { label: string; vars: VarDef[] }
 

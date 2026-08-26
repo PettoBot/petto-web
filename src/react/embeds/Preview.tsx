@@ -6,6 +6,10 @@ interface Props { data: TemplateData; botName: string; botIcon: string; userAvat
 export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIconUrl }: Props) {
   const hasAnything = data.content || data.embeds.length > 0 || data.buttons.some((r) => r.some((b) => b.label));
 
+  // Image-URL fields (thumbnail/image/author/footer icons) can't be rendered inline like
+  // {user.mention} chips, an <img> needs a real src. Since you're logged into this exact
+  // guild, {user.avatar}/{guild.icon} (and their aliases) can resolve to the real thing
+  // instead of showing a broken image.
   const ICON_TOKENS: Record<string, string> = {
     '{user.avatar}': userAvatarUrl,
     '{user_avatar}': userAvatarUrl,

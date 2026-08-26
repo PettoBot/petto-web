@@ -44,6 +44,7 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return result === 0;
 }
 
+/** Validates Polar's Standard Webhooks signature against the untouched body. */
 export async function verifyPolarWebhook(body: string, headers: Headers, secret: string): Promise<boolean> {
   const webhookId = headers.get('webhook-id');
   const timestampHeader = headers.get('webhook-timestamp');
@@ -92,6 +93,8 @@ function userIdFrom(subscription: any, metadata: Record<string, any>): string | 
 
 function statusFor(type: string, status: string | undefined, periodEnd: string | null, cancelAtPeriodEnd: boolean): 'pending' | 'active' | 'past_due' | 'canceled' | 'expired' {
   if (type === 'subscription.revoked') return 'expired';
+  // Polar emits subscription.canceled when a customer schedules an end-of-period
+  // cancellation. Keep access active until that period really ends.
   if ((type === 'subscription.canceled' || status === 'canceled') && cancelAtPeriodEnd && periodEnd && new Date(periodEnd).getTime() > Date.now()) return 'active';
   if (type === 'subscription.canceled' || type === 'subscription.paused' || status === 'canceled') return 'canceled';
   if (type === 'subscription.past_due') return 'past_due';
@@ -193,6 +196,10 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
   const entitlementId = saved[0]?.id;
   if (!entitlementId) throw new Error('Supabase Premium upsert returned no entitlement ID.');
 
+  // Release paid slots as soon as the entitlement is not active. The dashboard
+  // also fails closed, but keeping assignments active here could make them
+  // reappear after a stale cache or let pending requests be fulfilled while a
+  // subscription is past due, paused, canceled, or expired.
   if (status !== 'active' || !periodValid) {
     const activeAssignmentsResponse = await fetch(`${config.url}/rest/v1/premium_slot_assignments?entitlement_id=eq.${entitlementId}&status=eq.active&select=guild_id`, {
       headers: supabaseHeaders(config.key),
@@ -201,6 +208,9 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
       ? await activeAssignmentsResponse.json() as Array<{ guild_id: string }>
       : [];
 
+    // Revert every currently assigned server before releasing its slot. This
+    // makes expiry/cancellation restore the Free profile even when nobody
+    // opens the Customize page afterward.
     await Promise.all(activeAssignments.map(({ guild_id }) => resetGuildPremiumCustomization(astro, guild_id)));
     await fetch(`${config.url}/rest/v1/premium_slot_assignments?entitlement_id=eq.${entitlementId}&status=eq.active`, {
       method: 'PATCH',

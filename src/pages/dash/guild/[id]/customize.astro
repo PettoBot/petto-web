@@ -19,6 +19,9 @@ if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/mana
 
 const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 
+// The webhook performs this eagerly on cancellation/expiry. This request-time
+// fallback covers missed webhooks and guarantees that an inactive slot can
+// never leave a server-specific profile applied in Discord.
 if (!premiumActive) await resetGuildPremiumCustomization(Astro, id);
 
 const supabaseHeaders = {
@@ -27,6 +30,9 @@ const supabaseHeaders = {
   'Content-Type': 'application/json',
 };
 
+// Fetched up front, both to render the form and, on POST, to know whether the
+// avatar/banner actually changed, so an unrelated save (e.g. just editing the
+// description) never silently resets them back to the default.
 async function loadConfig() {
   const res = await fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, { headers: supabaseHeaders });
   const rows = res.ok ? await res.json() : [];
@@ -42,6 +48,9 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const resetField = String(form.get('reset_field') ?? '').trim();
 
+  // Reset buttons are independent actions. They must persist immediately and
+  // must not accidentally save other unsaved fields from the form at the same
+  // time (for example, an avatar reset must not also save a draft nickname).
   if (['nickname', 'avatar', 'banner', 'description'].includes(resetField)) {
     const resetPatch = {
       nickname: { discord: { nick: null }, database: { bot_nickname: null } },
@@ -101,6 +110,8 @@ if (Astro.request.method === 'POST') {
     }
 
     if (!error) {
+      // nick/avatar/banner/bio are all real Discord fields on the same "Modify Current Member"
+      // endpoint, applied together in one PATCH call.
       const bioChanged = description !== (stored.bot_description ?? '');
       if (nickname !== (stored.bot_nickname ?? '') || avatarDataUri !== undefined || bannerDataUri !== undefined || bioChanged) {
         const applied = await setBotGuildProfile(id, botToken, { nick: nickname || null, avatarDataUri, bannerDataUri, bio: description || null });
@@ -143,6 +154,8 @@ const botUsername = botProfile?.username ?? 'Petto';
 
 const effectiveAvatar = memberSelf?.avatarUrl || botProfile?.avatarUrl || guildInfo.icon || '/assets/mascot-icon.png';
 const effectiveBanner = memberSelf?.bannerUrl || botProfile?.bannerUrl || null;
+// Discord's PATCH accepts and applies `bio`, confirmed live, but the GET member endpoint never
+// echoes it back, so our own database is the only place this can be read from afterward.
 const effectiveDescription = descriptionValue || globalDescription;
 ---
 <DashCustomize

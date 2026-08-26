@@ -3,6 +3,8 @@ import React from 'react';
 let key = 0;
 const nextKey = () => `k${key++}`;
 
+/** Inline markdown: bold, italic, underline, strikethrough, inline code, spoiler, and our own
+ * {variable} tokens (shown as chips since this is the raw, non-resolved preview). */
 function renderInline(text: string): React.ReactNode[] {
   const rules: { re: RegExp; render: (m: RegExpMatchArray) => React.ReactNode }[] = [
     { re: /\{[a-zA-Z0-9_.:|-]+\}/, render: (m) => <span key={nextKey()} className="ebr-md-var">{m[0]}</span> },
@@ -36,6 +38,8 @@ function renderInline(text: string): React.ReactNode[] {
   return text ? [text] : [];
 }
 
+/** Block-level: code blocks, blockquotes, headings, then inline formatting on the rest. Enough
+ * markdown to make the preview trustworthy without trying to match Discord's full renderer. */
 export function renderDiscordMarkdown(text: string): React.ReactNode {
   if (!text) return null;
   const parts: React.ReactNode[] = [];

@@ -20,8 +20,12 @@ interface Props {
 const { guildId, guildName, guildIcon, user, active, pageTitle, premiumActive = false } = Astro.props;
 const premiumSnapshot = user.userId ? await getPremiumSnapshot(Astro, user.userId) : null;
 const premiumGuildIds = new Set(premiumSnapshot?.assignments.map((assignment) => assignment.guild_id) ?? []);
+// The database snapshot is authoritative. Do not trust a stale prop after a
+// subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId) && Boolean(premiumSnapshot?.status === 'active');
 
+// Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
+// different server doesn't need a round trip through /dash/manage every time.
 interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean }
 let switcherGuilds: SwitcherGuild[] = [];
 if (user.accessToken) {
@@ -43,6 +47,8 @@ const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
 
 const catIcon: Record<string, string> = {
   moderation: 'ph:shield-check-fill',
+  // Keep this on the base Phosphor ticket glyph: it is present in every icon
+  // bundle variant and avoids an empty icon if the filled alias is pruned.
   tickets: 'ph:ticket',
   leveling: 'ph:chart-line-up-fill',
   giveaways: 'ph:gift-fill',
@@ -279,7 +285,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       });
     }
 
+    // --- unsaved-changes save bar: tracks whichever form the user last touched, blocks
+    // in-app navigation away from it (shakes instead), and doubles as the always-visible
+    // "Save" control so users don't have to scroll down to a form's own submit button. ---
     var dirtyForm = null;
+    // Resetting a form also refreshes custom widgets by dispatching change events.
+    // Those synthetic events must not be mistaken for a new user edit.
     var resettingForm = false;
     var saveBar = document.getElementById('dgl-savebar');
     var saveBarBtn = saveBar ? saveBar.querySelector('[data-savebar-save]') : null;
@@ -299,6 +310,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       root.querySelectorAll('form').forEach(function (form) {
         if (form.dataset.dirtyBound) return;
         form.dataset.dirtyBound = '1';
+        // File-upload forms do a real page reload on submit anyway (see bindForms), no point tracking those.
         if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
         form.addEventListener('input', function () {
           if (resettingForm) return;
@@ -324,6 +336,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         resettingForm = true;
         try {
           form.reset();
+          // Native reset restores hidden widget values but not their visual chips/thumbs.
           form.querySelectorAll('[data-multiselect] input[type="checkbox"]').forEach(function (cb) {
             cb.dispatchEvent(new Event('change', { bubbles: true }));
           });
@@ -342,6 +355,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       hideSaveBar();
     });
 
+    // Anything that leaves the app entirely (header links, closing the tab, refresh) goes
+    // through the browser's native unload flow, so it's the one place a blanket guard fits.
     window.addEventListener('beforeunload', function (e) {
       if (dirtyForm) { e.preventDefault(); e.returnValue = ''; }
     });
@@ -375,6 +390,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       dglSide?.classList.toggle('open', !isOpen);
       mobileToggle.setAttribute('aria-expanded', String(!isOpen));
     });
+    // Collapse the mobile nav back down once a link inside it is actually followed,
+    // otherwise it stays open covering the freshly-loaded page.
     document.querySelectorAll('.dgl-nav').forEach(function (nav) {
       nav.addEventListener('click', function (e) {
         if (e.target.closest('a')) dglSide?.classList.remove('open');
@@ -391,6 +408,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       });
     }
 
+    // --- thin top-of-page progress bar shown while an AJAX navigation/save is in flight ---
+    // Uses the Web Animations API instead of a CSS-transition+forced-reflow trick: that approach
+    // depends on the browser actually painting an intermediate frame before the next style change,
+    // which on a fast local fetch (finish() firing a tick after start()) often got skipped
+    // entirely, so the bar only ever appeared already at its end state. .animate() has no such
+    // race, the fill genuinely plays from 0 the moment it's called. ease-out (fast start) also
+    // makes the motion obvious immediately instead of CSS 'ease' easing into it gradually.
     var progressEl = document.getElementById('dgl-progress');
     var progressFillAnim = null;
     var progressHideTimer = null;
@@ -422,6 +446,10 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       }, wait);
     }
 
+    // Each dashboard module ships its own scoped stylesheet, emitted as a <link>/<style> in
+    // that page's <head>, not inside #dgl-content. Swapping only the content fragment means a
+    // module's CSS never arrives unless that exact page already loaded once this session, so
+    // any first-time AJAX visit rendered completely unstyled. Sync the head assets in too.
     function syncHeadAssets(freshHead) {
       var existingHrefs = new Set();
       document.querySelectorAll('head link[rel="stylesheet"]').forEach(function (l) { existingHrefs.add(l.href); });
@@ -446,6 +474,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       return Promise.all(stylesheetLoads);
     }
 
+    // Nodes inserted via replaceWith/innerHTML never execute their <script> tags, that's a
+    // DOM rule, not a bug. But a swapped-in page's shared chunks (e.g. Astro's client-island
+    // runtime, already loaded on the very first full page load) have the same src every time,
+    // re-inserting those repeatedly on every nav risks re-running/registering things that are
+    // only meant to happen once (custom elements, etc). Only ever run a given src once; inline
+    // scripts with no src are assumed per-instance (e.g. a hydration trigger) and always re-run.
     var executedScriptSrcs = new Set();
     document.querySelectorAll('script[src]').forEach(function (s) { executedScriptSrcs.add(s.src); });
     function executeScripts(container) {
@@ -468,7 +502,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       var fresh = doc.getElementById('dgl-content');
       var current = document.getElementById('dgl-content');
       if (!fresh || !current) return Promise.resolve(false);
+      // Keep the current section on screen until the new module stylesheet is ready.
+      // Otherwise the fresh HTML briefly paints unstyled before its Astro CSS arrives.
       return syncHeadAssets(doc.head).then(function () {
+        // The fresh node carries the server-rendered "reveal" class (opacity:0 until an
+        // IntersectionObserver, set up once at initial page load, adds "in"). That observer
+        // never sees this node since it didn't exist yet, so without this it would replace
+        // visible content with a permanently invisible one on every save/nav.
         fresh.classList.add('in');
         current.replaceWith(fresh);
         executeScripts(fresh);
@@ -485,11 +525,16 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       document.querySelectorAll('.dgl-link').forEach(function (a) {
         a.classList.toggle('active', a.getAttribute('href') === href);
       });
+      // The mobile toggle button lives outside #dgl-content, so it never gets
+      // re-rendered by the AJAX swap, copy the now-active link's icon/label into it.
       var toggleSpan = document.querySelector('#dgl-mobile-toggle span');
       var activeLink = document.querySelector('.dgl-link[href="' + href + '"]');
       if (toggleSpan && activeLink) toggleSpan.innerHTML = activeLink.innerHTML;
     }
 
+    // Keep the next dashboard section ready while the user is deciding where to go.
+    // The cache is memory-only and is cleared after a save, so it never persists stale
+    // configuration across a meaningful write.
     var prefetchedPages = new Map();
     function prefetchPage(href) {
       if (dirtyForm || prefetchedPages.has(href)) return;
@@ -564,6 +609,9 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     function bindForms(root) {
       root.querySelectorAll('form[method="POST" i]').forEach((form) => {
         if (form.dataset.ajaxBound) return;
+        // File-upload forms (multipart) submit normally, a real page reload, on purpose:
+        // AJAX-swapping a page that just changed an avatar/banner leaves stale cached images
+        // and broke the whole Customize form, so those get the plain, reliable path instead.
         if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
         form.dataset.ajaxBound = '1';
         form.addEventListener('submit', function (e) {
@@ -644,6 +692,9 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           document.querySelectorAll('[data-varmenu-panel]').forEach((p) => { p.hidden = true; });
           document.querySelectorAll('.dgl-varbtn.open').forEach((b) => b.classList.remove('open'));
           if (!isOpen) {
+            // The scrollable dashboard panel clips regular absolute positioning once the button
+            // isn't near the top, so this is placed with fixed coords from the button's real
+            // screen position instead of relying on a positioned ancestor.
             var r = btn.getBoundingClientRect();
             panel.style.position = 'fixed';
             panel.style.top = Math.min(r.bottom + 6, window.innerHeight - 20) + 'px';
@@ -984,6 +1035,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
     window.addEventListener('popstate', function (e) {
       if (dirtyForm) {
+        // The URL already changed by the time popstate fires, push it back so the address
+        // bar matches what's actually on screen instead of silently navigating away.
         window.history.pushState({ dglAjax: true }, '', window.location.href);
         shakeSaveBar();
         return;
@@ -1003,6 +1056,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
     var content = document.getElementById('dgl-content');
     if (content) initContent(content);
+    // The sidebar (nav links, server switcher, logout) never gets replaced by swapContent,
+    // so these only need binding once, not on every navigation like initContent's binders.
     bindNavGuard(document);
     bindDglLinks(document);
 
@@ -1104,6 +1159,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   @media (max-width: 880px) {
     .dgl-sec { padding: 16px 0 32px; }
     .dgl-wrap { padding-left: 16px; padding-right: 16px; }
+    /* Use a block flow on small screens. The sidebar contains two controls and must
+       reserve the full height of both before the module content is laid out. */
     .dgl-layout { display: block; }
     .dgl-side { position: static !important; top: auto !important; z-index: auto; display: block; width: 100%; min-height: 0; height: auto !important; max-height: none !important; overflow: visible; border-radius: 14px; margin-bottom: 12px; }
     .dgl-switcher-wrap { display: block; }

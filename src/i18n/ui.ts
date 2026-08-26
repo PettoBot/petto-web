@@ -2502,6 +2502,11 @@ export function useTranslations(lang: Locale) {
   return ui[lang];
 }
 
+/**
+ * Release/blog entries newest-first. Sorted on the `iso` field rather than the human `date`
+ * string, which is localized prose ("July 22, 2026", "22 de julio de 2026") and unsortable.
+ * Entries with no date yet (roadmap "Coming soon" items) always sit at the end.
+ */
 export function sortedReleases(lang: Locale) {
   return [...ui[lang].releases.items].sort((a, b) => {
     if (!a.iso && !b.iso) return 0;
