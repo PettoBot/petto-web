@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import './permissions.css';
 
+// Same Phosphor icon set the rest of the dashboard uses (astro-icon), inlined here since this
+// island is plain React and can't reach for the .astro <Icon> component.
 const ICON_PATHS: Record<string, string> = {
   user: 'M230.93 220a8 8 0 0 1-6.93 4H32a8 8 0 0 1-6.92-12c15.23-26.33 38.7-45.21 66.09-54.16a72 72 0 1 1 73.66 0c27.39 8.95 50.86 27.83 66.09 54.16a8 8 0 0 1 .01 8',
   users: 'M64.12 147.8a4 4 0 0 1-4 4.2H16a8 8 0 0 1-7.8-6.17a8.35 8.35 0 0 1 1.62-6.93A67.8 67.8 0 0 1 37 117.51a40 40 0 1 1 66.46-35.8a3.94 3.94 0 0 1-2.27 4.18A64.08 64.08 0 0 0 64 144c0 1.28 0 2.54.12 3.8m182-8.91A67.76 67.76 0 0 0 219 117.51a40 40 0 1 0-66.46-35.8a3.94 3.94 0 0 0 2.27 4.18A64.08 64.08 0 0 1 192 144c0 1.28 0 2.54-.12 3.8a4 4 0 0 0 4 4.2H240a8 8 0 0 0 7.8-6.17a8.33 8.33 0 0 0-1.63-6.94Zm-89 43.18a48 48 0 1 0-58.37 0A72.13 72.13 0 0 0 65.07 212A8 8 0 0 0 72 224h112a8 8 0 0 0 6.93-12a72.15 72.15 0 0 0-33.74-29.93Z',
@@ -50,6 +52,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 const GROUP_COLOR = '#8399ff';
 const HEIGHT = 680;
 
+// Rings, inner radius -> outer radius, from the center out.
 const R_YOU = 34;
 const R_GROUP = [46, 74];
 const R_CAT = [82, 102];
@@ -92,6 +95,8 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
   const roleById = (roleId: string) => roles.find((r) => r.id === roleId);
   const roleName = (roleId: string) => roleById(roleId)?.name ?? roleId;
 
+  // What's the highest group level a role/user qualifies for, same rule the bot itself uses:
+  // highest level across every group they belong to, directly or through a role, base included.
   function effectiveLevel(subject: { type: 'role' | 'user'; id: string } | null): number | null {
     if (!subject) return null;
     let level = 0;
@@ -227,6 +232,7 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
               const cy = HEIGHT / 2;
               const elements: React.ReactNode[] = [];
 
+              // --- Group ring: @everyone + custom groups share the ring equally ---
               const groupSlices = groups.length || 1;
               const gap = 0.02;
               groups.forEach((g, i) => {
@@ -253,6 +259,7 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
                 );
               });
 
+              // --- Category ring: always full circle, one color band per category ---
               const catSlices = categories.length || 1;
               categories.forEach((cat, i) => {
                 const a0 = (i / catSlices) * Math.PI * 2 + gap;
@@ -266,6 +273,7 @@ export default function PermissionGraphApp({ guildId, roles, initialGroups, init
                   </g>,
                 );
 
+                // --- Command bars within this category's sector, height = level ---
                 const n = cat.cmds.length;
                 cat.cmds.forEach((c, j) => {
                   const ca0 = a0 + ((a1 - a0) * j) / n;

@@ -19,6 +19,8 @@ export function emptyTemplate(): TemplateData {
   return { content: '', embeds: [], buttons: [] };
 }
 
+/** Reads either the dashboard's own {content, embeds, buttons} shape or the older /embed
+ * command's flat single-embed shape, so nothing saved before this builder existed breaks. */
 export function normalizeTemplateData(raw: any): TemplateData {
   if (raw && Array.isArray(raw.embeds)) {
     return {

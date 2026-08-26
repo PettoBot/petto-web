@@ -93,6 +93,7 @@ async function releaseExpiredEntitlement(astro: any, entitlementId: number, assi
   }));
 }
 
+/** Reads the account's Premium state from the primary Supabase database. */
 export async function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
   const encodedUser = encodeURIComponent(userId);
   const [entitlements, assignments, requests] = await Promise.all([
@@ -103,6 +104,9 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
 
   const entitlement = entitlements[0] ?? null;
   const periodValid = !entitlement?.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now();
+  // Only an active entitlement unlocks Premium. A past-due or canceled
+  // entitlement must immediately fall back to Free so every dashboard module
+  // and server-specific gate stays fail-closed.
   const entitlementIsActive = entitlement?.status === 'active' && periodValid;
   const activeAssignments = entitlementIsActive
     ? assignments.filter((assignment) => assignment.status === 'active' && assignment.entitlement_id === entitlement.id)
@@ -126,11 +130,13 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
   };
 }
 
+/** Returns whether this account has an active Premium slot on this guild. */
 export async function hasPremiumForGuild(astro: any, userId: string, guildId: string): Promise<boolean> {
   const snapshot = await getPremiumSnapshot(astro, userId);
   return snapshot.assignments.some((assignment) => assignment.guild_id === guildId);
 }
 
+/** Creates a short-lived Polar checkout tied to this Discord user. */
 export async function createPremiumCheckout(astro: any, userId: string, plan: string): Promise<string | null> {
   const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
   if (!token || !/^\d{15,22}$/.test(userId)) return null;
@@ -163,6 +169,7 @@ export async function createPremiumCheckout(astro: any, userId: string, plan: st
   }
 }
 
+/** Creates a short-lived hosted Polar Customer Portal session for this Discord user. */
 export async function createPremiumCustomerPortalSession(astro: any, userId: string): Promise<string | null> {
   const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
   if (!token || !/^\d{15,22}$/.test(userId)) return null;
@@ -187,6 +194,10 @@ export function getPublicPremiumCheckoutLink(astro: any): string | null {
   return link?.startsWith('https://buy.polar.sh/') ? link : null;
 }
 
+/**
+ * Lets a logged-in user save a server preference before billing is connected.
+ * It intentionally creates a pending request, never an active Premium grant.
+ */
 export async function requestPremiumServer(astro: any, userId: string, guildId: string): Promise<boolean> {
   const settings = config(astro);
   if (!settings || !/^\d{15,22}$/.test(userId) || !/^\d{15,22}$/.test(guildId)) return false;
@@ -200,6 +211,9 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
     const entitlement = entitlements[0];
     const entitlementIsActive = Boolean(entitlement && (!entitlement.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now()));
 
+    // An active entitlement is authoritative for both paid and manual grants.
+    // Selecting a server after activation should take effect immediately; only
+    // selections made before billing is confirmed remain pending.
     if (entitlementIsActive && entitlement) {
       const activeAssignments = await read<{ id: number; user_id: string; guild_id: string }>(
         astro,
@@ -216,6 +230,8 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
       if (serverAssignments.some((assignment) => assignment.user_id !== userId)) return false;
       if (activeAssignments.length >= Math.max(0, entitlement.slot_limit)) return false;
 
+      // Move an old assignment from a previous entitlement onto the current
+      // one instead of leaving the server attached to stale billing data.
       const previousAssignmentResponse = await fetch(`${settings.url}/rest/v1/premium_slot_assignments?user_id=eq.${encodeURIComponent(userId)}&guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active`, {
         method: 'PATCH',
         headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
@@ -238,6 +254,9 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
       return assignmentResponse.ok;
     }
 
+    // Paid accounts may have selected servers before Polar confirms the
+    // subscription. Explicitly target the unique key so a canceled request is
+    // reopened instead of failing with a duplicate-key error.
     const response = await fetch(`${settings.url}/rest/v1/premium_slot_requests?on_conflict=user_id,guild_id`, {
       method: 'POST',
       headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
@@ -264,6 +283,7 @@ export async function cancelPremiumServerRequest(astro: any, userId: string, gui
   }
 }
 
+/** Releases an active slot without deleting its history. */
 export async function releasePremiumServer(astro: any, userId: string, guildId: string): Promise<boolean> {
   const settings = config(astro);
   if (!settings) return false;
@@ -274,6 +294,7 @@ export async function releasePremiumServer(astro: any, userId: string, guildId: 
       body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
     });
     if (!response.ok) return false;
+    // Removing a slot is also an explicit return to Free for that server.
     await resetGuildPremiumCustomization(astro, guildId);
     return true;
   } catch {
@@ -281,6 +302,11 @@ export async function releasePremiumServer(astro: any, userId: string, guildId: 
   }
 }
 
+/**
+ * Removes the effective server-specific Premium profile. The values are
+ * intentionally cleared from the shared config too, so the bot, dashboard
+ * exports and Discord all agree that the guild is back on the Free plan.
+ */
 export async function resetGuildPremiumCustomization(astro: any, guildId: string): Promise<boolean> {
   const settings = config(astro);
   if (!settings || !/^\d{15,22}$/.test(String(guildId))) return false;

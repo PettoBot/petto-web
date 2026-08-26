@@ -35,6 +35,7 @@ async function refreshSession(session: Session, clientId: string, clientSecret: 
   }
 }
 
+/** Reads the dashboard session and silently renews Discord OAuth tokens near expiry. */
 export async function getDashboardSession(astro: any): Promise<Session | null> {
   const clientId = getEnv(astro, 'DISCORD_CLIENT_ID');
   const clientSecret = getEnv(astro, 'DISCORD_CLIENT_SECRET');
@@ -59,6 +60,7 @@ export async function getDashboardSession(astro: any): Promise<Session | null> {
   return refreshed;
 }
 
+/** Confirms the visitor is logged in and can actually manage this specific guild, via a live Discord check (never trusts the cookie alone for authorization). */
 export async function getGuildSession(astro: any, guildId: string): Promise<GuildAuth> {
   const session = await getDashboardSession(astro);
   if (!session) return { redirect: '/dash' };

@@ -1,3 +1,5 @@
+// Real Discord IDs for every Petto team role, resolved to live username/avatar at build time
+// (never hardcoded names, so the page can't drift out of date if someone changes their profile).
 const OWNERS = ['293504726505357312', '285568675631595521'];
 const PROGRAMMING = ['1421156491322462291', '1383162811873628284', '293504726505357312'];
 const SUPPORT = ['1394428756948422706', '211313627343355904', '293504726505357312'];
