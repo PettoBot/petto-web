@@ -21,7 +21,8 @@ const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 
 // The webhook performs this eagerly on cancellation/expiry. This request-time
 // fallback covers missed webhooks and guarantees that an inactive slot can
-// never leave a server-specific profile applied in Discord.
+// never leave a Premium-only profile override applied in Discord. Nicknames
+// intentionally remain because they are available on the Free plan.
 if (!premiumActive) await resetGuildPremiumCustomization(Astro, id);
 
 const supabaseHeaders = {
@@ -44,9 +45,32 @@ let error: string | null = null;
 let discordWarning = false;
 
 if (Astro.request.method === 'POST') {
-  if (!premiumActive) return Astro.redirect(`/dash/premium?guild_id=${encodeURIComponent(id)}&error=premium_required`);
   const form = await Astro.request.formData();
   const resetField = String(form.get('reset_field') ?? '').trim();
+
+  // Nicknames are a free, per-server identity aid. Free servers may only
+  // submit this field; avatar, banner, and bio remain Premium-only even if a
+  // client tries to add those fields manually.
+  if (!premiumActive) {
+    if (resetField && resetField !== 'nickname') return Astro.redirect(`/dash/premium?guild_id=${encodeURIComponent(id)}&error=premium_required`);
+
+    const stored = await loadConfig();
+    const nickname = resetField === 'nickname'
+      ? ''
+      : String(form.get('nickname') ?? '').trim().slice(0, 32);
+    if (nickname !== (stored.bot_nickname ?? '')) {
+      const applied = await setBotGuildProfile(id, botToken, { nick: nickname || null });
+      if (!applied) discordWarning = true;
+    }
+
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({ bot_nickname: nickname || null, updated_at: new Date().toISOString() }),
+    });
+    if (dbRes.ok) saved = true;
+    else error = 'discord_rejected';
+  } else if (resetField) {
 
   // Reset buttons are independent actions. They must persist immediately and
   // must not accidentally save other unsaved fields from the form at the same
@@ -69,6 +93,7 @@ if (Astro.request.method === 'POST') {
     });
     if (dbRes.ok) saved = true;
     else error = 'discord_rejected';
+  }
   } else {
     const stored = await loadConfig();
 
