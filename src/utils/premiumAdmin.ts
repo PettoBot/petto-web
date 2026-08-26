@@ -57,6 +57,13 @@ function grantKey(targetType: 'user' | 'server', targetId: string): string {
   return `manual:${targetType}:${targetId}`;
 }
 
+function isLiveEntitlement(entitlement: { status: string; current_period_end: string | null } | undefined): boolean {
+  if (!entitlement || entitlement.status !== 'active') return false;
+  if (!entitlement.current_period_end) return true;
+  const periodEnd = new Date(entitlement.current_period_end).getTime();
+  return Number.isFinite(periodEnd) && periodEnd > Date.now();
+}
+
 export async function listManualPremium(astro: any): Promise<ManualPremiumGrant[]> {
   const entitlements = await read<ManualPremiumGrant>(
     astro,
@@ -106,12 +113,26 @@ export async function grantManualPremium(
   const existing = await read<{ id: number }>(astro, 'premium_entitlements', `provider_subscription_id=eq.${encodeURIComponent(key)}&select=id&limit=1`);
 
   if (targetType === 'server') {
-    const activeElsewhere = await read<{ entitlement_id: number }>(
+    const activeElsewhere = await read<{ id: number; entitlement_id: number }>(
       astro,
       'premium_slot_assignments',
-      `guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active&select=entitlement_id&limit=1`,
+      `guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active&select=id,entitlement_id&limit=1`,
     );
-    if (activeElsewhere[0] && activeElsewhere[0].entitlement_id !== existing[0]?.id) return { ok: false, code: 'server_taken' };
+    if (activeElsewhere[0] && activeElsewhere[0].entitlement_id !== existing[0]?.id) {
+      const assignedEntitlement = await read<{ status: string; current_period_end: string | null }>(
+        astro,
+        'premium_entitlements',
+        `id=eq.${activeElsewhere[0].entitlement_id}&select=status,current_period_end&limit=1`,
+      );
+      if (isLiveEntitlement(assignedEntitlement[0])) return { ok: false, code: 'server_taken' };
+
+      const released = await fetch(`${config.url}/rest/v1/premium_slot_assignments?id=eq.${activeElsewhere[0].id}&status=eq.active`, {
+        method: 'PATCH',
+        headers: headers(config.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify({ status: 'released', released_at: new Date().toISOString() }),
+      });
+      if (!released.ok) return { ok: false, code: 'database' };
+    }
   }
 
   if (existing[0]) {
@@ -148,9 +169,11 @@ export async function grantManualPremium(
   if (targetType !== 'server') return { ok: true };
   const row = await response.json();
   const entitlementId = Array.isArray(row) ? row[0]?.id : null;
-  if (!entitlementId) return { ok: false, code: 'database' };
+  const persistedEntitlementId = entitlementId
+    ?? (await read<{ id: number }>(astro, 'premium_entitlements', `provider_subscription_id=eq.${encodeURIComponent(key)}&select=id&limit=1`))[0]?.id;
+  if (!persistedEntitlementId) return { ok: false, code: 'database' };
 
-  const assignment = await read<{ id: number }>(astro, 'premium_slot_assignments', `entitlement_id=eq.${entitlementId}&guild_id=eq.${encodeURIComponent(guildId)}&select=id&limit=1`);
+  const assignment = await read<{ id: number }>(astro, 'premium_slot_assignments', `entitlement_id=eq.${persistedEntitlementId}&guild_id=eq.${encodeURIComponent(guildId)}&select=id&limit=1`);
   const assignmentResponse = assignment[0]
     ? await fetch(`${config.url}/rest/v1/premium_slot_assignments?id=eq.${assignment[0].id}`, {
         method: 'PATCH',
@@ -160,7 +183,7 @@ export async function grantManualPremium(
     : await fetch(`${config.url}/rest/v1/premium_slot_assignments`, {
         method: 'POST',
         headers: headers(config.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-        body: JSON.stringify({ entitlement_id: entitlementId, user_id: userId, guild_id: guildId, status: 'active' }),
+        body: JSON.stringify({ entitlement_id: persistedEntitlementId, user_id: userId, guild_id: guildId, status: 'active' }),
       });
   return assignmentResponse.ok ? { ok: true } : { ok: false, code: 'database' };
 }
