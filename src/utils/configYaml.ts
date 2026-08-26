@@ -19,6 +19,12 @@ function yamlScalar(v: unknown): string {
   return `'${String(v).replace(/'/g, "''")}'`;
 }
 
+/**
+ * The full "current configuration" YAML preview shown on the General page, every module's
+ * settings, not just this page's. Deliberately isolated from general.astro (which only needs
+ * 3 fetches for its actual form) since this alone needs ~23 parallel Supabase reads, expensive
+ * enough that it's fetched lazily client-side instead of blocking the page's initial render.
+ */
 export async function buildConfigYaml(id: string, botToken: string, supabaseUrl: string, supabaseKey: string): Promise<string | null> {
   const guildInfo = await getGuildInfo(id, botToken);
   if (!guildInfo) return null;

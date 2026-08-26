@@ -20,7 +20,7 @@ export async function callPettoVault(context: AstroContext, guildId: string, use
   const query = init.method === 'GET' || !init.method ? `?user_id=${encodeURIComponent(userId)}` : '';
   const response = await fetch(`${baseUrl}/api/dashboard/vault/${encodeURIComponent(guildId)}${query}`, { ...init, headers });
   let payload: any = null;
-  try { payload = await response.json(); } catch {}
+  try { payload = await response.json(); } catch { /* Keep the original HTTP status. */ }
   return { ok: response.ok && payload?.ok !== false, error: payload?.error ?? null, payload };
 }
 
