@@ -1,7 +1,6 @@
 import { getEnv } from './env';
 
 export type PremiumStatus = 'free' | 'pending' | 'active' | 'past_due' | 'canceled' | 'expired';
-export type PremiumDataState = 'available' | 'not_configured' | 'unavailable';
 
 export interface PremiumEntitlement {
   id: number;
@@ -34,7 +33,6 @@ export interface PremiumRequest {
 }
 
 export interface PremiumSnapshot {
-  dataState: PremiumDataState;
   status: PremiumStatus;
   entitlement: PremiumEntitlement | null;
   assignments: PremiumAssignment[];
@@ -69,34 +67,17 @@ function polarApiBase(astro: any): string {
     : 'https://api.polar.sh';
 }
 
-async function readResult<T>(astro: any, table: string, query: string): Promise<{ rows: T[]; ok: boolean }> {
+async function read<T>(astro: any, table: string, query: string): Promise<T[]> {
   const settings = config(astro);
-  if (!settings) return { rows: [], ok: false };
+  if (!settings) return [];
   try {
     const response = await fetch(`${settings.url}/rest/v1/${table}?${query}`, { headers: headers(settings.key) });
-    if (!response.ok) return { rows: [], ok: false };
+    if (!response.ok) return [];
     const data = await response.json();
-    return Array.isArray(data) ? { rows: data as T[], ok: true } : { rows: [], ok: false };
+    return Array.isArray(data) ? data as T[] : [];
   } catch {
-    return { rows: [], ok: false };
+    return [];
   }
-}
-
-async function read<T>(astro: any, table: string, query: string): Promise<T[]> {
-  return (await readResult<T>(astro, table, query)).rows;
-}
-
-function emptySnapshot(dataState: PremiumDataState): PremiumSnapshot {
-  return {
-    dataState,
-    status: 'free',
-    entitlement: null,
-    assignments: [],
-    requests: [],
-    slotsUsed: 0,
-    slotsTotal: 0,
-    history: [],
-  };
 }
 
 async function releaseExpiredEntitlement(astro: any, entitlementId: number, assignments: PremiumAssignment[]): Promise<void> {
@@ -113,18 +94,12 @@ async function releaseExpiredEntitlement(astro: any, entitlementId: number, assi
 }
 
 export async function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
-  if (!config(astro)) return emptySnapshot('not_configured');
-
   const encodedUser = encodeURIComponent(userId);
-  const [entitlementsResult, assignmentsResult, requestsResult] = await Promise.all([
-    readResult<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=in.(active,pending,past_due,canceled,expired)&select=id,user_id,provider,plan_key,status,slot_limit,current_period_end,created_at,updated_at,metadata&order=created_at.desc&limit=25`),
-    readResult<PremiumAssignment>(astro, 'premium_slot_assignments', `user_id=eq.${encodedUser}&select=id,entitlement_id,user_id,guild_id,status,assigned_at,released_at&order=assigned_at.desc`),
-    readResult<PremiumRequest>(astro, 'premium_slot_requests', `user_id=eq.${encodedUser}&status=eq.pending&select=id,user_id,guild_id,status&order=created_at.desc`),
+  const [entitlements, assignments, requests] = await Promise.all([
+    read<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=in.(active,pending,past_due,canceled,expired)&select=id,user_id,provider,plan_key,status,slot_limit,current_period_end,created_at,updated_at,metadata&order=created_at.desc&limit=25`),
+    read<PremiumAssignment>(astro, 'premium_slot_assignments', `user_id=eq.${encodedUser}&select=id,entitlement_id,user_id,guild_id,status,assigned_at,released_at&order=assigned_at.desc`),
+    read<PremiumRequest>(astro, 'premium_slot_requests', `user_id=eq.${encodedUser}&status=eq.pending&select=id,user_id,guild_id,status&order=created_at.desc`),
   ]);
-  const entitlements = entitlementsResult.rows;
-  const assignments = assignmentsResult.rows;
-  const requests = requestsResult.rows;
-  const dataState: PremiumDataState = entitlementsResult.ok && assignmentsResult.ok && requestsResult.ok ? 'available' : 'unavailable';
 
   const entitlement = entitlements[0] ?? null;
   const periodValid = !entitlement?.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now();
@@ -141,7 +116,6 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
   }
 
   return {
-    dataState,
     status,
     entitlement,
     assignments: activeAssignments,
