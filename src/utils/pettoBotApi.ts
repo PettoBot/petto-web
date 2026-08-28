@@ -8,6 +8,24 @@ function apiConfig(context: AstroContext) {
   return { baseUrl, secret };
 }
 
+export async function syncPettoPrefix(context: AstroContext, guildId: string, prefix: string) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, error: 'not_configured' as const, payload: null };
+
+  const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/prefix`, {
+    method: 'POST',
+    headers: {
+      'X-Petto-Dashboard-Key': secret,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prefix }),
+  });
+  let payload: any = null;
+  try { payload = await response.json(); } catch { /* Keep the original HTTP status. */ }
+  return { ok: response.ok && payload?.ok !== false, error: payload?.error ?? null, payload };
+}
+
 export async function callPettoVault(context: AstroContext, guildId: string, userId: string, init: RequestInit = {}) {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, error: 'not_configured' as const, payload: null };
