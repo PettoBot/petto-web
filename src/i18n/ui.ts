@@ -134,6 +134,19 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.5.0',
+          date: 'August 31, 2026',
+          items: [
+            'Connected roles: added the Discord linked-roles flow so participating servers can grant the Petto Verified role after an account connection',
+            'Prefix synchronization: dashboard changes are saved in Supabase and sent through the internal API, so the bot refreshes immediately; reset restores the default `!` prefix',
+            'Free server identity: nicknames remain available without Premium, while Premium profile customization stays limited to the other profile fields',
+            'Reliability: fixed the activity statistics job error handling, rate-limited the internal prefix endpoint, and clarified setup/removal messaging',
+            'Activity summaries: `!summary`, `!weekly`, and `!digest` now attach a dark Overview-style `activity-summary.png` with daily green/orange series and a text-only fallback when Canvas is unavailable',
+            'Booster roles: eligibility messages now use Discord\'s `server booster` terminology',
+            'Roleplay: targeted actions now have one-time Respond/Reject controls, persistent per-server counters, and new `!hi`, `!bye`, `!yes`, `!no`, `!laugh`, `!sad`, and `!angry` commands',
+          ],
+        },
+        {
           version: '0.4.1',
           date: 'August 26, 2026',
           items: [
@@ -980,6 +993,19 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.5.0',
+          date: '31 de agosto de 2026',
+          items: [
+            'Roles vinculados: se añadió el flujo de linked roles de Discord para que los servidores participantes puedan otorgar el rol Petto Verified después de conectar una cuenta',
+            'Sincronización de prefijo: los cambios del dashboard se guardan en Supabase y se envían mediante la API interna, así que el bot actualiza la caché de inmediato; el reset restaura el prefijo `!`',
+            'Identidad del servidor gratis: los nicknames siguen disponibles sin Premium, mientras la personalización Premium se mantiene limitada a los demás campos del perfil',
+            'Confiabilidad: se corrigió el manejo de errores del job de estadísticas, se añadió rate limit al endpoint interno del prefijo y se aclararon los mensajes de setup y eliminación',
+            'Resúmenes de actividad: `!summary`, `!weekly` y `!digest` ahora adjuntan `activity-summary.png` con diseño oscuro tipo Overview, series diarias verde/naranja y respaldo textual si Canvas no está disponible',
+            'Booster roles: las alertas de elegibilidad ahora usan la terminología de Discord `server booster`',
+            'Roleplay: las acciones dirigidas ahora tienen controles Respond/Reject de un solo uso, contadores persistentes por servidor y los nuevos comandos `!hi`, `!bye`, `!yes`, `!no`, `!laugh`, `!sad` y `!angry`',
+          ],
+        },
+        {
           version: '0.4.1',
           date: '26 de agosto de 2026',
           items: [
@@ -1825,6 +1851,19 @@ export const ui = {
       lede: 'O histórico de versões do Petto, com as mudanças que realmente foram publicadas e quando chegaram.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.5.0',
+          date: '31 de agosto de 2026',
+          items: [
+            'Cargos vinculados: adicionado o fluxo de linked roles do Discord para que servidores participantes possam conceder o cargo Petto Verified depois da conexão da conta',
+            'Sincronização de prefixo: as alterações do dashboard são salvas no Supabase e enviadas pela API interna, então o bot atualiza o cache imediatamente; o reset restaura o prefixo `!`',
+            'Identidade do servidor grátis: nicknames continuam disponíveis sem Premium, enquanto a personalização Premium permanece limitada aos outros campos do perfil',
+            'Confiabilidade: corrigido o tratamento de erros do job de estatísticas, adicionado rate limit ao endpoint interno de prefixo e esclarecidas as mensagens de setup e remoção',
+            'Resumos de atividade: `!summary`, `!weekly` e `!digest` agora anexam `activity-summary.png` com design escuro no estilo Overview, séries diárias verde/laranja e fallback textual quando o Canvas não está disponível',
+            'Booster roles: os alertas de elegibilidade agora usam a terminologia do Discord `server booster`',
+            'Roleplay: ações direcionadas agora têm controles Respond/Reject de uso único, contadores persistentes por servidor e os novos comandos `!hi`, `!bye`, `!yes`, `!no`, `!laugh`, `!sad` e `!angry`',
+          ],
+        },
         {
           version: '0.4.1',
           date: '26 de agosto de 2026',
