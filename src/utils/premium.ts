@@ -100,7 +100,7 @@ function isActiveEntitlement(entitlement: PremiumEntitlement): boolean {
   return Number.isFinite(periodEnd) && periodEnd > Date.now();
 }
 
-/** Reads the account's Premium state from the primary Supabase database. */
+/** Reads the account's Premium state from Discloud through the private bot API. */
 export async function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
   const encodedUser = encodeURIComponent(userId);
   const [entitlements, assignments, requests] = await Promise.all([
