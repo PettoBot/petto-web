@@ -52,8 +52,8 @@ const DEFAULT_POLAR_PRODUCTS: Record<string, string> = {
 };
 
 function config(astro: any): { url: string; key: string } | null {
-  const url = getEnv(astro, 'SUPABASE_URL');
-  const key = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY');
+  const url = getEnv(astro, 'PETTO_BOT_API_URL');
+  const key = getEnv(astro, 'PETTO_BOT_API_SECRET');
   return url && key ? { url, key } : null;
 }
 

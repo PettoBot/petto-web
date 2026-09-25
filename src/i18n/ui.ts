@@ -134,6 +134,15 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
+          version: '0.5.1',
+          date: 'September 24, 2026',
+          items: [
+            'Database migration: the dashboard now uses the private Petto bot API backed by Discloud PostgreSQL, with the Supabase database retained as a recovery mirror',
+            'Deployment: added a Node standalone target for Discloud while keeping the existing Cloudflare build and public UI unchanged',
+            'Security: the dashboard secret remains server-side and must match the bot API secret; it is never sent to the browser',
+          ],
+        },
+        {
           version: '0.5.0',
           date: 'August 31, 2026',
           items: [
@@ -993,6 +1002,15 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.5.1',
+          date: '24 de septiembre de 2026',
+          items: [
+            'Migración de base de datos: el dashboard ahora usa la API privada de Petto respaldada por PostgreSQL en Discloud, con Supabase conservado como espejo de recuperación',
+            'Despliegue: se añadió un target Node standalone para Discloud, manteniendo el build existente de Cloudflare y la interfaz pública sin cambios',
+            'Seguridad: el secreto del dashboard permanece del lado del servidor y debe coincidir con el secreto de la API del bot; nunca se envía al navegador',
+          ],
+        },
+        {
           version: '0.5.0',
           date: '31 de agosto de 2026',
           items: [
@@ -1851,6 +1869,15 @@ export const ui = {
       lede: 'O histórico de versões do Petto, com as mudanças que realmente foram publicadas e quando chegaram.',
       latest: 'Mais recente',
       entries: [
+        {
+          version: '0.5.1',
+          date: '24 de setembro de 2026',
+          items: [
+            'Migração de banco: o dashboard agora usa a API privada do Petto apoiada pelo PostgreSQL no Discloud, mantendo o Supabase como espelho de recuperação',
+            'Deploy: foi adicionado um target Node standalone para o Discloud, mantendo o build existente do Cloudflare e a interface pública sem alterações',
+            'Segurança: o segredo do dashboard permanece no servidor e deve ser igual ao segredo da API do bot; ele nunca é enviado ao navegador',
+          ],
+        },
         {
           version: '0.5.0',
           date: '31 de agosto de 2026',

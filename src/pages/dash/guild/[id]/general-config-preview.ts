@@ -8,8 +8,8 @@ export const prerender = false;
 export const GET: APIRoute = async (context) => {
   const { id } = context.params as { id: string };
   const botToken = getEnv(context, 'DISCORD_TOKEN');
-  const supabaseUrl = getEnv(context, 'SUPABASE_URL');
-  const supabaseKey = getEnv(context, 'SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseUrl = getEnv(context, 'PETTO_BOT_API_URL');
+  const supabaseKey = getEnv(context, 'PETTO_BOT_API_SECRET');
 
   const auth = await getGuildSession(context, id);
   if ('redirect' in auth) return new Response('Unauthorized', { status: 401 });

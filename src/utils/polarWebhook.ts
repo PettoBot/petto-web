@@ -23,8 +23,8 @@ const PRODUCT_SLOT_LIMITS: Record<string, number> = {
 };
 
 function settings(astro: any): { url: string; key: string } | null {
-  const url = getEnv(astro, 'SUPABASE_URL');
-  const key = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY');
+  const url = getEnv(astro, 'PETTO_BOT_API_URL');
+  const key = getEnv(astro, 'PETTO_BOT_API_SECRET');
   return url && key ? { url, key } : null;
 }
 

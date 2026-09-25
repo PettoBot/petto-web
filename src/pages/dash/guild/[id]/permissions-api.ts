@@ -27,8 +27,8 @@ export const POST: APIRoute = async (astro) => {
   const session = await auth(astro, id);
   if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
 
-  const supabaseUrl = getEnv(astro, 'SUPABASE_URL')!;
-  const supabaseKey = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = getEnv(astro, 'PETTO_BOT_API_URL')!;
+  const supabaseKey = getEnv(astro, 'PETTO_BOT_API_SECRET')!;
   const body = await astro.request.json().catch(() => ({}));
   const action = String(body.action ?? '');
   const h = headers(supabaseKey);
