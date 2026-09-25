@@ -11,15 +11,13 @@ const { lang } = Astro.props;
 const t = useTranslations(lang);
 const s = t.simplePages.status;
 
-// The public status widget keeps polling the read-only Supabase mirror in the
-// browser. The initial server render uses the private bot API, so no service
-// role key or bot credential is ever sent to the client.
-const supabaseUrl = getEnv(Astro, 'SUPABASE_URL') ?? '';
-const supabaseAnonKey = getEnv(Astro, 'SUPABASE_ANON_KEY') ?? '';
+// The status page reads the Discloud-backed primary through the private bot API.
+// Browser polling goes through the web Worker so the dashboard secret never leaves it.
+const statusEndpoint = new URL('/api/status', Astro.url).pathname;
 
 const STALE_MS = 5 * 60 * 1000;
 
-async function supaGet(table: string) {
+async function botApiGet(table: string) {
   const url = getEnv(Astro, 'PETTO_BOT_API_URL');
   const key = getEnv(Astro, 'PETTO_BOT_API_SECRET');
   if (!url || !key) return null;
@@ -57,12 +55,12 @@ function formatUptime(totalSeconds: number) {
 }
 
 const now = Date.now();
-const shardRows = await supaGet('bot_status');
+const shardRows = await botApiGet('bot_status');
 const shards = shardRows
   ? (shardRows as any[]).sort((a, b) => a.shard_id - b.shard_id).map((r) => ({ id: r.shard_id, guildCount: r.guild_count, ping: r.ping_ms, state: bucket(r.status, r.updated_at, now) }))
   : null;
 
-const hostRows = await supaGet('bot_host');
+const hostRows = await botApiGet('bot_host');
 const host = hostRows ? hostRows[0] : null;
 
 const stateLabel: Record<string, string> = {
@@ -81,8 +79,7 @@ const stateLabel: Record<string, string> = {
 
         <div
           id="statusBlock"
-          data-supabase-url={supabaseUrl}
-          data-supabase-key={supabaseAnonKey}
+          data-status-endpoint={statusEndpoint}
           data-stale-ms={STALE_MS}
           data-label-operational={s.shardOperational}
           data-label-offline={s.shardOffline}
@@ -146,9 +143,8 @@ const stateLabel: Record<string, string> = {
 
 <script>
   const block = document.getElementById('statusBlock');
-  const url = block?.dataset.supabaseUrl;
-  const key = block?.dataset.supabaseKey;
-  if (block && url && key) {
+  const endpoint = block?.dataset.statusEndpoint;
+  if (block && endpoint) {
     const staleMs = Number(block.dataset.staleMs || 300000);
     const labels: Record<string, string> = {
       operational: block.dataset.labelOperational || 'Operational',
@@ -203,20 +199,13 @@ const stateLabel: Record<string, string> = {
     }
 
     async function poll() {
-      if (!url || !key) return;
+      if (!endpoint) return;
       try {
-        const [shardRes, hostRes] = await Promise.all([
-          fetch(`${url}/rest/v1/bot_status?select=*`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }),
-          fetch(`${url}/rest/v1/bot_host?select=*`, { headers: { apikey: key, Authorization: `Bearer ${key}` } }),
-        ]);
-        if (shardRes.ok) {
-          const rows = await shardRes.json();
-          if (Array.isArray(rows)) renderShards(rows);
-        }
-        if (hostRes.ok) {
-          const rows = await hostRes.json();
-          if (Array.isArray(rows) && rows.length) renderHost(rows[0]);
-        }
+        const response = await fetch(endpoint, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (Array.isArray(payload.shards)) renderShards(payload.shards);
+        if (payload.host) renderHost(payload.host);
         liveBadge?.classList.add('on');
       } catch {
         // Silently keep whatever was last rendered; the next poll retries.

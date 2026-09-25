@@ -20,7 +20,7 @@ some-folder/
 ```
 
 `astro.config.mjs` loads `../petto bot 1/.env`. If the bot's folder is named differently, update
-that path or the dashboard will have no Discord or Supabase credentials in dev.
+that path or the dashboard will have no Discord or bot API credentials in dev.
 
 ```bash
 npm install
@@ -37,10 +37,8 @@ There is no test suite. `npm run build` is the real check that nothing is broken
 | `DISCORD_TOKEN` | Bot token. Reads guild/role/channel data, and the team profiles on `/team` at build time. |
 | `DISCORD_CLIENT_ID` | OAuth2 login, and the "Add Bot" invite links. |
 | `DISCORD_CLIENT_SECRET` | OAuth2 code exchange, and signing the session cookie. Server-side only. |
-| `PETTO_BOT_API_URL` | Private bot API used by the dashboard for guild data. |
+| `PETTO_BOT_API_URL` | Private bot API used by the dashboard for all database-backed data. |
 | `PETTO_BOT_API_SECRET` | Server-side key matching the bot's `PETTO_DASHBOARD_API_SECRET`; never expose it to the browser. |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Public read-only status mirror used by the browser status widget. |
-| `SUPABASE_ANON_KEY` | Baked into `/status` so the browser can poll bot uptime directly. Read-only by policy. |
 | `POLAR_ACCESS_TOKEN` | Secret used server-side to create a checkout tied to the logged-in Discord user. |
 | `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
 | `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. Defaults to the owner ID in the code. |
@@ -102,10 +100,10 @@ const auth = await getGuildSession(Astro, id);   // verifies the user really man
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 ```
 
-Then a single `Promise.all` for every Discord and Supabase call the page needs. Fetching them one
+Then a single `Promise.all` for every Discord and bot API call the page needs. Fetching them one
 after another is what made these pages slow before, so keep them batched.
 
-Anything interpolated into a Supabase filter has to be escaped:
+Anything interpolated into a database API filter has to be escaped:
 
 ```js
 `...?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}`
