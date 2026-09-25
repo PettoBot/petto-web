@@ -134,22 +134,7 @@ export const ui = {
       latest: 'Latest',
       entries: [
         {
-          version: '0.5.1',
-          date: 'September 24, 2026',
-          items: [
-            'Reliability: fixed webhook counters and mentions, repaired VoiceMaster interaction handling, and improved onboarding channel creation for large guilds',
-            'AutoMod link protection: malicious URLs detected through the link checker are now stored persistently, so known threats can be blocked without checking every message with Google Safe Browsing again',
-            'Known malicious links are removed automatically, while newly discovered URLs alert the development team once and keep their detection history',
-            'Database resilience: safe retries now cover transient Supabase/PostgREST reads, stale-cache fallbacks keep known configuration available, sticky messages and autoresponders reduce database pressure, and XP writes are never replayed unsafely',
-            'Onboarding and permissions: fixed excessive permission overwrites while creating setup channels and improved resilience during large-guild setup',
-            'Guild operations: added `guildsend`, automated diagnostic and compliance alerts, shop/store detection, team review notices, manual scans, leave confirmations, and clearer guild notices',
-            'Moderation cases: case numbers are now independent per guild, backed by persistent counters and one per-guild sequence shared by sanctions and automated actions; existing history is migrated, while `case list` supports optional user filtering and pagination',
-            'Custom commands: added `{args}`, `{arg1}` through `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}`, and `{prefix}` with quoted arguments, mention protection, embed-only commands, safer partial edits, and a variables reference',
-            'Infrastructure: the dashboard now uses the private Petto bot API backed by Discloud PostgreSQL, with Supabase retained as a recovery mirror; status reporting and activity charts now use the same resilient data path',
-          ],
-        },
-        {
-          version: '5.0.1-46',
+          version: '0.5.1-46',
           date: 'September 24, 2026',
           items: [
             'Webhook delivery: fixed counter updates and mention handling when sending webhooks',
@@ -159,6 +144,15 @@ export const ui = {
             'Guild operations and compliance: added the team `guildsend` command, automatic diagnostic alerts, shop/store/compliance detection, team review alerts, manual scans, leave confirmation controls, and clearer guild notices',
             'Moderation cases: case numbers are now independent per guild, use one sequence across sanctions and automated actions, persist guild counters, allow `case list` without a user, support optional user filters and pagination, and migrate existing case history',
             'Custom commands: added `{args}`, `{arg1}` through `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}`, and `{prefix}`; quoted text stays together as one argument, variables work inside saved embed templates, mass mentions from user arguments are blocked, embed-only commands are supported, and unchanged fields are preserved when editing',
+          ],
+        },
+        {
+          version: '0.5.1',
+          date: 'September 24, 2026',
+          items: [
+            'Database migration: the dashboard now uses the private Petto bot API backed by Discloud PostgreSQL, with the Supabase database retained as a recovery mirror',
+            'Deployment: added a Node standalone target for Discloud while keeping the existing Cloudflare build and public UI unchanged',
+            'Security: the dashboard secret remains server-side and must match the bot API secret; it is never sent to the browser',
           ],
         },
         {
@@ -1021,18 +1015,25 @@ export const ui = {
       latest: 'Última',
       entries: [
         {
+          version: '0.5.1-46',
+          date: '24 de septiembre de 2026',
+          items: [
+            'Webhooks: se corrigieron las actualizaciones del contador y el manejo de menciones al enviar webhooks',
+            'VoiceMaster: se corrigió un error en las interacciones de los controles de canales de voz temporales',
+            'Enlaces maliciosos: AutoMod ahora guarda de forma persistente las URLs detectadas mediante `!am`, reutiliza esos resultados en lugar de consultar Google Safe Browsing en cada mensaje, elimina automáticamente los enlaces conocidos y alerta al equipo de desarrollo cuando encuentra una URL nueva',
+            'Resiliencia: se mejoró la tolerancia ante timeouts transitorios de Supabase/PostgREST, se añadieron reintentos seguros para lecturas temporales y fallbacks de caché obsoleta, se redujo la presión de base de datos de sticky messages y autoresponders, se evitaron reintentos inseguros al guardar XP y se corrigieron la creación de canales de onboarding y los permisos excesivos en servidores grandes',
+            'Operaciones y cumplimiento: se añadió el comando de equipo `guildsend`, alertas automáticas de diagnóstico, detección de tiendas, comercios y cumplimiento, alertas para revisión del equipo, escaneos manuales, controles de confirmación al salir y avisos de servidor más claros',
+            'Casos de moderación: los números de caso ahora son independientes por servidor, usan una sola secuencia para sanciones y acciones automáticas, mantienen contadores persistentes, permiten `case list` sin indicar un usuario, admiten filtros de usuario y paginación opcionales, y migran el historial existente',
+            'Comandos personalizados: se añadieron `{args}`, `{arg1}` a `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}` y `{prefix}`; las comillas mantienen el texto unido como un solo argumento, las variables funcionan en plantillas de embed guardadas, se bloquean las menciones masivas provenientes de argumentos, se admiten comandos que solo usan una plantilla de embed y la edición conserva los campos que no cambiaron',
+          ],
+        },
+        {
           version: '0.5.1',
           date: '24 de septiembre de 2026',
           items: [
-            'Confiabilidad: se corrigieron los contadores y las menciones al enviar webhooks, el manejo de interacciones de VoiceMaster y la creación de canales de onboarding en servidores grandes',
-            'Protección de enlaces en AutoMod: las URLs maliciosas detectadas por el comprobador de enlaces ahora se guardan de forma persistente, así que las amenazas conocidas se pueden bloquear sin consultar de nuevo Google Safe Browsing en cada mensaje',
-            'Los enlaces maliciosos conocidos se eliminan automáticamente y las URLs nuevas alertan al equipo de desarrollo una sola vez, conservando su historial de detección',
-            'Resiliencia de base de datos: los reads transitorios de Supabase/PostgREST ahora se reintentan de forma segura, los fallbacks de caché stale mantienen disponible la configuración conocida, sticky messages y autoresponders reducen la presión sobre la base, y los writes de XP nunca se repiten de forma insegura',
-            'Onboarding y permisos: se corrigieron los permission overwrites excesivos al crear canales de setup y se mejoró la resistencia durante la configuración de servidores grandes',
-            'Operaciones de servidores: se añadió `guildsend`, alertas automáticas de diagnóstico y compliance, detección de shop/store, avisos para revisión del equipo, scans manuales, confirmaciones al salir y mensajes de servidor más claros',
-            'Casos de moderación: los números ahora son independientes por servidor, con contadores persistentes y una secuencia por servidor compartida por sanciones y acciones automáticas; se migró el historial existente y `case list` admite filtro opcional por usuario y paginación',
-            'Comandos personalizados: se añadieron `{args}`, `{arg1}` a `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}` y `{prefix}`, con argumentos entre comillas, protección contra menciones, comandos solo con embed, ediciones parciales más seguras y una referencia de variables',
-            'Infraestructura: el dashboard ahora usa la API privada de Petto respaldada por PostgreSQL en Discloud, con Supabase conservado como espejo de recuperación; el status y las gráficas de actividad usan la misma ruta de datos resiliente',
+            'Migración de base de datos: el dashboard ahora usa la API privada de Petto respaldada por PostgreSQL en Discloud, con Supabase conservado como espejo de recuperación',
+            'Despliegue: se añadió un target Node standalone para Discloud, manteniendo el build existente de Cloudflare y la interfaz pública sin cambios',
+            'Seguridad: el secreto del dashboard permanece del lado del servidor y debe coincidir con el secreto de la API del bot; nunca se envía al navegador',
           ],
         },
         {
@@ -1895,18 +1896,25 @@ export const ui = {
       latest: 'Mais recente',
       entries: [
         {
+          version: '0.5.1-46',
+          date: '24 de setembro de 2026',
+          items: [
+            'Webhooks: corrigidas as atualizações do contador e o tratamento de menções ao enviar webhooks',
+            'VoiceMaster: corrigido um erro nas interações dos controles de canais de voz temporários',
+            'Links maliciosos: o AutoMod agora armazena de forma persistente as URLs detectadas pelo `!am`, reutiliza esses resultados em vez de consultar o Google Safe Browsing a cada mensagem, remove automaticamente links conhecidos e alerta a equipe de desenvolvimento quando encontra uma URL nova',
+            'Resiliência: melhorada a tolerância contra timeouts transitórios do Supabase/PostgREST, adicionados retries seguros para leituras temporárias e fallbacks de cache desatualizado, reduzida a pressão no banco causada por sticky messages e autoresponders, evitados retries inseguros ao salvar XP e corrigidas a criação de canais de onboarding e as sobrescritas excessivas de permissões em servidores grandes',
+            'Operações e compliance: adicionado o comando de equipe `guildsend`, alertas automáticos de diagnóstico, detecção de lojas, comércio e compliance, alertas para revisão da equipe, scans manuais, controles de confirmação ao sair e avisos de servidor mais claros',
+            'Casos de moderação: os números de caso agora são independentes por servidor, usam uma única sequência para sanções e ações automáticas, mantêm contadores persistentes, permitem `case list` sem informar um usuário, aceitam filtros de usuário e paginação opcionais e migram o histórico existente',
+            'Comandos personalizados: adicionados `{args}`, `{arg1}` até `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}` e `{prefix}`; textos entre aspas continuam como um único argumento, as variáveis funcionam em templates de embed salvos, menções em massa vindas dos argumentos são bloqueadas, comandos que usam apenas um template de embed são aceitos e a edição preserva os campos que não foram alterados',
+          ],
+        },
+        {
           version: '0.5.1',
           date: '24 de setembro de 2026',
           items: [
-            'Confiabilidade: corrigidos os contadores e as menções ao enviar webhooks, o tratamento das interações do VoiceMaster e a criação de canais de onboarding em servidores grandes',
-            'Proteção de links no AutoMod: URLs maliciosas detectadas pelo verificador agora são armazenadas de forma persistente, então ameaças conhecidas podem ser bloqueadas sem consultar o Google Safe Browsing novamente em cada mensagem',
-            'Links maliciosos conhecidos são removidos automaticamente, enquanto novas URLs detectadas alertam a equipe de desenvolvimento uma vez e mantêm seu histórico',
-            'Resiliência do banco: leituras transitórias do Supabase/PostgREST agora têm retries seguros, fallbacks de cache stale mantêm configurações conhecidas disponíveis, sticky messages e autoresponders reduzem a pressão no banco, e writes de XP nunca são repetidos de forma insegura',
-            'Onboarding e permissões: corrigidos permission overwrites excessivos durante a criação dos canais de setup e melhorada a resistência durante o setup de servidores grandes',
-            'Operações de servidores: adicionado `guildsend`, alertas automáticos de diagnóstico e compliance, detecção de shop/store, avisos para revisão da equipe, scans manuais, confirmações ao sair e mensagens de servidor mais claras',
-            'Casos de moderação: os números agora são independentes por servidor, com contadores persistentes e uma sequência por servidor compartilhada por sanções e ações automáticas; o histórico existente é migrado e `case list` aceita filtro opcional por usuário e paginação',
-            'Comandos personalizados: adicionados `{args}`, `{arg1}` até `{arg10}`, `{args_from:N}`, `{arg_count}`, `{command_name}` e `{prefix}`, com argumentos entre aspas, proteção contra menções, comandos apenas com embed, edições parciais mais seguras e uma referência de variáveis',
-            'Infraestrutura: o dashboard agora usa a API privada do Petto apoiada pelo PostgreSQL no Discloud, mantendo o Supabase como espelho de recuperação; o status e os gráficos de atividade usam o mesmo caminho de dados resiliente',
+            'Migração de banco: o dashboard agora usa a API privada do Petto apoiada pelo PostgreSQL no Discloud, mantendo o Supabase como espelho de recuperação',
+            'Deploy: foi adicionado um target Node standalone para o Discloud, mantendo o build existente do Cloudflare e a interface pública sem alterações',
+            'Segurança: o segredo do dashboard permanece no servidor e deve ser igual ao segredo da API do bot; ele nunca é enviado ao navegador',
           ],
         },
         {
