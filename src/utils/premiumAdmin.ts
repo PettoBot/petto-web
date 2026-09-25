@@ -19,8 +19,8 @@ export interface ManualPremiumGrant {
 }
 
 function settings(astro: any): Settings | null {
-  const url = getEnv(astro, 'SUPABASE_URL');
-  const key = getEnv(astro, 'SUPABASE_SERVICE_ROLE_KEY');
+  const url = getEnv(astro, 'PETTO_BOT_API_URL');
+  const key = getEnv(astro, 'PETTO_BOT_API_SECRET');
   return url && key ? { url, key } : null;
 }
 

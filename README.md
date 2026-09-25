@@ -37,8 +37,9 @@ There is no test suite. `npm run build` is the real check that nothing is broken
 | `DISCORD_TOKEN` | Bot token. Reads guild/role/channel data, and the team profiles on `/team` at build time. |
 | `DISCORD_CLIENT_ID` | OAuth2 login, and the "Add Bot" invite links. |
 | `DISCORD_CLIENT_SECRET` | OAuth2 code exchange, and signing the session cookie. Server-side only. |
-| `SUPABASE_URL` | Where every guild config lives. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side reads/writes. Bypasses RLS, never expose to the browser. |
+| `PETTO_BOT_API_URL` | Private bot API used by the dashboard for guild data. |
+| `PETTO_BOT_API_SECRET` | Server-side key matching the bot's `PETTO_DASHBOARD_API_SECRET`; never expose it to the browser. |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Public read-only status mirror used by the browser status widget. |
 | `SUPABASE_ANON_KEY` | Baked into `/status` so the browser can poll bot uptime directly. Read-only by policy. |
 | `POLAR_ACCESS_TOKEN` | Secret used server-side to create a checkout tied to the logged-in Discord user. |
 | `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
@@ -56,11 +57,17 @@ that are easy to miss:
 - **`/team` needs `DISCORD_TOKEN` at build time**, not only at runtime, since it fetches each team
   member's live Discord profile while the site is being built.
 - **Premium secrets belong in Cloudflare Pages/Workers**, not in the bot's public `.env.example`:
-  add `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, and the existing
+  add `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `PETTO_BOT_API_SECRET`, and the existing
   Discord OAuth secrets as encrypted variables. The public product IDs and checkout link are kept
   in `wrangler.toml`.
 - **Owner grants** are available at `/dash/admin` only for the configured Discord owner ID. A
   user grant gives an account permanent slots; a server grant activates that server immediately.
+
+For Discloud, register the web subdomain first, replace the `ID` in `discloud.config` with that
+subdomain, and upload the project with the included Node standalone build. Discloud needs the
+site to listen on `0.0.0.0:8080`; `start:discloud` sets that default while still honoring an
+explicit `HOST` or `PORT`. Configure `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime
+variables there, with the secret matching the bot's `PETTO_DASHBOARD_API_SECRET` exactly.
 
 ---
 

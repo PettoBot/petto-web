@@ -2,6 +2,7 @@ import { defineConfig } from 'astro/config';
 import icon from 'astro-icon';
 import react from '@astrojs/react';
 import cloudflare from '@astrojs/cloudflare';
+import node from '@astrojs/node';
 import sitemap from '@astrojs/sitemap';
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
@@ -11,6 +12,8 @@ import path from 'node:path';
 // process.env for the dashboard's SSR routes too; in production those same variables need
 // to be set as Cloudflare Pages environment variables (Workers don't read .env files).
 loadEnv({ path: path.resolve('../petto bot 1/.env') });
+
+const discloudTarget = process.env.ASTRO_TARGET === 'discloud';
 
 export default defineConfig({
   site: 'https://petto.sbs',
@@ -65,6 +68,7 @@ export default defineConfig({
   // The whole marketing site stays static (prerendered); only src/pages/dash/** opts out
   // via `export const prerender = false`, since it needs a live session per request.
   output: 'hybrid',
+  outDir: discloudTarget ? './build/' : './dist/',
   // Dynamic dashboard routes must carry their component styles in the Worker
   // response. Without this, Cloudflare can render the HTML while the SSR page
   // misses the generated CSS asset link and appears as unstyled markup.
@@ -77,7 +81,7 @@ export default defineConfig({
       sourcemap: false,
     },
   },
-  adapter: cloudflare(),
+  adapter: discloudTarget ? node({ mode: 'standalone' }) : cloudflare(),
   // Docs moved to their own Mintlify site, every old in-repo docs URL (and its localized
   // copies) now bounces straight there instead of 404ing.
   // Wildcard entries (/docs/[...slug]) are handled by public/_redirects instead: Astro
