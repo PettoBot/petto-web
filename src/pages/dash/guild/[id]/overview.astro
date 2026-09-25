@@ -46,6 +46,26 @@ function count(res: Response): number {
   return Number(res.headers.get('content-range')?.split('/')[1] ?? '0');
 }
 
+async function readRows<T = Record<string, unknown>>(res: Response, resource: string): Promise<T[]> {
+  if (!res.ok) {
+    console.error(`[dashboard] ${resource} request failed for guild ${id}: ${res.status} ${res.statusText}`);
+    return [];
+  }
+
+  try {
+    const payload = await res.json();
+    return Array.isArray(payload) ? payload as T[] : [];
+  } catch (error) {
+    console.error(`[dashboard] ${resource} returned invalid JSON for guild ${id}:`, error);
+    return [];
+  }
+}
+
+function countValue(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 // ── Activity date range, computed before the big fetch below so activity_stats can be pulled in the same batch ──
 const rangeDaysByKey: Record<string, number> = { day: 1, week: 7, month: 30, year: 365 };
 const range = (['day', 'week', 'month', 'year'].includes(Astro.url.searchParams.get('range') ?? '') ? Astro.url.searchParams.get('range') : 'week') as 'day' | 'week' | 'month' | 'year';
@@ -100,13 +120,13 @@ stats = [
   { icon: 'ph:trophy-fill', label: 'Boost level', value: `Level ${guild.premium_tier ?? 0}`, color: '#a5ea7a' },
 ];
 
-const g = (await guildsRes.json())[0] ?? {};
-const am = (await automodRes.json())[0] ?? {};
-const an = (await antinukeRes.json())[0] ?? {};
-const lv = (await levelRes.json())[0] ?? {};
-const rp = (await reportRes.json())[0] ?? {};
-const we = (await welcomeRes.json())[0] ?? {};
-const vf = (await verificationRes.json())[0] ?? {};
+const g = (await readRows(guildsRes, 'guilds'))[0] ?? {};
+const am = (await readRows(automodRes, 'automod_config'))[0] ?? {};
+const an = (await readRows(antinukeRes, 'antinuke_config'))[0] ?? {};
+const lv = (await readRows(levelRes, 'level_config'))[0] ?? {};
+const rp = (await readRows(reportRes, 'report_config'))[0] ?? {};
+const we = (await readRows(welcomeRes, 'member_events_config'))[0] ?? {};
+const vf = (await readRows(verificationRes, 'verification_config'))[0] ?? {};
 
 const automodOn = Boolean(am.word_filter_enabled || am.anti_spam_enabled || am.anti_raid_enabled || am.anti_alt_enabled);
 const ticketTypes = count(ticketCatRes);
@@ -167,7 +187,21 @@ modules = [
 ];
 
 // ── Activity: real per-day counters written by the bot (activity_stats), not fabricated ──
-const activityRows: { channel_id: string; day: string; messages: number; reactions: number; voice_seconds: number }[] = activityRes.ok ? await activityRes.json() : [];
+const activityRows = (await readRows<{
+  channel_id?: unknown;
+  day?: unknown;
+  messages?: unknown;
+  reactions?: unknown;
+  voice_seconds?: unknown;
+}>(activityRes, 'activity_stats'))
+  .map((row) => ({
+    channel_id: String(row.channel_id ?? ''),
+    day: String(row.day ?? '').slice(0, 10),
+    messages: countValue(row.messages),
+    reactions: countValue(row.reactions),
+    voice_seconds: countValue(row.voice_seconds),
+  }))
+  .filter((row) => row.channel_id.length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.day));
 const currentRows = activityRows.filter((r) => r.day >= currentCutoff);
 const previousRows = activityRows.filter((r) => r.day < currentCutoff);
 
@@ -263,7 +297,12 @@ activity = {
 // Two series on one shared "actions per day" axis, bans specifically, and every other case
 // type folded into "Other actions" rather than a 4th/5th low-signal line. ──
 type ModKind = 'bans' | 'other';
-const modRows: { type: string; created_at: string }[] = modActionsRes.ok ? await modActionsRes.json() : [];
+const modRows = (await readRows<{ type?: unknown; created_at?: unknown }>(modActionsRes, 'mod_actions'))
+  .map((row) => ({
+    type: String(row.type ?? ''),
+    created_at: String(row.created_at ?? ''),
+  }))
+  .filter((row) => row.type.length > 0 && row.created_at.length > 0);
 function bucketKeyFor(iso: string) {
   const day = iso.slice(0, 10);
   if (range !== 'year') return day;
