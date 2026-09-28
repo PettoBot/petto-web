@@ -3,8 +3,8 @@ import type { APIRoute } from 'astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 
-function headers(supabaseKey: string) {
-  return { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' };
+function headers(apiKey: string) {
+  return { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
 }
 
 async function auth(astro: any, id: string) {
@@ -12,12 +12,12 @@ async function auth(astro: any, id: string) {
   return 'redirect' in result ? null : result.session;
 }
 
-async function fetchGroups(supabaseUrl: string, supabaseKey: string, guildId: string) {
-  const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?guild_id=eq.${guildId}&select=*&order=id.asc`, { headers: headers(supabaseKey) });
+async function fetchGroups(apiUrl: string, apiKey: string, guildId: string) {
+  const res = await fetch(`${apiUrl}/rest/v1/permission_groups?guild_id=eq.${guildId}&select=*&order=id.asc`, { headers: headers(apiKey) });
   const groups = res.ok ? await res.json() : [];
   if (!groups.length) return [];
   const ids = groups.map((g: any) => g.id).join(',');
-  const memRes = await fetch(`${supabaseUrl}/rest/v1/permission_group_members?group_id=in.(${ids})&select=*`, { headers: headers(supabaseKey) });
+  const memRes = await fetch(`${apiUrl}/rest/v1/permission_group_members?group_id=in.(${ids})&select=*`, { headers: headers(apiKey) });
   const members = memRes.ok ? await memRes.json() : [];
   return groups.map((g: any) => ({ ...g, members: members.filter((m: any) => m.group_id === g.id) }));
 }
@@ -27,11 +27,11 @@ export const POST: APIRoute = async (astro) => {
   const session = await auth(astro, id);
   if (!session) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
 
-  const supabaseUrl = getEnv(astro, 'PETTO_BOT_API_URL')!;
-  const supabaseKey = getEnv(astro, 'PETTO_BOT_API_SECRET')!;
+  const apiUrl = getEnv(astro, 'PETTO_BOT_API_URL')!;
+  const apiKey = getEnv(astro, 'PETTO_BOT_API_SECRET')!;
   const body = await astro.request.json().catch(() => ({}));
   const action = String(body.action ?? '');
-  const h = headers(supabaseKey);
+  const h = headers(apiKey);
 
   async function fail(res: Response, fallback: string) {
     const text = await res.text().catch(() => '');
@@ -39,7 +39,7 @@ export const POST: APIRoute = async (astro) => {
   }
 
   async function groupName(groupId: number): Promise<string> {
-    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?id=eq.${groupId}&select=name,is_base`, { headers: h });
+    const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${groupId}&select=name,is_base`, { headers: h });
     if (!res.ok) return `group #${groupId}`;
     const rows = await res.json();
     if (!rows[0]) return `group #${groupId}`;
@@ -47,7 +47,7 @@ export const POST: APIRoute = async (astro) => {
   }
 
   async function logAudit(logAction: string, summary: string) {
-    await fetch(`${supabaseUrl}/rest/v1/permission_audit_log`, {
+    await fetch(`${apiUrl}/rest/v1/permission_audit_log`, {
       method: 'POST',
       headers: { ...h, Prefer: 'return=minimal' },
       body: JSON.stringify({ guild_id: id, actor_id: session.userId, actor_name: session.username, action: logAction, summary }),
@@ -58,7 +58,7 @@ export const POST: APIRoute = async (astro) => {
     const name = String(body.name ?? '').trim().slice(0, 60);
     if (!name) return new Response(JSON.stringify({ error: 'name required' }), { status: 400 });
     const level = Math.max(0, Math.min(100, Number(body.level) || 0));
-    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups`, {
+    const res = await fetch(`${apiUrl}/rest/v1/permission_groups`, {
       method: 'POST',
       headers: { ...h, Prefer: 'return=minimal' },
       body: JSON.stringify({ guild_id: id, name, level }),
@@ -67,13 +67,13 @@ export const POST: APIRoute = async (astro) => {
     await logAudit('create_group', `Created group "${name}"`);
   } else if (action === 'delete_group') {
     const name = await groupName(Number(body.groupId));
-    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}&is_base=eq.false`, { method: 'DELETE', headers: h });
+    const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}&is_base=eq.false`, { method: 'DELETE', headers: h });
     if (!res.ok) return fail(res, "Couldn't delete the group");
     await logAudit('delete_group', `Deleted group "${name}"`);
   } else if (action === 'update_group_level') {
     const level = Math.max(0, Math.min(100, Number(body.level) || 0));
     const name = await groupName(Number(body.groupId));
-    const res = await fetch(`${supabaseUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}`, {
+    const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}`, {
       method: 'PATCH',
       headers: { ...h, Prefer: 'return=minimal' },
       body: JSON.stringify({ level }),
@@ -85,7 +85,7 @@ export const POST: APIRoute = async (astro) => {
     const subjectId = String(body.subjectId ?? '').trim();
     if (!subjectId) return new Response(JSON.stringify({ error: 'subjectId required' }), { status: 400 });
     const name = await groupName(Number(body.groupId));
-    const res = await fetch(`${supabaseUrl}/rest/v1/permission_group_members`, {
+    const res = await fetch(`${apiUrl}/rest/v1/permission_group_members`, {
       method: 'POST',
       headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ group_id: Number(body.groupId), subject_type: subjectType, subject_id: subjectId }),
@@ -95,7 +95,7 @@ export const POST: APIRoute = async (astro) => {
   } else if (action === 'remove_member') {
     const name = await groupName(Number(body.groupId));
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/permission_group_members?group_id=eq.${Number(body.groupId)}&subject_type=eq.${body.subjectType}&subject_id=eq.${encodeURIComponent(String(body.subjectId ?? ''))}`,
+      `${apiUrl}/rest/v1/permission_group_members?group_id=eq.${Number(body.groupId)}&subject_type=eq.${body.subjectType}&subject_id=eq.${encodeURIComponent(String(body.subjectId ?? ''))}`,
       { method: 'DELETE', headers: h },
     );
     if (!res.ok) return fail(res, "Couldn't remove that member");
@@ -104,7 +104,7 @@ export const POST: APIRoute = async (astro) => {
     const commandName = String(body.commandName ?? '').trim();
     if (!commandName) return new Response(JSON.stringify({ error: 'commandName required' }), { status: 400 });
     const level = Math.max(0, Math.min(100, Number(body.level) || 0));
-    const res = await fetch(`${supabaseUrl}/rest/v1/command_permission_levels`, {
+    const res = await fetch(`${apiUrl}/rest/v1/command_permission_levels`, {
       method: 'POST',
       headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ guild_id: id, command_name: commandName, required_level: level, updated_at: new Date().toISOString() }),
@@ -115,8 +115,8 @@ export const POST: APIRoute = async (astro) => {
     return new Response(JSON.stringify({ error: 'unknown action' }), { status: 400 });
   }
 
-  const groups = await fetchGroups(supabaseUrl, supabaseKey, id);
-  const levelsRes = await fetch(`${supabaseUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: h });
+  const groups = await fetchGroups(apiUrl, apiKey, id);
+  const levelsRes = await fetch(`${apiUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: h });
   const levels = levelsRes.ok ? await levelsRes.json() : [];
   return new Response(JSON.stringify({ ok: true, groups, levels }), { headers: { 'Content-Type': 'application/json' } });
 };

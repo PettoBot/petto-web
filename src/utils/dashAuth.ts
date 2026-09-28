@@ -35,6 +35,17 @@ async function refreshSession(session: Session, clientId: string, clientSecret: 
   }
 }
 
+async function persistSessionCookie(astro: any, session: Session, clientSecret: string): Promise<void> {
+  const encoded = await encodeSession(session, clientSecret);
+  astro.cookies.set('petto_session', encoded, {
+    httpOnly: true,
+    secure: astro.url.protocol === 'https:',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7,
+  });
+}
+
 /** Reads the dashboard session and silently renews Discord OAuth tokens near expiry. */
 export async function getDashboardSession(astro: any): Promise<Session | null> {
   const clientId = getEnv(astro, 'DISCORD_CLIENT_ID');
@@ -44,19 +55,16 @@ export async function getDashboardSession(astro: any): Promise<Session | null> {
   if (!session) return null;
 
   const needsRefresh = session.expiresAt <= Date.now() + 60_000;
-  if (!needsRefresh || !clientId || !clientSecret) return session.expiresAt > Date.now() ? session : null;
+  if (!needsRefresh || !clientId || !clientSecret) {
+    if (session.expiresAt <= Date.now()) return null;
+    if (cookie && !cookie.startsWith('v1.') && clientSecret) await persistSessionCookie(astro, session, clientSecret);
+    return session;
+  }
 
   const refreshed = await refreshSession(session, clientId, clientSecret);
   if (!refreshed) return null;
 
-  const encoded = await encodeSession(refreshed, clientSecret);
-  astro.cookies.set('petto_session', encoded, {
-    httpOnly: true,
-    secure: astro.url.protocol === 'https:',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 7,
-  });
+  await persistSessionCookie(astro, refreshed, clientSecret);
   return refreshed;
 }
 

@@ -8,19 +8,19 @@ import { getGuildInfo } from '../../../../utils/discord';
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-const supabaseUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
-const supabaseKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
 
-if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
 
-const supabaseHeaders = {
-  apikey: supabaseKey,
-  Authorization: `Bearer ${supabaseKey}`,
+const apiHeaders = {
+  apikey: apiKey,
+  Authorization: `Bearer ${apiKey}`,
   'Content-Type': 'application/json',
 };
 
@@ -84,9 +84,9 @@ if (Astro.request.method === 'POST') {
   const action = String(form.get('action') ?? '');
 
   if (action === 'report') {
-    await fetch(`${supabaseUrl}/rest/v1/report_config`, {
+    await fetch(`${apiUrl}/rest/v1/report_config`, {
       method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
         guild_id: id,
         enabled: form.get('enabled') === 'on',
@@ -99,9 +99,9 @@ if (Astro.request.method === 'POST') {
     saved = true;
   } else if (action === 'booster') {
     const filteredWords = String(form.get('filtered_words') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
-    await fetch(`${supabaseUrl}/rest/v1/booster_role_config`, {
+    await fetch(`${apiUrl}/rest/v1/booster_role_config`, {
       method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
         guild_id: id,
         base_role_id: String(form.get('base_role_id') ?? '').trim() || null,
@@ -116,9 +116,9 @@ if (Astro.request.method === 'POST') {
     });
     saved = true;
   } else if (action === 'reputation') {
-    await fetch(`${supabaseUrl}/rest/v1/reputation_config`, {
+    await fetch(`${apiUrl}/rest/v1/reputation_config`, {
       method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
         guild_id: id,
         enabled: form.get('enabled') === 'on',
@@ -129,9 +129,9 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'reset_reputation') {
     const userId = String(form.get('user_id') ?? '').trim();
     if (userId) {
-      await fetch(`${supabaseUrl}/rest/v1/reputation`, {
+      await fetch(`${apiUrl}/rest/v1/reputation`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ guild_id: id, user_id: userId, points: 0 }),
       });
       saved = true;
@@ -147,8 +147,8 @@ if (Astro.request.method === 'POST') {
       pollError = 'Add a question, a channel, and at least two options.';
     } else {
       const endsAt = durationMinutes > 0 ? new Date(Date.now() + durationMinutes * 60_000).toISOString() : null;
-      const insertRes = await fetch(`${supabaseUrl}/rest/v1/polls`, {
-        method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+      const insertRes = await fetch(`${apiUrl}/rest/v1/polls`, {
+        method: 'POST', headers: { ...apiHeaders, Prefer: 'return=representation' },
         body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: 'pending', creator_id: session.userId, question, options, image, multi: form.get('multi') === 'on', ends_at: endsAt }),
       });
       const poll = insertRes.ok ? (await insertRes.json())[0] as PollRecord | undefined : undefined;
@@ -160,16 +160,16 @@ if (Astro.request.method === 'POST') {
           body: JSON.stringify(pollPayload(poll, new Array(options.length).fill(0), 0)),
         });
         if (!messageRes.ok) {
-          await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+          await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
           pollError = 'Discord could not publish the poll. Check the channel and the bot permissions.';
         } else {
           const message = await messageRes.json();
-          const finalizeRes = await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, {
-            method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: message.id }),
+          const finalizeRes = await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, {
+            method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: message.id }),
           });
           if (!finalizeRes.ok) {
             await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${message.id}`, { method: 'DELETE', headers: { Authorization: discordHeaders.Authorization } });
-            await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+            await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
             pollError = 'The poll was published but could not be linked to the dashboard.';
           } else {
             saved = true;
@@ -180,14 +180,14 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'close_poll') {
     const pollId = Number(form.get('poll_id') ?? 0);
     if (Number.isInteger(pollId) && pollId > 0) {
-      const pollRes = await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${pollId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+      const pollRes = await fetch(`${apiUrl}/rest/v1/polls?id=eq.${pollId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
       const poll = pollRes.ok ? (await pollRes.json())[0] as PollRecord | undefined : undefined;
       if (poll && !poll.closed) {
-        const voteRes = await fetch(`${supabaseUrl}/rest/v1/poll_votes?poll_id=eq.${poll.id}&select=choices`, { headers: supabaseHeaders });
+        const voteRes = await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=eq.${poll.id}&select=choices`, { headers: apiHeaders });
         const votes = voteRes.ok ? await voteRes.json() : [];
         const counts = new Array(poll.options.length).fill(0);
         for (const vote of votes) for (const choice of vote.choices ?? []) if (choice >= 0 && choice < counts.length) counts[choice] += 1;
-        await fetch(`${supabaseUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ closed: true }) });
+        await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ closed: true }) });
         poll.closed = true;
         await editPollMessage(poll, counts, votes.length);
         saved = true;
@@ -198,14 +198,14 @@ if (Astro.request.method === 'POST') {
 
 const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, pollsRes] = await Promise.all([
   getGuildInfo(id, botToken),
-  fetch(`${supabaseUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: supabaseHeaders }),
+  fetch(`${apiUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: apiHeaders }),
   fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   fetch(`https://discord.com/api/v10/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-  fetch(`${supabaseUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,created_at&order=created_at.desc&limit=20`, { headers: supabaseHeaders }),
+  fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -251,7 +251,7 @@ const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hou
 const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
 const rawPolls: PollRecord[] = pollsRes.ok ? await pollsRes.json() : [];
 const pollIds = rawPolls.map((poll) => poll.id).filter((pollId) => Number.isInteger(pollId));
-const pollVotesRes = pollIds.length > 0 ? await fetch(`${supabaseUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: supabaseHeaders }) : null;
+const pollVotesRes = pollIds.length > 0 ? await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: apiHeaders }) : null;
 const pollVotes = pollVotesRes?.ok ? await pollVotesRes.json() : [];
 const polls = rawPolls.map((poll) => {
   const votes = pollVotes.filter((vote: any) => String(vote.poll_id) === String(poll.id));

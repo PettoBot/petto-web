@@ -9,18 +9,18 @@ import { runBatched } from '../../../../utils/concurrency';
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'protection';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-const supabaseUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
-const supabaseKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
 
-if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
-const supabaseHeaders = {
-  apikey: supabaseKey,
-  Authorization: `Bearer ${supabaseKey}`,
+const apiHeaders = {
+  apikey: apiKey,
+  Authorization: `Bearer ${apiKey}`,
   'Content-Type': 'application/json',
 };
 
@@ -36,9 +36,9 @@ if (Astro.request.method === 'POST') {
     const whitelistIds = String(form.get('whitelist_ids') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
 
     await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/automod_config`, {
+      fetch(`${apiUrl}/rest/v1/automod_config`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({
           guild_id: id,
           word_filter_enabled: form.get('word_filter_enabled') === 'on',
@@ -57,9 +57,9 @@ if (Astro.request.method === 'POST') {
           updated_at: new Date().toISOString(),
         }),
       }),
-      fetch(`${supabaseUrl}/rest/v1/antinuke_config`, {
+      fetch(`${apiUrl}/rest/v1/antinuke_config`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({
           guild_id: id,
           enabled: form.get('antinuke_enabled') === 'on',
@@ -69,9 +69,9 @@ if (Astro.request.method === 'POST') {
           updated_at: new Date().toISOString(),
         }),
       }),
-      fetch(`${supabaseUrl}/rest/v1/sticky_roles_config`, {
+      fetch(`${apiUrl}/rest/v1/sticky_roles_config`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ guild_id: id, enabled: form.get('sticky_roles_enabled') === 'on' }),
       }),
     ]);
@@ -80,25 +80,25 @@ if (Astro.request.method === 'POST') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const silentAction = String(form.get('silent_action') ?? 'warn');
     if (channelId) {
-      await fetch(`${supabaseUrl}/rest/v1/automod_silent_channels`, {
+      await fetch(`${apiUrl}/rest/v1/automod_silent_channels`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ guild_id: id, channel_id: channelId, action: silentAction }),
       });
       saved = true;
     }
   } else if (action === 'delete_silent_channel') {
     const channelId = encodeURIComponent(String(form.get('channel_id') ?? ''));
-    await fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_escalation') {
     const warnCount = Math.max(1, Number(form.get('warn_count') ?? 0) || 0);
     const escAction = String(form.get('esc_action') ?? 'mute');
     const durationMinutes = Number(form.get('duration_minutes') ?? 0) || 0;
     if (warnCount > 0) {
-      await fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules`, {
+      await fetch(`${apiUrl}/rest/v1/warn_escalation_rules`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({
           guild_id: id, warn_count: warnCount, action: escAction,
           duration_ms: durationMinutes > 0 ? durationMinutes * 60000 : null,
@@ -108,21 +108,21 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'delete_escalation') {
     const warnCount = Number(form.get('warn_count') ?? 0) || 0;
-    await fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&warn_count=eq.${warnCount}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&warn_count=eq.${warnCount}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   }
 }
 
 const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes, stickyRolesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${supabaseUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=25`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=25`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: apiHeaders }),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-  () => fetch(`${supabaseUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled`, { headers: supabaseHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders }),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 

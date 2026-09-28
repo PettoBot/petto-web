@@ -28,7 +28,7 @@ export async function getCachedUserGuilds(accessToken: string): Promise<any[]> {
   }
 }
 
-// Which guilds the bot is *currently* in, straight from Discord. The `guilds` Supabase table
+// Which guilds the bot is *currently* in, straight from Discord. The `guilds` API table
 // is not a substitute for this: it's a config-row cache created the first time a guild is
 // touched and never cleaned up on guildDelete, so it still lists servers a bot was removed
 // from (or, on a shared database, servers only a different bot instance ever joined).

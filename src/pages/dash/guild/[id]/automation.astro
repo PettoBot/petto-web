@@ -10,8 +10,8 @@ import { hasPremiumForGuild } from '../../../../utils/premium';
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'overview';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-const supabaseUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
-const supabaseKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
@@ -20,11 +20,11 @@ const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 const customCommandLimit = premiumActive ? 100 : 25;
 const responderLimit = premiumActive ? 75 : 15;
 
-if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
-const supabaseHeaders = {
-  apikey: supabaseKey,
-  Authorization: `Bearer ${supabaseKey}`,
+const apiHeaders = {
+  apikey: apiKey,
+  Authorization: `Bearer ${apiKey}`,
   'Content-Type': 'application/json',
 };
 
@@ -54,8 +54,8 @@ async function syncReactionRoleButtons(channelId: string, messageId: string) {
   const foreignComponents = (message.components ?? []).some((row: any) => (row.components ?? []).some((component: any) => component.custom_id && !String(component.custom_id).startsWith('rr:')));
   if (foreignComponents) return { ok: false, message: 'That message already has another component panel. Use a message without buttons or selects for button roles.' };
 
-  const rowsUrl = supabaseUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&message_id=eq.' + encodeURIComponent(messageId) + '&interaction_type=eq.button&select=id,emoji,role_id,mode,button_label&order=id.asc';
-  const rowsRes = await fetch(rowsUrl, { headers: supabaseHeaders });
+  const rowsUrl = apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&message_id=eq.' + encodeURIComponent(messageId) + '&interaction_type=eq.button&select=id,emoji,role_id,mode,button_label&order=id.asc';
+  const rowsRes = await fetch(rowsUrl, { headers: apiHeaders });
   if (!rowsRes.ok) return { ok: false, message: "Couldn't read the button role configuration." };
   const rows = await rowsRes.json();
   if (rows.length > 25) return { ok: false, message: 'A message can have at most 25 button roles.' };
@@ -139,7 +139,7 @@ if (Astro.request.method === 'POST') {
     const response = String(form.get('response') ?? '').trim().slice(0, 500) || null;
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (name && (response || embedTemplate)) {
-      const countRes = await fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const countRes = await fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const current = countRes.ok ? await countRes.json() : null;
       if (!current) {
         error = "Couldn't check the custom command limit, try again.";
@@ -148,9 +148,9 @@ if (Astro.request.method === 'POST') {
           ? `You have reached the ${customCommandLimit} custom command limit.`
           : 'The Free plan includes 25 custom commands. Premium unlocks up to 100.';
       } else {
-        const res = await fetch(`${supabaseUrl}/rest/v1/custom_commands`, {
+        const res = await fetch(`${apiUrl}/rest/v1/custom_commands`, {
           method: 'POST',
-          headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
           body: JSON.stringify({ guild_id: id, name, response, embed_template: embedTemplate }),
         });
         if (res.ok) saved = true;
@@ -158,7 +158,7 @@ if (Astro.request.method === 'POST') {
       }
     }
   } else if (action === 'delete_command') {
-    await fetch(`${supabaseUrl}/rest/v1/custom_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/custom_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_responder') {
     const trigger = String(form.get('trigger') ?? '').trim().slice(0, 80);
@@ -176,16 +176,16 @@ if (Astro.request.method === 'POST') {
     const embedFooter = String(form.get('embed_footer') ?? '').trim().slice(0, 100) || null;
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (trigger && (reply || embedTemplate)) {
-      const countRes = await fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const countRes = await fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const current = countRes.ok ? await countRes.json() : null;
       if (!current) {
         error = "Couldn't check the autoresponder limit, try again.";
       } else if (current.length >= responderLimit) {
         error = premiumActive ? 'You have reached the 75 autoresponder limit.' : 'The Free plan includes 15 autoresponders. Premium unlocks up to 75.';
       } else {
-        const res = await fetch(`${supabaseUrl}/rest/v1/auto_responders`, {
+        const res = await fetch(`${apiUrl}/rest/v1/auto_responders`, {
           method: 'POST',
-          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+          headers: { ...apiHeaders, Prefer: 'return=minimal' },
           body: JSON.stringify({
             guild_id: id, ar_id: crypto.randomUUID().slice(0, 8), trigger, reply, match_mode: matchMode,
             delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
@@ -215,9 +215,9 @@ if (Astro.request.method === 'POST') {
     const embedFooter = String(form.get('embed_footer') ?? '').trim().slice(0, 100) || null;
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (arId && trigger && (reply || embedTemplate)) {
-      await fetch(`${supabaseUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(arId)}&guild_id=eq.${id}`, {
+      await fetch(`${apiUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(arId)}&guild_id=eq.${id}`, {
         method: 'PATCH',
-        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'return=minimal' },
         body: JSON.stringify({
           trigger, reply, match_mode: matchMode, delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
           channel_ids: channelIds, role_ids: roleIds, reply_type: replyType, embed_color: embedColor, embed_title: embedTitle,
@@ -227,7 +227,7 @@ if (Astro.request.method === 'POST') {
       saved = true;
     }
   } else if (action === 'delete_responder') {
-    await fetch(`${supabaseUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(String(form.get('ar_id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(String(form.get('ar_id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_sticky') {
     const channelId = String(form.get('channel_id') ?? '');
@@ -235,15 +235,15 @@ if (Astro.request.method === 'POST') {
     // (it doesn't re-resolve placeholders), so this has to happen before the row is saved.
     const content = String(form.get('content') ?? '').trim().slice(0, 500).replaceAll('{newline}', '\n').replaceAll('{separator}', '──────────────────────');
     if (channelId && content) {
-      await fetch(`${supabaseUrl}/rest/v1/sticky_messages`, {
+      await fetch(`${apiUrl}/rest/v1/sticky_messages`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ guild_id: id, channel_id: channelId, content }),
       });
       saved = true;
     }
   } else if (action === 'delete_sticky') {
-    await fetch(`${supabaseUrl}/rest/v1/sticky_messages?channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/sticky_messages?channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_reactionrole') {
     const channelId = String(form.get('channel_id') ?? '');
@@ -262,9 +262,9 @@ if (Astro.request.method === 'POST') {
         if (!reactRes.ok) reactionRoleError = "Couldn't react to that message, check the channel, message ID, and emoji.";
       }
       if (!reactionRoleError) {
-        const insertRes = await fetch(supabaseUrl + '/rest/v1/reaction_roles', {
+        const insertRes = await fetch(apiUrl + '/rest/v1/reaction_roles', {
           method: 'POST',
-          headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
           body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: messageId, emoji, role_id: roleId, mode, interaction_type: interactionType, button_label: interactionType === 'button' ? buttonLabel : null }),
         });
         if (!insertRes.ok) reactionRoleError = "Couldn't save that role binding.";
@@ -277,11 +277,11 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'delete_reactionrole') {
     const roleBindingId = String(form.get('id') ?? '');
-    const oldUrl = supabaseUrl + '/rest/v1/reaction_roles?id=eq.' + encodeURIComponent(roleBindingId) + '&guild_id=eq.' + id + '&select=channel_id,message_id,interaction_type';
-    const oldRes = await fetch(oldUrl, { headers: supabaseHeaders });
+    const oldUrl = apiUrl + '/rest/v1/reaction_roles?id=eq.' + encodeURIComponent(roleBindingId) + '&guild_id=eq.' + id + '&select=channel_id,message_id,interaction_type';
+    const oldRes = await fetch(oldUrl, { headers: apiHeaders });
     const oldRows = oldRes.ok ? await oldRes.json() : [];
-    const deleteUrl = supabaseUrl + '/rest/v1/reaction_roles?id=eq.' + encodeURIComponent(roleBindingId) + '&guild_id=eq.' + id;
-    const deleteRes = await fetch(deleteUrl, { method: 'DELETE', headers: supabaseHeaders });
+    const deleteUrl = apiUrl + '/rest/v1/reaction_roles?id=eq.' + encodeURIComponent(roleBindingId) + '&guild_id=eq.' + id;
+    const deleteRes = await fetch(deleteUrl, { method: 'DELETE', headers: apiHeaders });
     if (deleteRes.ok && oldRows[0]?.interaction_type === 'button') {
       const sync = await syncReactionRoleButtons(oldRows[0].channel_id, oldRows[0].message_id);
       if (!sync.ok) reactionRoleError = sync.message;
@@ -296,36 +296,36 @@ if (Astro.request.method === 'POST') {
     const cooldownSeconds = Math.max(0, Math.min(86400, Number(form.get('cooldown_seconds') ?? 0) || 0));
     const common = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'can', 'do', 'for', 'from', 'get', 'go', 'have', 'he', 'hey', 'hi', 'i', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'our', 'so', 'that', 'the', 'this', 'to', 'was', 'we', 'what', 'when', 'where', 'who', 'why', 'will', 'with', 'you', 'your']);
     if (emoji && trigger.length >= 2 && !common.has(trigger)) {
-      const res = await fetch(`${supabaseUrl}/rest/v1/reaction_triggers`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, emoji, trigger, owner_id: session.userId, match_mode: matchMode, channel_ids: channelIds, role_ids: roleIds, case_sensitive: form.get('case_sensitive') === 'on', cooldown_seconds: cooldownSeconds }) });
+      const res = await fetch(`${apiUrl}/rest/v1/reaction_triggers`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, emoji, trigger, owner_id: session.userId, match_mode: matchMode, channel_ids: channelIds, role_ids: roleIds, case_sensitive: form.get('case_sensitive') === 'on', cooldown_seconds: cooldownSeconds }) });
       saved = res.ok;
       if (!res.ok) error = 'That emoji and trigger may already be configured.';
     } else {
       error = 'Use an emoji and a specific trigger phrase (common one-word triggers are blocked).';
     }
   } else if (action === 'delete_reaction_trigger') {
-    await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/reaction_triggers?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'reset_reaction_triggers') {
-    await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'edit_reaction_trigger') {
     const triggerId = String(form.get('id') ?? '').trim();
     const channelIds = form.getAll('trigger_channel_ids').map(String);
     const roleIds = form.getAll('trigger_role_ids').map(String);
     const patch = { match_mode: String(form.get('match_mode') ?? 'contains'), channel_ids: channelIds, role_ids: roleIds, case_sensitive: form.get('case_sensitive') === 'on', cooldown_seconds: Math.max(0, Math.min(86400, Number(form.get('cooldown_seconds') ?? 0) || 0)), enabled: form.get('enabled') === 'on' };
-    const res = await fetch(`${supabaseUrl}/rest/v1/reaction_triggers?id=eq.${encodeURIComponent(triggerId)}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+    const res = await fetch(`${apiUrl}/rest/v1/reaction_triggers?id=eq.${encodeURIComponent(triggerId)}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
     saved = res.ok;
   } else if (action === 'save_reaction_messages') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const emojis = [...new Set(form.getAll('emojis').map(String).map((value) => value.trim()).filter(Boolean))].slice(0, 3);
     if (channelId) {
       const res = emojis.length
-        ? await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, emojis }) })
-        : await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: supabaseHeaders });
+        ? await fetch(`${apiUrl}/rest/v1/reaction_message_configs`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, emojis }) })
+        : await fetch(`${apiUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: apiHeaders });
       saved = res.ok;
     }
   } else if (action === 'delete_reaction_messages') {
-    await fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'create_webhook') {
     const channelId = String(form.get('channel_id') ?? '').trim();
@@ -337,7 +337,7 @@ if (Astro.request.method === 'POST') {
       const createRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/webhooks`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
       if (createRes.ok) {
         const webhook = await createRes.json();
-        const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name ?? name, created_by: session.userId, default_username: defaultUsername, default_avatar_url: defaultAvatarUrl, default_message: defaultMessage }) });
+        const dbRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name ?? name, created_by: session.userId, default_username: defaultUsername, default_avatar_url: defaultAvatarUrl, default_message: defaultMessage }) });
         saved = dbRes.ok;
       } else error = 'Could not create the webhook. Check Manage Webhooks in that channel.';
     }
@@ -349,7 +349,7 @@ if (Astro.request.method === 'POST') {
     const embedTitle = String(form.get('embed_title') ?? '').trim().slice(0, 256) || undefined;
     const embedDescription = String(form.get('embed_description') ?? '').trim().slice(0, 4096) || undefined;
     const embedColor = String(form.get('embed_color') ?? '').trim().replace('#', '');
-    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token,default_message,default_username,default_avatar_url,default_embed`, { headers: supabaseHeaders });
+    const rowRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token,default_message,default_username,default_avatar_url,default_embed`, { headers: apiHeaders });
     const [row] = rowRes.ok ? await rowRes.json() : [];
     const embed = embedTitle || embedDescription ? { ...(embedTitle ? { title: embedTitle } : {}), ...(embedDescription ? { description: embedDescription } : {}), ...( /^[0-9a-fA-F]{6}$/.test(embedColor) ? { color: parseInt(embedColor, 16) } : {}) } : row?.default_embed;
     if (row && (message || row.default_message || embed)) {
@@ -359,26 +359,26 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'edit_webhook') {
     const localId = String(form.get('id') ?? '').trim();
     const patch = { name: String(form.get('name') ?? '').trim().slice(0, 80), default_username: String(form.get('default_username') ?? '').trim().slice(0, 80) || null, default_avatar_url: String(form.get('default_avatar_url') ?? '').trim() || null, default_message: String(form.get('default_message') ?? '').trim().slice(0, 2000) || null, enabled: form.get('enabled') === 'on' };
-    const res = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+    const res = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
     saved = res.ok;
   } else if (action === 'duplicate_webhook') {
     const localId = String(form.get('id') ?? '').trim();
-    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+    const rowRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
     const [row] = rowRes.ok ? await rowRes.json() : [];
     if (row) {
       const createRes = await fetch(`https://discord.com/api/v10/channels/${row.channel_id}/webhooks`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${row.name} copy`.slice(0, 80) }) });
       if (createRes.ok) {
         const webhook = await createRes.json();
-        const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: row.channel_id, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name, created_by: session.userId, default_username: row.default_username, default_avatar_url: row.default_avatar_url, default_message: row.default_message, default_embed: row.default_embed }) });
+        const dbRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: row.channel_id, webhook_id: webhook.id, webhook_token: webhook.token, name: webhook.name, created_by: session.userId, default_username: row.default_username, default_avatar_url: row.default_avatar_url, default_message: row.default_message, default_embed: row.default_embed }) });
         saved = dbRes.ok;
       }
     }
   } else if (action === 'delete_webhook') {
     const localId = String(form.get('id') ?? '').trim();
-    const rowRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token`, { headers: supabaseHeaders });
+    const rowRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token`, { headers: apiHeaders });
     const [row] = rowRes.ok ? await rowRes.json() : [];
     if (row) await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}`, { method: 'DELETE' }).catch(() => {});
-    const dbRes = await fetch(`${supabaseUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    const dbRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = dbRes.ok;
   } else if (action === 'create_counter') {
     const option = String(form.get('option') ?? '').trim().toLowerCase();
@@ -393,33 +393,33 @@ if (Astro.request.method === 'POST') {
       const channelRes = await fetch(`https://discord.com/api/v10/guilds/${id}/channels`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${prefix}${option}${suffix}`.slice(0, 100), type: typeCode[type], parent_id: parentId }) });
       if (channelRes.ok) {
         const channel = await channelRes.json();
-        const dbRes = await fetch(`${supabaseUrl}/rest/v1/server_counters`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: session.userId, parent_id: parentId, name_template: nameTemplate, prefix, suffix, interval_seconds: intervalSeconds }) });
+        const dbRes = await fetch(`${apiUrl}/rest/v1/server_counters`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: session.userId, parent_id: parentId, name_template: nameTemplate, prefix, suffix, interval_seconds: intervalSeconds }) });
         saved = dbRes.ok;
       } else error = 'Could not create the counter channel. Check Manage Channels.';
     }
   } else if (action === 'delete_counter') {
     const channelId = String(form.get('channel_id') ?? '').trim();
-    const res = await fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: supabaseHeaders });
+    const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: apiHeaders });
     saved = res.ok;
   } else if (action === 'edit_counter') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const patch = { name_template: String(form.get('name_template') ?? '{option}: {value}').trim().slice(0, 100) || '{option}: {value}', prefix: String(form.get('prefix') ?? '').slice(0, 30), suffix: String(form.get('suffix') ?? '').slice(0, 30), interval_seconds: Math.max(60, Math.min(86400, Number(form.get('interval_seconds') ?? 60) || 60)), parent_id: String(form.get('parent_id') ?? '').trim() || null, enabled: form.get('enabled') === 'on' };
-    const res = await fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+    const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
     if (res.ok) await fetch(`https://discord.com/api/v10/channels/${channelId}`, { method: 'PATCH', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_id: patch.parent_id }) }).catch(() => {});
     saved = res.ok;
   } else if (action === 'add_disabled') {
     const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
     const channelId = String(form.get('channel_id') ?? '').trim() || null;
     if (command) {
-      await fetch(`${supabaseUrl}/rest/v1/disabled_commands`, {
+      await fetch(`${apiUrl}/rest/v1/disabled_commands`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'return=minimal' },
         body: JSON.stringify({ guild_id: id, command, channel_id: channelId }),
       });
       saved = true;
     }
   } else if (action === 'delete_disabled') {
-    await fetch(`${supabaseUrl}/rest/v1/disabled_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/disabled_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_autothread') {
     const channelId = String(form.get('channel_id') ?? '').trim();
@@ -428,39 +428,39 @@ if (Astro.request.method === 'POST') {
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     const archiveMinutes = Number(form.get('archive_minutes')) || 60;
     if (channelId) {
-      await fetch(`${supabaseUrl}/rest/v1/auto_threads`, {
+      await fetch(`${apiUrl}/rest/v1/auto_threads`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ guild_id: id, channel_id: channelId, name_template: nameTemplate, message_text: messageText, embed_template: embedTemplate, archive_minutes: archiveMinutes }),
       });
       saved = true;
     }
   } else if (action === 'delete_autothread') {
-    await fetch(`${supabaseUrl}/rest/v1/auto_threads?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/auto_threads?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_alias') {
     const name = String(form.get('name') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32);
     const command = String(form.get('command') ?? '').trim().slice(0, 500);
     if (name && command && !['alias', 'timer', 'starboard', 'voicemaster'].includes(name)) {
-      const res = await fetch(`${supabaseUrl}/rest/v1/command_aliases`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, name, command }) });
+      const res = await fetch(`${apiUrl}/rest/v1/command_aliases`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, name, command }) });
       saved = res.ok;
     }
   } else if (action === 'delete_alias') {
     const name = encodeURIComponent(String(form.get('name') ?? ''));
-    const res = await fetch(`${supabaseUrl}/rest/v1/command_aliases?guild_id=eq.${id}&name=eq.${name}`, { method: 'DELETE', headers: supabaseHeaders });
+    const res = await fetch(`${apiUrl}/rest/v1/command_aliases?guild_id=eq.${id}&name=eq.${name}`, { method: 'DELETE', headers: apiHeaders });
     saved = res.ok;
   } else if (action === 'add_timer') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const minutes = Math.max(10, Math.min(525600, Number(form.get('interval_minutes') ?? 10) || 10));
     const message = String(form.get('message') ?? '').trim().slice(0, 2000);
     if (channelId && message) {
-      const res = await fetch(`${supabaseUrl}/rest/v1/auto_messages`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, interval_ms: minutes * 60 * 1000, message, next_run_at: new Date(Date.now() + minutes * 60 * 1000).toISOString() }) });
+      const res = await fetch(`${apiUrl}/rest/v1/auto_messages`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, interval_ms: minutes * 60 * 1000, message, next_run_at: new Date(Date.now() + minutes * 60 * 1000).toISOString() }) });
       saved = res.ok;
       if (!res.ok) error = 'That channel may already have a timer.';
     }
   } else if (action === 'delete_timer') {
     const timerId = encodeURIComponent(String(form.get('id') ?? ''));
-    const res = await fetch(`${supabaseUrl}/rest/v1/auto_messages?guild_id=eq.${id}&id=eq.${timerId}`, { method: 'DELETE', headers: supabaseHeaders });
+    const res = await fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&id=eq.${timerId}`, { method: 'DELETE', headers: apiHeaders });
     saved = res.ok;
   } else if (action === 'save_starboard') {
     const channelId = String(form.get('channel_id') ?? '').trim() || null;
@@ -469,11 +469,11 @@ if (Astro.request.method === 'POST') {
     const ignoredChannelIds = form.getAll('ignored_channel_ids').map(String);
     const ignoredRoleIds = form.getAll('ignored_role_ids').map(String);
     const ignoredUserIds = String(form.get('ignored_user_ids') ?? '').split(/[\s,]+/).map((v) => v.trim()).filter((v) => /^\d{15,25}$/.test(v)).slice(0, 100);
-    const res = await fetch(`${supabaseUrl}/rest/v1/starboards`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, threshold, emoji, selfstar: form.get('selfstar') === 'on', timestamp: form.get('timestamp') === 'on', jumpurl: form.get('jumpurl') === 'on', attachments: form.get('attachments') === 'on', ignored_channel_ids: ignoredChannelIds, ignored_role_ids: ignoredRoleIds, ignored_user_ids: ignoredUserIds }) });
+    const res = await fetch(`${apiUrl}/rest/v1/starboards`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, threshold, emoji, selfstar: form.get('selfstar') === 'on', timestamp: form.get('timestamp') === 'on', jumpurl: form.get('jumpurl') === 'on', attachments: form.get('attachments') === 'on', ignored_channel_ids: ignoredChannelIds, ignored_role_ids: ignoredRoleIds, ignored_user_ids: ignoredUserIds }) });
     saved = res.ok;
   } else if (action === 'disable_starboard') {
-    const entriesRes = await fetch(`${supabaseUrl}/rest/v1/starboard_entries?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
-    const res = await fetch(`${supabaseUrl}/rest/v1/starboards?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    const entriesRes = await fetch(`${apiUrl}/rest/v1/starboard_entries?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+    const res = await fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = entriesRes.ok && res.ok;
   } else if (action === 'save_voicemaster') {
     const creatorChannelId = String(form.get('creator_channel_id') ?? '').trim();
@@ -482,45 +482,45 @@ if (Astro.request.method === 'POST') {
     const defaultLimit = Math.max(0, Math.min(99, Number(form.get('default_limit') ?? 0) || 0));
     const defaultName = String(form.get('default_name') ?? '{user.name}').trim().slice(0, 100) || '{user.name}';
     if (creatorChannelId && panelChannelId) {
-      const oldRes = await fetch(`${supabaseUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=panel_channel_id,panel_message_id`, { headers: supabaseHeaders });
+      const oldRes = await fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=panel_channel_id,panel_message_id`, { headers: apiHeaders });
       const [old] = oldRes.ok ? await oldRes.json() : [];
       if (old && (old.panel_channel_id !== panelChannelId || form.get('resend_panel') === 'on')) await deleteDiscordMessage(old.panel_channel_id, old.panel_message_id);
       const panelMessageId = old && old.panel_channel_id === panelChannelId && form.get('resend_panel') !== 'on' ? old.panel_message_id : await postVoiceMasterPanel(panelChannelId);
       if (!panelMessageId) {
         error = 'Could not post the VoiceMaster panel. Check the bot permissions in that channel.';
       } else {
-        const res = await fetch(`${supabaseUrl}/rest/v1/voice_configs`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, creator_channel_id: creatorChannelId, panel_channel_id: panelChannelId, panel_message_id: panelMessageId, category_id: categoryId, default_limit: defaultLimit, default_name: defaultName, updated_at: new Date().toISOString() }) });
+        const res = await fetch(`${apiUrl}/rest/v1/voice_configs`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, creator_channel_id: creatorChannelId, panel_channel_id: panelChannelId, panel_message_id: panelMessageId, category_id: categoryId, default_limit: defaultLimit, default_name: defaultName, updated_at: new Date().toISOString() }) });
         saved = res.ok;
       }
     }
   } else if (action === 'disable_voicemaster') {
-    const oldRes = await fetch(`${supabaseUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=panel_channel_id,panel_message_id`, { headers: supabaseHeaders });
+    const oldRes = await fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=panel_channel_id,panel_message_id`, { headers: apiHeaders });
     const [old] = oldRes.ok ? await oldRes.json() : [];
     await deleteDiscordMessage(old?.panel_channel_id, old?.panel_message_id);
-    const res = await fetch(`${supabaseUrl}/rest/v1/voice_configs?guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    const res = await fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = res.ok;
   }
 }
 
 const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${supabaseUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: supabaseHeaders }),
-  () => fetch(supabaseUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id,default_username,default_avatar_url,default_message,default_embed,enabled&order=id.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type,name_template,prefix,suffix,parent_id,interval_seconds,enabled&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content`, { headers: apiHeaders }),
+  () => fetch(apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id,default_username,default_avatar_url,default_message,default_embed,enabled&order=id.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type,name_template,prefix,suffix,parent_id,interval_seconds,enabled&order=id.asc`, { headers: apiHeaders }),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-  () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 

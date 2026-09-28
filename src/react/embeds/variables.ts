@@ -1,11 +1,11 @@
-// Keep this list aligned with the bot's resolver. The choose and range tokens are handled by
-// dedicated patterns, while context-only tokens resolve only in the events that provide them.
+// Keep this list aligned with the bot's resolver. The choose/range tokens and response flags are
+// handled by dedicated logic, while context-only tokens resolve only in the events that provide them.
 export interface VarDef { tok: string; desc: string }
 export interface VarGroup { label: string; vars: VarDef[] }
 
 export const VARIABLE_GROUPS: VarGroup[] = [
   {
-    label: 'User',
+    label: 'User dot notation',
     vars: [
       { tok: '{user}', desc: 'Mentions the user' },
       { tok: '{user.mention}', desc: 'Mentions the user (same as {user})' },
@@ -73,7 +73,7 @@ export const VARIABLE_GROUPS: VarGroup[] = [
     ],
   },
   {
-    label: 'Guild',
+    label: 'Guild dot notation',
     vars: [
       { tok: '{guild.name}', desc: 'Server name' },
       { tok: '{guild.id}', desc: 'Server ID' },
@@ -127,13 +127,43 @@ export const VARIABLE_GROUPS: VarGroup[] = [
     vars: [
       { tok: '{gw.prize}', desc: 'The prize' },
       { tok: '{gw.winners}', desc: 'Number of winners' },
+      { tok: '{gw.entries}', desc: 'Current number of entries' },
       { tok: '{gw.host}', desc: 'Mentions whoever started it' },
+      { tok: '{gw.host_name}', desc: "The host's username" },
+      { tok: '{gw.host_avatar}', desc: "The host's avatar image URL" },
       { tok: '{gw.duration}', desc: 'End time, as a raw unix timestamp' },
       { tok: '{gw.timestamp}', desc: 'End time, as a relative Discord timestamp' },
+      { tok: '{gw.ends}', desc: 'End time as a relative Discord timestamp' },
       { tok: '{gw.claim_time}', desc: 'How long winners have to claim' },
       { tok: '{gw.reaction}', desc: 'The entry emoji, if using reaction mode' },
       { tok: '{gw.entry_mode}', desc: '"react with" or "click on", matches entry mode' },
+      { tok: '{gw.entry_text}', desc: 'Entry instruction, based on the selected method' },
+      { tok: '{gw.winner_text}', desc: 'Winner-count text used by the giveaway' },
+      { tok: '{gw.status}', desc: 'Active or Ended' },
       { tok: '{gw.preset}', desc: 'The bonus-entry roles list, if a preset is used' },
+    ],
+  },
+  {
+    label: 'Custom Commands',
+    vars: [
+      { tok: '{args}', desc: 'All text after the command name' },
+      { tok: '{arguments}', desc: 'Alias for {args}' },
+      { tok: '{args_raw}', desc: 'Alias for {args}; keeps the full argument text' },
+      { tok: '{arg1}', desc: 'First argument' },
+      { tok: '{arg2}', desc: 'Second argument' },
+      { tok: '{arg3}', desc: 'Third argument' },
+      { tok: '{arg4}', desc: 'Fourth argument' },
+      { tok: '{arg5}', desc: 'Fifth argument' },
+      { tok: '{arg6}', desc: 'Sixth argument' },
+      { tok: '{arg7}', desc: 'Seventh argument' },
+      { tok: '{arg8}', desc: 'Eighth argument' },
+      { tok: '{arg9}', desc: 'Ninth argument' },
+      { tok: '{arg10}', desc: 'Tenth argument' },
+      { tok: '{args_from:2}', desc: 'All arguments starting at the given position' },
+      { tok: '{arg_count}', desc: 'Number of arguments supplied' },
+      { tok: '{command_name}', desc: 'The command name that was used' },
+      { tok: '{prefix}', desc: 'The prefix that was used' },
+      { tok: '{reactreply:emoji}', desc: 'Response flag: reacts to the sent message with this emoji; repeat it for more reactions' },
     ],
   },
   {

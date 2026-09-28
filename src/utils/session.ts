@@ -1,9 +1,7 @@
-// Signed session cookie for the dashboard login. Not encrypted, just tamper-evident:
-// the HMAC signature means a forged/edited cookie fails verification outright, and the
-// real security boundary is Discord itself (every request re-checks access with the
-// stored access_token, so a bad cookie can only fail closed, never grant someone else's
-// guilds). Uses Web Crypto only (no Node `Buffer`) so it runs the same in `astro dev`
-// and in the Cloudflare Workers runtime.
+// Encrypted session cookie for the dashboard login. The browser only receives an
+// opaque AES-GCM payload; Discord OAuth tokens never appear as readable cookie data.
+// Uses Web Crypto only (no Node `Buffer`) so it runs the same in `astro dev` and in
+// the Cloudflare Workers runtime.
 
 export interface Session {
   userId: string;
@@ -35,13 +33,52 @@ async function hmac(secret: string, data: string): Promise<string> {
   return toBase64Url(new Uint8Array(sig));
 }
 
+async function encryptionKey(secret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+function isSession(value: unknown): value is Session {
+  if (!value || typeof value !== 'object') return false;
+  const session = value as Partial<Session>;
+  return typeof session.userId === 'string'
+    && typeof session.username === 'string'
+    && (session.avatar === null || typeof session.avatar === 'string')
+    && typeof session.accessToken === 'string'
+    && typeof session.refreshToken === 'string'
+    && typeof session.expiresAt === 'number';
+}
+
 export async function encodeSession(session: Session, secret: string): Promise<string> {
-  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(session)));
-  const sig = await hmac(secret, payload);
-  return `${payload}.${sig}`;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await encryptionKey(secret);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    new TextEncoder().encode(JSON.stringify(session)),
+  );
+  return `v1.${toBase64Url(iv)}.${toBase64Url(new Uint8Array(ciphertext))}`;
 }
 
 export async function decodeSession(value: string, secret: string): Promise<Session | null> {
+  if (value.startsWith('v1.')) {
+    const [, encodedIv, encodedCiphertext] = value.split('.');
+    if (!encodedIv || !encodedCiphertext) return null;
+    try {
+      const plaintext = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: fromBase64Url(encodedIv) },
+        await encryptionKey(secret),
+        fromBase64Url(encodedCiphertext),
+      );
+      const session: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+      return isSession(session) ? session : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Accept one existing signed cookie so an already logged-in user is upgraded
+  // to the encrypted format without forcing an avoidable logout.
   const dot = value.lastIndexOf('.');
   if (dot === -1) return null;
   const payload = value.slice(0, dot);
@@ -49,7 +86,8 @@ export async function decodeSession(value: string, secret: string): Promise<Sess
   const expected = await hmac(secret, payload);
   if (expected !== sig) return null;
   try {
-    return JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    const session: unknown = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    return isSession(session) ? session : null;
   } catch {
     return null;
   }

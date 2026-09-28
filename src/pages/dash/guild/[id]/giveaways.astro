@@ -9,8 +9,8 @@ import { hasPremiumForGuild } from '../../../../utils/premium';
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-const supabaseUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
-const supabaseKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
@@ -18,13 +18,21 @@ const { session } = auth;
 const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 const giveawayPresetLimit = premiumActive ? 15 : 3;
 
-if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
-const supabaseHeaders = {
-  apikey: supabaseKey,
-  Authorization: `Bearer ${supabaseKey}`,
+const apiHeaders = {
+  apikey: apiKey,
+  Authorization: `Bearer ${apiKey}`,
   'Content-Type': 'application/json',
 };
+
+function parseDurationMs(value: string): number {
+  if (!value) return 0;
+  const match = /^(\d+(?:\.\d+)?)\s*(s|m|h|d|w)$/i.exec(value);
+  if (!match) return 0;
+  const units: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+  return Math.max(0, Math.round(Number(match[1]) * units[match[2].toLowerCase()]));
+}
 
 let saved = false;
 
@@ -33,11 +41,13 @@ if (Astro.request.method === 'POST') {
   const action = String(form.get('action') ?? '');
 
   if (action === 'config') {
-    await fetch(`${supabaseUrl}/rest/v1/giveaway_config`, {
+    const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
+    await fetch(`${apiUrl}/rest/v1/giveaway_config`, {
       method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
         guild_id: id,
+        embed_template: embedTemplate,
         entry_mode: String(form.get('entry_mode') ?? 'button'),
         reaction: String(form.get('reaction') ?? '🎉').trim().slice(0, 4) || '🎉',
         winner_message: String(form.get('winner_message') ?? '').trim().slice(0, 200) || null,
@@ -52,12 +62,12 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'add_preset') {
     const name = String(form.get('name') ?? '').trim().slice(0, 40);
     if (name) {
-      const countRes = await fetch(`${supabaseUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const countRes = await fetch(`${apiUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const current = countRes.ok ? await countRes.json() : null;
       if (current && current.length < giveawayPresetLimit) {
-        const res = await fetch(`${supabaseUrl}/rest/v1/giveaway_presets`, {
+        const res = await fetch(`${apiUrl}/rest/v1/giveaway_presets`, {
           method: 'POST',
-          headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+          headers: { ...apiHeaders, Prefer: 'return=minimal' },
           body: JSON.stringify({ guild_id: id, name }),
         });
         saved = res.ok;
@@ -65,37 +75,40 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'delete_preset') {
     const presetId = encodeURIComponent(String(form.get('preset_id') ?? ''));
-    await fetch(`${supabaseUrl}/rest/v1/giveaway_presets?id=eq.${presetId}&guild_id=eq.${id}`, { method: 'DELETE', headers: supabaseHeaders });
+    await fetch(`${apiUrl}/rest/v1/giveaway_presets?id=eq.${presetId}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
   } else if (action === 'add_preset_role') {
     const presetId = Number(form.get('preset_id') ?? 0);
     const roleId = String(form.get('role_id') ?? '');
     const entries = Math.max(1, Math.min(100, Number(form.get('entries') ?? 1) || 1));
+    const claimTimeMs = parseDurationMs(String(form.get('claim_time') ?? '').trim());
     const entriesStack = form.get('entries_stack') === 'on';
     const claimTimeStack = form.get('claim_time_stack') === 'on';
     if (presetId && roleId) {
-      await fetch(`${supabaseUrl}/rest/v1/giveaway_preset_roles`, {
+      await fetch(`${apiUrl}/rest/v1/giveaway_preset_roles`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ preset_id: presetId, role_id: roleId, entries, entries_stack: entriesStack, claim_time_stack: claimTimeStack }),
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ preset_id: presetId, role_id: roleId, entries, claim_time_ms: claimTimeMs, entries_stack: entriesStack, claim_time_stack: claimTimeStack }),
       });
       saved = true;
     }
   }
 }
 
-const [guildInfo, configRes, activeRes, presetsRes, rolesRes] = await Promise.all([
+const [guildInfo, configRes, activeRes, presetsRes, rolesRes, embedTemplatesRes] = await Promise.all([
   getGuildInfo(id, botToken),
-  fetch(`${supabaseUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id,prize,winners_count,ends_at,host_id&order=ends_at.asc`, { headers: supabaseHeaders }),
-  fetch(`${supabaseUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id,name&order=name.asc`, { headers: supabaseHeaders }),
+  fetch(`${apiUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id,prize,winners_count,ends_at,host_id&order=ends_at.asc`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id,name&order=name.asc`, { headers: apiHeaders }),
   fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const configRows = configRes.ok ? await configRes.json() : [];
 const c = configRows[0] ?? {};
 const config = {
+  embedTemplate: c.embed_template ?? '',
   entryMode: c.entry_mode ?? 'button',
   reaction: c.reaction ?? '🎉',
   winnerMessage: c.winner_message ?? '',
@@ -109,8 +122,8 @@ const config = {
 const rawActive = activeRes.ok ? await activeRes.json() : [];
 const active = await Promise.all(
   rawActive.map(async (g: any) => {
-    const countRes = await fetch(`${supabaseUrl}/rest/v1/giveaway_entries?giveaway_id=eq.${g.id}&select=user_id`, {
-      headers: { ...supabaseHeaders, Prefer: 'count=exact' },
+    const countRes = await fetch(`${apiUrl}/rest/v1/giveaway_entries?giveaway_id=eq.${g.id}&select=user_id`, {
+      headers: { ...apiHeaders, Prefer: 'count=exact' },
     });
     const entries = countRes.ok ? (countRes.headers.get('content-range')?.split('/')[1] ?? '0') : '0';
     return { id: g.id, prize: g.prize, winnersCount: g.winners_count, endsAt: g.ends_at, entries: Number(entries), hostId: g.host_id };
@@ -121,13 +134,13 @@ const rawPresets = presetsRes.ok ? await presetsRes.json() : [];
 const presetIds = rawPresets.map((p: any) => p.id);
 let rawPresetRoles: any[] = [];
 if (presetIds.length > 0) {
-  const presetRolesRes = await fetch(`${supabaseUrl}/rest/v1/giveaway_preset_roles?preset_id=in.(${presetIds.join(',')})&select=preset_id,role_id,entries,entries_stack,claim_time_stack`, { headers: supabaseHeaders });
+  const presetRolesRes = await fetch(`${apiUrl}/rest/v1/giveaway_preset_roles?preset_id=in.(${presetIds.join(',')})&select=preset_id,role_id,entries,claim_time_ms,entries_stack,claim_time_stack`, { headers: apiHeaders });
   rawPresetRoles = presetRolesRes.ok ? await presetRolesRes.json() : [];
 }
 const presets = rawPresets.map((p: any) => ({
   id: p.id,
   name: p.name,
-  roles: rawPresetRoles.filter((pr: any) => pr.preset_id === p.id).map((pr: any) => ({ roleId: pr.role_id, entries: pr.entries, entriesStack: pr.entries_stack ?? false, claimTimeStack: pr.claim_time_stack ?? false })),
+  roles: rawPresetRoles.filter((pr: any) => pr.preset_id === p.id).map((pr: any) => ({ roleId: pr.role_id, entries: pr.entries, claimTimeMs: pr.claim_time_ms ?? 0, entriesStack: pr.entries_stack ?? false, claimTimeStack: pr.claim_time_stack ?? false })),
 }));
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
@@ -135,6 +148,7 @@ const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
   .map((r: any) => ({ id: r.id, name: r.name }));
+const embedTemplateNames = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 ---
 <DashGiveaways
   user={session}
@@ -145,6 +159,7 @@ const roles = allRoles
   active={active}
   presets={presets}
   roles={roles}
+  embedTemplateNames={embedTemplateNames}
   premiumActive={premiumActive}
   saved={saved}
   section={section}
