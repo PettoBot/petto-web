@@ -377,6 +377,7 @@ export const ui = {
         { title: 'Privacy', href: '/privacy' },
         { title: 'Cookies', href: '/cookies' },
       ],
+      partners: 'Partners',
       copy: '© 2026 Petto. Actively in development.',
     },
     toolsPage: {
@@ -1258,6 +1259,7 @@ export const ui = {
         { title: 'Privacidad', href: '/privacy' },
         { title: 'Cookies', href: '/cookies' },
       ],
+      partners: 'Partners',
       copy: '© 2026 Petto. En desarrollo activo.',
     },
     toolsPage: {
@@ -2139,6 +2141,7 @@ export const ui = {
         { title: 'Privacidade', href: '/privacy' },
         { title: 'Cookies', href: '/cookies' },
       ],
+      partners: 'Partners',
       copy: '© 2026 Petto. Em desenvolvimento ativo.',
     },
     toolsPage: {
