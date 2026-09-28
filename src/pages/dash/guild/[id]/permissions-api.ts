@@ -85,7 +85,7 @@ export const POST: APIRoute = async (astro) => {
     const subjectId = String(body.subjectId ?? '').trim();
     if (!subjectId) return new Response(JSON.stringify({ error: 'subjectId required' }), { status: 400 });
     const name = await groupName(Number(body.groupId));
-    const res = await fetch(`${apiUrl}/rest/v1/permission_group_members`, {
+    const res = await fetch(`${apiUrl}/rest/v1/permission_group_members?on_conflict=group_id,subject_type,subject_id`, {
       method: 'POST',
       headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ group_id: Number(body.groupId), subject_type: subjectType, subject_id: subjectId }),
@@ -104,7 +104,7 @@ export const POST: APIRoute = async (astro) => {
     const commandName = String(body.commandName ?? '').trim();
     if (!commandName) return new Response(JSON.stringify({ error: 'commandName required' }), { status: 400 });
     const level = Math.max(0, Math.min(100, Number(body.level) || 0));
-    const res = await fetch(`${apiUrl}/rest/v1/command_permission_levels`, {
+    const res = await fetch(`${apiUrl}/rest/v1/command_permission_levels?on_conflict=guild_id,command_name`, {
       method: 'POST',
       headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ guild_id: id, command_name: commandName, required_level: level, updated_at: new Date().toISOString() }),
