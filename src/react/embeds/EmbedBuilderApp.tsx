@@ -192,6 +192,10 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                     <div className="ebr-field"><label>Author name</label><input type="text" value={e.author.name} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, name: ev.target.value } })} /></div>
                     <div className="ebr-field"><label>Author icon URL</label><input type="text" value={e.author.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, icon: ev.target.value } })} placeholder="https://..." /></div>
                   </div>
+                  <div className="ebr-field">
+                    <label>Author link URL</label>
+                    <input type="text" value={e.author.url ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, url: ev.target.value } })} placeholder="https://..." />
+                  </div>
                   <div className="ebr-row-pair">
                     <div className="ebr-field"><label>Footer text</label><input type="text" value={e.footer.text} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: ev.target.value } })} /></div>
                     <div className="ebr-field"><label>Footer icon URL</label><input type="text" value={e.footer.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, icon: ev.target.value } })} placeholder="https://..." /></div>

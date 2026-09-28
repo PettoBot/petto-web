@@ -13,9 +13,9 @@ Hay un hermano de este doc en el repo del bot (`petto-bot`) con el mismo propós
    ```
    `astro.config.mjs` carga las env vars del bot con
    `loadEnv({ path: path.resolve('../petto bot 1/.env') })` — si cambiás el nombre de la carpeta
-   del bot, hay que actualizar esa ruta o el dev server no va a tener Discord/Supabase keys.
+   del bot, hay que actualizar esa ruta o el dev server no va a tener las claves de Discord/API.
 2. El bot necesita su `.env` real copiado a mano (no está en ningún repo). Sin eso, todo lo que
-   pega a Discord/Supabase en el dashboard (login, `/dash/manage`, cualquier página de guild)
+   pega a Discord/API privada en el dashboard (login, `/dash/manage`, cualquier página de guild)
    redirige a `?error=server_not_configured` o similar.
 3. `npm install`, `npm run dev` (Astro 4 + `@astrojs/react` islands, puerto 4321 por defecto).
 4. `npm run build` antes de dar cualquier cambio por terminado, es la única forma real de detectar
@@ -53,7 +53,7 @@ Hay un hermano de este doc en el repo del bot (`petto-bot`) con el mismo propós
 
 Todo lo de esta sección ya está hecho y pusheado a `main`, es contexto para no repetir trabajo:
 
-- **Embed Builder** en React (`src/react/embeds/`), habla con Supabase (`embed_templates`) y con
+- **Embed Builder** en React (`src/react/embeds/`), habla con la API privada (`embed_templates`) y con
   el bot real, no con tokens/webhooks pegados a mano. Incluye preview en vivo, hasta 10 embeds y
   5 filas de botones, y un panel de variables (`VariablesPanel.tsx`) siempre visible (reemplazó un
   popup flotante que se rompía).

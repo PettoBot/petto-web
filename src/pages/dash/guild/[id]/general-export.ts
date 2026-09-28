@@ -16,21 +16,21 @@ const TABLES = [
 export const GET: APIRoute = async (context) => {
   const { id } = context.params as { id: string };
   const botToken = getEnv(context, 'DISCORD_TOKEN');
-  const supabaseUrl = getEnv(context, 'PETTO_BOT_API_URL');
-  const supabaseKey = getEnv(context, 'PETTO_BOT_API_SECRET');
+  const apiUrl = getEnv(context, 'PETTO_BOT_API_URL');
+  const apiKey = getEnv(context, 'PETTO_BOT_API_SECRET');
 
   const auth = await getGuildSession(context, id);
   if ('redirect' in auth) return context.redirect(auth.redirect);
 
-  if (!botToken || !supabaseUrl || !supabaseKey) return new Response('Server not configured', { status: 500 });
+  if (!botToken || !apiUrl || !apiKey) return new Response('Server not configured', { status: 500 });
 
   const guildInfo = await getGuildInfo(id, botToken);
   if (!guildInfo) return new Response('Bot not in guild', { status: 404 });
 
-  const headers = { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` };
+  const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
   const results = await Promise.all(
     TABLES.map(async (table) => {
-      const res = await fetch(`${supabaseUrl}/rest/v1/${table}?guild_id=eq.${id}&select=*`, { headers });
+      const res = await fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&select=*`, { headers });
       return [table, res.ok ? await res.json() : []] as const;
     }),
   );

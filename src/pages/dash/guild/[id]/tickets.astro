@@ -24,8 +24,8 @@ function parseTicketFormFields(spec: string) {
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'panels';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-const supabaseUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
-const supabaseKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
@@ -33,11 +33,11 @@ const { session } = auth;
 const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 const ticketCategoryLimit = premiumActive ? 20 : 5;
 
-if (!botToken || !supabaseUrl || !supabaseKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
-const supabaseHeaders = {
-  apikey: supabaseKey,
-  Authorization: `Bearer ${supabaseKey}`,
+const apiHeaders = {
+  apikey: apiKey,
+  Authorization: `Bearer ${apiKey}`,
   'Content-Type': 'application/json',
 };
 
@@ -52,7 +52,7 @@ async function getGuildVars(): Promise<GuildVars | null> {
   const [guildRes, channelsRes, prefixRes] = await Promise.all([
     fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, { headers: { Authorization: `Bot ${botToken}` } }),
     fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-    fetch(`${supabaseUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: supabaseHeaders }),
+    fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders }),
   ]);
   if (!guildRes.ok) {
     cachedGuildVars = null;
@@ -91,7 +91,7 @@ async function getGuildVars(): Promise<GuildVars | null> {
 
 async function getTemplateData(name: string | null): Promise<any | null> {
   if (!name) return null;
-  const res = await fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}&select=data`, { headers: supabaseHeaders });
+  const res = await fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}&select=data`, { headers: apiHeaders });
   if (!res.ok) return null;
   const [row] = await res.json();
   return row?.data ?? null;
@@ -112,7 +112,7 @@ if (Astro.request.method === 'POST') {
     const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
     if (label) {
-      const countRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const countRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const current = countRes.ok ? await countRes.json() : null;
       if (!current) {
         error = "Couldn't check the ticket type limit, try again.";
@@ -122,9 +122,9 @@ if (Astro.request.method === 'POST') {
           : 'The Free plan includes 5 ticket types. Premium unlocks up to 20.';
       } else {
       const key = `${normalizeKey(label)}-${Date.now().toString(36)}`;
-      const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories`, {
+      const res = await fetch(`${apiUrl}/rest/v1/ticket_categories`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+        headers: { ...apiHeaders, Prefer: 'return=minimal' },
         body: JSON.stringify({ guild_id: id, key, label, emoji, parent_channel_id: parentChannelId, panel_id: panelId }),
       });
       if (res.ok) {
@@ -149,9 +149,9 @@ if (Astro.request.method === 'POST') {
     const maxOpenPerUser = Math.max(1, Math.min(10, Number(form.get('max_open_per_user') ?? 1) || 1));
     const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
-    const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
+    const res = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
       method: 'PATCH',
-      headers: { ...supabaseHeaders, Prefer: 'return=minimal' },
+      headers: { ...apiHeaders, Prefer: 'return=minimal' },
       body: JSON.stringify({
         label, emoji, description, button_style: buttonStyle, naming_pattern: namingPattern, parent_channel_id: parentChannelId,
         support_role_ids: supportRoleIds, ping_role_ids: pingRoleIds,
@@ -171,15 +171,15 @@ if (Astro.request.method === 'POST') {
     } else {
       const formPayload = { guild_id: id, name, title, fields };
       const endpoint = action === 'create_ticket_form'
-        ? `${supabaseUrl}/rest/v1/ticket_forms`
-        : `${supabaseUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}`;
-      const res = await fetch(endpoint, { method: action === 'create_ticket_form' ? 'POST' : 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(action === 'create_ticket_form' ? formPayload : { title, fields, updated_at: new Date().toISOString() }) });
+        ? `${apiUrl}/rest/v1/ticket_forms`
+        : `${apiUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}`;
+      const res = await fetch(endpoint, { method: action === 'create_ticket_form' ? 'POST' : 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(action === 'create_ticket_form' ? formPayload : { title, fields, updated_at: new Date().toISOString() }) });
       if (res.ok) saved = true;
       else error = "Couldn't save that ticket form, try again.";
     }
   } else if (action === 'delete_ticket_form') {
     const formId = String(form.get('form_id') ?? '').trim();
-    const res = await fetch(`${supabaseUrl}/rest/v1/ticket_forms?id=eq.${encodeURIComponent(formId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: { ...supabaseHeaders, Prefer: 'return=minimal' } });
+    const res = await fetch(`${apiUrl}/rest/v1/ticket_forms?id=eq.${encodeURIComponent(formId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: { ...apiHeaders, Prefer: 'return=minimal' } });
     if (res.ok) saved = true;
     else error = "Couldn't delete that ticket form.";
   } else if (action === 'add_ticket_blacklist' || action === 'remove_ticket_blacklist') {
@@ -188,22 +188,22 @@ if (Astro.request.method === 'POST') {
     if (!/^\d{5,25}$/.test(targetId)) {
       error = 'Enter a valid Discord user or role ID.';
     } else if (action === 'add_ticket_blacklist') {
-      const res = await fetch(`${supabaseUrl}/rest/v1/ticket_blacklist`, { method: 'POST', headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, target_type: targetType, target_id: targetId, reason: String(form.get('reason') ?? '').trim().slice(0, 300) || null }) });
+      const res = await fetch(`${apiUrl}/rest/v1/ticket_blacklist`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, target_type: targetType, target_id: targetId, reason: String(form.get('reason') ?? '').trim().slice(0, 300) || null }) });
       if (res.ok) saved = true;
       else error = "Couldn't add that ticket blacklist entry.";
     } else {
-      const res = await fetch(`${supabaseUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&target_type=eq.${targetType}&target_id=eq.${targetId}`, { method: 'DELETE', headers: { ...supabaseHeaders, Prefer: 'return=minimal' } });
+      const res = await fetch(`${apiUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&target_type=eq.${targetType}&target_id=eq.${targetId}`, { method: 'DELETE', headers: { ...apiHeaders, Prefer: 'return=minimal' } });
       if (res.ok) saved = true;
       else error = "Couldn't remove that ticket blacklist entry.";
     }
   } else if (action === 'delete') {
     const rawCategoryId = String(form.get('category_id') ?? '').trim();
     const categoryId = encodeURIComponent(rawCategoryId);
-    const categoryRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: supabaseHeaders });
+    const categoryRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: apiHeaders });
     const [category] = categoryRes.ok ? await categoryRes.json() : [];
-    const res = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
+    const res = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
       method: 'DELETE',
-      headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+      headers: { ...apiHeaders, Prefer: 'return=representation' },
     });
     if (res.ok) {
       const deleted = await res.json().catch(() => []);
@@ -224,9 +224,9 @@ if (Astro.request.method === 'POST') {
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
 
     if (channelId) {
-      const createRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels`, {
+      const createRes = await fetch(`${apiUrl}/rest/v1/ticket_panels`, {
         method: 'POST',
-        headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+        headers: { ...apiHeaders, Prefer: 'return=representation' },
         body: JSON.stringify({ guild_id: id, channel_id: channelId, title, description, style, embed_template: embedTemplate }),
       });
       if (createRes.ok) {
@@ -245,9 +245,9 @@ if (Astro.request.method === 'POST') {
     const style = form.get('style') === 'select' ? 'select' : 'button';
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
 
-    const updateRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+    const updateRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'PATCH',
-      headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+      headers: { ...apiHeaders, Prefer: 'return=representation' },
       body: JSON.stringify({ title, description, style, embed_template: embedTemplate }),
     });
     logTicketPanel('update-panel-database', { panelId, status: updateRes.status, ok: updateRes.ok });
@@ -262,7 +262,7 @@ if (Astro.request.method === 'POST') {
     const panelId = String(form.get('panel_id') ?? '').trim();
     const newChannelId = String(form.get('channel_id') ?? '').trim();
     if (panelId && newChannelId) {
-      const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+      const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
       const [panel] = panelRes.ok ? await panelRes.json() : [];
       logTicketPanel('move-panel-load', { panelId, status: panelRes.status, found: Boolean(panel) });
       const oldMessageDeleted = panel ? await deletePanelMessage(botToken, panel.channel_id, panel.message_id) : false;
@@ -271,9 +271,9 @@ if (Astro.request.method === 'POST') {
       } else if (!oldMessageDeleted) {
         error = "Couldn't remove the old panel message, so it was not moved.";
       } else {
-        const moveRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+        const moveRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
         method: 'PATCH',
-        headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+        headers: { ...apiHeaders, Prefer: 'return=representation' },
         body: JSON.stringify({ channel_id: newChannelId, message_id: null }),
         });
         logTicketPanel('move-panel-database', { panelId, newChannelId, status: moveRes.status, ok: moveRes.ok });
@@ -288,7 +288,7 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'resend_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
-    const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+    const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     logTicketPanel('resend-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
     if (panel) {
@@ -297,7 +297,7 @@ if (Astro.request.method === 'POST') {
       if (!oldMessageDeleted) {
         error = "Couldn't remove the old panel message, so it was not resent.";
       } else {
-        const clearRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=representation' }, body: JSON.stringify({ message_id: null }) });
+        const clearRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=representation' }, body: JSON.stringify({ message_id: null }) });
         logTicketPanel('resend-panel-clear-message-id', { panelId, status: clearRes.status, ok: clearRes.ok });
         if (!clearRes.ok) {
           error = "Couldn't prepare the panel for resend.";
@@ -310,17 +310,17 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'delete_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
-    const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+    const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     logTicketPanel('delete-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
     if (panel) await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
-    const deleteRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
+    const deleteRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'DELETE',
-      headers: { ...supabaseHeaders, Prefer: 'return=representation' },
+      headers: { ...apiHeaders, Prefer: 'return=representation' },
     });
     logTicketPanel('delete-panel-database', { panelId, status: deleteRes.status, ok: deleteRes.ok });
     if (deleteRes.ok) {
-      const verifyRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=id`, { headers: supabaseHeaders });
+      const verifyRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const [remaining] = verifyRes.ok ? await verifyRes.json().catch(() => []) : [];
       logTicketPanel('delete-panel-verify', { panelId, status: verifyRes.status, stillPresent: Boolean(remaining) });
       if (!remaining) saved = true;
@@ -331,9 +331,9 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'save_settings') {
     const roleIds = (name: string) => form.getAll(name).map(String);
     const clampHours = Math.max(1, Math.min(720, Number(form.get('autoclose_inactivity_hours') ?? 168) || 168));
-    await fetch(`${supabaseUrl}/rest/v1/ticket_settings`, {
+    await fetch(`${apiUrl}/rest/v1/ticket_settings`, {
       method: 'POST',
-      headers: { ...supabaseHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
         guild_id: id,
         claim_mode: form.get('claim_mode') === 'exclusive' ? 'exclusive' : 'shared',
@@ -363,32 +363,32 @@ if (Astro.request.method === 'POST') {
 
 /** Re-renders a panel's live message from its current title/description/style/categories, used after any change that could affect what's shown (category add/edit tied to this panel, panel edit, resend). */
 async function refreshPanelById(panelId: string): Promise<boolean> {
-  const panelRes = await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: supabaseHeaders });
+  const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
   const [panel] = panelRes.ok ? await panelRes.json() : [];
   if (!panel) return false;
-  const categoriesRes = await fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: supabaseHeaders });
+  const categoriesRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: apiHeaders });
   const cats = categoriesRes.ok ? await categoriesRes.json() : [];
   const templateData = await getTemplateData(panel.embed_template);
   const guildVars = templateData ? await getGuildVars() : null;
   const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats, templateData, guildVars));
   if (!messageId) return false;
   if (messageId !== panel.message_id) {
-    await fetch(`${supabaseUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...supabaseHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
+    await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
   }
   return true;
 }
 
 const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${supabaseUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: supabaseHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: apiHeaders }),
   () => fetch(`https://discord.com/api/guilds/${id}/roles`, { headers: { Authorization: `Bot ${botToken}` } }),
   () => fetch(`https://discord.com/api/guilds/${id}/channels`, { headers: { Authorization: `Bot ${botToken}` } }),
-  () => fetch(`${supabaseUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&select=id,name,title,fields&order=name.asc`, { headers: supabaseHeaders }),
-  () => fetch(`${supabaseUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&select=id,target_type,target_id,reason&order=id.asc`, { headers: supabaseHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&select=id,name,title,fields&order=name.asc`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&select=id,target_type,target_id,reason&order=id.asc`, { headers: apiHeaders }),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 

@@ -7,7 +7,7 @@ import sitemap from '@astrojs/sitemap';
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 
-// Reuses the bot's own .env (one source of truth for Supabase/Discord credentials) instead
+// Reuses the bot's own .env (one source of truth for Petto API/Discord credentials) instead
 // of duplicating secrets into this project. In dev this makes them available on
 // process.env for the dashboard's SSR routes too; in production those same variables need
 // to be set as Cloudflare Pages environment variables (Workers don't read .env files).
@@ -51,7 +51,7 @@ export default defineConfig({
         'simple-icons': [
           'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
           'googlegemini', 'nodedotjs', 'npm', 'phosphoricons', 'postgresql', 'simpleicons',
-          'supabase', 'typescript', 'vite', 'x', 'youtube',
+          'typescript', 'vite', 'x', 'youtube',
         ],
       },
     }),
