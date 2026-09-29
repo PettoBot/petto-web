@@ -7,6 +7,7 @@ import { canManageGuild, guildIconUrl } from '../utils/discord';
 import { getCachedUserGuilds, getCachedBotGuildIds } from '../utils/discordCache';
 import { getEnv } from '../utils/env';
 import { getPremiumSnapshot } from '../utils/premium';
+import { isPettoOwner } from '../utils/premiumAdmin';
 
 interface Props {
   guildId: string;
@@ -28,10 +29,12 @@ const resolvedPremiumActive = premiumGuildIds.has(guildId) && Boolean(premiumSna
 // different server doesn't need a round trip through /dash/manage every time.
 interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean }
 let switcherGuilds: SwitcherGuild[] = [];
+let devView = false;
 if (user.accessToken) {
   const botToken = getEnv(Astro, 'DISCORD_TOKEN');
   const discordGuilds = await getCachedUserGuilds(user.accessToken);
   const manageable = discordGuilds.filter(canManageGuild);
+  devView = Boolean(user.userId) && isPettoOwner(Astro, user.userId as string) && !manageable.some((g: any) => g.id === guildId);
   if (manageable.length > 0 && botToken) {
     const activeIds = await getCachedBotGuildIds(botToken);
     switcherGuilds = manageable
@@ -222,6 +225,19 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           </aside>
 
           <div class="dgl-content reveal" id="dgl-content">
+            {devView && (
+              <div class="dgl-dev-banner" data-dev-view>
+                <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>Developer view</strong><span>Read only. You are not a manager of this server, so nothing can be changed here.</span></div></div>
+                <div class="dgl-dev-actions">
+                  <a class="btn btn-ghost btn-sm" href="/dash/admin/servers"><Icon name="ph:hard-drives-fill" width="13" height="13" /> All servers</a>
+                  <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName}>
+                    <input type="hidden" name="action" value="leave" />
+                    <input type="hidden" name="guild_id" value={guildId} />
+                    <button class="btn btn-danger btn-sm" type="submit"><Icon name="ph:sign-out-fill" width="13" height="13" /> Remove Petto</button>
+                  </form>
+                </div>
+              </div>
+            )}
             <slot />
           </div>
         </div>
@@ -244,6 +260,20 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   </div>
 </Base>
 
+<script is:inline>
+  // Developer view: block every form except the banner's own remove button, and confirm removal.
+  document.addEventListener('submit', function (event) {
+    if (!document.querySelector('[data-dev-view]')) return;
+    var form = event.target;
+    if (form && form.hasAttribute && form.hasAttribute('data-dev-leave')) {
+      if (!window.confirm('Remove Petto from ' + (form.getAttribute('data-guild-name') || 'this server') + '? The bot will leave the server.')) event.preventDefault();
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.alert('Developer view is read only. Changes are disabled on servers you do not manage.');
+  }, true);
+</script>
 <script is:inline>
   (function () {
     function bindUploadLabels(root) {
@@ -1149,6 +1179,17 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   .dgl-side-user a { color: var(--text-dim); display: flex; }
   .dgl-side-user a:hover { color: var(--red); }
 
+  .dgl-dev-banner { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:12px 14px; margin-bottom:18px; border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border)); border-radius:12px; background:var(--accent-soft); }
+  .dgl-dev-text { display:flex; align-items:flex-start; gap:10px; min-width:0; color:var(--accent); }
+  .dgl-dev-text div { min-width:0; }
+  .dgl-dev-text strong { display:block; color:var(--text); font-size:13px; }
+  .dgl-dev-text span { display:block; color:var(--text-muted); font-size:12px; margin-top:2px; }
+  .dgl-dev-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .dgl-dev-actions form { margin:0; }
+  .dgl-dev-actions .btn { display:inline-flex; align-items:center; gap:6px; }
+  .btn-danger { color:var(--red); border-color:color-mix(in srgb,var(--red) 55%,var(--border)); }
+  .btn-danger:hover { background:var(--red-soft); }
+  @media (max-width:760px) { .dgl-dev-actions { width:100%; }.dgl-dev-actions .btn, .dgl-dev-actions form { flex:1 1 100%; width:100%; justify-content:center; box-sizing:border-box; } }
   .dgl-content {
     min-width: 0; border: 1px solid var(--border); border-radius: 18px; background: var(--card);
     padding: 28px 32px 40px; height: calc(100vh - var(--dgl-header-h, 60px) - 56px); overflow-y: auto;

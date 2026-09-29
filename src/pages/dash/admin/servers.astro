@@ -1,0 +1,40 @@
+---
+export const prerender = false;
+import DashAdminServers from '../../../components/DashAdminServers.astro';
+import { getDashboardSession } from '../../../utils/dashAuth';
+import { getBotGuildList, invalidateBotGuildCaches } from '../../../utils/discordCache';
+import { leaveGuild } from '../../../utils/discord';
+import { getEnv } from '../../../utils/env';
+import { isPettoOwner } from '../../../utils/premiumAdmin';
+
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!isPettoOwner(Astro, session.userId)) return Astro.redirect('/dash/manage?error=forbidden');
+
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+if (!botToken) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) return Astro.redirect('/dash/admin/servers?error=invalid');
+  const form = await Astro.request.formData();
+  const guildId = String(form.get('guild_id') ?? '');
+  if (String(form.get('action') ?? '') !== 'leave' || !/^\d{15,22}$/.test(guildId)) return Astro.redirect('/dash/admin/servers?error=invalid');
+  const ok = await leaveGuild(guildId, botToken);
+  invalidateBotGuildCaches(botToken);
+  return Astro.redirect(ok ? '/dash/admin/servers?left=1' : '/dash/admin/servers?error=leave_failed');
+}
+
+let guilds: Awaited<ReturnType<typeof getBotGuildList>> = [];
+let unavailable = false;
+try {
+  guilds = (await getBotGuildList(botToken)).sort((a, b) => a.name.localeCompare(b.name));
+} catch {
+  unavailable = true;
+}
+
+const error = unavailable ? 'discord_unavailable' : Astro.url.searchParams.get('error') ?? undefined;
+const left = Astro.url.searchParams.get('left') === '1';
+---
+
+<DashAdminServers guilds={guilds} error={error} left={left} />

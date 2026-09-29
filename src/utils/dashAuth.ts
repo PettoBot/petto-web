@@ -2,8 +2,9 @@ import { decodeSession, encodeSession, type Session } from './session';
 import { canManageGuild } from './discord';
 import { getCachedUserGuilds } from './discordCache';
 import { getEnv } from './env';
+import { isPettoOwner } from './premiumAdmin';
 
-export type GuildAuth = { session: Session } | { redirect: string };
+export type GuildAuth = { session: Session; devView?: boolean } | { redirect: string };
 
 async function refreshSession(session: Session, clientId: string, clientSecret: string): Promise<Session | null> {
   if (!session.refreshToken) return null;
@@ -80,7 +81,16 @@ export async function getGuildSession(astro: any, guildId: string): Promise<Guil
     return { redirect: '/dash?error=discord_unavailable' };
   }
   const target = discordGuilds.find((g: any) => g.id === guildId);
-  if (!target || !canManageGuild(target)) return { redirect: '/dash/manage?error=no_access' };
+  if (!target || !canManageGuild(target)) {
+    // The Petto owner can open any server the bot is in, but only to look. Every write
+    // (any non-GET request) is refused here, so no dashboard page can change a foreign server.
+    if (isPettoOwner(astro, session.userId)) {
+      const method = String(astro.request?.method ?? 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD') return { redirect: `/dash/guild/${guildId}/overview?error=dev_readonly` };
+      return { session, devView: true };
+    }
+    return { redirect: '/dash/manage?error=no_access' };
+  }
 
   return { session };
 }
