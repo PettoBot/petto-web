@@ -60,12 +60,21 @@ The dev server runs at `http://localhost:4321`. Always run `npm run check` and `
 | `POLAR_ACCESS_TOKEN` | Server-side secret used to create a checkout tied to the logged-in Discord user. |
 | `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
 | `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. |
+| `PETTO_FORMS_WEBHOOK_URL` | Discord webhook that receives the applications sent from `/apply` (developer, manager, partner, and staff). Without it the forms show as closed. |
 
 **Deploying**
 
 The Cloudflare adapter is already configured with `output: 'hybrid'`, so it deploys as is. Workers do not read `.env` files, so every variable above must be set in the Cloudflare dashboard as an encrypted variable. `/team` also needs `DISCORD_TOKEN` at build time, since it fetches each team member's live Discord profile while the site is built. The public product IDs and checkout link live in `wrangler.toml`.
 
 For Discloud, register the web subdomain first, put it in the `ID` of `discloud.config`, and upload the project with the Node standalone build. The site must listen on `0.0.0.0:8080`, which `start:discloud` sets by default while still honoring an explicit `HOST` or `PORT`. Set `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime variables there.
+
+**Applications**
+
+The `/apply` page has four forms: developer, manager, partner, and staff. Each submission is posted as an embed to the Discord webhook in `PETTO_FORMS_WEBHOOK_URL`, with no mentions enabled. If the visitor is logged in with Discord, the embed shows their verified account. Otherwise it says the Discord user was typed by the applicant. The fields and validation live in `src/utils/applications.ts`, and the texts in `src/data/applicationCopy.ts`.
+
+**Commands page**
+
+The commands reference is generated from the bot. After the bot's commands change, run `npm run sync:commands -- "<path to petto-bot>"` (or set `PETTO_BOT_DIR`), then add the translated description of any new command in `src/data/commandText.ts` and its category in `src/data/commandCatalog.ts`.
 
 **Project layout**
 

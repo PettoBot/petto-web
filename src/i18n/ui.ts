@@ -38,6 +38,7 @@ export const ui = {
           items: [
             { icon: 'ph:headset-fill', title: 'Support server', desc: 'Ask questions, report bugs, talk to us directly.', href: 'https://petto.sbs/support', badge: '' },
             { icon: 'ph:users-three-fill', title: 'Team', desc: 'Everyone who builds and moderates Petto.', href: '/team', badge: '' },
+            { icon: 'ph:paper-plane-tilt-fill', title: 'Apply', desc: 'Join the team, or propose a partnership.', href: '/apply', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Status', desc: 'Live uptime for the bot and its systems.', href: '/status', badge: '' },
             { icon: 'ph:clock-counter-clockwise-fill', title: 'Changelog', desc: 'Every version, what changed and when.', href: '/changelog', badge: '' },
             { icon: 'ph:newspaper-fill', title: 'Blog', desc: 'Announcements and longer write-ups.', href: '/blog', badge: '' },
@@ -887,6 +888,7 @@ export const ui = {
           items: [
             { icon: 'ph:headset-fill', title: 'Servidor de soporte', desc: 'Preguntas, reportes de bugs, contacto directo con nosotros.', href: 'https://petto.sbs/support', badge: '' },
             { icon: 'ph:users-three-fill', title: 'Equipo', desc: 'Todos los que construyen y moderan Petto.', href: '/team', badge: '' },
+            { icon: 'ph:paper-plane-tilt-fill', title: 'Postular', desc: 'Únete al equipo o propón una alianza.', href: '/apply', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Estado', desc: 'Uptime en vivo del bot y sus sistemas.', href: '/status', badge: '' },
             { icon: 'ph:clock-counter-clockwise-fill', title: 'Novedades del bot', desc: 'Cada versión, qué cambió y cuándo.', href: '/changelog', badge: '' },
             { icon: 'ph:newspaper-fill', title: 'Blog', desc: 'Anuncios y notas más largas.', href: '/blog', badge: '' },
@@ -1736,6 +1738,7 @@ export const ui = {
           items: [
             { icon: 'ph:headset-fill', title: 'Servidor de suporte', desc: 'Tire dúvidas, reporte bugs, fale direto com a gente.', href: 'https://petto.sbs/support', badge: '' },
             { icon: 'ph:users-three-fill', title: 'Equipe', desc: 'Todo mundo que constrói e modera o Petto.', href: '/team', badge: '' },
+            { icon: 'ph:paper-plane-tilt-fill', title: 'Candidatar-se', desc: 'Entre para a equipe ou proponha uma parceria.', href: '/apply', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Status', desc: 'Uptime ao vivo do bot e seus sistemas.', href: '/status', badge: '' },
             { icon: 'ph:clock-counter-clockwise-fill', title: 'Changelog', desc: 'Cada versão, o que mudou e quando.', href: '/changelog', badge: '' },
             { icon: 'ph:newspaper-fill', title: 'Blog', desc: 'Anúncios e textos mais longos.', href: '/blog', badge: '' },
