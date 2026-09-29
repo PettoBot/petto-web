@@ -19,6 +19,10 @@ export interface ApplicationCopy {
   privacy: string;
   privacyLink: string;
   success: string;
+  validation: {
+    missing: string; short: string; select: string; number: string; url: string; discord: string; confirm: string;
+    summary: string; counter: string; sending: string; network: string;
+  };
   errors: Record<'missing' | 'invalid' | 'rate' | 'unavailable' | 'failed', string>;
   roles: Record<ApplicationRole, { title: string; desc: string; intro: string; time: string }>;
   sections: Record<ApplicationRole, Record<string, string>>;
@@ -43,6 +47,19 @@ const en: ApplicationCopy = {
   privacy: 'Your answers go to a private channel of the Petto team and are only used to review your application. See the Privacy Policy for details.',
   privacyLink: 'Privacy Policy',
   success: 'Your application was sent. Thank you, the team will read it and reply on Discord.',
+  validation: {
+    missing: 'This answer is required.',
+    short: 'Write at least {min} characters. You have {n}.',
+    select: 'Choose one of the options.',
+    number: 'Use numbers only.',
+    url: 'Enter a full link that starts with https://',
+    discord: 'Enter your Discord username, or your numeric user ID.',
+    confirm: 'You need to accept this to send the application.',
+    summary: 'Check the answers marked in red before sending.',
+    counter: '{n} / {min} minimum',
+    sending: 'Sending...',
+    network: 'We could not reach the server. Check your connection and try again.',
+  },
   errors: {
     missing: 'Some required answers are empty. Check the form and try again.',
     invalid: 'Some answers are not valid. Check the form and try again.',
@@ -179,6 +196,19 @@ const es: ApplicationCopy = {
   privacy: 'Tus respuestas llegan a un canal privado del equipo de Petto y solo se usan para revisar tu postulación. Mira la Política de privacidad para más detalle.',
   privacyLink: 'Política de privacidad',
   success: 'Tu postulación fue enviada. Gracias, el equipo la leerá y responderá por Discord.',
+  validation: {
+    missing: 'Esta respuesta es obligatoria.',
+    short: 'Escribe al menos {min} caracteres. Llevas {n}.',
+    select: 'Elige una de las opciones.',
+    number: 'Usa solo números.',
+    url: 'Escribe un enlace completo que empiece por https://',
+    discord: 'Escribe tu nombre de usuario de Discord, o tu ID numérico.',
+    confirm: 'Debes aceptar esto para enviar la postulación.',
+    summary: 'Revisa las respuestas marcadas en rojo antes de enviar.',
+    counter: '{n} / {min} mínimo',
+    sending: 'Enviando...',
+    network: 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.',
+  },
   errors: {
     missing: 'Hay respuestas obligatorias vacías. Revisa el formulario e inténtalo de nuevo.',
     invalid: 'Algunas respuestas no son válidas. Revisa el formulario e inténtalo de nuevo.',
@@ -315,6 +345,19 @@ const ptBR: ApplicationCopy = {
   privacy: 'Suas respostas vão para um canal privado da equipe do Petto e só são usadas para analisar sua candidatura. Veja a Política de privacidade para mais detalhes.',
   privacyLink: 'Política de privacidade',
   success: 'Sua candidatura foi enviada. Obrigado, a equipe vai lê-la e responder pelo Discord.',
+  validation: {
+    missing: 'Esta resposta é obrigatória.',
+    short: 'Escreva pelo menos {min} caracteres. Você tem {n}.',
+    select: 'Escolha uma das opções.',
+    number: 'Use apenas números.',
+    url: 'Digite um link completo que comece com https://',
+    discord: 'Digite seu nome de usuário do Discord, ou seu ID numérico.',
+    confirm: 'Você precisa aceitar isto para enviar a candidatura.',
+    summary: 'Confira as respostas marcadas em vermelho antes de enviar.',
+    counter: '{n} / {min} mínimo',
+    sending: 'Enviando...',
+    network: 'Não conseguimos falar com o servidor. Confira sua conexão e tente de novo.',
+  },
   errors: {
     missing: 'Há respostas obrigatórias vazias. Confira o formulário e tente de novo.',
     invalid: 'Algumas respostas não são válidas. Confira o formulário e tente de novo.',

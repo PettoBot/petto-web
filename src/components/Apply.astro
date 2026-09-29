@@ -83,8 +83,12 @@ const sections = fields.reduce<{ key: string; fields: typeof fields }[]>((groups
             </div>
           </>
         ) : (
-          <form class="ap-form" method="POST" action="/api/apply">
+          <form class="ap-form" id="apForm" method="POST" action="/api/apply">
             <a class="ap-back" href={`${base}/apply`}><Icon name="ph:arrow-left" width="14" height="14" /> {copy.back}</a>
+            <div class="ap-alert error" id="apSummary" role="alert" hidden>
+              <Icon name="ph:warning-fill" width="18" height="18" />
+              <span id="apSummaryText"></span>
+            </div>
             <div class="ap-form-head">
               <span class="ap-card-icon"><Icon name={icons[role]} width="22" height="22" /></span>
               <div>
@@ -112,34 +116,45 @@ const sections = fields.reduce<{ key: string; fields: typeof fields }[]>((groups
                 {section.key !== 'confirm' && <legend>{copy.sections[role][section.key]}</legend>}
                 {section.fields.map((field) => {
                   const text = copy.fields[role][field.key];
+                  const attrs = { 'data-field': field.key, 'data-kind': field.kind, 'data-min': field.min, 'data-max': field.max, 'data-required': field.required ? '1' : '0' };
                   return field.kind === 'checkbox' ? (
-                    <label class="ap-check">
-                      <input type="checkbox" name={field.key} required={field.required} />
-                      <span>{text.label}</span>
-                    </label>
+                    <div class="ap-check-wrap" {...attrs}>
+                      <label class="ap-check">
+                        <input type="checkbox" name={field.key} required={field.required} />
+                        <span>{text.label}</span>
+                      </label>
+                      <p class="ap-error" role="alert" hidden></p>
+                    </div>
                   ) : (
-                    <label class="ap-field">
-                      <span class="ap-label">{text.label} <em>{field.required ? copy.required : copy.optional}</em></span>
-                      {text.hint && <span class="ap-hint">{text.hint}</span>}
+                    <div class="ap-field" {...attrs}>
+                      <label class="ap-label-row" for={`ap-${field.key}`}>
+                        <span class="ap-label">{text.label} <em>{field.required ? copy.required : copy.optional}</em></span>
+                        {text.hint && <span class="ap-hint">{text.hint}</span>}
+                      </label>
                       {field.kind === 'textarea' ? (
-                        <textarea name={field.key} rows="5" maxlength={field.max} required={field.required} placeholder={text.placeholder}></textarea>
+                        <textarea id={`ap-${field.key}`} name={field.key} rows="5" maxlength={field.max} required={field.required} placeholder={text.placeholder}></textarea>
                       ) : field.kind === 'select' ? (
-                        <select name={field.key} required={field.required}>
+                        <select id={`ap-${field.key}`} name={field.key} required={field.required}>
                           <option value="" disabled selected>{copy.select}</option>
                           {field.options?.map((option) => <option value={option}>{copy.options[option]}</option>)}
                         </select>
                       ) : (
                         <input
-                          type={field.kind === 'url' ? 'url' : field.kind === 'number' ? 'number' : 'text'}
+                          id={`ap-${field.key}`}
+                          type={field.kind === 'url' ? 'url' : field.kind === 'number' ? 'text' : 'text'}
+                          inputmode={field.kind === 'number' ? 'numeric' : undefined}
                           name={field.key}
                           maxlength={field.kind === 'number' ? undefined : field.max}
-                          min={field.kind === 'number' ? 0 : undefined}
                           required={field.required}
                           placeholder={text.placeholder}
                           value={field.key === 'discord' && session ? session.username : undefined}
                         />
                       )}
-                    </label>
+                      <div class="ap-meta">
+                        <p class="ap-error" role="alert" hidden></p>
+                        {field.min >= 20 && (field.kind === 'textarea' || field.kind === 'text') && <span class="ap-count" data-count></span>}
+                      </div>
+                    </div>
                   );
                 })}
               </fieldset>
@@ -149,10 +164,149 @@ const sections = fields.reduce<{ key: string; fields: typeof fields }[]>((groups
             <button class="btn btn-primary" type="submit" disabled={!open}><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" /> {copy.submit}</button>
           </form>
         )}
+        {role && !sent && (
+          <div class="ap-alert success" id="apSuccess" role="status" hidden>
+            <Icon name="ph:check-circle-fill" width="18" height="18" />
+            <span>{copy.success}</span>
+          </div>
+        )}
+        <script is:inline type="application/json" id="apMessages" set:html={JSON.stringify({ ...copy.validation, errors: copy.errors }).replace(/</g, '\\u003c')}></script>
       </div>
     </section>
   </main>
 </Base>
+
+<script>
+  const form = document.getElementById('apForm') as HTMLFormElement | null;
+  if (form) {
+    form.noValidate = true;
+    const msgs = JSON.parse(document.getElementById('apMessages')?.textContent ?? '{}');
+    const fields = Array.from(form.querySelectorAll<HTMLElement>('[data-field]'));
+    const summary = document.getElementById('apSummary');
+    const summaryText = document.getElementById('apSummaryText');
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const buttonLabel = button?.innerHTML ?? '';
+    const DISCORD = /^(@?[A-Za-z0-9_.]{2,32}|\d{17,20})$/;
+    const touched = new Set<string>();
+
+    const control = (el: HTMLElement) => el.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')!;
+    const valueOf = (el: HTMLElement) => control(el).value.replace(/\r\n/g, '\n').trim();
+    const fill = (text: string, vars: Record<string, number>) => text.replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? ''));
+
+    function problemOf(el: HTMLElement): { key: string; vars: Record<string, number> } | null {
+      const kind = el.dataset.kind;
+      const required = el.dataset.required === '1';
+      const min = Number(el.dataset.min ?? 0);
+      if (kind === 'checkbox') return (control(el) as HTMLInputElement).checked || !required ? null : { key: 'confirm', vars: {} };
+      const value = valueOf(el);
+      if (!value) return required ? { key: 'missing', vars: {} } : null;
+      if (kind === 'select') return null;
+      if (kind === 'number') return /^\d{1,9}$/.test(value) ? null : { key: 'number', vars: {} };
+      if (kind === 'url') {
+        try {
+          const url = new URL(value);
+          return url.protocol === 'https:' || url.protocol === 'http:' ? null : { key: 'url', vars: {} };
+        } catch {
+          return { key: 'url', vars: {} };
+        }
+      }
+      if (el.dataset.field === 'discord' && !DISCORD.test(value)) return { key: 'discord', vars: {} };
+      if (min > 0 && value.length < min) return { key: 'short', vars: { min, n: value.length } };
+      return null;
+    }
+
+    function paint(el: HTMLElement, problem: { key: string; vars: Record<string, number> } | null) {
+      const box = el.querySelector<HTMLElement>('.ap-error');
+      const input = control(el);
+      if (box) {
+        box.hidden = !problem;
+        box.textContent = problem ? fill(msgs[problem.key] ?? msgs.missing, problem.vars) : '';
+      }
+      el.classList.toggle('invalid', Boolean(problem));
+      input.setAttribute('aria-invalid', problem ? 'true' : 'false');
+      if (!problem && summary && !form.querySelector('.invalid')) summary.hidden = true;
+    }
+
+    function updateCount(el: HTMLElement) {
+      const counter = el.querySelector<HTMLElement>('[data-count]');
+      if (!counter) return;
+      const min = Number(el.dataset.min ?? 0);
+      const length = valueOf(el).length;
+      counter.textContent = fill(msgs.counter, { n: length, min });
+      counter.classList.toggle('ok', length >= min);
+    }
+
+    fields.forEach((el) => {
+      const input = control(el);
+      updateCount(el);
+      input.addEventListener('input', () => {
+        updateCount(el);
+        if (touched.has(el.dataset.field ?? '')) paint(el, problemOf(el));
+      });
+      input.addEventListener('change', () => { if (touched.has(el.dataset.field ?? '')) paint(el, problemOf(el)); });
+      input.addEventListener('blur', () => {
+        if (!valueOf(el) && el.dataset.kind !== 'checkbox' && !touched.has(el.dataset.field ?? '')) return;
+        touched.add(el.dataset.field ?? '');
+        paint(el, problemOf(el));
+      });
+    });
+
+    function showSummary(text: string) {
+      if (!summary || !summaryText) return;
+      summaryText.textContent = text;
+      summary.hidden = false;
+      summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (summary) summary.hidden = true;
+      let first: HTMLElement | null = null;
+      fields.forEach((el) => {
+        touched.add(el.dataset.field ?? '');
+        const problem = problemOf(el);
+        paint(el, problem);
+        if (problem && !first) first = el;
+      });
+      if (first) {
+        showSummary(msgs.summary);
+        window.setTimeout(() => (first as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+        control(first).focus({ preventScroll: true });
+        return;
+      }
+
+      if (button) { button.disabled = true; button.textContent = msgs.sending; }
+      try {
+        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.ok) {
+          form.hidden = true;
+          const done = document.getElementById('apSuccess');
+          if (done) { done.hidden = false; done.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+          return;
+        }
+        if (result.errors) {
+          let firstServer: HTMLElement | null = null;
+          fields.forEach((el) => {
+            const reason = result.errors[el.dataset.field ?? ''];
+            if (reason) {
+              paint(el, { key: reason, vars: { min: Number(el.dataset.min ?? 0), n: valueOf(el).length } });
+              if (!firstServer) firstServer = el;
+            }
+          });
+          showSummary(msgs.summary);
+          if (firstServer) control(firstServer).focus({ preventScroll: true });
+        } else {
+          showSummary(msgs.errors[result.error] ?? msgs.errors.failed);
+        }
+      } catch {
+        showSummary(msgs.network);
+      } finally {
+        if (button) { button.disabled = false; button.innerHTML = buttonLabel; }
+      }
+    });
+  }
+</script>
 
 <style>
   .ap-hero { padding: 64px 0 24px; }
@@ -187,6 +341,17 @@ const sections = fields.reduce<{ key: string; fields: typeof fields }[]>((groups
   .ap-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   .ap-field { display: grid; gap: 6px; }
   .ap-label { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .ap-label-row { display: grid; gap: 4px; cursor: pointer; }
+  .ap-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .ap-meta .ap-error { flex: 1; }
+  .ap-count { margin-left: auto; flex: 0 0 auto; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .ap-count.ok { color: var(--green); }
+  .ap-error { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--red); }
+  .ap-error[hidden] { display: none; }
+  .ap-field.invalid input, .ap-field.invalid textarea, .ap-field.invalid select { border-color: var(--red); }
+  .ap-check-wrap.invalid .ap-check { color: var(--red); }
+  .ap-check-wrap { display: grid; gap: 6px; }
+  .ap-alert[hidden] { display: none; }
   .ap-label em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--text-dim); margin-left: 6px; }
   .ap-hint { font-size: 12px; color: var(--text-dim); }
   .ap-field input, .ap-field textarea, .ap-field select { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 14px; }
