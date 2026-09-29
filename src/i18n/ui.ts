@@ -918,7 +918,7 @@ export const ui = {
       seeAll: 'Ver todos los comandos',
       grid: [
         { title: 'Roles por reacción', desc: 'Botón o reacción, modo toggle o de un solo sentido, sin depender de un panel externo.' },
-        { title: 'Comandos propios', desc: 'Definís un nombre y una respuesta con variables, y queda funcionando como un comando más del servidor.' },
+        { title: 'Comandos propios', desc: 'Defines un nombre y una respuesta con variables, y queda funcionando como un comando más del servidor.' },
         { title: 'AFK y autoresponder', desc: 'Estado AFK que se limpia solo, y triggers que responden automático cuando un mensaje coincide.' },
         { title: 'Seguimiento de invites', desc: 'Ves quién invitó a quién, con un ranking por servidor.' },
         { title: 'Verificación con Turnstile', desc: 'Un captcha de verdad antes de que los nuevos puedan hablar, sin cuentas bot coladas.' },
@@ -1073,7 +1073,7 @@ export const ui = {
           date: '27 de julio de 2026',
           items: [
             'Permisos: un nivel de autorización personalizado de 0 a 100 por grupo, en capas sobre los permisos nativos de Discord, editable desde un gráfico interactivo en la dashboard',
-            'Simulador "Probar como...": elegí un rol o pegá un ID de usuario y al instante ves qué comandos puede y no puede usar',
+            'Simulador "Probar como...": elige un rol o pega un ID de usuario y al instante ves qué comandos puede y no puede usar',
             'Página de Seguridad: marca roles con Administrator o Manage Server, y comandos sin nivel personalizado configurado',
             'Audit Log: cada cambio de permisos ahora queda registrado con quién lo hizo y cuándo',
           ],
@@ -1463,7 +1463,7 @@ export const ui = {
         intro: 'Estos son los términos de servicio de Petto. Al agregar Petto a un servidor, o usar cualquiera de sus comandos, aceptas todo lo de abajo.',
         sections: [
           ['Usar Petto', 'Petto se ofrece tal cual, gratis para agregar a un servidor de Discord. Las funciones pueden cambiar, romperse o eliminarse en cualquier momento mientras el bot esté en desarrollo activo. Agregar Petto a un servidor, o usar cualquiera de sus comandos, significa que aceptas estos términos.'],
-          ['Elegibilidad', 'Necesitás cumplir con la edad mínima que exige Discord (13 años, o más donde la ley local lo requiera) para usar Discord, y por extensión Petto. Los dueños de servidor son responsables de que sus miembros también cumplan con eso.'],
+          ['Elegibilidad', 'Necesitas cumplir con la edad mínima que exige Discord (13 años, o más donde la ley local lo requiera) para usar Discord, y por extensión Petto. Los dueños de servidor son responsables de que sus miembros también cumplan con eso.'],
           ['Tu servidor, tu responsabilidad', 'Los dueños y admins de servidor son responsables de cómo configuran Petto: mensajes automáticos, comandos propios, roles por reacción, acciones de moderación, y cualquier otra cosa armada a través de él. Petto ejecuta lo que se le configura; no revisa la configuración buscando intención.'],
           ['Uso aceptable', 'Petto no se puede usar para acosar, hacer spam, distribuir contenido ilegal, evadir un baneo o una acción de Trust & Safety de Discord, o automatizar abuso contra Discord o cualquier servicio de terceros al que Petto se conecte. Se puede revocar el acceso a un servidor o usuario que haga esto.'],
           ['Petto Premium y pagos', 'Petto Premium es una suscripción opcional gestionada mediante Polar. El precio, el intervalo de cobro, los slots incluidos, la renovación, la cancelación y las condiciones de reembolso aparecen en el checkout antes de pagar. Los datos de pago, facturas, recibos y cancelación se administran desde el portal de facturación.'],
