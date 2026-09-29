@@ -46,3 +46,42 @@ export async function getCachedBotGuildIds(botToken: string): Promise<Set<string
   botGuildsCache.set(botToken, { ids, expiresAt: Date.now() + TTL_MS });
   return ids;
 }
+
+export interface BotGuild { id: string; name: string; icon: string | null; memberCount: number | null }
+
+const botGuildListCache = new Map<string, { guilds: BotGuild[]; expiresAt: number }>();
+
+/** Every server the bot is in, with name, icon and approximate member count, straight from Discord (paginated, 200 per page). */
+export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
+  const hit = botGuildListCache.get(botToken);
+  if (hit && hit.expiresAt > Date.now()) return hit.guilds;
+
+  const guilds: BotGuild[] = [];
+  let after = '';
+  for (let page = 0; page < 50; page += 1) {
+    const res = await fetch(`https://discord.com/api/v10/users/@me/guilds?limit=200&with_counts=true${after ? `&after=${after}` : ''}`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    if (!res.ok) throw new Error(`Discord bot guild list failed with ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) break;
+    for (const g of data) {
+      guilds.push({
+        id: String(g.id),
+        name: String(g.name ?? g.id),
+        icon: g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null,
+        memberCount: Number.isFinite(Number(g.approximate_member_count)) ? Number(g.approximate_member_count) : null,
+      });
+    }
+    if (data.length < 200) break;
+    after = String(data[data.length - 1].id);
+  }
+  botGuildListCache.set(botToken, { guilds, expiresAt: Date.now() + TTL_MS });
+  return guilds;
+}
+
+/** Forget cached bot guild lists, used right after the bot joins or leaves a server. */
+export function invalidateBotGuildCaches(botToken: string): void {
+  botGuildListCache.delete(botToken);
+  botGuildsCache.delete(botToken);
+}
