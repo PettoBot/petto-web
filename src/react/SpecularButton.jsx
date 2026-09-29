@@ -92,6 +92,9 @@ export default function SpecularButton({
     const button = buttonRef.current;
     const fx = fxRef.current;
     if (!button || !fx || typeof window === 'undefined') return undefined;
+    const isTouchDevice = window.matchMedia?.('(hover: none), (pointer: coarse)').matches;
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (isTouchDevice || prefersReducedMotion) return undefined;
 
     let renderer;
     let raf = 0;
@@ -222,6 +225,7 @@ export default function SpecularButton({
       '--sb-blur': `${blur}px`,
       '--sb-text-color': textColor,
       '--sb-base-color': baseColor,
+      '--sb-line-color': lineColor,
       '--sb-surface': transparent ? 'transparent' : undefined,
     },
   };
