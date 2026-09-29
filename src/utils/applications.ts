@@ -8,10 +8,12 @@ export interface ApplicationField {
   required: boolean;
   max: number;
   section: string;
+  /** Minimum characters once trimmed. Applies to required fields, and to optional ones that were filled in. */
+  min: number;
   options?: string[];
 }
 
-const f = (section: string, key: string, kind: FieldKind, required: boolean, max: number, options?: string[]): ApplicationField => ({ section, key, kind, required, max, options });
+const f = (section: string, key: string, kind: FieldKind, required: boolean, max: number, min = 0, options?: string[]): ApplicationField => ({ section, key, kind, required, max, min, options });
 
 const hours = ['h1', 'h2', 'h3', 'h4'];
 const years = ['y0', 'y1', 'y2', 'y3'];
@@ -22,77 +24,77 @@ export const applicationRoles: Record<ApplicationRole, { color: number; fields: 
   developer: {
     color: 0x5eead4,
     fields: [
-      f('about', 'discord', 'text', true, 64),
-      f('about', 'timezone', 'text', true, 40),
-      f('about', 'languages', 'text', true, 100),
-      f('about', 'hours', 'select', true, 8, hours),
-      f('about', 'schedule', 'text', false, 200),
-      f('skills', 'focus', 'select', true, 12, ['backend', 'frontend', 'fullstack', 'bots', 'data', 'devops']),
-      f('skills', 'years', 'select', true, 8, years),
-      f('skills', 'stack', 'text', true, 200),
-      f('skills', 'djs', 'select', true, 8, level),
-      f('skills', 'sql', 'select', true, 8, level),
-      f('work', 'experience', 'textarea', true, 1000),
-      f('work', 'projects', 'textarea', true, 1000),
-      f('work', 'links', 'text', false, 300),
-      f('work', 'opensource', 'textarea', false, 800),
-      f('work', 'teamwork', 'textarea', true, 800),
-      f('technical', 'qDesign', 'textarea', true, 1000),
-      f('technical', 'qSecurity', 'textarea', true, 1000),
-      f('technical', 'qDebug', 'textarea', true, 1000),
-      f('technical', 'qReview', 'textarea', true, 800),
-      f('motivation', 'interest', 'textarea', true, 800),
-      f('motivation', 'first30', 'textarea', true, 800),
+      f('about', 'discord', 'text', true, 64, 2),
+      f('about', 'timezone', 'text', true, 40, 2),
+      f('about', 'languages', 'text', true, 100, 2),
+      f('about', 'hours', 'select', true, 8, 0, hours),
+      f('about', 'schedule', 'text', false, 200, 5),
+      f('skills', 'focus', 'select', true, 12, 0, ['backend', 'frontend', 'fullstack', 'bots', 'data', 'devops']),
+      f('skills', 'years', 'select', true, 8, 0, years),
+      f('skills', 'stack', 'text', true, 200, 3),
+      f('skills', 'djs', 'select', true, 8, 0, level),
+      f('skills', 'sql', 'select', true, 8, 0, level),
+      f('work', 'experience', 'textarea', true, 1000, 120),
+      f('work', 'projects', 'textarea', true, 1000, 120),
+      f('work', 'links', 'text', false, 300, 8),
+      f('work', 'opensource', 'textarea', false, 800, 30),
+      f('work', 'teamwork', 'textarea', true, 800, 100),
+      f('technical', 'qDesign', 'textarea', true, 1000, 150),
+      f('technical', 'qSecurity', 'textarea', true, 1000, 150),
+      f('technical', 'qDebug', 'textarea', true, 1000, 150),
+      f('technical', 'qReview', 'textarea', true, 800, 100),
+      f('motivation', 'interest', 'textarea', true, 800, 100),
+      f('motivation', 'first30', 'textarea', true, 800, 100),
       f('confirm', 'confirm', 'checkbox', true, 3),
     ],
   },
   manager: {
     color: 0xffb86c,
     fields: [
-      f('about', 'discord', 'text', true, 64),
-      f('about', 'timezone', 'text', true, 40),
-      f('about', 'languages', 'text', true, 100),
-      f('about', 'hours', 'select', true, 8, hours),
-      f('about', 'schedule', 'text', false, 200),
-      f('experience', 'years', 'select', true, 8, years),
-      f('experience', 'teamsize', 'select', true, 8, teamSize),
-      f('experience', 'communities', 'textarea', true, 800),
-      f('experience', 'experience', 'textarea', true, 1000),
-      f('experience', 'tools', 'text', true, 200),
-      f('experience', 'events', 'textarea', true, 800),
-      f('scenarios', 'qConflict', 'textarea', true, 1000),
-      f('scenarios', 'qCrisis', 'textarea', true, 1000),
-      f('scenarios', 'qInactive', 'textarea', true, 1000),
-      f('scenarios', 'qPolicy', 'textarea', true, 1000),
-      f('vision', 'metrics', 'textarea', true, 800),
-      f('vision', 'ideas', 'textarea', true, 800),
-      f('vision', 'first30', 'textarea', true, 800),
-      f('vision', 'qDelegate', 'textarea', true, 800),
+      f('about', 'discord', 'text', true, 64, 2),
+      f('about', 'timezone', 'text', true, 40, 2),
+      f('about', 'languages', 'text', true, 100, 2),
+      f('about', 'hours', 'select', true, 8, 0, hours),
+      f('about', 'schedule', 'text', false, 200, 5),
+      f('experience', 'years', 'select', true, 8, 0, years),
+      f('experience', 'teamsize', 'select', true, 8, 0, teamSize),
+      f('experience', 'communities', 'textarea', true, 800, 100),
+      f('experience', 'experience', 'textarea', true, 1000, 120),
+      f('experience', 'tools', 'text', true, 200, 3),
+      f('experience', 'events', 'textarea', true, 800, 60),
+      f('scenarios', 'qConflict', 'textarea', true, 1000, 150),
+      f('scenarios', 'qCrisis', 'textarea', true, 1000, 150),
+      f('scenarios', 'qInactive', 'textarea', true, 1000, 120),
+      f('scenarios', 'qPolicy', 'textarea', true, 1000, 150),
+      f('vision', 'metrics', 'textarea', true, 800, 100),
+      f('vision', 'ideas', 'textarea', true, 800, 100),
+      f('vision', 'first30', 'textarea', true, 800, 100),
+      f('vision', 'qDelegate', 'textarea', true, 800, 100),
       f('confirm', 'confirm', 'checkbox', true, 3),
     ],
   },
   partner: {
     color: 0x8399ff,
     fields: [
-      f('project', 'discord', 'text', true, 64),
-      f('project', 'project', 'text', true, 100),
-      f('project', 'kind', 'select', true, 8, ['server', 'bot', 'website', 'other']),
+      f('project', 'discord', 'text', true, 64, 2),
+      f('project', 'project', 'text', true, 100, 2),
+      f('project', 'kind', 'select', true, 8, 0, ['server', 'bot', 'website', 'other']),
       f('project', 'link', 'url', true, 300),
       f('project', 'members', 'number', false, 9),
-      f('project', 'proposal', 'textarea', true, 1000),
-      f('project', 'offer', 'textarea', false, 800),
+      f('project', 'proposal', 'textarea', true, 1000, 60),
+      f('project', 'offer', 'textarea', false, 800, 20),
       f('confirm', 'confirm', 'checkbox', true, 3),
     ],
   },
   staff: {
     color: 0xf78fb3,
     fields: [
-      f('about', 'discord', 'text', true, 64),
-      f('about', 'timezone', 'text', false, 40),
-      f('about', 'position', 'select', true, 12, ['moderator', 'support', 'either']),
-      f('about', 'hours', 'select', true, 8, hours),
-      f('about', 'experience', 'textarea', true, 800),
-      f('about', 'why', 'textarea', true, 600),
+      f('about', 'discord', 'text', true, 64, 2),
+      f('about', 'timezone', 'text', false, 40, 2),
+      f('about', 'position', 'select', true, 12, 0, ['moderator', 'support', 'either']),
+      f('about', 'hours', 'select', true, 8, 0, hours),
+      f('about', 'experience', 'textarea', true, 800, 60),
+      f('about', 'why', 'textarea', true, 600, 40),
       f('confirm', 'confirm', 'checkbox', true, 3),
     ],
   },
@@ -104,43 +106,49 @@ export function isApplicationRole(value: unknown): value is ApplicationRole {
   return typeof value === 'string' && value in applicationRoles;
 }
 
-export type ApplicationError = 'missing' | 'invalid';
+export type FieldProblem = 'missing' | 'short' | 'select' | 'number' | 'url' | 'discord';
 
 function clean(value: FormDataEntryValue | null, max: number): string {
   if (typeof value !== 'string') return '';
   return value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').replace(/\r\n/g, '\n').trim().slice(0, max);
 }
 
-/** Reads and validates the submitted answers for a role. Returns the cleaned answers or the first problem found. */
-export function readAnswers(role: ApplicationRole, form: FormData): { answers: Record<string, string> } | { error: ApplicationError } {
+const DISCORD_HANDLE = /^(@?[A-Za-z0-9_.]{2,32}|\d{17,20})$/;
+
+/** Problem with one value, or null when it is fine. Shared by the server and, through the same rules, the browser. */
+export function checkField(field: ApplicationField, raw: string): FieldProblem | null {
+  if (!raw) return field.required ? 'missing' : null;
+  if (field.kind === 'select') return field.options?.includes(raw) ? null : 'select';
+  if (field.kind === 'number') return /^\d{1,9}$/.test(raw) ? null : 'number';
+  if (field.kind === 'url') {
+    try {
+      const url = new URL(raw);
+      return url.protocol === 'https:' || url.protocol === 'http:' ? null : 'url';
+    } catch {
+      return 'url';
+    }
+  }
+  if (field.key === 'discord' && !DISCORD_HANDLE.test(raw)) return 'discord';
+  if (field.min > 0 && raw.length < field.min) return 'short';
+  return null;
+}
+
+/** Reads and validates the submitted answers for a role. Returns the cleaned answers, or every problem found by field. */
+export function readAnswers(role: ApplicationRole, form: FormData): { answers: Record<string, string> } | { errors: Record<string, FieldProblem> } {
   const answers: Record<string, string> = {};
+  const errors: Record<string, FieldProblem> = {};
   for (const field of applicationRoles[role].fields) {
     if (field.kind === 'checkbox') {
-      if (form.get(field.key) === null) {
-        if (field.required) return { error: 'missing' };
-        continue;
-      }
-      answers[field.key] = 'yes';
+      if (form.get(field.key) !== null) answers[field.key] = 'yes';
+      else if (field.required) errors[field.key] = 'missing';
       continue;
     }
     const raw = clean(form.get(field.key), field.max);
-    if (!raw) {
-      if (field.required) return { error: 'missing' };
-      continue;
-    }
-    if (field.kind === 'select' && !field.options?.includes(raw)) return { error: 'invalid' };
-    if (field.kind === 'number' && !/^\d{1,9}$/.test(raw)) return { error: 'invalid' };
-    if (field.kind === 'url') {
-      try {
-        const url = new URL(raw);
-        if (url.protocol !== 'https:' && url.protocol !== 'http:') return { error: 'invalid' };
-      } catch {
-        return { error: 'invalid' };
-      }
-    }
-    answers[field.key] = raw;
+    const problem = checkField(field, raw);
+    if (problem) errors[field.key] = problem;
+    else if (raw) answers[field.key] = raw;
   }
-  return { answers };
+  return Object.keys(errors).length > 0 ? { errors } : { answers };
 }
 
 const attempts = new Map<string, number[]>();
