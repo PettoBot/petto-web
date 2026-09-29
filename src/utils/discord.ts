@@ -140,3 +140,16 @@ export function renderDiscordEmojis(text: string): string {
     })
     .join('');
 }
+
+/** Makes the bot leave a server (`DELETE /users/@me/guilds/{id}`). Returns true when Discord accepts it. */
+export async function leaveGuild(guildId: string, botToken: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://discord.com/api/v10/users/@me/guilds/${encodeURIComponent(guildId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
