@@ -52,7 +52,10 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
       maxAge: 60 * 60 * 24 * 7,
     });
 
-    return redirect('/dash/manage');
+    const afterLogin = cookies.get('petto_after_login')?.value;
+    cookies.delete('petto_after_login', { path: '/' });
+    const returnTo = afterLogin && /^\/dash(?:\/|$)/.test(afterLogin) ? afterLogin : '/dash/manage';
+    return redirect(returnTo);
   } catch {
     return redirect('/dash?error=login_failed');
   }

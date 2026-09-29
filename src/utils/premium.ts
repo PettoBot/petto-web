@@ -192,10 +192,17 @@ export async function createPremiumCustomerPortalSession(astro: any, userId: str
 
   const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
   try {
+    const customerResponse = await fetch(`${polarApiBase(astro)}/v1/customers/external/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!customerResponse.ok) return null;
+    const customer = await customerResponse.json();
+    if (typeof customer?.id !== 'string') return null;
+
     const response = await fetch(`${polarApiBase(astro)}/v1/customer-sessions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ external_customer_id: userId, return_url: `${origin}/dash/premium` }),
+      body: JSON.stringify({ customer_id: customer.id, return_url: `${origin}/dash/premium` }),
     });
     if (!response.ok) return null;
     const data = await response.json();

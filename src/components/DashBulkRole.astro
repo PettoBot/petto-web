@@ -47,8 +47,11 @@ const statusLabel: Record<string, string> = {
   {job && (
     <div class="br-card" id="br-status-card" data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-live={jobActive ? 'true' : 'false'}>
       <div class="br-card-head">
-        <div class="br-card-icon" style={`--c:${jobActive ? '#fed53c' : job.status === 'completed' ? '#a5ea7a' : job.status === 'failed' ? '#fe6465' : '#8399ff'}`}>
-          <Icon name={jobActive ? 'ph:spinner-gap' : job.status === 'completed' ? 'ph:check-fill' : job.status === 'failed' ? 'ph:x-fill' : 'ph:prohibit-fill'} width="16" height="16" class={jobActive ? 'br-spin' : ''} />
+        <div class="br-card-icon" data-status-icon style={`--c:${jobActive ? '#fed53c' : job.status === 'completed' ? '#a5ea7a' : job.status === 'failed' ? '#fe6465' : '#8399ff'}`}>
+          <span data-job-icon="active" class:list={{ 'br-icon-hidden': !jobActive }}><Icon name="ph:spinner-gap" width="16" height="16" class={jobActive ? 'br-spin' : ''} /></span>
+          <span data-job-icon="completed" class:list={{ 'br-icon-hidden': job.status !== 'completed' }}><Icon name="ph:check-fill" width="16" height="16" /></span>
+          <span data-job-icon="failed" class:list={{ 'br-icon-hidden': job.status !== 'failed' }}><Icon name="ph:x-fill" width="16" height="16" /></span>
+          <span data-job-icon="other" class:list={{ 'br-icon-hidden': jobActive || job.status === 'completed' || job.status === 'failed' }}><Icon name="ph:prohibit-fill" width="16" height="16" /></span>
         </div>
         <div class="br-card-title">
           {job.action === 'add' ? 'Assigning' : 'Removing'} <span class="br-role-chip">{roleName(job.targetRoleId)}</span>
@@ -130,7 +133,7 @@ const statusLabel: Record<string, string> = {
 
       <button type="submit" class="btn btn-accent btn-sm" disabled={jobActive}>
         <Icon name="ph:play-fill" width="13" height="13" />
-        {jobActive ? 'A job is already running' : 'Start'}
+        <span data-start-label>{jobActive ? 'A job is already running' : 'Start'}</span>
       </button>
       <p class="br-hint">Runs once in the background, one job at a time per server. Large servers can take a few minutes, Discord's own rate limit paces it.</p>
     </div>
@@ -138,24 +141,58 @@ const statusLabel: Record<string, string> = {
 
   <script>
     (function () {
+      function renderJob(card, job) {
+        var active = job.status === 'pending' || job.status === 'running';
+        var state = active ? 'active' : job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : 'other';
+        var color = active ? '#fed53c' : state === 'completed' ? '#a5ea7a' : state === 'failed' ? '#fe6465' : '#8399ff';
+        var fill = card.querySelector('[data-progress-fill]');
+        var note = card.querySelector('[data-progress-note]');
+        var statusText = card.querySelector('[data-status-text]');
+        var icon = card.querySelector('[data-status-icon]');
+        var pct = job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0;
+        var labels = { pending: 'Queued', running: 'Running', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed' };
+
+        if (fill) fill.style.width = pct + '%';
+        if (note) note.textContent = job.status === 'pending' ? 'Waiting to start...' : (job.processedMembers + ' / ' + job.totalMembers + ' members processed, ' + job.successCount + ' updated, ' + job.errorCount + ' failed.');
+        if (statusText) statusText.textContent = labels[job.status] || job.status;
+        if (icon) {
+          icon.style.setProperty('--c', color);
+          icon.querySelectorAll('[data-job-icon]').forEach(function (item) {
+            item.classList.toggle('br-icon-hidden', item.getAttribute('data-job-icon') !== state);
+          });
+          var spinner = icon.querySelector('[data-job-icon="active"] svg');
+          if (spinner) spinner.classList.toggle('br-spin', active);
+        }
+        card.dataset.live = active ? 'true' : 'false';
+
+        var cancelForm = card.querySelector('form');
+        if (cancelForm) cancelForm.hidden = !active;
+        var startForm = document.querySelector('.br-form');
+        if (startForm) {
+          startForm.querySelectorAll('select, input').forEach(function (input) {
+            var control = input as HTMLInputElement | HTMLSelectElement;
+            if (control.type !== 'hidden') control.disabled = active;
+          });
+          var startButton = startForm.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+          if (startButton) {
+            startButton.disabled = active;
+            var startLabel = startButton.querySelector('[data-start-label]');
+            if (startLabel) startLabel.textContent = active ? 'A job is already running' : 'Start';
+          }
+        }
+      }
+
       function poll(card) {
         var url = card.dataset.statusUrl;
-        fetch(url)
-          .then(function (res) { return res.json(); })
+        var cacheBust = (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+        fetch(url + cacheBust, { cache: 'no-store', headers: { Accept: 'application/json' } })
+          .then(function (res) { if (!res.ok) throw new Error('status request failed'); return res.json(); })
           .then(function (body) {
             var job = body.job;
-            if (!job) return;
-            var fill = card.querySelector('[data-progress-fill]');
-            var note = card.querySelector('[data-progress-note]');
-            var statusText = card.querySelector('[data-status-text]');
-            var pct = job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0;
-            if (fill) fill.style.width = pct + '%';
-            if (note) note.textContent = job.status === 'pending' ? 'Waiting to start...' : (job.processedMembers + ' / ' + job.totalMembers + ' members processed, ' + job.successCount + ' updated, ' + job.errorCount + ' failed.');
-            if (statusText) statusText.textContent = job.status.charAt(0).toUpperCase() + job.status.slice(1);
+            if (!job) { setTimeout(function () { poll(card); }, 2000); return; }
+            renderJob(card, job);
             if (job.status === 'pending' || job.status === 'running') {
               setTimeout(function () { poll(card); }, 2000);
-            } else {
-              window.location.reload();
             }
           })
           .catch(function () { setTimeout(function () { poll(card); }, 4000); });
@@ -179,6 +216,7 @@ const statusLabel: Record<string, string> = {
   .br-card + .br-card, .br-form { margin-top: 14px; }
   .br-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
   .br-card-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
+  .br-icon-hidden { display: none; }
   .br-card-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .br-role-chip { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
   .br-status-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
