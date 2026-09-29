@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import { Icon } from 'astro-icon/components';
 import SpecularButton from '../react/SpecularButton.jsx';
 import { useTranslations, localePath, sortedReleases, type Locale } from '../i18n/ui';
+import { getAllCommands } from '../utils/commandList';
 
 interface Props {
   lang: Locale;
@@ -15,33 +16,16 @@ const featureIcons = ['ph:users-three-fill', 'ph:terminal-window-fill', 'ph:moon
 const featureColors = ['blue', 'green', 'yellow', 'red', 'blue', 'green'];
 const features = t.features.grid.map((f, i) => ({ ...f, icon: featureIcons[i], color: featureColors[i] }));
 
-// Real guild count, fetched from the private bot API at build time (falls back to a fixed
-// number if the request fails, e.g. no network on the build machine).
-async function fetchActiveServers() {
-  const url = process.env.PETTO_BOT_API_URL?.replace(/\/+$/, '');
-  const key = process.env.PETTO_BOT_API_SECRET;
-  if (!url || !key) return null;
-
-  try {
-    const res = await fetch(`${url}/rest/v1/guilds?select=guild_id`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: 'count=exact', Range: '0-0' },
-    });
-    const range = res.headers.get('content-range'); // "0-0/N"
-    return range ? range.split('/')[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-const activeServers = (await fetchActiveServers()) ?? '4';
+const activeServers = '—';
+const commandCount = getAllCommands().length;
 
 const releases = sortedReleases(lang).slice(0, 3).map((r) => ({ ...r, href: r.href ? `${base}${r.href}` : null, banner: r.banner || null }));
 
 const stats = [
-  { n: activeServers, l: t.stats.servers, icon: 'ph:globe-hemisphere-west-fill', color: 'blue' },
-  { n: '60', l: t.stats.commands, icon: 'ph:terminal-window-fill', color: 'green' },
-  { n: '9', l: t.stats.categories, icon: 'ph:list-checks-fill', color: 'yellow' },
-  { n: '100%', l: t.stats.postgres, icon: 'ph:database-fill', color: 'red' },
+  { key: 'servers', n: activeServers, l: t.stats.servers, icon: 'ph:globe-hemisphere-west-fill', color: 'blue' },
+  { key: 'commands', n: String(commandCount), l: t.stats.commands, icon: 'ph:terminal-window-fill', color: 'green' },
+  { key: 'categories', n: '9', l: t.stats.categories, icon: 'ph:list-checks-fill', color: 'yellow' },
+  { key: 'postgres', n: '100%', l: t.stats.postgres, icon: 'ph:database-fill', color: 'red' },
 ];
 
 ---
@@ -130,10 +114,10 @@ const stats = [
           </div>
           <div class="stats">
             {stats.map((s) => (
-              <div class={`stat stat-${s.color}`}>
+              <div class={`stat stat-${s.color}`} data-home-stat={s.key}>
                 <Icon name={s.icon} class="stat-ic" />
                 <div class="stat-num">
-                  <span class="n num">{s.n}</span>
+                  <span class="n num" data-home-stat-value={s.key}>{s.n}</span>
                 </div>
                 <div class="l">{s.l}</div>
               </div>
@@ -682,4 +666,27 @@ const stats = [
 
   chips.forEach((chip) => chip.addEventListener('click', () => show(chip.dataset.cmd ?? '')));
   show('ban');
+</script>
+
+<script>
+  const homeServerStat = document.querySelector<HTMLElement>('[data-home-stat-value="servers"]');
+
+  async function syncHomeServerStat() {
+    if (!homeServerStat) return;
+    try {
+      const response = await fetch('/api/status', { cache: 'no-store', headers: { Accept: 'application/json' } });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (!Array.isArray(payload.shards) || payload.shards.length === 0) return;
+
+      const serverCount = payload.shards.reduce((total: number, shard: { guild_count?: number }) => {
+        const count = Number(shard.guild_count);
+        return total + (Number.isFinite(count) ? count : 0);
+      }, 0);
+      homeServerStat.textContent = String(serverCount);
+    } catch {}
+  }
+
+  syncHomeServerStat();
+  window.setInterval(syncHomeServerStat, 60_000);
 </script>
