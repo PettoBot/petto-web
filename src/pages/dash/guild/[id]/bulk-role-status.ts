@@ -30,5 +30,11 @@ export const GET: APIRoute = async (context) => {
     errorMessage: row.error_message,
   };
 
-  return new Response(JSON.stringify({ job }), { headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ job }), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      Pragma: 'no-cache',
+    },
+  });
 };
