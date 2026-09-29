@@ -133,24 +133,68 @@ const catIcon: Record<string, string> = {
 
 <script>
   const input = document.getElementById('cmdSearch') as HTMLInputElement | null;
+  const cols = document.querySelector<HTMLElement>('.cmd-cols');
   const cats = Array.from(document.querySelectorAll<HTMLElement>('[data-cat]'));
   const noResults = document.getElementById('cmdNoResults');
   const tocLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc]'));
   const body = document.querySelector<HTMLElement>('.cmd-body');
-  const toc = document.getElementById('cmdToc');
+  const layout = document.querySelector<HTMLElement>('.cmd-layout');
+  const ids = cats.map((cat) => cat.id);
 
   // Keep the sticky search bar right under the site header, whatever its height is.
-  function syncStickyOffset() {
+  function stickyOffset() {
     const header = document.querySelector('header.nav') as HTMLElement | null;
     const offset = header ? header.getBoundingClientRect().bottom + 8 : 72;
-    body?.style.setProperty('--cmd-sticky-top', `${Math.max(offset, 8)}px`);
+    return Math.max(offset, 8);
+  }
+  function syncStickyOffset() {
+    body?.style.setProperty('--cmd-sticky-top', `${stickyOffset()}px`);
   }
   syncStickyOffset();
   window.addEventListener('resize', syncStickyOffset);
 
-  input?.addEventListener('input', () => {
-    const q = input.value.trim().toLowerCase();
+  // One category at a time. Without JavaScript every category stays on the page.
+  let current = '';
+  function activate(id: string, options: { scroll: boolean; hash: boolean }) {
+    if (!ids.includes(id)) id = ids[0];
+    current = id;
+    cats.forEach((cat) => cat.classList.toggle('active', cat.id === id));
+    tocLinks.forEach((link) => {
+      const on = link.dataset.toc === id;
+      link.classList.toggle('active', on);
+      if (on) link.setAttribute('aria-current', 'true'); else link.removeAttribute('aria-current');
+    });
+    const row = document.querySelector<HTMLElement>('.toc-links');
+    const link = tocLinks.find((item) => item.dataset.toc === id);
+    if (row && link && row.scrollWidth > row.clientWidth) {
+      row.scrollTo({ left: link.offsetLeft - row.clientWidth / 2 + link.clientWidth / 2, behavior: 'smooth' });
+    }
+    if (options.hash && history.replaceState) history.replaceState(null, '', `#${id}`);
+    if (options.scroll && layout) {
+      const top = layout.getBoundingClientRect().top + window.scrollY - stickyOffset() - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+  }
+  cols?.classList.add('tabs');
+  activate(ids.includes(location.hash.slice(1)) ? location.hash.slice(1) : ids[0], { scroll: false, hash: false });
+
+  tocLinks.forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (input && input.value) { input.value = ''; runSearch(); }
+      activate(link.dataset.toc ?? ids[0], { scroll: true, hash: true });
+    });
+  });
+  window.addEventListener('hashchange', () => {
+    const id = location.hash.slice(1);
+    if (ids.includes(id) && id !== current) activate(id, { scroll: true, hash: false });
+  });
+
+  // Searching looks through every category, and typing nothing goes back to the chosen one.
+  function runSearch() {
+    const q = (input?.value ?? '').trim().toLowerCase();
     let visible = 0;
+    cols?.classList.toggle('searching', Boolean(q));
     cats.forEach((cat) => {
       let catVisible = 0;
       cat.querySelectorAll<HTMLElement>('.cmd-row').forEach((el) => {
@@ -162,34 +206,10 @@ const catIcon: Record<string, string> = {
       tocLinks.find((a) => a.dataset.toc === cat.id)?.toggleAttribute('hidden', catVisible === 0 && Boolean(q));
       visible += catVisible;
     });
+    if (q && visible === 0) tocLinks.forEach((a) => a.removeAttribute('hidden'));
     if (noResults) noResults.style.display = q && visible === 0 ? 'block' : 'none';
-  });
-
-  // Highlight the category being read, and keep its chip in view on phones.
-  let current = '';
-  function setActive(id: string) {
-    if (id === current) return;
-    current = id;
-    tocLinks.forEach((a) => {
-      const on = a.dataset.toc === id;
-      a.classList.toggle('active', on);
-      if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
-    });
-    const row = document.querySelector<HTMLElement>('.toc-links');
-    const link = tocLinks.find((a) => a.dataset.toc === id);
-    if (row && link && row.scrollWidth > row.clientWidth) {
-      row.scrollTo({ left: link.offsetLeft - row.clientWidth / 2 + link.clientWidth / 2, behavior: 'smooth' });
-    }
   }
-  if ('IntersectionObserver' in window) {
-    const seen = new Map<string, number>();
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => seen.set(entry.target.id, entry.isIntersecting ? entry.boundingClientRect.top : Infinity));
-      const first = [...seen.entries()].filter(([, top]) => top !== Infinity).sort((a, b) => a[1] - b[1])[0];
-      if (first) setActive(first[0]);
-    }, { rootMargin: '-25% 0px -60% 0px' });
-    cats.forEach((cat) => observer.observe(cat));
-  }
+  input?.addEventListener('input', runSearch);
 
   document.addEventListener('click', async (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.cmd-copy');
@@ -215,7 +235,6 @@ const catIcon: Record<string, string> = {
     if (topButton) topButton.hidden = window.scrollY < 900;
   }, { passive: true });
   topButton?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  void toc;
 </script>
 
 <style>
@@ -259,6 +278,8 @@ const catIcon: Record<string, string> = {
   .toc-links a :global(.toc-ic) { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-dim); }
 
   .cmd-cols { display: flex; flex-direction: column; gap: 56px; }
+  .cmd-cols.tabs .cat:not(.active) { display: none; }
+  .cmd-cols.tabs.searching .cat { display: block; }
   .cat h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 24px; margin-bottom: 8px; }
   .cat { scroll-margin-top: calc(var(--cmd-sticky-top) + 12px); }
   .cat h2 :global(.cat-ic) { width: 20px; height: 20px; color: var(--accent); }
@@ -300,7 +321,7 @@ const catIcon: Record<string, string> = {
     .resource-card-sm { display: flex; }
     .cmd-body { padding: 24px 0 72px; }
     .cmd-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-    .toc { max-height: none; overflow: visible; z-index: 20; padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); }
+    .toc { max-height: none; overflow: visible; z-index: 20; padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--bg) 97%, transparent); backdrop-filter: blur(12px); }
     .search-box { margin-bottom: 10px; }
     .toc-label { display: none; }
     .toc-links { flex-direction: row; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
