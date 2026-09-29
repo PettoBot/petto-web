@@ -1,3 +1,5 @@
+import { commandRows, type CommandRow } from '../data/commandCatalog';
+
 export const locales = ['en', 'es', 'pt-BR'] as const;
 export type Locale = (typeof locales)[number];
 export const defaultLocale: Locale = 'en';
@@ -450,18 +452,7 @@ export const ui = {
               'Temporary bans and mutes expire on their own, no follow-up command needed.',
             ],
           },
-          cmds: [
-            ['ban', '/ban <user> [duration] [reason]', 'Ban one or many members, permanent or temporary.'],
-            ['kick', '/kick <user> [reason]', 'Kick one or many members.'],
-            ['mute', '/mute <user> [duration] [reason]', 'Timeout a member, permanent or temporary, with auto-expiry.'],
-            ['warn', '/warn <user> [reason]', 'Log a warning, optionally escalating after N warns.'],
-            ['case', '/case <list|view|edit|delete> [case_id]', 'List, view, edit, or delete moderation cases.'],
-            ['note', '/note <user> <text>', 'Add a non-punitive staff note to a user.'],
-            ['role', '/role <add|remove> <user> <role>', 'Add or remove a role from a member.'],
-            ['channel', '/channel <lock|unlock|slowmode|clear> [duration]', 'Lock, unlock, slowmode, or clear a channel.'],
-            ['snipe', '/snipe <deleted|edited> [index]', 'Staff-only view of recently deleted or edited messages.'],
-            ['voice', '/voice <mute|deafen|disconnect|move> <user> [channel]', 'Mute, deafen, disconnect, or move members in voice.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'tickets', title: 'Tickets', desc: 'Panel-based support tickets with full transcripts.',
@@ -473,13 +464,7 @@ export const ui = {
               'Closing a ticket with /ticket close generates a shareable transcript link automatically.',
             ],
           },
-          cmds: [
-            ['ticket panel', '/ticket panel <create|edit|delete>', 'Create and manage ticket panels.'],
-            ['ticket category', '/ticket category <add|edit|remove> <name>', 'Configure ticket categories and their naming pattern.'],
-            ['ticket open / close / reopen', '/ticket <open|close|reopen> [reason]', 'Standard ticket lifecycle.'],
-            ['ticket claim / unclaim', '/ticket <claim|unclaim>', 'Staff claims a ticket to own it.'],
-            ['ticket transcript', '/ticket transcript', 'Get the public link to a closed ticket transcript.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'leveling', title: 'Leveling', desc: 'XP curve, multipliers, and rewards, all configurable.',
@@ -491,11 +476,7 @@ export const ui = {
               'Members check message progress with /rank, or add type:voice for voice rank and leaderboard data.',
             ],
           },
-          cmds: [
-            ['level', '/level config [rate] [curve] [cooldown]', 'Admin config: XP rate, curve, cooldown, rewards, multipliers.'],
-            ['rank', '/rank [user] [type]', "Your (or someone else's) message or voice level card."],
-            ['top', '/top [page] [type]', 'Paginated message or voice XP leaderboard.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'giveaways', title: 'Giveaways', desc: 'Role-weighted entries, claim windows, reusable templates.',
@@ -507,13 +488,7 @@ export const ui = {
               "If a winner doesn't claim in time, Petto rerolls automatically.",
             ],
           },
-          cmds: [
-            ['giveaway quick / start', '/giveaway <quick|start> <duration> <winners> [channel] <prize>', 'Launch a giveaway, instantly or fully customized.'],
-            ['giveaway template', '/giveaway template <template_name>', 'Launch a saved giveaway configuration.'],
-            ['giveaway reroll / end / edit', '/giveaway <reroll|end|edit> <message_id>', 'Manage a giveaway in progress or after it ends.'],
-            ['giveawaypreset', '/giveawaypreset <add|remove> <role> <entries>', 'Role-based bonus entries and claim time.'],
-            ['giveawaytemplate', '/giveawaytemplate <save|load> <name>', 'Save a full giveaway setup to relaunch later.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'automation', title: 'Automation', desc: 'The small things that used to need a human watching the server.',
@@ -525,13 +500,7 @@ export const ui = {
               'Turn off any built-in command server-wide or in a specific channel with /disablecommand.',
             ],
           },
-          cmds: [
-            ['reactionrole', '/reactionrole <add|remove> <message_id> <emoji> <role>', 'Bind an emoji on a message to a role.'],
-            ['customcommand', '/customcommand <add|edit|remove> <name> <response>', 'Create a command that replies with saved text or an embed.'],
-            ['autoresponder', '/autoresponder <add|remove> <trigger> <response>', 'Auto-reply when a message matches a trigger.'],
-            ['stickymessage', '/stickymessage <set|remove> <channel> [text]', 'Keep a message pinned to the bottom of a channel.'],
-            ['disablecommand', '/disablecommand <command> [channel]', 'Turn a command off, server-wide or per channel.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'community', title: 'Community', desc: 'The small utilities members use on themselves, day to day.',
@@ -543,13 +512,7 @@ export const ui = {
               "Check the invite leaderboard with /invites to see who's bringing in members.",
             ],
           },
-          cmds: [
-            ['remind', '/remind <duration> [message]', 'Set a personal reminder.'],
-            ['invites', '/invites [user]', 'See who invited whom, and a per-server leaderboard.'],
-            ['afk', '/afk [reason]', 'Mark yourself away, auto-clears on your next message.'],
-            ['boosterrole', '/boosterrole <color> [name]', 'A custom colored role for server boosters.'],
-            ['report', '/report <user|message> [reason]', 'Report a message or user to staff.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'onboarding', title: 'Onboarding', desc: 'Everything that happens the moment someone joins.',
@@ -561,14 +524,7 @@ export const ui = {
               'Add a DM-on-join or a ping-on-join with /dmonjoin and /poj if you want more than a channel post.',
             ],
           },
-          cmds: [
-            ['verify', '/verify setup [role]', 'Cloudflare Turnstile join-gate setup.'],
-            ['welcome / leave', '/welcome <channel> [message]', 'Channel announcements on join and leave.'],
-            ['boost', '/boost <channel> [message]', 'Announce new boosts and boost-level changes.'],
-            ['dmonjoin', '/dmonjoin <enable|disable> [message]', 'Send a DM to new members, separate from the channel welcome.'],
-            ['poj', '/poj <enable|disable> [role]', '"Ping on join": mention a new member, then clean it up.'],
-            ['bumpreminder', '/bumpreminder <channel>', 'Reminds the server to bump on Disboard.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'logging', title: 'Logging', desc: 'Nine independent categories, each routed to its own channel.',
@@ -580,12 +536,7 @@ export const ui = {
               'Configure word filters, spam detection, and anti-raid separately with /automod.',
             ],
           },
-          cmds: [
-            ['logs add / remove', '/logs <add|remove> <category> <channel>', 'Route an event category to a channel.'],
-            ['logs color', '/logs color <category> <hex_color>', "Override an event's embed color per channel."],
-            ['logs ignore', '/logs ignore <add|remove> <user|channel>', 'Exclude a user or channel from being logged.'],
-            ['automod', '/automod config [words] [links] [spam]', 'Word filters, spam detection, link scanning, anti-raid.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'info', title: 'Info & utility', desc: 'Public lookups, nothing requires staff permissions.',
@@ -597,17 +548,7 @@ export const ui = {
               "Petto's own stats are public too, with /botinfo, /ping, and /uptime.",
             ],
           },
-          cmds: [
-            ['avatar / banner', '/avatar [user]', "A member's avatar or profile banner."],
-            ['userinfo / serverinfo', '/userinfo [user]', 'Account, join date, roles, badges, or full server stats.'],
-            ['roleinfo / channelinfo / emojiinfo', '/roleinfo <role>', 'Details on a role, channel, or custom emoji.'],
-            ['permissions', '/permissions <user> [channel]', "A member's effective permissions in a channel."],
-            ['botinfo / ping / uptime', '/botinfo', "Petto's own stats and latency."],
-            ['calc', '/calc <expression>', 'Calculate a safe arithmetic expression.'],
-            ['time', '/time [timezone]', 'Show the current time in an IANA time zone.'],
-            ['search', '/search <query>', 'Search Google from Discord with safe result previews.'],
-            ['snowflake / color / firstmessage / inviteinfo', '/snowflake <id>', 'Small everyday lookups.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'setup', title: 'Setup', desc: 'The handful of server-wide settings everything else builds on.',
@@ -619,12 +560,19 @@ export const ui = {
               'Run /help any time to browse every command without leaving Discord.',
             ],
           },
-          cmds: [
-            ['prefix', '/prefix [new_prefix]', 'View or change the command prefix.'],
-            ['embed', '/embed <create|edit|delete> <name>', 'Build and save named embeds with a variable engine.'],
-            ['help', '/help [command]', 'Browse every command and how to use it.'],
-            ['permission', '/permission <mylevel|group|command>', 'Configure optional 0-100 authorization levels for prefix commands.'],
-          ],
+          cmds: [] as CommandRow[],
+        },
+        {
+          id: 'roleplay', title: 'Roleplay', desc: 'Playful actions to send to other members, like hugs, waves, and high fives.',
+          guide: {
+            intro: 'Roleplay is a set of light, friendly actions members can send to each other.',
+            steps: [
+              'Run a command like !hug @member to send the action.',
+              'Petto replies with a themed message and an animated image.',
+              'Every action is playful and safe for work.',
+            ],
+          },
+          cmds: [] as CommandRow[],
         },
       ],
     },
@@ -1332,18 +1280,7 @@ export const ui = {
               'Los bans y mutes temporales expiran solos, sin necesitar un comando de seguimiento.',
             ],
           },
-          cmds: [
-            ['ban', '/ban <user> [duration] [reason]', 'Banea a uno o varios miembros, permanente o temporal.'],
-            ['kick', '/kick <user> [reason]', 'Expulsa a uno o varios miembros.'],
-            ['mute', '/mute <user> [duration] [reason]', 'Silencia a un miembro, permanente o temporal, con expiración automática.'],
-            ['warn', '/warn <user> [reason]', 'Registra una advertencia, con escalado opcional después de N warns.'],
-            ['case', '/case <list|view|edit|delete> [case_id]', 'Lista, ve, edita o borra casos de moderación.'],
-            ['note', '/note <user> <text>', 'Agrega una nota de staff no punitiva a un usuario.'],
-            ['role', '/role <add|remove> <user> <role>', 'Agrega o quita un rol a un miembro.'],
-            ['channel', '/channel <lock|unlock|slowmode|clear> [duration]', 'Bloquea, desbloquea, pone slowmode, o limpia un canal.'],
-            ['snipe', '/snipe <deleted|edited> [index]', 'Consulta para staff de mensajes borrados o editados recientemente.'],
-            ['voice', '/voice <mute|deafen|disconnect|move> <user> [channel]', 'Mutea, ensordece, desconecta o mueve miembros en voz.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'tickets', title: 'Tickets', desc: 'Tickets de soporte por panel, con transcripción completa.',
@@ -1355,13 +1292,7 @@ export const ui = {
               'Cerrar un ticket con /ticket close genera automáticamente un link de transcripción para compartir.',
             ],
           },
-          cmds: [
-            ['ticket panel', '/ticket panel <create|edit|delete>', 'Crea y administra paneles de tickets.'],
-            ['ticket category', '/ticket category <add|edit|remove> <name>', 'Configura categorías de tickets y su patrón de nombre.'],
-            ['ticket open / close / reopen', '/ticket <open|close|reopen> [reason]', 'Ciclo de vida estándar de un ticket.'],
-            ['ticket claim / unclaim', '/ticket <claim|unclaim>', 'El staff reclama un ticket para hacerse cargo.'],
-            ['ticket transcript', '/ticket transcript', 'Obtiene el link público a la transcripción de un ticket cerrado.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'leveling', title: 'Niveles', desc: 'Curva de XP, multiplicadores y recompensas, todo configurable.',
@@ -1373,11 +1304,7 @@ export const ui = {
             'Los miembros revisan mensajes con /rank, o usan type:voice para consultar su rango y el leaderboard de voz.',
             ],
           },
-          cmds: [
-            ['level', '/level config [rate] [curve] [cooldown]', 'Config de admin: tasa de XP, curva, cooldown, recompensas, multiplicadores.'],
-            ['rank', '/rank [user] [type]', 'Tu tarjeta de nivel de mensajes o voz, o la de alguien más.'],
-            ['top', '/top [page] [type]', 'Leaderboard paginado de XP de mensajes o voz.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'giveaways', title: 'Sorteos', desc: 'Entradas ponderadas por rol, ventanas de reclamo, plantillas reutilizables.',
@@ -1389,13 +1316,7 @@ export const ui = {
               'Si un ganador no reclama a tiempo, Petto vuelve a sortear automáticamente.',
             ],
           },
-          cmds: [
-            ['giveaway quick / start', '/giveaway <quick|start> <duration> <winners> [channel] <prize>', 'Lanza un sorteo, al instante o totalmente personalizado.'],
-            ['giveaway template', '/giveaway template <template_name>', 'Lanza una configuración de sorteo guardada.'],
-            ['giveaway reroll / end / edit', '/giveaway <reroll|end|edit> <message_id>', 'Administra un sorteo en curso o después de que termine.'],
-            ['giveawaypreset', '/giveawaypreset <add|remove> <role> <entries>', 'Entradas extra y tiempo de reclamo basados en rol.'],
-            ['giveawaytemplate', '/giveawaytemplate <save|load> <name>', 'Guarda una configuración completa de sorteo para relanzar después.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'automation', title: 'Automatización', desc: 'Las cosas chicas que antes necesitaban a alguien mirando el servidor.',
@@ -1407,13 +1328,7 @@ export const ui = {
               'Apaga cualquier comando integrado en todo el servidor o en un canal específico con /disablecommand.',
             ],
           },
-          cmds: [
-            ['reactionrole', '/reactionrole <add|remove> <message_id> <emoji> <role>', 'Vincula un emoji en un mensaje a un rol.'],
-            ['customcommand', '/customcommand <add|edit|remove> <name> <response>', 'Crea un comando que responde con texto guardado o un embed.'],
-            ['autoresponder', '/autoresponder <add|remove> <trigger> <response>', 'Responde automático cuando un mensaje coincide con un trigger.'],
-            ['stickymessage', '/stickymessage <set|remove> <channel> [text]', 'Mantiene un mensaje fijado al final de un canal.'],
-            ['disablecommand', '/disablecommand <command> [channel]', 'Apaga un comando, en todo el servidor o por canal.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'community', title: 'Comunidad', desc: 'Las utilidades chicas que los miembros usan en sí mismos, día a día.',
@@ -1425,13 +1340,7 @@ export const ui = {
               'Revisa el ranking de invites con /invites para ver quién está trayendo miembros.',
             ],
           },
-          cmds: [
-            ['remind', '/remind <duration> [message]', 'Configura un recordatorio personal.'],
-            ['invites', '/invites [user]', 'Ve quién invitó a quién, con un ranking por servidor.'],
-            ['afk', '/afk [reason]', 'Te marca como ausente, se limpia solo en tu próximo mensaje.'],
-            ['boosterrole', '/boosterrole <color> [name]', 'Un rol de color personalizado para quienes boostean el servidor.'],
-            ['report', '/report <user|message> [reason]', 'Reporta un mensaje o usuario al staff.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'onboarding', title: 'Bienvenida', desc: 'Todo lo que pasa en el momento en que alguien se une.',
@@ -1443,14 +1352,7 @@ export const ui = {
               'Agrega un DM al unirse o un ping al unirse con /dmonjoin y /poj si quieres más que un post en canal.',
             ],
           },
-          cmds: [
-            ['verify', '/verify setup [role]', 'Configuración del portón de verificación con Cloudflare Turnstile.'],
-            ['welcome / leave', '/welcome <channel> [message]', 'Anuncios de canal al entrar y al salir.'],
-            ['boost', '/boost <channel> [message]', 'Anuncia nuevos boosts y cambios de nivel de boost.'],
-            ['dmonjoin', '/dmonjoin <enable|disable> [message]', 'Manda un DM a los nuevos miembros, aparte del welcome de canal.'],
-            ['poj', '/poj <enable|disable> [role]', '"Ping on join": menciona a un nuevo miembro y después lo limpia.'],
-            ['bumpreminder', '/bumpreminder <channel>', 'Le recuerda al servidor hacer bump en Disboard.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'logging', title: 'Logging', desc: 'Nueve categorías independientes, cada una con su propio canal.',
@@ -1462,12 +1364,7 @@ export const ui = {
               'Configura filtros de palabras, detección de spam, y anti-raid por separado con /automod.',
             ],
           },
-          cmds: [
-            ['logs add / remove', '/logs <add|remove> <category> <channel>', 'Enruta una categoría de eventos a un canal.'],
-            ['logs color', '/logs color <category> <hex_color>', 'Cambia el color del embed de un evento por canal.'],
-            ['logs ignore', '/logs ignore <add|remove> <user|channel>', 'Excluye a un usuario o canal de ser registrado.'],
-            ['automod', '/automod config [words] [links] [spam]', 'Filtros de palabras, detección de spam, escaneo de links, anti-raid.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'info', title: 'Info y utilidad', desc: 'Consultas públicas, ninguna necesita permisos de staff.',
@@ -1479,17 +1376,7 @@ export const ui = {
               'Las estadísticas del propio Petto también son públicas, con /botinfo, /ping, y /uptime.',
             ],
           },
-          cmds: [
-            ['avatar / banner', '/avatar [user]', 'El avatar o banner de perfil de un miembro.'],
-            ['userinfo / serverinfo', '/userinfo [user]', 'Cuenta, fecha de ingreso, roles, badges, o estadísticas completas del servidor.'],
-            ['roleinfo / channelinfo / emojiinfo', '/roleinfo <role>', 'Detalles de un rol, canal, o emoji personalizado.'],
-            ['permissions', '/permissions <user> [channel]', 'Los permisos efectivos de un miembro en un canal.'],
-            ['botinfo / ping / uptime', '/botinfo', 'Las estadísticas y latencia propias de Petto.'],
-            ['calc', '/calc <expression>', 'Calcula una expresión aritmética segura.'],
-            ['time', '/time [timezone]', 'Muestra la hora actual en una zona horaria IANA.'],
-            ['search', '/search <query>', 'Busca en Google desde Discord con vistas previas seguras.'],
-            ['snowflake / color / firstmessage / inviteinfo', '/snowflake <id>', 'Consultas chicas del día a día.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'setup', title: 'Configuración', desc: 'El puñado de ajustes generales del servidor sobre los que corre todo lo demás.',
@@ -1501,12 +1388,19 @@ export const ui = {
               'Corre /help en cualquier momento para explorar todos los comandos sin salir de Discord.',
             ],
           },
-          cmds: [
-            ['prefix', '/prefix [new_prefix]', 'Ve o cambia el prefijo de comandos.'],
-            ['embed', '/embed <create|edit|delete> <name>', 'Arma y guarda embeds con nombre, con motor de variables.'],
-            ['help', '/help [command]', 'Explora todos los comandos y cómo usarlos.'],
-            ['permission', '/permission <mylevel|group|command>', 'Configura niveles opcionales de autorización 0-100 para comandos con prefijo.'],
-          ],
+          cmds: [] as CommandRow[],
+        },
+        {
+          id: 'roleplay', title: 'Roleplay', desc: 'Acciones divertidas para enviar a otros miembros, como abrazos, saludos y choques de manos.',
+          guide: {
+            intro: 'Roleplay es un conjunto de acciones ligeras y amistosas que los miembros pueden enviarse entre sí.',
+            steps: [
+              'Usa un comando como !hug @miembro para enviar la acción.',
+              'Petto responde con un mensaje temático y una imagen animada.',
+              'Todas las acciones son juguetonas y aptas para todo público.',
+            ],
+          },
+          cmds: [] as CommandRow[],
         },
       ],
     },
@@ -2214,18 +2108,7 @@ export const ui = {
               'Bans e mutes temporários expiram sozinhos, sem precisar de um comando de acompanhamento.',
             ],
           },
-          cmds: [
-            ['ban', '/ban <user> [duration] [reason]', 'Bane um ou vários membros, permanente ou temporário.'],
-            ['kick', '/kick <user> [reason]', 'Expulsa um ou vários membros.'],
-            ['mute', '/mute <user> [duration] [reason]', 'Silencia um membro, permanente ou temporário, com expiração automática.'],
-            ['warn', '/warn <user> [reason]', 'Registra uma advertência, com escalonamento opcional após N warns.'],
-            ['case', '/case <list|view|edit|delete> [case_id]', 'Lista, vê, edita ou apaga casos de moderação.'],
-            ['note', '/note <user> <text>', 'Adiciona uma nota da staff não punitiva a um usuário.'],
-            ['role', '/role <add|remove> <user> <role>', 'Adiciona ou remove um cargo de um membro.'],
-            ['channel', '/channel <lock|unlock|slowmode|clear> [duration]', 'Bloqueia, desbloqueia, ativa slowmode, ou limpa um canal.'],
-            ['snipe', '/snipe <deleted|edited> [index]', 'Consulta da staff para mensagens apagadas ou editadas recentemente.'],
-            ['voice', '/voice <mute|deafen|disconnect|move> <user> [channel]', 'Muta, ensurdece, desconecta ou move membros na voz.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'tickets', title: 'Tickets', desc: 'Tickets de suporte por painel, com transcrição completa.',
@@ -2237,13 +2120,7 @@ export const ui = {
               'Fechar um ticket com /ticket close gera automaticamente um link de transcrição para compartilhar.',
             ],
           },
-          cmds: [
-            ['ticket panel', '/ticket panel <create|edit|delete>', 'Cria e gerencia painéis de tickets.'],
-            ['ticket category', '/ticket category <add|edit|remove> <name>', 'Configura categorias de tickets e seu padrão de nome.'],
-            ['ticket open / close / reopen', '/ticket <open|close|reopen> [reason]', 'Ciclo de vida padrão de um ticket.'],
-            ['ticket claim / unclaim', '/ticket <claim|unclaim>', 'A staff reivindica um ticket para assumir.'],
-            ['ticket transcript', '/ticket transcript', 'Obtém o link público da transcrição de um ticket fechado.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'leveling', title: 'Níveis', desc: 'Curva de XP, multiplicadores e recompensas, tudo configurável.',
@@ -2255,11 +2132,7 @@ export const ui = {
             'Os membros conferem mensagens com /rank, ou usam type:voice para consultar o rank e o ranking de voz.',
             ],
           },
-          cmds: [
-            ['level', '/level config [rate] [curve] [cooldown]', 'Config de admin: taxa de XP, curva, cooldown, recompensas, multiplicadores.'],
-            ['rank', '/rank [user] [type]', 'Seu cartão de nível de mensagens ou voz, ou o de outra pessoa.'],
-            ['top', '/top [page] [type]', 'Ranking paginado de XP de mensagens ou voz.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'giveaways', title: 'Sorteios', desc: 'Entradas ponderadas por cargo, janelas de resgate, modelos reutilizáveis.',
@@ -2271,13 +2144,7 @@ export const ui = {
               'Se um vencedor não resgatar a tempo, o Petto sorteia outro automaticamente.',
             ],
           },
-          cmds: [
-            ['giveaway quick / start', '/giveaway <quick|start> <duration> <winners> [channel] <prize>', 'Lança um sorteio, instantaneamente ou totalmente personalizado.'],
-            ['giveaway template', '/giveaway template <template_name>', 'Lança uma configuração de sorteio salva.'],
-            ['giveaway reroll / end / edit', '/giveaway <reroll|end|edit> <message_id>', 'Gerencia um sorteio em andamento ou depois que ele termina.'],
-            ['giveawaypreset', '/giveawaypreset <add|remove> <role> <entries>', 'Entradas extras e tempo de resgate baseados em cargo.'],
-            ['giveawaytemplate', '/giveawaytemplate <save|load> <name>', 'Salva uma configuração completa de sorteio para relançar depois.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'automation', title: 'Automação', desc: 'As coisas pequenas que antes precisavam de alguém de olho no servidor.',
@@ -2289,13 +2156,7 @@ export const ui = {
               'Desligue qualquer comando nativo em todo o servidor ou em um canal específico com /disablecommand.',
             ],
           },
-          cmds: [
-            ['reactionrole', '/reactionrole <add|remove> <message_id> <emoji> <role>', 'Vincula um emoji em uma mensagem a um cargo.'],
-            ['customcommand', '/customcommand <add|edit|remove> <name> <response>', 'Cria um comando que responde com texto salvo ou um embed.'],
-            ['autoresponder', '/autoresponder <add|remove> <trigger> <response>', 'Responde automaticamente quando uma mensagem bate com um gatilho.'],
-            ['stickymessage', '/stickymessage <set|remove> <channel> [text]', 'Mantém uma mensagem fixada no final de um canal.'],
-            ['disablecommand', '/disablecommand <command> [channel]', 'Desliga um comando, em todo o servidor ou por canal.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'community', title: 'Comunidade', desc: 'As pequenas utilidades que os membros usam neles mesmos, no dia a dia.',
@@ -2307,13 +2168,7 @@ export const ui = {
               'Confira o ranking de convites com /invites para ver quem está trazendo membros.',
             ],
           },
-          cmds: [
-            ['remind', '/remind <duration> [message]', 'Configura um lembrete pessoal.'],
-            ['invites', '/invites [user]', 'Veja quem convidou quem, com um ranking por servidor.'],
-            ['afk', '/afk [reason]', 'Marca você como ausente, limpa sozinho na sua próxima mensagem.'],
-            ['boosterrole', '/boosterrole <color> [name]', 'Um cargo de cor personalizada para quem impulsiona o servidor.'],
-            ['report', '/report <user|message> [reason]', 'Reporta uma mensagem ou usuário para a staff.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'onboarding', title: 'Boas-vindas', desc: 'Tudo que acontece no momento em que alguém entra.',
@@ -2325,14 +2180,7 @@ export const ui = {
               'Adicione uma DM ao entrar ou um ping ao entrar com /dmonjoin e /poj se quiser mais que um post no canal.',
             ],
           },
-          cmds: [
-            ['verify', '/verify setup [role]', 'Configuração do portão de verificação com Cloudflare Turnstile.'],
-            ['welcome / leave', '/welcome <channel> [message]', 'Anúncios no canal ao entrar e ao sair.'],
-            ['boost', '/boost <channel> [message]', 'Anuncia novos boosts e mudanças de nível de boost.'],
-            ['dmonjoin', '/dmonjoin <enable|disable> [message]', 'Manda uma DM para novos membros, separado do welcome no canal.'],
-            ['poj', '/poj <enable|disable> [role]', '"Ping on join": menciona um novo membro e depois limpa.'],
-            ['bumpreminder', '/bumpreminder <channel>', 'Lembra o servidor de dar bump no Disboard.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'logging', title: 'Logs', desc: 'Nove categorias independentes, cada uma no seu próprio canal.',
@@ -2344,12 +2192,7 @@ export const ui = {
               'Configure filtros de palavras, detecção de spam, e anti-raid separadamente com /automod.',
             ],
           },
-          cmds: [
-            ['logs add / remove', '/logs <add|remove> <category> <channel>', 'Roteia uma categoria de eventos para um canal.'],
-            ['logs color', '/logs color <category> <hex_color>', 'Muda a cor do embed de um evento por canal.'],
-            ['logs ignore', '/logs ignore <add|remove> <user|channel>', 'Exclui um usuário ou canal de ser registrado.'],
-            ['automod', '/automod config [words] [links] [spam]', 'Filtros de palavras, detecção de spam, varredura de links, anti-raid.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'info', title: 'Info e utilidade', desc: 'Consultas públicas, nenhuma precisa de permissão de staff.',
@@ -2361,17 +2204,7 @@ export const ui = {
               'As próprias estatísticas do Petto também são públicas, com /botinfo, /ping, e /uptime.',
             ],
           },
-          cmds: [
-            ['avatar / banner', '/avatar [user]', 'O avatar ou banner de perfil de um membro.'],
-            ['userinfo / serverinfo', '/userinfo [user]', 'Conta, data de entrada, cargos, badges, ou estatísticas completas do servidor.'],
-            ['roleinfo / channelinfo / emojiinfo', '/roleinfo <role>', 'Detalhes de um cargo, canal, ou emoji personalizado.'],
-            ['permissions', '/permissions <user> [channel]', 'As permissões efetivas de um membro em um canal.'],
-            ['botinfo / ping / uptime', '/botinfo', 'As próprias estatísticas e latência do Petto.'],
-            ['calc', '/calc <expression>', 'Calcula uma expressão aritmética segura.'],
-            ['time', '/time [timezone]', 'Mostra a hora atual em um fuso IANA.'],
-            ['search', '/search <query>', 'Pesquise no Google pelo Discord com prévias seguras.'],
-            ['snowflake / color / firstmessage / inviteinfo', '/snowflake <id>', 'Consultas pequenas do dia a dia.'],
-          ],
+          cmds: [] as CommandRow[],
         },
         {
           id: 'setup', title: 'Configuração', desc: 'O punhado de ajustes gerais do servidor sobre o qual tudo mais é construído.',
@@ -2383,12 +2216,19 @@ export const ui = {
               'Rode /help a qualquer momento para explorar todos os comandos sem sair do Discord.',
             ],
           },
-          cmds: [
-            ['prefix', '/prefix [new_prefix]', 'Vê ou muda o prefixo de comandos.'],
-            ['embed', '/embed <create|edit|delete> <name>', 'Monta e salva embeds nomeados, com motor de variáveis.'],
-            ['help', '/help [command]', 'Explore todos os comandos e como usá-los.'],
-            ['permission', '/permission <mylevel|group|command>', 'Configure níveis opcionais de autorização 0-100 para comandos com prefixo.'],
-          ],
+          cmds: [] as CommandRow[],
+        },
+        {
+          id: 'roleplay', title: 'Roleplay', desc: 'Ações divertidas para enviar a outros membros, como abraços, acenos e high fives.',
+          guide: {
+            intro: 'Roleplay é um conjunto de ações leves e amigáveis que os membros podem enviar uns aos outros.',
+            steps: [
+              'Use um comando como !hug @membro para enviar a ação.',
+              'O Petto responde com uma mensagem temática e uma imagem animada.',
+              'Todas as ações são divertidas e seguras para qualquer público.',
+            ],
+          },
+          cmds: [] as CommandRow[],
         },
       ],
     },
@@ -2662,6 +2502,12 @@ export const ui = {
     },
   },
 } as const;
+
+for (const lang of locales) {
+  for (const category of ui[lang].commandsPage.categories) {
+    (category.cmds as CommandRow[]).push(...commandRows(category.id, lang));
+  }
+}
 
 export function useTranslations(lang: Locale) {
   return ui[lang];
