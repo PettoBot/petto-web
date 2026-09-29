@@ -1,125 +1,91 @@
-# petto-web
+<div align="center">
+  <img src="docs/assets/petto-wordmark.png" alt="Petto" width="680">
+  <h1>petto-web</h1>
+  <p>The official website and web dashboard of Petto, where server owners learn about the bot and configure it without typing commands.</p>
+  <p>
+    <a href="https://petto.sbs">Website</a> ·
+    <a href="https://petto.sbs/dash">Dashboard</a> ·
+    <a href="https://petto.sbs/support">Support</a> ·
+    <a href="https://github.com/PettoBot/petto-bot">Bot repository</a> ·
+    <a href="https://github.com/PettoBot/petto-wiki-docs">Documentation</a>
+  </p>
+</div>
 
-The website and dashboard for [Petto](https://petto.sbs), a Discord bot. Built with Astro 4,
-deployed on Cloudflare.
+<div align="left">
+  <img src="docs/assets/petto-banner-blue.png" alt="Petto overview" width="680">
+</div>
 
-The public site is static. The dashboard (`/dash/**`) runs server-side per request, because it
-needs a live Discord session to know which servers you can manage.
+**Overview**
 
----
+petto-web is the front door of [Petto](https://github.com/PettoBot/petto-bot). It hosts the public pages that explain the bot and the dashboard where server managers configure it with forms, toggles, and dropdowns. It is built with Astro 4 and React islands and deployed on Cloudflare. The public pages are static. The dashboard (`/dash/**`) runs on the server for every request, because it needs a live Discord session to know which servers you can manage. It never touches the database directly and talks to the bot through a private API.
 
-## Running it locally
+<div align="left">
+  <img src="docs/assets/petto-banner-green.png" alt="Petto website features" width="680">
+</div>
 
-This project reads its credentials from the bot's `.env`, so both repos need to sit next to each
-other:
+**What the site includes**
 
-```
-some-folder/
-  petto bot 1/     <- github.com/liamt8d/petto-bot
-  petto-web/       <- this repo
-```
+- **Public pages:** home, commands, FAQ, roadmap, changelog, blog, team, partners, status, and legal pages, in English, Spanish, and Portuguese.
+- **Server dashboard:** one module per area of the bot, including moderation, leveling, tickets, giveaways, logging, security, onboarding, community, automation, backups, and permissions.
+- **Embed builder:** a React island with live preview, up to 10 embeds, and 5 rows of buttons.
+- **Premium:** plans, checkout through Polar, and owner grants at `/dash/admin`.
+- **Discord login:** OAuth2 sign in, linked roles, and a per-server permission check on every dashboard page.
 
-`astro.config.mjs` loads `../petto bot 1/.env`. If the bot's folder is named differently, update
-that path or the dashboard will have no Discord or bot API credentials in dev.
+<div align="left">
+  <img src="docs/assets/petto-banner-yellow.png" alt="Petto web development" width="680">
+</div>
+
+**Running it locally**
 
 ```bash
 npm install
-npm run dev      # http://localhost:4321
-npm run build    # always run this before calling a change done
+npm run dev
+npm run check
+npm run build
 ```
 
-There is no test suite. `npm run build` is the real check that nothing is broken.
+The dev server runs at `http://localhost:4321`. Always run `npm run check` and `npm run build` before calling a change done, since there is no test suite.
 
-### Environment variables
+`astro.config.mjs` loads the credentials from the bot's `.env`, expected at `../petto bot 1/.env`. If your bot folder is named differently, update that path, or the dashboard will have no Discord or bot API credentials in development.
+
+**Environment variables**
 
 | Variable | Used for |
 | --- | --- |
-| `DISCORD_TOKEN` | Bot token. Reads guild/role/channel data, and the team profiles on `/team` at build time. |
-| `DISCORD_CLIENT_ID` | OAuth2 login, and the "Add Bot" invite links. |
-| `DISCORD_CLIENT_SECRET` | OAuth2 code exchange, and signing the session cookie. Server-side only. |
+| `DISCORD_TOKEN` | Bot token. Reads guild, role, and channel data, and the team profiles on `/team` at build time. |
+| `DISCORD_CLIENT_ID` | OAuth2 login and the Add Bot invite links. |
+| `DISCORD_CLIENT_SECRET` | OAuth2 code exchange and signing the session cookie. Server-side only. |
 | `PETTO_BOT_API_URL` | Private bot API used by the dashboard for all database-backed data. |
-| `PETTO_BOT_API_SECRET` | Server-side key matching the bot's `PETTO_DASHBOARD_API_SECRET`; never expose it to the browser. |
-| `POLAR_ACCESS_TOKEN` | Secret used server-side to create a checkout tied to the logged-in Discord user. |
+| `PETTO_BOT_API_SECRET` | Server-side key matching the bot's `PETTO_DASHBOARD_API_SECRET`. Never expose it to the browser. |
+| `POLAR_ACCESS_TOKEN` | Server-side secret used to create a checkout tied to the logged-in Discord user. |
 | `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
-| `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. Defaults to the owner ID in the code. |
+| `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. |
 
----
+**Deploying**
 
-## Deploying
+The Cloudflare adapter is already configured with `output: 'hybrid'`, so it deploys as is. Workers do not read `.env` files, so every variable above must be set in the Cloudflare dashboard as an encrypted variable. `/team` also needs `DISCORD_TOKEN` at build time, since it fetches each team member's live Discord profile while the site is built. The public product IDs and checkout link live in `wrangler.toml`.
 
-The Cloudflare adapter is already configured (`output: 'hybrid'`), so it deploys as-is. Two things
-that are easy to miss:
+For Discloud, register the web subdomain first, put it in the `ID` of `discloud.config`, and upload the project with the Node standalone build. The site must listen on `0.0.0.0:8080`, which `start:discloud` sets by default while still honoring an explicit `HOST` or `PORT`. Set `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime variables there.
 
-- **Workers don't read `.env` files.** Every variable above has to be set in the Cloudflare
-  dashboard, not just locally.
-- **`/team` needs `DISCORD_TOKEN` at build time**, not only at runtime, since it fetches each team
-  member's live Discord profile while the site is being built.
-- **Premium secrets belong in Cloudflare Pages/Workers**, not in the bot's public `.env.example`:
-  add `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `PETTO_BOT_API_SECRET`, and the existing
-  Discord OAuth secrets as encrypted variables. The public product IDs and checkout link are kept
-  in `wrangler.toml`.
-- **Owner grants** are available at `/dash/admin` only for the configured Discord owner ID. A
-  user grant gives an account permanent slots; a server grant activates that server immediately.
+**Project layout**
 
-For Discloud, register the web subdomain first, replace the `ID` in `discloud.config` with that
-subdomain, and upload the project with the included Node standalone build. Discloud needs the
-site to listen on `0.0.0.0:8080`; `start:discloud` sets that default while still honoring an
-explicit `HOST` or `PORT`. Configure `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime
-variables there, with the secret matching the bot's `PETTO_DASHBOARD_API_SECRET` exactly.
-
----
-
-## Layout
-
-```
+```text
 src/
-  pages/           One file per route. Locale copies live in es/ and pt-br/.
-    dash/          Everything behind Discord login (prerender = false).
-  components/      Page-level components. Dash*.astro are the dashboard modules.
-  layouts/Base.astro   Nav, footer, theme toggle, cookie banner, global CSS.
-  react/embeds/    The embed builder. The only React island on the site.
-  i18n/ui.ts       Every string, for all three locales.
-  utils/           Session, Discord API, dashboard auth.
+  pages/          One file per route. Locale copies live in es/ and pt-br/.
+    dash/         Everything behind Discord login.
+  components/     Page components. Dash*.astro are the dashboard modules.
+  layouts/        Base layout with nav, footer, theme toggle, and global CSS.
+  react/embeds/   The embed builder, the only React island.
+  i18n/ui.ts      Every string, for all locales.
+  utils/          Session, Discord API, and dashboard auth.
 ```
 
-### Adding a page
+To add a page, build the component in `src/components/`, add its strings to every locale in `src/i18n/ui.ts`, and create the route in `src/pages/`, `src/pages/es/`, and `src/pages/pt-br/`.
 
-1. Build the component in `src/components/`.
-2. Add the strings to all three locales in `src/i18n/ui.ts`.
-3. Create the route in `src/pages/`, `src/pages/es/`, and `src/pages/pt-br/`.
+To add a dashboard module, follow the shape of the pages under `src/pages/dash/guild/[id]/`: verify the session with `getGuildSession`, redirect when it fails, and batch every Discord and bot API call in a single `Promise.all`. Anything interpolated into a database API filter must go through `encodeURIComponent`.
 
-Blog posts follow the same pattern, plus an entry in `releases.items` (with an `iso` date, that's
-what the newest-first ordering sorts on) and a `postKey` added to `NewsPost.astro`.
+**Contributing**
 
-### Adding a dashboard module
+Petto is maintainer-led. Read the [contribution guide](CONTRIBUTING.md), [AI-assisted development policy](AI_POLICY.md), [governance](GOVERNANCE.md), [security policy](SECURITY.md), [code of conduct](CODE_OF_CONDUCT.md), [support guide](SUPPORT.md), and [DCO](DCO.md) before proposing a change.
 
-Pages under `src/pages/dash/guild/[id]/` all follow one shape:
-
-```astro
-const auth = await getGuildSession(Astro, id);   // verifies the user really manages this guild
-if ('redirect' in auth) return Astro.redirect(auth.redirect);
-```
-
-Then a single `Promise.all` for every Discord and bot API call the page needs. Fetching them one
-after another is what made these pages slow before, so keep them batched.
-
-Anything interpolated into a database API filter has to be escaped:
-
-```js
-`...?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}`
-```
-
----
-
-## Notes
-
-- **Docs are a separate site.** `/docs` redirects to [wiki.petto.sbs](https://wiki.petto.sbs),
-  built from its own repo with Mintlify.
-- **Dashboard navigation is AJAX.** `DashGuildLayout.astro` swaps `#dgl-content` instead of doing a
-  full page load, and syncs the incoming page's `<head>` styles and scripts so module CSS and the
-  React island still work.
-- **Unsaved changes are guarded.** Touching any dashboard form raises a save bar that blocks
-  navigation until you save or discard.
-- **UI conventions:** never use a native `<select multiple>`, use the checkbox-list-in-a-bordered-div
-  pattern (see `DashModeration.astro`). Module cards follow the `.md-card` / `.md-card-head` /
-  `.md-card-icon` shape.
+Feature ideas and behavior changes should be discussed and accepted before implementation. Never commit credentials, environment files, private deployment data, or database exports.
