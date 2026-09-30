@@ -1375,4 +1375,7 @@ export const dashEs: Record<string, string> = {
   "Choose at least one log event.": "Elige al menos un evento de registro.",
   "Too many changes, wait a minute and try again.": "Demasiados cambios, espera un minuto e inténtalo de nuevo.",
   "The Vanity bot did not answer in time, try again in a moment.": "El bot Vanity no respondió a tiempo, inténtalo de nuevo en un momento.",
+  "Vanity embeds": "Embeds de Vanity",
+  "Write your own messages in the <a href=\"{a}\">embed editor</a>, or in Discord with <code>/embed create</code> and <code>/embed edit</code>. They show up in the list above.": "Escribe tus propios mensajes en el <a href=\"{a}\">editor de embeds</a>, o en Discord con <code>/embed create</code> y <code>/embed edit</code>. Aparecerán en la lista de arriba.",
+  "Preview a saved message in Discord with /embed preview. The Vanity bot sends it when a rule matches.": "Previsualiza un mensaje guardado en Discord con /embed preview. El bot Vanity lo envía cuando una regla coincide.",
 };

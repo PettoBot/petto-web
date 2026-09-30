@@ -18,6 +18,7 @@ export interface VanityOverview {
   notifications: { vanity: VanityNotification; guildtag: VanityNotification };
   logs: { channel_id: string; events: string[] };
   embeds: string[];
+  variables?: { label: string; vars: { tok: string; desc: string }[] }[];
   profile: { nickname: string | null; bio: string | null; sync_status: string };
   roles: VanityRole[];
   channels: VanityChannel[];
@@ -66,6 +67,11 @@ export async function listVanityGuildIds(astro: { locals?: any }): Promise<Set<s
 
 export function getVanityOverview(astro: { locals?: any }, guildId: string, userId: string) {
   return call<VanityOverview & { ok: true }>(astro, `/api/dashboard/guild/${encodeURIComponent(guildId)}?user_id=${encodeURIComponent(userId)}`);
+}
+
+/** One saved message, in the shape the Vanity bot stores it. */
+export function getVanityEmbed(astro: { locals?: any }, guildId: string, userId: string, name: string) {
+  return call<{ name: string; template: import('./vanityEmbeds').VanityTemplate }>(astro, `/api/dashboard/guild/${encodeURIComponent(guildId)}/embed?name=${encodeURIComponent(name)}&user_id=${encodeURIComponent(userId)}`);
 }
 
 export async function vanityAction(astro: { locals?: any }, guildId: string, userId: string, body: Record<string, unknown>) {

@@ -24,6 +24,8 @@ export interface PreviewMessage {
 }
 
 export interface PreviewContext {
+  /** Extra sample values, for the variables only one bot has. */
+  samples?: Record<string, import('./variableSamples').TokenValue>;
   userName: string;
   serverName: string;
   botName: string;
@@ -59,7 +61,7 @@ function inline(html: string, ctx: PreviewContext): string {
     // The label of a [text](link) can carry formatting or variables too.
     return `<a class="dp-link" href="${url}" target="_blank" rel="noopener noreferrer">${label === null ? url : inline(label, ctx)}</a>`;
   });
-  const samples = tokenValues({ userId: sampleContext.userId, userName: ctx.userName, serverName: ctx.serverName, memberCount: sampleContext.memberCount });
+  const samples = { ...tokenValues({ userId: sampleContext.userId, userName: ctx.userName, serverName: ctx.serverName, memberCount: sampleContext.memberCount }), ...(ctx.samples ?? {}) };
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
   out = out.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (m, token) => {
