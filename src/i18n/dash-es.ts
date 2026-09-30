@@ -1263,4 +1263,5 @@ export const dashEs: Record<string, string> = {
   "Nothing set yet, fill in the fields to see it here.": "Aún no hay nada, rellena los campos para verlo aquí.",
   "Raw preview, variable tokens (highlighted) aren't resolved here, that only happens when the bot actually sends it.": "Vista previa cruda, las variables (resaltadas) no se resuelven aquí, eso solo pasa cuando el bot lo envía de verdad.",
   "Click one to copy it, then paste it into whichever field needs it.": "Haz clic en una para copiarla y pégala en el campo que la necesite.",
+  "Nothing set yet.": "Aún no hay nada.",
 };

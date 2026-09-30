@@ -1,0 +1,147 @@
+---
+// Live Discord-style previews for message fields in the dashboard. A field opts in with
+// data-dp, optionally paired with a saved embed template select (data-dp-template) and an
+// "embed" checkbox (data-dp-embed). A select marked data-dp-template-only previews the chosen
+// template by itself. The preview is drawn with the same renderer the Embed Builder uses.
+---
+<script>
+  import { renderMessage, defaultContext, type PreviewMessage } from '../utils/discordPreview';
+  import { normalizeTemplateData } from '../react/embeds/types';
+
+  const guildId = () => location.pathname.match(/\/dash\/guild\/(\d+)/)?.[1] ?? '';
+  const translate = (key: string): string => ((window as unknown as { cdt?: (k: string) => string }).cdt ? (window as unknown as { cdt: (k: string) => string }).cdt(key) : key);
+  const context = () => ({ ...defaultContext, t: translate, serverName: document.querySelector('.dgl-switcher-name')?.textContent?.trim() || defaultContext.serverName });
+
+  const templates = new Map<string, Promise<PreviewMessage | null>>();
+  function loadTemplate(name: string): Promise<PreviewMessage | null> {
+    const key = `${guildId()}:${name}`;
+    let pending = templates.get(key);
+    if (!pending) {
+      pending = fetch(`/dash/guild/${guildId()}/embeds-api?name=${encodeURIComponent(name)}`, { headers: { Accept: 'application/json' } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((row) => (row ? (normalizeTemplateData(row.data) as PreviewMessage) : null))
+        .catch(() => null);
+      templates.set(key, pending);
+    }
+    return pending;
+  }
+
+  const rowOf = (el: HTMLElement) => (el.closest('.ob-row, .lv-field, .gw-field, .tk-field') as HTMLElement | null) ?? el.parentElement!;
+
+  function slotFor(anchor: HTMLElement): HTMLElement {
+    const row = rowOf(anchor);
+    let slot = row.nextElementSibling as HTMLElement | null;
+    if (!slot || !slot.classList.contains('dp-slot')) {
+      slot = document.createElement('div');
+      slot.className = 'dp-slot';
+      row.insertAdjacentElement('afterend', slot);
+    }
+    return slot;
+  }
+
+  const runs = new WeakMap<HTMLElement, number>();
+
+  async function draw(slot: HTMLElement, message: PreviewMessage | null) {
+    slot.hidden = !message;
+    if (message) slot.innerHTML = renderMessage(message, context());
+  }
+
+  async function refreshText(source: HTMLInputElement | HTMLTextAreaElement) {
+    const form = source.closest('form');
+    const slot = slotFor(source);
+    const run = (runs.get(slot) ?? 0) + 1;
+    runs.set(slot, run);
+    const select = source.dataset.dpTemplate ? (form?.elements.namedItem(source.dataset.dpTemplate) as HTMLSelectElement | null) : null;
+    if (select?.value) {
+      const message = await loadTemplate(select.value);
+      if (runs.get(slot) === run) await draw(slot, message);
+      return;
+    }
+    const asEmbed = source.dataset.dpEmbed ? (form?.elements.namedItem(source.dataset.dpEmbed) as HTMLInputElement | null)?.checked : false;
+    const text = source.value || source.placeholder || '';
+    const message: PreviewMessage = asEmbed
+      ? { embeds: [{ title: source.dataset.dpTitle || undefined, description: text, color: '#8399ff' }] }
+      : { content: text };
+    await draw(slot, message);
+  }
+
+  async function refreshTemplateOnly(select: HTMLSelectElement) {
+    const slot = slotFor(select);
+    const run = (runs.get(slot) ?? 0) + 1;
+    runs.set(slot, run);
+    if (!select.value) { slot.hidden = true; return; }
+    const message = await loadTemplate(select.value);
+    if (runs.get(slot) === run) await draw(slot, message);
+  }
+
+  function scan() {
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-dp]').forEach(refreshText);
+    document.querySelectorAll<HTMLSelectElement>('select[data-dp-template-only]').forEach(refreshTemplateOnly);
+  }
+
+  const onChange = (event: Event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (target.matches('[data-dp]')) refreshText(target as HTMLInputElement);
+    if (target.matches('select[data-dp-template-only]')) refreshTemplateOnly(target as HTMLSelectElement);
+    const form = target.closest('form');
+    if (form && (target instanceof HTMLSelectElement || (target instanceof HTMLInputElement && target.type === 'checkbox'))) {
+      form.querySelectorAll<HTMLInputElement>('[data-dp]').forEach((source) => {
+        if (source.dataset.dpTemplate === (target as HTMLSelectElement).name || source.dataset.dpEmbed === (target as HTMLInputElement).name) refreshText(source);
+      });
+    }
+  };
+  document.addEventListener('input', onChange);
+  document.addEventListener('change', onChange);
+
+  // Pages swap their content without a reload after saving, so previews are drawn again then.
+  let timer: number | undefined;
+  new MutationObserver(() => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(scan, 120);
+  }).observe(document.body, { childList: true, subtree: true });
+  scan();
+</script>
+
+<style is:global>
+  .dp-slot { margin-top: 2px; grid-column: 1 / -1; }
+  .dp-slot[hidden] { display: none; }
+  .dp-msg { display: flex; width: 100%; box-sizing: border-box; gap: 12px; background: #313338; border-radius: 8px; padding: 12px 14px; max-width: 520px; text-align: left; }
+  .dp-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .dp-body { min-width: 0; flex: 1; font: 400 13.5px/1.4 var(--sans); color: #dbdee1; }
+  .dp-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; flex-wrap: wrap; }
+  .dp-name { font-weight: 600; color: #f2f3f5; font-size: 14px; }
+  .dp-tag { font-size: 9px; background: #5865f2; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .dp-time { font-size: 11px; color: #949ba4; }
+  .dp-empty { color: #6d6f78; font-size: 12.5px; font-style: italic; }
+  .dp-content, .dp-embed-desc { overflow-wrap: anywhere; word-break: break-word; }
+  .dp-embed { background: #2b2d31; border-radius: 4px; padding: 10px 14px 12px; border-left: 4px solid var(--dp-c, #4f545c); margin-top: 6px; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+  .dp-embed-author { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; color: #f2f3f5; }
+  .dp-embed-author img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
+  .dp-embed-body { display: flex; gap: 12px; min-width: 0; justify-content: space-between; }
+  .dp-embed-main { min-width: 0; flex: 1; }
+  .dp-embed-title { font-weight: 600; color: #f2f3f5; margin-bottom: 4px; display: block; font-size: 14px; text-decoration: none; }
+  a.dp-link { color: #00a8fc; }
+  a.dp-link:hover { text-decoration: underline; }
+  .dp-embed-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .dp-embed-field { flex: 1 1 100%; }
+  .dp-embed-field.inline { flex: 1 1 calc(33% - 6px); min-width: 90px; }
+  .dp-embed-field-name { font-weight: 600; font-size: 12.5px; color: #f2f3f5; margin-bottom: 2px; }
+  .dp-embed-field-value { font-size: 12.5px; }
+  .dp-embed-image { width: 100%; max-height: 300px; object-fit: cover; border-radius: 4px; margin-top: 8px; display: block; }
+  .dp-embed-thumb { width: 64px; height: 64px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+  .dp-embed-footer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11.5px; color: #b5bac1; }
+  .dp-embed-footer img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
+  .dp-btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .dp-btn { display: inline-flex; align-items: center; gap: 5px; background: #4e5058; color: #fff; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 500; }
+  .dp-var { font-family: var(--mono); color: var(--accent); background: var(--accent-soft); padding: 0 4px; border-radius: 3px; font-size: .9em; }
+  .dp-mention { color: #c9cdfb; background: rgba(88, 101, 242, .3); border-radius: 3px; padding: 0 2px; font-weight: 500; }
+  .dp-spoiler { background: #1a1a1e; color: #1a1a1e; border-radius: 3px; padding: 0 2px; }
+  .dp-code { background: #1e1f22; color: #b9bec7; border-radius: 3px; padding: 0 5px; font-family: var(--mono); font-size: .875em; }
+  .dp-codeblock { background: #1e1f22; color: #b9bec7; border-radius: 4px; padding: 10px 14px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; margin: 4px 0; }
+  .dp-emoji { width: 20px; height: 20px; vertical-align: -4px; object-fit: contain; }
+  .dp-quote { display: block; border-left: 3px solid #4e5058; padding-left: 8px; color: #b5bac1; }
+  .dp-h1 { display: block; font-size: 1.5em; font-weight: 700; }
+  .dp-h2 { display: block; font-size: 1.25em; font-weight: 700; }
+  .dp-h3 { display: block; font-size: 1.1em; font-weight: 700; }
+</style>
