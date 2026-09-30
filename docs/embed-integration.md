@@ -68,5 +68,9 @@ Track usage (welcome, leveling, giveaways, tickets, custom commands) in one view
 **What is still needed elsewhere**
 
 - Generator: read `#import=<code>` on load, and add a "Send to Petto" button that opens `https://petto.sbs/dash/import#import=<code>`. The code format is the one in `embedSchema.ts`.
-- Bot: expose its variable registry as JSON so the dashboard can stop keeping its own list, and move the schema into a shared package so both sides validate the same way.
+- Bot: move the schema into a shared package so both sides validate the same way.
 - Bot: use the same sample values as `variableSamples.ts` if it ever needs to render a preview itself.
+
+**Variables from the bot**
+
+The bot now serves its variable list at `GET /api/dashboard/variables` (petto-bot, `src/utils/embedVariableRegistry.js`), and its `npm run check` fails when that list and the engine disagree. The dashboard reads it through `src/utils/variableRegistry.ts`, keeps a good answer for five minutes and a failure for one, and falls back to its own built-in list when the bot is unreachable or older. The help under each message field and the variables panel in the Embeds page both use it.
