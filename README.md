@@ -86,6 +86,8 @@ src/
   layouts/        Base layout with nav, footer, theme toggle, and global CSS.
   react/embeds/   The embed builder, the only React island.
   utils/discordPreview.ts  Draws Discord-style messages for the dashboard previews.
+  utils/embedSchema.ts     Template shape, limits, validation, and share codes.
+  utils/embedSend.ts       Builds and sends the dashboard's test messages.
   i18n/ui.ts      Every public string, for all locales.
   i18n/dash*.ts   Dashboard texts. The English text is the key, dash-es.ts and dash-pt.ts translate it.
   utils/          Session, Discord API, and dashboard auth.
