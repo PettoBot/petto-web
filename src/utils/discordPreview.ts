@@ -49,6 +49,16 @@ const safeUrl = (value: string) => (/^https?:\/\//i.test(value.trim()) || value.
 
 /** Inline formatting on text that is already HTML-escaped. */
 function inline(html: string, ctx: PreviewContext): string {
+  // Links are set aside first so their address is not touched by the formatting rules below.
+  const links: { url: string; label: string | null }[] = [];
+  const keep = (url: string, label: string | null) => `\u0000${links.push({ url, label }) - 1}\u0000`;
+  html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => keep(url, label));
+  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (_m, lead, url) => `${lead}${keep(url, null)}`);
+  const restore = (text: string) => text.replace(/\u0000(\d+)\u0000/g, (_m, index) => {
+    const { url, label } = links[Number(index)];
+    // The label of a [text](link) can carry formatting or variables too.
+    return `<a class="dp-link" href="${url}" target="_blank" rel="noopener noreferrer">${label === null ? url : inline(label, ctx)}</a>`;
+  });
   const samples = tokenValues({ userId: sampleContext.userId, userName: ctx.userName, serverName: ctx.serverName, memberCount: sampleContext.memberCount });
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
@@ -67,7 +77,7 @@ function inline(html: string, ctx: PreviewContext): string {
   out = out.replace(/~~(.+?)~~/g, '<s>$1</s>');
   out = out.replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<em>$2</em>');
   out = out.replace(/\|\|(.+?)\|\|/g, '<span class="dp-spoiler">$1</span>');
-  return out;
+  return restore(out);
 }
 
 /** Block level markdown: code blocks, headings, quotes, then the inline rules. */
@@ -78,7 +88,7 @@ export function renderMarkdown(text: string, ctx: PreviewContext = defaultContex
   let last = 0;
   let match: RegExpExecArray | null;
   const lines = (chunk: string) => chunk.split('\n').map((line) => {
-    const escaped = escapeHtml(line);
+    const escaped = escapeHtml(line).replace(/^(\s*)[-*]\s+(?=\S)/, '$1• ');
     const heading = escaped.match(/^(#{1,3})\s+(.*)$/);
     if (heading) return `<span class="dp-h${heading[1].length}">${inline(heading[2], ctx)}</span>`;
     const quote = escaped.match(/^&gt;\s?(.*)$/);

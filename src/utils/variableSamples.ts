@@ -31,5 +31,17 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     nextBump: { text: 'in 2 hours' },
     'channel.name': { text: 'general' }, channel: { text: '#general' },
     date: { text: 'Today' }, time: { text: '12:00 PM' },
+    server_id: { text: '707307527846625280' }, 'guild.id': { text: '707307527846625280' }, server_prefix: { text: '!' },
+    server_membercount: count, server_membercount_ordinal: { text: `${count.text}th` }, server_membercount_nobots: count, server_membercount_nobots_ordinal: { text: `${count.text}th` },
+    'guild.count': count, 'guild.max_members': { text: '500,000' }, server_botcount: { text: '6' }, server_botcount_ordinal: { text: '6th' },
+    server_rolecount: { text: '38' }, 'guild.role_count': { text: '38' }, server_channelcount: { text: '54' }, 'guild.channels_count': { text: '54' }, 'guild.emoji_count': { text: '42' },
+    server_randommember: mention, server_randommember_tag: name, server_randommember_nobots: mention,
+    server_owner: mention, server_owner_id: id, 'guild.owner_id': id, server_createdate: { text: 'Jul 1, 2020' }, 'guild.created_at': { text: 'Jul 1, 2020' },
+    server_boostlevel: { text: '2' }, 'guild.boost_tier': { text: '2' }, server_boostcount: { text: '14' }, 'guild.boost_count': { text: '14' },
+    server_nextboostlevel: { text: '3' }, server_nextboostlevel_required: { text: '14' }, server_nextboostlevel_until_required: { text: '0' },
+    'guild.vanity': { text: 'petto' }, 'guild.region': { text: 'us-east' },
+    'user.boost_since': { text: 'Jul 1, 2026' }, user_boostsince: { text: 'Jul 1, 2026' }, 'user.joined_at': { text: 'Jul 1, 2026' }, 'user.created_at': { text: 'Jul 1, 2020' },
+    'user.color': { text: '#8399ff' }, 'user.role_list': { text: '@Member @Booster' }, user_discrim: { text: '' },
+    'channel.mention': { text: '#general', mention: true }, 'channel.id': { text: '1498210265458675853' }, channel_name: { text: 'general' }, 'channel.topic': { text: 'Say hi' },
   };
 }
