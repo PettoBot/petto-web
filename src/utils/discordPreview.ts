@@ -2,6 +2,8 @@
 // It follows the same markdown subset and layout as the Embed Builder, and fills the bot's
 // {variable} tokens with sample values so a preview reads like the message members will see.
 
+import { sampleContext, tokenValues } from './variableSamples';
+
 export interface PreviewEmbed {
   title?: string;
   description?: string;
@@ -45,29 +47,9 @@ const tr = (ctx: PreviewContext, key: string) => (ctx.t ? ctx.t(key) : key);
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 const safeUrl = (value: string) => (/^https?:\/\//i.test(value.trim()) || value.trim().startsWith('/') ? escapeHtml(value.trim()) : '');
 
-function sampleValues(ctx: PreviewContext): Record<string, { text: string; mention?: boolean }> {
-  const mention = { text: `@${ctx.userName}`, mention: true };
-  const name = { text: ctx.userName };
-  const server = { text: ctx.serverName };
-  const count = { text: '1,204' };
-  return {
-    user: mention, 'user.mention': mention, user_mention: mention,
-    'user.name': name, user_name: name, user_tag: name, 'user.display_name': name, user_nick: name, 'user.id': { text: '293504726505357312' }, user_id: { text: '293504726505357312' },
-    server, server_name: server, 'server.name': server, guild: server, guild_name: server, 'guild.name': server,
-    member_count: count, 'server.member_count': count, 'guild.member_count': count, server_members: count,
-    'user.join_position': { text: '1204' }, 'user.join_position_suffix': { text: '1204th' },
-    'user.boost': { text: 'Yes' }, 'user.top_role': { text: 'Member' }, 'user.bot': { text: 'No' },
-    level: { text: '12' }, level_xp: { text: '4,250' }, level_xp_needed: { text: '1,750' }, level_rank: { text: '#3' }, EMOJI: { text: '✦' },
-    'gw.prize': { text: 'Discord Nitro' }, 'gw.host': mention, 'gw.winners': { text: '1' }, 'gw.claim_time': { text: '10 minutes' },
-    nextBump: { text: 'in 2 hours' }, 'user.mention_bump': mention,
-    'channel.name': { text: 'general' }, channel: { text: '#general' },
-    date: { text: 'Today' }, time: { text: '12:00 PM' },
-  };
-}
-
 /** Inline formatting on text that is already HTML-escaped. */
 function inline(html: string, ctx: PreviewContext): string {
-  const samples = sampleValues(ctx);
+  const samples = tokenValues({ userId: sampleContext.userId, userName: ctx.userName, serverName: ctx.serverName, memberCount: sampleContext.memberCount });
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
   out = out.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (m, token) => {
