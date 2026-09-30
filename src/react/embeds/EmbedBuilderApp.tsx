@@ -5,6 +5,7 @@ import Preview from './Preview';
 import VariablesPanel from './VariablesPanel';
 import EmbedColorPicker from './EmbedColorPicker';
 import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, normalizeTemplateData } from './types';
+import { t } from './t';
 
 interface Props {
   guildId: string;
@@ -76,13 +77,13 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     setSaving(true);
     const res = await api(guildId, '', { method: 'POST', body: JSON.stringify({ action: 'save', name: selected, data }) });
     setSaving(false);
-    setFlash(res.ok ? 'Saved.' : "Couldn't save, try again.");
+    setFlash(res.ok ? t('Saved.') : t("Couldn't save, try again."));
     if (res.ok) setDirty(false);
   }
 
   async function handleDelete() {
     if (!selected) return;
-    if (!window.confirm(`Delete the "${selected}" template? This can't be undone.`)) return;
+    if (!window.confirm(t('Delete the "{name}" template? This can\'t be undone.', { name: selected }))) return;
     const res = await api(guildId, '', { method: 'POST', body: JSON.stringify({ action: 'delete', name: selected }) });
     if (!res.ok) { setFlash("Couldn't delete that template."); return; }
     setNames((n) => n.filter((x) => x !== selected));
@@ -120,7 +121,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
 
       <div className="ebr-layout">
         <aside className="ebr-list">
-          {names.length === 0 && <p className="ebr-empty-note">No templates yet.</p>}
+          {names.length === 0 && <p className="ebr-empty-note">{t('No templates yet.')}</p>}
           {names.map((n) => (
             <button key={n} type="button" className={`ebr-list-item${n === selected ? ' active' : ''}`} onClick={() => setSelected(n)}>
               {n}
@@ -129,25 +130,25 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <div className="ebr-limit-note">{names.length} saved themes · unlimited</div>
           <form className="ebr-create" onSubmit={handleCreate}>
             <input type="text" placeholder="new-template-name" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button type="submit" className="btn btn-ghost btn-sm">+ New</button>
+            <button type="submit" className="btn btn-ghost btn-sm">{t('+ New')}</button>
           </form>
         </aside>
 
         {!selected ? (
-          <p className="ebr-empty-note">Create a template on the left to get started.</p>
+          <p className="ebr-empty-note">{t('Create a template on the left to get started.')}</p>
         ) : loading ? (
-          <p className="ebr-empty-note">Loading...</p>
+          <p className="ebr-empty-note">{t('Loading...')}</p>
         ) : (
           <div className="ebr-editor">
             <div className="ebr-preview-col">
-              <div className="ebr-preview-label">Preview</div>
+              <div className="ebr-preview-label">{t('Preview')}</div>
               <Preview data={data} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} />
             </div>
 
             <div className="ebr-form-col">
               <VariablesPanel />
               <div className="ebr-field">
-                <div className="ebr-field-head"><label>Message content</label></div>
+                <div className="ebr-field-head"><label>{t('Message content')}</label></div>
                 <textarea ref={contentRef} rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
                 <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
               </div>
@@ -159,87 +160,87 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                     <span className="ebr-tab-x" onClick={(ev) => { ev.stopPropagation(); removeEmbed(i); }}>×</span>
                   </button>
                 ))}
-                {data.embeds.length < 10 && <button type="button" className="ebr-tab-add" onClick={addEmbed}>+ Add embed</button>}
+                {data.embeds.length < 10 && <button type="button" className="ebr-tab-add" onClick={addEmbed}>{t('+ Add embed')}</button>}
               </div>
 
               {e && (
                 <div className="ebr-embed-form">
                   <div className="ebr-field">
-                    <label>Title</label>
+                    <label>{t('Title')}</label>
                     <input ref={titleRef} type="text" maxLength={256} value={e.title} onChange={(ev) => updateEmbed(activeEmbed, { title: ev.target.value })} />
                     <FormatToolbar targetRef={titleRef} onChange={(v) => updateEmbed(activeEmbed, { title: v })} />
                   </div>
                   <div className="ebr-field">
-                    <label>Description</label>
+                    <label>{t('Description')}</label>
                     <textarea ref={descRef} rows={4} maxLength={4096} value={e.description} onChange={(ev) => updateEmbed(activeEmbed, { description: ev.target.value })} />
                     <FormatToolbar targetRef={descRef} onChange={(v) => updateEmbed(activeEmbed, { description: v })} />
                   </div>
                   <div className="ebr-row-pair">
                     <div className="ebr-field">
-                      <label>Color</label>
+                      <label>{t('Color')}</label>
                       <EmbedColorPicker value={e.color} onChange={(color) => updateEmbed(activeEmbed, { color })} />
                     </div>
                     <div className="ebr-field">
-                      <label>Title link URL</label>
+                      <label>{t('Title link URL')}</label>
                       <input type="text" value={e.url} onChange={(ev) => updateEmbed(activeEmbed, { url: ev.target.value })} placeholder="https://..." />
                     </div>
                   </div>
                   <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>Thumbnail URL</label><input type="text" value={e.thumbnail} onChange={(ev) => updateEmbed(activeEmbed, { thumbnail: ev.target.value })} placeholder="https://..." /></div>
-                    <div className="ebr-field"><label>Image URL</label><input type="text" value={e.image} onChange={(ev) => updateEmbed(activeEmbed, { image: ev.target.value })} placeholder="https://..." /></div>
+                    <div className="ebr-field"><label>{t('Thumbnail URL')}</label><input type="text" value={e.thumbnail} onChange={(ev) => updateEmbed(activeEmbed, { thumbnail: ev.target.value })} placeholder="https://..." /></div>
+                    <div className="ebr-field"><label>{t('Image URL')}</label><input type="text" value={e.image} onChange={(ev) => updateEmbed(activeEmbed, { image: ev.target.value })} placeholder="https://..." /></div>
                   </div>
                   <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>Author name</label><input type="text" value={e.author.name} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, name: ev.target.value } })} /></div>
-                    <div className="ebr-field"><label>Author icon URL</label><input type="text" value={e.author.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, icon: ev.target.value } })} placeholder="https://..." /></div>
+                    <div className="ebr-field"><label>{t('Author name')}</label><input type="text" value={e.author.name} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, name: ev.target.value } })} /></div>
+                    <div className="ebr-field"><label>{t('Author icon URL')}</label><input type="text" value={e.author.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, icon: ev.target.value } })} placeholder="https://..." /></div>
                   </div>
                   <div className="ebr-field">
-                    <label>Author link URL</label>
+                    <label>{t('Author link URL')}</label>
                     <input type="text" value={e.author.url ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, url: ev.target.value } })} placeholder="https://..." />
                   </div>
                   <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>Footer text</label><input type="text" value={e.footer.text} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: ev.target.value } })} /></div>
-                    <div className="ebr-field"><label>Footer icon URL</label><input type="text" value={e.footer.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, icon: ev.target.value } })} placeholder="https://..." /></div>
+                    <div className="ebr-field"><label>{t('Footer text')}</label><input type="text" value={e.footer.text} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: ev.target.value } })} /></div>
+                    <div className="ebr-field"><label>{t('Footer icon URL')}</label><input type="text" value={e.footer.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, icon: ev.target.value } })} placeholder="https://..." /></div>
                   </div>
-                  <label className="ebr-check"><input type="checkbox" checked={e.timestamp} onChange={(ev) => updateEmbed(activeEmbed, { timestamp: ev.target.checked })} />Show current time in the footer</label>
+                  <label className="ebr-check"><input type="checkbox" checked={e.timestamp} onChange={(ev) => updateEmbed(activeEmbed, { timestamp: ev.target.checked })} />{t('Show current time in the footer')}</label>
 
                   <div className="ebr-fields-section">
-                    <h3>Fields <span className="ebr-count">{e.fields.length}/25</span></h3>
+                    <h3>{t('Fields')} <span className="ebr-count">{e.fields.length}/25</span></h3>
                     {e.fields.map((f, fi) => (
                       <div key={fi} className="ebr-field-row-edit">
-                        <input type="text" placeholder="Name" maxLength={256} value={f.name} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, name: ev.target.value } : x)) })} />
-                        <input type="text" placeholder="Value" maxLength={1024} value={f.value} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, value: ev.target.value } : x)) })} />
-                        <label className="ebr-check"><input type="checkbox" checked={f.inline} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, inline: ev.target.checked } : x)) })} />Inline</label>
+                        <input type="text" placeholder={t('Name')} maxLength={256} value={f.name} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, name: ev.target.value } : x)) })} />
+                        <input type="text" placeholder={t('Value')} maxLength={1024} value={f.value} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, value: ev.target.value } : x)) })} />
+                        <label className="ebr-check"><input type="checkbox" checked={f.inline} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, inline: ev.target.checked } : x)) })} />{t('Inline')}</label>
                         <button type="button" className="ebr-del" onClick={() => updateEmbed(activeEmbed, { fields: e.fields.filter((_, i) => i !== fi) })}>×</button>
                       </div>
                     ))}
                     {e.fields.length < 25 && (
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateEmbed(activeEmbed, { fields: [...e.fields, { name: '', value: '', inline: false }] })}>+ Add field</button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateEmbed(activeEmbed, { fields: [...e.fields, { name: '', value: '', inline: false }] })}>{t('+ Add field')}</button>
                     )}
                   </div>
                 </div>
               )}
 
               <div className="ebr-fields-section">
-                <h3>Link buttons</h3>
+                <h3>{t('Link buttons')}</h3>
                 {data.buttons.map((row, ri) => (
                   <div key={ri} className="ebr-btn-row-edit">
                     {row.map((b, bi) => (
                       <div key={bi} className="ebr-btn-edit">
-                        <input type="text" placeholder="Label" maxLength={80} value={b.label} onChange={(ev) => updateButton(ri, bi, { label: ev.target.value })} />
+                        <input type="text" placeholder={t('Label')} maxLength={80} value={b.label} onChange={(ev) => updateButton(ri, bi, { label: ev.target.value })} />
                         <input type="text" placeholder="https://..." value={b.url} onChange={(ev) => updateButton(ri, bi, { url: ev.target.value })} />
-                        <input type="text" placeholder="Emoji" maxLength={4} className="ebr-btn-emoji" value={b.emoji} onChange={(ev) => updateButton(ri, bi, { emoji: ev.target.value })} />
+                        <input type="text" placeholder={t('Emoji')} maxLength={4} className="ebr-btn-emoji" value={b.emoji} onChange={(ev) => updateButton(ri, bi, { emoji: ev.target.value })} />
                         <button type="button" className="ebr-del" onClick={() => removeButton(ri, bi)}>×</button>
                       </div>
                     ))}
-                    {row.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => addButton(ri)}>+ Button</button>}
+                    {row.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => addButton(ri)}>{t('+ Button')}</button>}
                   </div>
                 ))}
-                {data.buttons.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={addButtonRow}>+ Add button row</button>}
+                {data.buttons.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={addButtonRow}>{t('+ Add button row')}</button>}
               </div>
 
               <div className="ebr-actions">
-                <button type="button" className="btn btn-accent btn-sm" onClick={handleSave} disabled={saving || !dirty}>{saving ? 'Saving...' : 'Save changes'}</button>
-                <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete}>Delete this template</button>
+                <button type="button" className="btn btn-accent btn-sm" onClick={handleSave} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
+                <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete}>{t('Delete this template')}</button>
               </div>
             </div>
           </div>

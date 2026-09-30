@@ -1,17 +1,18 @@
+import { t } from './t';
 interface Props {
   targetRef: React.RefObject<HTMLTextAreaElement | HTMLInputElement>;
   onChange: (value: string) => void;
 }
 
 const WRAPS: { label: string; before: string; after: string; title: string }[] = [
-  { label: 'B', before: '**', after: '**', title: 'Bold' },
-  { label: 'I', before: '*', after: '*', title: 'Italic' },
-  { label: 'U', before: '__', after: '__', title: 'Underline' },
-  { label: 'S', before: '~~', after: '~~', title: 'Strikethrough' },
-  { label: '</>', before: '`', after: '`', title: 'Inline code' },
-  { label: '{}', before: '```\n', after: '\n```', title: 'Code block' },
-  { label: '||', before: '||', after: '||', title: 'Spoiler' },
-  { label: '"', before: '> ', after: '', title: 'Quote' },
+  { label: 'B', before: '**', after: '**', title: t('Bold') },
+  { label: 'I', before: '*', after: '*', title: t('Italic') },
+  { label: 'U', before: '__', after: '__', title: t('Underline') },
+  { label: 'S', before: '~~', after: '~~', title: t('Strikethrough') },
+  { label: '</>', before: '`', after: '`', title: t('Inline code') },
+  { label: '{}', before: '```\n', after: '\n```', title: t('Code block') },
+  { label: '||', before: '||', after: '||', title: t('Spoiler') },
+  { label: '"', before: '> ', after: '', title: t('Quote') },
 ];
 
 /** Wraps (or, with no selection, inserts a placeholder wrapped in) the current textarea/input

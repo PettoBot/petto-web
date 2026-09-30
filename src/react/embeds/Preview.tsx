@@ -1,5 +1,6 @@
 import type { TemplateData } from './types';
 import { renderDiscordMarkdown } from './markdown';
+import { t } from './t';
 
 interface Props { data: TemplateData; botName: string; botIcon: string; userAvatarUrl: string; guildIconUrl: string }
 
@@ -26,10 +27,10 @@ export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIc
         <div className="ebr-preview-body">
           <div className="ebr-preview-author-row">
             <span className="ebr-preview-botname">{botName}</span>
-            <span className="ebr-preview-botTag">APP</span>
+            <span className="ebr-preview-botTag">{t('APP')}</span>
           </div>
 
-          {!hasAnything && <div className="ebr-preview-empty">Nothing set yet, fill in the fields to see it here.</div>}
+          {!hasAnything && <div className="ebr-preview-empty">{t('Nothing set yet, fill in the fields to see it here.')}</div>}
 
           {data.content && <div className="ebr-preview-content">{renderDiscordMarkdown(data.content)}</div>}
 
@@ -64,7 +65,7 @@ export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIc
                 {(e.footer.text || e.timestamp) && (
                   <div className="ebr-embed-footer">
                     {e.footer.icon && <img src={resolveIcon(e.footer.icon)} alt="" />}
-                    <span>{e.footer.text}{e.footer.text && e.timestamp ? ' • Today at 12:00 PM' : e.timestamp ? 'Today at 12:00 PM' : ''}</span>
+                    <span>{e.footer.text}{e.footer.text && e.timestamp ? ' • ' + t('Today at 12:00 PM') : e.timestamp ? t('Today at 12:00 PM') : ''}</span>
                   </div>
                 )}
               </div>
@@ -87,7 +88,7 @@ export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIc
           })}
         </div>
       </div>
-      <p className="ebr-preview-note">Raw preview, variable tokens (highlighted) aren't resolved here, that only happens when the bot actually sends it.</p>
+      <p className="ebr-preview-note">{t("Raw preview, variable tokens (highlighted) aren't resolved here, that only happens when the bot actually sends it.")}</p>
     </div>
   );
 }
