@@ -1,19 +1,20 @@
 import type { TemplateData } from './types';
 import { renderMessage, defaultContext } from '../../utils/discordPreview';
+import { vanitySamples } from '../../utils/variableSamples';
 import { t } from './t';
 
-interface Props { data: TemplateData; botName: string; botIcon: string; userAvatarUrl: string; guildIconUrl: string; serverName: string }
+interface Props { data: TemplateData; botName: string; botIcon: string; userAvatarUrl: string; guildIconUrl: string; serverName: string; sampleSet?: 'vanity' }
 
 // The same renderer the rest of the dashboard uses, so the builder shows variables filled in with
 // sample values, custom emojis, mentions and links the way the message will look in the channel.
-export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIconUrl, serverName }: Props) {
+export default function Preview({ data, botName, botIcon, userAvatarUrl, guildIconUrl, serverName, sampleSet }: Props) {
   const html = renderMessage(
     {
       content: data.content,
       embeds: data.embeds.map((e) => ({ ...e, footer: e.footer })),
       buttons: data.buttons,
     },
-    { ...defaultContext, botName, botIcon, userAvatar: userAvatarUrl, serverIcon: guildIconUrl, serverName, t },
+    { ...defaultContext, botName, botIcon, userAvatar: userAvatarUrl, serverIcon: guildIconUrl, serverName, t, samples: sampleSet === 'vanity' ? vanitySamples() : undefined },
   );
 
   return (
