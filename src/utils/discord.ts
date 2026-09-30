@@ -51,6 +51,33 @@ export async function getGuildList(astro: { request?: Request }, guildId: string
   return new Response(text, { status: res.status });
 }
 
+const BOT_IDENTITY_TTL_MS = 60_000;
+const botIdentityCache = new Map<string, { value: { name: string; icon: string | null }; expiresAt: number }>();
+
+/**
+ * How the bot looks in one server: its server nickname and avatar when it has them, otherwise its
+ * global name and avatar. Used to draw message previews the way members will see the bot.
+ * The bot's user id is the first part of its token, so both reads start at once.
+ */
+export async function getBotIdentity(guildId: string, botToken: string): Promise<{ name: string; icon: string | null } | null> {
+  const key = `${botToken}:${guildId}`;
+  const hit = botIdentityCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+
+  let botId = '';
+  try { botId = atob(botToken.split('.')[0]); } catch { return null; }
+  if (!/^\d{15,22}$/.test(botId)) return null;
+
+  const [profile, member] = await Promise.all([
+    getBotProfile(botToken).catch(() => null),
+    getGuildMemberSelf(guildId, botToken, botId).catch(() => null),
+  ]);
+  if (!profile && !member) return null;
+  const value = { name: member?.nick || profile?.username || 'Petto', icon: member?.avatarUrl || profile?.avatarUrl || null };
+  botIdentityCache.set(key, { value, expiresAt: Date.now() + BOT_IDENTITY_TTL_MS });
+  return value;
+}
+
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 /** Fetches an image URL server-side and returns it as a `data:` URI, the format Discord's member-avatar endpoint expects. Returns null on any failure so callers can show a clean error instead of a stack trace. */
