@@ -1375,4 +1375,7 @@ export const dashPt: Record<string, string> = {
   "Choose at least one log event.": "Escolha pelo menos um evento de log.",
   "Too many changes, wait a minute and try again.": "Muitas alterações, aguarde um minuto e tente novamente.",
   "The Vanity bot did not answer in time, try again in a moment.": "O bot Vanity não respondeu a tempo, tente novamente em instantes.",
+  "Vanity embeds": "Embeds do Vanity",
+  "Write your own messages in the <a href=\"{a}\">embed editor</a>, or in Discord with <code>/embed create</code> and <code>/embed edit</code>. They show up in the list above.": "Escreva suas próprias mensagens no <a href=\"{a}\">editor de embeds</a>, ou no Discord com <code>/embed create</code> e <code>/embed edit</code>. Elas aparecem na lista acima.",
+  "Preview a saved message in Discord with /embed preview. The Vanity bot sends it when a rule matches.": "Pré-visualize uma mensagem salva no Discord com /embed preview. O bot Vanity a envia quando uma regra coincide.",
 };
