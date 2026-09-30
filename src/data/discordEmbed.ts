@@ -1,4 +1,5 @@
-import type { Locale } from '../i18n/ui';
+import { useTranslations, type Locale } from '../i18n/ui';
+import { getAllCommands } from '../utils/commandList';
 
 const SITE = 'https://petto.sbs';
 const ACCENT = 0x8399ff;
@@ -7,8 +8,8 @@ const MAX_BYTES = 3000;
 const copy: Record<Locale, {
   description: string;
   points: [string, string, string];
-  footer: string;
-  buttons: { commands: string; invite: string; dashboard: string; support: string };
+  stats: (commands: number, categories: number) => string;
+  buttons: { commands: string; invite: string; dashboard: string; premium: string; support: string };
 }> = {
   en: {
     description: 'Moderation, tickets, leveling and giveaways for your Discord server, all in one bot.',
@@ -17,8 +18,8 @@ const copy: Record<Locale, {
       '🎫 **Keep it organized** with tickets, logs and backups',
       '🏆 **Keep it lively** with levels, giveaways and reaction roles',
     ],
-    footer: '-# Prefix commands · Web dashboard · English, Español, Português',
-    buttons: { commands: 'Commands', invite: 'Add to Discord', dashboard: 'Dashboard', support: 'Support server' },
+    stats: (commands, categories) => `-# Free to add · ${commands} commands · ${categories} categories · Prefix based · English, Español, Português`,
+    buttons: { commands: 'Browse commands', invite: 'Add to Discord', dashboard: 'Open dashboard', premium: 'Premium', support: 'Support server' },
   },
   es: {
     description: 'Moderación, tickets, niveles y sorteos para tu servidor de Discord, todo en un solo bot.',
@@ -27,8 +28,8 @@ const copy: Record<Locale, {
       '🎫 **Mantén todo organizado** con tickets, registros y copias de seguridad',
       '🏆 **Mantén todo animado** con niveles, sorteos y roles por reacción',
     ],
-    footer: '-# Comandos con prefijo · Dashboard web · English, Español, Português',
-    buttons: { commands: 'Comandos', invite: 'Agregar a Discord', dashboard: 'Dashboard', support: 'Servidor de soporte' },
+    stats: (commands, categories) => `-# Gratis para agregar · ${commands} comandos · ${categories} categorías · Con prefijo · English, Español, Português`,
+    buttons: { commands: 'Ver comandos', invite: 'Agregar a Discord', dashboard: 'Abrir dashboard', premium: 'Premium', support: 'Servidor de soporte' },
   },
   'pt-BR': {
     description: 'Moderação, tickets, níveis e sorteios para o seu servidor do Discord, tudo em um só bot.',
@@ -37,8 +38,8 @@ const copy: Record<Locale, {
       '🎫 **Mantenha tudo organizado** com tickets, logs e backups',
       '🏆 **Mantenha tudo animado** com níveis, sorteios e cargos por reação',
     ],
-    footer: '-# Comandos com prefixo · Dashboard web · English, Español, Português',
-    buttons: { commands: 'Comandos', invite: 'Adicionar ao Discord', dashboard: 'Dashboard', support: 'Servidor de suporte' },
+    stats: (commands, categories) => `-# Grátis para adicionar · ${commands} comandos · ${categories} categorias · Com prefixo · English, Español, Português`,
+    buttons: { commands: 'Ver comandos', invite: 'Adicionar ao Discord', dashboard: 'Abrir dashboard', premium: 'Premium', support: 'Servidor de suporte' },
   },
 };
 
@@ -56,26 +57,26 @@ function linkButton(label: string, emoji: string, url: string) {
 export function discordEmbedJson(lang: Locale): string {
   const text = copy[lang];
   const home = `${SITE}${prefix[lang]}`;
+  const commands = getAllCommands().length;
+  const categories = useTranslations('en').commandsPage.categories.length;
   const payload = {
     component: {
       type: 17,
       accent_color: ACCENT,
       components: [
-        {
-          type: 9,
-          components: [{ type: 10, content: `# **[Petto](${home})**\n${text.description}` }],
-          accessory: { type: 11, media: { url: `${SITE}/assets/mascot-icon.png` } },
-        },
+        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner.webp` }, description: 'Petto, a moderation and community bot for Discord' }] },
+        { type: 10, content: `# **[Petto](${home})**\n${text.description}` },
         { type: 14, spacing: 1 },
         { type: 10, content: text.points.join('\n') },
         { type: 14, spacing: 1 },
-        { type: 10, content: text.footer },
+        { type: 10, content: text.stats(commands, categories) },
         {
           type: 1,
           components: [
             linkButton(text.buttons.commands, '📖', `${home}/commands`),
             linkButton(text.buttons.invite, '🚀', `${SITE}/invite`),
             linkButton(text.buttons.dashboard, '🧩', `${SITE}/dash`),
+            linkButton(text.buttons.premium, '⭐', `${home}/premium`),
             linkButton(text.buttons.support, '💬', `${SITE}/support`),
           ],
         },
