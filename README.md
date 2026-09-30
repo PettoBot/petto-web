@@ -57,6 +57,9 @@ The dev server runs at `http://localhost:4321`. Always run `npm run check` and `
 | `DISCORD_CLIENT_SECRET` | OAuth2 code exchange and signing the session cookie. Server-side only. |
 | `PETTO_BOT_API_URL` | Private bot API used by the dashboard for all database-backed data. |
 | `PETTO_BOT_API_SECRET` | Server-side key matching the bot's `PETTO_DASHBOARD_API_SECRET`. Never expose it to the browser. |
+| `VANITY_BOT_API_URL` | Optional. Private API of the separate Vanity bot. With the next two variables it turns on the Vanity pages of the dashboard. |
+| `VANITY_BOT_API_SECRET` | Server-side key matching the Vanity bot's `DASHBOARD_API_SECRET`. Never expose it to the browser. |
+| `VANITY_BOT_CLIENT_ID` | Optional. Application ID of the Vanity bot, used for its Add Bot invite link. |
 | `POLAR_ACCESS_TOKEN` | Server-side secret used to create a checkout tied to the logged-in Discord user. |
 | `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
 | `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. |
