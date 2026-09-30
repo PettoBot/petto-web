@@ -5,7 +5,10 @@ import { t } from './t';
 /** Static, always-in-flow reference of every {variable} token, one per builder (not one per
  * field) so there's nothing to position, click a row to copy it, then paste it into whichever
  * field needs it. */
-export default function VariablesPanel() {
+interface Props { groups?: { label: string; vars: { tok: string; desc: string }[] }[] | null }
+
+export default function VariablesPanel({ groups }: Props) {
+  const shown = groups && groups.length > 0 ? groups : VARIABLE_GROUPS;
   const [copied, setCopied] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -25,7 +28,7 @@ export default function VariablesPanel() {
       {open && (
         <div className="ebr-varpanel-body">
           <p className="ebr-varpanel-hint">{t('Click one to copy it, then paste it into whichever field needs it.')}</p>
-          {VARIABLE_GROUPS.map((g) => (
+          {shown.map((g) => (
             <div key={g.label}>
               <div className="ebr-varpanel-group">{g.label}</div>
               {g.vars.map((v) => (

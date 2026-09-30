@@ -18,6 +18,7 @@ interface Props {
   channels: { id: string; name: string }[];
   generatorUrl: string;
   serverName: string;
+  variableGroups?: { label: string; vars: { tok: string; desc: string }[] }[] | null;
 }
 
 async function api(guildId: string, path: string, init?: RequestInit) {
@@ -25,7 +26,7 @@ async function api(guildId: string, path: string, init?: RequestInit) {
   return res;
 }
 
-export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName }: Props) {
+export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
   const [data, setData] = useState<TemplateData>(emptyTemplate());
@@ -220,7 +221,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
             </div>
 
             <div className="ebr-form-col">
-              <VariablesPanel />
+              <VariablesPanel groups={variableGroups} />
               <div className="ebr-field">
                 <div className="ebr-field-head"><label>{t('Message content')}</label></div>
                 <textarea ref={contentRef} rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
