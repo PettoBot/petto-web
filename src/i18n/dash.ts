@@ -5,10 +5,12 @@ import { dashPt } from './dash-pt';
 export const LANG_COOKIE = 'petto_lang';
 const supported: Locale[] = ['en', 'es', 'pt-BR'];
 
-type CookieReader = { cookies?: { get(name: string): { value: string } | undefined }; request?: Request };
+type CookieReader = { locals?: object; cookies?: { get(name: string): { value: string } | undefined }; request?: Request };
 
 /** Language of the dashboard: the saved choice, then the browser language, then English. */
 export function getDashLang(astro: CookieReader): Locale {
+  const forced = (astro.locals as Record<string, unknown> | undefined)?.dashLang;
+  if (typeof forced === 'string' && (supported as string[]).includes(forced)) return forced as Locale;
   const saved = astro.cookies?.get(LANG_COOKIE)?.value;
   if (saved && (supported as string[]).includes(saved)) return saved as Locale;
   const header = astro.request?.headers.get('accept-language') ?? '';
