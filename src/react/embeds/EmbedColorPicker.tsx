@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t } from './t';
 
 interface Props {
   value: number | null;
@@ -173,13 +174,13 @@ export default function EmbedColorPicker({ value, onChange }: Props) {
             <span className="ebr-color-hue-thumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
           </div>
           <div className="ebr-color-fields">
-            <label><span>Hex</span><input value={hex} maxLength={7} onChange={(event) => { const raw = event.target.value.toUpperCase(); setHex(raw); if (/^#[0-9A-F]{6}$/.test(raw)) commit(raw); }} onBlur={() => setHex(hexToRgb(hex) ? hex.toUpperCase() : valueToHex(value))} /></label>
+            <label><span>{t('Hex')}</span><input value={hex} maxLength={7} onChange={(event) => { const raw = event.target.value.toUpperCase(); setHex(raw); if (/^#[0-9A-F]{6}$/.test(raw)) commit(raw); }} onBlur={() => setHex(hexToRgb(hex) ? hex.toUpperCase() : valueToHex(value))} /></label>
             <label><span>R</span><input type="number" min="0" max="255" value={Math.round(rgb.r)} onChange={(event) => updateRgb('r', event.target.value)} /></label>
             <label><span>G</span><input type="number" min="0" max="255" value={Math.round(rgb.g)} onChange={(event) => updateRgb('g', event.target.value)} /></label>
             <label><span>B</span><input type="number" min="0" max="255" value={Math.round(rgb.b)} onChange={(event) => updateRgb('b', event.target.value)} /></label>
           </div>
           <div className="ebr-color-presets">{PRESETS.map((preset) => <button key={preset} type="button" style={{ backgroundColor: preset }} aria-label={preset} onClick={() => commit(preset)} />)}</div>
-          <button type="button" className="ebr-color-reset" onClick={() => commit(DEFAULT_HEX)}>Reset</button>
+          <button type="button" className="ebr-color-reset" onClick={() => commit(DEFAULT_HEX)}>{t('Reset')}</button>
         </div>
       )}
     </div>

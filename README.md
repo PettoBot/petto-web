@@ -26,7 +26,7 @@ petto-web is the front door of [Petto](https://github.com/PettoBot/petto-bot). I
 **What the site includes**
 
 - **Public pages:** home, commands, FAQ, roadmap, changelog, blog, team, partners, status, and legal pages, in English, Spanish, and Portuguese.
-- **Server dashboard:** one module per area of the bot, including moderation, leveling, tickets, giveaways, logging, security, onboarding, community, automation, backups, and permissions.
+- **Server dashboard:** available in English, Spanish, and Brazilian Portuguese (picked with the language menu, remembered in the `petto_lang` cookie). One module per area of the bot, including moderation, leveling, tickets, giveaways, logging, security, onboarding, community, automation, backups, and permissions.
 - **Embed builder:** a React island with live preview, up to 10 embeds, and 5 rows of buttons.
 - **Premium:** plans, checkout through Polar, and owner grants at `/dash/admin`.
 - **Discord login:** OAuth2 sign in, linked roles, and a per-server permission check on every dashboard page.
@@ -85,11 +85,14 @@ src/
   components/     Page components. Dash*.astro are the dashboard modules.
   layouts/        Base layout with nav, footer, theme toggle, and global CSS.
   react/embeds/   The embed builder, the only React island.
-  i18n/ui.ts      Every string, for all locales.
+  i18n/ui.ts      Every public string, for all locales.
+  i18n/dash*.ts   Dashboard texts. The English text is the key, dash-es.ts and dash-pt.ts translate it.
   utils/          Session, Discord API, and dashboard auth.
 ```
 
 To add a page, build the component in `src/components/`, add its strings to every locale in `src/i18n/ui.ts`, and create the route in `src/pages/`, `src/pages/es/`, and `src/pages/pt-br/`.
+
+Dashboard texts are wrapped in `dt('English text')` (or `dth` when the text has HTML, `cdt` in browser scripts). Add the translation to `src/i18n/dash-es.ts` and `src/i18n/dash-pt.ts`, then run `node scripts/check-dash-i18n.mjs` to list any text that is still missing. A missing entry just shows in English.
 
 To add a dashboard module, follow the shape of the pages under `src/pages/dash/guild/[id]/`: verify the session with `getGuildSession`, redirect when it fails, and batch every Discord and bot API call in a single `Promise.all`. Anything interpolated into a database API filter must go through `encodeURIComponent`.
 
