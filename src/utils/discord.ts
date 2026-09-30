@@ -30,12 +30,13 @@ export async function getGuildInfo(guildId: string, botToken: string): Promise<{
 
 const GUILD_LIST_TTL_MS = 15_000;
 const guildListCache = new Map<string, { status: number; text: string; expiresAt: number }>();
-const guildListInflight = new Map<string, Promise<{ status: number; text: string }>>();
 
 /**
  * Roles or channels of a server, as a Response. Every dashboard page asks for the same lists, so a
  * short cache turns page-to-page navigation into zero Discord calls. Writes (POST) skip the cache
  * and refresh it, so a page rendered right after a change shows the change.
+ * Only finished results are shared between requests. A Worker cannot wait on a fetch that another
+ * request started, so a request that finds nothing cached always makes its own call.
  */
 export async function getGuildList(astro: { request?: Request }, guildId: string, botToken: string, kind: 'roles' | 'channels'): Promise<Response> {
   const key = `${botToken}:${guildId}:${kind}`;
@@ -44,18 +45,10 @@ export async function getGuildList(astro: { request?: Request }, guildId: string
   const hit = guildListCache.get(key);
   if (cacheable && hit && hit.expiresAt > Date.now()) return new Response(hit.text, { status: hit.status });
 
-  let pending = cacheable ? guildListInflight.get(key) : undefined;
-  if (!pending) {
-    pending = fetch(`https://discord.com/api/guilds/${guildId}/${kind}`, { headers: { Authorization: `Bot ${botToken}` } })
-      .then(async (res) => ({ status: res.status, text: await res.text() }));
-    if (cacheable) {
-      guildListInflight.set(key, pending);
-      pending.then(() => guildListInflight.delete(key), () => guildListInflight.delete(key));
-    }
-  }
-  const { status, text } = await pending;
-  if (status === 200) guildListCache.set(key, { status, text, expiresAt: Date.now() + GUILD_LIST_TTL_MS });
-  return new Response(text, { status });
+  const res = await fetch(`https://discord.com/api/guilds/${guildId}/${kind}`, { headers: { Authorization: `Bot ${botToken}` } });
+  const text = await res.text();
+  if (res.status === 200) guildListCache.set(key, { status: res.status, text, expiresAt: Date.now() + GUILD_LIST_TTL_MS });
+  return new Response(text, { status: res.status });
 }
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
