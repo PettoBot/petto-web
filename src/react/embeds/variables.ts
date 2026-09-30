@@ -167,6 +167,13 @@ export const VARIABLE_GROUPS: VarGroup[] = [
     ],
   },
   {
+    label: 'Bump',
+    vars: [
+      { tok: '{user.mention}', desc: 'Only in bump messages: mentions whoever bumped' },
+      { tok: '{nextBump}', desc: 'Only in bump messages: relative time until the next bump is allowed' },
+    ],
+  },
+  {
     label: 'Date',
     vars: [
       { tok: '{date}', desc: "Today's date" },
