@@ -1,0 +1,116 @@
+---
+export const prerender = false;
+import DashVanity from '../../../../components/DashVanity.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getCachedUserGuilds } from '../../../../utils/discordCache';
+import { guildIconUrl } from '../../../../utils/discord';
+import { getVanityOverview, vanityAction, vanityConfig, vanityInviteUrl } from '../../../../utils/vanityBot';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+const { id } = Astro.params as { id: string };
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+
+const sections = ['rules', 'tags', 'messages', 'logs'];
+const requested = new URL(Astro.request.url).searchParams.get('section') ?? 'rules';
+const section = sections.includes(requested) ? requested : 'rules';
+
+// Turns a submitted form into the action the Vanity bot's API expects. Anything else is ignored.
+function readAction(form: FormData): Record<string, unknown> | null {
+  const text = (key: string) => String(form.get(key) ?? '').trim();
+  const action = text('action');
+  switch (action) {
+    case 'vanity_create':
+      return { action, name: text('name'), word: text('word'), source: text('source'), comparison: text('comparison'), role_id: text('role_id'), rule_action: text('rule_action'), case_fold: form.has('case_fold'), trim_space: form.has('trim_space'), collapse_space: form.has('collapse_space') };
+    case 'vanity_update':
+      return { action, name: text('name'), word: text('word'), source: text('source'), comparison: text('comparison'), role_id: text('role_id') };
+    case 'guildtag_create':
+      return { action, name: text('name'), condition: text('condition'), value: text('value'), role_id: text('role_id'), rule_action: text('rule_action') };
+    case 'guildtag_update':
+      return { action, name: text('name'), condition: text('condition'), value: text('value'), role_id: text('role_id') };
+    case 'vanity_toggle':
+    case 'guildtag_toggle':
+      return { action: action.replace('_toggle', '_update'), name: text('name'), enabled: text('enabled') === '1' };
+    case 'vanity_delete':
+    case 'guildtag_delete':
+      return { action, name: text('name') };
+    case 'notify_set':
+      return { action, notify_source: text('notify_source'), channel_id: text('channel_id'), embed: text('embed'), ping: text('ping') };
+    case 'logs_set':
+      return { action, channel_id: text('channel_id'), events: form.getAll('events').map(String) };
+    default:
+      return null;
+  }
+}
+
+const knownErrors: Record<string, string> = {
+  not_installed: dt('The Vanity bot is not in this server yet.'),
+  no_access: dt('You need Manage Server or Administrator in this server.'),
+  duplicate_name: dt('A rule with that name already exists.'),
+  rule_not_found: dt('That rule does not exist anymore.'),
+  role_not_found: dt('That role does not exist in this server.'),
+  role_managed: dt('That role is managed by an integration and cannot be assigned.'),
+  role_above_bot: dt("Move the Vanity bot's role above that role in Server Settings, Roles."),
+  channel_not_found: dt('Choose a text channel of this server.'),
+  embed_not_found: dt('That embed does not exist. Create it with /embed create in Discord.'),
+  no_events: dt('Choose at least one log event.'),
+  rate_limited: dt('Too many changes, wait a minute and try again.'),
+  unavailable: dt('The Vanity bot did not answer in time, try again in a moment.'),
+};
+
+let saved = false;
+let note: string | null = null;
+let error: string | null = null;
+
+if (vanityConfig(Astro) && Astro.request.method === 'POST') {
+  const body = readAction(await Astro.request.formData());
+  if (body) {
+    const result = await vanityAction(Astro, id, session.userId, body);
+    if (result.ok) {
+      saved = true;
+      note = result.data?.note ?? null;
+    } else {
+      error = knownErrors[(result as any).code] ?? dt((result as any).message);
+    }
+  }
+}
+
+const configured = Boolean(vanityConfig(Astro));
+const overview = configured ? await getVanityOverview(Astro, id, session.userId) : null;
+let state: 'ok' | 'not_configured' | 'not_installed' | 'no_access' | 'unavailable' = 'unavailable';
+if (!configured) state = 'not_configured';
+else if (overview?.ok) state = 'ok';
+else if ((overview as any)?.code === 'not_installed') state = 'not_installed';
+else if ((overview as any)?.code === 'no_access') state = 'no_access';
+
+// The page must work before the Vanity bot is in the server, so the name and icon come from the visitor's own server list.
+let guildName = id;
+let guildIcon = '/assets/mascot-icon.png';
+if (overview?.ok) {
+  guildName = overview.data.guild.name;
+  if (overview.data.guild.icon) guildIcon = `https://cdn.discordapp.com/icons/${id}/${overview.data.guild.icon}.png?size=128`;
+} else {
+  try {
+    const mine = (await getCachedUserGuilds(session.accessToken)).find((g: any) => g.id === id);
+    if (mine) {
+      guildName = mine.name;
+      guildIcon = guildIconUrl(mine) ?? guildIcon;
+    }
+  } catch { /* the name stays the id */ }
+}
+---
+<DashVanity
+  user={session}
+  guildId={id}
+  guildName={guildName}
+  guildIcon={guildIcon}
+  state={state}
+  overview={overview?.ok ? overview.data : null}
+  inviteUrl={vanityInviteUrl(Astro, id)}
+  section={section}
+  saved={saved}
+  note={note}
+  error={error}
+/>

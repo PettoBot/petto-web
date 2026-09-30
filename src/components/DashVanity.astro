@@ -1,0 +1,304 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import type { VanityOverview, VanityRule, VanityRole } from '../utils/vanityBot';
+
+import { getDashLang, makeT } from '../i18n/dash';
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+const dth = makeT(dashLang, true);
+
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  state: 'ok' | 'not_configured' | 'not_installed' | 'no_access' | 'unavailable';
+  overview: VanityOverview | null;
+  inviteUrl: string | null;
+  section: string;
+  saved: boolean;
+  note: string | null;
+  error: string | null;
+}
+const { user, guildId, guildName, guildIcon, state, overview, inviteUrl, section, saved, note, error } = Astro.props;
+
+const activeNav: Record<string, string> = { rules: 'vanity', tags: 'vanity-tags', messages: 'vanity-messages', logs: 'vanity-logs' };
+const titles: Record<string, string> = { rules: dt('Vanity rules'), tags: dt('Server Tag rules'), messages: dt('Thank-you messages'), logs: dt('Vanity logs') };
+
+const sourceLabel: Record<string, string> = {
+  custom_status: dt('Custom Status'), username: dt('Username'), global_name: dt('Global name'), guild_nickname: dt('Server nickname'), display_name: dt('Display name'),
+};
+const comparisonLabel: Record<string, string> = {
+  equals: dt('is exactly'), contains: dt('contains'), starts_with: dt('starts with'), ends_with: dt('ends with'), regex: dt('matches the pattern'),
+};
+const conditionLabel: Record<string, string> = {
+  is_guild_id: dt('Identity server is'), is_not_guild_id: dt('Identity server is not'), identity_enabled: dt('Server Tag is shown'),
+  identity_disabled: dt('Server Tag is hidden'), tag_equals: dt('Tag text is'), tag_not_equals: dt('Tag text is not'),
+};
+const actionLabel: Record<string, string> = { add_role: dt('Add the role'), remove_role: dt('Remove the role') };
+const eventLabel: Record<string, string> = {
+  vanity_add: dt('Vanity role added'), vanity_remove: dt('Vanity role removed'), tag_add: dt('Server Tag role added'), tag_remove: dt('Server Tag role removed'), error: dt('Errors'),
+};
+const needsValue = (condition: string) => ['is_guild_id', 'is_not_guild_id', 'tag_equals', 'tag_not_equals'].includes(condition);
+
+const roles = overview?.roles ?? [];
+const channels = overview?.channels ?? [];
+const roleName = (roleId: string) => roles.find((role) => role.id === roleId)?.name ?? roleId;
+const roleHint = (role: VanityRole) => (role.reason === 'managed' ? ` (${dt('managed')})` : role.reason === 'above_bot' ? ` (${dt('above the bot')})` : '');
+const vanityRules = overview?.rules.vanity ?? [];
+const tagRules = overview?.rules.guildtag ?? [];
+const eventsOn = new Set(overview?.logs.events ?? []);
+const unassignable = (rule: VanityRule) => roles.find((role) => role.id === rule.role_id && !role.assignable);
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={activeNav[section] ?? 'vanity'} pageTitle="Vanity bot">
+  <h1>{titles[section] ?? dt('Vanity bot')}</h1>
+  <p class="vn-sub">{dt('Give roles to members by their Custom Status, name, or Server Tag. This is a separate bot, and everything here is also available with its slash commands.')}</p>
+
+  {saved && <div class="vn-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')} {note ? dt(note) : ''}</div>}
+  {error && <div class="vn-flash vn-flash-err"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
+
+  {state === 'not_configured' && (
+    <div class="vn-card vn-empty"><p>{dt('The Vanity bot is not connected to this dashboard yet.')}</p></div>
+  )}
+
+  {state === 'unavailable' && (
+    <div class="vn-card vn-empty"><p>{dt('The Vanity bot did not answer in time. Reload the page in a few seconds.')}</p></div>
+  )}
+
+  {state === 'no_access' && (
+    <div class="vn-card vn-empty"><p>{dt('You need Manage Server or Administrator in this server to use the Vanity bot.')}</p></div>
+  )}
+
+  {state === 'not_installed' && (
+    <div class="vn-card vn-empty">
+      <Icon name="ph:sparkle-fill" width="26" height="26" />
+      <h2>{dt('Add the Vanity bot to this server')}</h2>
+      <p>{dt('It is not in this server yet. Add it, give it Manage Roles, and put its role above the roles it should hand out. Then come back to set up rules here.')}</p>
+      {inviteUrl && <a class="btn btn-accent btn-sm" href={inviteUrl} target="_blank" rel="noopener"><Icon name="ph:share-network-fill" width="13" height="13" /> {dt('Add the Vanity bot')}</a>}
+    </div>
+  )}
+
+  {state === 'ok' && overview && section === 'rules' && (
+    <>
+      <div class="vn-card">
+        <h2>{dt('Create a rule')}</h2>
+        <p class="vn-hint">{dth('Example: when a member\'s Custom Status <b>contains</b> your server word, give them a role.')}</p>
+        <form method="POST" class="vn-form">
+          <input type="hidden" name="action" value="vanity_create" />
+          <label>{dt('Name')}<input type="text" name="name" maxlength="64" required placeholder="cinnamochi" /></label>
+          <label>{dt('What to check')}
+            <select name="source">{overview.options.vanity_sources.map((value) => <option value={value}>{sourceLabel[value] ?? value}</option>)}</select>
+          </label>
+          <label>{dt('How it matches')}
+            <select name="comparison">{overview.options.comparisons.map((value) => <option value={value} selected={value === 'contains'}>{comparisonLabel[value] ?? value}</option>)}</select>
+          </label>
+          <label class="vn-wide">{dt('Text to match')}<input type="text" name="word" maxlength="256" required placeholder="discord.gg/petto" /></label>
+          <label>{dt('Role')}
+            <select name="role_id" required>
+              <option value="" disabled selected>{dt('Choose a role')}</option>
+              {roles.map((role) => <option value={role.id} disabled={!role.assignable}>{role.name}{roleHint(role)}</option>)}
+            </select>
+          </label>
+          <label>{dt('When it matches')}
+            <select name="rule_action">{overview.options.actions.map((value) => <option value={value}>{actionLabel[value] ?? value}</option>)}</select>
+          </label>
+          <div class="vn-checks vn-wide">
+            <label class="vn-check"><input type="checkbox" name="case_fold" checked />{dt('Ignore capital letters')}</label>
+            <label class="vn-check"><input type="checkbox" name="trim_space" checked />{dt('Ignore spaces at the ends')}</label>
+            <label class="vn-check"><input type="checkbox" name="collapse_space" checked />{dt('Treat repeated spaces as one')}</label>
+          </div>
+          <div class="vn-actions vn-wide"><button type="submit" class="btn btn-accent btn-sm">{dt('Create rule')}</button></div>
+        </form>
+      </div>
+
+      <h2 class="vn-list-title">{dt('Your rules')} <span class="vn-count">{vanityRules.length}</span></h2>
+      {vanityRules.length === 0 ? <p class="vn-hint">{dt('No rules yet.')}</p> : (
+        <div class="vn-list">
+          {vanityRules.map((rule) => (
+            <details class:list={['vn-rule', { 'vn-off': !rule.enabled }]}>
+              <summary>
+                <span class="vn-rule-name">{rule.name}</span>
+                <span class="vn-rule-sum">{sourceLabel[rule.source ?? ''] ?? rule.source} {comparisonLabel[rule.comparison ?? ''] ?? rule.comparison} <code>{rule.word}</code> → <b>@{roleName(rule.role_id)}</b> ({actionLabel[rule.action]})</span>
+                {!rule.enabled && <span class="vn-tag">{dt('Off')}</span>}
+                {unassignable(rule) && <span class="vn-tag vn-tag-warn">{dt('Role cannot be assigned')}</span>}
+              </summary>
+              <form method="POST" class="vn-form vn-edit">
+                <input type="hidden" name="action" value="vanity_update" />
+                <input type="hidden" name="name" value={rule.name} />
+                <label>{dt('What to check')}
+                  <select name="source">{overview.options.vanity_sources.map((value) => <option value={value} selected={value === rule.source}>{sourceLabel[value] ?? value}</option>)}</select>
+                </label>
+                <label>{dt('How it matches')}
+                  <select name="comparison">{overview.options.comparisons.map((value) => <option value={value} selected={value === rule.comparison}>{comparisonLabel[value] ?? value}</option>)}</select>
+                </label>
+                <label class="vn-wide">{dt('Text to match')}<input type="text" name="word" maxlength="256" value={rule.word} required /></label>
+                <label>{dt('Role')}
+                  <select name="role_id">{roles.map((role) => <option value={role.id} selected={role.id === rule.role_id} disabled={!role.assignable && role.id !== rule.role_id}>{role.name}{roleHint(role)}</option>)}</select>
+                </label>
+                <div class="vn-actions vn-wide"><button type="submit" class="btn btn-ghost btn-sm">{dt('Save changes')}</button></div>
+              </form>
+              <div class="vn-row-actions">
+                <form method="POST"><input type="hidden" name="action" value="vanity_toggle" /><input type="hidden" name="name" value={rule.name} /><input type="hidden" name="enabled" value={rule.enabled ? '0' : '1'} /><button type="submit" class="btn btn-ghost btn-sm">{rule.enabled ? dt('Turn off') : dt('Turn on')}</button></form>
+                <form method="POST"><input type="hidden" name="action" value="vanity_delete" /><input type="hidden" name="name" value={rule.name} /><button type="submit" class="btn btn-danger btn-sm" data-confirm={dt('Delete this rule? Roles it gave stay until the next check.')}>{dt('Delete')}</button></form>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </>
+  )}
+
+  {state === 'ok' && overview && section === 'tags' && (
+    <>
+      <div class="vn-card">
+        <h2>{dt('Create a rule')}</h2>
+        <p class="vn-hint">{dt('Server Tags come from the server a member shows on their Discord profile. Use the server ID to match a specific server.')}</p>
+        <form method="POST" class="vn-form">
+          <input type="hidden" name="action" value="guildtag_create" />
+          <label>{dt('Name')}<input type="text" name="name" maxlength="64" required placeholder="partner-server" /></label>
+          <label>{dt('Condition')}
+            <select name="condition">{overview.options.conditions.map((value) => <option value={value}>{conditionLabel[value] ?? value}</option>)}</select>
+          </label>
+          <label class="vn-wide">{dt('Server ID or tag text')}<input type="text" name="value" maxlength="32" placeholder="707307527846625280" /><small>{dt('Leave empty for conditions that need no value.')}</small></label>
+          <label>{dt('Role')}
+            <select name="role_id" required>
+              <option value="" disabled selected>{dt('Choose a role')}</option>
+              {roles.map((role) => <option value={role.id} disabled={!role.assignable}>{role.name}{roleHint(role)}</option>)}
+            </select>
+          </label>
+          <label>{dt('When it matches')}
+            <select name="rule_action">{overview.options.actions.map((value) => <option value={value}>{actionLabel[value] ?? value}</option>)}</select>
+          </label>
+          <div class="vn-actions vn-wide"><button type="submit" class="btn btn-accent btn-sm">{dt('Create rule')}</button></div>
+        </form>
+      </div>
+
+      <h2 class="vn-list-title">{dt('Your rules')} <span class="vn-count">{tagRules.length}</span></h2>
+      {tagRules.length === 0 ? <p class="vn-hint">{dt('No rules yet.')}</p> : (
+        <div class="vn-list">
+          {tagRules.map((rule) => (
+            <details class:list={['vn-rule', { 'vn-off': !rule.enabled }]}>
+              <summary>
+                <span class="vn-rule-name">{rule.name}</span>
+                <span class="vn-rule-sum">{conditionLabel[rule.condition ?? ''] ?? rule.condition} {needsValue(rule.condition ?? '') && <code>{rule.value}</code>} → <b>@{roleName(rule.role_id)}</b> ({actionLabel[rule.action]})</span>
+                {!rule.enabled && <span class="vn-tag">{dt('Off')}</span>}
+                {unassignable(rule) && <span class="vn-tag vn-tag-warn">{dt('Role cannot be assigned')}</span>}
+              </summary>
+              <form method="POST" class="vn-form vn-edit">
+                <input type="hidden" name="action" value="guildtag_update" />
+                <input type="hidden" name="name" value={rule.name} />
+                <label>{dt('Condition')}
+                  <select name="condition">{overview.options.conditions.map((value) => <option value={value} selected={value === rule.condition}>{conditionLabel[value] ?? value}</option>)}</select>
+                </label>
+                <label>{dt('Server ID or tag text')}<input type="text" name="value" maxlength="32" value={rule.value} /></label>
+                <label>{dt('Role')}
+                  <select name="role_id">{roles.map((role) => <option value={role.id} selected={role.id === rule.role_id} disabled={!role.assignable && role.id !== rule.role_id}>{role.name}{roleHint(role)}</option>)}</select>
+                </label>
+                <div class="vn-actions vn-wide"><button type="submit" class="btn btn-ghost btn-sm">{dt('Save changes')}</button></div>
+              </form>
+              <div class="vn-row-actions">
+                <form method="POST"><input type="hidden" name="action" value="guildtag_toggle" /><input type="hidden" name="name" value={rule.name} /><input type="hidden" name="enabled" value={rule.enabled ? '0' : '1'} /><button type="submit" class="btn btn-ghost btn-sm">{rule.enabled ? dt('Turn off') : dt('Turn on')}</button></form>
+                <form method="POST"><input type="hidden" name="action" value="guildtag_delete" /><input type="hidden" name="name" value={rule.name} /><button type="submit" class="btn btn-danger btn-sm" data-confirm={dt('Delete this rule? Roles it gave stay until the next check.')}>{dt('Delete')}</button></form>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </>
+  )}
+
+  {state === 'ok' && overview && section === 'messages' && (
+    <div class="vn-two">
+      {(['vanity', 'guildtag'] as const).map((source) => {
+        const current = overview.notifications[source];
+        return (
+          <form method="POST" class="vn-card vn-form vn-stack">
+            <input type="hidden" name="action" value="notify_set" />
+            <input type="hidden" name="notify_source" value={source} />
+            <h2>{source === 'vanity' ? dt('Vanity thank-you message') : dt('Server Tag thank-you message')}</h2>
+            <p class="vn-hint">{dt('Sent when a member starts matching a rule. It does not repeat on every presence or member update.')}</p>
+            <label>{dt('Channel')}
+              <select name="channel_id" required>
+                <option value="" disabled selected={!current.channel_id}>{dt('Choose a channel')}</option>
+                {channels.map((channel) => <option value={channel.id} selected={channel.id === current.channel_id}>#{channel.name}</option>)}
+              </select>
+            </label>
+            <label>{dt('Message')}
+              <select name="embed">
+                <option value="" selected={!current.embed}>{dt('Default message')}</option>
+                {overview.embeds.map((name) => <option value={name} selected={name === current.embed}>{name}</option>)}
+              </select>
+            </label>
+            <label>{dt('Mention the member')}
+              <select name="ping">
+                <option value="user" selected={current.ping === 'user'}>{dt('Mention the member')}</option>
+                <option value="none" selected={current.ping === 'none'}>{dt('Do not mention')}</option>
+              </select>
+            </label>
+            <div class="vn-actions"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+          </form>
+        );
+      })}
+      <p class="vn-hint vn-wide-note">{dth('Write your own messages in Discord with <code>/embed create</code> and <code>/embed edit</code>. They show up in the list above.')}</p>
+    </div>
+  )}
+
+  {state === 'ok' && overview && section === 'logs' && (
+    <form method="POST" class="vn-card vn-form vn-stack">
+      <input type="hidden" name="action" value="logs_set" />
+      <h2>{dt('Staff action log')}</h2>
+      <p class="vn-hint">{dt('A private log of roles the bot adds or removes, with the reason, and of errors.')}</p>
+      <label>{dt('Channel')}
+        <select name="channel_id" required>
+          <option value="" disabled selected={!overview.logs.channel_id}>{dt('Choose a channel')}</option>
+          {channels.map((channel) => <option value={channel.id} selected={channel.id === overview.logs.channel_id}>#{channel.name}</option>)}
+        </select>
+      </label>
+      <div class="vn-checks">
+        {overview.options.log_events.map((key) => (
+          <label class="vn-check"><input type="checkbox" name="events" value={key} checked={overview.logs.channel_id ? eventsOn.has(key) : true} />{eventLabel[key] ?? key}</label>
+        ))}
+      </div>
+      <div class="vn-actions"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+    </form>
+  )}
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .vn-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 22px; max-width: 70ch; }
+  .vn-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid color-mix(in srgb, var(--green) 40%, var(--border)); border-radius: 10px; padding: 9px 13px; margin-bottom: 16px; }
+  .vn-flash-err { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+  .vn-card { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--card); margin-bottom: 18px; }
+  .vn-card h2 { font-size: 15px; margin: 0 0 4px; }
+  .vn-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .vn-empty p { margin: 0; color: var(--text-muted); font-size: 14px; max-width: 60ch; line-height: 1.5; }
+  .vn-hint { font-size: 12.5px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.5; }
+  .vn-list-title { font-size: 14.5px; margin: 26px 0 12px; display: flex; align-items: center; gap: 8px; }
+  .vn-count { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .vn-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+  .vn-stack { grid-template-columns: minmax(0, 1fr); }
+  .vn-form label { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; min-width: 0; }
+  .vn-form input[type='text'], .vn-form select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise); color: var(--text); font: 12.5px var(--sans); text-transform: none; letter-spacing: 0; }
+  .vn-form small { font-size: 11px; font-weight: 400; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+  .vn-wide { grid-column: 1 / -1; }
+  .vn-checks { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+  .vn-form .vn-check { flex-direction: row; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 400; color: var(--text-muted); text-transform: none; letter-spacing: 0; }
+  .vn-actions { display: flex; gap: 8px; }
+  .vn-list { display: flex; flex-direction: column; gap: 8px; }
+  .vn-rule { border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+  .vn-rule > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+  .vn-rule > summary::-webkit-details-marker { display: none; }
+  .vn-off { opacity: 0.7; }
+  .vn-rule-name { font-weight: 600; font-size: 13.5px; color: var(--text); }
+  .vn-rule-sum { font-size: 12.5px; color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
+  .vn-rule-sum code { font-family: var(--mono); font-size: 11.5px; background: var(--bg-raise); border-radius: 4px; padding: 1px 5px; color: var(--text); }
+  .vn-tag { font-size: 10.5px; font-weight: 600; border-radius: 999px; padding: 2px 8px; background: var(--bg-raise); color: var(--text-dim); }
+  .vn-tag-warn { background: var(--yellow-soft, var(--bg-raise)); color: var(--yellow); }
+  .vn-edit { padding: 4px 14px 12px; }
+  .vn-row-actions { display: flex; gap: 8px; padding: 0 14px 14px; flex-wrap: wrap; }
+  .vn-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+  .vn-wide-note { grid-column: 1 / -1; }
+  @media (max-width: 880px) { .vn-form, .vn-two { grid-template-columns: minmax(0, 1fr); } }
+</style>
