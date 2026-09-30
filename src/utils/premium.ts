@@ -101,7 +101,26 @@ function isActiveEntitlement(entitlement: PremiumEntitlement): boolean {
 }
 
 /** Reads the account's Premium state from Discloud through the private bot API. */
-export async function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
+// A page and its layout both need the snapshot in the same GET request, so the second call reuses
+// the first one's result. Writes (POST) always read fresh data.
+const requestSnapshots = new WeakMap<object, Map<string, Promise<PremiumSnapshot>>>();
+
+export function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
+  const request = astro?.request as Request | undefined;
+  const method = String(request?.method ?? 'GET').toUpperCase();
+  if (!request || (method !== 'GET' && method !== 'HEAD')) return loadPremiumSnapshot(astro, userId);
+  let byUser = requestSnapshots.get(request);
+  if (!byUser) requestSnapshots.set(request, (byUser = new Map()));
+  let pending = byUser.get(userId);
+  if (!pending) {
+    pending = loadPremiumSnapshot(astro, userId);
+    byUser.set(userId, pending);
+    pending.catch(() => byUser?.delete(userId));
+  }
+  return pending;
+}
+
+async function loadPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
   const encodedUser = encodeURIComponent(userId);
   const [entitlements, assignments, requests] = await Promise.all([
     read<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=in.(active,pending,past_due,canceled,expired)&select=id,user_id,provider,plan_key,status,slot_limit,current_period_end,created_at,updated_at,metadata&order=created_at.desc&limit=25`),
@@ -143,13 +162,8 @@ export async function getPremiumSnapshot(astro: any, userId: string): Promise<Pr
 
 /** Returns whether this account has an active Premium slot on this guild. */
 export async function hasPremiumForGuild(astro: any, userId: string, guildId: string): Promise<boolean> {
-  const encodedUser = encodeURIComponent(userId);
-  const [entitlements, assignments] = await Promise.all([
-    read<PremiumEntitlement>(astro, 'premium_entitlements', `user_id=eq.${encodedUser}&status=eq.active&select=id,status,slot_limit,current_period_end`),
-    read<PremiumAssignment>(astro, 'premium_slot_assignments', `user_id=eq.${encodedUser}&guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active&select=entitlement_id,guild_id,status`),
-  ]);
-  const activeEntitlementIds = new Set(entitlements.filter(isActiveEntitlement).map((entitlement) => entitlement.id));
-  return assignments.some((assignment) => activeEntitlementIds.has(assignment.entitlement_id));
+  const snapshot = await getPremiumSnapshot(astro, userId);
+  return snapshot.assignments.some((assignment) => assignment.guild_id === guildId);
 }
 
 /** Creates a short-lived Polar checkout tied to this Discord user. */

@@ -6,9 +6,23 @@
 const TTL_MS = 20_000;
 const cache = new Map<string, { data: any[]; expiresAt: number }>();
 
-export async function getCachedUserGuilds(accessToken: string): Promise<any[]> {
+const userGuildsInflight = new Map<string, Promise<any[]>>();
+
+export function getCachedUserGuilds(accessToken: string): Promise<any[]> {
   const hit = cache.get(accessToken);
-  if (hit && hit.expiresAt > Date.now()) return hit.data;
+  if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit.data);
+  let pending = userGuildsInflight.get(accessToken);
+  if (!pending) {
+    pending = fetchUserGuilds(accessToken);
+    userGuildsInflight.set(accessToken, pending);
+    const clear = () => userGuildsInflight.delete(accessToken);
+    pending.then(clear, clear);
+  }
+  return pending;
+}
+
+async function fetchUserGuilds(accessToken: string): Promise<any[]> {
+  const hit = cache.get(accessToken);
 
   try {
     const res = await fetch('https://discord.com/api/users/@me/guilds', {
