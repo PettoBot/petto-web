@@ -28,6 +28,36 @@ export async function getGuildInfo(guildId: string, botToken: string): Promise<{
   return value;
 }
 
+const GUILD_LIST_TTL_MS = 15_000;
+const guildListCache = new Map<string, { status: number; text: string; expiresAt: number }>();
+const guildListInflight = new Map<string, Promise<{ status: number; text: string }>>();
+
+/**
+ * Roles or channels of a server, as a Response. Every dashboard page asks for the same lists, so a
+ * short cache turns page-to-page navigation into zero Discord calls. Writes (POST) skip the cache
+ * and refresh it, so a page rendered right after a change shows the change.
+ */
+export async function getGuildList(astro: { request?: Request }, guildId: string, botToken: string, kind: 'roles' | 'channels'): Promise<Response> {
+  const key = `${botToken}:${guildId}:${kind}`;
+  const method = String(astro.request?.method ?? 'GET').toUpperCase();
+  const cacheable = method === 'GET' || method === 'HEAD';
+  const hit = guildListCache.get(key);
+  if (cacheable && hit && hit.expiresAt > Date.now()) return new Response(hit.text, { status: hit.status });
+
+  let pending = cacheable ? guildListInflight.get(key) : undefined;
+  if (!pending) {
+    pending = fetch(`https://discord.com/api/guilds/${guildId}/${kind}`, { headers: { Authorization: `Bot ${botToken}` } })
+      .then(async (res) => ({ status: res.status, text: await res.text() }));
+    if (cacheable) {
+      guildListInflight.set(key, pending);
+      pending.then(() => guildListInflight.delete(key), () => guildListInflight.delete(key));
+    }
+  }
+  const { status, text } = await pending;
+  if (status === 200) guildListCache.set(key, { status, text, expiresAt: Date.now() + GUILD_LIST_TTL_MS });
+  return new Response(text, { status });
+}
+
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 /** Fetches an image URL server-side and returns it as a `data:` URI, the format Discord's member-avatar endpoint expects. Returns null on any failure so callers can show a clean error instead of a stack trace. */

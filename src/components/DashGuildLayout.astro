@@ -25,7 +25,14 @@ interface Props {
 }
 const { guildId, guildName, guildIcon, user, active, pageTitle: rawPageTitle, premiumActive = false } = Astro.props;
 const pageTitle = dt(rawPageTitle);
-const premiumSnapshot = user.userId ? await getPremiumSnapshot(Astro, user.userId) : null;
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+// The premium snapshot, the visitor's servers, and the servers Petto is in do not depend on each
+// other, so they load together instead of one after the other.
+const [premiumSnapshot, discordGuilds, activeBotGuildIds] = await Promise.all([
+  user.userId ? getPremiumSnapshot(Astro, user.userId) : Promise.resolve(null),
+  user.accessToken ? getCachedUserGuilds(user.accessToken) : Promise.resolve(null),
+  user.accessToken && botToken ? getCachedBotGuildIds(botToken) : Promise.resolve(null),
+]);
 const premiumGuildIds = new Set(premiumSnapshot?.assignments.map((assignment) => assignment.guild_id) ?? []);
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
@@ -36,15 +43,12 @@ const resolvedPremiumActive = premiumGuildIds.has(guildId) && Boolean(premiumSna
 interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean }
 let switcherGuilds: SwitcherGuild[] = [];
 let devView = false;
-if (user.accessToken) {
-  const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-  const discordGuilds = await getCachedUserGuilds(user.accessToken);
+if (discordGuilds) {
   const manageable = discordGuilds.filter(canManageGuild);
   devView = Boolean(user.userId) && isPettoOwner(Astro, user.userId as string) && !manageable.some((g: any) => g.id === guildId);
-  if (manageable.length > 0 && botToken) {
-    const activeIds = await getCachedBotGuildIds(botToken);
+  if (manageable.length > 0 && activeBotGuildIds) {
     switcherGuilds = manageable
-      .filter((g: any) => activeIds.has(g.id))
+      .filter((g: any) => activeBotGuildIds.has(g.id))
       .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id) }))
       .sort((a: SwitcherGuild, b: SwitcherGuild) => a.name.localeCompare(b.name));
   }
