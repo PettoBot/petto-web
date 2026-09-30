@@ -6,19 +6,12 @@
 const TTL_MS = 20_000;
 const cache = new Map<string, { data: any[]; expiresAt: number }>();
 
-const userGuildsInflight = new Map<string, Promise<any[]>>();
-
+// Only finished results are cached. A Worker cannot wait on a fetch that another request started
+// (it can hang forever), so every request that finds no fresh copy makes its own call.
 export function getCachedUserGuilds(accessToken: string): Promise<any[]> {
   const hit = cache.get(accessToken);
   if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit.data);
-  let pending = userGuildsInflight.get(accessToken);
-  if (!pending) {
-    pending = fetchUserGuilds(accessToken);
-    userGuildsInflight.set(accessToken, pending);
-    const clear = () => userGuildsInflight.delete(accessToken);
-    pending.then(clear, clear);
-  }
-  return pending;
+  return fetchUserGuilds(accessToken);
 }
 
 async function fetchUserGuilds(accessToken: string): Promise<any[]> {
