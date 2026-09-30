@@ -4,7 +4,7 @@ import FormatToolbar from './FormatToolbar';
 import Preview from './Preview';
 import VariablesPanel from './VariablesPanel';
 import EmbedColorPicker from './EmbedColorPicker';
-import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, normalizeTemplateData } from './types';
+import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, normalizeTemplateData, encodeShareCode, decodeShareCode } from './types';
 import { t } from './t';
 
 interface Props {
@@ -15,6 +15,9 @@ interface Props {
   guildIconUrl: string;
   initialTemplateNames: string[];
   initialSelected: string;
+  channels: { id: string; name: string }[];
+  generatorUrl: string;
+  serverName: string;
 }
 
 async function api(guildId: string, path: string, init?: RequestInit) {
@@ -22,7 +25,7 @@ async function api(guildId: string, path: string, init?: RequestInit) {
   return res;
 }
 
-export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected }: Props) {
+export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
   const [data, setData] = useState<TemplateData>(emptyTemplate());
@@ -32,6 +35,10 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [dirty, setDirty] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sendTarget, setSendTarget] = useState('dm');
+  const [sending, setSending] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{ data: TemplateData; name: string } | null>(null);
+  const [importText, setImportText] = useState('');
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -45,6 +52,16 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       .then((row) => { if (row) setData(normalizeTemplateData(row.data)); setDirty(false); })
       .finally(() => setLoading(false));
   }, [selected, guildId]);
+
+  // A message sent from the Embed Generator arrives in the URL fragment (#import=CODE).
+  useEffect(() => {
+    const match = window.location.hash.match(/^#import=(.+)$/);
+    if (!match) return;
+    const imported = decodeShareCode(decodeURIComponent(match[1]));
+    if (imported) setPendingImport({ data: imported, name: 'imported' });
+    else setFlash(t("That import code isn't valid."));
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, []);
 
   useEffect(() => {
     if (!flash) return;
@@ -66,7 +83,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     if (!newName.trim()) return;
     const res = await api(guildId, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: newName.trim() }) });
     const body = await res.json();
-    if (!res.ok) { setFlash(body.error ?? "Couldn't create that template."); return; }
+    if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return; }
     setNames((n) => [...n, body.name].sort());
     setSelected(body.name);
     setNewName('');
@@ -77,7 +94,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     setSaving(true);
     const res = await api(guildId, '', { method: 'POST', body: JSON.stringify({ action: 'save', name: selected, data }) });
     setSaving(false);
-    setFlash(res.ok ? t('Saved.') : t("Couldn't save, try again."));
+    const failure = res.ok ? null : await res.json().catch(() => null);
+    setFlash(res.ok ? t('Saved.') : failure?.error ? t(failure.error) : t("Couldn't save, try again."));
     if (res.ok) setDirty(false);
   }
 
@@ -88,6 +106,46 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     if (!res.ok) { setFlash("Couldn't delete that template."); return; }
     setNames((n) => n.filter((x) => x !== selected));
     setSelected('');
+  }
+
+  async function handleImport(imported: TemplateData, name: string) {
+    const res = await api(guildId, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: name.trim(), data: imported }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return false; }
+    setNames((n) => [...n, body.name].sort());
+    setSelected(body.name);
+    setPendingImport(null);
+    setImportText('');
+    setFlash(t('Imported.'));
+    return true;
+  }
+
+  function handleImportText() {
+    const text = importText.trim();
+    let imported: TemplateData | null = decodeShareCode(text);
+    if (!imported) {
+      try { imported = normalizeTemplateData(JSON.parse(text)); } catch { imported = null; }
+      if (imported && imported.embeds.length === 0 && !imported.content) imported = null;
+    }
+    if (!imported) { setFlash(t("That import code isn't valid.")); return; }
+    setPendingImport({ data: imported, name: 'imported' });
+  }
+
+  async function handleCopy(kind: 'code' | 'json') {
+    const text = kind === 'code' ? encodeShareCode(data) : JSON.stringify(data, null, 2);
+    try { await navigator.clipboard.writeText(text); setFlash(t('Copied.')); } catch { setFlash(t("Couldn't copy, try again.")); }
+  }
+
+  function openInGenerator() {
+    window.open(`${generatorUrl}/#import=${encodeURIComponent(encodeShareCode(data))}`, '_blank', 'noopener');
+  }
+
+  async function handleSendTest() {
+    setSending(true);
+    const res = await api(guildId, '', { method: 'POST', body: JSON.stringify({ action: 'test_send', data, channel_id: sendTarget }) });
+    const body = await res.json().catch(() => ({}));
+    setSending(false);
+    setFlash(res.ok ? t('Test message sent.') : (body.error ? t(body.error) : t("Couldn't send the test message.")));
   }
 
   function addEmbed() {
@@ -119,6 +177,18 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     <div className="ebr-app">
       {flash && <div className="ebr-flash">{flash}</div>}
 
+      {pendingImport && (
+        <div className="ebr-import-banner">
+          <div>
+            <strong>{t('Import this message as a new template?')}</strong>
+            <span>{t('Name it, then it appears in the list and can be used by any module.')}</span>
+          </div>
+          <input type="text" maxLength={40} value={pendingImport.name} onChange={(ev) => setPendingImport({ ...pendingImport, name: ev.target.value })} />
+          <button type="button" className="btn btn-accent btn-sm" onClick={() => handleImport(pendingImport.data, pendingImport.name)} disabled={!pendingImport.name.trim()}>{t('Import')}</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPendingImport(null)}>{t('Dismiss')}</button>
+        </div>
+      )}
+
       <div className="ebr-layout">
         <aside className="ebr-list">
           {names.length === 0 && <p className="ebr-empty-note">{t('No templates yet.')}</p>}
@@ -128,6 +198,10 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
             </button>
           ))}
           <div className="ebr-limit-note">{names.length} saved themes · unlimited</div>
+          <div className="ebr-import">
+            <textarea rows={2} placeholder={t('Paste an import code or JSON')} value={importText} onChange={(ev) => setImportText(ev.target.value)} />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={handleImportText} disabled={!importText.trim()}>{t('Import')}</button>
+          </div>
           <form className="ebr-create" onSubmit={handleCreate}>
             <input type="text" placeholder="new-template-name" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
             <button type="submit" className="btn btn-ghost btn-sm">{t('+ New')}</button>
@@ -142,7 +216,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}</div>
-              <Preview data={data} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} />
+              <Preview data={data} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />
             </div>
 
             <div className="ebr-form-col">
@@ -241,6 +315,23 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
               <div className="ebr-actions">
                 <button type="button" className="btn btn-accent btn-sm" onClick={handleSave} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
                 <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete}>{t('Delete this template')}</button>
+              </div>
+
+              <div className="ebr-tools">
+                <h3>{t('Test and share')}</h3>
+                <div className="ebr-tools-row">
+                  <select value={sendTarget} onChange={(ev) => setSendTarget(ev.target.value)}>
+                    <option value="dm">{t('My direct messages')}</option>
+                    {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleSendTest} disabled={sending || dirty}>{sending ? t('Sending...') : t('Send test')}</button>
+                </div>
+                {dirty && <p className="ebr-tools-note">{t('Save your changes first, the test sends the saved template.')}</p>}
+                <div className="ebr-tools-row">
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('code')}>{t('Copy share code')}</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('json')}>{t('Copy JSON')}</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={openInGenerator}>{t('Open in Embed Generator')}</button>
+                </div>
               </div>
             </div>
           </div>

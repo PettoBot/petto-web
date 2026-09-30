@@ -1,6 +1,6 @@
 # Connecting the Embed Generator, the bot, and the dashboard
 
-This is a proposal only. Nothing here is built yet.
+The dashboard side of this is built. The parts that need changes in the bot and in the Embed Generator are listed at the end.
 
 **Where things stand**
 
@@ -56,3 +56,17 @@ Track usage (welcome, leveling, giveaways, tickets, custom commands) in one view
 - Where the shared package lives (a new repository or a folder in the bot repository published privately).
 - How long import codes stay valid, and whether they carry the message or point to a stored draft.
 - Whether the generator should offer a free "Save to server" once the user is logged in, or keep the import flow as the only path.
+
+**What the dashboard already does**
+
+- `src/utils/embedSchema.ts` holds the template shape, Discord's limits, `validateTemplate`, and the share code (`p1.` plus URL-safe base64 of the JSON). Saving a template through `embeds-api` now goes through the validator.
+- `src/utils/discordPreview.ts` and `src/utils/variableSamples.ts` draw every preview in the dashboard, including the Embeds page, with the same renderer and the same sample values.
+- The Embeds page has an import box (share code or JSON), a "Copy share code" and "Copy JSON" button, and "Open in Embed Generator", which opens the generator with `#import=<code>`.
+- A link like `https://petto.sbs/dash/import#import=<code>` lists the servers the person can manage. Picking one opens that server's Embeds page, which offers to save the message as a new template. The code stays in the URL fragment, so it never reaches a server log.
+- "Send test" posts the saved template to a channel of the server or to the person's direct messages. Variables are filled with the real user and server, mentions are limited to the sender, and it is limited to six sends per minute per person.
+
+**What is still needed elsewhere**
+
+- Generator: read `#import=<code>` on load, and add a "Send to Petto" button that opens `https://petto.sbs/dash/import#import=<code>`. The code format is the one in `embedSchema.ts`.
+- Bot: expose its variable registry as JSON so the dashboard can stop keeping its own list, and move the schema into a shared package so both sides validate the same way.
+- Bot: use the same sample values as `variableSamples.ts` if it ever needs to render a preview itself.
