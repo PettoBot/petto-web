@@ -1,14 +1,28 @@
 import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
 
-const prefixes: Record<string, string> = { es: 'es', 'pt-br': 'pt-BR' };
+const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: 'es', path: '/es' }, 'pt-br': { lang: 'pt-BR', path: '/pt-br' } };
 
-// /es/dash and /pt-br/dash pick the dashboard language, then render the single /dash route without changing the address bar.
+// /es/dash and /pt-br/dash pick the dashboard language and render the single /dash route.
+// The prefix is kept on the links, forms, and redirects of the page, so it stays in the address bar.
 export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite }, next) => {
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
-  if (!match) return next();
-  const lang = prefixes[match[1].toLowerCase()];
+  if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
+  const { lang, path } = prefixes[match[1].toLowerCase()];
   cookies.set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax', secure: url.protocol === 'https:' });
   (locals as Record<string, unknown>).dashLang = lang;
-  return rewrite(`${match[2]}${url.search}`);
+  const response = await rewrite(`${match[2]}${url.search}`);
+
+  const location = response.headers.get('location');
+  if (location && location.startsWith('/dash')) {
+    const headers = new Headers(response.headers);
+    headers.set('location', `${path}${location}`);
+    return new Response(null, { status: response.status, headers });
+  }
+
+  if (!(response.headers.get('content-type') ?? '').includes('text/html')) return response;
+  const html = (await response.text()).replace(/(\s(?:href|action)=")\/dash(?!\/lang)(?=[/?#"])/g, `$1${path}/dash`);
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(html, { status: response.status, statusText: response.statusText, headers });
 });
