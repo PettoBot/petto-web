@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { VARIABLE_GROUPS } from './variables';
+import { t } from './t';
 
 /** Static, always-in-flow reference of every {variable} token, one per builder (not one per
  * field) so there's nothing to position, click a row to copy it, then paste it into whichever
@@ -23,7 +24,7 @@ export default function VariablesPanel() {
       </button>
       {open && (
         <div className="ebr-varpanel-body">
-          <p className="ebr-varpanel-hint">Click one to copy it, then paste it into whichever field needs it.</p>
+          <p className="ebr-varpanel-hint">{t('Click one to copy it, then paste it into whichever field needs it.')}</p>
           {VARIABLE_GROUPS.map((g) => (
             <div key={g.label}>
               <div className="ebr-varpanel-group">{g.label}</div>

@@ -7,6 +7,8 @@ import { getGuildInfo } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { buildPanelPayload, postOrRefreshPanelMessage, deletePanelMessage, type GuildVars } from '../../../../utils/ticketPanel';
 import { hasPremiumForGuild } from '../../../../utils/premium';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -115,11 +117,11 @@ if (Astro.request.method === 'POST') {
       const countRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const current = countRes.ok ? await countRes.json() : null;
       if (!current) {
-        error = "Couldn't check the ticket type limit, try again.";
+        error = dt("Couldn't check the ticket type limit, try again.");
       } else if (current.length >= ticketCategoryLimit) {
         error = premiumActive
-          ? `You have reached the ${ticketCategoryLimit} ticket type limit.`
-          : 'The Free plan includes 5 ticket types. Premium unlocks up to 20.';
+          ? dt("You have reached the {n} ticket type limit.", {n: ticketCategoryLimit})
+          : dt('The Free plan includes 5 ticket types. Premium unlocks up to 20.');
       } else {
       const key = `${normalizeKey(label)}-${Date.now().toString(36)}`;
       const res = await fetch(`${apiUrl}/rest/v1/ticket_categories`, {
@@ -130,7 +132,7 @@ if (Astro.request.method === 'POST') {
       if (res.ok) {
         saved = true;
         if (panelId) await refreshPanelById(panelId);
-      } else error = "Couldn't add that ticket type, try again.";
+      } else error = dt("Couldn't add that ticket type, try again.");
       }
     }
   } else if (action === 'update') {
@@ -161,10 +163,10 @@ if (Astro.request.method === 'POST') {
     if (res.ok) {
       saved = true;
       if (panelId) await refreshPanelById(panelId);
-    } else error = "Couldn't save that ticket type, try again.";
+    } else error = dt("Couldn't save that ticket type, try again.");
   } else if (action === 'create_ticket_form' || action === 'update_ticket_form') {
     const name = String(form.get('form_name') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 50);
-    const title = String(form.get('form_title') ?? 'Ticket details').trim().slice(0, 45) || 'Ticket details';
+    const title = String(form.get('form_title') ?? dt('Ticket details')).trim().slice(0, 45) || dt('Ticket details');
     const fields = parseTicketFormFields(String(form.get('form_fields') ?? ''));
     if (!name || !fields) {
       error = 'Use 1–5 valid fields: type|id|label|placeholder|required;...';
@@ -175,26 +177,26 @@ if (Astro.request.method === 'POST') {
         : `${apiUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}`;
       const res = await fetch(endpoint, { method: action === 'create_ticket_form' ? 'POST' : 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(action === 'create_ticket_form' ? formPayload : { title, fields, updated_at: new Date().toISOString() }) });
       if (res.ok) saved = true;
-      else error = "Couldn't save that ticket form, try again.";
+      else error = dt("Couldn't save that ticket form, try again.");
     }
   } else if (action === 'delete_ticket_form') {
     const formId = String(form.get('form_id') ?? '').trim();
     const res = await fetch(`${apiUrl}/rest/v1/ticket_forms?id=eq.${encodeURIComponent(formId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: { ...apiHeaders, Prefer: 'return=minimal' } });
     if (res.ok) saved = true;
-    else error = "Couldn't delete that ticket form.";
+    else error = dt("Couldn't delete that ticket form.");
   } else if (action === 'add_ticket_blacklist' || action === 'remove_ticket_blacklist') {
     const targetType = form.get('target_type') === 'role' ? 'role' : 'user';
     const targetId = String(form.get('target_id') ?? '').trim();
     if (!/^\d{5,25}$/.test(targetId)) {
-      error = 'Enter a valid Discord user or role ID.';
+      error = dt('Enter a valid Discord user or role ID.');
     } else if (action === 'add_ticket_blacklist') {
       const res = await fetch(`${apiUrl}/rest/v1/ticket_blacklist?on_conflict=guild_id,target_type,target_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, target_type: targetType, target_id: targetId, reason: String(form.get('reason') ?? '').trim().slice(0, 300) || null }) });
       if (res.ok) saved = true;
-      else error = "Couldn't add that ticket blacklist entry.";
+      else error = dt("Couldn't add that ticket blacklist entry.");
     } else {
       const res = await fetch(`${apiUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&target_type=eq.${targetType}&target_id=eq.${targetId}`, { method: 'DELETE', headers: { ...apiHeaders, Prefer: 'return=minimal' } });
       if (res.ok) saved = true;
-      else error = "Couldn't remove that ticket blacklist entry.";
+      else error = dt("Couldn't remove that ticket blacklist entry.");
     }
   } else if (action === 'delete') {
     const rawCategoryId = String(form.get('category_id') ?? '').trim();
@@ -211,10 +213,10 @@ if (Astro.request.method === 'POST') {
         saved = true;
         if (category?.panel_id) await refreshPanelById(String(category.panel_id));
       } else {
-        error = 'That ticket type was not found or was already deleted.';
+        error = dt('That ticket type was not found or was already deleted.');
       }
     } else {
-      error = "Couldn't delete that ticket type. It may still be referenced by existing tickets.";
+      error = dt("Couldn't delete that ticket type. It may still be referenced by existing tickets.");
     }
   } else if (action === 'create_panel') {
     const channelId = String(form.get('channel_id') ?? '').trim();
@@ -233,9 +235,9 @@ if (Astro.request.method === 'POST') {
         const [panel] = await createRes.json();
         const ok = await refreshPanelById(String(panel.id));
         saved = ok;
-        if (!ok) error = 'Panel created, but I could not post it, check my permissions in that channel.';
+        if (!ok) error = dt('Panel created, but I could not post it, check my permissions in that channel.');
       } else {
-        error = "Couldn't create the panel, try again.";
+        error = dt("Couldn't create the panel, try again.");
       }
     }
   } else if (action === 'update_panel') {
@@ -252,11 +254,11 @@ if (Astro.request.method === 'POST') {
     });
     logTicketPanel('update-panel-database', { panelId, status: updateRes.status, ok: updateRes.ok });
     if (!updateRes.ok) {
-      error = "Couldn't save that panel.";
+      error = dt("Couldn't save that panel.");
     } else {
       const ok = await refreshPanelById(panelId);
       saved = ok;
-      if (!ok) error = "Panel saved, but I couldn't update the posted message, check my permissions.";
+      if (!ok) error = dt("Panel saved, but I couldn't update the posted message, check my permissions.");
     }
   } else if (action === 'move_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
@@ -267,9 +269,9 @@ if (Astro.request.method === 'POST') {
       logTicketPanel('move-panel-load', { panelId, status: panelRes.status, found: Boolean(panel) });
       const oldMessageDeleted = panel ? await deletePanelMessage(botToken, panel.channel_id, panel.message_id) : false;
       if (!panel) {
-        error = 'That panel was not found.';
+        error = dt('That panel was not found.');
       } else if (!oldMessageDeleted) {
-        error = "Couldn't remove the old panel message, so it was not moved.";
+        error = dt("Couldn't remove the old panel message, so it was not moved.");
       } else {
         const moveRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
         method: 'PATCH',
@@ -278,11 +280,11 @@ if (Astro.request.method === 'POST') {
         });
         logTicketPanel('move-panel-database', { panelId, newChannelId, status: moveRes.status, ok: moveRes.ok });
         if (!moveRes.ok) {
-          error = "Couldn't move that panel.";
+          error = dt("Couldn't move that panel.");
         } else {
           const ok = await refreshPanelById(panelId);
           saved = ok;
-          if (!ok) error = 'Panel moved, but I could not post it there, check my permissions in that channel.';
+          if (!ok) error = dt('Panel moved, but I could not post it there, check my permissions in that channel.');
         }
       }
     }
@@ -295,16 +297,16 @@ if (Astro.request.method === 'POST') {
       const oldMessageDeleted = await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
       logTicketPanel('resend-panel-discord-delete', { panelId, ok: oldMessageDeleted });
       if (!oldMessageDeleted) {
-        error = "Couldn't remove the old panel message, so it was not resent.";
+        error = dt("Couldn't remove the old panel message, so it was not resent.");
       } else {
         const clearRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=representation' }, body: JSON.stringify({ message_id: null }) });
         logTicketPanel('resend-panel-clear-message-id', { panelId, status: clearRes.status, ok: clearRes.ok });
         if (!clearRes.ok) {
-          error = "Couldn't prepare the panel for resend.";
+          error = dt("Couldn't prepare the panel for resend.");
         } else {
           const ok = await refreshPanelById(panelId);
           saved = ok;
-          if (!ok) error = "Couldn't resend the panel, check my permissions in that channel.";
+          if (!ok) error = dt("Couldn't resend the panel, check my permissions in that channel.");
         }
       }
     }
@@ -324,9 +326,9 @@ if (Astro.request.method === 'POST') {
       const [remaining] = verifyRes.ok ? await verifyRes.json().catch(() => []) : [];
       logTicketPanel('delete-panel-verify', { panelId, status: verifyRes.status, stillPresent: Boolean(remaining) });
       if (!remaining) saved = true;
-      else error = 'The panel delete was accepted but the panel is still present. Check Cloudflare logs.';
+      else error = dt('The panel delete was accepted but the panel is still present. Check Cloudflare logs.');
     } else {
-      error = "Couldn't delete that panel. Try again or check the dashboard logs.";
+      error = dt("Couldn't delete that panel. Try again or check the dashboard logs.");
     }
   } else if (action === 'save_settings') {
     const roleIds = (name: string) => form.getAll(name).map(String);
@@ -449,7 +451,7 @@ const panels = rawPanels.map((p: any) => ({
 }));
 
 const embedTemplateNames: string[] = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
-const forms = ticketFormsRes.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? 'Ticket details', fields: f.fields ?? [] })) : [];
+const forms = ticketFormsRes.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? dt('Ticket details'), fields: f.fields ?? [] })) : [];
 const blacklist = ticketBlacklistRes.ok ? await ticketBlacklistRes.json() : [];
 
 const settingsRows = settingsRes.ok ? await settingsRes.json() : [];
