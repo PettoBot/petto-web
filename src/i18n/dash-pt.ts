@@ -1263,4 +1263,5 @@ export const dashPt: Record<string, string> = {
   "Nothing set yet, fill in the fields to see it here.": "Nada definido ainda, preencha os campos para ver aqui.",
   "Raw preview, variable tokens (highlighted) aren't resolved here, that only happens when the bot actually sends it.": "Prévia bruta, as variáveis (destacadas) não são resolvidas aqui, isso só acontece quando o bot realmente envia.",
   "Click one to copy it, then paste it into whichever field needs it.": "Clique em uma para copiar e cole no campo que precisar.",
+  "Nothing set yet.": "Nada definido ainda.",
 };

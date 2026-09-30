@@ -85,6 +85,7 @@ src/
   components/     Page components. Dash*.astro are the dashboard modules.
   layouts/        Base layout with nav, footer, theme toggle, and global CSS.
   react/embeds/   The embed builder, the only React island.
+  utils/discordPreview.ts  Draws Discord-style messages for the dashboard previews.
   i18n/ui.ts      Every public string, for all locales.
   i18n/dash*.ts   Dashboard texts. The English text is the key, dash-es.ts and dash-pt.ts translate it.
   utils/          Session, Discord API, and dashboard auth.
@@ -95,6 +96,10 @@ To add a page, build the component in `src/components/`, add its strings to ever
 Dashboard texts are wrapped in `dt('English text')` (or `dth` when the text has HTML, `cdt` in browser scripts). Add the translation to `src/i18n/dash-es.ts` and `src/i18n/dash-pt.ts`, then run `node scripts/check-dash-i18n.mjs` to list any text that is still missing. A missing entry just shows in English.
 
 To add a dashboard module, follow the shape of the pages under `src/pages/dash/guild/[id]/`: verify the session with `getGuildSession`, redirect when it fails, and batch every Discord and bot API call in a single `Promise.all`. Anything interpolated into a database API filter must go through `encodeURIComponent`.
+
+**Design notes**
+
+`docs/embed-integration.md` is a proposal for connecting the Embed Generator, the bot, and the dashboard.
 
 **Contributing**
 

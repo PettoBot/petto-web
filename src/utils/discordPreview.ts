@@ -1,0 +1,152 @@
+// Renders Discord-style messages and embeds as HTML for the dashboard's live previews.
+// It follows the same markdown subset and layout as the Embed Builder, and fills the bot's
+// {variable} tokens with sample values so a preview reads like the message members will see.
+
+export interface PreviewEmbed {
+  title?: string;
+  description?: string;
+  color?: number | string | null;
+  url?: string;
+  thumbnail?: string;
+  image?: string;
+  timestamp?: boolean;
+  author?: { name?: string; icon?: string; url?: string };
+  footer?: { text?: string; icon?: string };
+  fields?: { name: string; value: string; inline?: boolean }[];
+}
+
+export interface PreviewMessage {
+  content?: string;
+  embeds?: PreviewEmbed[];
+  buttons?: { label?: string; emoji?: string }[][];
+}
+
+export interface PreviewContext {
+  userName: string;
+  serverName: string;
+  botName: string;
+  botIcon: string;
+  userAvatar: string;
+  serverIcon: string;
+  /** Translates the few fixed labels, defaults to English. */
+  t?: (key: string) => string;
+}
+
+export const defaultContext: PreviewContext = {
+  userName: 'Liam',
+  serverName: 'Petto Support',
+  botName: 'Petto',
+  botIcon: '/assets/mascot-icon.png',
+  userAvatar: '/assets/mascot-icon.png',
+  serverIcon: '/assets/mascot-icon.png',
+};
+
+const tr = (ctx: PreviewContext, key: string) => (ctx.t ? ctx.t(key) : key);
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+const safeUrl = (value: string) => (/^https?:\/\//i.test(value.trim()) || value.trim().startsWith('/') ? escapeHtml(value.trim()) : '');
+
+function sampleValues(ctx: PreviewContext): Record<string, { text: string; mention?: boolean }> {
+  const mention = { text: `@${ctx.userName}`, mention: true };
+  const name = { text: ctx.userName };
+  const server = { text: ctx.serverName };
+  const count = { text: '1,204' };
+  return {
+    user: mention, 'user.mention': mention, user_mention: mention,
+    'user.name': name, user_name: name, user_tag: name, 'user.display_name': name, user_nick: name, 'user.id': { text: '293504726505357312' }, user_id: { text: '293504726505357312' },
+    server, server_name: server, 'server.name': server, guild: server, guild_name: server, 'guild.name': server,
+    member_count: count, 'server.member_count': count, 'guild.member_count': count, server_members: count,
+    'user.join_position': { text: '1204' }, 'user.join_position_suffix': { text: '1204th' },
+    'user.boost': { text: 'Yes' }, 'user.top_role': { text: 'Member' }, 'user.bot': { text: 'No' },
+    level: { text: '12' }, level_xp: { text: '4,250' }, level_xp_needed: { text: '1,750' }, level_rank: { text: '#3' }, EMOJI: { text: '✦' },
+    'gw.prize': { text: 'Discord Nitro' }, 'gw.host': mention, 'gw.winners': { text: '1' }, 'gw.claim_time': { text: '10 minutes' },
+    nextBump: { text: 'in 2 hours' }, 'user.mention_bump': mention,
+    'channel.name': { text: 'general' }, channel: { text: '#general' },
+    date: { text: 'Today' }, time: { text: '12:00 PM' },
+  };
+}
+
+/** Inline formatting on text that is already HTML-escaped. */
+function inline(html: string, ctx: PreviewContext): string {
+  const samples = sampleValues(ctx);
+  let out = html;
+  out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
+  out = out.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (m, token) => {
+    const sample = samples[token];
+    if (!sample) return `<span class="dp-var">${m}</span>`;
+    return sample.mention ? `<span class="dp-mention">${sample.text}</span>` : sample.text;
+  });
+  out = out.replace(/&lt;a?:(\w+):(\d+)&gt;/g, (m, name, id) => `<img class="dp-emoji" src="https://cdn.discordapp.com/emojis/${id}.${m.startsWith('&lt;a:') ? 'gif' : 'png'}?size=32" alt=":${name}:">`);
+  out = out.replace(/&lt;@!?(\d+)&gt;/g, '<span class="dp-mention">@user</span>');
+  out = out.replace(/&lt;@&amp;(\d+)&gt;/g, '<span class="dp-mention">@role</span>');
+  out = out.replace(/&lt;#(\d+)&gt;/g, '<span class="dp-mention">#channel</span>');
+  out = out.replace(/&lt;t:(\d+)(?::[a-zA-Z])?&gt;/g, '<span class="dp-mention">Today at 12:00 PM</span>');
+  out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/__(.+?)__/g, '<u>$1</u>');
+  out = out.replace(/~~(.+?)~~/g, '<s>$1</s>');
+  out = out.replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<em>$2</em>');
+  out = out.replace(/\|\|(.+?)\|\|/g, '<span class="dp-spoiler">$1</span>');
+  return out;
+}
+
+/** Block level markdown: code blocks, headings, quotes, then the inline rules. */
+export function renderMarkdown(text: string, ctx: PreviewContext = defaultContext): string {
+  if (!text) return '';
+  const parts: string[] = [];
+  const codeBlock = /```([\s\S]*?)```/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  const lines = (chunk: string) => chunk.split('\n').map((line) => {
+    const escaped = escapeHtml(line);
+    const heading = escaped.match(/^(#{1,3})\s+(.*)$/);
+    if (heading) return `<span class="dp-h${heading[1].length}">${inline(heading[2], ctx)}</span>`;
+    const quote = escaped.match(/^&gt;\s?(.*)$/);
+    if (quote) return `<span class="dp-quote">${inline(quote[1], ctx)}</span>`;
+    return inline(escaped, ctx);
+  }).join('<br>');
+  while ((match = codeBlock.exec(text))) {
+    if (match.index > last) parts.push(lines(text.slice(last, match.index)));
+    parts.push(`<pre class="dp-codeblock">${escapeHtml(match[1].replace(/^\w*\n/, ''))}</pre>`);
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(lines(text.slice(last)));
+  return parts.join('');
+}
+
+function embedColor(color: PreviewEmbed['color']): string {
+  if (typeof color === 'number') return `#${color.toString(16).padStart(6, '0')}`;
+  if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) return color;
+  return '#4f545c';
+}
+
+function renderEmbed(e: PreviewEmbed, ctx: PreviewContext): string {
+  const icon = (value?: string) => {
+    if (!value) return '';
+    const map: Record<string, string> = { '{user.avatar}': ctx.userAvatar, '{user_avatar}': ctx.userAvatar, '{user.display_avatar}': ctx.userAvatar, '{guild.icon}': ctx.serverIcon, '{server_icon}': ctx.serverIcon };
+    return safeUrl(map[value.trim()] ?? value);
+  };
+  const author = e.author?.name
+    ? `<div class="dp-embed-author">${icon(e.author.icon) ? `<img src="${icon(e.author.icon)}" alt="">` : ''}<span>${renderMarkdown(e.author.name, ctx)}</span></div>`
+    : '';
+  const title = e.title
+    ? (e.url && safeUrl(e.url) ? `<a class="dp-embed-title dp-link" href="${safeUrl(e.url)}" target="_blank" rel="noopener noreferrer">${renderMarkdown(e.title, ctx)}</a>` : `<div class="dp-embed-title">${renderMarkdown(e.title, ctx)}</div>`)
+    : '';
+  const description = e.description ? `<div class="dp-embed-desc">${renderMarkdown(e.description, ctx)}</div>` : '';
+  const fields = e.fields?.length
+    ? `<div class="dp-embed-fields">${e.fields.map((f) => `<div class="dp-embed-field${f.inline ? ' inline' : ''}"><div class="dp-embed-field-name">${renderMarkdown(f.name, ctx)}</div><div class="dp-embed-field-value">${renderMarkdown(f.value, ctx)}</div></div>`).join('')}</div>`
+    : '';
+  const thumb = icon(e.thumbnail) ? `<img class="dp-embed-thumb" src="${icon(e.thumbnail)}" alt="">` : '';
+  const image = icon(e.image) ? `<img class="dp-embed-image" src="${icon(e.image)}" alt="">` : '';
+  const footerText = [e.footer?.text ? renderMarkdown(e.footer.text, ctx) : '', e.timestamp ? tr(ctx, 'Today at 12:00 PM') : ''].filter(Boolean).join(' • ');
+  const footer = footerText ? `<div class="dp-embed-footer">${icon(e.footer?.icon) ? `<img src="${icon(e.footer?.icon)}" alt="">` : ''}<span>${footerText}</span></div>` : '';
+  return `<div class="dp-embed" style="--dp-c:${embedColor(e.color)}">${author}<div class="dp-embed-body"><div class="dp-embed-main">${title}${description}${fields}</div>${thumb}</div>${image}${footer}</div>`;
+}
+
+/** A whole message: bot header, text, embeds and link buttons, as the channel would show it. */
+export function renderMessage(message: PreviewMessage, ctx: PreviewContext = defaultContext): string {
+  const content = message.content ? `<div class="dp-content">${renderMarkdown(message.content, ctx)}</div>` : '';
+  const embeds = (message.embeds ?? []).map((e) => renderEmbed(e, ctx)).join('');
+  const buttons = (message.buttons ?? []).map((row) => row.filter((b) => b.label)).filter((row) => row.length)
+    .map((row) => `<div class="dp-btn-row">${row.map((b) => `<span class="dp-btn">${b.emoji ? `<span>${escapeHtml(b.emoji)}</span> ` : ''}${escapeHtml(b.label ?? '')}</span>`).join('')}</div>`).join('');
+  const empty = !content && !embeds && !buttons ? `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>` : '';
+  return `<div class="dp-msg"><img class="dp-avatar" src="${safeUrl(ctx.botIcon)}" alt=""><div class="dp-body"><div class="dp-head"><span class="dp-name">${escapeHtml(ctx.botName)}</span><span class="dp-tag">${escapeHtml(tr(ctx, 'APP'))}</span><span class="dp-time">${escapeHtml(tr(ctx, 'Today at 12:00 PM'))}</span></div>${content}${embeds}${buttons}${empty}</div></div>`;
+}
