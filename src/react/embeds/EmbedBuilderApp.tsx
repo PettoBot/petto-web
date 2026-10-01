@@ -265,7 +265,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
               {cardsEnabled && (
                 <div className="ebr-field">
                   <div className="ebr-field-head"><label>{t('Image card')}</label></div>
-                  <div className="ebr-row-pair">
+                  <div className="ebr-card-pick">
                     <select value={data.card?.name ?? ''} onChange={(ev) => { const name = ev.target.value; const next = { ...data }; if (name) next.card = { name, placement: data.card?.placement ?? 'default' }; else delete next.card; setData(next); setDirty(true); }}>
                       <option value="">{t('No image card')}</option>
                       {cardNames.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
@@ -276,7 +276,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                       <option value="attachment">{t('Above the message, as a file')}</option>
                     </select>
                   </div>
-                  <p className="ebr-tools-note"><a href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a></p>
+                  <a className="ebr-card-link" href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a>
                 </div>
               )}
 
