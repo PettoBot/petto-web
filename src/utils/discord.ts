@@ -1,3 +1,4 @@
+import { memoPerRequest } from './requestMemo';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
 
@@ -59,7 +60,11 @@ const botIdentityCache = new Map<string, { value: { name: string; icon: string |
  * global name and avatar. Used to draw message previews the way members will see the bot.
  * The bot's user id is the first part of its token, so both reads start at once.
  */
-export async function getBotIdentity(guildId: string, botToken: string): Promise<{ name: string; icon: string | null } | null> {
+export function getBotIdentity(guildId: string, botToken: string, request?: Request): Promise<{ name: string; icon: string | null } | null> {
+  return memoPerRequest(request, `bot-identity:${guildId}`, () => loadBotIdentity(guildId, botToken));
+}
+
+async function loadBotIdentity(guildId: string, botToken: string): Promise<{ name: string; icon: string | null } | null> {
   const key = `${botToken}:${guildId}`;
   const hit = botIdentityCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
