@@ -1480,4 +1480,5 @@ export const dashPt: Record<string, string> = {
   "cards": "cartões",
   "Image cards: advanced editor and every font": "Cartões de imagem: editor avançado e todas as fontes",
   "Bigger limits for commands, tickets and giveaways": "Limites maiores em comandos, tickets e sorteios",
+  "Exact preview, drawn by Petto": "Prévia exata, desenhada pelo Petto",
 };
