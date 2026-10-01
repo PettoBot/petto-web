@@ -1480,4 +1480,5 @@ export const dashEs: Record<string, string> = {
   "cards": "tarjetas",
   "Image cards: advanced editor and every font": "Tarjetas de imagen: editor avanzado y todas las fuentes",
   "Bigger limits for commands, tickets and giveaways": "Límites más altos en comandos, tickets y sorteos",
+  "Exact preview, drawn by Petto": "Vista exacta, dibujada por Petto",
 };
