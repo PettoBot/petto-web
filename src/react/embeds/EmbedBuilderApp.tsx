@@ -54,6 +54,9 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [sending, setSending] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ data: TemplateData; name: string } | null>(null);
   const [importText, setImportText] = useState('');
+  const cardsEnabled = apiPath === 'embeds-api';
+  const [cardNames, setCardNames] = useState<{ name: string; data: unknown }[]>([]);
+  const [cardImage, setCardImage] = useState('');
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -77,6 +80,23 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     else setFlash(t("That import code isn't valid."));
     history.replaceState(null, '', window.location.pathname + window.location.search);
   }, []);
+
+  useEffect(() => {
+    if (!cardsEnabled) return;
+    fetch(`/dash/guild/${guildId}/cards-api`).then((r) => (r.ok ? r.json() : null)).then((body) => { if (body?.cards) setCardNames(body.cards); }).catch(() => {});
+  }, [guildId, cardsEnabled]);
+
+  // The picture of the chosen card, drawn by the bot, so the preview shows what members will see.
+  useEffect(() => {
+    const row = data.card ? cardNames.find((c) => c.name === data.card!.name) : null;
+    if (!row) { setCardImage(''); return; }
+    let cancelled = false;
+    fetch(`/dash/guild/${guildId}/cards-api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'preview', data: row.data }) })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [data.card?.name, cardNames, guildId]);
 
   useEffect(() => {
     if (!flash) return;
@@ -231,7 +251,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}</div>
-              <Preview data={data} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} sampleSet={sampleSet} />
+              <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} sampleSet={sampleSet} />
             </div>
 
             <div className="ebr-form-col">
@@ -241,6 +261,24 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                 <textarea ref={contentRef} rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
                 <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
               </div>
+
+              {cardsEnabled && (
+                <div className="ebr-field">
+                  <div className="ebr-field-head"><label>{t('Image card')}</label></div>
+                  <div className="ebr-row-pair">
+                    <select value={data.card?.name ?? ''} onChange={(ev) => { const name = ev.target.value; const next = { ...data }; if (name) next.card = { name, placement: data.card?.placement ?? 'default' }; else delete next.card; setData(next); setDirty(true); }}>
+                      <option value="">{t('No image card')}</option>
+                      {cardNames.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      {data.card && !cardNames.some((c) => c.name === data.card!.name) && <option value={data.card.name}>{data.card.name}</option>}
+                    </select>
+                    <select value={data.card?.placement ?? 'default'} disabled={!data.card} onChange={(ev) => update({ card: { name: data.card!.name, placement: ev.target.value as 'default' | 'embed' | 'attachment' } })}>
+                      <option value="default">{t('Inside the first embed')}</option>
+                      <option value="attachment">{t('Above the message, as a file')}</option>
+                    </select>
+                  </div>
+                  <p className="ebr-tools-note"><a href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a></p>
+                </div>
+              )}
 
               <div className="ebr-embed-tabs">
                 {data.embeds.map((_, i) => (

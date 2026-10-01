@@ -10,6 +10,10 @@ import { emptyEmbed, validateTemplate, type TemplateData, type EmbedData } from 
 //   {author: name && icon && url}   {footer: text && icon}    {timestamp}
 //   {field: name && value}  or  {field: name && value && inline}
 //   {button: link && label && url}  (link buttons only)       {message: text}  (same as text before {embed})
+//
+// The code is written as one line with the blocks glued together: line breaks in a text are written {newline},
+// which the bot turns back into a line break, and the message text is written as {message: ...} so that nothing
+// stays outside the blocks. Real line breaks and text before {embed} are still read.
 
 export interface ScriptParse {
   data: TemplateData;
@@ -55,6 +59,10 @@ function tokenize(code: string): { items: Item[]; error: string | null } {
 const KNOWN_KEYS = new Set(['embed', 'content', 'message', 'text', 'title', 'url', 'description', 'desc', 'thumbnail', 'image', 'timestamp', 'color', 'colour', 'author', 'footer', 'field', 'button']);
 const isTypo = (key: string) => /^[a-z]+$/.test(key) && !['choose', 'range', 'args', 'user', 'server', 'guild', 'channel', 'role', 'newline', 'prefix', 'reactreply', 'level', 'date', 'time'].includes(key);
 
+const NEWLINE = /\{newline\}/gi;
+/** {newline} is a line break for the editor, and it is written back as {newline} by toEmbedScript. */
+const fromScript = (value: string) => value.replace(NEWLINE, '\n');
+const toScript = (value: string) => value.replace(/\r\n|\r|\n/g, '{newline}');
 const parts = (value: string) => value.split('&&').map((part) => part.trim());
 
 function parseColor(value: string): number | null {
@@ -86,10 +94,10 @@ export function parseEmbedScript(code: string): ScriptParse {
     if (!KNOWN_KEYS.has(key) && !(colon !== -1 && isTypo(key))) { loose += `{${block}}`; continue; }
     switch (key) {
       case 'embed': hasEmbed = true; break;
-      case 'content': case 'message': case 'text': loose += value; break;
-      case 'title': hasEmbed = true; embed.title = value; break;
+      case 'content': case 'message': case 'text': loose += fromScript(value); break;
+      case 'title': hasEmbed = true; embed.title = fromScript(value); break;
       case 'url': hasEmbed = true; embed.url = value; break;
-      case 'description': case 'desc': hasEmbed = true; embed.description = value; break;
+      case 'description': case 'desc': hasEmbed = true; embed.description = fromScript(value); break;
       case 'thumbnail': hasEmbed = true; embed.thumbnail = value; break;
       case 'image': hasEmbed = true; embed.image = value; break;
       case 'timestamp': hasEmbed = true; embed.timestamp = value === '' || !/^(false|no|0)$/i.test(value); break;
@@ -103,20 +111,20 @@ export function parseEmbedScript(code: string): ScriptParse {
       case 'author': {
         hasEmbed = true;
         const [name, icon, url] = parts(value);
-        embed.author = { name: name ?? '', icon: icon ?? '', url: url ?? '' };
+        embed.author = { name: fromScript(name ?? ''), icon: icon ?? '', url: url ?? '' };
         break;
       }
       case 'footer': {
         hasEmbed = true;
         const [text, icon] = parts(value);
-        embed.footer = { text: text ?? '', icon: icon ?? '' };
+        embed.footer = { text: fromScript(text ?? ''), icon: icon ?? '' };
         break;
       }
       case 'field': {
         hasEmbed = true;
         const [name, fieldValue, inline] = parts(value);
         if (!name || !fieldValue) { warnings.push('A field needs a name and a value: {field: name && value && inline}.'); break; }
-        embed.fields.push({ name, value: fieldValue, inline: /^(true|yes|inline|1)$/i.test(inline ?? '') });
+        embed.fields.push({ name: fromScript(name), value: fromScript(fieldValue), inline: /^(true|yes|inline|1)$/i.test(inline ?? '') });
         break;
       }
       case 'button': {
@@ -139,7 +147,7 @@ export function parseEmbedScript(code: string): ScriptParse {
     }
   }
 
-  content = loose.trim();
+  content = fromScript(loose).trim();
   const data: TemplateData = {
     content,
     embeds: hasEmbed ? [embed] : [],
@@ -151,27 +159,30 @@ export function parseEmbedScript(code: string): ScriptParse {
 
 const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`;
 
-/** Writes a message as a one-line code. Only the first embed fits, the rest are left out. */
+/**
+ * Writes a message as a one-line code with the blocks glued together. Line breaks become {newline}, and the message
+ * text goes in a {message: ...} block, because text left outside the blocks would not be read by every bot.
+ * Only the first embed fits, the rest are left out.
+ */
 export function toEmbedScript(raw: TemplateData, separator: Separator = '&v'): string {
   const checked = validateTemplate(raw);
   const data = checked.ok ? checked.data : raw;
   const blocks: string[] = [];
+  if (data.content) blocks.push(`{message: ${toScript(data.content)}}`);
   const embed = data.embeds[0];
   if (embed) {
     blocks.push('{embed}');
-    if (embed.title) blocks.push(`{title: ${embed.title}}`);
+    if (embed.title) blocks.push(`{title: ${toScript(embed.title)}}`);
     if (embed.url) blocks.push(`{url: ${embed.url}}`);
-    if (embed.description) blocks.push(`{description: ${embed.description}}`);
+    if (embed.description) blocks.push(`{description: ${toScript(embed.description)}}`);
     if (embed.color !== null && embed.color !== undefined) blocks.push(`{color: ${hex(embed.color)}}`);
     if (embed.thumbnail) blocks.push(`{thumbnail: ${embed.thumbnail}}`);
     if (embed.image) blocks.push(`{image: ${embed.image}}`);
-    if (embed.author.name) blocks.push(`{author: ${[embed.author.name, embed.author.icon, embed.author.url].filter((p, i, all) => p || all.slice(i + 1).some(Boolean)).join(' && ')}}`);
-    if (embed.footer.text) blocks.push(`{footer: ${[embed.footer.text, embed.footer.icon].filter((p, i, all) => p || all.slice(i + 1).some(Boolean)).join(' && ')}}`);
-    for (const field of embed.fields) blocks.push(`{field: ${field.name} && ${field.value}${field.inline ? ' && inline' : ''}}`);
+    if (embed.author.name) blocks.push(`{author: ${[toScript(embed.author.name), embed.author.icon, embed.author.url].filter((p, i, all) => p || all.slice(i + 1).some(Boolean)).join(' && ')}}`);
+    if (embed.footer.text) blocks.push(`{footer: ${[toScript(embed.footer.text), embed.footer.icon].filter((p, i, all) => p || all.slice(i + 1).some(Boolean)).join(' && ')}}`);
+    for (const field of embed.fields) blocks.push(`{field: ${toScript(field.name)} && ${toScript(field.value)}${field.inline ? ' && inline' : ''}}`);
     if (embed.timestamp) blocks.push('{timestamp}');
   }
   for (const row of data.buttons) for (const button of row) if (button.label && button.url) blocks.push(`{button: link && ${button.label} && ${button.url}${button.disabled ? ' && disabled' : ''}}`);
-  const body = blocks.join(separator);
-  if (!body) return data.content;
-  return data.content ? `${data.content} ${body}` : body;
+  return blocks.join(separator);
 }

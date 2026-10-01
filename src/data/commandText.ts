@@ -106,7 +106,7 @@ export const commandText: Record<string, CommandText> = {
   backup: ['Create, export, and restore a safe snapshot of this server’s configuration.', 'Crea, exporta y restaura una copia segura de la configuración de este servidor.', 'Cria, exporta e restaura uma cópia segura da configuração deste servidor.'],
   moderation: ['Choose which roles may use individual moderation actions.', 'Elige qué roles pueden usar cada acción de moderación.', 'Escolha quais cargos podem usar cada ação de moderação.'],
   security: ['Review server protection and dangerous permissions.', 'Revisa la protección del servidor y los permisos peligrosos.', 'Revisa a proteção do servidor e as permissões perigosas.'],
-  setup: ['Configure Petto for this server with one setup form.', 'Configura Petto en este servidor con un solo formulario.', 'Configura o Petto neste servidor com um único formulário.'],
+  setup: ['See what is configured in this server and run the quick setup form.', 'Mira qué está configurado en este servidor y abre el formulario de configuración rápida.', 'Veja o que está configurado neste servidor e abra o formulário de configuração rápida.'],
   webhook: ['Create and send through managed webhooks.', 'Crea webhooks administrados y envía mensajes con ellos.', 'Cria webhooks gerenciados e envia mensagens por eles.'],
 
   airkiss: ['Blow a playful air kiss.', 'Lanza un beso al aire de forma divertida.', 'Manda um beijo no ar de forma divertida.'],
@@ -145,4 +145,13 @@ export const commandText: Record<string, CommandText> = {
   wink: ['Send a playful wink.', 'Guiña un ojo de forma juguetona.', 'Pisque de forma divertida.'],
   yeet: ['Pretend to yeet someone in a fictional scene.', 'Finge lanzar por los aires a alguien en una escena de ficción.', 'Finja arremessar alguém em uma cena fictícia.'],
   yes: ['Give an enthusiastic yes.', 'Da un sí entusiasta.', 'Dê um sim entusiasmado.'],
+  history: ['Everything moderation knows about a member: cases, notes, reports and current status.', 'Todo lo que la moderación sabe de un miembro: casos, notas, reportes y su estado actual.', 'Tudo que a moderação sabe sobre um membro: casos, notas, denúncias e o status atual.'],
+  jail: ['Jail members: they lose their roles and can only talk to staff in the jail channel.', 'Encarcela miembros: pierden sus roles y solo pueden hablar con el staff en el canal de la cárcel.', 'Prende membros: eles perdem seus cargos e só podem falar com a equipe no canal da cadeia.'],
+  unjail: ['Release a member from jail and give their roles back.', 'Libera a un miembro de la cárcel y le devuelve sus roles.', 'Solta um membro da cadeia e devolve os cargos dele.'],
+  purge: ['Scan recent messages in this channel and delete the ones that match.', 'Revisa los mensajes recientes de este canal y borra los que coinciden.', 'Verifica as mensagens recentes deste canal e apaga as que correspondem.'],
+  choose: ['Let Petto decide between options: pizza, tacos, sushi.', 'Deja que Petto decida entre opciones: pizza, tacos, sushi.', 'Deixe o Petto decidir entre opções: pizza, tacos, sushi.'],
+  roll: ['Roll dice: 2d6+3, d20, or 4d6kh3 to keep the highest three.', 'Tira dados: 2d6+3, d20, o 4d6kh3 para quedarte con los tres más altos.', 'Role dados: 2d6+3, d20 ou 4d6kh3 para ficar com os três maiores.'],
+  '8ball': ['Ask the magic 8-ball a yes or no question.', 'Hazle una pregunta de sí o no a la bola 8 mágica.', 'Faça uma pergunta de sim ou não à bola 8 mágica.'],
+  rps: ['Play rock, paper, scissors against Petto.', 'Juega piedra, papel o tijera contra Petto.', 'Jogue pedra, papel ou tesoura contra o Petto.'],
+  ship: ['See how compatible two members are. The same pair always gets the same result.', 'Mira qué tan compatibles son dos miembros. La misma pareja siempre obtiene el mismo resultado.', 'Veja o quanto dois membros combinam. O mesmo par sempre recebe o mesmo resultado.'],
 };

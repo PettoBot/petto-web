@@ -7,7 +7,10 @@ export interface EmbedData {
   author: EmbedAuthor; footer: EmbedFooter; fields: EmbedField[];
 }
 export interface LinkButton { label: string; url: string; emoji: string; disabled: boolean }
-export interface TemplateData { content: string; embeds: EmbedData[]; buttons: LinkButton[][] }
+export type CardPlacement = 'default' | 'embed' | 'attachment';
+/** An image card (made in the Image cards editor) sent with the message. */
+export interface CardRef { name: string; placement: CardPlacement }
+export interface TemplateData { content: string; embeds: EmbedData[]; buttons: LinkButton[][]; card?: CardRef }
 
 export function emptyEmbed(): EmbedData {
   return { title: '', description: '', color: 0x8399ff, url: '', thumbnail: '', image: '', timestamp: false, author: { name: '' }, footer: { text: '' }, fields: [] };
@@ -19,21 +22,30 @@ export function emptyTemplate(): TemplateData {
   return { content: '', embeds: [], buttons: [] };
 }
 
+function readCard(raw: any): CardRef | undefined {
+  if (!raw || typeof raw !== 'object' || typeof raw.name !== 'string') return undefined;
+  const name = raw.name.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 40);
+  if (!name) return undefined;
+  return { name, placement: raw.placement === 'embed' || raw.placement === 'attachment' ? raw.placement : 'default' };
+}
+
 /** Reads either the dashboard's own {content, embeds, buttons} shape or the older /embed
  * command's flat single-embed shape, so nothing saved before this builder existed breaks. */
 export function normalizeTemplateData(raw: any): TemplateData {
+  const card = readCard(raw?.card);
+  const withCard = (data: TemplateData): TemplateData => (card ? { ...data, card } : data);
   if (raw && Array.isArray(raw.embeds)) {
-    return {
+    return withCard({
       content: raw.content ?? '',
       embeds: raw.embeds.map((e: any) => ({ ...emptyEmbed(), ...e, author: { ...emptyEmbed().author, ...(e.author ?? {}) }, footer: { ...emptyEmbed().footer, ...(e.footer ?? {}) }, fields: e.fields ?? [] })),
       buttons: raw.buttons ?? [],
-    };
+    });
   }
   const looksLikeEmbed = raw && (raw.title || raw.description || raw.author?.name || raw.footer?.text || raw.fields?.length || raw.image || raw.thumbnail || raw.color != null);
   if (looksLikeEmbed) {
-    return { content: '', embeds: [{ ...emptyEmbed(), ...raw, author: { ...emptyEmbed().author, ...(raw.author ?? {}) }, footer: { ...emptyEmbed().footer, ...(raw.footer ?? {}) }, fields: raw.fields ?? [] }], buttons: [] };
+    return withCard({ content: '', embeds: [{ ...emptyEmbed(), ...raw, author: { ...emptyEmbed().author, ...(raw.author ?? {}) }, footer: { ...emptyEmbed().footer, ...(raw.footer ?? {}) }, fields: raw.fields ?? [] }], buttons: [] });
   }
-  return emptyTemplate();
+  return withCard(emptyTemplate());
 }
 
 export const EMBED_LIMITS = {
@@ -72,6 +84,7 @@ export function validateTemplate(raw: unknown): TemplateCheck {
     buttons: (source.buttons ?? []).slice(0, EMBED_LIMITS.buttonRows).map((row) => row.slice(0, EMBED_LIMITS.buttonsPerRow).map((b) => ({
       label: trim(b.label, EMBED_LIMITS.buttonLabel), url: cleanUrl(b.url), emoji: trim(b.emoji, 8), disabled: Boolean(b.disabled),
     }))).filter((row) => row.length > 0),
+    ...(source.card ? { card: source.card } : {}),
   };
   const total = data.content.length + data.embeds.reduce((sum, e) => sum + e.title.length + e.description.length + e.author.name.length + e.footer.text.length + e.fields.reduce((s, f) => s + f.name.length + f.value.length, 0), 0);
   if (total > EMBED_LIMITS.totalChars) return { ok: false, error: `This message is ${total} characters long, Discord accepts at most ${EMBED_LIMITS.totalChars} across the text and embeds.` };
