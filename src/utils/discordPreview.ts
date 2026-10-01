@@ -65,6 +65,7 @@ function inline(html: string, ctx: PreviewContext): string {
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
   out = out.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (m, token) => {
+    if (token.toLowerCase() === 'newline') return '<br>';
     const sample = samples[token];
     if (!sample) return `<span class="dp-var">${m}</span>`;
     return sample.mention ? `<span class="dp-mention">${sample.text}</span>` : sample.text;
