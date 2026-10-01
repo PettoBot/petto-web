@@ -56,3 +56,15 @@ export async function exportPettoVaultBackup(context: AstroContext, guildId: str
     },
   });
 }
+
+/** The image card routes of the bot. `init.body` may be JSON text or raw picture bytes. */
+export async function callPettoCards(context: AstroContext, guildId: string, userId: string, path: string, init: RequestInit & { contentType?: string } = {}) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  const { contentType, ...rest } = init;
+  const headers = new Headers(rest.headers);
+  headers.set('X-Petto-Dashboard-Key', secret);
+  if (rest.body) headers.set('Content-Type', contentType ?? 'application/json');
+  const separator = path.includes('?') ? '&' : '?';
+  return fetch(`${baseUrl}/api/dashboard/cards/${encodeURIComponent(guildId)}${path}${separator}user_id=${encodeURIComponent(userId)}`, { ...rest, headers });
+}

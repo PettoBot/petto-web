@@ -55,7 +55,7 @@ export function buildDiscordMessage(data: TemplateData, ctx: TokenContext, image
 export type SendResult = { ok: true } | { ok: false; error: string };
 
 /** Sends a test message to a channel, or to the person's direct messages when no channel is given. */
-export async function sendTestMessage(botToken: string, message: ReturnType<typeof buildDiscordMessage>, target: { channelId: string } | { dmUserId: string }): Promise<SendResult> {
+export async function sendTestMessage(botToken: string, message: ReturnType<typeof buildDiscordMessage>, target: { channelId: string } | { dmUserId: string }, file?: { name: string; bytes: ArrayBuffer }): Promise<SendResult> {
   const headers = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
   let channelId: string;
   if ('channelId' in target) {
@@ -65,8 +65,17 @@ export async function sendTestMessage(botToken: string, message: ReturnType<type
     if (!dm.ok) return { ok: false, error: 'Petto could not open a direct message with you. Check that your DMs allow messages from server members.' };
     channelId = (await dm.json()).id;
   }
-  if (!message.content && message.embeds.length === 0) return { ok: false, error: 'This template is empty, add some text or an embed first.' };
-  const res = await fetch(`${API}/channels/${encodeURIComponent(channelId)}/messages`, { method: 'POST', headers, body: JSON.stringify(message) });
+  if (!message.content && message.embeds.length === 0 && !file) return { ok: false, error: 'This template is empty, add some text or an embed first.' };
+  let res: Response;
+  if (file) {
+    // A card goes up as a file next to the message, the same way the bot attaches it.
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ ...message, attachments: [{ id: 0, filename: file.name }] }));
+    form.append('files[0]', new Blob([file.bytes], { type: 'image/png' }), file.name);
+    res = await fetch(`${API}/channels/${encodeURIComponent(channelId)}/messages`, { method: 'POST', headers: { Authorization: headers.Authorization }, body: form });
+  } else {
+    res = await fetch(`${API}/channels/${encodeURIComponent(channelId)}/messages`, { method: 'POST', headers, body: JSON.stringify(message) });
+  }
   if (res.ok) return { ok: true };
   if (res.status === 403) return { ok: false, error: 'Petto cannot send messages in that channel. Check its permissions there.' };
   if (res.status === 404) return { ok: false, error: 'That channel does not exist anymore.' };

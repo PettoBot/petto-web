@@ -5,6 +5,7 @@ import { getEnv } from '../../../../utils/env';
 import { validateTemplate } from '../../../../utils/embedSchema';
 import { buildDiscordMessage, sendTestMessage } from '../../../../utils/embedSend';
 import { getGuildList } from '../../../../utils/discord';
+import { callPettoCards } from '../../../../utils/pettoBotApi';
 
 // A few test sends per minute per person is plenty, and keeps the button from being used to spam.
 const recentSends = new Map<string, number[]>();
@@ -140,7 +141,19 @@ export const POST: APIRoute = async (astro) => {
       userAvatar: session.avatar ?? null,
       serverIcon: guild?.icon ? `https://cdn.discordapp.com/icons/${id}/${guild.icon}.png?size=256` : null,
     });
-    const result = await sendTestMessage(botToken, message, toDm ? { dmUserId: userId } : { channelId });
+    // A template that points at an image card is sent with the card drawn for the person testing.
+    let file: { name: string; bytes: ArrayBuffer } | undefined;
+    const card = checked.data.card;
+    if (card) {
+      const rowRes = await fetch(`${apiUrl}/rest/v1/image_cards?guild_id=eq.${id}&name=eq.${encodeURIComponent(card.name)}&select=data`, { headers: headers(apiKey) });
+      const row = rowRes.ok ? (await rowRes.json())[0] : null;
+      const picture = row ? await callPettoCards(astro, id, userId, '/preview', { method: 'POST', body: JSON.stringify({ data: row.data }) }) : null;
+      if (picture?.ok) {
+        file = { name: 'card.png', bytes: await picture.arrayBuffer() };
+        if (card.placement !== 'attachment' && message.embeds.length > 0) (message.embeds[0] as any).image = { url: 'attachment://card.png' };
+      }
+    }
+    const result = await sendTestMessage(botToken, message, toDm ? { dmUserId: userId } : { channelId }, file);
     return new Response(JSON.stringify(result.ok ? { ok: true } : { error: result.error }), { status: result.ok ? 200 : 502, headers: { 'Content-Type': 'application/json' } });
   }
 

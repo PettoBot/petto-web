@@ -47,7 +47,7 @@ export const defaultContext: PreviewContext = {
 
 const tr = (ctx: PreviewContext, key: string) => (ctx.t ? ctx.t(key) : key);
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
-const safeUrl = (value: string) => (/^https?:\/\//i.test(value.trim()) || value.trim().startsWith('/') ? escapeHtml(value.trim()) : '');
+const safeUrl = (value: string) => (/^(https?:\/\/|blob:)/i.test(value.trim()) || value.trim().startsWith('/') ? escapeHtml(value.trim()) : '');
 
 /** Inline formatting on text that is already HTML-escaped. */
 function inline(html: string, ctx: PreviewContext): string {
