@@ -1478,4 +1478,6 @@ export const dashEs: Record<string, string> = {
   "You reached the card limit of this server.": "Llegaste al límite de tarjetas de este servidor.",
   "You reached the uploaded picture limit of this server.": "Llegaste al límite de imágenes subidas de este servidor.",
   "cards": "tarjetas",
+  "Image cards: advanced editor and every font": "Tarjetas de imagen: editor avanzado y todas las fuentes",
+  "Bigger limits for commands, tickets and giveaways": "Límites más altos en comandos, tickets y sorteos",
 };

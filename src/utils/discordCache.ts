@@ -3,15 +3,27 @@
 // list again on the exact same page load. Without this, that's two identical Discord API calls
 // per request. A short in-memory TTL cache (same idea YAGPDB uses for its own Discord API reads)
 // collapses that back down to one real fetch, and also covers rapid dashboard nagivation.
+import { edgeDelete, edgeGet, edgePut } from './edgeCache';
+import { memoPerRequest } from './requestMemo';
+
 const TTL_MS = 20_000;
+const EDGE_TTL_S = 45;
 const cache = new Map<string, { data: any[]; expiresAt: number }>();
 
 // Only finished results are cached. A Worker cannot wait on a fetch that another request started
 // (it can hang forever), so every request that finds no fresh copy makes its own call.
-export function getCachedUserGuilds(accessToken: string): Promise<any[]> {
+// `request` is the page's request: the page and its layout then share one read instead of two.
+export function getCachedUserGuilds(accessToken: string, request?: Request): Promise<any[]> {
   const hit = cache.get(accessToken);
   if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit.data);
-  return fetchUserGuilds(accessToken);
+  return memoPerRequest(request, 'user-guilds', async () => {
+    const shared = await edgeGet<any[]>('user-guilds', accessToken);
+    if (shared) {
+      cache.set(accessToken, { data: shared, expiresAt: Date.now() + TTL_MS });
+      return shared;
+    }
+    return fetchUserGuilds(accessToken);
+  });
 }
 
 async function fetchUserGuilds(accessToken: string): Promise<any[]> {
@@ -25,6 +37,7 @@ async function fetchUserGuilds(accessToken: string): Promise<any[]> {
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error('Discord guild list was not an array');
     cache.set(accessToken, { data, expiresAt: Date.now() + TTL_MS });
+    void edgePut('user-guilds', accessToken, data, EDGE_TTL_S);
     return data;
   } catch (error) {
     // A transient Discord/API failure must never look like a real empty server list.
@@ -41,16 +54,28 @@ async function fetchUserGuilds(accessToken: string): Promise<any[]> {
 // from (or, on a shared database, servers only a different bot instance ever joined).
 const botGuildsCache = new Map<string, { ids: Set<string>; expiresAt: number }>();
 
-export async function getCachedBotGuildIds(botToken: string): Promise<Set<string>> {
+export function getCachedBotGuildIds(botToken: string, request?: Request): Promise<Set<string>> {
   const hit = botGuildsCache.get(botToken);
-  if (hit && hit.expiresAt > Date.now()) return hit.ids;
+  if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit.ids);
+  return memoPerRequest(request, 'bot-guild-ids', async () => {
+    const shared = await edgeGet<string[]>('bot-guild-ids', botToken);
+    if (shared) {
+      const ids = new Set<string>(shared);
+      botGuildsCache.set(botToken, { ids, expiresAt: Date.now() + TTL_MS });
+      return ids;
+    }
+    return fetchBotGuildIds(botToken);
+  });
+}
 
+async function fetchBotGuildIds(botToken: string): Promise<Set<string>> {
   const res = await fetch('https://discord.com/api/v10/users/@me/guilds', {
     headers: { Authorization: `Bot ${botToken}` },
   });
   const data = res.ok ? await res.json() : [];
   const ids = new Set<string>(Array.isArray(data) ? data.map((g: any) => g.id) : []);
   botGuildsCache.set(botToken, { ids, expiresAt: Date.now() + TTL_MS });
+  if (res.ok) void edgePut('bot-guild-ids', botToken, [...ids], EDGE_TTL_S);
   return ids;
 }
 
@@ -91,4 +116,5 @@ export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
 export function invalidateBotGuildCaches(botToken: string): void {
   botGuildListCache.delete(botToken);
   botGuildsCache.delete(botToken);
+  void edgeDelete('bot-guild-ids', botToken);
 }

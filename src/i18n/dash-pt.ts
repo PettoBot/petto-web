@@ -1478,4 +1478,6 @@ export const dashPt: Record<string, string> = {
   "You reached the card limit of this server.": "Você atingiu o limite de cartões deste servidor.",
   "You reached the uploaded picture limit of this server.": "Você atingiu o limite de imagens enviadas deste servidor.",
   "cards": "cartões",
+  "Image cards: advanced editor and every font": "Cartões de imagem: editor avançado e todas as fontes",
+  "Bigger limits for commands, tickets and giveaways": "Limites maiores em comandos, tickets e sorteios",
 };
