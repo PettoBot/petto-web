@@ -2,6 +2,9 @@ import { decodeSession, encodeSession, type Session } from './session';
 import { canManageGuild } from './discord';
 import { getCachedUserGuilds } from './discordCache';
 import { getEnv } from './env';
+import { getBotIdentity } from './discord';
+import { getPremiumSnapshot } from './premium';
+import { getCachedBotGuildIds } from './discordCache';
 import { isPettoOwner } from './premiumAdmin';
 
 export type GuildAuth = { session: Session; devView?: boolean } | { redirect: string };
@@ -74,9 +77,23 @@ export async function getGuildSession(astro: any, guildId: string): Promise<Guil
   const session = await getDashboardSession(astro);
   if (!session) return { redirect: '/dash' };
 
+  // The layout of every guild page needs the Premium state, the servers of the visitor and of the bot, and the bot's
+  // look. Starting those reads now lets them run while the page checks access and loads its own data, and the layout
+  // picks up the same answers (they are shared per request) instead of starting after the page is done.
+  const botToken = getEnv(astro, 'DISCORD_TOKEN');
+  const request = astro.request as Request | undefined;
+  const isRead = ['GET', 'HEAD'].includes(String(request?.method ?? 'GET').toUpperCase());
+  if (isRead) {
+    void getPremiumSnapshot(astro, session.userId).catch(() => {});
+    if (botToken) {
+      void getCachedBotGuildIds(botToken, request).catch(() => {});
+      void getBotIdentity(guildId, botToken, request).catch(() => {});
+    }
+  }
+
   let discordGuilds: any[];
   try {
-    discordGuilds = await getCachedUserGuilds(session.accessToken);
+    discordGuilds = await getCachedUserGuilds(session.accessToken, request);
   } catch {
     return { redirect: '/dash?error=discord_unavailable' };
   }
