@@ -1,0 +1,349 @@
+---
+import Base from '../layouts/Base.astro';
+import { useTranslations, type Locale } from '../i18n/ui';
+
+interface Props {
+  lang: Locale;
+}
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const p = t.toolsPage.embedCode;
+---
+<Base title={`${p.title} · Petto`} lang={lang}>
+  <main>
+    <section class="ec-sec">
+      <div class="wrap ec-wrap">
+        <div class="eyebrow">{p.eyebrow}</div>
+        <h1>{p.title}</h1>
+        <p class="ec-lede">{p.lede}</p>
+
+        <div class="ec-layout" id="ecRoot" data-i18n={JSON.stringify(p)}>
+          <div class="ec-form">
+            <div class="ec-field"><label for="ecContent">{p.contentLabel}</label><textarea id="ecContent" rows="2" maxlength="2000"></textarea></div>
+            <div class="ec-row">
+              <div class="ec-field"><label for="ecTitle">{p.titleLabel}</label><input id="ecTitle" type="text" maxlength="256" /></div>
+              <div class="ec-field"><label for="ecUrl">{p.titleUrlLabel}</label><input id="ecUrl" type="text" placeholder="https://" /></div>
+            </div>
+            <div class="ec-field"><label for="ecDescription">{p.descriptionLabel}</label><textarea id="ecDescription" rows="5" maxlength="4096"></textarea></div>
+            <div class="ec-row">
+              <div class="ec-field"><label for="ecColor">{p.colorLabel}</label><input id="ecColor" type="color" value="#8399ff" /></div>
+              <label class="ec-check"><input id="ecTimestamp" type="checkbox" />{p.timestampLabel}</label>
+            </div>
+            <div class="ec-row">
+              <div class="ec-field"><label for="ecThumbnail">{p.thumbnailLabel}</label><input id="ecThumbnail" type="text" placeholder="https://" /></div>
+              <div class="ec-field"><label for="ecImage">{p.imageLabel}</label><input id="ecImage" type="text" placeholder="https://" /></div>
+            </div>
+            <div class="ec-row">
+              <div class="ec-field"><label for="ecAuthorName">{p.authorNameLabel}</label><input id="ecAuthorName" type="text" maxlength="256" /></div>
+              <div class="ec-field"><label for="ecAuthorIcon">{p.authorIconLabel}</label><input id="ecAuthorIcon" type="text" placeholder="https://" /></div>
+            </div>
+            <div class="ec-field"><label for="ecAuthorUrl">{p.authorUrlLabel}</label><input id="ecAuthorUrl" type="text" placeholder="https://" /></div>
+            <div class="ec-row">
+              <div class="ec-field"><label for="ecFooterText">{p.footerTextLabel}</label><input id="ecFooterText" type="text" maxlength="2048" /></div>
+              <div class="ec-field"><label for="ecFooterIcon">{p.footerIconLabel}</label><input id="ecFooterIcon" type="text" placeholder="https://" /></div>
+            </div>
+
+            <div class="ec-group">
+              <h2>{p.fieldsTitle}</h2>
+              <div id="ecFields"></div>
+              <button type="button" class="btn btn-ghost btn-sm" id="ecAddField">{p.addField}</button>
+            </div>
+            <div class="ec-group">
+              <h2>{p.buttonsTitle}</h2>
+              <div id="ecButtons"></div>
+              <button type="button" class="btn btn-ghost btn-sm" id="ecAddButton">{p.addButton}</button>
+            </div>
+
+            <div class="ec-group">
+              <h2>{p.importTitle}</h2>
+              <textarea id="ecImport" rows="3" placeholder={p.importPlaceholder}></textarea>
+              <div class="ec-actions"><button type="button" class="btn btn-ghost btn-sm" id="ecImportBtn">{p.importButton}</button><span class="ec-note" id="ecImportNote" role="status"></span></div>
+            </div>
+          </div>
+
+          <div class="ec-side">
+            <div class="ec-group">
+              <h2>{p.previewTitle}</h2>
+              <div id="ecPreview" class="ec-preview"></div>
+            </div>
+            <div class="ec-group">
+              <h2>{p.outputTitle}</h2>
+              <div class="ec-tabs" role="tablist">
+                <button type="button" class="ec-tab active" data-format="script" role="tab">{p.formatScript}</button>
+                <button type="button" class="ec-tab" data-format="petto" role="tab">{p.formatPetto}</button>
+              </div>
+              <label class="ec-sep" id="ecSepRow">{p.separatorLabel}
+                <select id="ecSeparator"><option value="&v">&amp;v</option><option value="$v">$v</option></select>
+              </label>
+              <textarea id="ecOutput" rows="7" readonly></textarea>
+              <div class="ec-actions">
+                <button type="button" class="btn btn-accent btn-sm" id="ecCopy">{p.copyLabel}</button>
+                <a class="btn btn-ghost btn-sm" id="ecOpenDash" href="/dash/import" hidden target="_blank" rel="noopener">{p.openDash}</a>
+              </div>
+              <ul class="ec-warnings" id="ecWarnings" hidden></ul>
+            </div>
+            <div class="ec-group ec-how">
+              <h2>{p.howTitle}</h2>
+              <p>{p.howScript}</p>
+              <p>{p.howPetto}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  import { renderMessage, defaultContext } from '../utils/discordPreview';
+  import { parseEmbedScript, toEmbedScript } from '../utils/embedScript';
+  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, type TemplateData } from '../utils/embedSchema';
+
+  const root = document.getElementById('ecRoot')!;
+  const text = JSON.parse(root.dataset.i18n || '{}') as Record<string, string>;
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const fields: { name: string; value: string; inline: boolean }[] = [];
+  const buttons: { label: string; url: string }[] = [];
+  let format: 'script' | 'petto' = 'script';
+  let notes: string[] = [];
+
+  function read(): TemplateData {
+    const colorValue = parseInt($<HTMLInputElement>('ecColor').value.slice(1), 16);
+    const embed = {
+      ...emptyEmbed(),
+      title: $<HTMLInputElement>('ecTitle').value,
+      url: $<HTMLInputElement>('ecUrl').value.trim(),
+      description: $<HTMLTextAreaElement>('ecDescription').value,
+      color: colorUsed ? colorValue : null,
+      thumbnail: $<HTMLInputElement>('ecThumbnail').value.trim(),
+      image: $<HTMLInputElement>('ecImage').value.trim(),
+      timestamp: $<HTMLInputElement>('ecTimestamp').checked,
+      author: { name: $<HTMLInputElement>('ecAuthorName').value, icon: $<HTMLInputElement>('ecAuthorIcon').value.trim(), url: $<HTMLInputElement>('ecAuthorUrl').value.trim() },
+      footer: { text: $<HTMLInputElement>('ecFooterText').value, icon: $<HTMLInputElement>('ecFooterIcon').value.trim() },
+      fields: fields.filter((f) => f.name && f.value).map((f) => ({ ...f })),
+    };
+    const hasEmbed = Boolean(embed.title || embed.description || embed.author.name || embed.footer.text || embed.fields.length || embed.image || embed.thumbnail || embed.url);
+    const row = buttons.filter((b) => b.label && b.url).map((b) => ({ label: b.label, url: b.url, emoji: '', disabled: false }));
+    return { content: $<HTMLTextAreaElement>('ecContent').value, embeds: hasEmbed ? [embed] : [], buttons: row.length ? [row.slice(0, 5)] : [] };
+  }
+
+  // The color picker always holds a value, so a color is only used once somebody chose one or a code carried it.
+  let colorUsed = false;
+
+  function render() {
+    const data = read();
+    const checked = validateTemplate(data);
+    const clean = checked.ok ? checked.data : data;
+    const message = { content: clean.content, embeds: clean.embeds, buttons: clean.buttons };
+    $('ecPreview').innerHTML = data.content || data.embeds.length || data.buttons.length ? renderMessage(message, { ...defaultContext, t: (key) => key }) : `<p class="ec-empty">${text.emptyMessage}</p>`;
+
+    const warnings = [...notes];
+    if (!checked.ok) warnings.push(text.tooLong);
+    const output = $<HTMLTextAreaElement>('ecOutput');
+    const openDash = $<HTMLAnchorElement>('ecOpenDash');
+    if (format === 'script') {
+      output.value = toEmbedScript(data, $<HTMLSelectElement>('ecSeparator').value === '$v' ? '$v' : '&v');
+      if (data.embeds.length > 1) warnings.push(text.extraEmbeds);
+      openDash.hidden = true;
+    } else {
+      output.value = data.content || data.embeds.length ? encodeShareCode(clean) : '';
+      openDash.hidden = !output.value;
+      openDash.href = output.value ? `/dash/import#import=${encodeURIComponent(output.value)}` : '/dash/import';
+    }
+    const list = $('ecWarnings');
+    list.hidden = warnings.length === 0;
+    list.innerHTML = '';
+    for (const warning of warnings) { const li = document.createElement('li'); li.textContent = warning; list.appendChild(li); }
+  }
+
+  function listRow(container: HTMLElement, inputs: { placeholder: string; key: string; value: string; max: number }[], extra: HTMLElement | null, onChange: (key: string, value: string) => void, onRemove: () => void) {
+    const row = document.createElement('div');
+    row.className = 'ec-list-row';
+    for (const spec of inputs) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = spec.placeholder;
+      input.maxLength = spec.max;
+      input.value = spec.value;
+      input.addEventListener('input', () => { onChange(spec.key, input.value); render(); });
+      row.appendChild(input);
+    }
+    if (extra) row.appendChild(extra);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'ec-remove';
+    remove.textContent = '×';
+    remove.title = text.removeLabel;
+    remove.setAttribute('aria-label', text.removeLabel);
+    remove.addEventListener('click', () => { onRemove(); drawLists(); render(); });
+    row.appendChild(remove);
+    container.appendChild(row);
+  }
+
+  function drawLists() {
+    const fieldBox = $('ecFields');
+    fieldBox.innerHTML = '';
+    fields.forEach((field, index) => {
+      const inline = document.createElement('label');
+      inline.className = 'ec-check ec-inline';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = field.inline;
+      box.addEventListener('change', () => { field.inline = box.checked; render(); });
+      inline.append(box, document.createTextNode(text.inlineLabel));
+      listRow(fieldBox, [
+        { placeholder: text.fieldName, key: 'name', value: field.name, max: 256 },
+        { placeholder: text.fieldValue, key: 'value', value: field.value, max: 1024 },
+      ], inline, (key, value) => { (field as Record<string, any>)[key] = value; }, () => fields.splice(index, 1));
+    });
+    const buttonBox = $('ecButtons');
+    buttonBox.innerHTML = '';
+    buttons.forEach((button, index) => {
+      listRow(buttonBox, [
+        { placeholder: text.buttonLabel, key: 'label', value: button.label, max: 80 },
+        { placeholder: text.buttonUrl, key: 'url', value: button.url, max: 512 },
+      ], null, (key, value) => { (button as Record<string, string>)[key] = value; }, () => buttons.splice(index, 1));
+    });
+    $<HTMLButtonElement>('ecAddField').disabled = fields.length >= 25;
+    $<HTMLButtonElement>('ecAddButton').disabled = buttons.length >= 5;
+  }
+
+  function load(data: TemplateData) {
+    const embed = data.embeds[0];
+    $<HTMLTextAreaElement>('ecContent').value = data.content;
+    $<HTMLInputElement>('ecTitle').value = embed?.title ?? '';
+    $<HTMLInputElement>('ecUrl').value = embed?.url ?? '';
+    $<HTMLTextAreaElement>('ecDescription').value = embed?.description ?? '';
+    colorUsed = embed?.color !== null && embed?.color !== undefined;
+    $<HTMLInputElement>('ecColor').value = colorUsed ? `#${(embed!.color as number).toString(16).padStart(6, '0')}` : '#8399ff';
+    $<HTMLInputElement>('ecTimestamp').checked = Boolean(embed?.timestamp);
+    $<HTMLInputElement>('ecThumbnail').value = embed?.thumbnail ?? '';
+    $<HTMLInputElement>('ecImage').value = embed?.image ?? '';
+    $<HTMLInputElement>('ecAuthorName').value = embed?.author.name ?? '';
+    $<HTMLInputElement>('ecAuthorIcon').value = embed?.author.icon ?? '';
+    $<HTMLInputElement>('ecAuthorUrl').value = embed?.author.url ?? '';
+    $<HTMLInputElement>('ecFooterText').value = embed?.footer.text ?? '';
+    $<HTMLInputElement>('ecFooterIcon').value = embed?.footer.icon ?? '';
+    fields.splice(0, fields.length, ...(embed?.fields ?? []).map((f) => ({ ...f })));
+    buttons.splice(0, buttons.length, ...data.buttons.flat().map((b) => ({ label: b.label, url: b.url })));
+    drawLists();
+  }
+
+  root.addEventListener('input', (event) => {
+    if ((event.target as HTMLElement).id === 'ecSeparator') return;
+    const target = event.target as HTMLElement;
+    if (target.id === 'ecColor') colorUsed = true;
+    if (target.closest('.ec-form') && target.id !== 'ecImport') { notes = []; render(); }
+  });
+  $('ecAddField').addEventListener('click', () => { fields.push({ name: '', value: '', inline: false }); drawLists(); });
+  $('ecAddButton').addEventListener('click', () => { buttons.push({ label: '', url: '' }); drawLists(); });
+
+  document.querySelectorAll<HTMLButtonElement>('.ec-tab').forEach((tab) => tab.addEventListener('click', () => {
+    format = tab.dataset.format === 'petto' ? 'petto' : 'script';
+    document.querySelectorAll('.ec-tab').forEach((other) => other.classList.toggle('active', other === tab));
+    $('ecSepRow').hidden = format !== 'script';
+    render();
+  }));
+  $('ecSeparator').addEventListener('change', render);
+
+  $('ecCopy').addEventListener('click', async () => {
+    const button = $<HTMLButtonElement>('ecCopy');
+    try { await navigator.clipboard.writeText($<HTMLTextAreaElement>('ecOutput').value); button.textContent = text.copiedLabel; } catch { $<HTMLTextAreaElement>('ecOutput').select(); }
+    window.setTimeout(() => { button.textContent = text.copyLabel; }, 1500);
+  });
+
+  $('ecImportBtn').addEventListener('click', () => {
+    const code = $<HTMLTextAreaElement>('ecImport').value.trim();
+    const note = $('ecImportNote');
+    if (!code) return;
+    const shared = decodeShareCode(code);
+    if (shared) { load(shared); notes = []; note.textContent = text.importDone; render(); return; }
+    const parsed = parseEmbedScript(code);
+    if (!parsed.data.content && !parsed.data.embeds.length) { note.textContent = text.importInvalid; return; }
+    load(parsed.data);
+    notes = parsed.warnings;
+    note.textContent = text.importDone;
+    render();
+  });
+
+  drawLists();
+  render();
+</script>
+
+<style is:global>
+  .ec-sec { padding: 64px 0 110px; }
+  .ec-wrap { max-width: 1100px; }
+  .ec-sec h1 { font-size: 32px; margin: 14px 0 12px; }
+  .ec-lede { color: var(--text-muted); font-size: 15.5px; line-height: 1.65; max-width: 70ch; margin-bottom: 28px; }
+  .ec-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .ec-form, .ec-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .ec-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: end; }
+  .ec-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .ec-field label, .ec-group h2 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); font-weight: 500; margin: 0; }
+  .ec-sec input[type='text'], .ec-sec textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; background: var(--bg-raise); color: var(--text); font: 13.5px var(--sans); }
+  .ec-sec textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+  .ec-sec input[type='color'] { width: 56px; height: 36px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); }
+  .ec-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-muted); }
+  .ec-group { border: 1px solid var(--border-soft); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; background: var(--card); }
+  .ec-list-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .ec-list-row input[type='text'] { flex: 1 1 140px; min-width: 0; }
+  .ec-inline { flex: 0 0 auto; }
+  .ec-remove { border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text-dim); width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1; }
+  .ec-remove:hover { color: var(--red); border-color: var(--red); }
+  .ec-sec [hidden] { display: none !important; }
+  .ec-group > .btn { align-self: flex-start; }
+  .ec-sep { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+  .ec-sep select { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: var(--bg-raise); color: var(--text); font: 13px var(--mono); }
+  .ec-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ec-note { font-size: 13px; color: var(--text-muted); }
+  .ec-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ec-tab { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .ec-tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .ec-preview { background: #313338; border-radius: 10px; padding: 14px; overflow: hidden; }
+  .ec-empty { margin: 0; color: #949ba4; font-size: 13px; }
+  .ec-warnings { margin: 0; padding-left: 18px; color: var(--yellow); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  .ec-how p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
+  .ec-how h2 { margin-bottom: 2px; }
+  @media (max-width: 880px) { .ec-layout { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 520px) { .ec-row { grid-template-columns: minmax(0, 1fr); } }
+
+  /* The Discord-style preview, the same rules the dashboard previews use. */
+  .dp-msg { display: flex; width: 100%; box-sizing: border-box; gap: 12px; text-align: left; }
+  .dp-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .dp-body { min-width: 0; flex: 1; font: 400 13.5px/1.4 var(--sans); color: #dbdee1; }
+  .dp-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; flex-wrap: wrap; }
+  .dp-name { font-weight: 600; color: #f2f3f5; font-size: 14px; }
+  .dp-tag { font-size: 9px; background: #5865f2; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .dp-time { font-size: 11px; color: #949ba4; }
+  .dp-empty { color: #6d6f78; font-size: 12.5px; font-style: italic; }
+  .dp-content, .dp-embed-desc { overflow-wrap: anywhere; word-break: break-word; }
+  .dp-embed { background: #2b2d31; border-radius: 4px; padding: 10px 14px 12px; border-left: 4px solid var(--dp-c, #4f545c); margin-top: 6px; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+  .dp-embed-author { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; color: #f2f3f5; }
+  .dp-embed-author img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
+  .dp-embed-body { display: flex; gap: 12px; min-width: 0; justify-content: space-between; }
+  .dp-embed-main { min-width: 0; flex: 1; }
+  .dp-embed-title { font-weight: 600; color: #f2f3f5; margin-bottom: 4px; display: block; font-size: 14px; text-decoration: none; }
+  a.dp-link { color: #00a8fc; }
+  a.dp-link:hover { text-decoration: underline; }
+  .dp-embed-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .dp-embed-field { flex: 1 1 100%; }
+  .dp-embed-field.inline { flex: 1 1 calc(33% - 6px); min-width: 90px; }
+  .dp-embed-field-name { font-weight: 600; font-size: 12.5px; color: #f2f3f5; margin-bottom: 2px; }
+  .dp-embed-field-value { font-size: 12.5px; }
+  .dp-embed-image { width: 100%; max-height: 300px; object-fit: cover; border-radius: 4px; margin-top: 8px; display: block; }
+  .dp-embed-thumb { width: 64px; height: 64px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+  .dp-embed-footer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11.5px; color: #b5bac1; }
+  .dp-embed-footer img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
+  .dp-btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .dp-btn { display: inline-flex; align-items: center; gap: 5px; background: #4e5058; color: #fff; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 500; }
+  .dp-var { font-family: var(--mono); color: var(--accent); background: var(--accent-soft); padding: 0 4px; border-radius: 3px; font-size: .9em; }
+  .dp-mention { color: #c9cdfb; background: rgba(88, 101, 242, .3); border-radius: 3px; padding: 0 2px; font-weight: 500; }
+  .dp-spoiler { background: #1a1a1e; color: #1a1a1e; border-radius: 3px; padding: 0 2px; }
+  .dp-code { background: #1e1f22; color: #b9bec7; border-radius: 3px; padding: 0 5px; font-family: var(--mono); font-size: .875em; }
+  .dp-codeblock { background: #1e1f22; color: #b9bec7; border-radius: 4px; padding: 10px 14px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; margin: 4px 0; }
+  .dp-emoji { width: 20px; height: 20px; vertical-align: -4px; object-fit: contain; }
+  .dp-quote { display: block; border-left: 3px solid #4e5058; padding-left: 8px; color: #b5bac1; }
+  .dp-h1 { display: block; font-size: 1.5em; font-weight: 700; }
+  .dp-h2 { display: block; font-size: 1.25em; font-weight: 700; }
+  .dp-h3 { display: block; font-size: 1.1em; font-weight: 700; }
+</style>
