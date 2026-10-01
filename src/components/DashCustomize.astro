@@ -3,6 +3,7 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import PremiumGate from './PremiumGate.astro';
 import { renderDiscordEmojis } from '../utils/discord';
+import { NAME_FONTS, NAME_EFFECTS, DEFAULT_NAME_STYLE, intToHex, nameStyleCss, type NameStyle } from '../utils/nameStyle';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -29,6 +30,7 @@ interface Props {
   discordWarning?: boolean;
   error?: string | null;
   premiumActive: boolean;
+  nameStyle?: NameStyle | null;
 }
 const {
   user, guildId, guildName, guildIcon,
@@ -36,7 +38,7 @@ const {
   botUsername, bannerUrl, effectiveBanner,
   description, effectiveDescription,
   globalUsername, globalAvatar, globalBanner, globalDescription,
-  saved, discordWarning, error, premiumActive,
+  saved, discordWarning, error, premiumActive, nameStyle = null,
 } = Astro.props;
 
 const errorMessages: Record<string, string> = {
@@ -45,9 +47,15 @@ const errorMessages: Record<string, string> = {
   banner_too_large: dt('That banner is too big, try something under 2MB.'),
   banner_fetch_failed: dt('Couldn\'t fetch that banner, make sure it\'s a direct link or a valid image file.'),
   discord_rejected: dt('Couldn\'t save, try again in a moment.'),
+  name_style_invalid: dt('Pick a font, an effect and valid colors for the name style.'),
+  name_style_rejected: dt('Discord did not accept this name style. It may not be available for bots yet, nothing was changed.'),
 };
 
 const previewName = nickname || botUsername;
+const styleForm = nameStyle ?? DEFAULT_NAME_STYLE;
+const styleColors = [intToHex(styleForm.colors[0] ?? DEFAULT_NAME_STYLE.colors[0]), intToHex(styleForm.colors[1] ?? DEFAULT_NAME_STYLE.colors[1])];
+const effectColorCount = Object.fromEntries(NAME_EFFECTS.map((effect) => [effect.id, effect.colors]));
+const nameCss = nameStyleCss(nameStyle);
 const previewDescHtml = renderDiscordEmojis(effectiveDescription);
 const globalDescHtml = renderDiscordEmojis(globalDescription);
 ---
@@ -75,7 +83,7 @@ const globalDescHtml = renderDiscordEmojis(globalDescription);
               <img src={effectiveAvatar} alt="" class="cz-card-avatar" id="czAvatar" />
               <button type="button" class="cz-edit-btn cz-edit-avatar" data-focus="avatar_url" title={dt('Edit avatar')}><Icon name="ph:pencil-simple-fill" width="12" height="12" /></button>
             </div>
-            <div class="cz-card-name"><span id="czName">{previewName}</span><span class="cz-card-tag">{dt('APP')}</span></div>
+            <div class="cz-card-name"><span id="czName" style={nameCss || undefined}>{previewName}</span><span class="cz-card-tag">{dt('APP')}</span></div>
             <div class="cz-card-handle">{botUsername}</div>
             <p class="cz-card-desc" id="czDesc" set:html={previewDescHtml} style={effectiveDescription ? undefined : 'display:none'} />
           </div>
@@ -131,6 +139,22 @@ const globalDescHtml = renderDiscordEmojis(globalDescription);
                   <div class="cz-field-head"><label for="description">{dt('Description')}</label><button type="button" class="cz-reset" data-reset="description" data-reset-field="description">{dt('Reset')}</button></div>
                   <textarea id="description" name="description" maxlength="190" rows="3" placeholder={dt('A friendly moderation and community bot.')}>{description}</textarea>
                   <p class="cz-hint">{dt('Max 190 characters. Custom emoji like')} <code>{'<:name:id>'}</code> {dt('render fine.')}</p>
+                </div>
+
+                <div class="cz-field cz-field-wide cz-style" data-effect-colors={JSON.stringify(effectColorCount)}>
+                  <div class="cz-field-head"><label for="name_effect">{dt('Name style')}</label><button type="button" class="cz-reset" data-reset="name_effect" data-reset-field="name_style">{dt('Reset')}</button></div>
+                  <div class="cz-style-grid">
+                    <select id="name_effect" name="name_effect" aria-label={dt('Effect')}>
+                      <option value="0" selected={!nameStyle}>{dt('No style')}</option>
+                      {NAME_EFFECTS.map((effect) => <option value={effect.id} selected={nameStyle?.effectId === effect.id}>{dt(effect.label)}</option>)}
+                    </select>
+                    <select id="name_font" name="name_font" aria-label={dt('Font')}>
+                      {NAME_FONTS.map((font) => <option value={font.id} selected={styleForm.fontId === font.id}>{dt(font.label)}</option>)}
+                    </select>
+                    <input type="color" id="name_color_1" name="name_color_1" value={styleColors[0]} aria-label={dt('Color')} />
+                    <input type="color" id="name_color_2" name="name_color_2" value={styleColors[1]} aria-label={dt('Second color')} />
+                  </div>
+                  <p class="cz-hint">{dt('Like the name styles of Nitro: a gradient, neon or glow on the name of Petto in this server. The preview shows the colors and the effect, Discord draws the font.')}</p>
                 </div>
               </div>
             </PremiumGate>
@@ -240,6 +264,33 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
       });
     }
 
+    // Name style: the preview shows the colors and the effect, the second color only matters for a gradient.
+    const effectSelect = document.getElementById('name_effect') as HTMLSelectElement | null;
+    const color1 = document.getElementById('name_color_1') as HTMLInputElement | null;
+    const color2 = document.getElementById('name_color_2') as HTMLInputElement | null;
+    const styleBox = document.querySelector<HTMLElement>('.cz-style');
+    if (effectSelect && color1 && color2 && nameEl && styleBox) {
+      const colorCounts: Record<string, number> = JSON.parse(styleBox.dataset.effectColors ?? '{}');
+      const effectCss = (id: number, first: string, second: string): string => {
+        switch (id) {
+          case 2: return `background:linear-gradient(90deg,${first},${second});-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;`;
+          case 3: return `color:#fff;text-shadow:0 0 4px ${first},0 0 10px ${first},0 0 18px ${first};`;
+          case 4: return `color:${first};-webkit-text-stroke:1px #000;text-shadow:1px 1px 0 #000;`;
+          case 5: return `color:${first};text-shadow:2px 2px 0 color-mix(in srgb,${first} 45%,#000);`;
+          case 6: return `color:${first};text-shadow:0 0 8px ${first};`;
+          default: return `color:${first};`;
+        }
+      };
+      const updateStyle = () => {
+        const id = Number(effectSelect.value || 0);
+        color2.style.display = colorCounts[String(id)] === 2 ? '' : 'none';
+        color1.disabled = !id;
+        nameEl.setAttribute('style', id ? effectCss(id, color1.value, color2.value) : '');
+      };
+      for (const el of [effectSelect, color1, color2, document.getElementById('name_font')]) el?.addEventListener('input', updateStyle);
+      updateStyle();
+    }
+
     document.querySelectorAll<HTMLButtonElement>('.cz-reset').forEach((btn) => {
       btn.addEventListener('click', () => {
         const names = (btn.dataset.reset ?? '').split(',');
@@ -317,6 +368,11 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
   .cz-premium-fields :global(.premium-gate) { width: 100%; }
   .cz-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 28px; width: 100%; }
   .cz-field { display: flex; flex-direction: column; gap: 8px; }
+  .cz-field-wide { grid-column: 1 / -1; }
+  .cz-style-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 52px 52px; gap: 10px; align-items: center; }
+  .cz-style-grid select { min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 14px; }
+  .cz-style-grid input[type="color"] { width: 52px; height: 42px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raise); cursor: pointer; }
+  .cz-style-grid input[type="color"]:disabled { opacity: .4; cursor: not-allowed; }
   .cz-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .cz-field label { font-size: 13.5px; font-weight: 600; color: var(--text); }
   .cz-reset { border: none; background: transparent; color: var(--text-dim); font-size: 11.5px; cursor: pointer; padding: 2px 4px; }
@@ -338,5 +394,7 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
   }
   @media (max-width: 620px) {
     .cz-form-grid { grid-template-columns: 1fr; }
+    .cz-style-grid { grid-template-columns: 1fr 1fr; }
+    .cz-style-grid input[type="color"] { width: 100%; }
   }
 </style>
