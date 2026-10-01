@@ -2,13 +2,14 @@ import { emptyEmbed, validateTemplate, type TemplateData, type EmbedData } from 
 
 // The one-line message code used by several Discord bots: `{embed}$v{title: Hello}$v{description: ...}`.
 // Text before `{embed}` is the message content, each `{key: value}` block sets one part of the embed, the
-// blocks are joined by `$v`, and a block that holds several values separates them with `&&`.
+// blocks are joined by `&v` (Petto writes it) or `$v` (other bots write it, both are read), and a block that
+// holds several values separates them with `&&`.
 //
 //   {title: text}               {url: https://...}            {description: text}
 //   {color: #8399ff}            {thumbnail: https://...}      {image: https://...}
 //   {author: name && icon && url}   {footer: text && icon}    {timestamp}
-//   {field: name && value && inline}                          {button: label && url}
-//   {content: text}  (same as writing the text before {embed})
+//   {field: name && value}  or  {field: name && value && inline}
+//   {button: link && label && url}  (link buttons only)       {message: text}  (same as text before {embed})
 
 export interface ScriptParse {
   data: TemplateData;
@@ -16,7 +17,8 @@ export interface ScriptParse {
   warnings: string[];
 }
 
-const SEPARATOR = '$v';
+const SEPARATORS = ['&v', '$v'];
+export type Separator = '&v' | '$v';
 
 /** Splits the code into its top-level `{...}` blocks and the loose text between them. Braces inside a block nest. */
 type Item = { block: false; value: string } | { block: true; value: string };
@@ -30,7 +32,8 @@ function tokenize(code: string): { items: Item[]; error: string | null } {
   for (let i = 0; i < code.length; i++) {
     const char = code[i];
     if (depth === 0) {
-      if (code.startsWith(SEPARATOR, i)) { flush(); i += SEPARATOR.length - 1; continue; }
+      const separator = SEPARATORS.find((candidate) => code.startsWith(candidate, i));
+      if (separator) { flush(); i += separator.length - 1; continue; }
       if (char === '{') { flush(); depth = 1; current = ''; continue; }
       if (char === '}') return { items, error: 'There is a closing brace } with no opening one.' };
       text += char;
@@ -117,9 +120,18 @@ export function parseEmbedScript(code: string): ScriptParse {
         break;
       }
       case 'button': {
-        const [label, url] = parts(value);
-        if (!label || !url) { warnings.push('A button needs a label and a link: {button: label && https://...}.'); break; }
-        buttons.push({ label, url, emoji: '', disabled: false });
+        // {button: link && label && url}, or just {button: label && url}. Only link buttons can be saved.
+        let [first, ...rest] = parts(value);
+        const kind = first?.toLowerCase();
+        if (['link', 'blurple', 'green', 'grey', 'gray', 'red', 'primary', 'success', 'secondary', 'danger'].includes(kind ?? '')) {
+          if (kind !== 'link') warnings.push(`Only link buttons can be saved, the ${kind} button was turned into a link button.`);
+        } else {
+          rest = [first ?? '', ...rest];
+        }
+        const disabled = rest.length > 2 && /^disabled$/i.test(rest[rest.length - 1] ?? '');
+        const [label, url] = rest;
+        if (!label || !url) { warnings.push('A button needs a label and a link: {button: link && label && https://...}.'); break; }
+        buttons.push({ label, url, emoji: '', disabled });
         break;
       }
       default:
@@ -140,7 +152,7 @@ export function parseEmbedScript(code: string): ScriptParse {
 const hex = (color: number) => `#${color.toString(16).padStart(6, '0')}`;
 
 /** Writes a message as a one-line code. Only the first embed fits, the rest are left out. */
-export function toEmbedScript(raw: TemplateData): string {
+export function toEmbedScript(raw: TemplateData, separator: Separator = '&v'): string {
   const checked = validateTemplate(raw);
   const data = checked.ok ? checked.data : raw;
   const blocks: string[] = [];
@@ -155,11 +167,11 @@ export function toEmbedScript(raw: TemplateData): string {
     if (embed.image) blocks.push(`{image: ${embed.image}}`);
     if (embed.author.name) blocks.push(`{author: ${[embed.author.name, embed.author.icon, embed.author.url].filter((p, i, all) => p || all.slice(i + 1).some(Boolean)).join(' && ')}}`);
     if (embed.footer.text) blocks.push(`{footer: ${[embed.footer.text, embed.footer.icon].filter((p, i, all) => p || all.slice(i + 1).some(Boolean)).join(' && ')}}`);
-    for (const field of embed.fields) blocks.push(`{field: ${field.name} && ${field.value} && ${field.inline ? 'true' : 'false'}}`);
+    for (const field of embed.fields) blocks.push(`{field: ${field.name} && ${field.value}${field.inline ? ' && inline' : ''}}`);
     if (embed.timestamp) blocks.push('{timestamp}');
   }
-  for (const row of data.buttons) for (const button of row) if (button.label && button.url) blocks.push(`{button: ${button.label} && ${button.url}}`);
-  const body = blocks.join(SEPARATOR);
+  for (const row of data.buttons) for (const button of row) if (button.label && button.url) blocks.push(`{button: link && ${button.label} && ${button.url}${button.disabled ? ' && disabled' : ''}}`);
+  const body = blocks.join(separator);
   if (!body) return data.content;
   return data.content ? `${data.content} ${body}` : body;
 }
