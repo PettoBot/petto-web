@@ -1,4 +1,5 @@
 import { getEnv } from './env';
+import { setBotNameStyle } from './discord';
 
 export type PremiumStatus = 'free' | 'pending' | 'active' | 'past_due' | 'canceled' | 'expired';
 
@@ -361,6 +362,7 @@ export async function resetGuildPremiumCustomization(astro: any, guildId: string
   }).then((response) => response.ok).catch(() => false);
 
   const botToken = getEnv(astro, 'DISCORD_TOKEN');
+  await resetNameStyle(settings, botToken, guildId);
   if (!botToken) return databaseReset;
 
   if (!hasPremiumCustomization) return databaseReset;
@@ -372,4 +374,23 @@ export async function resetGuildPremiumCustomization(astro: any, guildId: string
   }).then((response) => response.ok).catch(() => false);
 
   return databaseReset && discordReset;
+}
+
+/**
+ * Clears the Premium name style of a server in the database and in Discord. Read apart from the rest of the profile and
+ * never fatal: a database without the `bot_name_style` column just has nothing to clear.
+ */
+async function resetNameStyle(settings: { url: string; key: string }, botToken: string | undefined, guildId: string): Promise<void> {
+  try {
+    const response = await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}&select=bot_name_style`, { headers: headers(settings.key) });
+    if (!response.ok) return;
+    const rows = await response.json() as Array<{ bot_name_style: unknown }>;
+    if (!rows[0]?.bot_name_style) return;
+    await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}`, {
+      method: 'PATCH',
+      headers: headers(settings.key, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({ bot_name_style: null, updated_at: new Date().toISOString() }),
+    });
+    if (botToken) await setBotNameStyle(guildId, botToken, null);
+  } catch { /* A name style that cannot be cleared now is cleared the next time the page opens. */ }
 }
