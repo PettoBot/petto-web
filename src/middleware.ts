@@ -9,6 +9,13 @@ export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
   const { lang, path } = prefixes[match[1].toLowerCase()];
+  // Logging out is answered here: a cookie cleared by the rewritten route is lost when the redirect is rebuilt below,
+  // so the session stayed and /es/dash kept showing the servers.
+  if (/^\/dash\/logout\/?$/.test(match[2])) {
+    const headers = new Headers({ location: `${path}/dash`, 'cache-control': 'no-store' });
+    headers.append('set-cookie', `petto_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${url.protocol === 'https:' ? '; Secure' : ''}`);
+    return new Response(null, { status: 302, headers });
+  }
   cookies.set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax', secure: url.protocol === 'https:' });
   (locals as Record<string, unknown>).dashLang = lang;
   const response = await rewrite(`${match[2]}${url.search}`);
