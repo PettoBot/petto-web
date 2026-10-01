@@ -146,20 +146,37 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props
   }, [flash]);
 
   // The preview is the real picture: the bot draws it with the same code that draws the messages.
-  useEffect(() => {
-    if (!selected) return;
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      setPreviewBusy(true);
-      try {
-        const res = await post(guildId, { action: 'preview', data: draft }, '');
-        if (!res.ok) return;
+  // Requests go out one at a time, newest wins, and an old answer never replaces a newer one, so dragging
+  // a layer shows the picture catching up in order instead of jumping back and forth.
+  const previewSeq = useRef(0);
+  const previewBusyRef = useRef(false);
+  const previewQueued = useRef<CardData | null>(null);
+  const dragging = useRef(false);
+  const requestPreview = useCallback(async (data: CardData) => {
+    if (previewBusyRef.current) { previewQueued.current = data; return; }
+    previewBusyRef.current = true;
+    setPreviewBusy(true);
+    const seq = ++previewSeq.current;
+    try {
+      const res = await post(guildId, { action: 'preview', data }, '');
+      if (res.ok && seq === previewSeq.current) {
         const url = URL.createObjectURL(await res.blob());
         setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
-      } catch { /* A newer edit replaced this one. */ } finally { setPreviewBusy(false); }
-    }, 450);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [draft, selected, guildId]);
+      }
+    } catch { /* The next edit asks again. */ } finally {
+      previewBusyRef.current = false;
+      setPreviewBusy(false);
+      const next = previewQueued.current;
+      previewQueued.current = null;
+      if (next) void requestPreview(next);
+    }
+  }, [guildId]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const timer = setTimeout(() => { void requestPreview(draft); }, dragging.current ? 40 : 300);
+    return () => clearTimeout(timer);
+  }, [draft, selected, requestPreview]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
   function editBasic(patch: Partial<Basic>) { setDraft((d) => ({ ...d, basic: { ...(d.basic as Basic), ...patch } })); setDirty(true); }
@@ -256,15 +273,18 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props
     const stage = stageRef.current;
     if (!stage) return;
     e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragging.current = true;
     setActiveLayer(layer.id);
     const scale = draft.width / stage.getBoundingClientRect().width;
     const origin = { x: e.clientX, y: e.clientY, lx: layer.x, ly: layer.y };
     const move = (ev: PointerEvent) => {
       editLayer(layer.id, { x: Math.round(origin.lx + (ev.clientX - origin.x) * scale), y: Math.round(origin.ly + (ev.clientY - origin.y) * scale) });
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => { dragging.current = false; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
 
   function moveLayer(id: string, direction: -1 | 1) {
