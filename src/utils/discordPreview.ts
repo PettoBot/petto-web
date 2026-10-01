@@ -47,7 +47,7 @@ export const defaultContext: PreviewContext = {
 
 const tr = (ctx: PreviewContext, key: string) => (ctx.t ? ctx.t(key) : key);
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
-const safeUrl = (value: string) => (/^https?:\/\//i.test(value.trim()) || value.trim().startsWith('/') ? escapeHtml(value.trim()) : '');
+const safeUrl = (value: string) => (/^(https?:\/\/|blob:)/i.test(value.trim()) || value.trim().startsWith('/') ? escapeHtml(value.trim()) : '');
 
 /** Inline formatting on text that is already HTML-escaped. */
 function inline(html: string, ctx: PreviewContext): string {
@@ -65,6 +65,7 @@ function inline(html: string, ctx: PreviewContext): string {
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
   out = out.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (m, token) => {
+    if (token.toLowerCase() === 'newline') return '<br>';
     const sample = samples[token];
     if (!sample) return `<span class="dp-var">${m}</span>`;
     return sample.mention ? `<span class="dp-mention">${sample.text}</span>` : sample.text;
