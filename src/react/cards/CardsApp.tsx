@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../embeds/embeds.css';
 import './cards.css';
 import { t } from '../embeds/t';
+import { drawCard } from './cardCanvas';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
   VARIABLE_CHOICES, layerBox, newCard, newLayer,
 } from './cardTypes';
 
-interface Props { guildId: string; premiumUrl: string; initialSelected: string }
+interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string }
 
 const ERRORS: Record<string, string> = {
   premium_required: 'This card uses the advanced editor or a Premium font, which needs Premium.',
@@ -102,7 +103,7 @@ function SourceField({ value, onChange, assets, onUpload, uploading }: { value: 
   );
 }
 
-export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props) {
+export default function CardsApp({ guildId, premiumUrl, initialSelected, userId, userName, userAvatarUrl, serverName, serverIconUrl }: Props) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState(initialSelected);
@@ -117,6 +118,8 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props
   const [activeLayer, setActiveLayer] = useState<string | null>(null);
   const [lockedNote, setLockedNote] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [exact, setExact] = useState(false);
   // The layers of the advanced editor while the basic tab is open, so switching tabs does not lose them.
   const stash = useRef<Layer[] | null>(null);
 
@@ -172,11 +175,26 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props
     }
   }, [guildId]);
 
+  // The basic editor has no layers to drag, so the bot draws it. The advanced editor is drawn right here while it is
+  // edited, and the bot's own drawing is only asked for when "Exact preview" is on.
+  const live = draft.mode === 'advanced' && !exact;
   useEffect(() => {
-    if (!selected) return;
-    const timer = setTimeout(() => { void requestPreview(draft); }, dragging.current ? 40 : 300);
+    if (!selected || live) return;
+    const timer = setTimeout(() => { void requestPreview(draft); }, 300);
     return () => clearTimeout(timer);
-  }, [draft, selected, requestPreview]);
+  }, [draft, selected, requestPreview, live]);
+
+  const drawSeq = useRef(0);
+  useEffect(() => {
+    if (!live || !canvasRef.current) return;
+    const seq = ++drawSeq.current;
+    void drawCard(canvasRef.current, draft, {
+      context: { userId, userName, serverName, memberCount: 1204 },
+      avatarUrl: userAvatarUrl,
+      serverIconUrl,
+      assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
+    }, () => seq === drawSeq.current);
+  }, [draft, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
   function editBasic(patch: Partial<Basic>) { setDraft((d) => ({ ...d, basic: { ...(d.basic as Basic), ...patch } })); setDirty(true); }
@@ -338,8 +356,8 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
               <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}` }}>
-                {previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : <div className="crd-stage-empty">{t('Loading...')}</div>}
-                {draft.mode === 'advanced' && draft.layers.map((l) => {
+                {live ? <canvas ref={canvasRef} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {live && draft.layers.map((l) => {
                   const box = layerBox(l);
                   return (
                     <div key={l.id} className={`crd-handle${l.id === activeLayer ? ' active' : ''}`}
@@ -348,6 +366,9 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected }: Props
                   );
                 })}
               </div>
+              {draft.mode === 'advanced' && (
+                <label className="ebr-check"><input type="checkbox" checked={exact} onChange={(e) => setExact(e.target.checked)} />{t('Exact preview, drawn by Petto')}</label>
+              )}
               <p className="ebr-preview-note">{t('The preview is drawn by Petto with your name and avatar. Variables fill in when the message is sent.')}</p>
               <div className="crd-assets">
                 <div className="ebr-preview-label">{t('Uploaded pictures')} <span className="ebr-count">{overview.usage.assets}/{overview.limits.assets} · {storageMb}/{storageMax} MB</span></div>

@@ -1492,4 +1492,5 @@ export const dashEs: Record<string, string> = {
   "Pick a font, an effect and valid colors for the name style.": "Elige una fuente, un efecto y colores válidos para el estilo del nombre.",
   "Discord did not accept this name style. It may not be available for bots yet, nothing was changed.": "Discord no aceptó este estilo de nombre. Puede que aún no esté disponible para bots, no se cambió nada.",
   "Like the name styles of Nitro: a gradient, neon or glow on the name of Petto in this server. The preview shows the colors and the effect, Discord draws the font.": "Como los estilos de nombre de Nitro: degradado, neón o brillo en el nombre de Petto en este server. La vista previa muestra los colores y el efecto, Discord dibuja la fuente.",
+  "Exact preview, drawn by Petto": "Vista exacta, dibujada por Petto",
 };
