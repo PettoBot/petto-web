@@ -1,0 +1,93 @@
+---
+export const prerender = false;
+import DashQuests from '../../../../components/DashQuests.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { canUseQuests } from '../../../../utils/questAccess';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!canUseQuests(Astro, session.userId)) return Astro.redirect(`/dash/guild/${id}/overview`);
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const REWARD_KINDS = ['orbs', 'decoration', 'code', 'ingame', 'nitro'];
+const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
+const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
+
+let saved = false;
+let tableMissing = false;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const pick = (name: string, allowed: string[]) => form.getAll(name).map(String).filter((value) => allowed.includes(value));
+  const hex = String(form.get('accent_color') ?? '').trim().replace(/^#/, '');
+  const style = String(form.get('style') ?? 'card') === 'template' ? 'template' : 'card';
+  const res = await fetch(`${apiUrl}/rest/v1/quest_config?on_conflict=guild_id`, {
+    method: 'POST',
+    headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      guild_id: id,
+      enabled: form.get('enabled') === 'on',
+      channel_id: String(form.get('channel_id') ?? '').trim() || null,
+      role_id: String(form.get('role_id') ?? '').trim() || null,
+      style,
+      embed_template: String(form.get('embed_template') ?? '').trim().slice(0, 40) || null,
+      reward_kinds: pick('reward_kinds', REWARD_KINDS),
+      task_kinds: pick('task_kinds', TASK_KINDS),
+      hide_sections: SECTIONS.filter((section) => form.get(`hide_${section}`) === 'on'),
+      accent_color: /^[0-9a-f]{6}$/i.test(hex) ? parseInt(hex, 16) : null,
+      expiring_hours: Math.max(0, Math.min(168, Number(form.get('expiring_hours') ?? 0) || 0)),
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  saved = res.ok;
+  tableMissing = !res.ok;
+}
+
+const [guildInfo, configRes, channelsRes, rolesRes, templatesRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/quest_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+// The table comes with the bot update that adds quest alerts; until then the page says so.
+const ready = configRes.ok && !tableMissing;
+const c = (ready ? (await configRes.json())[0] : null) ?? {};
+const config = {
+  enabled: c.enabled ?? false,
+  channelId: c.channel_id ?? '',
+  roleId: c.role_id ?? '',
+  style: c.style ?? 'card',
+  embedTemplate: c.embed_template ?? '',
+  rewardKinds: c.reward_kinds ?? [],
+  taskKinds: c.task_kinds ?? [],
+  hideSections: c.hide_sections ?? [],
+  accentColor: Number.isInteger(c.accent_color) ? `#${c.accent_color.toString(16).padStart(6, '0')}` : '',
+  expiringHours: c.expiring_hours ?? 0,
+};
+const channels = (channelsRes.ok ? await channelsRes.json() : []).filter((ch: any) => ch.type === 0 || ch.type === 5).sort((a: any, b: any) => a.position - b.position).map((ch: any) => ({ id: ch.id, name: ch.name }));
+const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+const embedTemplateNames = templatesRes.ok ? (await templatesRes.json()).map((t: any) => t.name) : [];
+---
+<DashQuests
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  config={config}
+  channels={channels}
+  roles={roles}
+  embedTemplateNames={embedTemplateNames}
+  ready={ready}
+  saved={saved}
+/>
