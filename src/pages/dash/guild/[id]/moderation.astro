@@ -76,6 +76,19 @@ if (Astro.request.method === 'POST') {
       }),
     ]);
     saved = true;
+  } else if (action === 'save_sanction_messages') {
+    const types = ['default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
+    const pick = (type: string, slot: string) => String(form.get(`${type}__${slot}`) ?? '').trim().slice(0, 40) || null;
+    const rows = types.map((type) => ({ guild_id: id, type, dm_template: pick(type, 'dm'), reply_template: pick(type, 'reply'), log_template: pick(type, 'log') }));
+    const filled = rows.filter((row) => row.dm_template || row.reply_template || row.log_template);
+    const empty = rows.filter((row) => !filled.includes(row));
+    if (filled.length) {
+      await fetch(`${apiUrl}/rest/v1/sanction_templates?on_conflict=guild_id,type`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(filled) });
+    }
+    if (empty.length) {
+      await fetch(`${apiUrl}/rest/v1/sanction_templates?guild_id=eq.${id}&type=in.(${empty.map((row) => row.type).join(',')})`, { method: 'DELETE', headers: apiHeaders });
+    }
+    saved = true;
   } else if (action === 'add_silent_channel') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const silentAction = String(form.get('silent_action') ?? 'warn');
@@ -113,7 +126,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes, stickyRolesRes] = await runBatched([
+const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes, stickyRolesRes, sanctionTemplatesRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
@@ -123,6 +136,8 @@ const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, r
   () => getGuildList(Astro, id, botToken, 'roles'),
   () => getGuildList(Astro, id, botToken, 'channels'),
   () => fetch(`${apiUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/sanction_templates?guild_id=eq.${id}&select=type,dm_template,reply_template,log_template`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -181,6 +196,14 @@ function channelName(channelId: string) {
 const rawSilent = silentRes.ok ? await silentRes.json() : [];
 const silentChannels = rawSilent.map((s: any) => ({ channelId: s.channel_id, name: channelName(s.channel_id), action: s.action }));
 
+// The table comes with the bot update that adds sanction messages; until then the section says so.
+const sanctionMessagesReady = sanctionTemplatesRes.ok;
+const sanctionTemplates: Record<string, { dm: string; reply: string; log: string }> = {};
+for (const row of sanctionMessagesReady ? await sanctionTemplatesRes.json() : []) {
+  sanctionTemplates[row.type] = { dm: row.dm_template ?? '', reply: row.reply_template ?? '', log: row.log_template ?? '' };
+}
+const embedTemplateNames: string[] = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
+
 const rawEscalation = escalationRes.ok ? await escalationRes.json() : [];
 const escalationRules = rawEscalation.map((e: any) => ({
   warnCount: e.warn_count, action: e.action,
@@ -198,6 +221,9 @@ const escalationRules = rawEscalation.map((e: any) => ({
   cases={cases}
   silentChannels={silentChannels}
   escalationRules={escalationRules}
+  sanctionTemplates={sanctionTemplates}
+  sanctionMessagesReady={sanctionMessagesReady}
+  embedTemplateNames={embedTemplateNames}
   roles={roles}
   channels={channels}
   saved={saved}
