@@ -145,3 +145,57 @@ export function renderMessage(message: PreviewMessage, ctx: PreviewContext = def
   const empty = !content && !embeds && !buttons ? `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>` : '';
   return `<div class="dp-msg"><img class="dp-avatar" src="${safeUrl(ctx.botIcon)}" alt=""><div class="dp-body"><div class="dp-head"><span class="dp-name">${escapeHtml(ctx.botName)}</span><span class="dp-tag">${escapeHtml(tr(ctx, 'APP'))}</span><span class="dp-time">${escapeHtml(tr(ctx, 'Today at 12:00 PM'))}</span></div>${content}${embeds}${buttons}${empty}</div></div>`;
 }
+
+// ---- Components V2 -------------------------------------------------------------------------------------------------
+
+type V2PreviewNode = { type: number; content?: string; divider?: boolean; spacing?: number; accent_color?: number | null; spoiler?: boolean; media?: { url?: string }; description?: string; items?: { media?: { url?: string }; description?: string }[]; components?: V2PreviewNode[]; accessory?: V2PreviewNode; label?: string; url?: string; emoji?: { name?: string; id?: string; animated?: boolean } };
+
+function previewImage(value: string | undefined, ctx: PreviewContext): string {
+  const raw = (value ?? '').trim();
+  const map: Record<string, string> = { '{user.avatar}': ctx.userAvatar, '{user_avatar}': ctx.userAvatar, '{user.display_avatar}': ctx.userAvatar, '{guild.icon}': ctx.serverIcon, '{server_icon}': ctx.serverIcon };
+  const filled = map[raw] ?? raw;
+  const sample = filled.match(/^\{([a-zA-Z0-9_.:|-]+)\}$/);
+  const withSample = sample ? (ctx.samples?.[sample[1]]?.text ?? '') : filled;
+  return safeUrl(withSample);
+}
+
+function renderV2Button(node: V2PreviewNode, ctx: PreviewContext): string {
+  const label = node.label ? renderMarkdown(node.label, ctx).replace(/<br>/g, ' ') : '';
+  const emoji = node.emoji?.id ? `<img class="dp-emoji" src="https://cdn.discordapp.com/emojis/${escapeHtml(node.emoji.id)}.${node.emoji.animated ? 'gif' : 'png'}?size=32" alt="">` : node.emoji?.name ? `<span>${escapeHtml(node.emoji.name)}</span>` : '';
+  return `<span class="dp-btn">${emoji}${emoji && label ? ' ' : ''}${label}<span class="dp-v2-link" aria-hidden="true">↗</span></span>`;
+}
+
+function renderV2Node(node: V2PreviewNode, ctx: PreviewContext): string {
+  switch (node.type) {
+    case 10: return node.content?.trim() ? `<div class="dp-v2-text">${renderMarkdown(node.content, ctx)}</div>` : '';
+    case 14: return `<div class="dp-v2-sep${node.divider === false ? ' nodivider' : ''}${node.spacing === 2 ? ' large' : ''}"></div>`;
+    case 12: {
+      const items = (node.items ?? []).map((item) => previewImage(item.media?.url, ctx)).filter(Boolean);
+      return items.length ? `<div class="dp-v2-gallery n${Math.min(items.length, 4)}">${items.slice(0, 10).map((src) => `<img src="${src}" alt="">`).join('')}</div>` : '';
+    }
+    case 9: {
+      const text = (node.components ?? []).map((child) => renderV2Node(child, ctx)).join('');
+      const accessory = node.accessory?.type === 11 ? previewImage(node.accessory.media?.url, ctx) : '';
+      const button = node.accessory?.type === 2 ? renderV2Button(node.accessory, ctx) : '';
+      if (!text && !accessory && !button) return '';
+      return `<div class="dp-v2-section"><div class="dp-v2-section-text">${text}</div>${accessory ? `<img class="dp-v2-thumb" src="${accessory}" alt="">` : ''}${button}</div>`;
+    }
+    case 1: {
+      const buttons = (node.components ?? []).filter((b) => b.type === 2 && (b.label || b.emoji?.name)).map((b) => renderV2Button(b, ctx)).join('');
+      return buttons ? `<div class="dp-btn-row">${buttons}</div>` : '';
+    }
+    case 17: {
+      const body = (node.components ?? []).map((child) => renderV2Node(child, ctx)).join('');
+      const accent = typeof node.accent_color === 'number' ? `#${node.accent_color.toString(16).padStart(6, '0')}` : '';
+      return `<div class="dp-v2-container${accent ? '' : ' noaccent'}" style="${accent ? `--dp-c:${accent}` : ''}">${body || `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>`}</div>`;
+    }
+    default: return '';
+  }
+}
+
+/** A Components V2 message as the channel would show it: the bot header, then the components one after the other. */
+export function renderV2Message(doc: { components?: V2PreviewNode[] }, ctx: PreviewContext = defaultContext): string {
+  const body = (doc.components ?? []).map((node) => renderV2Node(node, ctx)).join('');
+  const empty = body ? '' : `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>`;
+  return `<div class="dp-msg"><img class="dp-avatar" src="${safeUrl(ctx.botIcon)}" alt=""><div class="dp-body"><div class="dp-head"><span class="dp-name">${escapeHtml(ctx.botName)}</span><span class="dp-tag">${escapeHtml(tr(ctx, 'APP'))}</span><span class="dp-time">${escapeHtml(tr(ctx, 'Today at 12:00 PM'))}</span></div>${body}${empty}</div></div>`;
+}
