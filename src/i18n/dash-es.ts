@@ -1020,7 +1020,7 @@ export const dashEs: Record<string, string> = {
   "{n} members": "{n} miembros",
   "Members unknown": "Miembros desconocidos",
   "Spoiler: coming soon": "Spoiler: próximamente",
-  "We are adding custom commands written in code, like YAGPDB. They will arrive in a future version, and this page may change when they do.": "Estamos añadiendo comandos personalizados escritos con código, como en YAGPDB. Llegarán en una versión futura y esta página puede cambiar cuando lleguen.",
+  "We are adding custom commands written in code. They will arrive in a future version, and this page may change when they do.": "Estamos añadiendo comandos personalizados escritos con código. Llegarán en una versión futura y esta página puede cambiar cuando lleguen.",
   "Custom command limit reached": "Límite de comandos personalizados alcanzado",
   "Free command limit reached": "Límite de comandos gratis alcanzado",
   "You are using all {n} available custom commands.": "Estás usando los {n} comandos personalizados disponibles.",
