@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import './embeds.css';
 import FormatToolbar from './FormatToolbar';
 import Preview from './Preview';
+import V2Editor from '../v2/V2Editor';
+import V2Preview from '../v2/V2Preview';
 import VariablesPanel from './VariablesPanel';
 import EmbedColorPicker from './EmbedColorPicker';
-import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, normalizeTemplateData, encodeShareCode, decodeShareCode } from './types';
+import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, emptyV2, normalizeTemplateData, encodeShareCode, decodeShareCode } from './types';
+import { questStarterV2 } from '../../utils/questTemplate';
 import { t } from './t';
 
 interface Props {
@@ -113,10 +116,10 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     setDirty(true);
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleCreate(e: React.FormEvent | null, v2 = false) {
+    e?.preventDefault();
     if (!newName.trim()) return;
-    const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: newName.trim() }) });
+    const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: newName.trim(), ...(v2 ? { data: { v2: emptyV2() } } : {}) }) });
     const body = await res.json();
     if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return; }
     setNames((n) => [...n, body.name].sort());
@@ -160,14 +163,14 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     let imported: TemplateData | null = decodeShareCode(text);
     if (!imported) {
       try { imported = normalizeTemplateData(JSON.parse(text)); } catch { imported = null; }
-      if (imported && imported.embeds.length === 0 && !imported.content) imported = null;
+      if (imported && !imported.v2 && imported.embeds.length === 0 && !imported.content) imported = null;
     }
     if (!imported) { setFlash(t("That import code isn't valid.")); return; }
     setPendingImport({ data: imported, name: 'imported' });
   }
 
   async function handleCopy(kind: 'code' | 'json') {
-    const text = kind === 'code' ? encodeShareCode(data) : JSON.stringify(data, null, 2);
+    const text = kind === 'code' ? encodeShareCode(data) : data.v2 ? JSON.stringify({ flags: 32768, components: data.v2.components }, null, 2) : JSON.stringify(data, null, 2);
     try { await navigator.clipboard.writeText(text); setFlash(t('Copied.')); } catch { setFlash(t("Couldn't copy, try again.")); }
   }
 
@@ -240,6 +243,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <form className="ebr-create" onSubmit={handleCreate}>
             <input type="text" placeholder="new-template-name" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
             <button type="submit" className="btn btn-ghost btn-sm">{t('+ New')}</button>
+            {apiPath === 'embeds-api' && <button type="button" className="btn btn-ghost btn-sm" title={t('A message made of containers, pictures and sections (Components V2)')} onClick={() => handleCreate(null, true)} disabled={!newName.trim()}>{t('+ New V2')}</button>}
           </form>
         </aside>
 
@@ -251,11 +255,21 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}</div>
-              <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} sampleSet={sampleSet} />
+              {data.v2 ? <V2Preview doc={data.v2} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} /> : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} sampleSet={sampleSet} />}
             </div>
 
             <div className="ebr-form-col">
               <VariablesPanel groups={variableGroups} />
+              {data.v2 ? (
+                <>
+                  <p className="v2e-intro">{t('A Components V2 message: containers with text, pictures, sections and link buttons. It has no message text and no embeds.')}</p>
+                  <div className="v2e-starters">
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm(t('Replace this design with the Petto quest alert design?'))) update({ v2: questStarterV2() }); }}>{t('Use the quest alert design')}</button>
+                  </div>
+                  <V2Editor doc={data.v2} onChange={(v2) => update({ v2 })} />
+                </>
+              ) : (
+              <>
               <div className="ebr-field">
                 <div className="ebr-field-head"><label>{t('Message content')}</label></div>
                 <textarea ref={contentRef} rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
@@ -364,6 +378,9 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                 ))}
                 {data.buttons.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={addButtonRow}>{t('+ Add button row')}</button>}
               </div>
+
+              </>
+              )}
 
               <div className="ebr-actions">
                 <button type="button" className="btn btn-accent btn-sm" onClick={handleSave} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
