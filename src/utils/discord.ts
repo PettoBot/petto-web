@@ -1,4 +1,5 @@
 import { memoPerRequest } from './requestMemo';
+import { nameStyleBody, type NameStyle } from './nameStyle';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
 
@@ -136,6 +137,19 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
     method: 'PATCH',
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+  return res.ok;
+}
+
+/**
+ * Sets, or clears with `null`, the display name style of the bot in one server. Its own call: the fields are not in
+ * Discord's documentation, so when Discord refuses them the nickname, avatar, banner and bio are not affected.
+ */
+export async function setBotNameStyle(guildId: string, botToken: string, style: NameStyle | null): Promise<boolean> {
+  const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(nameStyleBody(style)),
   });
   return res.ok;
 }

@@ -3,7 +3,8 @@ export const prerender = false;
 import DashCustomize from '../../../../components/DashCustomize.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { getGuildInfo, imageUrlToDataUri, fileToDataUri, setBotGuildProfile, getGuildMemberSelf, getBotProfile, getBotDescription } from '../../../../utils/discord';
+import { getGuildInfo, imageUrlToDataUri, fileToDataUri, setBotGuildProfile, setBotNameStyle, getGuildMemberSelf, getBotProfile, getBotDescription } from '../../../../utils/discord';
+import { parseNameStyleForm, readNameStyle, sameNameStyle } from '../../../../utils/nameStyle';
 import { hasPremiumForGuild, resetGuildPremiumCustomization } from '../../../../utils/premium';
 
 const { id } = Astro.params as { id: string };
@@ -38,6 +39,27 @@ async function loadConfig() {
   const res = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, { headers: apiHeaders });
   const rows = res.ok ? await res.json() : [];
   return rows[0] ?? { bot_nickname: null, bot_avatar_url: null, bot_banner_url: null, bot_description: null };
+}
+
+// The name style lives in its own column and its own requests: a database that does not have the column yet, or a
+// Discord that refuses the fields, must not stop the rest of the profile from loading or saving.
+async function loadNameStyle() {
+  try {
+    const res = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=bot_name_style`, { headers: apiHeaders });
+    const rows = res.ok ? await res.json() : [];
+    return readNameStyle(rows[0]?.bot_name_style);
+  } catch {
+    return null;
+  }
+}
+
+async function saveNameStyle(style: ReturnType<typeof readNameStyle>): Promise<boolean> {
+  const res = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...apiHeaders, Prefer: 'return=minimal' },
+    body: JSON.stringify({ bot_name_style: style, updated_at: new Date().toISOString() }),
+  }).catch(() => null);
+  return Boolean(res?.ok);
 }
 
 let saved = false;
@@ -75,7 +97,12 @@ if (Astro.request.method === 'POST') {
   // Reset buttons are independent actions. They must persist immediately and
   // must not accidentally save other unsaved fields from the form at the same
   // time (for example, an avatar reset must not also save a draft nickname).
-  if (['nickname', 'avatar', 'banner', 'description'].includes(resetField)) {
+  if (resetField === 'name_style') {
+    const applied = await setBotNameStyle(id, botToken, null);
+    if (!applied) discordWarning = true;
+    if (await saveNameStyle(null)) saved = true;
+    else error = 'discord_rejected';
+  } else if (['nickname', 'avatar', 'banner', 'description'].includes(resetField)) {
     const resetPatch = {
       nickname: { discord: { nick: null }, database: { bot_nickname: null } },
       avatar: { discord: { avatarDataUri: null }, database: { bot_avatar_url: null } },
@@ -158,15 +185,30 @@ if (Astro.request.method === 'POST') {
 
       if (dbRes.ok) saved = true;
       else error = 'discord_rejected';
+
+      // The name style, only when it changed. Discord's answer decides: a style it refuses is not saved.
+      const parsedStyle = parseNameStyleForm(form);
+      if ('error' in parsedStyle) {
+        error = parsedStyle.error;
+        saved = false;
+      } else if (!sameNameStyle(parsedStyle.style, await loadNameStyle())) {
+        if (await setBotNameStyle(id, botToken, parsedStyle.style)) {
+          if (!(await saveNameStyle(parsedStyle.style))) error = 'discord_rejected';
+        } else {
+          error = 'name_style_rejected';
+          saved = false;
+        }
+      }
     }
   }
 }
 
-const [guildInfo, botProfile, globalDescription, config] = await Promise.all([
+const [guildInfo, botProfile, globalDescription, config, nameStyle] = await Promise.all([
   getGuildInfo(id, botToken),
   getBotProfile(botToken),
   getBotDescription(botToken),
   loadConfig(),
+  loadNameStyle(),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const memberSelf = botProfile ? await getGuildMemberSelf(id, botToken, botProfile.id) : null;
@@ -204,4 +246,5 @@ const effectiveDescription = descriptionValue || globalDescription;
   discordWarning={discordWarning}
   error={error}
   premiumActive={premiumActive}
+  nameStyle={nameStyle}
 />
