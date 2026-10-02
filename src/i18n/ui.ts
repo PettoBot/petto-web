@@ -160,6 +160,9 @@ export const ui = {
       title: 'Every version, what changed and when.',
       lede: "Petto's release history, with the changes that actually shipped and when they landed.",
       latest: 'Latest',
+      allVersions: 'All versions',
+      copyLink: 'Copy link',
+      linkCopied: 'Link copied',
       entries: [
         {
           version: '0.6.1',
@@ -1168,6 +1171,9 @@ export const ui = {
       title: 'Cada versión, qué cambió y cuándo.',
       lede: 'El historial de versiones de Petto, con los cambios que realmente se publicaron y cuándo llegaron.',
       latest: 'Última',
+      allVersions: 'Todas las versiones',
+      copyLink: 'Copiar enlace',
+      linkCopied: 'Enlace copiado',
       entries: [
         {
           version: '0.6.1',
@@ -2176,6 +2182,9 @@ export const ui = {
       title: 'Cada versão, o que mudou e quando.',
       lede: 'O histórico de versões do Petto, com as mudanças que realmente foram publicadas e quando chegaram.',
       latest: 'Mais recente',
+      allVersions: 'Todas as versões',
+      copyLink: 'Copiar link',
+      linkCopied: 'Link copiado',
       entries: [
         {
           version: '0.6.1',
