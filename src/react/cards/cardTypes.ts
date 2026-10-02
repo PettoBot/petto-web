@@ -18,11 +18,17 @@ export interface AvatarLayer extends LayerBase {
 export interface ShapeLayer extends LayerBase {
   type: 'shape'; shape: 'rect' | 'circle'; w: number; h: number; fill: string; radius: number; stroke: Stroke | null; shadow: Shadow | null;
 }
-export type Layer = TextLayer | ImageLayer | AvatarLayer | ShapeLayer;
+export interface BarLayer extends LayerBase {
+  type: 'bar'; w: number; h: number; radius: number; fill: string; fill2: string; track: string; trackOpacity: number; value: string; shadow: Shadow | null;
+}
+export type Layer = TextLayer | ImageLayer | AvatarLayer | ShapeLayer | BarLayer;
+export type Kind = 'welcome' | 'rank';
 
 export interface Basic {
   preset: string; title: string; name: string; subtitle: string; textColor: string; accent: string; font: string;
   avatarShape: 'circle' | 'rounded' | 'square'; showAvatar: boolean; showTitle: boolean; showName: boolean; showSubtitle: boolean;
+  /** Only in rank cards: the third line, such as the rank. */
+  extra?: string; showExtra?: boolean;
 }
 export interface Background {
   color: string;
@@ -30,7 +36,7 @@ export interface Background {
   image: { src: string; fit: Fit; blur: number } | null;
   overlay: { color: string; opacity: number } | null;
 }
-export interface CardData { v?: number; mode: Mode; width: number; height: number; background: Background; basic?: Basic; layers: Layer[] }
+export interface CardData { v?: number; kind?: Kind; mode: Mode; width: number; height: number; background: Background; basic?: Basic; layers: Layer[] }
 
 export interface FontInfo { family: string; weights: number[]; premium: boolean }
 export interface AssetInfo { id: string; name: string; width: number; height: number; size: number }
@@ -38,7 +44,7 @@ export interface Overview {
   ok: boolean; premium: boolean;
   limits: { cards: number; assets: number; storageBytes: number; uploadBytes: number };
   usage: { cards: number; assets: number; storageBytes: number };
-  presets: string[]; fonts: FontInfo[];
+  presets: string[]; rankPresets?: string[]; fonts: FontInfo[];
   cards: { name: string; data: CardData; updated_at?: string }[];
   assets: AssetInfo[];
 }
@@ -49,9 +55,22 @@ export const BASIC_DEFAULTS: Basic = {
   showAvatar: true, showTitle: true, showName: true, showSubtitle: true,
 };
 
-export function newCard(): CardData {
+export const RANK_DEFAULTS: Basic = {
+  preset: 'rank', title: 'LEVEL {level}', name: '{user.display_name}', subtitle: '{level_xp_current} / {level_xp_needed} XP', extra: 'RANK #{level_rank}',
+  textColor: '#ffffff', accent: '#8399ff', font: 'Poppins', avatarShape: 'circle',
+  showAvatar: true, showTitle: true, showName: true, showSubtitle: true, showExtra: true,
+};
+
+export function newCard(kind: Kind = 'welcome'): CardData {
+  if (kind === 'rank') {
+    return {
+      kind, mode: 'basic', width: 1024, height: 320,
+      background: { color: '#1e1f22', gradient: { from: '#2b2f6b', to: '#4a2b52', angle: 120 }, image: null, overlay: null },
+      basic: { ...RANK_DEFAULTS }, layers: [],
+    };
+  }
   return {
-    mode: 'basic', width: 1024, height: 500,
+    kind, mode: 'basic', width: 1024, height: 500,
     background: { color: '#1e1f22', gradient: { from: '#5865f2', to: '#eb459e', angle: 135 }, image: null, overlay: null },
     basic: { ...BASIC_DEFAULTS }, layers: [],
   };
@@ -64,6 +83,7 @@ export function newLayer(type: Layer['type'], width: number, height: number): La
   const base = { id: uid(type), x: Math.round(width / 2), y: Math.round(height / 2), rotation: 0, opacity: 1 };
   if (type === 'text') return { ...base, type, text: 'Your text', size: 56, font: 'Poppins', weight: 700, color: '#ffffff', align: 'center', w: 0, lineHeight: 1.15, spacing: 0, upper: false, stroke: null, shadow: { color: '#000000', blur: 8, x: 0, y: 2 } };
   if (type === 'image') return { ...base, type, src: '', w: 240, h: 240, fit: 'cover', radius: 0, shadow: null };
+  if (type === 'bar') return { ...base, type, w: 520, h: 30, radius: 15, fill: '#8399ff', fill2: '', track: '#000000', trackOpacity: 0.45, value: '{level_progress}', shadow: null };
   if (type === 'avatar') return { ...base, type, source: 'user', size: 220, shape: 'circle', border: { color: '#ffffff', width: 8 }, shadow: null };
   return { ...base, type, shape: 'rect', w: 300, h: 120, fill: '#000000', radius: 24, stroke: null, shadow: null };
 }
@@ -83,4 +103,8 @@ export function layerBox(layer: Layer): { x: number; y: number; w: number; h: nu
 
 export const VARIABLE_CHOICES = [
   '{user.display_name}', '{user.name}', '{server_name}', '{server_membercount}', '{server_membercount_ordinal}', '{user.id}',
+];
+/** The variables of a rank card, which the bot fills in with the member's progress. */
+export const RANK_VARIABLE_CHOICES = [
+  '{user.display_name}', '{level}', '{level_next}', '{level_rank}', '{level_rank_total}', '{level_xp}', '{level_xp_current}', '{level_xp_needed}', '{level_xp_to_next}', '{level_progress}', '{level_streak}', '{level_messages}',
 ];

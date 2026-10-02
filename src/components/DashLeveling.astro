@@ -61,6 +61,11 @@ interface VoiceConfig {
   ignoredChannelIds: string[];
 }
 
+interface RankConfig { style: string; card: string; notifyCard: string; voiceNotifyCard: string }
+interface Rules { minMessageChars: number; antiRepeat: boolean; voiceMinMembers: number; voiceIgnoreMuted: boolean; dailyBonusXp: number; streakBonusXp: number; streakMaxDays: number }
+interface CardRow { name: string; kind: string; data: unknown }
+interface XpEvent { id: string; name: string; multiplier: number; source: string; startsAt: string; endsAt: string }
+
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string;
@@ -75,16 +80,24 @@ interface Props {
   voiceConfig: VoiceConfig;
   voiceLeaderboard: LeaderboardRow[];
   embedTemplateNames: string[];
+  rank: RankConfig;
+  rules: Rules;
+  cards: CardRow[];
+  events: XpEvent[];
   saved: boolean;
   saveError: boolean;
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, config, rewards, roles, channels, voiceChannels, leaderboard, voiceConfig, voiceLeaderboard, embedTemplateNames, saved, saveError, section } = Astro.props;
-const sectionMeta: Record<string, string> = { settings: dt('Leveling settings'), voice: dt('Voice leveling'), rewards: dt('Level rewards'), leaderboard: dt('Leaderboard'), 'leaderboard-voice': dt('Voice leaderboard') };
+const { user, guildId, guildName, guildIcon, config, rewards, roles, channels, voiceChannels, leaderboard, voiceConfig, voiceLeaderboard, embedTemplateNames, rank, rules, cards, events, saved, saveError, section } = Astro.props;
+const sectionMeta: Record<string, string> = { settings: dt('Leveling settings'), voice: dt('Voice leveling'), rank: dt('Rank card'), rules: dt('Rules and events'), rewards: dt('Level rewards'), leaderboard: dt('Leaderboard'), 'leaderboard-voice': dt('Voice leaderboard') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
 const leaderboardIsVoice = selectedSection === 'leaderboard-voice';
 const displayLeaderboard = leaderboardIsVoice ? voiceLeaderboard : leaderboard;
+const rankCards = cards.filter((card) => card.kind === 'rank');
+const sourceLabel = (source: string) => (source === 'text' ? dt('Messages only') : source === 'voice' ? dt('Voice only') : dt('All XP'));
+const eventTime = (value: string) => new Date(value).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+const eventRunning = (event: XpEvent) => new Date(event.startsAt).getTime() <= Date.now();
 const curvePreviewLevels = [1, 2, 3, 4, 5, 7, 10, 25, 50, 100, 200];
 const curveNumber = (value: unknown, fallback: number) => {
   const parsed = Number(value);
@@ -392,6 +405,111 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
     <button type="submit" class="btn btn-accent btn-sm">{dt('Save voice leveling')}</button>
   </form>
 
+
+  <div class:list={['lv-section', 'lv-rank-section', { 'lv-section-hidden': selectedSection !== 'rank' }]}>
+    <h2><Icon name="ph:identification-badge-fill" width="15" height="15" />{dt('Rank card')}</h2>
+    <p class="lv-note">{dt('How /rank answers. The card is a picture with the avatar, the name, the level and a progress bar; the embed is the text version. Make or edit cards in Image cards.')}</p>
+    <div class="lv-rank-layout">
+      <form method="POST" class="lv-form lv-rank-form">
+        <input type="hidden" name="action" value="rank" />
+        <div class="lv-field lv-field-wide">
+          <label>{dt('Answer with')}</label>
+          <div class="lv-choice">
+            {[['card', dt('Card')], ['embed', dt('Embed')], ['both', dt('Card and embed')]].map(([value, label]) => (
+              <label class="lv-choice-item"><input type="radio" name="rank_style" value={value} checked={rank.style === value} /><span>{label}</span></label>
+            ))}
+          </div>
+        </div>
+        <div class="lv-field lv-field-wide">
+          <label>{dt('Rank card')}</label>
+          <select name="rank_card" id="lvRankCard">
+            <option value="" selected={!rank.card}>{dt('Default rank card')}</option>
+            {rankCards.map((card) => <option value={card.name} selected={rank.card === card.name}>{card.name}</option>)}
+            {rank.card && !rankCards.some((card) => card.name === rank.card) && <option value={rank.card} selected>{rank.card}</option>}
+          </select>
+          <span class="lv-hint"><a href={`/dash/guild/${guildId}/cards`}>{dt('Make or edit cards')}</a></span>
+        </div>
+        <div class="lv-grid">
+          <div class="lv-field">
+            <label>{dt('Level-up card')}</label>
+            <select name="notify_card">
+              <option value="" selected={!rank.notifyCard}>{dt('No card')}</option>
+              {cards.map((card) => <option value={card.name} selected={rank.notifyCard === card.name}>{card.name}</option>)}
+            </select>
+          </div>
+          <div class="lv-field">
+            <label>{dt('Voice level-up card')}</label>
+            <select name="voice_notify_card">
+              <option value="" selected={!rank.voiceNotifyCard}>{dt('Same as messages')}</option>
+              {cards.map((card) => <option value={card.name} selected={rank.voiceNotifyCard === card.name}>{card.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-accent btn-sm">{dt('Save changes')}</button>
+      </form>
+      <div class="lv-rank-preview">
+        <div class="lv-preview-label">{dt('Card preview')}</div>
+        <div class="lv-rank-stage"><img id="lvRankImg" alt="" /></div>
+        <div class="lv-preview-label">{dt('Embed preview')}</div>
+        <div class="lv-embed" aria-hidden="true">
+          <div class="lv-embed-author"><span class="lv-embed-dot"></span>{user.username}</div>
+          <div class="lv-embed-title">{dt('Level')} 12</div>
+          <div>{dt('Rank')} <b>#3</b> {dt('of')} 120</div>
+          <div class="lv-embed-bar"><span style="width:60%"></span></div>
+          <div><code>1,420 / 2,350 XP</code> · 930 {dt('to level')} 13</div>
+          <div class="lv-embed-fields"><div><b>{dt('Total XP')}</b><br />23,450</div><div><b>{dt('Messages')}</b><br />3,210</div><div><b>{dt('Streak')}</b><br />4 {dt('days')}</div><div><b>{dt('This week')}</b><br />#2 · 400 XP</div></div>
+        </div>
+      </div>
+    </div>
+    <script type="application/json" id="lvCardsData" set:html={JSON.stringify(Object.fromEntries(cards.map((card) => [card.name, card.data])))} />
+  </div>
+
+  <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rules' }]}>
+    <h2><Icon name="ph:shield-check-fill" width="15" height="15" />{dt('Rules')}</h2>
+    <p class="lv-note">{dt('What counts as activity, and the bonus for coming back every day.')}</p>
+    <form method="POST" class="lv-form">
+      <input type="hidden" name="action" value="rules" />
+      <div class="lv-grid">
+        <div class="lv-field"><label>{dt('Minimum message length')}</label><input type="number" name="min_message_chars" value={rules.minMessageChars} min="0" max="200" /><span class="lv-hint">{dt('Links, mentions and custom emoji do not count. 0 turns it off.')}</span></div>
+        <div class="lv-field"><label>{dt('People needed in voice')}</label><input type="number" name="voice_min_members" value={rules.voiceMinMembers} min="1" max="20" /><span class="lv-hint">{dt('Voice XP only while at least this many people are in the channel.')}</span></div>
+        <label class="lv-check"><input type="checkbox" name="anti_repeat" checked={rules.antiRepeat} />{dt('The same message again within a minute earns no XP')}</label>
+        <label class="lv-check"><input type="checkbox" name="voice_ignore_muted" checked={rules.voiceIgnoreMuted} />{dt('No voice XP while muted')}</label>
+        <div class="lv-field"><label>{dt('Daily bonus XP')}</label><input type="number" name="daily_bonus_xp" value={rules.dailyBonusXp} min="0" max="100000" /><span class="lv-hint">{dt('Given on the first activity of each day. 0 turns it off.')}</span></div>
+        <div class="lv-field"><label>{dt('Streak bonus XP per day')}</label><input type="number" name="streak_bonus_xp" value={rules.streakBonusXp} min="0" max="10000" /><span class="lv-hint">{dt('Added for each earlier day in a row.')}</span></div>
+        <div class="lv-field"><label>{dt('Streak bonus stops after (days)')}</label><input type="number" name="streak_max_days" value={rules.streakMaxDays} min="1" max="365" /></div>
+      </div>
+      <button type="submit" class="btn btn-accent btn-sm">{dt('Save changes')}</button>
+    </form>
+
+    <h2 class="lv-events-title"><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('XP events')}</h2>
+    <p class="lv-note">{dt('A boost for a few hours or days, such as double XP for a weekend.')}</p>
+    <div class="lv-rewards">
+      {events.length === 0 && <p class="lv-empty-note">{dt('No XP events are running or coming.')}</p>}
+      {events.map((event) => (
+        <form method="POST" class="lv-reward-row">
+          <input type="hidden" name="action" value="delete_event" />
+          <input type="hidden" name="event_id" value={event.id} />
+          <span class="lv-reward-level">{event.name}</span>
+          <span class="lv-reward-role">×{event.multiplier} · {sourceLabel(event.source)} · {eventRunning(event) ? dt('until {a}', { a: eventTime(event.endsAt) }) : dt('from {a}', { a: eventTime(event.startsAt) })}</span>
+          <button type="submit" class="lv-reward-del" title={dt('Remove')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+        </form>
+      ))}
+    </div>
+    <form method="POST" class="lv-form lv-event-form">
+      <input type="hidden" name="action" value="add_event" />
+      <div class="lv-grid">
+        <div class="lv-field"><label>{dt('Name')}</label><input type="text" name="event_name" maxlength="60" placeholder={dt('Double XP weekend')} required /></div>
+        <div class="lv-field"><label>{dt('Multiplier')}</label><input type="number" name="event_multiplier" value="2" min="1.1" max="20" step="0.1" required /></div>
+        <div class="lv-field"><label>{dt('Applies to')}</label>
+          <select name="event_source"><option value="all">{dt('All XP')}</option><option value="text">{dt('Messages only')}</option><option value="voice">{dt('Voice only')}</option></select>
+        </div>
+        <div class="lv-field"><label>{dt('Lasts (hours)')}</label><input type="number" name="event_duration" value="48" min="1" max="1440" step="1" required /></div>
+        <div class="lv-field"><label>{dt('Starts in (hours)')}</label><input type="number" name="event_start_in" value="0" min="0" max="720" step="1" /></div>
+      </div>
+      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add event')}</button>
+    </form>
+  </div>
+
   <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rewards' }]}>
     <h2><Icon name="ph:trophy-fill" width="15" height="15" />{dt('Level rewards')}</h2>
     <div class="lv-rewards">
@@ -562,6 +680,37 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   window.PettoVoiceLevelingInit(document);
 </script>
 
+<script>
+  // @ts-nocheck
+  // The picture of the rank card is drawn by the bot, so what shows here is what members get.
+  window.PettoRankPreviewInit = (root = document) => {
+    const select = root.querySelector('#lvRankCard');
+    const image = root.querySelector('#lvRankImg');
+    const dataEl = root.querySelector('#lvCardsData');
+    if (!select || !image || !dataEl || select.dataset.lvBound) return;
+    select.dataset.lvBound = '1';
+    const cards = JSON.parse(dataEl.textContent || '{}');
+    const guildId = (location.pathname.match(/guild\/(\d+)/) ?? [])[1];
+    const fallback = { kind: 'rank', mode: 'basic', basic: { preset: 'rank', accent: '#8399ff', title: 'LEVEL {level}' }, background: { color: '#1e1f22', gradient: { from: '#2b2f6b', to: '#4a2b52', angle: 120 } } };
+    let sequence = 0;
+    let objectUrl = '';
+    async function show() {
+      const mine = ++sequence;
+      try {
+        const res = await fetch(`/dash/guild/${guildId}/cards-api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'preview', data: cards[select.value] ?? fallback }) });
+        if (!res.ok || mine !== sequence) return;
+        const url = URL.createObjectURL(await res.blob());
+        image.src = url;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = url;
+      } catch { /* The preview is a convenience, the form works without it. */ }
+    }
+    select.addEventListener('change', show);
+    show();
+  };
+  window.PettoRankPreviewInit(document);
+</script>
+
 <style>
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
@@ -586,6 +735,30 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   }
   .lv-section-label :global(svg) { color: var(--accent); }
   .lv-section-hidden { display: none; }
+  .lv-note { font-size: 13px; color: var(--text-muted); margin: -6px 0 16px; max-width: 70ch; }
+  .lv-hint a { color: var(--accent); }
+  .lv-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
+  .lv-events-title { margin-top: 34px; }
+  .lv-event-form { margin-top: 14px; }
+  .lv-rank-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); gap: 32px; align-items: start; }
+  .lv-rank-form { margin-bottom: 0; }
+  .lv-choice { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lv-choice-item { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raise); font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer; }
+  .lv-choice-item:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .lv-rank-preview { display: grid; gap: 8px; position: sticky; top: 90px; }
+  .lv-preview-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); margin-top: 6px; }
+  .lv-rank-stage { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: repeating-conic-gradient(var(--card) 0% 25%, var(--bg-raise) 0% 50%) 0 0 / 16px 16px; min-height: 120px; }
+  .lv-rank-stage img { display: block; width: 100%; height: auto; }
+  .lv-embed { display: grid; gap: 4px; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #8399ff; background: #2b2d31; color: #dbdee1; font-size: 13px; line-height: 1.45; }
+  .lv-embed code { font-family: var(--mono); background: #1e1f22; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .lv-embed-author { display: flex; align-items: center; gap: 7px; font-weight: 600; color: #f2f3f5; font-size: 12.5px; }
+  .lv-embed-dot { width: 18px; height: 18px; border-radius: 50%; background: #4e5058; }
+  .lv-embed-title { font-size: 18px; font-weight: 700; color: #f2f3f5; margin-top: 4px; }
+  .lv-embed-bar { height: 10px; border-radius: 6px; background: #1e1f22; overflow: hidden; margin: 4px 0; }
+  .lv-embed-bar span { display: block; height: 100%; background: #8399ff; border-radius: 6px; }
+  .lv-embed-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin-top: 6px; font-size: 12.5px; }
+  @media (max-width: 1100px) { .lv-rank-layout { grid-template-columns: 1fr; } .lv-rank-preview { position: static; } }
+
 
   .lv-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
   .lv-switch input { opacity: 0; width: 0; height: 0; }

@@ -1,7 +1,7 @@
 // Draws an advanced image card in the browser, with the same steps as the bot's renderer (src/imgutils/cardRenderer.js
 // in petto-bot), so a layer follows the pointer while it is dragged instead of waiting for the bot to draw again.
 // The saved card is still drawn by the bot when a message is sent. Keep the two in step when one changes.
-import type { AvatarLayer, CardData, ImageLayer, Layer, ShapeLayer, TextLayer } from './cardTypes';
+import type { AvatarLayer, BarLayer, CardData, ImageLayer, Layer, ShapeLayer, TextLayer } from './cardTypes';
 import { tokenValues, type TokenContext } from '../../utils/variableSamples';
 
 const MAX_TEXT_LINES = 12;
@@ -198,6 +198,37 @@ async function drawImage(ctx: Ctx, layer: ImageLayer, env: CardEnv) {
   ctx.restore();
 }
 
+function drawBar(ctx: Ctx, layer: BarLayer, env: CardEnv) {
+  const parsed = parseFloat(resolveText(layer.value ?? '', env).replace(',', '.'));
+  const percent = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0;
+  const left = -layer.w / 2;
+  const top = -layer.h / 2;
+  setShadow(ctx, layer.shadow);
+  ctx.save();
+  ctx.globalAlpha *= layer.trackOpacity;
+  ctx.fillStyle = layer.track;
+  roundedPath(ctx, left, top, layer.w, layer.h, layer.radius);
+  ctx.fill();
+  ctx.restore();
+  clearShadow(ctx);
+  const filled = (layer.w * percent) / 100;
+  if (filled <= 0) return;
+  ctx.save();
+  roundedPath(ctx, left, top, layer.w, layer.h, layer.radius);
+  ctx.clip();
+  if (layer.fill2) {
+    const gradient = ctx.createLinearGradient(left, 0, left + layer.w, 0);
+    gradient.addColorStop(0, layer.fill);
+    gradient.addColorStop(1, layer.fill2);
+    ctx.fillStyle = gradient;
+  } else {
+    ctx.fillStyle = layer.fill;
+  }
+  roundedPath(ctx, left, top, filled, layer.h, Math.min(layer.radius, filled / 2));
+  ctx.fill();
+  ctx.restore();
+}
+
 function avatarPath(ctx: Ctx, layer: AvatarLayer) {
   const half = layer.size / 2;
   if (layer.shape === 'circle') {
@@ -302,6 +333,7 @@ export async function drawCard(target: HTMLCanvasElement, card: CardData, env: C
       if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
       if (layer.type === 'shape') drawShape(ctx, layer);
       else if (layer.type === 'image') await drawImage(ctx, layer, env);
+      else if (layer.type === 'bar') drawBar(ctx, layer, env);
       else if (layer.type === 'avatar') drawAvatar(ctx, layer, await loadPicture(layer.source === 'server' ? env.serverIconUrl : env.avatarUrl));
       else drawText(ctx, layer, env);
     } finally {
