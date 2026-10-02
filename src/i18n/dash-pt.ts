@@ -1020,7 +1020,7 @@ export const dashPt: Record<string, string> = {
   "{n} members": "{n} membros",
   "Members unknown": "Membros desconhecidos",
   "Spoiler: coming soon": "Spoiler: em breve",
-  "We are adding custom commands written in code, like YAGPDB. They will arrive in a future version, and this page may change when they do.": "Estamos adicionando comandos personalizados escritos com código, como no YAGPDB. Eles chegarão em uma versão futura e esta página pode mudar quando chegarem.",
+  "We are adding custom commands written in code. They will arrive in a future version, and this page may change when they do.": "Estamos adicionando comandos personalizados escritos com código. Eles chegarão em uma versão futura e esta página pode mudar quando chegarem.",
   "Custom command limit reached": "Limite de comandos personalizados atingido",
   "Free command limit reached": "Limite de comandos grátis atingido",
   "You are using all {n} available custom commands.": "Você está usando todos os {n} comandos personalizados disponíveis.",
