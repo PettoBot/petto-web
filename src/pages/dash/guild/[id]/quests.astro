@@ -5,6 +5,8 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { canUseQuests } from '../../../../utils/questAccess';
+import { questStarterV2 } from '../../../../utils/questTemplate';
+import { validateTemplate, isV2Data } from '../../../../utils/embedSchema';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -26,6 +28,21 @@ let saved = false;
 let tableMissing = false;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
+  if (String(form.get('action') ?? '') === 'create_design') {
+    // A V2 design that starts as the card Petto sends, ready to edit in the Embeds page and used by the alerts.
+    const taken = new Set<string>(((await (await fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name`, { headers: apiHeaders })).json().catch(() => [])) as any[]).map((row) => row.name));
+    let name = 'quest-alert';
+    for (let n = 2; taken.has(name) && n < 50; n += 1) name = `quest-alert-${n}`;
+    const checked = validateTemplate({ v2: questStarterV2() });
+    if (checked.ok) {
+      const created = await fetch(`${apiUrl}/rest/v1/embed_templates`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, name, data: checked.data }) });
+      if (created.ok) {
+        await fetch(`${apiUrl}/rest/v1/quest_config?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, style: 'template', embed_template: name, updated_at: new Date().toISOString() }) });
+        return Astro.redirect(`/dash/guild/${id}/embeds?name=${encodeURIComponent(name)}`);
+      }
+    }
+    return Astro.redirect(`/dash/guild/${id}/quests`);
+  }
   const pick = (name: string, allowed: string[]) => form.getAll(name).map(String).filter((value) => allowed.includes(value));
   const hex = String(form.get('accent_color') ?? '').trim().replace(/^#/, '');
   const style = String(form.get('style') ?? 'card') === 'template' ? 'template' : 'card';
@@ -56,7 +73,7 @@ const [guildInfo, configRes, channelsRes, rolesRes, templatesRes] = await Promis
   fetch(`${apiUrl}/rest/v1/quest_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   getGuildList(Astro, id, botToken, 'channels'),
   getGuildList(Astro, id, botToken, 'roles'),
-  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -77,7 +94,7 @@ const config = {
 };
 const channels = (channelsRes.ok ? await channelsRes.json() : []).filter((ch: any) => ch.type === 0 || ch.type === 5).sort((a: any, b: any) => a.position - b.position).map((ch: any) => ({ id: ch.id, name: ch.name }));
 const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
-const embedTemplateNames = templatesRes.ok ? (await templatesRes.json()).map((t: any) => t.name) : [];
+const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((row: any) => ({ name: row.name as string, v2: isV2Data(row.data) }));
 ---
 <DashQuests
   user={session}
@@ -87,7 +104,7 @@ const embedTemplateNames = templatesRes.ok ? (await templatesRes.json()).map((t:
   config={config}
   channels={channels}
   roles={roles}
-  embedTemplateNames={embedTemplateNames}
+  embedTemplates={embedTemplates}
   ready={ready}
   saved={saved}
 />

@@ -10,7 +10,25 @@ export interface LinkButton { label: string; url: string; emoji: string; disable
 export type CardPlacement = 'default' | 'embed' | 'attachment';
 /** An image card (made in the Image cards editor) sent with the message. */
 export interface CardRef { name: string; placement: CardPlacement }
-export interface TemplateData { content: string; embeds: EmbedData[]; buttons: LinkButton[][]; card?: CardRef }
+export interface TemplateData { content: string; embeds: EmbedData[]; buttons: LinkButton[][]; card?: CardRef; v2?: V2Doc }
+
+// A Components V2 message: containers, text, pictures, sections, dividers and rows of link buttons. It follows Discord's
+// own component JSON, so the bot and the Embed Builder read it as it is. It has no message text and no embeds.
+export interface V2Emoji { name: string; id?: string; animated?: boolean }
+export interface V2Button { type: 2; style: 5; label: string; url: string; emoji?: V2Emoji; disabled?: boolean }
+export interface V2Text { type: 10; content: string }
+export interface V2Separator { type: 14; divider: boolean; spacing: 1 | 2 }
+export interface V2Thumbnail { type: 11; media: { url: string }; description?: string; spoiler?: boolean }
+export interface V2Section { type: 9; components: V2Text[]; accessory?: V2Thumbnail | V2Button }
+export interface V2GalleryItem { media: { url: string }; description?: string; spoiler?: boolean }
+export interface V2Gallery { type: 12; items: V2GalleryItem[] }
+export interface V2Row { type: 1; components: V2Button[] }
+export type V2Child = V2Text | V2Separator | V2Section | V2Gallery | V2Row;
+export interface V2Container { type: 17; accent_color: number | null; spoiler?: boolean; components: V2Child[] }
+export type V2Node = V2Container | V2Child;
+export interface V2Doc { components: V2Node[] }
+
+export const V2_LIMITS = { components: 40, text: 4000, buttonLabel: 80, url: 512, galleryItems: 10, rowButtons: 5, sectionTexts: 3, description: 1024 } as const;
 
 export function emptyEmbed(): EmbedData {
   return { title: '', description: '', color: 0x8399ff, url: '', thumbnail: '', image: '', timestamp: false, author: { name: '' }, footer: { text: '' }, fields: [] };
@@ -21,6 +39,10 @@ export function emptyButton(): LinkButton {
 export function emptyTemplate(): TemplateData {
   return { content: '', embeds: [], buttons: [] };
 }
+export function emptyV2(): V2Doc {
+  return { components: [{ type: 17, accent_color: 0x8399ff, components: [{ type: 10, content: '# Hello {user}' }] }] };
+}
+export const isV2Data = (data: { v2?: V2Doc } | null | undefined): boolean => Boolean(data && Array.isArray(data.v2?.components));
 
 function readCard(raw: any): CardRef | undefined {
   if (!raw || typeof raw !== 'object' || typeof raw.name !== 'string') return undefined;
@@ -32,6 +54,7 @@ function readCard(raw: any): CardRef | undefined {
 /** Reads either the dashboard's own {content, embeds, buttons} shape or the older /embed
  * command's flat single-embed shape, so nothing saved before this builder existed breaks. */
 export function normalizeTemplateData(raw: any): TemplateData {
+  if (raw && typeof raw === 'object' && Array.isArray(raw.v2?.components)) return { content: '', embeds: [], buttons: [], v2: cleanV2(raw.v2) };
   const card = readCard(raw?.card);
   const withCard = (data: TemplateData): TemplateData => (card ? { ...data, card } : data);
   if (raw && Array.isArray(raw.embeds)) {
@@ -67,6 +90,7 @@ export type TemplateCheck = { ok: true; data: TemplateData } | { ok: false; erro
  * Rejects it only when the whole message would be too large for Discord to accept. */
 export function validateTemplate(raw: unknown): TemplateCheck {
   const source = normalizeTemplateData(raw);
+  if (source.v2) return { ok: true, data: { content: '', embeds: [], buttons: [], v2: source.v2 } };
   const data: TemplateData = {
     content: trim(source.content, EMBED_LIMITS.content),
     embeds: source.embeds.slice(0, EMBED_LIMITS.embeds).map((e) => ({
@@ -92,6 +116,7 @@ export function validateTemplate(raw: unknown): TemplateCheck {
 }
 
 const CODE_PREFIX = 'p1.';
+const V2_CODE_PREFIX = 'p2.';
 
 const toBase64Url = (bytes: Uint8Array) => {
   let binary = '';
@@ -105,12 +130,21 @@ const fromBase64Url = (text: string) => {
 
 /** A message as a short text code, for moving it between the Embed Generator and the dashboard. */
 export function encodeShareCode(data: TemplateData): string {
+  if (data.v2) return V2_CODE_PREFIX + toBase64Url(new TextEncoder().encode(JSON.stringify({ components: cleanV2(data.v2).components })));
   return CODE_PREFIX + toBase64Url(new TextEncoder().encode(JSON.stringify(data)));
 }
 
 /** Reads a share code back into a clean template. Returns null for anything that is not a valid code. */
 export function decodeShareCode(code: string): TemplateData | null {
   const text = code.trim();
+  if (text.startsWith(V2_CODE_PREFIX) && text.length <= 40000) {
+    try {
+      const parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(text.slice(V2_CODE_PREFIX.length))));
+      return Array.isArray(parsed?.components) ? { content: '', embeds: [], buttons: [], v2: cleanV2(parsed) } : null;
+    } catch {
+      return null;
+    }
+  }
   if (!text.startsWith(CODE_PREFIX) || text.length > 16000) return null;
   try {
     const parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(text.slice(CODE_PREFIX.length))));
@@ -119,4 +153,73 @@ export function decodeShareCode(code: string): TemplateData | null {
   } catch {
     return null;
   }
+}
+
+// ---- Components V2 -------------------------------------------------------------------------------------------------
+
+const clip = (value: unknown, max: number) => String(value ?? '').slice(0, max);
+const cleanV2Url = (value: unknown) => {
+  const text = clip(value, V2_LIMITS.url).trim();
+  return text === '' || /^\{[a-z_.]+\}$/i.test(text) || /^https?:\/\/\S+$/i.test(text) ? text : '';
+};
+const cleanEmoji = (raw: any): V2Emoji | undefined => {
+  const name = clip(raw?.name, 64);
+  if (!name) return undefined;
+  return /^\d{15,25}$/.test(String(raw?.id ?? '')) ? { name, id: String(raw.id), animated: Boolean(raw.animated) } : { name };
+};
+function cleanButton(raw: any): V2Button | null {
+  if (!raw || raw.type !== 2) return null;
+  const emoji = cleanEmoji(raw.emoji);
+  return { type: 2, style: 5, label: clip(raw.label, V2_LIMITS.buttonLabel), url: cleanV2Url(raw.url), ...(emoji ? { emoji } : {}), ...(raw.disabled ? { disabled: true } : {}) };
+}
+function cleanThumbnail(raw: any): V2Thumbnail | null {
+  if (!raw || raw.type !== 11) return null;
+  return { type: 11, media: { url: cleanV2Url(raw.media?.url) }, ...(raw.description ? { description: clip(raw.description, V2_LIMITS.description) } : {}), ...(raw.spoiler ? { spoiler: true } : {}) };
+}
+
+/** Counts what Discord counts in a V2 message: every component, nested ones too, and the characters of text. */
+export function countV2(doc: V2Doc): { components: number; chars: number } {
+  let components = 0;
+  let chars = 0;
+  const visit = (node: any) => {
+    components += 1;
+    if (typeof node.content === 'string') chars += node.content.length;
+    for (const child of node.components ?? []) visit(child);
+    if (node.accessory) visit(node.accessory);
+  };
+  for (const node of doc.components) visit(node);
+  return { components, chars };
+}
+
+function cleanChild(raw: any): V2Child | null {
+  switch (raw?.type) {
+    case 10: return { type: 10, content: clip(raw.content, V2_LIMITS.text) };
+    case 14: return { type: 14, divider: raw.divider !== false, spacing: raw.spacing === 2 ? 2 : 1 };
+    case 12: return { type: 12, items: (Array.isArray(raw.items) ? raw.items : []).slice(0, V2_LIMITS.galleryItems).map((item: any) => ({ media: { url: cleanV2Url(item?.media?.url) }, ...(item?.description ? { description: clip(item.description, V2_LIMITS.description) } : {}), ...(item?.spoiler ? { spoiler: true } : {}) })) };
+    case 9: {
+      const texts = (Array.isArray(raw.components) ? raw.components : []).filter((t: any) => t?.type === 10).slice(0, V2_LIMITS.sectionTexts).map((t: any) => ({ type: 10 as const, content: clip(t.content, V2_LIMITS.text) }));
+      const accessory = raw.accessory?.type === 11 ? cleanThumbnail(raw.accessory) : raw.accessory?.type === 2 ? cleanButton(raw.accessory) : null;
+      return { type: 9, components: texts.length ? texts : [{ type: 10, content: '' }], ...(accessory ? { accessory } : {}) };
+    }
+    case 1: return { type: 1, components: (Array.isArray(raw.components) ? raw.components : []).slice(0, V2_LIMITS.rowButtons).map(cleanButton).filter(Boolean) as V2Button[] };
+    default: return null;
+  }
+}
+
+/** Cleans anything that claims to be a V2 message into one of the allowed shapes, within Discord's limits. */
+export function cleanV2(raw: any): V2Doc {
+  const doc: V2Doc = { components: [] };
+  for (const node of Array.isArray(raw?.components) ? raw.components : []) {
+    if (node?.type === 17) {
+      const accent = Number.isInteger(node.accent_color) && node.accent_color >= 0 && node.accent_color <= 0xffffff ? node.accent_color : null;
+      const children = (Array.isArray(node.components) ? node.components : []).map(cleanChild).filter(Boolean) as V2Child[];
+      doc.components.push({ type: 17, accent_color: accent, ...(node.spoiler ? { spoiler: true } : {}), components: children });
+    } else {
+      const child = cleanChild(node);
+      if (child) doc.components.push(child);
+    }
+  }
+  // Drop the last nodes while the message is over what Discord accepts, so a saved message is always sendable.
+  while (doc.components.length > 1 && (countV2(doc).components > V2_LIMITS.components || countV2(doc).chars > V2_LIMITS.text)) doc.components.pop();
+  return doc;
 }
