@@ -5,7 +5,7 @@ import { t } from '../embeds/t';
 import { drawCard } from './cardCanvas';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
-  VARIABLE_CHOICES, layerBox, newCard, newLayer,
+  RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
 } from './cardTypes';
 
 interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string }
@@ -23,7 +23,7 @@ const ERRORS: Record<string, string> = {
 };
 const errorText = (code?: string) => (code && ERRORS[code] ? t(ERRORS[code]) : t("Couldn't do that, try again."));
 
-const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel' };
+const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel', rank: 'Side', rankBottom: 'Bottom bar' };
 
 async function call(guildId: string, path: string, init?: RequestInit) {
   return fetch(`/dash/guild/${guildId}/cards-api${path}`, init);
@@ -110,6 +110,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const [draft, setDraft] = useState<CardData>(newCard());
   const [dirty, setDirty] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newKind, setNewKind] = useState<Kind>('welcome');
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -138,7 +139,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     refresh().then((body) => {
       if (!body) return;
       const first = body.cards.find((c) => c.name === initialSelected) ?? body.cards[0];
-      if (first) { setSelected(first.name); setDraft({ ...newCard(), ...first.data }); }
+      if (first) { setSelected(first.name); setDraft({ ...newCard(first.data.kind ?? 'welcome'), ...first.data }); }
     });
   }, [refresh, initialSelected]);
 
@@ -209,7 +210,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     const row = overview?.cards.find((c) => c.name === name);
     setSelected(name);
     stash.current = null;
-    setDraft({ ...newCard(), ...(row?.data ?? {}) });
+    setDraft({ ...newCard(row?.data?.kind ?? 'welcome'), ...(row?.data ?? {}) });
     setDirty(false);
     setActiveLayer(null);
     setPreviewUrl('');
@@ -219,13 +220,13 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     e.preventDefault();
     const name = newName.trim();
     if (!name) return;
-    const data = newCard();
+    const data = newCard(newKind);
     const res = await post(guildId, { action: 'save', name, data });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { setFlash(errorText(body.error)); return; }
     await refresh();
     setSelected(body.name);
-    setDraft({ ...newCard(), ...body.card });
+    setDraft({ ...newCard(body.card?.kind ?? 'welcome'), ...body.card });
     setDirty(false);
     setNewName('');
   }
@@ -249,7 +250,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     const body = await refresh();
     const next = body?.cards[0];
     setSelected(next?.name ?? '');
-    setDraft(next ? { ...newCard(), ...next.data } : newCard());
+    setDraft(next ? { ...newCard(next.data.kind ?? 'welcome'), ...next.data } : newCard());
     setDirty(false);
   }
 
@@ -320,7 +321,10 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   if (loadError) return <p className="ebr-empty-note">{t('Image cards are not available right now.')}</p>;
   if (!overview) return <p className="ebr-empty-note">{t('Loading...')}</p>;
 
-  const basic = draft.basic ?? newCard().basic!;
+  const isRank = draft.kind === 'rank';
+  const basic = draft.basic ?? newCard(draft.kind ?? 'welcome').basic!;
+  const presetList = (isRank ? overview.rankPresets : overview.presets) ?? [];
+  const variableList = isRank ? RANK_VARIABLE_CHOICES : VARIABLE_CHOICES;
   const layer = draft.layers.find((l) => l.id === activeLayer) ?? null;
   const usedFontPremium = draft.mode === 'basic' && (overview.fonts.find((f) => f.family === basic.font)?.premium ?? false);
   const storageMb = (overview.usage.storageBytes / 1048576).toFixed(1);
@@ -333,7 +337,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
         <aside className="ebr-list">
           {overview.cards.length === 0 && <p className="ebr-empty-note">{t('No cards yet.')}</p>}
           {overview.cards.map((c) => (
-            <button key={c.name} type="button" className={`ebr-list-item${c.name === selected ? ' active' : ''}`} onClick={() => pick(c.name)}>{c.name}{c.data.mode === 'advanced' ? ' ★' : ''}</button>
+            <button key={c.name} type="button" className={`ebr-list-item${c.name === selected ? ' active' : ''}`} onClick={() => pick(c.name)}>{c.name}{c.data.kind === 'rank' ? ' · rank' : ''}{c.data.mode === 'advanced' ? ' ★' : ''}</button>
           ))}
           <div className="ebr-limit-note">{overview.usage.cards}/{overview.limits.cards} {t('cards')}</div>
           {!premium && (
@@ -344,7 +348,11 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
             </div>
           )}
           <form className="ebr-create" onSubmit={handleCreate}>
-            <input type="text" placeholder="welcome-card" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <select value={newKind} onChange={(e) => setNewKind(e.target.value as Kind)} aria-label={t('Kind of card')}>
+              <option value="welcome">{t('Welcome style')}</option>
+              <option value="rank">{t('Rank card')}</option>
+            </select>
+            <input type="text" placeholder={newKind === 'rank' ? 'rank-card' : 'welcome-card'} maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
             <button type="submit" className="btn btn-ghost btn-sm" disabled={overview.usage.cards >= overview.limits.cards}>{t('+ New')}</button>
           </form>
         </aside>
@@ -440,13 +448,13 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                 <div className="crd-section">
                   <h3>{t('Layout and text')}</h3>
                   <div className="crd-presets">
-                    {overview.presets.map((p) => (
+                    {presetList.map((p) => (
                       <button key={p} type="button" className={`crd-preset${basic.preset === p ? ' active' : ''}`} onClick={() => editBasic({ preset: p })}>{t(PRESET_LABELS[p] ?? p)}</button>
                     ))}
                   </div>
                   <div className="ebr-field">
                     <div className="ebr-field-head"><label>{t('Variables')}</label></div>
-                    <div className="crd-vars">{VARIABLE_CHOICES.map((v) => <code key={v}>{v}</code>)}</div>
+                    <div className="crd-vars">{variableList.map((v) => <code key={v}>{v}</code>)}</div>
                   </div>
                   <label className="ebr-check"><input type="checkbox" checked={basic.showTitle} onChange={(e) => editBasic({ showTitle: e.target.checked })} />{t('Title')}</label>
                   <input type="text" maxLength={60} value={basic.title} onChange={(e) => editBasic({ title: e.target.value })} />
@@ -454,6 +462,10 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                   <input type="text" maxLength={80} value={basic.name} onChange={(e) => editBasic({ name: e.target.value })} />
                   <label className="ebr-check"><input type="checkbox" checked={basic.showSubtitle} onChange={(e) => editBasic({ showSubtitle: e.target.checked })} />{t('Subtitle')}</label>
                   <input type="text" maxLength={120} value={basic.subtitle} onChange={(e) => editBasic({ subtitle: e.target.value })} />
+                  {isRank && (<>
+                    <label className="ebr-check"><input type="checkbox" checked={basic.showExtra !== false} onChange={(e) => editBasic({ showExtra: e.target.checked })} />{t('Rank text')}</label>
+                    <input type="text" maxLength={40} value={basic.extra ?? ''} onChange={(e) => editBasic({ extra: e.target.value })} />
+                  </>)}
                   <div className="ebr-row-pair">
                     <Field label={t('Text color')}><Color value={basic.textColor} onChange={(textColor) => editBasic({ textColor })} /></Field>
                     <Field label={t('Accent color')}><Color value={basic.accent} onChange={(accent) => editBasic({ accent })} /></Field>
@@ -476,9 +488,9 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                 <div className="crd-section">
                   <h3>{t('Layers')} <span className="ebr-count">{draft.layers.length}/40</span></h3>
                   <div className="crd-add">
-                    {(['text', 'image', 'avatar', 'shape'] as const).map((type) => (
+                    {(['text', 'image', 'avatar', 'shape', 'bar'] as const).map((type) => (
                       <button key={type} type="button" className="btn btn-ghost btn-sm" disabled={draft.layers.length >= 40} onClick={() => { const next = newLayer(type, draft.width, draft.height); edit({ layers: [...draft.layers, next] }); setActiveLayer(next.id); }}>
-                        + {t(type === 'text' ? 'Text' : type === 'image' ? 'Picture' : type === 'avatar' ? 'Avatar' : 'Shape')}
+                        + {t(type === 'text' ? 'Text' : type === 'image' ? 'Picture' : type === 'avatar' ? 'Avatar' : type === 'bar' ? 'Progress bar' : 'Shape')}
                       </button>
                     ))}
                   </div>
@@ -507,7 +519,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
 
                       {layer.type === 'text' && (<>
                         <Field label={t('Text')} wide><textarea rows={2} maxLength={300} value={layer.text} onChange={(e) => editLayer(layer.id, { text: e.target.value })} /></Field>
-                        <div className="crd-vars">{VARIABLE_CHOICES.map((v) => <button key={v} type="button" className="crd-var" onClick={() => editLayer(layer.id, { text: layer.text + v })}>{v}</button>)}</div>
+                        <div className="crd-vars">{variableList.map((v) => <button key={v} type="button" className="crd-var" onClick={() => editLayer(layer.id, { text: layer.text + v })}>{v}</button>)}</div>
                         <div className="ebr-row-pair">
                           <Field label={t('Font')}><select value={layer.font} onChange={(e) => editLayer(layer.id, { font: e.target.value })}>{fontOptions}</select></Field>
                           <Field label={t('Weight')}>
@@ -565,6 +577,24 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                         </div>
                         <Field label={t('Size')}><Num value={layer.size} min={16} max={1200} onChange={(size) => editLayer(layer.id, { size })} /></Field>
                         <StrokeEditor label={t('Border')} value={layer.border} onChange={(border) => editLayer(layer.id, { border })} />
+                        <ShadowEditor value={layer.shadow} onChange={(shadow) => editLayer(layer.id, { shadow })} />
+                      </>)}
+
+                      {layer.type === 'bar' && (<>
+                        <Field label={t('Value, 0 to 100')}><input type="text" maxLength={40} value={layer.value} onChange={(e) => editLayer(layer.id, { value: e.target.value })} /></Field>
+                        <div className="crd-vars">{['{level_progress}', '50', '100'].map((v) => <button key={v} type="button" className="crd-var" onClick={() => editLayer(layer.id, { value: v })}>{v}</button>)}</div>
+                        <div className="crd-grid3">
+                          <Field label={t('Width')}><Num value={layer.w} min={4} max={4000} onChange={(w) => editLayer(layer.id, { w })} /></Field>
+                          <Field label={t('Height')}><Num value={layer.h} min={2} max={500} onChange={(h) => editLayer(layer.id, { h })} /></Field>
+                          <Field label={t('Corner radius')}><Num value={layer.radius} min={0} max={2000} onChange={(radius) => editLayer(layer.id, { radius })} /></Field>
+                        </div>
+                        <div className="ebr-row-pair">
+                          <Field label={t('Bar color')}><Color value={layer.fill} onChange={(fill) => editLayer(layer.id, { fill })} /></Field>
+                          <Field label={t('Track color')}><Color value={layer.track} onChange={(track) => editLayer(layer.id, { track })} /></Field>
+                        </div>
+                        <label className="ebr-check"><input type="checkbox" checked={Boolean(layer.fill2)} onChange={(e) => editLayer(layer.id, { fill2: e.target.checked ? '#eb459e' : '' })} />{t('Gradient bar')}</label>
+                        {layer.fill2 && <Field label={t('Second color')}><Color value={layer.fill2} onChange={(fill2) => editLayer(layer.id, { fill2 })} /></Field>}
+                        <Field label={t('Track opacity')}><input type="range" min={0} max={1} step={0.05} value={layer.trackOpacity} onChange={(e) => editLayer(layer.id, { trackOpacity: Number(e.target.value) })} /></Field>
                         <ShadowEditor value={layer.shadow} onChange={(shadow) => editLayer(layer.id, { shadow })} />
                       </>)}
 

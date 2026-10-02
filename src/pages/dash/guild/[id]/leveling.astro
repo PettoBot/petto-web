@@ -99,6 +99,75 @@ if (Astro.request.method === 'POST') {
     });
     saved = saveResponse.ok;
     saveError = !saveResponse.ok;
+  } else if (action === 'rank') {
+    const cardName = (value: FormDataEntryValue | null) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 40) || null;
+    const style = String(form.get('rank_style') ?? 'card');
+    const saveResponse = await fetch(`${apiUrl}/rest/v1/level_config?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        rank_style: ['card', 'embed', 'both'].includes(style) ? style : 'card',
+        rank_card: cardName(form.get('rank_card')),
+        notify_card: cardName(form.get('notify_card')),
+        voice_notify_card: cardName(form.get('voice_notify_card')),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = saveResponse.ok;
+    saveError = !saveResponse.ok;
+  } else if (action === 'rules') {
+    const saveResponse = await fetch(`${apiUrl}/rest/v1/level_config?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        min_message_chars: Math.max(0, Math.min(200, Math.floor(formNumber(form, 'min_message_chars', 3)))),
+        anti_repeat: form.get('anti_repeat') === 'on',
+        voice_min_members: Math.max(1, Math.min(20, Math.floor(formNumber(form, 'voice_min_members', 2)))),
+        voice_ignore_muted: form.get('voice_ignore_muted') === 'on',
+        daily_bonus_xp: Math.max(0, Math.min(100000, Math.floor(formNumber(form, 'daily_bonus_xp', 0)))),
+        streak_bonus_xp: Math.max(0, Math.min(10000, Math.floor(formNumber(form, 'streak_bonus_xp', 0)))),
+        streak_max_days: Math.max(1, Math.min(365, Math.floor(formNumber(form, 'streak_max_days', 7)))),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = saveResponse.ok;
+    saveError = !saveResponse.ok;
+  } else if (action === 'add_event') {
+    const name = String(form.get('event_name') ?? '').trim().slice(0, 60);
+    const multiplier = Math.round(formNumber(form, 'event_multiplier', 2) * 100) / 100;
+    const source = String(form.get('event_source') ?? 'all');
+    const startInHours = Math.max(0, Math.min(24 * 30, formNumber(form, 'event_start_in', 0)));
+    const durationHours = Math.max(0, Math.min(24 * 60, formNumber(form, 'event_duration', 0)));
+    if (!name || !(multiplier > 1 && multiplier <= 20) || !['all', 'text', 'voice'].includes(source) || durationHours < 1 / 60) {
+      saveError = true;
+    } else {
+      const startsAt = new Date(Date.now() + startInHours * 3_600_000);
+      const endsAt = new Date(startsAt.getTime() + durationHours * 3_600_000);
+      const activeRes = await fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&ends_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id`, { headers: apiHeaders });
+      const active = activeRes.ok ? await activeRes.json() : [];
+      if (active.length >= 25) {
+        saveError = true;
+      } else {
+        // The server keeps a row for the guild before any child table can point at it.
+        await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, updated_at: new Date().toISOString() }) });
+        const saveResponse = await fetch(`${apiUrl}/rest/v1/xp_events`, {
+          method: 'POST',
+          headers: { ...apiHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({ guild_id: id, name, multiplier, source, starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), created_by: String(session.userId) }),
+        });
+        saved = saveResponse.ok;
+        saveError = !saveResponse.ok;
+      }
+    }
+  } else if (action === 'delete_event') {
+    const eventId = String(form.get('event_id') ?? '');
+    if (/^\d{1,18}$/.test(eventId)) {
+      const saveResponse = await fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&id=eq.${eventId}`, { method: 'DELETE', headers: apiHeaders });
+      saved = saveResponse.ok;
+      saveError = !saveResponse.ok;
+    }
   } else if (action === 'add_reward') {
     const level = Number(form.get('level') ?? 0);
     const roleId = String(form.get('role_id') ?? '');
@@ -122,7 +191,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, rolesRes, channelsRes, embedTemplatesRes] = await Promise.all([
+const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, rolesRes, channelsRes, embedTemplatesRes, cardsRes, eventsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: apiHeaders }),
@@ -131,6 +200,8 @@ const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, ro
   getGuildList(Astro, id, botToken, 'roles'),
   getGuildList(Astro, id, botToken, 'channels'),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/image_cards?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }).catch(() => null),
+  fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&ends_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,name,multiplier,source,starts_at,ends_at&order=starts_at.asc`, { headers: apiHeaders }).catch(() => null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -177,6 +248,27 @@ const voiceConfig = {
   roleMode: c.voice_role_mode ?? config.roleMode,
   ignoredChannelIds: c.voice_ignored_channel_ids ?? [],
 };
+
+// Rank and rules settings, read with defaults so a database without the new columns still shows the page.
+const rank = {
+  style: c.rank_style ?? 'card',
+  card: c.rank_card ?? '',
+  notifyCard: c.notify_card ?? '',
+  voiceNotifyCard: c.voice_notify_card ?? '',
+};
+const rules = {
+  minMessageChars: c.min_message_chars ?? 3,
+  antiRepeat: c.anti_repeat ?? true,
+  voiceMinMembers: c.voice_min_members ?? 2,
+  voiceIgnoreMuted: c.voice_ignore_muted ?? false,
+  dailyBonusXp: c.daily_bonus_xp ?? 0,
+  streakBonusXp: c.streak_bonus_xp ?? 0,
+  streakMaxDays: c.streak_max_days ?? 7,
+};
+const rawCards = cardsRes?.ok ? await cardsRes.json() : [];
+const cards = (Array.isArray(rawCards) ? rawCards : []).map((card: any) => ({ name: String(card.name), kind: card.data?.kind === 'rank' ? 'rank' : 'welcome', data: card.data }));
+const rawEvents = eventsRes?.ok ? await eventsRes.json() : [];
+const events = (Array.isArray(rawEvents) ? rawEvents : []).map((event: any) => ({ id: String(event.id), name: String(event.name), multiplier: Number(event.multiplier), source: String(event.source), startsAt: String(event.starts_at), endsAt: String(event.ends_at) }));
 
 const rawRewards = rewardsRes.ok ? await rewardsRes.json() : [];
 const rewards = rawRewards.map((r: any) => ({ level: r.level, roleId: r.role_id }));
@@ -269,6 +361,10 @@ const embedTemplateNames = embedTemplates.map((template: any) => template.name).
   voiceConfig={voiceConfig}
   voiceLeaderboard={voiceLeaderboard}
   embedTemplateNames={embedTemplateNames}
+  rank={rank}
+  rules={rules}
+  cards={cards}
+  events={events}
   saved={saved}
   saveError={saveError}
   section={section}
