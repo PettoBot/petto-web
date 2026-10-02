@@ -1019,6 +1019,8 @@ export const dashEs: Record<string, string> = {
   "Testing on Petto's dev bot for now. Log in for real, your own actual servers show up on the next page.": "Por ahora probando con el bot de desarrollo de Petto. Inicia sesión de verdad y tus propios servidores aparecen en la siguiente página.",
   "{n} members": "{n} miembros",
   "Members unknown": "Miembros desconocidos",
+  "Spoiler: coming soon": "Spoiler: próximamente",
+  "We are adding custom commands written in code, like YAGPDB. They will arrive in a future version, and this page may change when they do.": "Estamos añadiendo comandos personalizados escritos con código, como en YAGPDB. Llegarán en una versión futura y esta página puede cambiar cuando lleguen.",
   "Custom command limit reached": "Límite de comandos personalizados alcanzado",
   "Free command limit reached": "Límite de comandos gratis alcanzado",
   "You are using all {n} available custom commands.": "Estás usando los {n} comandos personalizados disponibles.",
