@@ -1569,7 +1569,7 @@ export const dashEs: Record<string, string> = {
   "Progress bar": "Barra de progreso",
   "Bottom bar": "Barra abajo",
   "Quest alerts": "Alertas de misiones",
-  "A message in a channel of <b>{a}</b> when a new Discord Quest appears. In testing: only Petto's team can see this page for now.": "Un mensaje en un canal de <b>{a}</b> cuando aparece una nueva misión (Quest) de Discord. En pruebas: por ahora solo el equipo de Petto ve esta página.",
+  "A message in a channel of <b>{a}</b> when a new Discord Quest appears.": "Un mensaje en un canal de <b>{a}</b> cuando aparece una nueva misión (Quest) de Discord.",
   "Send alerts": "Enviar alertas",
   "Role to ping": "Rol a mencionar",
   "Message style": "Estilo del mensaje",
