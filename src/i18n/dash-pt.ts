@@ -1025,7 +1025,6 @@ export const dashPt: Record<string, string> = {
   "Written in code. Edit it in Discord with the customcommand code command.": "Escrito em código. Edite no Discord com o comando customcommand code.",
   "Commands in code: in testing": "Comandos em código: em testes",
   "Custom commands written in code are in testing, and only Petto's team can write them for now. They are written in Discord with <code>!customcommand code</code>, and this page will get a code editor. <a href=\"https://github.com/PettoBot/Wiki-code-petto\" target=\"_blank\" rel=\"noopener\">Read the docs</a>.": "Os comandos personalizados escritos em código estão em testes, e por enquanto só a equipe do Petto pode escrevê-los. Eles são escritos no Discord com <code>!customcommand code</code>, e esta página terá um editor de código. <a href=\"https://github.com/PettoBot/Wiki-code-petto\" target=\"_blank\" rel=\"noopener\">Leia a documentação</a>.",
-  "We are adding custom commands written in code. They will arrive in a future version, and this page may change when they do.": "Estamos adicionando comandos personalizados escritos com código. Eles chegarão em uma versão futura e esta página pode mudar quando chegarem.",
   "The code is fine.": "O código está certo.",
   "Checking...": "Verificando...",
   "line {n}": "linha {n}",
