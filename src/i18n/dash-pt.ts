@@ -1805,4 +1805,5 @@ export const dashPt: Record<string, string> = {
   "Reviews and profiles": "Avaliações e perfis",
   "Free servers can have {a}, Premium 25.": "Um servidor Free pode ter {a}, Premium 25.",
   "Free servers can have {a}, Premium 100.": "Um servidor Free pode ter {a}, Premium 100.",
+  "Accept the purchase and refund terms before paying. Turn on JavaScript and press Choose plan again.": "Aceite os termos de compra e reembolso antes de pagar. Ative o JavaScript e clique em Escolher plano de novo.",
 };

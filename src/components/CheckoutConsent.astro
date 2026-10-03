@@ -1,0 +1,95 @@
+---
+// The step before paying: a dialog with the two documents that govern a purchase. Nothing is bought until both boxes are
+// ticked, and "Proceed" goes to /premium/checkout, which signs the member in if needed and sends them straight to Polar.
+// Any link to `/dash/premium?plan=...`, and any `form.premium-plan-form`, opens it instead of going on.
+import type { Locale } from '../i18n/ui';
+
+interface Props { lang: Locale; }
+const { lang } = Astro.props;
+const copies = {
+  en: { title: 'Before you check out', intro: 'Two documents govern this purchase. Please read both, then confirm below.', refunds: 'purchase and refund terms', terms: 'Terms of Service', agree: 'I have read and agree to the', note: 'You pay on Polar. Premium can be cancelled at any time, and payments are not refunded except for errors.', go: 'Proceed to checkout', cancel: 'Cancel', prefix: '' },
+  es: { title: 'Antes de pagar', intro: 'Dos documentos rigen esta compra. Léelos y confirma abajo.', refunds: 'términos de compra y reembolso', terms: 'Términos del servicio', agree: 'He leído y acepto los', note: 'Pagas en Polar. Premium se puede cancelar en cualquier momento, y los pagos no se reembolsan salvo errores.', go: 'Continuar al pago', cancel: 'Cancelar', prefix: '/es' },
+  'pt-BR': { title: 'Antes de pagar', intro: 'Dois documentos regem esta compra. Leia e confirme abaixo.', refunds: 'termos de compra e reembolso', terms: 'Termos de Serviço', agree: 'Li e concordo com os', note: 'Você paga na Polar. O Premium pode ser cancelado a qualquer momento, e os pagamentos não são reembolsados, exceto por erros.', go: 'Continuar para o pagamento', cancel: 'Cancelar', prefix: '/pt-br' },
+} as const;
+const c = copies[lang] ?? copies.en;
+---
+<dialog class="pe-dialog" id="checkoutConsent" aria-labelledby="checkoutConsentTitle">
+  <form method="dialog" class="pe-dialog-body" id="checkoutConsentForm">
+    <h2 id="checkoutConsentTitle">{c.title}</h2>
+    <p>{c.intro}</p>
+    <label class="pe-check"><input type="checkbox" id="ccRefunds" /><span>{c.agree} <a href={`${c.prefix}/refunds`} target="_blank" rel="noopener">{c.refunds}</a>.</span></label>
+    <label class="pe-check"><input type="checkbox" id="ccTerms" /><span>{c.agree} <a href={`${c.prefix}/terms`} target="_blank" rel="noopener">{c.terms}</a>.</span></label>
+    <p class="pe-dialog-note">{c.note}</p>
+    <button type="button" class="btn btn-accent pe-dialog-go" id="ccGo" disabled>{c.go}</button>
+    <button type="button" class="btn btn-ghost pe-dialog-cancel" id="ccCancel">{c.cancel}</button>
+  </form>
+</dialog>
+
+<script>
+  (function () {
+    var dialog = document.getElementById('checkoutConsent') as HTMLDialogElement | null;
+    if (!dialog || (dialog as any)._ready) return;
+    (dialog as any)._ready = true;
+    var refunds = document.getElementById('ccRefunds') as HTMLInputElement;
+    var terms = document.getElementById('ccTerms') as HTMLInputElement;
+    var go = document.getElementById('ccGo') as HTMLButtonElement;
+    var plan = '';
+    var lastFocus: Element | null = null;
+
+    function sync() { go.disabled = !(refunds.checked && terms.checked); }
+    refunds.addEventListener('change', sync);
+    terms.addEventListener('change', sync);
+
+    function open(chosen: string) {
+      if (!/^premium-[135]-(month|year)$/.test(chosen)) return false;
+      plan = chosen;
+      refunds.checked = false; terms.checked = false; sync();
+      lastFocus = document.activeElement;
+      if (typeof dialog!.showModal === 'function') dialog!.showModal();
+      else dialog!.setAttribute('open', '');
+      return true;
+    }
+    function close() {
+      if (dialog!.open) dialog!.close();
+      if (lastFocus instanceof HTMLElement) lastFocus.focus();
+    }
+    document.getElementById('ccCancel')!.addEventListener('click', close);
+    dialog.addEventListener('click', function (event) { if (event.target === dialog) close(); });
+    go.addEventListener('click', function () {
+      if (go.disabled || !plan) return;
+      go.disabled = true;
+      window.location.href = '/premium/checkout?plan=' + encodeURIComponent(plan) + '&terms=1';
+    });
+
+    // A link to choose a plan: on the public page the annual switch decides the period.
+    document.addEventListener('click', function (event) {
+      var link = event.target instanceof Element ? event.target.closest('a[href*="/dash/premium?plan="]') : null;
+      if (!link) return;
+      var chosen = new URL((link as HTMLAnchorElement).href, location.href).searchParams.get('plan') || '';
+      var annual = document.querySelector('#prToggle .pr-toggle-btn.active[data-plan="annual"]');
+      if (annual) chosen = chosen.replace(/-month$/, '-year');
+      if (open(chosen)) event.preventDefault();
+    });
+    // The plan cards of the dashboard.
+    document.addEventListener('submit', function (event) {
+      var form = event.target instanceof Element ? event.target.closest('form.premium-plan-form') : null;
+      if (!form) return;
+      var select = form.querySelector('select[name="plan"]') as HTMLSelectElement | null;
+      if (select && open(select.value)) event.preventDefault();
+    });
+  })();
+</script>
+
+<style is:global>
+  dialog.pe-dialog { border: 1px solid var(--border); border-radius: 18px; padding: 0; background: var(--card); color: var(--text); width: min(440px, calc(100vw - 28px)); box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7); }
+  dialog.pe-dialog::backdrop { background: rgba(10, 10, 14, 0.62); backdrop-filter: blur(3px); }
+  .pe-dialog-body { display: flex; flex-direction: column; gap: 14px; padding: 24px; }
+  .pe-dialog-body h2 { font-size: 21px; margin: 0; }
+  .pe-dialog-body p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text-muted); }
+  .pe-check { display: flex; align-items: flex-start; gap: 11px; font-size: 14.5px; line-height: 1.5; color: var(--text); cursor: pointer; }
+  .pe-check input { width: 20px; height: 20px; margin: 1px 0 0; flex: 0 0 auto; }
+  .pe-check a { color: var(--accent); text-underline-offset: 3px; }
+  .pe-dialog-body .pe-dialog-note { font-size: 12.5px; color: var(--text-dim); }
+  .pe-dialog-go, .pe-dialog-cancel { justify-content: center; width: 100%; padding: 13px 18px; }
+  .pe-dialog-go[disabled] { opacity: 0.45; }
+</style>
