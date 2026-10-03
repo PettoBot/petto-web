@@ -1,0 +1,124 @@
+---
+export const prerender = false;
+import DashResponders from '../../../../components/DashResponders.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { isV2Data } from '../../../../utils/embedSchema';
+import { guildHasPremium } from '../../../../utils/guildPremium';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const premium = await guildHasPremium(apiUrl, apiHeaders, id);
+const responderLimit = premium ? 250 : 20;
+const panelLimit = premium ? 50 : 10;
+const snowflake = /^\d{15,25}$/;
+const NAME = /^[a-z0-9_-]{1,60}$/;
+const STYLES = ['primary', 'secondary', 'success', 'danger'];
+const cleanName = (value: FormDataEntryValue | null) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+const roleList = (form: FormData, field: string) => [...new Set(form.getAll(field).map(String).filter((value) => snowflake.test(value)))].slice(0, 10);
+const count = async (table: string) => Number((await fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&select=id`, { headers: { ...apiHeaders, Prefer: 'count=exact', Range: '0-0' } })).headers.get('content-range')?.split('/')[1] ?? 0);
+const upsert = (table: string, body: object) => fetch(`${apiUrl}/rest/v1/${table}?on_conflict=guild_id,name`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(body) });
+
+let notice = '';
+let saved = false;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const name = cleanName(form.get('name'));
+  await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id }) }).catch(() => null);
+  if (action === 'delete_responder' || action === 'delete_panel') {
+    const table = action === 'delete_responder' ? 'button_responders' : 'component_panels';
+    saved = (await fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}`, { method: 'DELETE', headers: apiHeaders })).ok;
+  } else if (!NAME.test(name)) {
+    notice = 'bad_name';
+  } else if (action === 'save_responder') {
+    const exists = ((await (await fetch(`${apiUrl}/rest/v1/button_responders?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}&select=id`, { headers: apiHeaders })).json()) as any[]).length > 0;
+    if (!exists && (await count('button_responders')) >= responderLimit) {
+      notice = 'responder_limit';
+    } else {
+      const style = String(form.get('style') ?? 'secondary');
+      const emoji = String(form.get('emoji') ?? '').trim();
+      saved = (await upsert('button_responders', {
+        guild_id: id,
+        name,
+        label: String(form.get('label') ?? '').trim().slice(0, 80),
+        emoji: emoji && emoji.length <= 64 && !/\s/.test(emoji) ? emoji : null,
+        style: STYLES.includes(style) ? style : 'secondary',
+        reply: String(form.get('reply') ?? '').trim().slice(0, 2000),
+        reply_template: String(form.get('reply_template') ?? '').trim().slice(0, 100) || null,
+        give_role_ids: roleList(form, 'give_role_ids'),
+        remove_role_ids: roleList(form, 'remove_role_ids'),
+        required_role_ids: roleList(form, 'required_role_ids'),
+        toggle: form.get('toggle') === 'on',
+        created_by: session.userId,
+      })).ok;
+    }
+  } else if (action === 'save_panel') {
+    const exists = ((await (await fetch(`${apiUrl}/rest/v1/component_panels?guild_id=eq.${id}&name=eq.${encodeURIComponent(name)}&select=id`, { headers: apiHeaders })).json()) as any[]).length > 0;
+    if (!exists && (await count('component_panels')) >= panelLimit) {
+      notice = 'panel_limit';
+    } else {
+      const kind = String(form.get('kind') ?? 'buttons') === 'select' ? 'select' : 'buttons';
+      const items = [...new Set(form.getAll('responders').map((value) => cleanName(value)).filter((value) => NAME.test(value)))].slice(0, 25);
+      const body: Record<string, unknown> = {
+        guild_id: id,
+        name,
+        kind,
+        content: String(form.get('content') ?? '').trim().slice(0, 2000),
+        embed_template: String(form.get('embed_template') ?? '').trim().slice(0, 100) || null,
+        responders: items,
+        placeholder: String(form.get('placeholder') ?? '').trim().slice(0, 100),
+        exclusive: form.get('exclusive') === 'on',
+      };
+      saved = (await upsert('component_panels', body)).ok;
+    }
+  }
+}
+
+const [guildInfo, respondersRes, panelsRes, rolesRes, templatesRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/button_responders?guild_id=eq.${id}&select=*&order=name.asc&limit=300`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/component_panels?guild_id=eq.${id}&select=*&order=name.asc&limit=100`, { headers: apiHeaders }),
+  getGuildList(Astro, id, botToken, 'roles'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+// The tables come with the bot update that adds them; until then the page says so.
+const ready = respondersRes.ok && panelsRes.ok;
+const responders = ready ? (await respondersRes.json()).map((row: any) => ({
+  name: row.name as string, label: row.label as string, emoji: (row.emoji ?? '') as string, style: row.style as string, reply: row.reply as string, replyTemplate: (row.reply_template ?? '') as string,
+  give: (row.give_role_ids ?? []) as string[], remove: (row.remove_role_ids ?? []) as string[], required: (row.required_role_ids ?? []) as string[], toggle: Boolean(row.toggle),
+})) : [];
+const panels = ready ? (await panelsRes.json()).map((row: any) => ({
+  name: row.name as string, kind: row.kind as string, content: row.content as string, embedTemplate: (row.embed_template ?? '') as string, responders: (row.responders ?? []) as string[],
+  placeholder: row.placeholder as string, exclusive: Boolean(row.exclusive), channelId: (row.channel_id ?? '') as string,
+})) : [];
+const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((row: any) => ({ name: row.name as string, v2: isV2Data(row.data) }));
+---
+<DashResponders
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  responders={responders}
+  panels={panels}
+  roles={roles}
+  embedTemplates={embedTemplates}
+  limits={{ responders: responderLimit, panels: panelLimit }}
+  premium={premium}
+  ready={ready}
+  saved={saved}
+  notice={notice}
+/>
