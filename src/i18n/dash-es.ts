@@ -1020,6 +1020,8 @@ export const dashEs: Record<string, string> = {
   "{n} members": "{n} miembros",
   "Members unknown": "Miembros desconocidos",
   "Spoiler: coming soon": "Spoiler: próximamente",
+  "Show this server in the public ranking": "Mostrar este servidor en el ranking público",
+  "The global stats page ranks servers by messages, voice time and reactions. Turned off, this server is only counted in the totals, without its name.": "La página de estadísticas globales ordena los servidores por mensajes, tiempo en voz y reacciones. Si está apagado, este servidor solo cuenta en los totales, sin su nombre.",
   "We are adding custom commands written in code. They will arrive in a future version, and this page may change when they do.": "Estamos añadiendo comandos personalizados escritos con código. Llegarán en una versión futura y esta página puede cambiar cuando lleguen.",
   "Custom command limit reached": "Límite de comandos personalizados alcanzado",
   "Free command limit reached": "Límite de comandos gratis alcanzado",
