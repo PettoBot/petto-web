@@ -526,7 +526,20 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-const customCommands = commandsRes.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template })) : [];
+// The prefix of the server and which custom commands are written in code. Both are read apart and tolerate a database that
+// does not have them yet, so the list never goes missing.
+let guildPrefix = '!';
+try {
+  const prefixRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders });
+  if (prefixRes.ok) guildPrefix = String((await prefixRes.json())?.[0]?.prefix || '!');
+} catch {}
+const codeCommandNames = new Set<string>();
+try {
+  const codeRes = await fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&code=not.is.null&select=name`, { headers: apiHeaders });
+  if (codeRes.ok) for (const row of await codeRes.json()) codeCommandNames.add(row.name);
+} catch {}
+
+const customCommands = commandsRes.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name) })) : [];
 const embedTemplateNames = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: any) => ({
   id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, replyToTrigger: a.reply_to_trigger ?? false, pingUser: a.ping_user ?? false, channelIds: a.channel_ids ?? [], roleIds: a.role_ids ?? [],
@@ -567,6 +580,7 @@ const channelCategories = allChannels.filter((c: any) => c.type === 4).sort((a: 
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
   customCommands={customCommands}
+  prefix={guildPrefix}
   premiumActive={premiumActive}
   autoResponders={autoResponders}
   stickyMessages={stickyMessages}
