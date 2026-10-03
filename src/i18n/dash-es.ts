@@ -1551,6 +1551,8 @@ export const dashEs: Record<string, string> = {
   "Sanction Messages": "Mensajes de sanciones",
   "Sanction messages": "Mensajes de sanciones",
   "Use a saved design from the Embeds page for what a member receives, what is posted where the command was used, and the log entry. A type without its own design uses the Default row. Variables start with {case.…}, for example {case.reason} and {case.moderator}.": "Usa un diseño guardado en Embeds para lo que recibe el miembro, lo que se publica donde se usó el comando y la entrada del registro. Un tipo sin diseño propio usa la fila Default. Las variables empiezan con {case.…}, por ejemplo {case.reason} y {case.moderator}.",
+  "We could not load your commands. Reload the page: nothing was deleted.": "No pudimos cargar tus comandos. Recarga la página: no se borró nada.",
+  "Reload": "Recargar",
   "This arrives with the next Petto update.": "Esto llega con la próxima actualización de Petto.",
   "DM to the member": "MD al miembro",
   "Reply in the channel": "Respuesta en el canal",

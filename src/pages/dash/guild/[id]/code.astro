@@ -21,18 +21,38 @@ const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content
 const guildInfo = await getGuildInfo(id, botToken);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-// The commands written in code, and the prefix. A database that does not have the columns yet gives an empty list, not an error.
-let ready = true;
-let commands: { name: string; code: string; triggerType: string; triggerText: string }[] = [];
-try {
-  const res = await fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&code=not.is.null&select=name,code,trigger_type,trigger_text&order=name.asc`, { headers: apiHeaders });
-  if (res.ok) commands = (await res.json()).map((row: any) => ({ name: row.name, code: row.code ?? '', triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? '' }));
-  else ready = false;
-} catch { ready = false; }
+// The commands written in code. The list is asked up to three times and, if the filtered question fails, once more without the
+// filter (the commands with code are picked here), so a slow or busy moment does not leave the page with an empty list.
+type Row = { name: string; code: string; triggerType: string; triggerText: string };
+const toRow = (row: any): Row => ({ name: row.name, code: row.code ?? '', triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? '' });
+async function loadCommands(): Promise<{ commands: Row[]; state: 'ok' | 'missing' | 'failed' }> {
+  const base = `${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}`;
+  const columns = 'select=name,code,trigger_type,trigger_text&order=name.asc';
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (const [filter, pick] of [['&code=not.is.null', false], ['', true]] as const) {
+      try {
+        const res = await fetch(`${base}${filter}&${columns}`, { headers: apiHeaders, signal: AbortSignal.timeout(6000) });
+        if (res.ok) {
+          const rows = (await res.json()) as any[];
+          return { commands: (pick ? rows.filter((row) => row.code) : rows).map(toRow), state: 'ok' };
+        }
+        // The columns come with a bot update: a database without them says so, and that is not a failure to retry.
+        const body = await res.text().catch(() => '');
+        if (res.status === 400 && /code|trigger_/i.test(body) && pick) return { commands: [], state: 'missing' };
+      } catch { /* try again */ }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  return { commands: [], state: 'failed' };
+}
+const loaded = await loadCommands();
+const commands = loaded.commands;
+const ready = loaded.state !== 'missing';
+const loadFailed = loaded.state === 'failed';
 let prefix = '!';
 try {
   const res = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders });
   if (res.ok) prefix = String((await res.json())?.[0]?.prefix || '!');
 } catch {}
 ---
-<DashCode user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'} commands={commands} prefix={prefix} ready={ready} />
+<DashCode user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'} commands={commands} prefix={prefix} ready={ready} loadFailed={loadFailed} />
