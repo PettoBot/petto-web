@@ -26,6 +26,25 @@ export async function syncPettoPrefix(context: AstroContext, guildId: string, pr
   return { ok: response.ok && payload?.ok !== false, error: payload?.error ?? null, payload };
 }
 
+/** The routes of commands written in code: the pieces of the editor, check, test, save and trigger. */
+export async function callPettoCode(context: AstroContext, guildId: string, userId: string, route: 'meta' | 'check' | 'test' | 'save' | 'trigger', body?: Record<string, unknown>) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, status: 503, payload: { ok: false, error: 'not_configured' } as any };
+  const url = `${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/code/${route}${body ? '' : `?user_id=${encodeURIComponent(userId)}`}`;
+  try {
+    const response = await fetch(url, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify({ ...body, user_id: userId }) } : {}),
+    });
+    let payload: any = null;
+    try { payload = await response.json(); } catch { /* Keep the HTTP status. */ }
+    return { ok: response.ok, status: response.status, payload };
+  } catch {
+    return { ok: false, status: 502, payload: { ok: false, error: 'bot_unavailable' } as any };
+  }
+}
+
 export async function callPettoVault(context: AstroContext, guildId: string, userId: string, init: RequestInit = {}) {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, error: 'not_configured' as const, payload: null };
