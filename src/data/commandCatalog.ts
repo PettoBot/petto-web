@@ -15,12 +15,12 @@ interface GeneratedCommand {
 }
 
 const categoryOf: Record<string, string[]> = {
-  moderation: ['ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge'],
+  moderation: ['sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge'],
   tickets: ['ticket'],
   leveling: ['level', 'rank', 'top', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
-  automation: ['automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster'],
-  community: ['remind', 'invites', 'afk', 'boosterrole', 'report', 'poll', 'counter', 'steal'],
+  automation: ['automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel'],
+  community: ['remind', 'invites', 'afk', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'review', 'profile', 'profileconfig', 'quests', 'globalranking'],
   onboarding: ['welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
   info: ['activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll'],
