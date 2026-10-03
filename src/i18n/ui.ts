@@ -167,6 +167,21 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.1',
+          date: 'October 3, 2026',
+          items: [
+            'Partners: a partnership is counted when a Partner Manager posts the invite of another server in a partner channel and it passes the requirements of the server (minimum members, minimum age, a cooldown with the same server and a blacklist). `!partnerconfig` sets the channels (Free 6, Premium 25), the manager role, the requirements and 8 replies, with text or a saved embed, and `!partner stats` and `!partner leaderboard` show today, this week and all time',
+            'Buttons and panels with no code: `!responder add` makes a button or a menu choice that answers in private and gives, takes or toggles roles, with an optional required role. `!panel` shows them as buttons or as one menu, posts the message and updates it in place. Free servers can have 20 responders and 10 panels, Premium 250 and 50',
+            'Sticky messages can now be one of your saved embeds (a V2 design too) instead of plain text, and they can be edited in the dashboard',
+            'Uploads: the messages with files in the channels you choose are counted per member, with a welcome and a role at the first upload, `!uploads stats` and `!uploads leaderboard`. Free servers can have 20 upload channels, Premium 100',
+            'Requests: `!request make` posts a card with Claim, Done, Unclaim and Cancel buttons for the staff, with a limit of open requests per member and, with Premium, a time after which a claimed request goes back to open by itself',
+            'Reviews and profiles: `!review give` rates a member from 1 to 5 stars and `!profile` shows the rating with the uploads, requests and partnerships of the member',
+            'Quest alerts: four sources instead of two (the short list of recent quests of the discord-api-tracker repository first), so a new Quest is seen minutes after it starts even when the community API is down, and a Quest that was published before it started is announced when it starts',
+            'Dashboard: new pages for Partners, Buttons and panels, Uploads, Requests, and Reviews and profiles, in English, Spanish and Portuguese',
+            'Website: Omniplex, a place to discover Discord bots and servers, joins the Partners page, and the commands page lists the new commands',
+          ],
+        },
+        {
           version: '0.7.0',
           date: 'October 3, 2026',
           items: [
@@ -1207,6 +1222,21 @@ export const ui = {
       linkCopied: 'Enlace copiado',
       entries: [
         {
+          version: '0.7.1',
+          date: '3 de octubre de 2026',
+          items: [
+            'Partners: un partnership se cuenta cuando un Partner Manager publica la invitación de otro servidor en un canal de partners y cumple los requisitos del servidor (mínimo de miembros, edad mínima, un cooldown con el mismo servidor y una lista negra). `!partnerconfig` configura los canales (Free 6, Premium 25), el rol de manager, los requisitos y 8 respuestas, con texto o un embed guardado, y `!partner stats` y `!partner leaderboard` muestran hoy, esta semana y el total',
+            'Botones y paneles sin código: `!responder add` crea un botón o una opción de menú que responde en privado y da, quita o alterna roles, con un rol requerido opcional. `!panel` los muestra como botones o como un menú, publica el mensaje y lo actualiza en el mismo sitio. Un servidor Free puede tener 20 botones y 10 paneles, Premium 250 y 50',
+            'Los mensajes fijos ahora pueden ser uno de tus embeds guardados (también un diseño V2) en vez de texto plano, y se pueden editar en el dashboard',
+            'Subidas: los mensajes con archivos en los canales que elijas se cuentan por miembro, con una bienvenida y un rol en la primera subida, `!uploads stats` y `!uploads leaderboard`. Un servidor Free puede tener 20 canales de subidas, Premium 100',
+            'Solicitudes: `!request make` publica una tarjeta con botones de Reclamar, Hecho, Soltar y Cancelar para el staff, con un límite de solicitudes abiertas por miembro y, con Premium, un tiempo tras el cual una solicitud reclamada vuelve a abierta sola',
+            'Reseñas y perfiles: `!review give` valora a un miembro de 1 a 5 estrellas y `!profile` muestra la valoración junto con las subidas, solicitudes y partnerships del miembro',
+            'Alertas de misiones: cuatro fuentes en vez de dos (primero la lista corta de misiones recientes del repositorio discord-api-tracker), así que una misión nueva se ve minutos después de empezar aunque la API de la comunidad esté caída, y una misión publicada antes de empezar se anuncia cuando empieza',
+            'Dashboard: páginas nuevas de Partners, Botones y paneles, Subidas, Solicitudes, y Reseñas y perfiles, en inglés, español y portugués',
+            'Sitio web: Omniplex, un lugar para descubrir bots y servidores de Discord, se une a la página de Partners, y la página de comandos lista los comandos nuevos',
+          ],
+        },
+        {
           version: '0.7.0',
           date: '3 de octubre de 2026',
           items: [
@@ -2246,6 +2276,21 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.1',
+          date: '3 de outubro de 2026',
+          items: [
+            'Parcerias: uma parceria é contada quando um Partner Manager publica o convite de outro servidor em um canal de parceiros e ele cumpre os requisitos do servidor (mínimo de membros, idade mínima, um cooldown com o mesmo servidor e uma lista negra). `!partnerconfig` configura os canais (Free 6, Premium 25), o cargo de manager, os requisitos e 8 respostas, com texto ou um embed salvo, e `!partner stats` e `!partner leaderboard` mostram hoje, esta semana e o total',
+            'Botões e painéis sem código: `!responder add` cria um botão ou uma opção de menu que responde em privado e dá, tira ou alterna cargos, com um cargo exigido opcional. `!panel` os mostra como botões ou como um menu, publica a mensagem e a atualiza no mesmo lugar. Um servidor Free pode ter 20 botões e 10 painéis, Premium 250 e 50',
+            'As mensagens fixas agora podem ser um dos seus embeds salvos (também um design V2) em vez de texto simples, e podem ser editadas no dashboard',
+            'Uploads: as mensagens com arquivos nos canais que você escolher são contadas por membro, com boas-vindas e um cargo no primeiro upload, `!uploads stats` e `!uploads leaderboard`. Um servidor Free pode ter 20 canais de uploads, Premium 100',
+            'Pedidos: `!request make` publica um card com botões de Reivindicar, Concluir, Soltar e Cancelar para a equipe, com um limite de pedidos abertos por membro e, com Premium, um tempo depois do qual um pedido reivindicado volta a aberto sozinho',
+            'Avaliações e perfis: `!review give` avalia um membro de 1 a 5 estrelas e `!profile` mostra a avaliação junto com os uploads, pedidos e parcerias do membro',
+            'Alertas de missões: quatro fontes em vez de duas (primeiro a lista curta de missões recentes do repositório discord-api-tracker), então uma missão nova é vista minutos depois de começar mesmo com a API da comunidade fora do ar, e uma missão publicada antes de começar é anunciada quando começa',
+            'Dashboard: páginas novas de Parceiros, Botões e painéis, Uploads, Pedidos, e Avaliações e perfis, em inglês, espanhol e português',
+            'Site: a Omniplex, um lugar para descobrir bots e servidores do Discord, entra na página de Partners, e a página de comandos lista os comandos novos',
+          ],
+        },
         {
           version: '0.7.0',
           date: '3 de outubro de 2026',
