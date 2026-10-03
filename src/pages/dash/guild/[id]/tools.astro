@@ -1,0 +1,116 @@
+---
+export const prerender = false;
+import DashTools from '../../../../components/DashTools.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { isV2Data } from '../../../../utils/embedSchema';
+import { guildHasPremium } from '../../../../utils/guildPremium';
+
+// Uploads, requests, and reviews with profiles: three small modules that share one page, chosen with ?section=.
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const section = ['uploads', 'requests', 'reviews'].includes(Astro.url.searchParams.get('section') ?? '') ? (Astro.url.searchParams.get('section') as string) : 'uploads';
+const premium = await guildHasPremium(apiUrl, apiHeaders, id);
+const uploadChannelLimit = premium ? 100 : 20;
+const snowflake = /^\d{15,25}$/;
+const text = (form: FormData, name: string, max: number) => String(form.get(name) ?? '').trim().slice(0, max);
+const idOrNull = (form: FormData, name: string) => (snowflake.test(String(form.get(name) ?? '')) ? String(form.get(name)) : null);
+const reply = (form: FormData, prefix: string) => {
+  const textValue = text(form, `${prefix}_text`, 2000);
+  const template = text(form, `${prefix}_template`, 100);
+  return { ...(textValue ? { text: textValue } : {}), ...(template ? { template } : {}) };
+};
+const save = (table: string, body: object) => fetch(`${apiUrl}/rest/v1/${table}?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ ...body, guild_id: id, updated_at: new Date().toISOString() }) });
+
+let saved = false;
+let notice = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id }) }).catch(() => null);
+  if (action === 'save_uploads') {
+    const wanted = [...new Set(form.getAll('channel_ids').map(String).filter((value) => snowflake.test(value)))];
+    if (wanted.length > uploadChannelLimit) notice = 'channel_limit';
+    saved = (await save('upload_config', { enabled: form.get('enabled') === 'on', channel_ids: wanted.slice(0, uploadChannelLimit), uploader_role_id: idOrNull(form, 'uploader_role_id'), welcome: reply(form, 'welcome') })).ok;
+  } else if (action === 'save_requests') {
+    let hours = Math.max(0, Math.min(720, Math.floor(Number(form.get('completion_hours') ?? 0)) || 0));
+    if (hours > 0 && !premium) { hours = 0; notice = 'premium_timeout'; }
+    saved = (await save('request_config', {
+      enabled: form.get('enabled') === 'on',
+      channel_id: idOrNull(form, 'channel_id'),
+      staff_role_id: idOrNull(form, 'staff_role_id'),
+      ping_role_id: idOrNull(form, 'ping_role_id'),
+      max_open: Math.max(1, Math.min(25, Math.floor(Number(form.get('max_open') ?? 3)) || 3)),
+      completion_hours: hours,
+      messages: { created: reply(form, 'created') },
+    })).ok;
+  } else if (action === 'save_reviews') {
+    saved = (await save('profile_config', { reviews_enabled: form.get('reviews_enabled') === 'on', review_channel_id: idOrNull(form, 'review_channel_id') })).ok;
+  }
+}
+
+const get = (table: string, query = '') => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${query}`, { headers: apiHeaders });
+const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, channelsRes, rolesRes, templatesRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  get('upload_config', '&select=*'),
+  get('request_config', '&select=*'),
+  get('profile_config', '&select=*'),
+  get('requests', '&status=in.(open,claimed)&select=number,user_id,content,status,claimed_by&order=number.desc&limit=15'),
+  get('upload_log', '&select=user_id,created_at&order=created_at.desc&limit=5000'),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const ready = uploadRes.ok && requestRes.ok && profileRes.ok;
+const first = async (res: Response) => (res.ok ? (await res.json())[0] : null) ?? {};
+const u = await first(uploadRes);
+const r = await first(requestRes);
+const p = await first(profileRes);
+const asReply = (value: any) => ({ text: (value?.text ?? '') as string, template: (value?.template ?? '') as string });
+const uploads = { enabled: u.enabled ?? false, channelIds: (u.channel_ids ?? []) as string[], uploaderRoleId: u.uploader_role_id ?? '', welcome: asReply(u.welcome) };
+const requests = { enabled: r.enabled ?? false, channelId: r.channel_id ?? '', staffRoleId: r.staff_role_id ?? '', pingRoleId: r.ping_role_id ?? '', maxOpen: r.max_open ?? 3, completionHours: r.completion_hours ?? 0, created: asReply(r.messages?.created) };
+const reviews = { enabled: p.reviews_enabled ?? true, channelId: p.review_channel_id ?? '' };
+const openRequests = (openRes.ok ? await openRes.json() : []).map((row: any) => ({ number: row.number as number, userId: row.user_id as string, content: row.content as string, status: row.status as string, claimedBy: (row.claimed_by ?? '') as string }));
+const logRows = (uploadLogRes.ok ? await uploadLogRes.json() : []) as { user_id: string; created_at: string }[];
+const now = new Date();
+const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+const weekStart = day - ((now.getUTCDay() + 6) % 7) * 86_400_000;
+const byUser = new Map<string, number>();
+for (const row of logRows) if (new Date(row.created_at).getTime() >= weekStart) byUser.set(row.user_id, (byUser.get(row.user_id) ?? 0) + 1);
+const uploadStats = { total: logRows.length, week: [...byUser.values()].reduce((a, b) => a + b, 0), board: [...byUser.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([userId, count]) => ({ userId, count })) };
+const channels = (channelsRes.ok ? await channelsRes.json() : []).filter((ch: any) => [0, 5, 11, 15].includes(ch.type)).sort((a: any, b: any) => a.position - b.position).map((ch: any) => ({ id: ch.id, name: ch.name, text: ch.type === 0 || ch.type === 5 }));
+const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((role: any) => role.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: role.id, name: role.name }));
+const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((row: any) => ({ name: row.name as string, v2: isV2Data(row.data) }));
+---
+<DashTools
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  section={section}
+  uploads={uploads}
+  requests={requests}
+  reviews={reviews}
+  openRequests={openRequests}
+  uploadStats={uploadStats}
+  channels={channels}
+  roles={roles}
+  embedTemplates={embedTemplates}
+  uploadChannelLimit={uploadChannelLimit}
+  premium={premium}
+  ready={ready}
+  saved={saved}
+  notice={notice}
+/>
