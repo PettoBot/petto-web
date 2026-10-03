@@ -1209,6 +1209,7 @@ export const dashEs: Record<string, string> = {
   "You have reached the {n} custom command limit.": "Alcanzaste el límite de {n} comandos personalizados.",
   "The Free plan includes 25 custom commands. Premium unlocks up to 100.": "El plan Free incluye 25 comandos personalizados. Premium desbloquea hasta 100.",
   "Couldn't save that custom command, try again.": "No se pudo guardar ese comando personalizado, inténtalo de nuevo.",
+  "Write a name, and a response or choose a template.": "Escribe un nombre y una respuesta, o elige una plantilla.",
   "Couldn't check the autoresponder limit, try again.": "No se pudo comprobar el límite de autorespuestas, inténtalo de nuevo.",
   "You have reached the 75 autoresponder limit.": "Alcanzaste el límite de 75 autorespuestas.",
   "The Free plan includes 15 autoresponders. Premium unlocks up to 75.": "El plan Free incluye 15 autorespuestas. Premium desbloquea hasta 75.",

@@ -1209,6 +1209,7 @@ export const dashPt: Record<string, string> = {
   "You have reached the {n} custom command limit.": "Você atingiu o limite de {n} comandos personalizados.",
   "The Free plan includes 25 custom commands. Premium unlocks up to 100.": "O plano grátis inclui 25 comandos personalizados. O Premium libera até 100.",
   "Couldn't save that custom command, try again.": "Não foi possível salvar esse comando personalizado, tente novamente.",
+  "Write a name, and a response or choose a template.": "Escreva um nome e uma resposta, ou escolha um modelo.",
   "Couldn't check the autoresponder limit, try again.": "Não foi possível verificar o limite de respostas automáticas, tente novamente.",
   "You have reached the 75 autoresponder limit.": "Você atingiu o limite de 75 respostas automáticas.",
   "The Free plan includes 15 autoresponders. Premium unlocks up to 75.": "O plano grátis inclui 15 respostas automáticas. O Premium libera até 75.",
