@@ -1,0 +1,157 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+
+import { getDashLang, makeT } from '../i18n/dash';
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+const dth = makeT(dashLang, true);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  config: { enabled: boolean; channelIds: string[]; managerRoleId: string; minMembers: number; minAgeDays: number; cooldownDays: number; keepOriginal: boolean; reactEmoji: string; messages: Record<string, { text?: string; template?: string }> };
+  channels: { id: string; name: string }[];
+  roles: { id: string; name: string }[];
+  embedTemplates: { name: string; v2: boolean }[];
+  blacklist: { server: string; note: string }[];
+  stats: { today: number; week: number; total: number; weekBoard: { managerId: string; count: number }[]; allBoard: { managerId: string; count: number }[]; recent: { name: string; at: string }[] };
+  channelLimit: number;
+  premium: boolean;
+  ready: boolean;
+  saved: boolean;
+  notice: string;
+}
+const { user, guildId, guildName, guildIcon, config, channels, roles, embedTemplates, blacklist, stats, channelLimit, premium, ready, saved, notice } = Astro.props;
+const replies = [
+  ['completed', 'Partnership completed', '{partner.manager} thanks for the partnership with **{partner.name}**! You have {partner.count_total} in total ({partner.count_week} this week).'],
+  ['cooldown', 'Partner cooldown', '{user.mention} you partnered with **{partner.name}** recently. You can do it again {partner.cooldown_ends}.'],
+  ['invalid_invite', 'Invalid invite', '{user.mention} that invite is not valid or has expired.'],
+  ['member_requirement', 'Member requirement', '{user.mention} **{partner.name}** has {partner.members} members and at least {partner.min_members} are needed.'],
+  ['blacklisted', 'Partner blacklist', '{user.mention} that server is not allowed as a partner.'],
+  ['self_partner', 'Self partner', '{user.mention} that invite is for this same server.'],
+  ['age_requirement', 'Partner age requirement', '{user.mention} **{partner.name}** is too new: it has to be at least {partner.min_age_days} days old.'],
+  ['manager_welcome', 'Partner Manager welcome', 'Welcome to the team, {user.mention}! Post the invite of a partner server in a partner channel and I will count it.'],
+];
+const changed = (key: string) => Boolean(config.messages[key]?.text || config.messages[key]?.template);
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="partners" pageTitle="Partners">
+  <h1>{dt('Partners')}</h1>
+  <p class="pt-sub"><Fragment set:html={dth('Counts the partnerships of <b>{a}</b>: a Partner Manager posts the invite of another server in a partner channel and, if it passes the requirements, it is counted.', { a: guildName })} /></p>
+  {saved && <div class="pt-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {notice === 'channel_limit' && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Only the first {a} channels were kept. Premium raises the limit.', { a: channelLimit })}</div>}
+  {notice === 'bad_server' && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Give the ID of the server, a number of 17 to 20 digits.')}</div>}
+  {!ready && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+
+  <div class="pt-stats">
+    <div class="pt-stat"><b>{stats.today}</b><span>{dt('Today')}</span></div>
+    <div class="pt-stat"><b>{stats.week}</b><span>{dt('This week')}</span></div>
+    <div class="pt-stat"><b>{stats.total}</b><span>{dt('All time')}</span></div>
+  </div>
+
+  <div class="pt-grid">
+    <form method="POST" class="pt-form">
+      <input type="hidden" name="action" value="save" />
+      <label class="pt-check"><input type="checkbox" name="enabled" checked={config.enabled} />{dt('Count partnerships')}</label>
+
+      <div class="pt-field"><label>{dt('Partner channels')}</label>
+        <select name="channel_ids" multiple size="8">{channels.map((ch) => <option value={ch.id} selected={config.channelIds.includes(ch.id)}>#{ch.name}</option>)}</select>
+        <span class="pt-note">{dt('Hold Ctrl or Command to choose several. Free servers can have {a}, Premium 25.', { a: 6 })}{premium ? '' : ` ${dt('This server can have {a}.', { a: channelLimit })}`}</span>
+      </div>
+      <div class="pt-field"><label>{dt('Partner Manager role')}</label>
+        <select name="manager_role_id"><option value="">{dt('Anyone')}</option>{roles.map((r) => <option value={r.id} selected={r.id === config.managerRoleId}>{r.name}</option>)}</select>
+        <span class="pt-note">{dt('Only the members with this role are counted. Empty counts anyone who posts in a partner channel.')}</span>
+      </div>
+
+      <fieldset class="pt-set"><legend>{dt('Requirements')}</legend>
+        <div class="pt-row">
+          <div class="pt-field"><label>{dt('Minimum members')}</label><input type="number" name="min_members" min="0" max="10000000" value={config.minMembers} /></div>
+          <div class="pt-field"><label>{dt('Minimum age (days)')}</label><input type="number" name="min_age_days" min="0" max="3650" value={config.minAgeDays} /></div>
+          <div class="pt-field"><label>{dt('Cooldown (days)')}</label><input type="number" name="cooldown_days" min="0" max="365" value={config.cooldownDays} /></div>
+        </div>
+        <span class="pt-note">{dt('0 means no requirement. The cooldown is how long before the same server can partner again.')}</span>
+        <label class="pt-check"><input type="checkbox" name="keep_original" checked={config.keepOriginal} />{dt('Keep the message when a partnership is refused')}</label>
+        <div class="pt-field"><label>{dt('Reaction when it counts')}</label><input type="text" name="react_emoji" value={config.reactEmoji} maxlength="64" placeholder="🤝" /></div>
+      </fieldset>
+
+      <fieldset class="pt-set"><legend>{dt('Replies')}</legend>
+        <span class="pt-note">{dt('Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total} and the usual ones like {user.mention}.')}</span>
+        {replies.map(([key, label, fallback]) => (
+          <details class="pt-reply" open={changed(key)}>
+            <summary>{dt(label)}{changed(key) && <span class="pt-dot" title={dt('Changed')}></span>}</summary>
+            <textarea name={`text_${key}`} rows="3" maxlength="2000" placeholder={fallback}>{config.messages[key]?.text ?? ''}</textarea>
+            <select name={`tpl_${key}`}><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === config.messages[key]?.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
+          </details>
+        ))}
+      </fieldset>
+      <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
+    </form>
+
+    <aside class="pt-side">
+      <section class="pt-card">
+        <h2>{dt('This week')}</h2>
+        {stats.weekBoard.length ? <ol>{stats.weekBoard.map((entry) => <li><code>{entry.managerId}</code><b>{entry.count}</b></li>)}</ol> : <p class="pt-note">{dt('Nobody has a partnership in this period.')}</p>}
+      </section>
+      <section class="pt-card">
+        <h2>{dt('All time')}</h2>
+        {stats.allBoard.length ? <ol>{stats.allBoard.map((entry) => <li><code>{entry.managerId}</code><b>{entry.count}</b></li>)}</ol> : <p class="pt-note">{dt('Nobody has a partnership in this period.')}</p>}
+      </section>
+      <section class="pt-card">
+        <h2>{dt('Blacklist')}</h2>
+        <p class="pt-note">{dt('Servers that can never be a partner.')}</p>
+        {blacklist.length > 0 && <ul>{blacklist.map((row) => (
+          <li><span><code>{row.server}</code>{row.note && <small>{row.note}</small>}</span>
+            <form method="POST"><input type="hidden" name="action" value="remove_blacklist" /><input type="hidden" name="server" value={row.server} /><button type="submit" class="pt-x" aria-label={dt('Remove')}><Icon name="ph:x" width="13" height="13" /></button></form></li>
+        ))}</ul>}
+        <form method="POST" class="pt-add">
+          <input type="hidden" name="action" value="add_blacklist" />
+          <input type="text" name="server" placeholder={dt('ID of the server')} inputmode="numeric" maxlength="25" required />
+          <input type="text" name="note" placeholder={dt('Why (optional)')} maxlength="200" />
+          <button type="submit" class="btn btn-ghost btn-sm" disabled={!ready}>{dt('Add')}</button>
+        </form>
+      </section>
+      <p class="pt-note">{dt('Commands: !partner stats, !partner leaderboard and !partnerconfig.')}</p>
+    </aside>
+  </div>
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .pt-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 20px; max-width: 68ch; }
+  .pt-sub :global(b) { color: var(--text); }
+  .pt-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 640px; }
+  .pt-flash-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .pt-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 640px; margin-bottom: 20px; }
+  .pt-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .pt-stat b { font-size: 24px; }
+  .pt-stat span { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .pt-grid { display: grid; grid-template-columns: minmax(0, 640px) minmax(260px, 340px); gap: 28px; align-items: start; }
+  @media (max-width: 960px) { .pt-grid { grid-template-columns: 1fr; } }
+  .pt-form { display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 20px; }
+  .pt-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .pt-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .pt-field input, .pt-field select, .pt-reply textarea, .pt-reply select, .pt-add input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; }
+  .pt-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 560px) { .pt-row { grid-template-columns: 1fr; } }
+  .pt-note { font-size: 11.5px; line-height: 1.4; color: var(--text-dim); }
+  .pt-set { border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .pt-set legend { font-size: 12px; font-weight: 600; color: var(--text-dim); padding: 0 6px; }
+  .pt-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
+  .pt-reply { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .pt-reply summary { cursor: pointer; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .pt-reply[open] summary { margin-bottom: 8px; }
+  .pt-reply textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; margin-bottom: 8px; }
+  .pt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; }
+  .pt-side { display: flex; flex-direction: column; gap: 14px; }
+  .pt-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 16px; }
+  .pt-card h2 { font-size: 14px; margin: 0 0 8px; }
+  .pt-card ol, .pt-card ul { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .pt-card li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .pt-card code { font-size: 12px; color: var(--text-muted); word-break: break-all; }
+  .pt-card small { display: block; color: var(--text-dim); font-size: 11.5px; }
+  .pt-x { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; }
+  .pt-x:hover { color: var(--red, #ed4245); }
+  .pt-add { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .pt-add .btn { align-self: flex-start; }
+</style>
