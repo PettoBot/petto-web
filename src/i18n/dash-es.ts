@@ -1803,4 +1803,6 @@ export const dashEs: Record<string, string> = {
   "Uploads": "Subidas",
   "Requests": "Solicitudes",
   "Reviews and profiles": "Reseñas y perfiles",
+  "Free servers can have {a}, Premium 25.": "Un servidor Free puede tener {a}, Premium 25.",
+  "Free servers can have {a}, Premium 100.": "Un servidor Free puede tener {a}, Premium 100.",
 };
