@@ -10,7 +10,7 @@ export interface LinkButton { label: string; url: string; emoji: string; disable
 export type CardPlacement = 'default' | 'embed' | 'attachment';
 /** An image card (made in the Image cards editor) sent with the message. */
 export interface CardRef { name: string; placement: CardPlacement }
-export interface TemplateData { content: string; embeds: EmbedData[]; buttons: LinkButton[][]; card?: CardRef; v2?: V2Doc }
+export interface TemplateData { content: string; embeds: EmbedData[]; buttons: LinkButton[][]; card?: CardRef; v2?: V2Doc; reactions?: string[] }
 
 // A Components V2 message: containers, text, pictures, sections, dividers and rows of link buttons. It follows Discord's
 // own component JSON, so the bot and the Embed Builder read it as it is. It has no message text and no embeds.
@@ -51,12 +51,23 @@ function readCard(raw: any): CardRef | undefined {
   return { name, placement: raw.placement === 'embed' || raw.placement === 'attachment' ? raw.placement : 'default' };
 }
 
+export const MAX_REACTIONS = 5;
+
+/** The emojis a message is sent with (up to five): text without spaces, such as 🌸 or <:name:123>. */
+export function readReactions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const clean = raw.map((item) => String(item ?? '').trim()).filter((item) => item && item.length <= 64 && !/\s/.test(item));
+  return [...new Set(clean)].slice(0, MAX_REACTIONS);
+}
+
 /** Reads either the dashboard's own {content, embeds, buttons} shape or the older /embed
  * command's flat single-embed shape, so nothing saved before this builder existed breaks. */
 export function normalizeTemplateData(raw: any): TemplateData {
-  if (raw && typeof raw === 'object' && Array.isArray(raw.v2?.components)) return { content: '', embeds: [], buttons: [], v2: cleanV2(raw.v2) };
+  const reactions = readReactions(raw?.reactions);
+  const withReactions = (data: TemplateData): TemplateData => (reactions.length ? { ...data, reactions } : data);
+  if (raw && typeof raw === 'object' && Array.isArray(raw.v2?.components)) return withReactions({ content: '', embeds: [], buttons: [], v2: cleanV2(raw.v2) });
   const card = readCard(raw?.card);
-  const withCard = (data: TemplateData): TemplateData => (card ? { ...data, card } : data);
+  const withCard = (data: TemplateData): TemplateData => withReactions(card ? { ...data, card } : data);
   if (raw && Array.isArray(raw.embeds)) {
     return withCard({
       content: raw.content ?? '',
@@ -90,7 +101,8 @@ export type TemplateCheck = { ok: true; data: TemplateData } | { ok: false; erro
  * Rejects it only when the whole message would be too large for Discord to accept. */
 export function validateTemplate(raw: unknown): TemplateCheck {
   const source = normalizeTemplateData(raw);
-  if (source.v2) return { ok: true, data: { content: '', embeds: [], buttons: [], v2: source.v2 } };
+  const reactions = readReactions(source.reactions);
+  if (source.v2) return { ok: true, data: { content: '', embeds: [], buttons: [], v2: source.v2, ...(reactions.length ? { reactions } : {}) } };
   const data: TemplateData = {
     content: trim(source.content, EMBED_LIMITS.content),
     embeds: source.embeds.slice(0, EMBED_LIMITS.embeds).map((e) => ({
@@ -109,6 +121,7 @@ export function validateTemplate(raw: unknown): TemplateCheck {
       label: trim(b.label, EMBED_LIMITS.buttonLabel), url: cleanUrl(b.url), emoji: trim(b.emoji, 8), disabled: Boolean(b.disabled),
     }))).filter((row) => row.length > 0),
     ...(source.card ? { card: source.card } : {}),
+    ...(reactions.length ? { reactions } : {}),
   };
   const total = data.content.length + data.embeds.reduce((sum, e) => sum + e.title.length + e.description.length + e.author.name.length + e.footer.text.length + e.fields.reduce((s, f) => s + f.name.length + f.value.length, 0), 0);
   if (total > EMBED_LIMITS.totalChars) return { ok: false, error: `This message is ${total} characters long, Discord accepts at most ${EMBED_LIMITS.totalChars} across the text and embeds.` };

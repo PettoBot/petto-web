@@ -6,7 +6,7 @@ import V2Editor from '../v2/V2Editor';
 import V2Preview from '../v2/V2Preview';
 import VariablesPanel from './VariablesPanel';
 import EmbedColorPicker from './EmbedColorPicker';
-import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, emptyV2, normalizeTemplateData, encodeShareCode, decodeShareCode } from './types';
+import { type EmbedData, type LinkButton, type TemplateData, emptyEmbed, emptyButton, emptyTemplate, emptyV2, normalizeTemplateData, encodeShareCode, decodeShareCode, readReactions } from './types';
 import { questStarterV2 } from '../../utils/questTemplate';
 import { t } from './t';
 
@@ -260,6 +260,12 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
 
             <div className="ebr-form-col">
               <VariablesPanel groups={variableGroups} />
+              <div className="ebr-field">
+                <div className="ebr-field-head"><label>{t('Reactions')}</label></div>
+                <input type="text" className="ebr-reactions-input" value={(data.reactions ?? []).join(' ')} maxLength={400} placeholder="🌸 🎀 <:name:123456789>"
+                  onChange={(ev) => { const list = readReactions(ev.target.value.split(/\s+/)); const next = { ...data }; if (list.length) next.reactions = list; else delete next.reactions; setData(next); setDirty(true); }} />
+                <span className="ebr-hint">{t('Up to 5 emojis, separated by spaces. Petto adds them to the message when it sends it. It is the same as writing {reactreply:emoji} for each one.')}</span>
+              </div>
               {data.v2 ? (
                 <>
                   <p className="v2e-intro">{t('A Components V2 message: containers with text, pictures, sections and link buttons. It has no message text and no embeds.')}</p>

@@ -6,6 +6,7 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { isV2Data } from '../../../../utils/embedSchema';
 import { guildHasPremium } from '../../../../utils/guildPremium';
+import { parseSpan, formatSpan } from '../../../../utils/span';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -18,10 +19,11 @@ const { session } = auth;
 if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
 const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'manager_welcome'];
+const RESPONSE_KEYS = ['completed', 'cooldown', 'invalid_invite', 'member_requirement', 'blacklisted', 'self_partner', 'age_requirement', 'nsfw_blocked', 'keyword_blocked', 'manager_welcome'];
 const premium = await guildHasPremium(apiUrl, apiHeaders, id);
 const channelLimit = premium ? 25 : 6;
 const snowflake = /^\d{15,25}$/;
+const idOrNull = (value: FormDataEntryValue | null) => (snowflake.test(String(value ?? '')) ? String(value) : null);
 const int = (value: FormDataEntryValue | null, max: number) => Math.max(0, Math.min(max, Math.floor(Number(value ?? 0)) || 0));
 
 let saved = false;
@@ -52,6 +54,11 @@ if (Astro.request.method === 'POST') {
     const wanted = [...new Set(form.getAll('channel_ids').map(String).filter((value) => snowflake.test(value)))];
     if (wanted.length > channelLimit) notice = 'channel_limit';
     const reaction = String(form.get('react_emoji') ?? '').trim();
+    // The cooldown is written like `3d 4h`; one that is not valid keeps the one that was saved.
+    const cooldownText = String(form.get('cooldown') ?? '').trim();
+    const cooldownMinutes = cooldownText ? parseSpan(cooldownText) : 0;
+    if (cooldownMinutes === null) notice = 'bad_cooldown';
+    const words = [...new Set(String(form.get('blocked_keywords') ?? '').split(',').map((word) => word.trim().toLowerCase()).filter((word) => word && word.length <= 40))].slice(0, 10);
     // The guild row has to exist before a setting that points to it can be saved.
     await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id }) }).catch(() => null);
     const res = await fetch(`${apiUrl}/rest/v1/partner_config?on_conflict=guild_id`, {
@@ -64,7 +71,10 @@ if (Astro.request.method === 'POST') {
         manager_role_id: snowflake.test(String(form.get('manager_role_id') ?? '')) ? String(form.get('manager_role_id')) : null,
         min_members: int(form.get('min_members'), 10_000_000),
         min_age_days: int(form.get('min_age_days'), 3650),
-        cooldown_days: int(form.get('cooldown_days'), 365),
+        ...(cooldownMinutes === null ? {} : { cooldown_minutes: cooldownMinutes, cooldown_days: 0 }),
+        block_nsfw: form.get('block_nsfw') === 'on',
+        blocked_keywords: words,
+        welcome_channel_id: idOrNull(form.get('welcome_channel_id')),
         keep_original: form.get('keep_original') === 'on',
         react_emoji: reaction && reaction.length <= 64 && !/\s/.test(reaction) ? reaction : null,
         messages,
@@ -96,7 +106,10 @@ const config = {
   managerRoleId: c.manager_role_id ?? '',
   minMembers: c.min_members ?? 0,
   minAgeDays: c.min_age_days ?? 0,
-  cooldownDays: c.cooldown_days ?? 0,
+  cooldown: formatSpan(c.cooldown_minutes > 0 ? c.cooldown_minutes : (c.cooldown_days ?? 0) * 1440),
+  blockNsfw: c.block_nsfw ?? false,
+  blockedKeywords: ((c.blocked_keywords ?? []) as string[]).join(', '),
+  welcomeChannelId: c.welcome_channel_id ?? '',
   keepOriginal: c.keep_original ?? true,
   reactEmoji: c.react_emoji ?? '',
   messages: (c.messages ?? {}) as Record<string, { text?: string; template?: string }>,
