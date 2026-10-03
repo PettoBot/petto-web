@@ -159,12 +159,14 @@ const triggerTypes = [
     const result = $('cc-result');
     let errorLine = 0;
 
+    // Why a request did not work: the answer of the page or the bot, or that nothing came back.
+    const why = (answer: { status: number; payload: any }) => `[${answer.payload?.error ?? (answer.status || 'no answer')}]`;
     const say = (message: string, kind: 'ok' | 'bad' | 'info' = 'info') => { messageBox.textContent = message; messageBox.hidden = !message; messageBox.dataset.kind = kind; };
     const dirty = () => code.value !== savedCode || nameInput.value.trim().toLowerCase() !== savedName;
 
     async function api(body: Record<string, unknown>) {
       try {
-        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+        const response = await fetch(endpoint, { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
         const payload = await response.json().catch(() => null);
         return { status: response.status, payload };
       } catch {
@@ -206,9 +208,10 @@ const triggerTypes = [
       const ticket = ++checkId;
       if (!code.value.trim()) { errorLine = 0; drawGutter(); setStatus('wait', ''); return; }
       setStatus('wait', ui.checking);
-      const { payload } = await api({ action: 'check', code: code.value });
+      const answer = await api({ action: 'check', code: code.value });
+      const payload = answer.payload;
       if (ticket !== checkId) return;
-      if (!payload?.ok) { setStatus('wait', ui.unavailable); return; }
+      if (!payload?.ok) { setStatus('wait', `${ui.unavailable} ${why(answer)}`); return; }
       const problem = payload.problem;
       errorLine = problem?.line ?? 0;
       drawGutter();
@@ -281,8 +284,8 @@ const triggerTypes = [
       say(ui.saving);
       const { status, payload } = await api({ action: 'save', name, code: code.value });
       if (status === 403 && payload?.error === 'testing_only') { say(ui.closed, 'bad'); return; }
-      if (!payload) { say(ui.unavailable, 'bad'); return; }
-      if (!payload.ok) { say(payload.message || ui.unavailable, 'bad'); return; }
+      if (!payload) { say(`${ui.unavailable} ${why({ status, payload })}`, 'bad'); return; }
+      if (!payload.ok) { say(payload.message || `${ui.unavailable} ${why({ status, payload })}`, 'bad'); return; }
       const existing = commands.find((entry) => entry.name === name);
       if (existing) existing.code = code.value; else commands.push({ name, code: code.value, triggerType: 'command', triggerText: '' });
       commands.sort((a, b) => a.name.localeCompare(b.name));
@@ -336,7 +339,7 @@ const triggerTypes = [
       });
       result.textContent = '';
       if (status === 403 && payload?.error === 'testing_only') { result.appendChild(line(ui.stopped, ui.closed, true)); return; }
-      if (!payload?.ok) { result.appendChild(line(ui.stopped, ui.unavailable, true)); return; }
+      if (!payload?.ok) { result.appendChild(line(ui.stopped, `${ui.unavailable} ${why({ status, payload })}`, true)); return; }
       if (payload.error) {
         const where = payload.error.line ? ` (${String(ui.line).replace('{n}', payload.error.line)})` : '';
         result.appendChild(line(ui.stopped, `${payload.error.message}${where}`, true));
@@ -403,12 +406,14 @@ const triggerTypes = [
     drawList();
     drawGutter();
     if (commands[0]) load(commands[0].name, commands[0].code, commands[0].triggerType, commands[0].triggerText);
+    let metaStatus = 0;
     (async () => {
       try {
-        const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+        const response = await fetch(endpoint, { signal: AbortSignal.timeout(20000), headers: { Accept: 'application/json' } });
+        metaStatus = response.status;
         meta = await response.json();
       } catch { meta = null; }
-      if (!meta?.ok) { setStatus('wait', ui.unavailable); return; }
+      if (!meta?.ok) { setStatus('wait', `${ui.unavailable} ${why({ status: metaStatus, payload: meta })}`); return; }
       for (const template of meta.templates) { const option = document.createElement('option'); option.value = template.id; option.textContent = template.name; templates.appendChild(option); }
       drawFunctions();
       drawGutter();

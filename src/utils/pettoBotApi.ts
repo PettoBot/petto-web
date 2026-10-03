@@ -34,6 +34,8 @@ export async function callPettoCode(context: AstroContext, guildId: string, user
   try {
     const response = await fetch(url, {
       method: body ? 'POST' : 'GET',
+      // A bot that does not answer must not leave the editor waiting for ever.
+      signal: AbortSignal.timeout(12_000),
       headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       ...(body ? { body: JSON.stringify({ ...body, user_id: userId }) } : {}),
     });
