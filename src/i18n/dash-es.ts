@@ -1026,7 +1026,7 @@ export const dashEs: Record<string, string> = {
   "code": "código",
   "Written in code. Edit it in Discord with the customcommand code command.": "Escrito en código. Edítalo en Discord con el comando customcommand code.",
   "Commands in code: in testing": "Comandos en código: en pruebas",
-  "Custom commands written in code are in testing, and only Petto's team can write them for now. They are written in Discord with <code>!customcommand code</code>, and this page will get a code editor. <a href=\"https://github.com/PettoBot/Wiki-code-petto\" target=\"_blank\" rel=\"noopener\">Read the docs</a>.": "Los comandos personalizados escritos en código están en pruebas, y por ahora solo los puede escribir el equipo de Petto. Se escriben en Discord con <code>!customcommand code</code>, y esta página tendrá un editor de código. <a href=\"https://github.com/PettoBot/Wiki-code-petto\" target=\"_blank\" rel=\"noopener\">Lee la documentación</a>.",
+  "Custom commands written in code are in testing, and only Petto's team can write them for now. They are written in Discord with <code>!customcommand code</code>, and this page will get a code editor. <a href=\"https://code.petto.sbs\" target=\"_blank\" rel=\"noopener\">Read the docs</a>.": "Los comandos personalizados escritos en código están en pruebas, y por ahora solo los puede escribir el equipo de Petto. Se escriben en Discord con <code>!customcommand code</code>, y esta página tendrá un editor de código. <a href=\"https://code.petto.sbs\" target=\"_blank\" rel=\"noopener\">Lee la documentación</a>.",
   "The code is fine.": "El código está bien.",
   "Checking...": "Revisando...",
   "line {n}": "línea {n}",

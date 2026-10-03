@@ -32,6 +32,7 @@ export const ui = {
             { icon: 'ph:squares-four-fill', title: 'Dashboard', desc: 'A web panel to configure Petto.', href: '/dash', badge: '' },
             { icon: 'ph:link-fill', title: 'Linked roles', desc: 'Connect Petto to Discord and earn a verified role.', href: '/linked-roles', badge: '' },
             { icon: 'ph:megaphone-fill', title: 'Releases', desc: "What just shipped, and what's next.", href: '/news', badge: '' },
+            { icon: 'ph:code-fill', title: 'Petto Code docs', desc: 'Write your own commands with code: embeds, buttons, forms and reactions.', href: 'https://code.petto.sbs', badge: '' },
           ],
         },
         community: {
@@ -165,6 +166,22 @@ export const ui = {
       copyLink: 'Copy link',
       linkCopied: 'Link copied',
       entries: [
+        {
+          version: '0.7.0',
+          date: 'October 3, 2026',
+          items: [
+            'Petto Code (in testing): custom commands can now be written in code, a small language of text and `{{ }}` actions with variables, `if`, `range`, about 70 functions, embeds, mentions and time. `!customcommand code`, `codeshow`, `codetest` (runs the code without sending anything), `template`, `export` and `import`. Read the docs at code.petto.sbs',
+            'Buttons and menus that run code, forms that pop up (modals) and reactions that run code: one command holds the whole system. A message can have reactions, and when someone reacts, the command changes the message, gives or takes a role, answers in the channel and more',
+            'Commands can remember things: counters, points, rankings, cooldowns and lists, for the whole server or for each member, even in their own database. Commands can also start on their own prefix or words (`?hello`, `hey bot`, `good morning`) with `!customcommand trigger`',
+            'Embeds can show the avatar next to the author (`authorIcon`), and there are ready-made templates: vote, request, claim, suggest, report, profile, role button and role by reaction. Everything runs with limits, and what the code asks for is checked with the permissions of the person who wrote it',
+            'Quest alerts: `!quests` posts in a channel when Discord has a new Quest, with the picture, the reward (Orbs or the avatar decoration), the tasks, the platforms, the dates and the country or 18+ limits. Add a role to ping, filter by reward or task, and get a warning hours before it ends. `!quests list` is for everyone',
+            'Embeds V2: a new V2 editor with containers, text, pictures, sections, dividers and link buttons. Use the designs in Quest alerts, sanctions, the starboard, verification and bump messages, and with `!embed send` and `!embed preview`. V2 designs are shared with the Embed Builder with a `p2.` code',
+            'Global stats: a public Stats page with the messages, voice hours and reactions of all servers, counters that move by themselves, a top 3 of servers and a top 10 of members. A server can hide itself in the dashboard (General) and a member with `!globalranking off`',
+            'Dashboard: a real editor for commands in code that checks your code while you write, with templates, functions and a test button, and a Quests page. The menu has every section in its own group (Moderation, Security, Leveling, Automation, Community...) and on a phone it is a drawer at the side. The custom commands page shows the prefix of your server',
+            'Website: the docs of Petto Code at code.petto.sbs, in English, Spanish and Portuguese, linked from the menu and the footer. The web says Petto works with a prefix, not with slash commands, and the server count of the home and status pages match',
+            'Fixes: the Cloudflare tunnel no longer writes its token in the logs, dashboard errors that asked for data that does not exist are fixed, and the Premium texts that sounded unavailable were corrected. `!help` now points to the dashboard, the support server and the Petto Code docs',
+          ],
+        },
         {
           version: '0.6.1',
           date: 'October 2, 2026',
@@ -1055,6 +1072,7 @@ export const ui = {
             { icon: 'ph:squares-four-fill', title: 'Dashboard', desc: 'Un panel web para configurar Petto.', href: '/dash', badge: '' },
             { icon: 'ph:link-fill', title: 'Roles vinculados', desc: 'Conecta Petto con Discord y consigue un rol verificado.', href: '/linked-roles', badge: '' },
             { icon: 'ph:megaphone-fill', title: 'Novedades', desc: 'Qué se lanzó, y qué sigue.', href: '/news', badge: '' },
+            { icon: 'ph:code-fill', title: 'Docs de Petto Code', desc: 'Escribe tus propios comandos con código: embeds, botones, formularios y reacciones.', href: 'https://code.petto.sbs', badge: '' },
           ],
         },
         community: {
@@ -1188,6 +1206,22 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.0',
+          date: '3 de octubre de 2026',
+          items: [
+            'Petto Code (en pruebas): los comandos personalizados ahora se pueden escribir en código, un lenguaje pequeño de texto y acciones `{{ }}` con variables, `if`, `range`, unas 70 funciones, embeds, menciones y tiempo. `!customcommand code`, `codeshow`, `codetest` (ejecuta el código sin enviar nada), `template`, `export` e `import`. Lee la documentación en code.petto.sbs',
+            'Botones y menús que ejecutan código, formularios emergentes (modales) y reacciones que ejecutan código: un solo comando contiene todo el sistema. Un mensaje puede tener reacciones y, cuando alguien reacciona, el comando cambia el mensaje, da o quita un rol, responde en el canal y más',
+            'Los comandos pueden recordar cosas: contadores, puntos, rankings, enfriamientos y listas, para todo el servidor o para cada miembro, incluso en su propia base de datos. También pueden empezar con su propio prefijo o palabras (`?hello`, `hey bot`, `buenos días`) con `!customcommand trigger`',
+            'Los embeds pueden mostrar el avatar junto al autor (`authorIcon`), y hay plantillas listas: votación, request, claim, suggest, report, profile, botón de rol y rol por reacción. Todo corre con límites, y lo que el código pide se revisa con los permisos de quien lo escribió',
+            'Alertas de Quests: `!quests` publica en un canal cuando Discord tiene una Quest nueva, con la imagen, el premio (Orbs o la decoración de avatar), las tareas, las plataformas, las fechas y las limitaciones por país o 18+. Añade un rol para avisar, filtra por premio o tarea, y recibe un aviso unas horas antes de que termine. `!quests list` es para todos',
+            'Embeds V2: un nuevo editor V2 con contenedores, texto, imágenes, secciones, divisores y botones de enlace. Usa los diseños en las alertas de Quests, sanciones, starboard, verificación y mensajes de bump, y con `!embed send` y `!embed preview`. Los diseños V2 se comparten con el Embed Builder con un código `p2.`',
+            'Estadísticas globales: una página pública de Stats con los mensajes, horas en voz y reacciones de todos los servidores, contadores que se mueven solos, un top 3 de servidores y un top 10 de miembros. Un servidor puede ocultarse en el dashboard (General) y un miembro con `!globalranking off`',
+            'Dashboard: un editor de verdad para comandos en código que revisa tu código mientras escribes, con plantillas, funciones y un botón de probar, y una página de Quests. El menú tiene cada sección en su propio grupo (Moderación, Seguridad, Niveles, Automatización, Comunidad...) y en el celular es una barra lateral. La página de comandos personalizados muestra el prefijo de tu servidor',
+            'Sitio web: la documentación de Petto Code en code.petto.sbs, en inglés, español y portugués, enlazada desde el menú y el footer. La web dice que Petto funciona con prefijo, no con comandos slash, y el número de servidores del inicio y de la página de estado coinciden',
+            'Arreglos: el túnel de Cloudflare ya no escribe su token en los logs, se arreglaron errores del dashboard que pedían datos que no existen y se corrigieron los textos de Premium que sonaban a no disponible. `!help` ahora apunta al dashboard, al servidor de soporte y a la documentación de Petto Code',
+          ],
+        },
         {
           version: '0.6.1',
           date: '2 de octubre de 2026',
@@ -2078,6 +2112,7 @@ export const ui = {
             { icon: 'ph:squares-four-fill', title: 'Dashboard', desc: 'Um painel web para configurar o Petto.', href: '/dash', badge: '' },
             { icon: 'ph:link-fill', title: 'Cargos vinculados', desc: 'Conecte o Petto ao Discord e ganhe um cargo verificado.', href: '/linked-roles', badge: '' },
             { icon: 'ph:megaphone-fill', title: 'Novidades', desc: 'O que acabou de sair, e o que vem a seguir.', href: '/news', badge: '' },
+            { icon: 'ph:code-fill', title: 'Docs do Petto Code', desc: 'Escreva os seus próprios comandos com código: embeds, botões, formulários e reações.', href: 'https://code.petto.sbs', badge: '' },
           ],
         },
         community: {
@@ -2211,6 +2246,22 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.0',
+          date: '3 de outubro de 2026',
+          items: [
+            'Petto Code (em testes): os comandos personalizados agora podem ser escritos em código, uma pequena linguagem de texto e ações `{{ }}` com variáveis, `if`, `range`, cerca de 70 funções, embeds, menções e tempo. `!customcommand code`, `codeshow`, `codetest` (executa o código sem enviar nada), `template`, `export` e `import`. Leia a documentação em code.petto.sbs',
+            'Botões e menus que executam código, formulários que aparecem (modais) e reações que executam código: um único comando contém todo o sistema. Uma mensagem pode ter reações e, quando alguém reage, o comando muda a mensagem, dá ou tira um cargo, responde no canal e mais',
+            'Os comandos podem lembrar coisas: contadores, pontos, rankings, intervalos e listas, para o servidor inteiro ou para cada membro, até em um banco de dados próprio. Também podem começar com o seu próprio prefixo ou palavras (`?hello`, `hey bot`, `bom dia`) com `!customcommand trigger`',
+            'Os embeds podem mostrar o avatar ao lado do autor (`authorIcon`), e há templates prontos: votação, request, claim, suggest, report, profile, botão de cargo e cargo por reação. Tudo roda com limites, e o que o código pede é verificado com as permissões de quem o escreveu',
+            'Alertas de Quests: `!quests` publica em um canal quando o Discord tem uma Quest nova, com a imagem, o prêmio (Orbs ou a decoração de avatar), as tarefas, as plataformas, as datas e as limitações por país ou 18+. Adicione um cargo para avisar, filtre por prêmio ou tarefa, e receba um aviso algumas horas antes de terminar. `!quests list` é para todos',
+            'Embeds V2: um novo editor V2 com contêineres, texto, imagens, seções, divisores e botões de link. Use os designs nos alertas de Quests, sanções, starboard, verificação e mensagens de bump, e com `!embed send` e `!embed preview`. Os designs V2 são compartilhados com o Embed Builder com um código `p2.`',
+            'Estatísticas globais: uma página pública de Stats com as mensagens, horas em voz e reações de todos os servidores, contadores que se mexem sozinhos, um top 3 de servidores e um top 10 de membros. Um servidor pode se ocultar no dashboard (Geral) e um membro com `!globalranking off`',
+            'Dashboard: um editor de verdade para comandos em código que verifica o seu código enquanto você escreve, com templates, funções e um botão de testar, e uma página de Quests. O menu tem cada seção no seu próprio grupo (Moderação, Segurança, Níveis, Automação, Comunidade...) e no celular é uma barra lateral. A página de comandos personalizados mostra o prefixo do seu servidor',
+            'Site: a documentação do Petto Code em code.petto.sbs, em inglês, espanhol e português, ligada no menu e no rodapé. O site diz que o Petto funciona com prefixo, não com comandos slash, e o número de servidores do início e da página de status coincidem',
+            'Correções: o túnel da Cloudflare não escreve mais o seu token nos logs, foram corrigidos erros do dashboard que pediam dados que não existem e os textos de Premium que pareciam indisponíveis foram corrigidos. O `!help` agora aponta para o dashboard, o servidor de suporte e a documentação do Petto Code',
+          ],
+        },
         {
           version: '0.6.1',
           date: '2 de outubro de 2026',
