@@ -810,6 +810,8 @@ export const dashPt: Record<string, string> = {
   "Overview": "Visão geral",
   "Config Management": "Gerenciamento da config.",
   "Backups": "Backups",
+  "Moderation": "Moderação",
+  "Design": "Design",
   "Security": "Segurança",
   "Silent Channels": "Canais silenciosos",
   "Warn Escalation": "Escalonamento de advertências",

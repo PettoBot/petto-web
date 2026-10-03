@@ -810,6 +810,8 @@ export const dashEs: Record<string, string> = {
   "Overview": "Resumen",
   "Config Management": "Administración de la config.",
   "Backups": "Copias de seguridad",
+  "Moderation": "Moderación",
+  "Design": "Diseño",
   "Security": "Seguridad",
   "Silent Channels": "Canales silenciosos",
   "Warn Escalation": "Escalado de advertencias",
