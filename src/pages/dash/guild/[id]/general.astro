@@ -71,6 +71,12 @@ if (Astro.request.method === 'POST') {
       body: JSON.stringify({ guild_id: id, prefix, mute_role_id: muteRoleId, updated_at: new Date().toISOString() }),
     });
     await syncPrefix(prefix);
+    // Apart from the rest, so a database that does not have this column yet still saves the prefix and the mute role.
+    await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ guild_id: id, global_stats_visible: form.get('global_stats_visible') === 'on' }),
+    }).catch(() => {});
     saved = true;
   }
 }
@@ -81,6 +87,12 @@ const [guildInfo, rolesRes, guildsRes] = await Promise.all([
   fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+let globalStatsVisible = false;
+try {
+  const visibleRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=global_stats_visible`, { headers: apiHeaders });
+  if (visibleRes.ok) globalStatsVisible = (await visibleRes.json())?.[0]?.global_stats_visible === true;
+} catch {}
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles
@@ -99,6 +111,7 @@ const config = { prefix: g.prefix ?? '!', mute_role_id: g.mute_role_id ?? null }
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
   prefix={config.prefix}
   muteRoleId={config.mute_role_id}
+  globalStatsVisible={globalStatsVisible}
   roles={roles}
   saved={saved}
   reset={reset}
