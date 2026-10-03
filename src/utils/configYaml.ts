@@ -46,7 +46,7 @@ export async function buildConfigYaml(id: string, botToken: string, apiUrl: stri
     () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
     () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
     () => fetch(`${apiUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-    () => fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level`, { headers: countHeaders }),
     () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
     () => fetch(`${apiUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
     () => fetch(`${apiUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id`, { headers: countHeaders }),
