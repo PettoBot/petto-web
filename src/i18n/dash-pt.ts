@@ -1803,4 +1803,6 @@ export const dashPt: Record<string, string> = {
   "Uploads": "Uploads",
   "Requests": "Pedidos",
   "Reviews and profiles": "Avaliações e perfis",
+  "Free servers can have {a}, Premium 25.": "Um servidor Free pode ter {a}, Premium 25.",
+  "Free servers can have {a}, Premium 100.": "Um servidor Free pode ter {a}, Premium 100.",
 };
