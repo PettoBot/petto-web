@@ -1021,6 +1021,8 @@ export const dashPt: Record<string, string> = {
   "Members unknown": "Membros desconhecidos",
   "Spoiler: coming soon": "Spoiler: em breve",
   "We are adding custom commands written in code, like YAGPDB. They will arrive in a future version, and this page may change when they do.": "Estamos adicionando comandos personalizados escritos com código, como no YAGPDB. Eles chegarão em uma versão futura e esta página pode mudar quando chegarem.",
+  "Show this server in the public ranking": "Mostrar este servidor no ranking público",
+  "The global stats page ranks servers by messages, voice time and reactions. Turned off, this server is only counted in the totals, without its name.": "A página de estatísticas globais ordena os servidores por mensagens, tempo em voz e reações. Desligado, este servidor só conta nos totais, sem o nome.",
   "Custom command limit reached": "Limite de comandos personalizados atingido",
   "Free command limit reached": "Limite de comandos grátis atingido",
   "You are using all {n} available custom commands.": "Você está usando todos os {n} comandos personalizados disponíveis.",
