@@ -1805,4 +1805,5 @@ export const dashEs: Record<string, string> = {
   "Reviews and profiles": "Reseñas y perfiles",
   "Free servers can have {a}, Premium 25.": "Un servidor Free puede tener {a}, Premium 25.",
   "Free servers can have {a}, Premium 100.": "Un servidor Free puede tener {a}, Premium 100.",
+  "Accept the purchase and refund terms before paying. Turn on JavaScript and press Choose plan again.": "Acepta los términos de compra y reembolso antes de pagar. Activa JavaScript y pulsa Elegir plan otra vez.",
 };
