@@ -155,7 +155,7 @@ export const dashPt: Record<string, string> = {
   "Picking a saved template here uses its visual design. The reply field still accepts flags such as <code>{a}</code>; templates are managed on the Embeds page.": "Escolher aqui um modelo salvo usa o design visual dele. O campo de resposta ainda aceita flags como <code>{a}</code>; os modelos são gerenciados na página de Embeds.",
   "Sticky messages <span class=\"am-count\">{a}</span>": "Mensagens fixas <span class=\"am-count\">{a}</span>",
   "Message to keep pinned to the bottom": "Mensagem mantida no fim do canal",
-  "One sticky per channel, adding another in the same channel replaces it. After you save, the bot deletes and re-sends it every time someone posts in that channel, so it always stays at the bottom. Use <code>{a}</code> for a line break, <code>{b}</code> for a divider line.": "Uma mensagem fixa por canal; adicionar outra no mesmo canal substitui a anterior. Depois de salvar, o bot a apaga e a reenvia sempre que alguém escreve nesse canal, assim ela fica sempre no fim. Use <code>{a}</code> para uma quebra de linha e <code>{b}</code> para uma linha divisória.",
+  "One sticky per channel, adding another in the same channel replaces it. After you save, the bot deletes and re-sends it every time someone posts in that channel, so it always stays at the bottom. Use <code>{a}</code> for a line break, <code>{b}</code> for a divider line. Choose a saved embed (a V2 design too) to send it instead of the text; the text is used if the embed is missing.": "Uma mensagem fixa por canal; adicionar outra no mesmo canal substitui a anterior. Depois de salvar, o bot a apaga e a reenvia sempre que alguém escreve nesse canal, assim ela fica sempre no fim. Use <code>{a}</code> para uma quebra de linha e <code>{b}</code> para uma linha divisória. Escolha um embed salvo (também um design V2) para enviá-lo no lugar do texto; se o embed faltar, o texto é usado.",
   "Reaction roles <span class=\"am-count\">{a}</span>": "Cargos por reação <span class=\"am-count\">{a}</span>",
   "Message ID": "ID da mensagem",
   "Emoji or custom emoji": "Emoji ou emoji personalizado",
@@ -1738,4 +1738,5 @@ export const dashPt: Record<string, string> = {
   "Self partner": "Parceria consigo mesmo",
   "Partner age requirement": "Requisito de idade do servidor",
   "Partner Manager welcome": "Boas-vindas do Partner Manager",
+  "Edit": "Editar",
 };

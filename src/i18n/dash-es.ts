@@ -155,7 +155,7 @@ export const dashEs: Record<string, string> = {
   "Picking a saved template here uses its visual design. The reply field still accepts flags such as <code>{a}</code>; templates are managed on the Embeds page.": "Elegir aquí una plantilla guardada usa su diseño visual. El campo de respuesta igual acepta flags como <code>{a}</code>; las plantillas se administran en la página de Embeds.",
   "Sticky messages <span class=\"am-count\">{a}</span>": "Mensajes fijos <span class=\"am-count\">{a}</span>",
   "Message to keep pinned to the bottom": "Mensaje que se mantiene al final del canal",
-  "One sticky per channel, adding another in the same channel replaces it. After you save, the bot deletes and re-sends it every time someone posts in that channel, so it always stays at the bottom. Use <code>{a}</code> for a line break, <code>{b}</code> for a divider line.": "Un mensaje fijo por canal; agregar otro en el mismo canal reemplaza el anterior. Después de guardar, el bot lo elimina y lo vuelve a enviar cada vez que alguien escribe en ese canal, así siempre queda al final. Usa <code>{a}</code> para un salto de línea y <code>{b}</code> para una línea divisoria.",
+  "One sticky per channel, adding another in the same channel replaces it. After you save, the bot deletes and re-sends it every time someone posts in that channel, so it always stays at the bottom. Use <code>{a}</code> for a line break, <code>{b}</code> for a divider line. Choose a saved embed (a V2 design too) to send it instead of the text; the text is used if the embed is missing.": "Un mensaje fijo por canal; agregar otro en el mismo canal reemplaza el anterior. Después de guardar, el bot lo elimina y lo vuelve a enviar cada vez que alguien escribe en ese canal, así siempre queda al final. Usa <code>{a}</code> para un salto de línea y <code>{b}</code> para una línea divisoria. Elige un embed guardado (también un diseño V2) para enviarlo en lugar del texto; si el embed falta, se usa el texto.",
   "Reaction roles <span class=\"am-count\">{a}</span>": "Roles por reacción <span class=\"am-count\">{a}</span>",
   "Message ID": "ID del mensaje",
   "Emoji or custom emoji": "Emoji o emoji personalizado",
@@ -1738,4 +1738,5 @@ export const dashEs: Record<string, string> = {
   "Self partner": "Partner consigo mismo",
   "Partner age requirement": "Requisito de edad del servidor",
   "Partner Manager welcome": "Bienvenida del Partner Manager",
+  "Edit": "Editar",
 };
