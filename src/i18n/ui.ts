@@ -383,7 +383,7 @@ export const ui = {
       items: [
         { q: 'Is Petto free?', a: 'Yes. Petto keeps its core moderation, leveling, tickets, giveaways, embeds, and dashboard useful for every server. Premium adds higher limits and server-level extras; payment is handled securely through Polar.' },
         { q: 'How do I add Petto to my server?', a: 'The "Add to Discord" button at the top of the home page. You need the Manage Server permission on the server you\'re adding it to.' },
-        { q: 'Prefix or slash commands?', a: 'Both. Every command works identically with the server\'s configured prefix or as a slash command, whichever you prefer.' },
+        { q: 'Prefix or slash commands?', a: 'Prefix only. Every command uses the server\'s configured prefix (the default is `!`). Petto does not use slash commands.' },
         { q: 'Is my server\'s data safe?', a: 'Data lives in a real Postgres database behind Petto\'s private API, not a spreadsheet or a JSON file. See the Privacy Policy for exactly what is and isn\'t stored.' },
         { q: 'What happened to blibot?', a: "It moved 100% to Petto: every system blibot had, rebuilt from the ground up. Read the full announcement on the Blog." },
         { q: 'What are Nelu and AM?', a: 'Two separate bots built by the same team: Nelu (anime-only) and AM (AI-powered automoderation). Both already exist and are being tested, neither is public yet.' },
@@ -681,7 +681,7 @@ export const ui = {
           guide: {
             intro: 'Setup covers the handful of server-wide settings every other system builds on.',
             steps: [
-              'Change the command prefix with /prefix, slash commands work either way.',
+              'Change the command prefix with !prefix, set it to whatever you like.',
               'Build reusable embeds with a variable engine using /embed create.',
               'Run /help any time to browse every command without leaving Discord.',
             ],
@@ -762,6 +762,7 @@ export const ui = {
         shardsTitle: 'Shards',
         shardCol: 'Shard',
         guildsCol: 'Servers',
+        totalServers: 'Total servers',
         pingCol: 'Ping',
         statusCol: 'Status',
         shardOperational: 'Operational',
@@ -802,7 +803,7 @@ export const ui = {
           ['Feedback', 'If you send suggestions or ideas, Petto may use them without owing you payment or credit. Suggestions do not transfer ownership of your own work.'],
           ['Severability', 'If any part of these terms cannot be enforced, the rest stays in force. Not enforcing a rule at a given moment does not mean the rule is waived.'],
           ['Embed Builder', 'Embed Builder (embed-generator.petto.sbs) is a Petto product, and these terms apply to it. You are responsible for the messages you send with it and for keeping your bot token and webhook URLs safe. Sending a message through it is also subject to Discord\'s own Terms of Service, and Petto Team is not responsible for messages sent with your credentials.'],
-          ['Changes', 'These terms may change as Petto changes, most notably once Petto Premium launches. Meaningful changes will be reflected in the "last updated" date above. Continuing to use the bot after an update means you accept the current version.'],
+          ['Changes', 'These terms may change as Petto changes, for example when plans or prices change. Meaningful changes will be reflected in the "last updated" date above. Continuing to use the bot after an update means you accept the current version.'],
           ['Contact', 'Legal questions about these terms can be sent to legal@kirzu.sbs. Everything else can go through the support server, linked from the Community menu.'],
         ],
       },
@@ -1405,7 +1406,7 @@ export const ui = {
       items: [
         { q: '¿Petto es gratis?', a: 'Sí. Petto mantiene gratis y útil para todos sus sistemas principales: moderación, leveling, tickets, sorteos, embeds y dashboard. Premium suma límites más altos y extras por server; el pago se gestiona de forma segura con Polar.' },
         { q: '¿Cómo agrego Petto a mi servidor?', a: 'El botón "Agregar a Discord" arriba en la página de inicio. Necesitas el permiso de Administrar servidor en el servidor donde lo agregas.' },
-        { q: '¿Prefijo o comandos slash?', a: 'Los comandos de Petto funcionan tanto con el prefijo configurable del servidor como con comandos slash, según el comando y la instalación.' },
+        { q: '¿Prefijo o comandos slash?', a: 'Solo prefijo. Todos los comandos usan el prefijo configurado del servidor (por defecto `!`). Petto no usa comandos slash.' },
         { q: '¿Mis datos están seguros?', a: 'Los datos viven en una base de datos Postgres real detrás de la API privada de Petto, no en una planilla ni un archivo JSON. Revisa la Política de privacidad para ver exactamente qué se guarda y qué no.' },
         { q: '¿Qué pasó con blibot?', a: 'Se mudó 100% a Petto: cada sistema que tenía blibot, reconstruido desde cero. Lee el anuncio completo en el Blog.' },
         { q: '¿Qué son Nelu y AM?', a: 'Dos bots separados hechos por el mismo equipo: Nelu (solo de anime) y AM (automoderación con IA). Los dos ya existen y se están probando, ninguno es público todavía.' },
@@ -1703,7 +1704,7 @@ export const ui = {
           guide: {
             intro: 'Configuración cubre el puñado de ajustes generales del servidor sobre los que se construye todo lo demás.',
             steps: [
-              'Cambia el prefijo de comandos con /prefix, los comandos slash funcionan de cualquier forma.',
+              'Cambia el prefijo de comandos con !prefix, pon el que prefieras.',
               'Arma embeds reutilizables con un motor de variables usando /embed create.',
               'Corre /help en cualquier momento para explorar todos los comandos sin salir de Discord.',
             ],
@@ -1784,6 +1785,7 @@ export const ui = {
         shardsTitle: 'Shards',
         shardCol: 'Shard',
         guildsCol: 'Servidores',
+        totalServers: 'Servidores en total',
         pingCol: 'Ping',
         statusCol: 'Estado',
         shardOperational: 'Operativo',
@@ -1824,7 +1826,7 @@ export const ui = {
           ['Comentarios', 'Si envías sugerencias o ideas, Petto puede usarlas sin deberte pago ni crédito. Las sugerencias no transfieren la propiedad de tu propio trabajo.'],
           ['Divisibilidad', 'Si alguna parte de estos términos no puede aplicarse, el resto sigue vigente. Que una regla no se aplique en un momento dado no significa que se renuncie a ella.'],
           ['Embed Builder', 'Embed Builder (embed-generator.petto.sbs) es un producto de Petto, y estos términos se aplican a él. Eres responsable de los mensajes que envíes con él y de mantener seguros tu token de bot y tus webhooks. Enviar un mensaje con él también está sujeto a los Términos de servicio de Discord, y el Equipo Petto no es responsable de los mensajes enviados con tus credenciales.'],
-          ['Cambios', 'Estos términos pueden cambiar a medida que cambia Petto, sobre todo cuando se lance Petto Premium. Los cambios importantes se van a reflejar en la fecha de "última actualización" de arriba. Seguir usando el bot después de una actualización significa que aceptas la versión vigente.'],
+          ['Cambios', 'Estos términos pueden cambiar a medida que cambia Petto, por ejemplo cuando cambian los planes o los precios. Los cambios importantes se van a reflejar en la fecha de "última actualización" de arriba. Seguir usando el bot después de una actualización significa que aceptas la versión vigente.'],
           ['Contacto', 'Las preguntas legales sobre estos términos se pueden mandar a legal@kirzu.sbs. Todo lo demás, a través del servidor de soporte, enlazado desde el menú Comunidad.'],
         ],
       },
@@ -2725,7 +2727,7 @@ export const ui = {
           guide: {
             intro: 'Configuração cobre o punhado de ajustes gerais do servidor sobre o qual todo o resto é construído.',
             steps: [
-              'Mude o prefixo de comandos com /prefix, os comandos slash funcionam de qualquer jeito.',
+              'Mude o prefixo de comandos com !prefix, coloque o que preferir.',
               'Monte embeds reutilizáveis com um motor de variáveis usando /embed create.',
               'Rode /help a qualquer momento para explorar todos os comandos sem sair do Discord.',
             ],
@@ -2806,6 +2808,7 @@ export const ui = {
         shardsTitle: 'Shards',
         shardCol: 'Shard',
         guildsCol: 'Servidores',
+        totalServers: 'Servidores no total',
         pingCol: 'Ping',
         statusCol: 'Status',
         shardOperational: 'Operacional',
@@ -2846,7 +2849,7 @@ export const ui = {
           ['Sugestões', 'Se você enviar sugestões ou ideias, o Petto pode usá-las sem dever pagamento nem crédito. As sugestões não transferem a propriedade do seu próprio trabalho.'],
           ['Divisibilidade', 'Se alguma parte destes termos não puder ser aplicada, o restante continua em vigor. Não aplicar uma regra em um determinado momento não significa que se abre mão dela.'],
           ['Embed Builder', 'O Embed Builder (embed-generator.petto.sbs) é um produto do Petto, e estes termos se aplicam a ele. Você é responsável pelas mensagens que enviar com ele e por manter seguros seu token de bot e seus webhooks. Enviar uma mensagem por ele também está sujeito aos Termos de serviço do Discord, e a Equipe Petto não é responsável por mensagens enviadas com suas credenciais.'],
-          ['Mudanças', 'Estes termos podem mudar conforme o Petto muda, principalmente quando o Petto Premium for lançado. Mudanças relevantes serão refletidas na data de "última atualização" acima. Continuar usando o bot depois de uma atualização significa que você aceita a versão vigente.'],
+          ['Mudanças', 'Estes termos podem mudar conforme o Petto muda, por exemplo quando os planos ou preços mudam. Mudanças relevantes serão refletidas na data de "última atualização" acima. Continuar usando o bot depois de uma atualização significa que você aceita a versão vigente.'],
           ['Contato', 'Perguntas jurídicas sobre estes termos podem ser enviadas para legal@kirzu.sbs. Todo o resto, através do servidor de suporte, linkado no menu Comunidade.'],
         ],
       },
