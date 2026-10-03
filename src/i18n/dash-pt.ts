@@ -1551,6 +1551,8 @@ export const dashPt: Record<string, string> = {
   "Sanction Messages": "Mensagens de sanções",
   "Sanction messages": "Mensagens de sanções",
   "Use a saved design from the Embeds page for what a member receives, what is posted where the command was used, and the log entry. A type without its own design uses the Default row. Variables start with {case.…}, for example {case.reason} and {case.moderator}.": "Use um design salvo em Embeds para o que o membro recebe, o que é publicado onde o comando foi usado e a entrada do registro. Um tipo sem design próprio usa a linha Default. As variáveis começam com {case.…}, por exemplo {case.reason} e {case.moderator}.",
+  "We could not load your commands. Reload the page: nothing was deleted.": "Não conseguimos carregar seus comandos. Recarregue a página: nada foi apagado.",
+  "Reload": "Recarregar",
   "This arrives with the next Petto update.": "Isso chega com a próxima atualização do Petto.",
   "DM to the member": "DM ao membro",
   "Reply in the channel": "Resposta no canal",
