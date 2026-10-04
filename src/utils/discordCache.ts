@@ -5,6 +5,7 @@
 // collapses that back down to one real fetch, and also covers rapid dashboard nagivation.
 import { edgeDelete, edgeGet, edgePut } from './edgeCache';
 import { memoPerRequest } from './requestMemo';
+import { forgetGuildSnapshots, iconUrl, readBotGuildSnapshots } from './guildSnapshots';
 
 const TTL_MS = 20_000;
 const EDGE_TTL_S = 45;
@@ -48,16 +49,24 @@ async function fetchUserGuilds(accessToken: string): Promise<any[]> {
   }
 }
 
-// Which guilds the bot is *currently* in, straight from Discord. The `guilds` API table
-// is not a substitute for this: it's a config-row cache created the first time a guild is
-// touched and never cleaned up on guildDelete, so it still lists servers a bot was removed
-// from (or, on a shared database, servers only a different bot instance ever joined).
+// Which guilds the bot is *currently* in. The `guilds` API table is not a substitute for this:
+// it's a config-row cache created the first time a guild is touched and never cleaned up on
+// guildDelete, so it still lists servers a bot was removed from. The bot's `discord_guild_snapshots`
+// table is: the bot removes a server from it when it leaves. When that table is empty or
+// unreadable (a bot that does not save it yet), Discord is asked, as before.
 const botGuildsCache = new Map<string, { ids: Set<string>; expiresAt: number }>();
 
 export function getCachedBotGuildIds(botToken: string, request?: Request): Promise<Set<string>> {
   const hit = botGuildsCache.get(botToken);
   if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit.ids);
   return memoPerRequest(request, 'bot-guild-ids', async () => {
+    // The bot's own saved list of its servers (cleaned when it leaves one) answers before Discord is asked.
+    const saved = await readBotGuildSnapshots();
+    if (saved) {
+      const ids = new Set<string>(saved.map((guild) => guild.id));
+      botGuildsCache.set(botToken, { ids, expiresAt: Date.now() + TTL_MS });
+      return ids;
+    }
     const shared = await edgeGet<string[]>('bot-guild-ids', botToken);
     if (shared) {
       const ids = new Set<string>(shared);
@@ -95,6 +104,13 @@ export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
   const hit = botGuildListCache.get(botToken);
   if (hit && hit.expiresAt > Date.now()) return hit.guilds;
 
+  const saved = await readBotGuildSnapshots();
+  if (saved) {
+    const fromTable = saved.map((guild) => ({ id: guild.id, name: guild.name, icon: iconUrl(guild.id, guild.icon), memberCount: guild.memberCount }));
+    botGuildListCache.set(botToken, { guilds: fromTable, expiresAt: Date.now() + TTL_MS });
+    return fromTable;
+  }
+
   const guilds: BotGuild[] = [];
   let after = '';
   for (let page = 0; page < 50; page += 1) {
@@ -126,5 +142,6 @@ export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
 export function invalidateBotGuildCaches(botToken: string): void {
   botGuildListCache.delete(botToken);
   botGuildsCache.delete(botToken);
+  forgetGuildSnapshots();
   void edgeDelete('bot-guild-ids', botToken);
 }
