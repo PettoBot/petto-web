@@ -4,7 +4,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { validateTemplate } from '../../../../utils/embedSchema';
 import { buildDiscordMessage, sendTestMessage } from '../../../../utils/embedSend';
-import { getGuildList } from '../../../../utils/discord';
+import { getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { callPettoCards } from '../../../../utils/pettoBotApi';
 
 // A few test sends per minute per person is plenty, and keeps the button from being used to spam.
@@ -129,8 +129,7 @@ export const POST: APIRoute = async (astro) => {
       }
     }
 
-    const guildRes = await fetch(`https://discord.com/api/guilds/${id}?with_counts=true`, { headers: { Authorization: `Bot ${botToken}` } });
-    const guild = guildRes.ok ? await guildRes.json() : null;
+    const guild = await getGuildDetails(id, botToken);
     const userId = String(session.userId);
     const message = buildDiscordMessage(checked.data, {
       userId,
