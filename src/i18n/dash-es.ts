@@ -1817,4 +1817,5 @@ export const dashEs: Record<string, string> = {
   "Blocked keyword": "Palabra bloqueada",
   "The cooldown is written like 3d 4h, 12h or 30m, up to a year. The one that was saved stays.": "El cooldown se escribe como 3d 4h, 12h o 30m, hasta un año. Se queda el que estaba guardado.",
   "Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} and the usual ones like {user.mention}.": "Cada respuesta puede ser un texto o uno de tus embeds guardados. Vacío usa la predeterminada. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} y las de siempre como {user.mention}.",
+  "Accept the purchase and refund terms before paying. Turn on JavaScript and press Choose plan again.": "Acepta los términos de compra y reembolso antes de pagar. Activa JavaScript y pulsa Elegir plan otra vez.",
 };

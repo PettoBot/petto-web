@@ -1817,4 +1817,5 @@ export const dashPt: Record<string, string> = {
   "Blocked keyword": "Palavra bloqueada",
   "The cooldown is written like 3d 4h, 12h or 30m, up to a year. The one that was saved stays.": "O cooldown é escrito como 3d 4h, 12h ou 30m, até um ano. O que estava salvo continua.",
   "Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} and the usual ones like {user.mention}.": "Cada resposta pode ser um texto ou um dos seus embeds salvos. Vazio usa a padrão. Variáveis: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} e as de sempre como {user.mention}.",
+  "Accept the purchase and refund terms before paying. Turn on JavaScript and press Choose plan again.": "Aceite os termos de compra e reembolso antes de pagar. Ative o JavaScript e clique em Escolher plano de novo.",
 };

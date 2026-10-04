@@ -168,7 +168,7 @@ export async function hasPremiumForGuild(astro: any, userId: string, guildId: st
 }
 
 /** Creates a short-lived Polar checkout tied to this Discord user. */
-export async function createPremiumCheckout(astro: any, userId: string, plan: string): Promise<string | null> {
+export async function createPremiumCheckout(astro: any, userId: string, plan: string, termsAcceptedAt?: string): Promise<string | null> {
   const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
   if (!token || !/^\d{15,22}$/.test(userId)) return null;
 
@@ -187,7 +187,7 @@ export async function createPremiumCheckout(astro: any, userId: string, plan: st
       body: JSON.stringify({
         products: [productId],
         external_customer_id: userId,
-        metadata: { plan_key: `premium-${slots}`, slot_limit: Number(slots), discord_user_id: userId },
+        metadata: { plan_key: `premium-${slots}`, slot_limit: Number(slots), discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
         success_url: `${origin}/dash/premium?checkout_id={CHECKOUT_ID}`,
         return_url: `${origin}/dash/premium`,
       }),
