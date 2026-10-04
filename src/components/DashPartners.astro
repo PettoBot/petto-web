@@ -12,7 +12,7 @@ interface Props {
   guildId: string;
   guildName: string;
   guildIcon: string;
-  config: { enabled: boolean; channelIds: string[]; managerRoleId: string; minMembers: number; minAgeDays: number; cooldownDays: number; keepOriginal: boolean; reactEmoji: string; messages: Record<string, { text?: string; template?: string }> };
+  config: { enabled: boolean; channelIds: string[]; managerRoleId: string; minMembers: number; minAgeDays: number; cooldown: string; blockNsfw: boolean; blockedKeywords: string; welcomeChannelId: string; keepOriginal: boolean; reactEmoji: string; messages: Record<string, { text?: string; template?: string }> };
   channels: { id: string; name: string }[];
   roles: { id: string; name: string }[];
   embedTemplates: { name: string; v2: boolean }[];
@@ -33,6 +33,8 @@ const replies = [
   ['blacklisted', 'Partner blacklist', '{user.mention} that server is not allowed as a partner.'],
   ['self_partner', 'Self partner', '{user.mention} that invite is for this same server.'],
   ['age_requirement', 'Partner age requirement', '{user.mention} **{partner.name}** is too new: it has to be at least {partner.min_age_days} days old.'],
+  ['nsfw_blocked', 'NSFW server', '{user.mention} **{partner.name}** is marked as an NSFW server, so it can not be a partner.'],
+  ['keyword_blocked', 'Blocked keyword', '{user.mention} **{partner.name}** is not allowed as a partner: it has a word this server does not accept.'],
   ['manager_welcome', 'Partner Manager welcome', 'Welcome to the team, {user.mention}! Post the invite of a partner server in a partner channel and I will count it.'],
 ];
 const changed = (key: string) => Boolean(config.messages[key]?.text || config.messages[key]?.template);
@@ -41,6 +43,7 @@ const changed = (key: string) => Boolean(config.messages[key]?.text || config.me
   <h1>{dt('Partners')}</h1>
   <p class="pt-sub"><Fragment set:html={dth('Counts the partnerships of <b>{a}</b>: a Partner Manager posts the invite of another server in a partner channel and, if it passes the requirements, it is counted.', { a: guildName })} /></p>
   {saved && <div class="pt-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {notice === 'bad_cooldown' && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('The cooldown is written like 3d 4h, 12h or 30m, up to a year. The one that was saved stays.')}</div>}
   {notice === 'channel_limit' && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Only the first {a} channels were kept. Premium raises the limit.', { a: channelLimit })}</div>}
   {notice === 'bad_server' && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Give the ID of the server, a number of 17 to 20 digits.')}</div>}
   {!ready && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
@@ -60,6 +63,10 @@ const changed = (key: string) => Boolean(config.messages[key]?.text || config.me
         <MultiSelect name="channel_ids" options={channels.map((ch) => ({ id: ch.id, name: `#${ch.name}` }))} selected={config.channelIds} placeholder={dt('Search channels...')} />
         <span class="pt-note">{dt('Free servers can have {a}, Premium 25.', { a: 6 })}{premium ? '' : ` ${dt('This server can have {a}.', { a: channelLimit })}`}</span>
       </div>
+      <div class="pt-field"><label>{dt('Welcome channel')}</label>
+        <select name="welcome_channel_id"><option value="">{dt('None')}</option>{channels.map((ch) => <option value={ch.id} selected={ch.id === config.welcomeChannelId}>#{ch.name}</option>)}</select>
+        <span class="pt-note">{dt('Where a new Partner Manager is welcomed when they are given the role. Empty welcomes only with the command.')}</span>
+      </div>
       <div class="pt-field"><label>{dt('Partner Manager role')}</label>
         <select name="manager_role_id"><option value="">{dt('Anyone')}</option>{roles.map((r) => <option value={r.id} selected={r.id === config.managerRoleId}>{r.name}</option>)}</select>
         <span class="pt-note">{dt('Only the members with this role are counted. Empty counts anyone who posts in a partner channel.')}</span>
@@ -69,15 +76,17 @@ const changed = (key: string) => Boolean(config.messages[key]?.text || config.me
         <div class="pt-row">
           <div class="pt-field"><label>{dt('Minimum members')}</label><input type="number" name="min_members" min="0" max="10000000" value={config.minMembers} /></div>
           <div class="pt-field"><label>{dt('Minimum age (days)')}</label><input type="number" name="min_age_days" min="0" max="3650" value={config.minAgeDays} /></div>
-          <div class="pt-field"><label>{dt('Cooldown (days)')}</label><input type="number" name="cooldown_days" min="0" max="365" value={config.cooldownDays} /></div>
+          <div class="pt-field"><label>{dt('Cooldown')}</label><input type="text" name="cooldown" value={config.cooldown} maxlength="30" placeholder="3d 4h" /></div>
         </div>
-        <span class="pt-note">{dt('0 means no requirement. The cooldown is how long before the same server can partner again.')}</span>
+        <span class="pt-note">{dt('0 means no requirement. The cooldown is how long before the same server can partner again, written like 3d 4h, 12h or 30m. Empty is no cooldown.')}</span>
+        <label class="pt-check"><input type="checkbox" name="block_nsfw" checked={config.blockNsfw} />{dt('Refuse servers that Discord marks as NSFW')}</label>
+        <div class="pt-field"><label>{dt('Blocked words')}</label><input type="text" name="blocked_keywords" value={config.blockedKeywords} maxlength="400" placeholder="18+, nsfw, gambling" /><span class="pt-note">{dt('Servers with one of these words in their name or description are refused. Separated by commas, up to 10.')}</span></div>
         <label class="pt-check"><input type="checkbox" name="keep_original" checked={config.keepOriginal} />{dt('Keep the message when a partnership is refused')}</label>
         <div class="pt-field"><label>{dt('Reaction when it counts')}</label><input type="text" name="react_emoji" value={config.reactEmoji} maxlength="64" placeholder="🤝" /></div>
       </fieldset>
 
       <fieldset class="pt-set"><legend>{dt('Replies')}</legend>
-        <span class="pt-note">{dt('Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total} and the usual ones like {user.mention}.')}</span>
+        <span class="pt-note">{dt('Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} and the usual ones like {user.mention}.')}</span>
         {replies.map(([key, label, fallback]) => (
           <details class="pt-reply" open={changed(key)}>
             <summary>{dt(label)}{changed(key) && <span class="pt-dot" title={dt('Changed')}></span>}</summary>
