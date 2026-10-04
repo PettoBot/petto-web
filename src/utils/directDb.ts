@@ -239,4 +239,23 @@ export function installDirectDatabase(): void {
   }) as typeof fetch;
 }
 
+/** For the owner's health page: is the database reachable from here, how fast, and does the bot's saved copy of the servers have its columns. */
+export async function checkDirectDatabase(): Promise<Record<string, unknown>> {
+  const db = getPool();
+  if (!db) return { configured: false, note: 'PETTO_DATABASE_URL is not set, every read goes through the bot API.' };
+  const started = Date.now();
+  try {
+    await db.query('select 1');
+    const pingMs = Date.now() - started;
+    const copyStarted = Date.now();
+    const rows = await db.query('select count(*)::int as n from discord_guild_snapshots');
+    const copyMs = Date.now() - copyStarted;
+    let columns = 'ok';
+    try { await db.query('select banner, emoji_count, premium_tier, boost_count, bot_nick, bot_avatar from discord_guild_snapshots limit 1'); } catch (error) { columns = `missing: ${String((error as Error).message).slice(0, 120)}`; }
+    return { configured: true, installed, ok: true, pingMs, savedServers: rows.rows[0]?.n ?? 0, savedServersMs: copyMs, columns };
+  } catch (error) {
+    return { configured: true, installed, ok: false, error: String((error as Error).message).slice(0, 200) };
+  }
+}
+
 export const __test = { build };

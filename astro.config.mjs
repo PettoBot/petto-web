@@ -13,6 +13,14 @@ import path from 'node:path';
 // to be set as Cloudflare Pages environment variables (Workers don't read .env files).
 loadEnv({ path: path.resolve('../petto bot 1/.env') });
 
+import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+
+// What the footer, the dashboard and /version.json say about this build, so it is easy to tell which one is running.
+const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
+let buildCommit = '';
+try { buildCommit = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no git folder in this build */ }
+
 const discloudTarget = process.env.ASTRO_TARGET === 'discloud';
 
 export default defineConfig({
@@ -77,7 +85,13 @@ export default defineConfig({
   // no lo convierte en código secreto: lo mantiene minificado y sin source maps.
   vite: {
     // Only the Node (Discloud) build may bundle the direct database reader; the Worker build drops it.
-    define: { __DIRECT_DB__: JSON.stringify(discloudTarget) },
+    define: {
+      __DIRECT_DB__: JSON.stringify(discloudTarget),
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+      __BUILD_COMMIT__: JSON.stringify(buildCommit),
+      __BUILD_TARGET__: JSON.stringify(discloudTarget ? 'discloud' : 'cloudflare'),
+    },
     build: {
       minify: 'esbuild',
       sourcemap: false,
