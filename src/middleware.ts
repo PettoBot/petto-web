@@ -1,11 +1,15 @@
 import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
 
+// On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
+const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
+
 const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: 'es', path: '/es' }, 'pt-br': { lang: 'pt-BR', path: '/pt-br' } };
 
 // /es/dash and /pt-br/dash pick the dashboard language and render the single /dash route.
 // The prefix is kept on the links, forms, and redirects of the page, so it stays in the address bar.
 export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite }, next) => {
+  await directDatabase;
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
   const { lang, path } = prefixes[match[1].toLowerCase()];

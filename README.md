@@ -76,7 +76,7 @@ For Discloud, register the web subdomain first, put it in the `ID` of `discloud.
 1. Copy `.env.discloud.example` to `.env` and fill the secrets with the same values the Cloudflare dashboard has. The site keeps no data of its own: logins are signed cookies (keyed by `DISCORD_CLIENT_SECRET`) and everything else is read from the bot API, so moving hosts loses nothing and keeps people logged in.
 2. Zip the project root (`.discloudignore` already leaves out `node_modules`, `dist` and docs) and upload it. Discloud runs `npm run build:discloud` and then `npm run start:discloud`.
 3. Point the domain at Discloud, and update the Discord OAuth redirect and the Polar webhook only if the address changes.
-4. For the dashboard to feel faster, `PETTO_BOT_API_URL` has to be near the site. If the bot also runs on Discloud, use its internal address there.
+4. For the dashboard to feel faster, set `PETTO_DATABASE_URL` (and `PETTO_DATABASE_SSL=true` if your database needs it) to the same database the bot uses. Simple table reads are then answered straight from PostgreSQL (`src/utils/directDb.ts`). Writes, counts, nested selects, `or` filters and anything unusual still go through the bot API, and so does every read if the database is unreachable. The Cloudflare build never includes this code.
 
 **Applications**
 
