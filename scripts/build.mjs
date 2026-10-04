@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // One `npm run build` for both hosts. Cloudflare is the default. Discloud's builder runs `npm run build`
@@ -17,11 +17,17 @@ const onCloudflare = Boolean(process.env.WORKERS_CI || process.env.CF_PAGES);
 const target = (process.argv.includes('--discloud') ? 'discloud' : process.env.ASTRO_TARGET) || fromDotenv() || (!onCloudflare && process.cwd() === '/home/node' ? 'discloud' : 'cloudflare');
 console.log(`Building for ${target}`);
 
+// A build that was killed half way leaves build/dist/server/entry.mjs behind without the rest.
+// Only a finished build gets the marker, and server.mjs trusts nothing else.
+if (target === 'discloud') rmSync('build', { recursive: true, force: true });
+
 const astroCli = fileURLToPath(new URL('../node_modules/astro/astro.js', import.meta.url));
 const build = spawnSync(process.execPath, [astroCli, 'build'], { stdio: 'inherit', env: { ...process.env, ASTRO_TARGET: target } });
 if (build.status !== 0) process.exit(build.status ?? 1);
 
-if (target !== 'discloud') {
+if (target === 'discloud') {
+  writeFileSync('build/.built', new Date().toISOString());
+} else {
   const ignore = spawnSync(process.execPath, [fileURLToPath(new URL('./write-assetsignore.mjs', import.meta.url))], { stdio: 'inherit' });
   process.exit(ignore.status ?? 0);
 }
