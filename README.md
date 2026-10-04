@@ -69,7 +69,7 @@ The dev server runs at `http://localhost:4321`. Always run `npm run check` and `
 
 The Cloudflare adapter is already configured with `output: 'hybrid'`, so it deploys as is. Workers do not read `.env` files, so every variable above must be set in the Cloudflare dashboard as an encrypted variable. `/team` also needs `DISCORD_TOKEN` at build time, since it fetches each team member's live Discord profile while the site is built. The public product IDs and checkout link live in `wrangler.toml`.
 
-For Discloud, register the web subdomain first, put it in the `ID` of `discloud.config`, and upload the project with the Node standalone build. The site must listen on `0.0.0.0:8080`, which `start:discloud` sets by default while still honoring an explicit `HOST` or `PORT`. Set `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime variables there.
+For Discloud, register the web subdomain first, put it in the `ID` of `discloud.config`, and upload the project with the Node standalone build. The site must listen on `0.0.0.0:8080`, which `server.mjs` (at the root, because Discloud checks `MAIN` before it builds) sets by default while still honoring an explicit `HOST` or `PORT`. Set `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime variables there.
 
 ### Discloud checklist
 
