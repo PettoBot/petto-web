@@ -71,6 +71,13 @@ The Cloudflare adapter is already configured with `output: 'hybrid'`, so it depl
 
 For Discloud, register the web subdomain first, put it in the `ID` of `discloud.config`, and upload the project with the Node standalone build. The site must listen on `0.0.0.0:8080`, which `start:discloud` sets by default while still honoring an explicit `HOST` or `PORT`. Set `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime variables there.
 
+### Discloud checklist
+
+1. Copy `.env.discloud.example` to `.env` and fill the secrets with the same values the Cloudflare dashboard has. The site keeps no data of its own: logins are signed cookies (keyed by `DISCORD_CLIENT_SECRET`) and everything else is read from the bot API, so moving hosts loses nothing and keeps people logged in.
+2. Zip the project root (`.discloudignore` already leaves out `node_modules`, `dist` and docs) and upload it. Discloud runs `npm run build:discloud` and then `npm run start:discloud`.
+3. Point the domain at Discloud, and update the Discord OAuth redirect and the Polar webhook only if the address changes.
+4. For the dashboard to feel faster, set `PETTO_DATABASE_URL` (and `PETTO_DATABASE_SSL=true` if your database needs it) to the same database the bot uses. Simple table reads are then answered straight from PostgreSQL (`src/utils/directDb.ts`). Writes, counts, nested selects, `or` filters and anything unusual still go through the bot API, and so does every read if the database is unreachable. The Cloudflare build never includes this code.
+
 **Applications**
 
 The `/apply` page has four forms: developer, manager, partner, and staff. Each submission is posted as an embed to the Discord webhook in `PETTO_FORMS_WEBHOOK_URL`, with no mentions enabled. If the visitor is logged in with Discord, the embed shows their verified account. Otherwise it says the Discord user was typed by the applicant. The fields and validation live in `src/utils/applications.ts`, and the texts in `src/data/applicationCopy.ts`.

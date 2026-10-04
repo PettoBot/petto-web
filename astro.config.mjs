@@ -76,6 +76,8 @@ export default defineConfig({
   // El JavaScript del navegador siempre puede inspeccionarse; esto endurece el build,
   // no lo convierte en código secreto: lo mantiene minificado y sin source maps.
   vite: {
+    // Only the Node (Discloud) build may bundle the direct database reader; the Worker build drops it.
+    define: { __DIRECT_DB__: JSON.stringify(discloudTarget) },
     build: {
       minify: 'esbuild',
       sourcemap: false,
