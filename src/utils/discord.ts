@@ -38,6 +38,31 @@ export async function getGuildInfo(guildId: string, botToken: string): Promise<{
   return value;
 }
 
+/**
+ * The server as Discord's `GET /guilds/{id}?with_counts=true` shows it, for the pages that need its counts, banner, emojis
+ * or boosts. Built from the bot's saved copy when there is one, and asked from Discord otherwise. `null` when the bot is
+ * not in the server.
+ */
+export async function getGuildDetails(guildId: string, botToken: string): Promise<any | null> {
+  const saved = await readGuildSnapshot(guildId);
+  if (saved) {
+    return {
+      id: saved.id,
+      name: saved.name,
+      icon: saved.icon,
+      banner: saved.banner,
+      owner_id: saved.ownerId,
+      approximate_member_count: saved.memberCount,
+      roles: saved.roles,
+      emojis: Array.from({ length: saved.emojiCount }, () => ({})),
+      premium_tier: saved.premiumTier,
+      premium_subscription_count: saved.boostCount,
+    };
+  }
+  const res = await fetch(`https://discord.com/api/guilds/${guildId}?with_counts=true`, { headers: { Authorization: `Bot ${botToken}` } });
+  return res.ok ? res.json() : null;
+}
+
 const GUILD_LIST_TTL_MS = 15_000;
 const guildListCache = new Map<string, { status: number; text: string; expiresAt: number }>();
 
@@ -69,7 +94,16 @@ export async function getGuildList(astro: { request?: Request }, guildId: string
   return new Response(text, { status: res.status });
 }
 
-const BOT_IDENTITY_TTL_MS = 60_000;
+const BOT_IDENTITY_TTL_MS = 10 * 60_000;
+// The bot's own name and avatar (the same in every server) change rarely; they are asked from Discord once in a while, not on every page.
+const BOT_PROFILE_TTL_MS = 10 * 60_000;
+let botProfileCache: { key: string; value: Awaited<ReturnType<typeof getBotProfile>>; expiresAt: number } | null = null;
+async function getBotProfileCached(botToken: string) {
+  if (botProfileCache && botProfileCache.key === botToken && botProfileCache.expiresAt > Date.now()) return botProfileCache.value;
+  const value = await getBotProfile(botToken);
+  if (value) botProfileCache = { key: botToken, value, expiresAt: Date.now() + BOT_PROFILE_TTL_MS };
+  return value;
+}
 const botIdentityCache = new Map<string, { value: { name: string; icon: string | null }; expiresAt: number }>();
 
 /**
@@ -90,9 +124,13 @@ async function loadBotIdentity(guildId: string, botToken: string): Promise<{ nam
   try { botId = atob(botToken.split('.')[0]); } catch { return null; }
   if (!/^\d{15,22}$/.test(botId)) return null;
 
+  // How the bot looks in this server is part of the bot's saved copy of it; Discord is asked only without one.
+  const saved = await readGuildSnapshot(guildId);
   const [profile, member] = await Promise.all([
-    getBotProfile(botToken).catch(() => null),
-    getGuildMemberSelf(guildId, botToken, botId).catch(() => null),
+    getBotProfileCached(botToken).catch(() => null),
+    saved
+      ? Promise.resolve({ nick: saved.botNick, avatarUrl: saved.botAvatar ? `https://cdn.discordapp.com/guilds/${guildId}/users/${botId}/avatars/${saved.botAvatar}.png?size=128` : null, bannerUrl: null })
+      : getGuildMemberSelf(guildId, botToken, botId).catch(() => null),
   ]);
   if (!profile && !member) return null;
   const value = { name: member?.nick || profile?.username || 'Petto', icon: member?.avatarUrl || profile?.avatarUrl || null };
@@ -149,6 +187,8 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
   if (patch.bannerDataUri !== undefined) body.banner = patch.bannerDataUri;
   if (patch.bio !== undefined) body.bio = patch.bio;
 
+  botIdentityCache.delete(`${botToken}:${guildId}`);
+  botProfileCache = null;
   const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
     method: 'PATCH',
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
@@ -162,6 +202,7 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
  * Discord's documentation, so when Discord refuses them the nickname, avatar, banner and bio are not affected.
  */
 export async function setBotNameStyle(guildId: string, botToken: string, style: NameStyle | null): Promise<boolean> {
+  botIdentityCache.delete(`${botToken}:${guildId}`);
   const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
     method: 'PATCH',
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
