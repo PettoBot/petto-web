@@ -1,5 +1,6 @@
 import { memoPerRequest } from './requestMemo';
 import { nameStyleBody, type NameStyle } from './nameStyle';
+import { readGuildSnapshot, iconUrl, recentlyWritten } from './guildSnapshots';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
 
@@ -21,6 +22,13 @@ export async function getGuildInfo(guildId: string, botToken: string): Promise<{
   const cacheKey = `${botToken}:${guildId}`;
   const cached = guildInfoCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const saved = await readGuildSnapshot(guildId);
+  if (saved) {
+    const value = { id: saved.id, name: saved.name, icon: iconUrl(saved.id, saved.icon) };
+    guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS });
+    return value;
+  }
 
   const res = await fetch(`https://discord.com/api/guilds/${guildId}`, { headers: { Authorization: `Bot ${botToken}` } });
   if (!res.ok) return null;
@@ -45,7 +53,15 @@ export async function getGuildList(astro: { request?: Request }, guildId: string
   const method = String(astro.request?.method ?? 'GET').toUpperCase();
   const cacheable = method === 'GET' || method === 'HEAD';
   const hit = guildListCache.get(key);
-  if (cacheable && hit && hit.expiresAt > Date.now()) return new Response(hit.text, { status: hit.status });
+  if (cacheable && hit && hit.expiresAt > Date.now() && !recentlyWritten(guildId)) return new Response(hit.text, { status: hit.status });
+
+  // The bot's saved copy of the server answers reads; a write always asks Discord so the page that follows shows it.
+  if (cacheable) {
+    const saved = await readGuildSnapshot(guildId);
+    if (saved) {
+      return new Response(JSON.stringify(kind === 'roles' ? saved.roles : saved.channels), { status: 200 });
+    }
+  }
 
   const res = await fetch(`https://discord.com/api/guilds/${guildId}/${kind}`, { headers: { Authorization: `Bot ${botToken}` } });
   const text = await res.text();

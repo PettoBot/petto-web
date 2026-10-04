@@ -1,5 +1,6 @@
 import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
+import { configureSnapshots, noteGuildWrite } from './utils/guildSnapshots';
 
 // On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
 const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
@@ -8,8 +9,15 @@ const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: '
 
 // /es/dash and /pt-br/dash pick the dashboard language and render the single /dash route.
 // The prefix is kept on the links, forms, and redirects of the page, so it stays in the address bar.
-export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite }, next) => {
+export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite, request }, next) => {
+  const method = request.method.toUpperCase();
   await directDatabase;
+  configureSnapshots({ locals });
+  // A change made from a server's dashboard must show on the next page, before the bot has saved its own copy.
+  if (method !== 'GET' && method !== 'HEAD') {
+    const guild = /^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//i.exec(url.pathname);
+    if (guild) noteGuildWrite(guild[1]);
+  }
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
   const { lang, path } = prefixes[match[1].toLowerCase()];
