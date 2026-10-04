@@ -25,13 +25,22 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
         redirect_uri: redirectUri,
       }),
     });
-    if (!tokenRes.ok) return redirect('/dash?error=token_exchange_failed');
+    if (!tokenRes.ok) {
+      // Discord's answer names the cause (invalid_client = wrong secret or app, invalid_grant = redirect_uri or an expired code,
+      // 429 = rate limit). It never contains the secret, so it is safe to keep in the host logs.
+      const detail = (await tokenRes.text().catch(() => '')).slice(0, 300);
+      console.error(`[oauth] token exchange failed: ${tokenRes.status} redirect_uri=${redirectUri} ${detail}`);
+      return redirect('/dash?error=token_exchange_failed');
+    }
     const token = await tokenRes.json();
 
     const userRes = await fetch('https://discord.com/api/users/@me', {
       headers: { Authorization: `Bearer ${token.access_token}` },
     });
-    if (!userRes.ok) return redirect('/dash?error=user_fetch_failed');
+    if (!userRes.ok) {
+      console.error(`[oauth] user fetch failed: ${userRes.status}`);
+      return redirect('/dash?error=user_fetch_failed');
+    }
     const user = await userRes.json();
 
     const session = {
