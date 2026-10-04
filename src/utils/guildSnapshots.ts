@@ -23,6 +23,12 @@ export interface GuildSnapshot {
   icon: string | null;
   ownerId: string | null;
   memberCount: number | null;
+  banner: string | null;
+  emojiCount: number;
+  premiumTier: number;
+  boostCount: number;
+  botNick: string | null;
+  botAvatar: string | null;
   channels: any[];
   roles: any[];
 }
@@ -61,12 +67,12 @@ export async function readGuildSnapshot(guildId: string): Promise<GuildSnapshot 
   const hit = guildCache.get(guildId);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
   try {
-    const res = await fetch(`${source.url}/rest/v1/discord_guild_snapshots?guild_id=eq.${guildId}&select=guild_id,name,icon,owner_id,member_count,channels,roles`, { headers: headers(source.key) });
+    const res = await fetch(`${source.url}/rest/v1/discord_guild_snapshots?guild_id=eq.${guildId}&select=guild_id,name,icon,owner_id,member_count,banner,emoji_count,premium_tier,boost_count,bot_nick,bot_avatar,channels,roles`, { headers: headers(source.key) });
     if (!res.ok) return null;
     const rows = await res.json();
     const row = Array.isArray(rows) ? rows[0] : null;
     const value: GuildSnapshot | null = row && Array.isArray(row.channels) && Array.isArray(row.roles)
-      ? { id: String(row.guild_id), name: String(row.name), icon: row.icon ?? null, ownerId: row.owner_id ?? null, memberCount: Number.isFinite(Number(row.member_count)) ? Number(row.member_count) : null, channels: row.channels, roles: row.roles }
+      ? { id: String(row.guild_id), name: String(row.name), icon: row.icon ?? null, ownerId: row.owner_id ?? null, memberCount: Number.isFinite(Number(row.member_count)) ? Number(row.member_count) : null, banner: row.banner ?? null, emojiCount: Number(row.emoji_count) || 0, premiumTier: Number(row.premium_tier) || 0, boostCount: Number(row.boost_count) || 0, botNick: row.bot_nick ?? null, botAvatar: row.bot_avatar ?? null, channels: row.channels, roles: row.roles }
       : null;
     guildCache.set(guildId, { value, expiresAt: Date.now() + GUILD_TTL_MS });
     return value;
