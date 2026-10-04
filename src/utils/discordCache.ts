@@ -68,10 +68,17 @@ export function getCachedBotGuildIds(botToken: string, request?: Request): Promi
   });
 }
 
+/** Discord's answer names the cause (401 = wrong or missing DISCORD_TOKEN, 429 or an HTML page = the host IP is rate limited). It never contains the token. */
+async function logDiscordFailure(what: string, res: Response): Promise<void> {
+  const detail = (await res.clone().text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
+  console.error(`[discord] ${what} failed: ${res.status} ${detail}`);
+}
+
 async function fetchBotGuildIds(botToken: string): Promise<Set<string>> {
   const res = await fetch('https://discord.com/api/v10/users/@me/guilds', {
     headers: { Authorization: `Bot ${botToken}` },
   });
+  if (!res.ok) await logDiscordFailure('bot guild ids', res);
   const data = res.ok ? await res.json() : [];
   const ids = new Set<string>(Array.isArray(data) ? data.map((g: any) => g.id) : []);
   botGuildsCache.set(botToken, { ids, expiresAt: Date.now() + TTL_MS });
@@ -94,7 +101,10 @@ export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
     const res = await fetch(`https://discord.com/api/v10/users/@me/guilds?limit=200&with_counts=true${after ? `&after=${after}` : ''}`, {
       headers: { Authorization: `Bot ${botToken}` },
     });
-    if (!res.ok) throw new Error(`Discord bot guild list failed with ${res.status}`);
+    if (!res.ok) {
+      await logDiscordFailure('bot guild list', res);
+      throw new Error(`Discord bot guild list failed with ${res.status}`);
+    }
     const data = await res.json();
     if (!Array.isArray(data)) break;
     for (const g of data) {
