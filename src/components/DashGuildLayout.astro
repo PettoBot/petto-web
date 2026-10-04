@@ -520,13 +520,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       });
     }
 
-    // --- thin top-of-page progress bar shown while an AJAX navigation/save is in flight ---
-    // Uses the Web Animations API instead of a CSS-transition+forced-reflow trick: that approach
-    // depends on the browser actually painting an intermediate frame before the next style change,
-    // which on a fast local fetch (finish() firing a tick after start()) often got skipped
-    // entirely, so the bar only ever appeared already at its end state. .animate() has no such
-    // race, the fill genuinely plays from 0 the moment it's called. ease-out (fast start) also
-    // makes the motion obvious immediately instead of CSS 'ease' easing into it gradually.
+    // --- thin top-of-page progress bar shown while an AJAX navigation/save is in flight (see startProgress) ---
     // While a section is being fetched for longer than a blink, its content gives way to grey placeholders with a moving
     // highlight (the styles live in Base.astro). Only for moving between sections, never while saving a form.
     var skeletonTimer = null;
@@ -557,35 +551,58 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     }
 
     var progressEl = document.getElementById('dgl-progress');
-    var progressFillAnim = null;
+    // The bar moves at one steady speed from the first moment, so it never rushes and then stalls. Its pace is the time the
+    // last few moves actually took: it reaches 80% when the page is expected to arrive, then keeps creeping forward ever more slowly
+    // instead of stopping. When the page arrives it runs to the end in a blink and fades.
+    var progressFrame = 0;
     var progressHideTimer = null;
-    var MIN_PROGRESS_MS = 450;
     var progressStartedAt = 0;
+    var progressWidth = 0;
+    var recentLoads = [];
+    function expectedLoadMs() {
+      if (!recentLoads.length) return 600;
+      var avg = recentLoads.reduce(function (sum, ms) { return sum + ms; }, 0) / recentLoads.length;
+      return Math.min(2500, Math.max(300, avg));
+    }
     function startProgress() {
       if (!progressEl) return;
-      progressStartedAt = Date.now();
       clearTimeout(progressHideTimer);
-      if (progressFillAnim) progressFillAnim.cancel();
+      cancelAnimationFrame(progressFrame);
+      progressStartedAt = Date.now();
+      var expected = expectedLoadMs();
+      progressEl.style.transition = 'opacity 0.2s ease';
       progressEl.style.opacity = '1';
+      progressWidth = 0;
       progressEl.style.width = '0%';
-      progressFillAnim = progressEl.animate(
-        [{ width: '0%' }, { width: '78%' }],
-        { duration: MIN_PROGRESS_MS + 250, easing: 'cubic-bezier(0.1, 0.7, 0.2, 1)', fill: 'forwards' },
-      );
+      function frame() {
+        var t = Date.now() - progressStartedAt;
+        // Straight line to 80% when the page is expected, then the same speed that slows down smoothly toward 95%
+        // (no step in the pace, and never a full stop if the page is late).
+        var speed = 80 / expected;
+        progressWidth = t < expected ? speed * t : 80 + 15 * ((t - expected) * speed / 15) / (((t - expected) * speed / 15) + 1);
+        progressEl.style.width = progressWidth.toFixed(2) + '%';
+        progressFrame = requestAnimationFrame(frame);
+      }
+      progressFrame = requestAnimationFrame(frame);
     }
     function finishProgress() {
       hideContentSkeleton();
       if (!progressEl) return;
-      var elapsed = Date.now() - progressStartedAt;
-      var wait = Math.max(0, MIN_PROGRESS_MS - elapsed);
-      setTimeout(function () {
-        if (progressFillAnim) progressFillAnim.cancel();
-        progressEl.style.width = '100%';
+      cancelAnimationFrame(progressFrame);
+      if (progressStartedAt) {
+        recentLoads.push(Date.now() - progressStartedAt);
+        if (recentLoads.length > 5) recentLoads.shift();
+        progressStartedAt = 0;
+      }
+      progressEl.style.transition = 'width 0.18s linear, opacity 0.2s ease';
+      progressEl.style.width = '100%';
+      progressHideTimer = setTimeout(function () {
+        progressEl.style.opacity = '0';
         progressHideTimer = setTimeout(function () {
-          progressEl.style.opacity = '0';
+          progressEl.style.transition = 'opacity 0.2s ease';
           progressEl.style.width = '0%';
         }, 220);
-      }, wait);
+      }, 200);
     }
 
     // Each dashboard module ships its own scoped stylesheet, emitted as a <link>/<style> in
