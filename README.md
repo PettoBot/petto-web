@@ -71,6 +71,10 @@ The Cloudflare adapter is already configured with `output: 'hybrid'`, so it depl
 
 For Discloud, register the web subdomain first, put it in the `ID` of `discloud.config`, and upload the project with the Node standalone build. The site must listen on `0.0.0.0:8080`, which `server.mjs` (at the root, because Discloud checks `MAIN` before it builds) sets by default while still honoring an explicit `HOST` or `PORT`. Set `PETTO_BOT_API_URL` and `PETTO_BOT_API_SECRET` as runtime variables there.
 
+### Discloud, fast deploys
+
+Compiling on Discloud takes minutes (its builder compiles, and the running container compiles again). The `Discloud prebuilt` workflow (`.github/workflows/discloud-prebuilt.yml`) builds the site on GitHub after every push to `main` and publishes the result to the `discloud` branch: the compiled site, `server.mjs`, `discloud.config` and a `package.json` with only the packages the site needs to run and no build script. Point Discloud at the `discloud` branch and it only installs the packages and starts. The footer (`v0.2.179`) and `/version.json` say which build is running; raise the version in `package.json` with each change you want to recognize. The same folder can be made by hand with `npm run build:discloud && npm run package:discloud` (output in `discloud-dist/`).
+
 ### Discloud checklist
 
 1. Copy `.env.discloud.example` to `.env` and fill the secrets with the same values the Cloudflare dashboard has. The site keeps no data of its own: logins are signed cookies (keyed by `DISCORD_CLIENT_SECRET`) and everything else is read from the bot API, so moving hosts loses nothing and keeps people logged in.

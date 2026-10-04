@@ -6,9 +6,9 @@ export const buildInfo = {
   target: __BUILD_TARGET__,
 };
 
-/** `v0.2.179 · c4526e9`, short enough for a footer. */
+/** `v0.2.179`: what the footer and the dashboard menu show. The commit stays in the tooltip and in /version.json. */
 export function buildLabel(): string {
-  return `v${buildInfo.version}${buildInfo.commit ? ` · ${buildInfo.commit}` : ''}`;
+  return `v${buildInfo.version}`;
 }
 
 /** The longer text for a tooltip: version, commit, host and the time of the build in UTC. */
