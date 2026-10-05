@@ -3,6 +3,8 @@ export const prerender = false;
 import DashCommunity from '../../../../components/DashCommunity.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
+import { renderPollMessage } from '../../../../utils/pettoBotApi';
+import { isV2Data } from '../../../../utils/embedSchema';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
@@ -43,22 +45,27 @@ interface PollRecord {
   multi: boolean;
   ends_at: string | null;
   closed: boolean;
+  embed_template: string | null;
   created_at: string;
 }
 
-function pollPayload(poll: Pick<PollRecord, 'id' | 'question' | 'options' | 'image' | 'multi' | 'closed'>, counts: number[], voters: number) {
-  const block = (char: string, count: number) => char.repeat(Math.max(0, count));
-  const lines = [`### 📊 ${poll.question}`, ''];
+type PollLike = Pick<PollRecord, 'id' | 'question' | 'options' | 'image' | 'multi' | 'closed'> & { embed_template?: string | null; creator_id?: string; ends_at?: string | null };
+
+// The card the bot draws, kept here for when the bot does not answer.
+function pollPayload(poll: PollLike, counts: number[], voters: number) {
+  const best = poll.closed ? Math.max(0, ...counts) : 0;
+  const container: any[] = [{ type: 10, content: `### 📊 ${poll.question}\n-# ${poll.multi ? 'Multiple choice' : 'Single choice'}` }, { type: 14, divider: true, spacing: 1 }];
   poll.options.forEach((option, index) => {
     const count = counts[index] ?? 0;
     const pct = voters > 0 ? Math.round((count / voters) * 100) : 0;
     const filled = Math.round((pct / 100) * 12);
-    lines.push(`${pollLetters[index]} **${option}**`, `${block('█', filled)}${block('░', 12 - filled)}  ${pct}% (${count})`, '');
+    const winner = poll.closed && best > 0 && count === best ? ' 🏆' : '';
+    container.push({ type: 10, content: `${pollLetters[index]} **${option}**${winner}\n${'█'.repeat(filled)}${'░'.repeat(12 - filled)}  ${pct}% (${count})` });
   });
-  lines.push(`-# ${voters} vote${voters === 1 ? '' : 's'} · ${poll.multi ? 'multiple choice' : 'single choice'}${poll.closed ? ' · closed' : ''}`);
+  if (poll.image) container.push({ type: 12, items: [{ media: { url: poll.image } }] });
+  container.push({ type: 14, divider: true, spacing: 1 }, { type: 10, content: `-# ${voters} vote${voters === 1 ? '' : 's'} · ${poll.closed ? 'closed' : 'open'}` });
 
-  const components: any[] = [{ type: 17, accent_color: poll.closed ? 0x8b8fa3 : 0x8399ff, components: [{ type: 10, content: lines.join('\n') }] }];
-  if (poll.image) components[0].components.push({ type: 12, items: [{ media: { url: poll.image } }] });
+  const components: any[] = [{ type: 17, accent_color: poll.closed ? 0x8b8fa3 : 0xf0a88f, components: container }];
   if (!poll.closed) {
     for (let start = 0; start < poll.options.length; start += 5) {
       components.push({
@@ -74,11 +81,18 @@ function pollPayload(poll: Pick<PollRecord, 'id' | 'question' | 'options' | 'ima
   return { flags: 1 << 15, components };
 }
 
+/** What Discord gets: the bot's card or saved design, or the local card when the bot cannot be reached. */
+async function pollMessage(poll: PollLike, counts: number[], voters: number) {
+  return (await renderPollMessage(Astro, id, poll as any, counts, voters)) ?? pollPayload(poll, counts, voters);
+}
+
 async function editPollMessage(poll: PollRecord, counts: number[], voters: number) {
-  const response = await fetch(`https://discord.com/api/v10/channels/${poll.channel_id}/messages/${poll.message_id}`, {
-    method: 'PATCH', headers: discordHeaders, body: JSON.stringify(pollPayload(poll, counts, voters)),
-  });
-  return response.ok;
+  const url = `https://discord.com/api/v10/channels/${poll.channel_id}/messages/${poll.message_id}`;
+  const response = await fetch(url, { method: 'PATCH', headers: discordHeaders, body: JSON.stringify(await pollMessage(poll, counts, voters)) });
+  if (response.ok) return true;
+  // Polls posted before the V2 card are classic messages: they only lose their buttons.
+  if (poll.closed) return (await fetch(url, { method: 'PATCH', headers: discordHeaders, body: JSON.stringify({ components: [] }) })).ok;
+  return false;
 }
 
 if (Astro.request.method === 'POST') {
@@ -144,6 +158,7 @@ if (Astro.request.method === 'POST') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const rawImage = String(form.get('image') ?? '').trim();
     const image = /^https?:\/\//i.test(rawImage) ? rawImage.slice(0, 1000) : null;
+    const rawTemplate = String(form.get('embed_template') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 60);
     const durationMinutes = Math.max(0, Math.min(60 * 24 * 365, Number(form.get('duration_minutes') ?? 0) || 0));
     if (!question || options.length < 2 || !channelId) {
       pollError = dt('Add a question, a channel, and at least two options.');
@@ -151,7 +166,7 @@ if (Astro.request.method === 'POST') {
       const endsAt = durationMinutes > 0 ? new Date(Date.now() + durationMinutes * 60_000).toISOString() : null;
       const insertRes = await fetch(`${apiUrl}/rest/v1/polls`, {
         method: 'POST', headers: { ...apiHeaders, Prefer: 'return=representation' },
-        body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: 'pending', creator_id: session.userId, question, options, image, multi: form.get('multi') === 'on', ends_at: endsAt }),
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, message_id: 'pending', creator_id: session.userId, question, options, image, multi: form.get('multi') === 'on', ends_at: endsAt, embed_template: rawTemplate || null }),
       });
       const poll = insertRes.ok ? (await insertRes.json())[0] as PollRecord | undefined : undefined;
       if (!poll) {
@@ -159,7 +174,7 @@ if (Astro.request.method === 'POST') {
       } else {
         const messageRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
           method: 'POST', headers: discordHeaders,
-          body: JSON.stringify(pollPayload(poll, new Array(options.length).fill(0), 0)),
+          body: JSON.stringify(await pollMessage(poll, new Array(options.length).fill(0), 0)),
         });
         if (!messageRes.ok) {
           await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
@@ -198,7 +213,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, pollsRes] = await Promise.all([
+const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, pollsRes, templatesRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   fetch(`${apiUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
@@ -207,7 +222,8 @@ const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes,
   getGuildList(Astro, id, botToken, 'channels'),
   fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,embed_template,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -251,6 +267,7 @@ const repConfigRows = reputationConfigRes.ok ? await reputationConfigRes.json() 
 const rc = repConfigRows[0] ?? {};
 const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hours ?? 24 };
 const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
+const pollDesigns: string[] = (templatesRes.ok ? await templatesRes.json() : []).filter((row: any) => isV2Data(row.data)).map((row: any) => String(row.name));
 const rawPolls: PollRecord[] = pollsRes.ok ? await pollsRes.json() : [];
 const pollIds = rawPolls.map((poll) => poll.id).filter((pollId) => Number.isInteger(pollId));
 const pollVotesRes = pollIds.length > 0 ? await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: apiHeaders }) : null;
@@ -277,5 +294,6 @@ const polls = rawPolls.map((poll) => {
   reputationTop={reputationTop}
   polls={polls}
   pollError={pollError}
+  pollDesigns={pollDesigns}
   section={section}
 />
