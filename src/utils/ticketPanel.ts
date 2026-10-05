@@ -219,6 +219,24 @@ export function buildPanelPayload(
   };
 }
 
+/**
+ * Why the last post or edit of a panel failed, as Discord said it (`Missing Permissions (50013)`, `Invalid Form Body (50035)`...).
+ * The pages used to answer "check my permissions" to every failure, even when the bot is an administrator and the message itself
+ * was refused. Empty when the last call worked.
+ */
+export const panelPostIssue = { detail: '' };
+
+async function readDiscordIssue(res: Response): Promise<string> {
+  const text = await res.text().catch(() => '');
+  try {
+    const body = JSON.parse(text);
+    const nested = body?.errors ? JSON.stringify(body.errors).slice(0, 160) : '';
+    return `Discord said: ${String(body?.message ?? res.status)}${body?.code ? ` (${body.code})` : ''}${nested ? ` ${nested}` : ''}`;
+  } catch {
+    return `Discord answered ${res.status}.`;
+  }
+}
+
 /** Posts a fresh message (or edits the existing one in place if still there), returns the live message id. */
 export async function postOrRefreshPanelMessage(
   botToken: string,
@@ -227,6 +245,7 @@ export async function postOrRefreshPanelMessage(
   payload: ReturnType<typeof buildPanelPayload>,
 ): Promise<string | null> {
   const headers = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
+  panelPostIssue.detail = '';
 
   if (existingMessageId) {
     const editRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${existingMessageId}`, {
@@ -245,7 +264,8 @@ export async function postOrRefreshPanelMessage(
     body: JSON.stringify(payload),
   });
   if (!createRes.ok) {
-    console.error('[ticket-panel] Discord message create failed', { channelId, status: createRes.status });
+    panelPostIssue.detail = await readDiscordIssue(createRes);
+    console.error('[ticket-panel] Discord message create failed', { channelId, status: createRes.status, detail: panelPostIssue.detail });
     return null;
   }
   const message = await createRes.json();
