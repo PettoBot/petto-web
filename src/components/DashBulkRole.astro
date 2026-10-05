@@ -77,7 +77,7 @@ const statusLabel: Record<string, string> = {
     </div>
   )}
 
-  <form method="POST" class="br-form">
+  <form method="POST" class="br-form" data-status-url={`/dash/guild/${guildId}/bulk-role-status`}>
     <input type="hidden" name="action" value="start" />
     <div class="br-card">
       <div class="br-card-head">
@@ -186,23 +186,43 @@ const statusLabel: Record<string, string> = {
         }
       }
 
-      function poll(card) {
-        var url = card.dataset.statusUrl;
+      // The page keeps itself up to date: every 2 seconds while a job runs, every 8 seconds otherwise (to notice a job that was
+      // started from Discord or from another tab), and it rests while the tab is hidden. A job that shows up when the page had
+      // none loads the page once, so its card appears.
+      var lastState = null;
+      var timer = null;
+      function schedule(ms) { clearTimeout(timer); timer = setTimeout(tick, ms); }
+      function tick() {
+        if (document.hidden) { schedule(4000); return; }
+        var card = document.getElementById('br-status-card');
+        var form = document.querySelector('.br-form') as HTMLElement | null;
+        var url = (card && (card as HTMLElement).dataset.statusUrl) || (form && form.dataset.statusUrl);
+        if (!url) return;
         var cacheBust = (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
         fetch(url + cacheBust, { cache: 'no-store', headers: { Accept: 'application/json' } })
           .then(function (res) { if (!res.ok) throw new Error('status request failed'); return res.json(); })
           .then(function (body) {
             var job = body.job;
-            if (!job) { setTimeout(function () { poll(card); }, 2000); return; }
-            renderJob(card, job);
-            if (job.status === 'pending' || job.status === 'running') {
-              setTimeout(function () { poll(card); }, 2000);
+            if (!job) { schedule(8000); return; }
+            var key = job.id + ':' + job.status;
+            if (!card) {
+              // A job appeared and the page has no card for it yet.
+              if (lastState !== key) { lastState = key; window.location.reload(); }
+              return;
             }
+            renderJob(card, job);
+            var active = job.status === 'pending' || job.status === 'running';
+            var wasActive = lastState !== null && /(pending|running)$/.test(lastState);
+            lastState = key;
+            if (wasActive && !active) card.classList.add('br-just-finished');
+            schedule(active ? 2000 : 8000);
           })
-          .catch(function () { setTimeout(function () { poll(card); }, 4000); });
+          .catch(function () { schedule(5000); });
       }
-      var card = document.getElementById('br-status-card');
-      if (card && card.dataset.live === 'true') poll(card);
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) schedule(200); });
+      var first = document.getElementById('br-status-card');
+      lastState = null;
+      schedule(first && (first as HTMLElement).dataset.live === 'true' ? 0 : 1500);
     })();
   </script>
 </DashGuildLayout>
@@ -223,6 +243,8 @@ const statusLabel: Record<string, string> = {
   .br-icon-hidden { display: none; }
   .br-card-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .br-role-chip { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
+  .br-just-finished { animation: brPulse 1.2s ease-out 1; }
+  @keyframes brPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
   .br-status-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
 
   .br-spin { animation: br-spin 1s linear infinite; }
