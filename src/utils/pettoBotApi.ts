@@ -89,3 +89,22 @@ export async function callPettoCards(context: AstroContext, guildId: string, use
   const separator = path.includes('?') ? '&' : '?';
   return fetch(`${baseUrl}/api/dashboard/cards/${encodeURIComponent(guildId)}${path}${separator}user_id=${encodeURIComponent(userId)}`, { ...rest, headers });
 }
+
+/** The poll message as the bot draws it (its card or the saved V2 design), or null so the dashboard draws its own. */
+export async function renderPollMessage(context: AstroContext, guildId: string, poll: Record<string, unknown>, counts: number[], voters: number): Promise<{ flags: number; components: any[] } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/poll-message`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(6_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poll, counts, voters }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    const message = payload?.payload;
+    return response.ok && payload?.ok && Array.isArray(message?.components) ? message : null;
+  } catch {
+    return null;
+  }
+}
