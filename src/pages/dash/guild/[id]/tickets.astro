@@ -5,7 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
-import { buildPanelPayload, postOrRefreshPanelMessage, deletePanelMessage, panelPostIssue, type GuildVars } from '../../../../utils/ticketPanel';
+import { buildPanelPayload, panelWarnings, postOrRefreshPanelMessage, deletePanelMessage, panelPostIssue, type GuildVars } from '../../../../utils/ticketPanel';
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
@@ -100,6 +100,23 @@ async function getTemplateData(name: string | null): Promise<any | null> {
 
 let saved = false;
 let error: string | null = null;
+const warnings: string[] = [];
+
+/** Why the panel could not be posted, in words, from the code Discord gave. */
+function panelReason(): string {
+  const code = panelPostIssue.code;
+  const reasons: Record<number, string> = {
+    50013: dt("I'm missing permissions in that channel. I need View Channel, Send Messages and Embed Links."),
+    50001: dt("I can't see that channel. Give me View Channel there."),
+    10003: dt('That channel no longer exists. Move the panel to another one.'),
+    50006: dt('The message would be empty. Add a title or a description, or pick a design that has content.'),
+    50035: dt('Discord refused the content of the panel. Check the title, the description and the design.'),
+  };
+  if (reasons[code]) return reasons[code];
+  if (panelPostIssue.status === 403) return reasons[50013];
+  return panelPostIssue.detail || dt('Discord did not accept the panel. Try again in a moment.');
+}
+const panelFailure = (lead: string) => `${lead} ${panelReason()}`;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -234,7 +251,7 @@ if (Astro.request.method === 'POST') {
         const [panel] = await createRes.json();
         const ok = await refreshPanelById(String(panel.id));
         saved = ok;
-        if (!ok) error = dt('Panel created, but I could not post it, check my permissions in that channel.') + (panelPostIssue.detail ? ` ${panelPostIssue.detail}` : '');
+        if (!ok) error = panelFailure(dt('The panel was created but could not be posted.'));
       } else {
         error = dt("Couldn't create the panel, try again.");
       }
@@ -257,7 +274,7 @@ if (Astro.request.method === 'POST') {
     } else {
       const ok = await refreshPanelById(panelId);
       saved = ok;
-      if (!ok) error = dt("Panel saved, but I couldn't update the posted message, check my permissions.") + (panelPostIssue.detail ? ` ${panelPostIssue.detail}` : '');
+      if (!ok) error = panelFailure(dt('The panel was saved but the message could not be updated.'));
     }
   } else if (action === 'move_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
@@ -283,7 +300,7 @@ if (Astro.request.method === 'POST') {
         } else {
           const ok = await refreshPanelById(panelId);
           saved = ok;
-          if (!ok) error = dt('Panel moved, but I could not post it there, check my permissions in that channel.') + (panelPostIssue.detail ? ` ${panelPostIssue.detail}` : '');
+          if (!ok) error = panelFailure(dt('The panel was moved but could not be posted there.'));
         }
       }
     }
@@ -305,7 +322,7 @@ if (Astro.request.method === 'POST') {
         } else {
           const ok = await refreshPanelById(panelId);
           saved = ok;
-          if (!ok) error = dt("Couldn't resend the panel, check my permissions in that channel.") + (panelPostIssue.detail ? ` ${panelPostIssue.detail}` : '');
+          if (!ok) error = panelFailure(dt("Couldn't resend the panel."));
         }
       }
     }
@@ -373,6 +390,11 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   const guildVars = templateData ? await getGuildVars() : null;
   const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats, templateData, guildVars));
   if (!messageId) return false;
+  for (const note of panelWarnings(cats, panel.embed_template, templateData)) {
+    if (note === 'no_types') warnings.push(dt('The panel is posted, but it has no ticket types yet, so nobody can open a ticket from it. Add a type to this panel.'));
+    else if (note === 'template_missing') warnings.push(dt('The design you picked no longer exists, so the plain panel was posted.'));
+    else warnings.push(dt('The design you picked has nothing in it, so the plain panel was posted.'));
+  }
   if (messageId !== panel.message_id) {
     await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
   }
@@ -493,6 +515,7 @@ const settings = {
   openTickets={openTickets}
   saved={saved}
   error={error}
+  warnings={warnings}
   premiumActive={premiumActive}
   section={section}
 />
