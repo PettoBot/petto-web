@@ -1857,4 +1857,12 @@ export const dashPt: Record<string, string> = {
   "Go back to the original list": "Voltar à lista original",
   "Remove {name} from this position?": "Remover {name} deste cargo?",
   "Delete the saved team and show the original list again?": "Apagar a equipe salva e mostrar a lista original de novo?",
+  "Posted": "Publicado",
+  "Open in Discord": "Abrir no Discord",
+  "Not posted yet. Press Resend.": "Ainda não foi publicado. Clique em Reenviar.",
+  "Click a button below to open a ticket.": "Clique em um botão abaixo para abrir um ticket.",
+  "The design \"{name}\" decides how the message looks. This preview is only the plain panel.": "O design \"{name}\" decide como a mensagem fica. Esta pré-visualização é só o painel simples.",
+  "No types yet, so there is nothing to click. Add one in Support types.": "Ainda não há tipos, então não há nada para clicar. Adicione um em Tipos de suporte.",
+  "Resend this panel? The message in Discord is deleted and posted again.": "Reenviar este painel? A mensagem no Discord é apagada e publicada de novo.",
+  "Delete this panel? Its message in Discord is deleted too. Ticket types stay, but are no longer on a panel.": "Apagar este painel? A mensagem no Discord também é apagada. Os tipos de ticket ficam, mas deixam de estar em um painel.",
 };

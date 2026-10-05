@@ -1857,4 +1857,12 @@ export const dashEs: Record<string, string> = {
   "Go back to the original list": "Volver a la lista original",
   "Remove {name} from this position?": "¿Quitar a {name} de este puesto?",
   "Delete the saved team and show the original list again?": "¿Borrar el equipo guardado y mostrar la lista original otra vez?",
+  "Posted": "Publicado",
+  "Open in Discord": "Abrir en Discord",
+  "Not posted yet. Press Resend.": "Aún no está publicado. Pulsa Reenviar.",
+  "Click a button below to open a ticket.": "Pulsa un botón de abajo para abrir un ticket.",
+  "The design \"{name}\" decides how the message looks. This preview is only the plain panel.": "El diseño \"{name}\" decide cómo se ve el mensaje. Esta vista previa es solo el panel simple.",
+  "No types yet, so there is nothing to click. Add one in Support types.": "Aún no hay tipos, así que no hay nada que pulsar. Añade uno en Tipos de soporte.",
+  "Resend this panel? The message in Discord is deleted and posted again.": "¿Reenviar este panel? El mensaje en Discord se borra y se publica otra vez.",
+  "Delete this panel? Its message in Discord is deleted too. Ticket types stay, but are no longer on a panel.": "¿Borrar este panel? Su mensaje en Discord también se borra. Los tipos de ticket se quedan, pero ya no estarán en un panel.",
 };
