@@ -15,6 +15,7 @@ const localeBase = localePath[lang] ?? '';
 // The status page reads the Discloud-backed primary through the private bot API.
 // Browser polling goes through the web Worker so the dashboard secret never leaves it.
 const statusEndpoint = new URL('/api/status', Astro.url).pathname;
+const searchEndpoint = new URL('/api/status-search', Astro.url).pathname;
 
 const STALE_MS = 5 * 60 * 1000;
 
@@ -104,6 +105,16 @@ const stateLabel: Record<string, string> = {
             <span class="l">{s.totalServers}</span>
           </div>
 
+          <form class="status-search" id="statusSearch" role="search" data-endpoint={searchEndpoint} data-short={s.searchShort} data-empty={s.searchEmpty} data-error={s.searchError} data-limited={s.searchLimited} data-offline={s.shardOffline} data-operational={s.shardOperational} data-reconnecting={s.shardReconnecting} data-shard={s.shardName}>
+            <label for="statusSearchInput" class="status-block-label">{s.searchTitle}</label>
+            <div class="status-search-row">
+              <Icon name="ph:magnifying-glass" class="status-search-ic" />
+              <input id="statusSearchInput" type="search" name="q" autocomplete="off" maxlength="100" placeholder={s.searchPlaceholder} />
+            </div>
+            <p class="status-search-hint" id="statusSearchHint">{s.searchHint}</p>
+            <ul class="status-search-results" id="statusSearchResults" aria-live="polite"></ul>
+          </form>
+
           <div id="shardsContent" class="shard-grid">
             {shards ? (
               shards.map((sh) => (
@@ -151,6 +162,70 @@ const stateLabel: Record<string, string> = {
     </section>
   </main>
 </Base>
+
+<script>
+  const searchForm = document.getElementById('statusSearch') as HTMLFormElement | null;
+  if (searchForm) {
+    const input = document.getElementById('statusSearchInput') as HTMLInputElement;
+    const hint = document.getElementById('statusSearchHint')!;
+    const list = document.getElementById('statusSearchResults')!;
+    const hintText = hint.textContent ?? '';
+    const labels: Record<string, string> = {
+      operational: searchForm.dataset.operational || 'Operational',
+      offline: searchForm.dataset.offline || 'Offline',
+      reconnecting: searchForm.dataset.reconnecting || 'Reconnecting',
+    };
+    const text = (value: unknown) => String(value ?? '');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let latest = 0;
+
+    function show(message: string, problem = false) {
+      hint.textContent = message;
+      hint.classList.toggle('problem', problem);
+    }
+
+    async function search() {
+      const q = input.value.trim();
+      const ticket = ++latest;
+      list.textContent = '';
+      if (!q) { show(hintText); return; }
+      if (!/^\d{15,22}$/.test(q) && q.length < 3) { show(searchForm!.dataset.short || ''); return; }
+      try {
+        const response = await fetch(`${searchForm!.dataset.endpoint}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (ticket !== latest) return;
+        if (response.status === 429) { show(searchForm!.dataset.limited || '', true); return; }
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(payload?.results)) { show(searchForm!.dataset.error || '', true); return; }
+        if (!payload.results.length) { show(searchForm!.dataset.empty || ''); return; }
+        show(hintText);
+        for (const row of payload.results) {
+          const item = document.createElement('li');
+          item.className = 'status-result';
+          const icon = document.createElement('span');
+          icon.className = 'status-result-icon';
+          if (row.icon && /^https:\/\/cdn\.discordapp\.com\//.test(row.icon)) { const img = document.createElement('img'); img.src = row.icon; img.alt = ''; img.loading = 'lazy'; icon.appendChild(img); }
+          else icon.textContent = text(row.name).slice(0, 1).toUpperCase();
+          const name = document.createElement('span');
+          name.className = 'status-result-name';
+          name.textContent = text(row.name);
+          const meta = document.createElement('span');
+          meta.className = 'status-result-meta';
+          meta.textContent = `${searchForm!.dataset.shard || 'Shard'} ${text(row.shard)}${row.ping != null ? ` · ${text(row.ping)} ms` : ''}`;
+          const pill = document.createElement('span');
+          pill.className = `status-pill ${text(row.state)}`;
+          pill.textContent = labels[text(row.state)] ?? text(row.state);
+          item.append(icon, name, meta, pill);
+          list.appendChild(item);
+        }
+      } catch {
+        if (ticket === latest) show(searchForm!.dataset.error || '', true);
+      }
+    }
+
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 350); });
+    searchForm.addEventListener('submit', (event) => { event.preventDefault(); clearTimeout(timer); search(); });
+  }
+</script>
 
 <script>
   const block = document.getElementById('statusBlock');
@@ -269,6 +344,21 @@ const stateLabel: Record<string, string> = {
   :global(.shard-stat .n) { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); }
   :global(.shard-stat .n em) { font-family: var(--sans); font-style: normal; font-size: 12px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
   :global(.shard-stat .l) { font-size: 11.5px; color: var(--text-dim); }
+
+  .status-search { margin: 4px 0 24px; }
+  .status-search-row { position: relative; margin-top: 8px; }
+  .status-search-row :global(.status-search-ic) { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-dim); pointer-events: none; }
+  .status-search input { width: 100%; box-sizing: border-box; padding: 11px 14px 11px 38px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); font: inherit; font-size: 14.5px; }
+  .status-search input:focus { outline: none; border-color: var(--accent); }
+  .status-search-hint { margin: 8px 2px 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+  .status-search-hint.problem { color: var(--red); }
+  .status-search-results { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  :global(.status-result) { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--card); }
+  :global(.status-result-icon) { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; background: var(--border-soft); display: grid; place-items: center; font-weight: 600; color: var(--text-dim); flex-shrink: 0; }
+  :global(.status-result-icon img) { width: 100%; height: 100%; object-fit: cover; }
+  :global(.status-result-name) { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.status-result-meta) { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+  @media (max-width: 480px) { :global(.status-result) { flex-wrap: wrap; } :global(.status-result-meta) { order: 4; width: 100%; } }
 
   .status-total { display: flex; flex-direction: column; gap: 3px; margin-bottom: 14px; }
   .status-total .n { font-family: var(--serif); font-size: 30px; font-weight: 600; color: var(--text); }
