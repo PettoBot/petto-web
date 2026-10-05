@@ -23,7 +23,7 @@ const categoryOf: Record<string, string[]> = {
   community: ['remind', 'invites', 'afk', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'review', 'profile', 'profileconfig', 'quests', 'globalranking'],
   onboarding: ['welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
-  info: ['activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll'],
+  info: ['activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll'],
   setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook'],
   roleplay: ['airkiss', 'angry', 'angrystare', 'bite', 'bleh', 'blush', 'boop', 'brofist', 'bye', 'cry', 'cuddle', 'dance', 'glomp', 'handhold', 'happy', 'hi', 'highfive', 'hug', 'kill', 'kiss', 'laugh', 'lick', 'no', 'nom', 'pat', 'poke', 'punch', 'sad', 'slap', 'smile', 'smug', 'tickle', 'wave', 'wink', 'yeet', 'yes', '8ball', 'rps', 'ship'],
 };
