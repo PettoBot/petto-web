@@ -108,3 +108,22 @@ export async function renderPollMessage(context: AstroContext, guildId: string, 
     return null;
   }
 }
+
+/** Starts, ends or draws again a giveaway through the bot, as the person who manages the server. */
+export async function callPettoGiveaway(context: AstroContext, guildId: string, userId: string, action: 'start' | 'end' | 'reroll', body: Record<string, unknown>): Promise<{ ok: boolean; error?: string; message?: string; winners?: string[] }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, error: 'not_configured', message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/giveaway/${action}`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(15_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    if (response.ok && payload?.ok) return payload;
+    return { ok: false, error: String(payload?.error ?? 'unavailable'), message: typeof payload?.message === 'string' ? payload.message : undefined };
+  } catch {
+    return { ok: false, error: 'unavailable', message: 'The bot did not answer in time.' };
+  }
+}

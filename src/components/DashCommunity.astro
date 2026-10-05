@@ -1,6 +1,7 @@
 ---
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import UserChip from './UserChip.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -19,7 +20,7 @@ interface BoosterConfig {
 interface BoosterRole { userId: string; roleId: string; color: string | null; }
 interface ReputationConfig { enabled: boolean; cooldownHours: number; }
 interface ReputationRow { userId: string; points: number; }
-interface Poll { id: number; channel_id: string; message_id: string; question: string; options: string[]; image: string | null; multi: boolean; ends_at: string | null; closed: boolean; created_at: string; voters: number; counts: number[]; }
+interface Poll { id: number; channel_id: string; message_id: string; embed_template?: string | null; question: string; options: string[]; image: string | null; multi: boolean; ends_at: string | null; closed: boolean; created_at: string; voters: number; counts: number[]; }
 
 interface Props {
   user: { username: string; avatar: string | null };
@@ -36,10 +37,11 @@ interface Props {
   reputationTop: ReputationRow[];
   polls: Poll[];
   pollError: string | null;
+  people?: Record<string, { name: string; avatar: string }>;
   pollDesigns?: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, report, booster, boosterRoles, roles, channels, saved, reputation, reputationTop, polls, pollError, pollDesigns = [], section } = Astro.props;
+const { user, guildId, guildName, guildIcon, report, booster, boosterRoles, roles, channels, saved, reputation, reputationTop, polls, pollError, people = {}, pollDesigns = [], section } = Astro.props;
 
 const sectionMeta: Record<string, string> = { settings: dt('Community settings'), reputation: dt('Reputation leaderboard'), boosters: dt('Active booster roles'), polls: dt('Polls') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
@@ -150,7 +152,7 @@ function roleName(id: string) {
       <div class="cm-list">
         {reputationTop.map((r) => (
           <div class="cm-list-row">
-            <code>{r.userId}</code>
+            <UserChip id={r.userId} person={people[r.userId]} />
             <span class="cm-rep-points">{r.points} pts</span>
             <form method="POST">
               <input type="hidden" name="action" value="reset_reputation" />
@@ -169,7 +171,7 @@ function roleName(id: string) {
       <div class="cm-list">
         {boosterRoles.map((b) => (
           <div class="cm-list-row">
-            <code>{b.userId}</code>
+            <UserChip id={b.userId} person={people[b.userId]} />
             <span>{roleName(b.roleId)}</span>
             {b.color && <span class="cm-swatch" style={`--sw:${b.color}`} />}
           </div>
@@ -223,6 +225,13 @@ function roleName(id: string) {
         <span class="cm-help">{dt('Pick a saved V2 embed to design the poll with the poll variables. The vote buttons stay under it.')}</span>
       </div>
       <label class="cm-check"><input type="checkbox" name="multi" />{dt('Allow members to choose more than one option')}</label>
+      <div class="cm-pv" data-poll-preview aria-live="polite">
+        <div class="cm-pv-label">{dt('Preview')}</div>
+        <div class="cm-pv-q" data-pv-q>{dt('What should we build next?')}</div>
+        <div class="cm-pv-type" data-pv-type data-multi={dt('Multiple choice')}>{dt('Single choice')}</div>
+        <div class="cm-pv-opts" data-pv-opts></div>
+        <div class="cm-pv-foot">{dt('0 votes · open')}</div>
+      </div>
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />{dt('Publish poll')}</button>
     </form>
 
@@ -236,7 +245,12 @@ function roleName(id: string) {
             const total = poll.voters;
             return (
               <article class:list={['cm-poll-card', { closed: poll.closed }]}>
-                <div class="cm-poll-card-head"><div><h3>{poll.question}</h3><p>{dt('#{a} · {b} voter{c} · {d}', { a: (channels.find((c) => c.id === poll.channel_id)?.name ?? poll.channel_id), b: (total), c: (total === 1 ? '' : 's'), d: (poll.closed ? 'Closed' : 'Open') })}</p></div><span class="cm-poll-status">{poll.closed ? 'Closed' : 'Live'}</span></div>
+                <div class="cm-poll-card-head"><div><h3>{poll.question}</h3><p>{dt('#{a} · {b} voter{c} · {d}', { a: (channels.find((c) => c.id === poll.channel_id)?.name ?? poll.channel_id), b: (total), c: (total === 1 ? '' : 's'), d: (poll.closed ? 'Closed' : 'Open') })}</p>
+                  <p class="cm-poll-meta">
+                    {poll.ends_at && !poll.closed && <span><Icon name="ph:clock-fill" width="11" height="11" /> {dt('Closes')} <time datetime={poll.ends_at} data-local-time>{poll.ends_at}</time></span>}
+                    {poll.multi && <span>{dt('Multiple choice')}</span>}
+                    {poll.embed_template && <span>{dt('Design')}: {poll.embed_template}</span>}
+                  </p></div><span class="cm-poll-status">{poll.closed ? 'Closed' : 'Live'}</span></div>
                 <div class="cm-poll-options">
                   {poll.options.map((option, index) => {
                     const count = poll.counts[index] ?? 0;
@@ -244,7 +258,11 @@ function roleName(id: string) {
                     return <div class="cm-poll-option"><div class="cm-poll-option-line"><span>{index + 1}. {option}</span><b>{count} · {pct}%</b></div><div class="cm-poll-bar"><i style={`width:${pct}%`} /></div></div>;
                   })}
                 </div>
-                {!poll.closed && <form method="POST"><input type="hidden" name="action" value="close_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-del-text"><Icon name="ph:stop-circle-fill" width="13" height="13" />{dt('End poll')}</button></form>}
+                <div class="cm-poll-actions">
+                  <a class="cm-link" href={`https://discord.com/channels/${guildId}/${poll.channel_id}/${poll.message_id}`} target="_blank" rel="noopener"><Icon name="ph:arrow-square-out" width="13" height="13" />{dt('Open in Discord')}</a>
+                  {!poll.closed && <form method="POST"><input type="hidden" name="action" value="close_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-del-text" data-confirm={dt('End this poll now? Nobody can vote after that.')}><Icon name="ph:stop-circle-fill" width="13" height="13" />{dt('End poll')}</button></form>}
+                  <form method="POST"><input type="hidden" name="action" value="delete_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-del-text" data-confirm={dt('Delete this poll? Its message in Discord and its votes are removed.')}><Icon name="ph:trash-fill" width="13" height="13" />{dt('Delete')}</button></form>
+                </div>
               </article>
             );
           })}
@@ -253,6 +271,48 @@ function roleName(id: string) {
     </div>
   </div>
 </DashGuildLayout>
+
+<script is:inline>
+  (function () {
+    var letters = ['\u{1F1E6}','\u{1F1E7}','\u{1F1E8}','\u{1F1E9}','\u{1F1EA}','\u{1F1EB}','\u{1F1EC}','\u{1F1ED}','\u{1F1EE}','\u{1F1EF}'];
+    function renderPollPreview(form) {
+      var box = form.querySelector('[data-poll-preview]');
+      if (!box) return;
+      var q = form.querySelector('[name="question"]').value.trim();
+      var lines = form.querySelector('[name="options"]').value.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 10);
+      var multi = form.querySelector('[name="multi"]').checked;
+      var qEl = box.querySelector('[data-pv-q]');
+      if (qEl) { if (!qEl.getAttribute('data-sample')) qEl.setAttribute('data-sample', qEl.textContent); qEl.textContent = q || qEl.getAttribute('data-sample'); }
+      var typeEl = box.querySelector('[data-pv-type]');
+      if (typeEl) { if (!typeEl.getAttribute('data-single')) typeEl.setAttribute('data-single', typeEl.textContent); typeEl.textContent = multi ? typeEl.getAttribute('data-multi') || typeEl.getAttribute('data-single') : typeEl.getAttribute('data-single'); }
+      var opts = box.querySelector('[data-pv-opts]');
+      if (!opts) return;
+      opts.textContent = '';
+      lines.forEach(function (line, i) {
+        var row = document.createElement('div');
+        row.className = 'cm-pv-opt';
+        var name = document.createElement('span');
+        name.textContent = letters[i] + ' ' + line;
+        var bar = document.createElement('i');
+        row.appendChild(name); row.appendChild(bar);
+        opts.appendChild(row);
+      });
+    }
+    function init() {
+      var f = document.querySelector('.cm-poll-create');
+      if (f) renderPollPreview(f);
+      document.querySelectorAll('time[data-local-time]').forEach(function (t) { var d = new Date(t.getAttribute('datetime')); if (!isNaN(d.getTime())) t.textContent = d.toLocaleString(); });
+    }
+    if (!window.__pollPreviewBound) {
+      window.__pollPreviewBound = true;
+      document.addEventListener('input', function (event) {
+        var form = event.target && event.target.closest ? event.target.closest('.cm-poll-create') : null;
+        if (form) renderPollPreview(form);
+      });
+    }
+    init();
+  })();
+</script>
 
 <style>
   h1 { font-size: 24px; margin: 0 0 6px; }
@@ -287,7 +347,7 @@ function roleName(id: string) {
   .cm-section-sub { font-size: 12.5px; color: var(--text-dim); margin: -6px 0 18px; max-width: 68ch; line-height: 1.5; }
   .cm-section-hidden { display: none; }
   :global(.cm-count){ font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-weight: 400; }
-  .cm-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-width: 420px; }
+  .cm-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-width: 520px; }
   .cm-list-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; font-size: 13px; background: var(--card); }
   .cm-list-row + .cm-list-row { border-top: 1px solid var(--border-soft); }
   .cm-list-row :global(code){ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
@@ -317,6 +377,18 @@ function roleName(id: string) {
   .cm-poll-option-line :global(b){ flex-shrink: 0; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; font-weight: 500; }
   .cm-poll-bar { height: 5px; margin-top: 5px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
   .cm-poll-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+  .cm-poll-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 5px !important; }
+  .cm-poll-meta span { display: inline-flex; align-items: center; gap: 4px; }
+  .cm-poll-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+  .cm-poll-actions form { margin: 0; }
+  .cm-link { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--sans); color: var(--accent); text-decoration: none; }
+  .cm-pv { border: 1px solid var(--border-soft); border-left: 3px solid #f0a88f; border-radius: 10px; padding: 11px 13px; background: var(--bg-raise); display: grid; gap: 6px; }
+  .cm-pv-label { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+  .cm-pv-q { font-weight: 700; font-size: 14px; color: var(--text); }
+  .cm-pv-type, .cm-pv-foot { font-size: 11px; color: var(--text-dim); }
+  .cm-pv-opts { display: grid; gap: 8px; margin: 4px 0; }
+  .cm-pv-opt span { font-size: 12.5px; color: var(--text-muted); }
+  .cm-pv-opt i { display: block; height: 5px; margin-top: 4px; border-radius: 999px; background: var(--border-soft); }
   .cm-del-text { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: transparent; color: var(--red); font: 600 12px var(--sans); cursor: pointer; }
   .cm-empty { display: flex; align-items: center; gap: 8px; max-width: 700px; border: 1px dashed var(--border); border-radius: 12px; padding: 18px; color: var(--text-dim); font-size: 12.5px; }
 

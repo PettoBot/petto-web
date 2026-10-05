@@ -24,7 +24,8 @@ interface Config {
   claimTimeOverMessageEmbed: string;
   acceptMessageEmbed: string;
 }
-interface Active { id: number; prize: string; winnersCount: number; endsAt: string; entries: number; hostId: string; }
+interface Active { id: number; prize: string; winnersCount: number; endsAt: string; entries: number; hostId: string; channelId?: string; messageId?: string | null; }
+interface Ended { id: number; prize: string; winnersCount: number; endsAt: string; channelId: string; messageId: string | null; }
 interface PresetRole { roleId: string; entries: number; claimTimeMs: number; entriesStack: boolean; claimTimeStack: boolean; }
 interface Preset { id: number; name: string; roles: PresetRole[]; }
 
@@ -35,6 +36,10 @@ interface Props {
   guildIcon: string;
   config: Config;
   active: Active[];
+  ended?: Ended[];
+  channels?: { id: string; name: string }[];
+  giveawayError?: string | null;
+  giveawayNote?: string | null;
   presets: Preset[];
   roles: { id: string; name: string }[];
   embedTemplateNames: string[];
@@ -42,7 +47,7 @@ interface Props {
   saved: boolean;
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, config, active, presets, roles, embedTemplateNames, premiumActive, saved, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, config, active, ended = [], channels = [], giveawayError = null, giveawayNote = null, presets, roles, embedTemplateNames, premiumActive, saved, section } = Astro.props;
 
 const sectionMeta: Record<string, string> = { settings: dt('Giveaway settings'), presets: dt('Bonus-entry presets'), active: dt('Running giveaways') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
@@ -63,9 +68,10 @@ const giveawayPresetAtLimit = presets.length >= giveawayPresetLimit;
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'settings' ? 'giveaways' : `giveaways-${selectedSection}`} pageTitle={selectedTitle}>
   <h1>{selectedTitle}</h1>
   <p class="gw-sub"><Fragment set:html={dth('Entry style, messages, and bonus-entry presets for giveaways in <b>{a}</b>. Start one with <code>/giveaway start</code>.', { a: (guildName) })} /></p>
-  <div class="gw-discord-note"><Icon name="ph:info-fill" width="15" height="15" /><span>{dt('Giveaways are started from Discord with')} <code>{dt('/giveaway start')}</code>{dt('. This page manages their settings, messages, designs, and presets.')}</span></div>
+  <div class="gw-discord-note"><Icon name="ph:info-fill" width="15" height="15" /><span>{dt('Start one here, in Running now, or in Discord with')} <code>{dt('/giveaway start')}</code>{dt('. This page also manages their settings, messages, designs, and presets.')}</span></div>
 
-  {saved && <div class="gw-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {saved && <div class="gw-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}{giveawayNote ? ' ' : ''}{giveawayNote}</div>}
+  {giveawayError && <div class="gw-error"><Icon name="ph:warning-fill" width="15" height="15" />{giveawayError}</div>}
 
   <form method="POST" class:list={['gw-form', { 'gw-section-hidden': selectedSection !== 'settings' }]}>
     <input type="hidden" name="action" value="config" />
@@ -223,7 +229,31 @@ const giveawayPresetAtLimit = presets.length >= giveawayPresetLimit;
   </div>
 
   <div class:list={['gw-section', { 'gw-section-hidden': selectedSection !== 'active' }]}>
-    <h2><Icon name="ph:timer-fill" width="15" height="15" /><Fragment set:html={dth('Running now <span class="gw-count">{a}</span>', { a: (active.length) })} /></h2>
+    <h2><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('Start a giveaway')}</h2>
+    <form method="POST" class="gw-start">
+      <input type="hidden" name="action" value="start_giveaway" />
+      <div class="gw-start-grid">
+        <div class="gw-field gw-field-wide"><label>{dt('Prize')}</label><input type="text" name="prize" maxlength="256" placeholder={dt('Discord Nitro')} required /></div>
+        <div class="gw-field"><label>{dt('Winners')}</label><input type="number" name="winners" min="1" max="50" value="1" required /></div>
+        <div class="gw-field"><label>{dt('Duration')}</label><input type="text" name="duration" maxlength="30" placeholder="1h, 3d 4h" required /></div>
+        <div class="gw-field gw-field-wide"><label>{dt('Channel')}</label>
+          <select name="channel_id" required><option value="" disabled selected>{dt('Choose a channel')}</option>{channels.map((ch) => <option value={ch.id}>#{ch.name}</option>)}</select>
+        </div>
+        <div class="gw-field"><label>{dt('Claim time')} <span class="gw-muted">{dt('optional')}</span></label><input type="text" name="claim_time" maxlength="12" placeholder="5m" /></div>
+        <div class="gw-field"><label>{dt('Entry method')}</label>
+          <select name="entry_mode"><option value="">{dt('Server default')}</option><option value="button">{dt('Button')}</option><option value="reaction">{dt('Reaction')}</option></select>
+        </div>
+        <div class="gw-field"><label>{dt('Bonus-entry preset')}</label>
+          <select name="preset"><option value="">{dt('None')}</option>{presets.map((preset) => <option value={preset.name}>{preset.name}</option>)}</select>
+        </div>
+        <div class="gw-field"><label>{dt('Design')}</label>
+          <select name="embed_template"><option value="">{dt('Server default')}</option>{embedTemplateNames.map((name) => <option value={name}>{name}</option>)}</select>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:rocket-launch-fill" width="13" height="13" />{dt('Start giveaway')}</button>
+    </form>
+
+    <h2 class="gw-h2-gap"><Icon name="ph:timer-fill" width="15" height="15" /><Fragment set:html={dth('Running now <span class="gw-count">{a}</span>', { a: (active.length) })} /></h2>
     {active.length === 0 ? (
       <p class="gw-empty-note">{dt('Nothing running.')}</p>
     ) : (
@@ -234,6 +264,29 @@ const giveawayPresetAtLimit = presets.length >= giveawayPresetLimit;
             <span class="gw-active-meta">{g.winnersCount} winner{g.winnersCount !== 1 ? 's' : ''}</span>
             <span class="gw-active-meta">{g.entries} entries</span>
             <span class="gw-active-ends">{dt('ends {d}', { d: new Date(g.endsAt).toLocaleString(dashLang) })}</span>
+            <span class="gw-row-actions">
+              {g.messageId && g.channelId && <a class="gw-link" href={`https://discord.com/channels/${guildId}/${g.channelId}/${g.messageId}`} target="_blank" rel="noopener"><Icon name="ph:arrow-square-out" width="13" height="13" />{dt('Open in Discord')}</a>}
+              <form method="POST"><input type="hidden" name="action" value="end_giveaway" /><input type="hidden" name="giveaway_id" value={g.id} /><button type="submit" class="gw-text-btn" data-confirm={dt('End this giveaway now and draw the winners?')}><Icon name="ph:stop-circle-fill" width="13" height="13" />{dt('End now')}</button></form>
+            </span>
+          </div>
+        ))}
+      </div>
+    )}
+
+    <h2 class="gw-h2-gap"><Icon name="ph:trophy-fill" width="15" height="15" /><Fragment set:html={dth('Ended <span class="gw-count">{a}</span>', { a: (ended.length) })} /></h2>
+    {ended.length === 0 ? (
+      <p class="gw-empty-note">{dt('No giveaway has ended yet.')}</p>
+    ) : (
+      <div class="gw-active-list">
+        {ended.map((g) => (
+          <div class="gw-active-row">
+            <span class="gw-active-prize">{g.prize}</span>
+            <span class="gw-active-meta">{g.winnersCount} winner{g.winnersCount !== 1 ? 's' : ''}</span>
+            <span class="gw-active-ends">{dt('ended {d}', { d: new Date(g.endsAt).toLocaleString(dashLang) })}</span>
+            <span class="gw-row-actions">
+              {g.messageId && <a class="gw-link" href={`https://discord.com/channels/${guildId}/${g.channelId}/${g.messageId}`} target="_blank" rel="noopener"><Icon name="ph:arrow-square-out" width="13" height="13" />{dt('Open in Discord')}</a>}
+              <form method="POST" class="gw-reroll"><input type="hidden" name="action" value="reroll_giveaway" /><input type="hidden" name="giveaway_id" value={g.id} /><input type="number" name="winners" min="1" max="50" placeholder={dt('How many')} aria-label={dt('How many')} /><button type="submit" class="gw-text-btn" data-confirm={dt('Draw new winners for this giveaway?')}><Icon name="ph:arrows-clockwise-fill" width="13" height="13" />{dt('Draw again')}</button></form>
+            </span>
           </div>
         ))}
       </div>
@@ -242,6 +295,19 @@ const giveawayPresetAtLimit = presets.length >= giveawayPresetLimit;
 </DashGuildLayout>
 
 <style>
+  .gw-error { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--red); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .gw-start { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 640px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raise); padding: 16px 18px; margin: 10px 0 30px; }
+  .gw-start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; width: 100%; }
+  .gw-start-grid input, .gw-start-grid select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--card); color: var(--text); font: 13px var(--sans); }
+  .gw-muted { font-weight: 400; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+  .gw-h2-gap { margin-top: 26px; }
+  .gw-row-actions { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; }
+  .gw-row-actions form { margin: 0; display: inline-flex; align-items: center; gap: 8px; }
+  .gw-reroll input { width: 76px; border: 1px solid var(--border); border-radius: 7px; padding: 4px 6px; background: var(--card); color: var(--text); font: 12px var(--sans); }
+  .gw-link { display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--sans); color: var(--accent); text-decoration: none; }
+  .gw-text-btn { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 0; background: transparent; color: var(--text-muted); font: 600 12px var(--sans); cursor: pointer; }
+  .gw-text-btn:hover { color: var(--accent); }
+  @media (max-width: 560px) { .gw-start-grid { grid-template-columns: 1fr; } .gw-row-actions { margin-left: 0; width: 100%; flex-wrap: wrap; } }
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
   h2 :global(svg) { color: var(--accent); }

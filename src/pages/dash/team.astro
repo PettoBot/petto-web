@@ -1,0 +1,53 @@
+---
+export const prerender = false;
+import DashTeamAdmin from '../../components/DashTeamAdmin.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+import { isPettoOwner } from '../../utils/premiumAdmin';
+import { addTeamMembers, describeTeam, getTeamIds, moveTeamMember, readTeamRows, removeTeamMember, resetTeam, startCustomTeam, TEAM_POSITIONS } from '../../utils/team';
+
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!isPettoOwner(Astro, session.userId)) return Astro.redirect('/dash/manage?error=forbidden');
+
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+if (!botToken) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) return Astro.redirect('/dash/team?error=invalid');
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  let result: Awaited<ReturnType<typeof addTeamMembers>> = { ok: false, error: 'invalid' };
+  if (action === 'start') result = await startCustomTeam(Astro);
+  else if (action === 'add') result = await addTeamMembers(Astro, String(form.get('position') ?? ''), String(form.get('ids') ?? ''));
+  else if (action === 'remove') result = await removeTeamMember(Astro, Number(form.get('row_id')));
+  else if (action === 'up' || action === 'down') result = await moveTeamMember(Astro, Number(form.get('row_id')), action);
+  else if (action === 'reset') result = await resetTeam(Astro);
+  const query = new URLSearchParams();
+  if (result.ok) {
+    query.set('saved', '1');
+    if (result.added) query.set('added', String(result.added));
+    if (result.skipped) query.set('skipped', String(result.skipped));
+  } else query.set('error', 'error' in result ? result.error : 'invalid');
+  const position = String(form.get('position') ?? '');
+  return Astro.redirect(`/dash/team?${query}${(TEAM_POSITIONS as readonly string[]).includes(position) ? `#${position}` : ''}`);
+}
+
+const { ids, custom } = await getTeamIds(Astro);
+const rows = custom ? (await readTeamRows(Astro)) ?? [] : [];
+const people = await describeTeam(botToken, TEAM_POSITIONS.flatMap((position) => ids[position]));
+const sections = TEAM_POSITIONS.map((position) => ({
+  position,
+  members: custom
+    ? rows.filter((row) => row.position === position).map((row) => ({ rowId: row.id, ...people.get(row.user_id)! }))
+    : ids[position].map((id) => ({ rowId: 0, ...people.get(id)! })),
+}));
+
+const error = Astro.url.searchParams.get('error') ?? undefined;
+const saved = Astro.url.searchParams.get('saved') === '1';
+const added = Number(Astro.url.searchParams.get('added') ?? 0);
+const skipped = Number(Astro.url.searchParams.get('skipped') ?? 0);
+---
+
+<DashTeamAdmin sections={sections} custom={custom} error={error} saved={saved} added={added} skipped={skipped} />

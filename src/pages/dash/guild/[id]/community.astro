@@ -3,6 +3,7 @@ export const prerender = false;
 import DashCommunity from '../../../../components/DashCommunity.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
+import { describeTeam } from '../../../../utils/team';
 import { renderPollMessage } from '../../../../utils/pettoBotApi';
 import { isV2Data } from '../../../../utils/embedSchema';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
@@ -194,6 +195,23 @@ if (Astro.request.method === 'POST') {
         }
       }
     }
+  } else if (action === 'delete_poll') {
+    const pollId = Number(form.get('poll_id') ?? 0);
+    if (Number.isInteger(pollId) && pollId > 0) {
+      const pollRes = await fetch(`${apiUrl}/rest/v1/polls?id=eq.${pollId}&guild_id=eq.${id}&select=id,channel_id,message_id`, { headers: apiHeaders });
+      const poll = pollRes.ok ? (await pollRes.json())[0] as Pick<PollRecord, 'id' | 'channel_id' | 'message_id'> | undefined : undefined;
+      if (poll) {
+        // The message goes first; one that is already gone (404) is the state we want anyway.
+        const gone = await fetch(`https://discord.com/api/v10/channels/${poll.channel_id}/messages/${poll.message_id}`, { method: 'DELETE', headers: { Authorization: discordHeaders.Authorization } }).catch(() => null);
+        if (gone && !gone.ok && gone.status !== 404 && gone.status !== 403) {
+          pollError = dt('Discord did not let me delete the poll message. Try again.');
+        } else {
+          await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=eq.${poll.id}`, { method: 'DELETE', headers: apiHeaders });
+          const removed = await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+          if (removed.ok) saved = true; else pollError = dt('The poll message was removed but the poll could not be deleted.');
+        }
+      }
+    }
   } else if (action === 'close_poll') {
     const pollId = Number(form.get('poll_id') ?? 0);
     if (Number.isInteger(pollId) && pollId > 0) {
@@ -268,6 +286,8 @@ const rc = repConfigRows[0] ?? {};
 const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hours ?? 24 };
 const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
 const pollDesigns: string[] = (templatesRes.ok ? await templatesRes.json() : []).filter((row: any) => isV2Data(row.data)).map((row: any) => String(row.name));
+const peopleMap = await describeTeam(botToken, [...new Set([...reputationTop.map((row: { userId: string }) => row.userId), ...boosterRoles.map((row: { userId: string }) => row.userId)])].filter((value) => /^\d{15,25}$/.test(value)).slice(0, 60) as string[]);
+const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl }]));
 const rawPolls: PollRecord[] = pollsRes.ok ? await pollsRes.json() : [];
 const pollIds = rawPolls.map((poll) => poll.id).filter((pollId) => Number.isInteger(pollId));
 const pollVotesRes = pollIds.length > 0 ? await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: apiHeaders }) : null;
@@ -294,6 +314,7 @@ const polls = rawPolls.map((poll) => {
   reputationTop={reputationTop}
   polls={polls}
   pollError={pollError}
+  people={people}
   pollDesigns={pollDesigns}
   section={section}
 />

@@ -5,6 +5,9 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { hasPremiumForGuild } from '../../../../utils/premium';
+import { callPettoGiveaway } from '../../../../utils/pettoBotApi';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
@@ -35,11 +38,33 @@ function parseDurationMs(value: string): number {
 }
 
 let saved = false;
+let giveawayError: string | null = null;
+let giveawayNote: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
 
+  if (action === 'start_giveaway' || action === 'end_giveaway' || action === 'reroll_giveaway') {
+    const verb = action === 'start_giveaway' ? 'start' : action === 'end_giveaway' ? 'end' : 'reroll';
+    const result = await callPettoGiveaway(Astro, id, session.userId, verb, {
+      id: Number(form.get('giveaway_id') ?? 0),
+      prize: String(form.get('prize') ?? ''),
+      winners: String(form.get('winners') ?? ''),
+      duration: String(form.get('duration') ?? ''),
+      claim_time: String(form.get('claim_time') ?? ''),
+      channel_id: String(form.get('channel_id') ?? ''),
+      preset: String(form.get('preset') ?? ''),
+      embed_template: String(form.get('embed_template') ?? ''),
+      entry_mode: String(form.get('entry_mode') ?? ''),
+    });
+    if (result.ok) {
+      saved = true;
+      if (verb === 'reroll' && result.winners?.length) giveawayNote = dt('New winner(s): {list}', { list: result.winners.map((winner: string) => `<@${winner}>`).join(', ') });
+    } else {
+      giveawayError = result.message ?? dt('The giveaway action failed. Try again.');
+    }
+  } else
   if (action === 'config') {
     // The design columns only exist once the bot that added them is running, so they are sent only when the
     // server already has them or a design was chosen, and saving the text messages never breaks before then.
@@ -108,13 +133,15 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, configRes, activeRes, presetsRes, rolesRes, embedTemplatesRes] = await Promise.all([
+const [guildInfo, configRes, activeRes, presetsRes, rolesRes, embedTemplatesRes, channelsRes, endedRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id,prize,winners_count,ends_at,host_id&order=ends_at.asc`, { headers: apiHeaders }),
+  fetch(`${apiUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id,prize,winners_count,ends_at,host_id,channel_id,message_id&order=ends_at.asc`, { headers: apiHeaders }),
   fetch(`${apiUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id,name&order=name.asc`, { headers: apiHeaders }),
   getGuildList(Astro, id, botToken, 'roles'),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
+  getGuildList(Astro, id, botToken, 'channels'),
+  fetch(`${apiUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.true&select=id,prize,winners_count,ends_at,channel_id,message_id&order=ends_at.desc&limit=8`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -145,7 +172,7 @@ const active = await Promise.all(
       headers: { ...apiHeaders, Prefer: 'count=exact' },
     });
     const entries = countRes.ok ? (countRes.headers.get('content-range')?.split('/')[1] ?? '0') : '0';
-    return { id: g.id, prize: g.prize, winnersCount: g.winners_count, endsAt: g.ends_at, entries: Number(entries), hostId: g.host_id };
+    return { id: g.id, prize: g.prize, winnersCount: g.winners_count, endsAt: g.ends_at, entries: Number(entries), hostId: g.host_id, channelId: g.channel_id, messageId: g.message_id };
   })
 );
 
@@ -167,10 +194,20 @@ const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
   .map((r: any) => ({ id: r.id, name: r.name }));
+const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const channels = (Array.isArray(allChannels) ? allChannels : [])
+  .filter((ch: any) => Number(ch.type) === 0 || Number(ch.type) === 5)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((ch: any) => ({ id: ch.id, name: ch.name }));
+const ended = (endedRes.ok ? await endedRes.json() : []).map((g: any) => ({ id: g.id, prize: g.prize, winnersCount: g.winners_count, endsAt: g.ends_at, channelId: g.channel_id, messageId: g.message_id }));
 const embedTemplateNames = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 ---
 <DashGiveaways
   user={session}
+  channels={channels}
+  ended={ended}
+  giveawayError={giveawayError}
+  giveawayNote={giveawayNote}
   guildId={id}
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
