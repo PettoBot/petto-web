@@ -1,5 +1,6 @@
 ---
 export const prerender = false;
+import { makeT, getDashLang } from '../../../../i18n/dash';
 import DashLogging from '../../../../components/DashLogging.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
@@ -26,19 +27,25 @@ const apiHeaders = {
 
 let saved = false;
 
+const dt = makeT(getDashLang(Astro));
+const problems: string[] = [];
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? 'routing');
 
   if (action === 'add_ignored') {
-    const targetId = String(form.get('target_id') ?? '').trim();
-    if (targetId) {
-      await fetch(`${apiUrl}/rest/v1/log_ignored?on_conflict=guild_id,target_id`, {
+    // Ids, user mentions (<@123>) and channel mentions (<#123>), as many as are pasted.
+    const targetIds = [...new Set([...String(form.get('target_id') ?? '').matchAll(/\d{15,25}/g)].map((match) => match[0]))].slice(0, 50);
+    if (targetIds.length) {
+      const ignoredRes = await fetch(`${apiUrl}/rest/v1/log_ignored?on_conflict=guild_id,target_id`, {
         method: 'POST',
         headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ guild_id: id, target_id: targetId }),
+        body: JSON.stringify(targetIds.map((targetId) => ({ guild_id: id, target_id: targetId }))),
       });
-      saved = true;
+      if (ignoredRes.ok) saved = true; else problems.push(dt('The ignored list could not be saved. Try again.'));
+    } else {
+      problems.push(dt('Paste at least one user or channel ID, or a mention.'));
     }
   } else if (action === 'delete_ignored') {
     const targetId = encodeURIComponent(String(form.get('target_id') ?? ''));
@@ -53,6 +60,7 @@ if (Astro.request.method === 'POST') {
     const webhooksRes = await fetch(`${apiUrl}/rest/v1/log_webhooks?guild_id=eq.${id}&select=channel_id`, { headers: apiHeaders });
     const existingWebhookChannels = new Set<string>((webhooksRes.ok ? await webhooksRes.json() : []).map((w: { channel_id: string }) => w.channel_id));
 
+    const channelNames = new Map<string, string>(((await getGuildList(Astro, id, botToken, 'channels').then((r: Response) => (r.ok ? r.json() : [])).catch(() => [])) as any[]).map((c: any) => [c.id, c.name]));
     for (const eventId of EVENTS) {
       const selected = String(form.get(`event_${eventId}`) ?? '').trim();
       const previous = currentRouting[eventId];
@@ -78,6 +86,16 @@ if (Astro.request.method === 'POST') {
             body: JSON.stringify({ guild_id: id, channel_id: selected, webhook_id: webhook.id, webhook_token: webhook.token }),
           });
           existingWebhookChannels.add(selected);
+        } else {
+          // Without a webhook nothing can be logged there, so the route is not saved as if it worked.
+          const detail: any = await whRes.json().catch(() => null);
+          const reason = detail?.code === 50013 || whRes.status === 403
+            ? dt('I need the Manage Webhooks permission in that channel.')
+            : detail?.code === 30007 ? dt('That channel already has the maximum of 15 webhooks.')
+            : detail?.code === 10003 ? dt('That channel no longer exists.')
+            : dt('Discord did not accept it.');
+          problems.push(`${dt('Could not set up #{channel} for {event}.', { channel: channelNames.get(selected) ?? selected, event: eventId })} ${reason}`);
+          continue;
         }
       }
 
@@ -88,7 +106,7 @@ if (Astro.request.method === 'POST') {
       });
     }
 
-    saved = true;
+    saved = problems.length === 0;
   }
 }
 
@@ -124,4 +142,5 @@ const ignoredIds = rawIgnored.map((r: any) => ({ targetId: r.target_id, channelN
   routing={routing}
   ignoredIds={ignoredIds}
   saved={saved}
+  problems={problems}
 />

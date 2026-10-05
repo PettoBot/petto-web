@@ -1,5 +1,6 @@
 ---
 export const prerender = false;
+import { describeTeam } from '../../../../utils/team';
 import DashModeration from '../../../../components/DashModeration.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
@@ -126,11 +127,12 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+const casesLimit = [25, 50, 100, 200].includes(Number(Astro.url.searchParams.get('cases'))) ? Number(Astro.url.searchParams.get('cases')) : 25;
 const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes, stickyRolesRes, sanctionTemplatesRes, embedTemplatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=25`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=${casesLimit}`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: apiHeaders }),
   () => getGuildList(Astro, id, botToken, 'roles'),
@@ -177,6 +179,11 @@ const cases = rawCases.map((c: any) => ({
   reason: c.reason, active: c.active, createdAt: c.created_at,
 }));
 
+// Names and pictures for the people in the cases, so the log is readable and not a list of ids. Discord answers are kept for a while.
+const caseUserIds = [...new Set(cases.flatMap((c: { userId: string; moderatorId: string }) => [c.userId, c.moderatorId]).filter((value: string) => /^\d{15,25}$/.test(value)))] as string[];
+const peopleMap = await describeTeam(botToken, caseUserIds.slice(0, 120));
+const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl }]));
+
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
@@ -219,6 +226,8 @@ const escalationRules = rawEscalation.map((e: any) => ({
   antinuke={antinuke}
   stickyRolesEnabled={stickyRolesEnabled}
   cases={cases}
+  people={people}
+  casesLimit={casesLimit}
   silentChannels={silentChannels}
   escalationRules={escalationRules}
   sanctionTemplates={sanctionTemplates}

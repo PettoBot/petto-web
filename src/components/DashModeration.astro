@@ -48,6 +48,8 @@ interface Props {
   automod: AutomodConfig;
   antinuke: AntinukeConfig;
   cases: Case[];
+  people?: Record<string, { name: string; avatar: string }>;
+  casesLimit?: number;
   stickyRolesEnabled: boolean;
   silentChannels: SilentChannel[];
   escalationRules: EscalationRule[];
@@ -59,7 +61,7 @@ interface Props {
   embedTemplateNames: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, people = {}, casesLimit = 25, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, section } = Astro.props;
 
 const typeColor: Record<string, string> = {
   ban: '#fe6465', tempban: '#fe6465', kick: '#ff9f5a', warn: '#fed53c',
@@ -277,25 +279,86 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
     {cases.length === 0 ? (
       <p class="md-empty-note"><Fragment set:html={dth('No cases yet. They show up here the moment a mod uses <code>/ban</code>, <code>/kick</code>, <code>/mute</code> or <code>/warn</code>.')} /></p>
     ) : (
-      <div class="md-case-list">
-        {cases.map((c) => (
-          <div class="md-case-row">
-            <span class="md-case-num">#{c.caseNumber}</span>
-            <span class="md-case-type" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>{c.type}</span>
-            <span class="md-case-user">on <code>{c.userId}</code></span>
-            <span class="md-case-mod">by <code>{c.moderatorId}</code></span>
-            {c.reason && <span class="md-case-reason">{c.reason}</span>}
-            {!c.active && <span class="md-case-inactive">expired</span>}
+      <>
+        <div class="md-case-tools" data-case-tools>
+          <input type="search" class="md-case-search" placeholder={dt('Search by member, moderator, reason or case number')} autocomplete="off" data-case-search />
+          <div class="md-case-types">
+            <button type="button" class="md-case-pill on" data-case-type="">{dt('All')}</button>
+            {[...new Set(cases.map((c) => c.type))].map((type) => <button type="button" class="md-case-pill" data-case-type={type} style={`--c:${typeColor[type] ?? '#94a3b8'}`}>{type}</button>)}
           </div>
-        ))}
-      </div>
+        </div>
+        <div class="md-case-list" data-case-list>
+          {cases.map((c) => (
+            <div class="md-case-row" data-type={c.type} data-search={`${c.caseNumber} ${c.type} ${c.userId} ${c.moderatorId} ${people[c.userId]?.name ?? ''} ${people[c.moderatorId]?.name ?? ''} ${c.reason ?? ''}`.toLowerCase()}>
+              <span class="md-case-num">#{c.caseNumber}</span>
+              <span class="md-case-type" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>{c.type}</span>
+              <span class="md-case-person">
+                {people[c.userId] ? <img src={people[c.userId].avatar} alt="" width="20" height="20" loading="lazy" /> : null}
+                <span><b>{people[c.userId]?.name ?? c.userId}</b><code>{c.userId}</code></span>
+              </span>
+              <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
+              <time class="md-case-when" datetime={c.createdAt} data-local-time>{c.createdAt}</time>
+              {c.reason && <span class="md-case-reason">{c.reason}</span>}
+              {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
+            </div>
+          ))}
+        </div>
+        <p class="md-case-none" data-case-none hidden>{dt('No case matches that.')}</p>
+        {cases.length >= casesLimit && casesLimit < 200 && <a class="btn btn-ghost btn-sm md-case-more" href={`?section=cases&cases=${casesLimit === 25 ? 50 : casesLimit === 50 ? 100 : 200}`}>{dt('Show more cases')}</a>}
+      </>
     )}
   </div>
 
   <button type="submit" form="mdForm" class="btn btn-accent btn-sm">{dt('Save changes')}</button>
 </DashGuildLayout>
 
+<script is:inline>
+  (function () {
+    function apply() {
+      var tools = document.querySelector('[data-case-tools]');
+      if (!tools) return;
+      var q = (tools.querySelector('[data-case-search]').value || '').trim().toLowerCase();
+      var active = tools.querySelector('.md-case-pill.on');
+      var type = active ? active.getAttribute('data-case-type') : '';
+      var shown = 0;
+      document.querySelectorAll('[data-case-list] .md-case-row').forEach(function (row) {
+        var ok = (!type || row.getAttribute('data-type') === type) && (!q || (row.getAttribute('data-search') || '').indexOf(q) !== -1);
+        row.hidden = !ok;
+        if (ok) shown += 1;
+      });
+      var none = document.querySelector('[data-case-none]');
+      if (none) none.hidden = shown !== 0;
+    }
+    if (!window.__caseToolsBound) {
+      window.__caseToolsBound = true;
+      document.addEventListener('input', function (event) { if (event.target && event.target.matches && event.target.matches('[data-case-search]')) apply(); });
+      document.addEventListener('click', function (event) {
+        var pill = event.target && event.target.closest ? event.target.closest('.md-case-pill') : null;
+        if (!pill) return;
+        pill.parentNode.querySelectorAll('.md-case-pill').forEach(function (other) { other.classList.remove('on'); });
+        pill.classList.add('on');
+        apply();
+      });
+    }
+    document.querySelectorAll('time[data-local-time]').forEach(function (t) { var d = new Date(t.getAttribute('datetime')); if (!isNaN(d.getTime())) t.textContent = d.toLocaleString(); });
+  })();
+</script>
+
 <style>
+  .md-case-tools { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; max-width: 760px; }
+  .md-case-search { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raise); color: var(--text); font: 13px var(--sans); }
+  .md-case-types { display: flex; flex-wrap: wrap; gap: 6px; }
+  .md-case-pill { border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 999px; padding: 4px 11px; font: 600 11.5px var(--sans); cursor: pointer; text-transform: capitalize; }
+  .md-case-pill.on { background: color-mix(in srgb, var(--c, var(--accent)) 18%, transparent); color: var(--c, var(--accent)); border-color: var(--c, var(--accent)); }
+  .md-case-person { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+  .md-case-person img { border-radius: 50%; }
+  .md-case-person span { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .md-case-person b { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .md-case-person code { font-size: 10px; color: var(--text-dim); }
+  .md-case-by, .md-case-when { font-size: 11.5px; color: var(--text-dim); }
+  .md-case-none { color: var(--text-dim); font-size: 13px; }
+  .md-case-more { margin-top: 12px; }
+  .md-case-row[hidden] { display: none; }
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; }
   .md-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; max-width: 68ch; }
