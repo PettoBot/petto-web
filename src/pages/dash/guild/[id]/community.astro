@@ -194,6 +194,23 @@ if (Astro.request.method === 'POST') {
         }
       }
     }
+  } else if (action === 'delete_poll') {
+    const pollId = Number(form.get('poll_id') ?? 0);
+    if (Number.isInteger(pollId) && pollId > 0) {
+      const pollRes = await fetch(`${apiUrl}/rest/v1/polls?id=eq.${pollId}&guild_id=eq.${id}&select=id,channel_id,message_id`, { headers: apiHeaders });
+      const poll = pollRes.ok ? (await pollRes.json())[0] as Pick<PollRecord, 'id' | 'channel_id' | 'message_id'> | undefined : undefined;
+      if (poll) {
+        // The message goes first; one that is already gone (404) is the state we want anyway.
+        const gone = await fetch(`https://discord.com/api/v10/channels/${poll.channel_id}/messages/${poll.message_id}`, { method: 'DELETE', headers: { Authorization: discordHeaders.Authorization } }).catch(() => null);
+        if (gone && !gone.ok && gone.status !== 404 && gone.status !== 403) {
+          pollError = dt('Discord did not let me delete the poll message. Try again.');
+        } else {
+          await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=eq.${poll.id}`, { method: 'DELETE', headers: apiHeaders });
+          const removed = await fetch(`${apiUrl}/rest/v1/polls?id=eq.${poll.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+          if (removed.ok) saved = true; else pollError = dt('The poll message was removed but the poll could not be deleted.');
+        }
+      }
+    }
   } else if (action === 'close_poll') {
     const pollId = Number(form.get('poll_id') ?? 0);
     if (Number.isInteger(pollId) && pollId > 0) {

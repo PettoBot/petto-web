@@ -1865,4 +1865,12 @@ export const dashEs: Record<string, string> = {
   "No types yet, so there is nothing to click. Add one in Support types.": "Aún no hay tipos, así que no hay nada que pulsar. Añade uno en Tipos de soporte.",
   "Resend this panel? The message in Discord is deleted and posted again.": "¿Reenviar este panel? El mensaje en Discord se borra y se publica otra vez.",
   "Delete this panel? Its message in Discord is deleted too. Ticket types stay, but are no longer on a panel.": "¿Borrar este panel? Su mensaje en Discord también se borra. Los tipos de ticket se quedan, pero ya no estarán en un panel.",
+  "Closes": "Cierra",
+  "Multiple choice": "Opción múltiple",
+  "Single choice": "Opción única",
+  "End this poll now? Nobody can vote after that.": "¿Terminar esta encuesta ahora? Nadie podrá votar después.",
+  "Delete this poll? Its message in Discord and its votes are removed.": "¿Borrar esta encuesta? Su mensaje en Discord y sus votos se eliminan.",
+  "0 votes · open": "0 votos · abierta",
+  "Discord did not let me delete the poll message. Try again.": "Discord no me dejó borrar el mensaje de la encuesta. Inténtalo de nuevo.",
+  "The poll message was removed but the poll could not be deleted.": "Se quitó el mensaje de la encuesta pero no se pudo borrar la encuesta.",
 };

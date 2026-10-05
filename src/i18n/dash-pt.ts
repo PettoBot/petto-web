@@ -1865,4 +1865,12 @@ export const dashPt: Record<string, string> = {
   "No types yet, so there is nothing to click. Add one in Support types.": "Ainda não há tipos, então não há nada para clicar. Adicione um em Tipos de suporte.",
   "Resend this panel? The message in Discord is deleted and posted again.": "Reenviar este painel? A mensagem no Discord é apagada e publicada de novo.",
   "Delete this panel? Its message in Discord is deleted too. Ticket types stay, but are no longer on a panel.": "Apagar este painel? A mensagem no Discord também é apagada. Os tipos de ticket ficam, mas deixam de estar em um painel.",
+  "Closes": "Encerra",
+  "Multiple choice": "Múltipla escolha",
+  "Single choice": "Escolha única",
+  "End this poll now? Nobody can vote after that.": "Encerrar esta enquete agora? Ninguém poderá votar depois.",
+  "Delete this poll? Its message in Discord and its votes are removed.": "Apagar esta enquete? A mensagem no Discord e os votos são removidos.",
+  "0 votes · open": "0 votos · aberta",
+  "Discord did not let me delete the poll message. Try again.": "O Discord não me deixou apagar a mensagem da enquete. Tente de novo.",
+  "The poll message was removed but the poll could not be deleted.": "A mensagem da enquete foi removida, mas a enquete não pôde ser apagada.",
 };
