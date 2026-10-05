@@ -187,6 +187,20 @@ function buildLinkButtonRows(buttons: any[][]) {
     .filter(Boolean);
 }
 
+/** Resolves the server variables in the text fields of a V2 design, leaving ids, styles and addresses of buttons alone. */
+function resolveV2(node: any, g: GuildVars, channelId: string): any {
+  if (Array.isArray(node)) return node.map((item) => resolveV2(item, g, channelId));
+  if (!node || typeof node !== 'object') return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (typeof value === 'string' && ['content', 'label', 'description', 'placeholder', 'title'].includes(key)) out[key] = resolveGuildVariables(value, g, channelId);
+    else out[key] = resolveV2(value, g, channelId);
+  }
+  return out;
+}
+
+export const COMPONENTS_V2 = 1 << 15;
+
 export function buildPanelPayload(
   panel: { title: string | null; description: string | null; channel_id?: string },
   style: string,
@@ -196,15 +210,20 @@ export function buildPanelPayload(
 ) {
   const categoryRow = buildCategoryRow(style, categories);
 
+  // A saved Components V2 design: its own components, and the way to open a ticket as the last row.
+  if (templateData && guildVars && Array.isArray(templateData.v2?.components) && templateData.v2.components.length) {
+    const components = [...resolveV2(templateData.v2.components, guildVars, panel.channel_id ?? ''), ...(categoryRow ? [categoryRow] : [])];
+    return { flags: COMPONENTS_V2, components };
+  }
+
   if (templateData && guildVars) {
     const { content, embeds, buttons } = normalizeTemplateData(templateData);
     const templateRows = buildLinkButtonRows(buttons);
     const rows = [...templateRows, ...(categoryRow ? [categoryRow] : [])].slice(0, 5);
-    return {
-      content: content ? resolveGuildVariables(content, guildVars, panel.channel_id) : undefined,
-      embeds: embeds.slice(0, 10).map((e) => buildEmbedFromData(e, guildVars, panel.channel_id ?? '')),
-      components: rows,
-    };
+    const resolvedContent = content ? resolveGuildVariables(content, guildVars, panel.channel_id) : undefined;
+    const resolvedEmbeds = embeds.slice(0, 10).map((e) => buildEmbedFromData(e, guildVars, panel.channel_id ?? '')).filter((e) => Object.keys(e).length > 0);
+    // A message with only buttons is refused by Discord (50006), so a design with nothing to show falls back to the plain panel.
+    if (resolvedContent?.trim() || resolvedEmbeds.length) return { content: resolvedContent, embeds: resolvedEmbeds, components: rows };
   }
 
   return {
@@ -219,17 +238,32 @@ export function buildPanelPayload(
   };
 }
 
+/** What is not ready in a panel, before or after it is posted: nothing to open tickets with, or a design with nothing in it. */
+export function panelWarnings(categories: unknown[], templateName: string | null, templateData: any | null): ('no_types' | 'template_missing' | 'template_empty')[] {
+  const out: ('no_types' | 'template_missing' | 'template_empty')[] = [];
+  if (categories.length === 0) out.push('no_types');
+  if (templateName && !templateData) out.push('template_missing');
+  else if (templateData) {
+    const v2 = Array.isArray(templateData.v2?.components) && templateData.v2.components.length > 0;
+    const { content, embeds } = normalizeTemplateData(templateData);
+    if (!v2 && !content.trim() && !embeds.some((e) => Object.keys(e ?? {}).length > 0)) out.push('template_empty');
+  }
+  return out;
+}
+
 /**
  * Why the last post or edit of a panel failed, as Discord said it (`Missing Permissions (50013)`, `Invalid Form Body (50035)`...).
  * The pages used to answer "check my permissions" to every failure, even when the bot is an administrator and the message itself
  * was refused. Empty when the last call worked.
  */
-export const panelPostIssue = { detail: '' };
+export const panelPostIssue = { detail: '', code: 0, status: 0 };
 
 async function readDiscordIssue(res: Response): Promise<string> {
   const text = await res.text().catch(() => '');
+  panelPostIssue.status = res.status;
   try {
     const body = JSON.parse(text);
+    panelPostIssue.code = Number(body?.code) || 0;
     const nested = body?.errors ? JSON.stringify(body.errors).slice(0, 160) : '';
     return `Discord said: ${String(body?.message ?? res.status)}${body?.code ? ` (${body.code})` : ''}${nested ? ` ${nested}` : ''}`;
   } catch {
@@ -246,6 +280,9 @@ export async function postOrRefreshPanelMessage(
 ): Promise<string | null> {
   const headers = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
   panelPostIssue.detail = '';
+  panelPostIssue.code = 0;
+  panelPostIssue.status = 0;
+  const isV2 = Boolean(((payload as any).flags ?? 0) & COMPONENTS_V2);
 
   if (existingMessageId) {
     const editRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${existingMessageId}`, {
@@ -255,7 +292,14 @@ export async function postOrRefreshPanelMessage(
     });
     if (editRes.ok) return existingMessageId;
     console.warn('[ticket-panel] Discord message edit failed', { channelId, messageId: existingMessageId, status: editRes.status });
-    // Message was deleted out from under us, or the panel moved channels, fall through to posting fresh.
+    // A message cannot change between a classic one and a Components V2 one, so a refused edit (400) means the old one goes
+    // and a new one takes its place. A deleted message (404) or a moved panel falls through to posting fresh.
+    if (editRes.status === 400) {
+      const old = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${existingMessageId}`, { headers });
+      const oldBody: any = old.ok ? await old.json().catch(() => null) : null;
+      const oldIsV2 = Boolean(((oldBody?.flags ?? 0) & COMPONENTS_V2));
+      if (oldBody && oldIsV2 !== isV2) await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${existingMessageId}`, { method: 'DELETE', headers: { Authorization: headers.Authorization } }).catch(() => null);
+    }
   }
 
   const createRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
