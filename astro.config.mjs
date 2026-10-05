@@ -31,7 +31,7 @@ export default defineConfig({
     icon({
       include: {
         ph: [
-          'archive-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
+          'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
           'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'bell-fill',
           'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-left-bold',
           'caret-right-bold', 'caret-up-down', 'chart-bar', 'chart-bar-fill', 'chart-line-fill',
