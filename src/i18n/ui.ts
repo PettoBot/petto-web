@@ -167,6 +167,32 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.1-2',
+          display: '0.7.1~2',
+          name: 'Boba',
+          date: 'October 5, 2026',
+          items: [
+            'Giveaways from the dashboard: start a giveaway (prize, winners, duration, channel, claim time, entry method, bonus-entry preset and design), end it now and draw new winners, with the same engine as `/giveaway`. There are also links to the messages and a list of the giveaways that ended',
+            'Timestamps: the tool and the variables have the two newest Discord styles, short date with short time and with seconds (`{timestamp.short_datetime}`, `{timestamp.medium_datetime}`)',
+            'Fix: the page buttons of lists such as `!roles` failed with a repeated id on some pages',
+          ],
+        },
+        {
+          version: '0.7.1-1',
+          display: '0.7.1~1',
+          name: 'Mochi',
+          date: 'October 5, 2026',
+          items: [
+            'Lists with buttons: `!roles` shows a page at a time with a menu to sort it (most members, newest, oldest, name) or to show only roles with a color or without members. New `!emojis`, `!channels`, `!boosters` and `!inrole <role>` (also `!members`). Only whoever asked can turn the pages',
+            'Disable commands: `!disablecommand disable roles emojis channels` blocks several at once, `enable all` clears every rule, and `list` has pages. `disablecommand` and `help` cannot be disabled, and a disabled command is also blocked as a slash command',
+            'Times in words: every command that asks for a length understands `3d 4h`, `1 hour 30 minutes`, `1h30m` and Spanish (`2 horas`), and `!remind` takes a moment such as `tomorrow 8pm` or `2026-10-12 18:00`. New variables `{timestamp}`, `{timestamp.relative}`, `{timestamp.full_long}` and `{timestamp:tomorrow 8pm|R}` for any moment written in words',
+            'Polls are Components V2 cards, and in the poll panel **Design** picks one of your saved V2 embeds, with the new `{poll.*}` variables',
+            'Tickets: a saved V2 design can be the look of a panel, and the dashboard says why a panel could not be posted (missing permissions, empty message) instead of a generic error, with warnings for panels that have no types',
+            'Dashboard: live previews for polls and ticket panels, links to the messages in Discord, a moderation case log with names, search and filters, logging that tells you when a webhook cannot be created and can send every event to one channel, and names and pictures instead of ids in the reputation, booster and partner lists',
+            'Website: the owner edits the team page from the dashboard (up to 100 people per position), the status page can search a server, and the stats page shows the top 5 servers. Every version has a name from now on: this one is Mochi',
+          ],
+        },
+        {
           version: '0.7.1',
           date: 'October 3, 2026',
           items: [
@@ -1246,6 +1272,32 @@ export const ui = {
       linkCopied: 'Enlace copiado',
       entries: [
         {
+          version: '0.7.1-2',
+          display: '0.7.1~2',
+          name: 'Boba',
+          date: '5 de octubre de 2026',
+          items: [
+            'Sorteos desde el dashboard: inicia un sorteo (premio, ganadores, duración, canal, tiempo para reclamar, forma de entrada, preset de entradas extra y diseño), termínalo ya y elige nuevos ganadores, con el mismo motor que `/giveaway`. También hay enlaces a los mensajes y una lista de los sorteos que terminaron',
+            'Timestamps: la herramienta y las variables tienen los dos estilos más nuevos de Discord, fecha corta con hora corta y con segundos (`{timestamp.short_datetime}`, `{timestamp.medium_datetime}`)',
+            'Arreglo: los botones de página de listas como `!roles` fallaban con un id repetido en algunas páginas',
+          ],
+        },
+        {
+          version: '0.7.1-1',
+          display: '0.7.1~1',
+          name: 'Mochi',
+          date: '5 de octubre de 2026',
+          items: [
+            'Listas con botones: `!roles` se ve por páginas con un menú para ordenarlo (más miembros, nuevos, antiguos, nombre) o mostrar solo los roles con color o sin miembros. Nuevos `!emojis`, `!channels`, `!boosters` e `!inrole <rol>` (también `!members`). Solo quien lo pidió puede pasar las páginas',
+            'Bloquear comandos: `!disablecommand disable roles emojis channels` bloquea varios a la vez, `enable all` borra todas las reglas y `list` tiene páginas. `disablecommand` y `help` no se pueden bloquear, y un comando bloqueado también se bloquea como comando de barra',
+            'Tiempos en palabras: todo comando que pide una duración entiende `3d 4h`, `1 hora 30 minutos`, `1h30m` y español (`2 horas`), y `!remind` acepta un momento como `tomorrow 8pm` o `2026-10-12 18:00`. Nuevas variables `{timestamp}`, `{timestamp.relative}`, `{timestamp.full_long}` y `{timestamp:tomorrow 8pm|R}` para cualquier momento escrito en palabras',
+            'Las encuestas son tarjetas Components V2, y en el panel de encuestas **Design** elige uno de tus embeds V2 guardados, con las nuevas variables `{poll.*}`',
+            'Tickets: un diseño V2 guardado puede ser la apariencia de un panel, y el dashboard dice por qué un panel no se pudo publicar (permisos, mensaje vacío) en vez de un error genérico, con avisos para los paneles sin tipos',
+            'Dashboard: vistas previas en vivo de encuestas y paneles de tickets, enlaces a los mensajes en Discord, un registro de casos de moderación con nombres, búsqueda y filtros, logs que avisan cuando no se puede crear un webhook y pueden mandar todos los eventos a un canal, y nombres y fotos en vez de ids en las listas de reputación, boosters y partners',
+            'Sitio web: el dueño edita la página del equipo desde el dashboard (hasta 100 personas por puesto), la página de estado puede buscar un servidor y la de estadísticas muestra el top 5 de servidores. Desde ahora cada versión tiene un nombre: esta es Mochi',
+          ],
+        },
+        {
           version: '0.7.1',
           date: '3 de octubre de 2026',
           items: [
@@ -2324,6 +2376,32 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.1-2',
+          display: '0.7.1~2',
+          name: 'Boba',
+          date: '5 de outubro de 2026',
+          items: [
+            'Sorteios pelo dashboard: inicie um sorteio (prêmio, vencedores, duração, canal, tempo para resgatar, forma de entrada, preset de entradas extras e design), encerre agora e sorteie novos vencedores, com o mesmo motor do `/giveaway`. Também há links para as mensagens e uma lista dos sorteios que terminaram',
+            'Timestamps: a ferramenta e as variáveis têm os dois estilos mais novos do Discord, data curta com hora curta e com segundos (`{timestamp.short_datetime}`, `{timestamp.medium_datetime}`)',
+            'Correção: os botões de página de listas como `!roles` falhavam com um id repetido em algumas páginas',
+          ],
+        },
+        {
+          version: '0.7.1-1',
+          display: '0.7.1~1',
+          name: 'Mochi',
+          date: '5 de outubro de 2026',
+          items: [
+            'Listas com botões: `!roles` aparece em páginas com um menu para ordenar (mais membros, mais novos, mais antigos, nome) ou mostrar só cargos com cor ou sem membros. Novos `!emojis`, `!channels`, `!boosters` e `!inrole <cargo>` (também `!members`). Só quem pediu pode passar as páginas',
+            'Bloquear comandos: `!disablecommand disable roles emojis channels` bloqueia vários de uma vez, `enable all` apaga todas as regras e `list` tem páginas. `disablecommand` e `help` não podem ser bloqueados, e um comando bloqueado também é bloqueado como comando de barra',
+            'Tempos em palavras: todo comando que pede uma duração entende `3d 4h`, `1 hora 30 minutos`, `1h30m` e espanhol (`2 horas`), e `!remind` aceita um momento como `tomorrow 8pm` ou `2026-10-12 18:00`. Novas variáveis `{timestamp}`, `{timestamp.relative}`, `{timestamp.full_long}` e `{timestamp:tomorrow 8pm|R}` para qualquer momento escrito em palavras',
+            'As enquetes são cartões Components V2, e no painel de enquetes **Design** escolhe um dos seus embeds V2 salvos, com as novas variáveis `{poll.*}`',
+            'Tickets: um design V2 salvo pode ser a aparência de um painel, e o dashboard diz por que um painel não pôde ser publicado (permissões, mensagem vazia) em vez de um erro genérico, com avisos para painéis sem tipos',
+            'Dashboard: pré-visualizações ao vivo de enquetes e painéis de tickets, links para as mensagens no Discord, um registro de casos de moderação com nomes, busca e filtros, logs que avisam quando não dá para criar um webhook e podem mandar todos os eventos para um canal, e nomes e fotos em vez de ids nas listas de reputação, boosters e parcerias',
+            'Site: o dono edita a página da equipe pelo dashboard (até 100 pessoas por cargo), a página de status pode buscar um servidor e a de estatísticas mostra o top 5 de servidores. A partir de agora cada versão tem um nome: esta é Mochi',
+          ],
+        },
         {
           version: '0.7.1',
           date: '3 de outubro de 2026',
