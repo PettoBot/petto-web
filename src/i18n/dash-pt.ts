@@ -1911,4 +1911,12 @@ export const dashPt: Record<string, string> = {
   "Send everything to one channel": "Enviar tudo para um canal só",
   "Pick a channel": "Escolha um canal",
   "Use it for every event": "Usar em todos os eventos",
+  "Joins, leaves, kicks, timeouts and boosts as they happen": "Entradas, saídas, expulsões, timeouts e boosts assim que acontecem",
+  "Role created, deleted, or changed (with its permissions), and member role changes": "Cargo criado, excluído ou alterado (com suas permissões) e mudanças de cargos de um membro",
+  "Channel created, deleted, or changed, with its permissions": "Canal criado, excluído ou alterado, com suas permissões",
+  "Name, icon, other server settings, and scheduled events": "Nome, ícone, outras configurações do servidor e eventos agendados",
+  "Messages blocked or flagged by the filter, and AutoMod rule changes": "Mensagens bloqueadas ou sinalizadas pelo filtro e mudanças nas regras do AutoMod",
+  "Webhooks created, changed, or deleted": "Webhooks criados, alterados ou excluídos",
+  "Threads": "Tópicos",
+  "Threads created, changed, or deleted": "Tópicos criados, alterados ou excluídos",
 };
