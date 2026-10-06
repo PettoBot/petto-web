@@ -116,15 +116,23 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     setDirty(true);
   }
 
+  // A double click or a second press while the first request is still running would send the same name twice.
+  const creating = useRef(false);
+
   async function handleCreate(e: React.FormEvent | null, v2 = false) {
     e?.preventDefault();
-    if (!newName.trim()) return;
-    const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: newName.trim(), ...(v2 ? { data: { v2: emptyV2() } } : {}) }) });
-    const body = await res.json();
-    if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return; }
-    setNames((n) => [...n, body.name].sort());
-    setSelected(body.name);
-    setNewName('');
+    if (!newName.trim() || creating.current) return;
+    creating.current = true;
+    try {
+      const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: newName.trim(), ...(v2 ? { data: { v2: emptyV2() } } : {}) }) });
+      const body = await res.json();
+      if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return; }
+      setNames((n) => [...n, body.name].sort());
+      setSelected(body.name);
+      setNewName('');
+    } finally {
+      creating.current = false;
+    }
   }
 
   async function handleSave() {
@@ -147,15 +155,21 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   }
 
   async function handleImport(imported: TemplateData, name: string) {
-    const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: name.trim(), data: imported }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return false; }
-    setNames((n) => [...n, body.name].sort());
-    setSelected(body.name);
-    setPendingImport(null);
-    setImportText('');
-    setFlash(t('Imported.'));
-    return true;
+    if (creating.current) return false;
+    creating.current = true;
+    try {
+      const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'create', name: name.trim(), data: imported }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setFlash(body.error ? t(body.error) : t("Couldn't create that template.")); return false; }
+      setNames((n) => [...n, body.name].sort());
+      setSelected(body.name);
+      setPendingImport(null);
+      setImportText('');
+      setFlash(t('Imported.'));
+      return true;
+    } finally {
+      creating.current = false;
+    }
   }
 
   function handleImportText() {
