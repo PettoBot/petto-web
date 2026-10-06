@@ -1919,4 +1919,11 @@ export const dashEs: Record<string, string> = {
   "Webhooks created, changed, or deleted": "Webhooks creados, modificados o eliminados",
   "Threads": "Hilos",
   "Threads created, changed, or deleted": "Hilos creados, modificados o eliminados",
+  "Bots added or removed, and apps and integrations": "Bots añadidos o quitados, y apps e integraciones",
+  "Commands": "Comandos",
+  "Which Petto command was used, by whom (only its name)": "Qué comando de Petto se usó y quién lo usó (solo su nombre)",
+  "Edits, deletes and pinned messages": "Ediciones, borrados y mensajes fijados",
+  "Joining, leaving, and switching voice channels, and stages": "Entrar, salir y cambiar de canales de voz, y escenarios",
+  "Server emoji, sticker and soundboard changes": "Cambios en los emojis, stickers y sonidos del servidor",
+  "Name, icon, vanity URL, security settings, and scheduled events": "Nombre, ícono, URL personalizada, ajustes de seguridad y eventos programados",
 };

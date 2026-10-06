@@ -1919,4 +1919,11 @@ export const dashPt: Record<string, string> = {
   "Webhooks created, changed, or deleted": "Webhooks criados, alterados ou excluídos",
   "Threads": "Tópicos",
   "Threads created, changed, or deleted": "Tópicos criados, alterados ou excluídos",
+  "Bots added or removed, and apps and integrations": "Bots adicionados ou removidos, e apps e integrações",
+  "Commands": "Comandos",
+  "Which Petto command was used, by whom (only its name)": "Qual comando do Petto foi usado e por quem (só o nome)",
+  "Edits, deletes and pinned messages": "Edições, exclusões e mensagens fixadas",
+  "Joining, leaving, and switching voice channels, and stages": "Entrar, sair e trocar de canais de voz, e palcos",
+  "Server emoji, sticker and soundboard changes": "Mudanças nos emojis, stickers e sons do servidor",
+  "Name, icon, vanity URL, security settings, and scheduled events": "Nome, ícone, URL personalizada, configurações de segurança e eventos agendados",
 };
