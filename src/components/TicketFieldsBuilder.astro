@@ -6,9 +6,13 @@ interface Field { type: string; id: string; label: string; placeholder?: string;
 interface Props { fields?: Field[] }
 const { fields } = Astro.props;
 const rows: Field[] = fields && fields.length ? fields : [{ type: 'long_text', id: '', label: '', placeholder: '', required: true }];
+// The value sent when the form is saved. The script keeps it up to date as the rows change; starting from the saved fields means
+// that a form saved before the script runs (or without it) still sends the fields it already has.
+const clean = (value: string) => String(value ?? '').replace(/[|;]/g, ' ').replace(/\s+/g, ' ').trim();
+const spec = (fields ?? []).filter((f) => clean(f.label)).slice(0, 5).map((f) => [f.type, f.id, clean(f.label), clean(f.placeholder ?? ''), f.required === false ? 'optional' : 'required'].join('|')).join(';');
 ---
 <div class="ff" data-ff>
-  <input type="hidden" name="form_fields" value="" />
+  <input type="hidden" name="form_fields" value={spec} />
   <div class="ff-list" data-ff-list>
     {rows.map((f) => (
       <div class="ff-row" data-ff-row data-id={f.id}>
@@ -16,8 +20,8 @@ const rows: Field[] = fields && fields.length ? fields : [{ type: 'long_text', i
           <option value="short_text" selected={f.type === 'short_text'}>{dt('Short answer')}</option>
           <option value="long_text" selected={f.type === 'long_text'}>{dt('Paragraph')}</option>
         </select>
-        <input type="text" data-ff-label placeholder={dt('Question')} maxlength="45" value={f.label} />
-        <input type="text" data-ff-hint placeholder={dt('Hint text (optional)')} maxlength="100" value={f.placeholder ?? ''} />
+        <input type="text" autocomplete="off" data-ff-label placeholder={dt('Question')} maxlength="45" value={f.label} />
+        <input type="text" autocomplete="off" data-ff-hint placeholder={dt('Hint text (optional)')} maxlength="100" value={f.placeholder ?? ''} />
         <label class="ff-req"><input type="checkbox" data-ff-required checked={f.required !== false} />{dt('Required')}</label>
         <button type="button" class="ff-del" data-ff-del aria-label={dt('Remove')}><Icon name="ph:x-bold" width="13" height="13" /></button>
       </div>
@@ -30,7 +34,8 @@ const rows: Field[] = fields && fields.length ? fields : [{ type: 'long_text', i
 <style>
   .ff { display: flex; flex-direction: column; gap: 8px; width: 100%; align-items: flex-start; }
   .ff-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-  .ff-row { display: grid; grid-template-columns: 130px minmax(0, 1.2fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+  .ff-row > * { min-width: 0; }
+  .ff-row { box-sizing: border-box; display: grid; grid-template-columns: 130px minmax(0, 1.2fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
   .ff-row input[type="text"], .ff-row select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg, transparent); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; width: 100%; }
   .ff-req { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted, inherit); white-space: nowrap; }
   .ff-del { border: 0; background: transparent; color: var(--muted, inherit); cursor: pointer; padding: 6px; border-radius: 8px; display: inline-flex; }
@@ -95,5 +100,18 @@ const rows: Field[] = fields && fields.length ? fields : [{ type: 'long_text', i
     });
     document.addEventListener('submit', function (e) { var b = e.target.querySelector && e.target.querySelector('[data-ff]'); if (b) sync(b); }, true);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', syncAll); else syncAll();
+    // The dashboard swaps its content in after a save or a change of section; the new builders are filled in as they appear.
+    if (window.MutationObserver) {
+      new MutationObserver(function (records) {
+        for (var i = 0; i < records.length; i += 1) {
+          for (var j = 0; j < records[i].addedNodes.length; j += 1) {
+            var node = records[i].addedNodes[j];
+            if (node.nodeType !== 1) continue;
+            if (node.matches && node.matches('[data-ff]')) sync(node);
+            else if (node.querySelectorAll) node.querySelectorAll('[data-ff]').forEach(sync);
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
   }
 </script>
