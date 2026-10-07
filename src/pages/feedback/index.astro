@@ -24,7 +24,7 @@ const mine = session && result ? await votesOf(Astro, session.userId, result.pos
 const href = (changes: Record<string, string | number>) => {
   const next = new URLSearchParams();
   const base: Record<string, string> = { kind, status, tag, sort: sort === 'top' ? '' : sort, q: search };
-  for (const [key, value] of Object.entries({ ...base, ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, String(v)])) })) if (value) next.set(key, value);
+  for (const [key, value] of Object.entries({ ...base, ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, String(v)])) })) if (value && !(key === 'page' && value === '1')) next.set(key, value);
   const text = next.toString();
   return `/feedback${text ? `?${text}` : ''}`;
 };
@@ -32,7 +32,7 @@ const flash = q.get('deleted') ? dt('The post was deleted.') : '';
 ---
 <Base title={`${dt('Feedback')} · Petto`} lang={lang} description={dt('Ideas, feedback and bugs for Petto. Write yours and vote on the ones you want.')}>
   <FeedbackStyles />
-  <main class="fb-wrap">
+  <main class="fb-wrap" data-no-loader>
     <div class="fb-head">
       <div>
         <div class="fb-eyebrow"><img src={emojiUrl(EMOJI.suggest)} alt="" width="20" height="20" />{dt('Feedback')}</div>
@@ -45,13 +45,14 @@ const flash = q.get('deleted') ? dt('The post was deleted.') : '';
     {flash && <div class="fb-flash ok"><Icon name="ph:check-circle-fill" width="15" height="15" />{flash}</div>}
     {!result && <div class="fb-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('The board is not available right now. Try again in a moment.')}</div>}
 
+    <div id="fb-live">
     <div class="fb-filters">
       <form class="fb-search" method="GET" action="/feedback">
         <input type="search" name="q" value={search} placeholder={dt('Search posts')} maxlength="60" aria-label={dt('Search posts')} />
         {kind && <input type="hidden" name="kind" value={kind} />}
         {tag && <input type="hidden" name="tag" value={tag} />}
         {status && <input type="hidden" name="status" value={status} />}
-        <select name="sort" aria-label={dt('Sort')} onchange="this.form.submit()">
+        <select name="sort" aria-label={dt('Sort')} data-auto-submit>
           {SORTS.map((value) => <option value={value} selected={value === sort}>{value === 'top' ? dt('Top') : value === 'new' ? dt('Newest') : dt('Most discussed')}</option>)}
         </select>
         <button class="btn btn-ghost btn-sm" type="submit">{dt('Search')}</button>
@@ -105,26 +106,80 @@ const flash = q.get('deleted') ? dt('The post was deleted.') : '';
         {page < result.pages && <a class="fb-chip" href={href({ page: page + 1 })}>{dt('Next')} →</a>}
       </nav>
     )}
+    </div>
   </main>
 </Base>
 
 <script>
-  // A vote is sent right away and the list is updated, without leaving the page. Not logged in: the button goes to the login.
-  document.querySelectorAll<HTMLElement>('[data-vote-box]').forEach((box) => {
-    box.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        if (box.dataset.login) { location.href = '/feedback/login?next=/feedback'; return; }
-        button.disabled = true;
-        try {
-          const response = await fetch(`/api/feedback/${box.dataset.post}/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: Number(button.dataset.value) }) });
-          if (response.status === 401) { location.href = '/feedback/login?next=/feedback'; return; }
-          const data = await response.json();
-          if (data.ok) {
-            box.querySelector('[data-score]')!.textContent = String(data.up - data.down);
-            box.querySelectorAll('button[data-value]').forEach((other) => other.classList.toggle('on', Number((other as HTMLElement).dataset.value) === data.vote));
-          }
-        } finally { button.disabled = false; }
+  // The filters, the search, the sort and the pages change the list in place: the new list is asked for, only that part of the page is
+  // replaced, and the address is updated. The page does not reload and the scroll stays where it is. Without JavaScript they are normal links.
+  const live = () => document.getElementById('fb-live');
+
+  function bindVotes(root: ParentNode) {
+    root.querySelectorAll<HTMLElement>('[data-vote-box]').forEach((box) => {
+      box.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          if (box.dataset.login) { location.href = '/feedback/login?next=/feedback'; return; }
+          button.disabled = true;
+          try {
+            const response = await fetch(`/api/feedback/${box.dataset.post}/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: Number(button.dataset.value) }) });
+            if (response.status === 401) { location.href = '/feedback/login?next=/feedback'; return; }
+            const data = await response.json();
+            if (data.ok) {
+              box.querySelector('[data-score]')!.textContent = String(data.up - data.down);
+              box.querySelectorAll('button[data-value]').forEach((other) => other.classList.toggle('on', Number((other as HTMLElement).dataset.value) === data.vote));
+            }
+          } finally { button.disabled = false; }
+        });
       });
     });
+  }
+
+  let pending = 0;
+  async function show(url: string, push: boolean) {
+    const box = live();
+    if (!box) { location.href = url; return; }
+    const turn = ++pending;
+    box.style.opacity = '0.55';
+    try {
+      const response = await fetch(url, { headers: { Accept: 'text/html' } });
+      if (!response.ok) throw new Error('bad answer');
+      const next = new DOMParser().parseFromString(await response.text(), 'text/html').getElementById('fb-live');
+      if (!next) throw new Error('no list');
+      if (turn !== pending) return;
+      box.innerHTML = next.innerHTML;
+      bindVotes(box);
+      if (push) history.pushState({ feedback: true }, '', url);
+    } catch {
+      location.href = url;
+    } finally {
+      if (turn === pending) box.style.opacity = '';
+    }
+  }
+
+  document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || (event as MouseEvent).button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = (event.target as Element | null)?.closest?.('#fb-live a.fb-chip') as HTMLAnchorElement | null;
+    if (!link || link.target === '_blank') return;
+    const url = new URL(link.href, location.href);
+    if (url.pathname !== '/feedback') return;
+    event.preventDefault();
+    void show(`${url.pathname}${url.search}`, true);
   });
+  document.addEventListener('submit', (event) => {
+    const form = event.target as HTMLFormElement;
+    if (!form.closest('#fb-live') || !form.classList.contains('fb-search')) return;
+    event.preventDefault();
+    const params = new URLSearchParams();
+    new FormData(form).forEach((value, key) => { const text = String(value).trim(); if (text && !(key === 'sort' && text === 'top')) params.set(key, text); });
+    const text = params.toString();
+    void show(`/feedback${text ? `?${text}` : ''}`, true);
+  });
+  document.addEventListener('change', (event) => {
+    const select = event.target as HTMLSelectElement;
+    if (select.matches?.('select[data-auto-submit]')) select.form?.requestSubmit();
+  });
+  window.addEventListener('popstate', () => { if (location.pathname === '/feedback') void show(`${location.pathname}${location.search}`, false); });
+
+  bindVotes(document);
 </script>

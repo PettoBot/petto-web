@@ -1,85 +1,37 @@
-import { useTranslations, type Locale } from '../i18n/ui';
-import { getAllCommands } from '../utils/commandList';
+import type { Locale } from '../i18n/ui';
 
 const SITE = 'https://petto.sbs';
-const ACCENT = 0x8399ff;
+// The peach of the site.
+const ACCENT = 0xf0a88f;
 const MAX_BYTES = 3000;
 
-const copy: Record<Locale, {
-  description: string;
-  points: [string, string, string];
-  stats: (commands: number, categories: number) => string;
-  buttons: { commands: string; invite: string; dashboard: string; premium: string; support: string };
-}> = {
-  en: {
-    description: 'Moderation, tickets, leveling and giveaways for your Discord server, all in one bot.',
-    points: [
-      '🛡️ **Keep it safe** with cases, AutoMod, anti-raid and anti-nuke',
-      '🎫 **Keep it organized** with tickets, logs and backups',
-      '🏆 **Keep it lively** with levels, giveaways and reaction roles',
-    ],
-    stats: (commands, categories) => `-# Free to add · ${commands} commands · ${categories} categories · Prefix based · English, Español, Português`,
-    buttons: { commands: 'Browse commands', invite: 'Add to Discord', dashboard: 'Open dashboard', premium: 'Premium', support: 'Support server' },
-  },
-  es: {
-    description: 'Moderación, tickets, niveles y sorteos para tu servidor de Discord, todo en un solo bot.',
-    points: [
-      '🛡️ **Mantén todo seguro** con casos, AutoMod, anti-raid y anti-nuke',
-      '🎫 **Mantén todo organizado** con tickets, registros y copias de seguridad',
-      '🏆 **Mantén todo animado** con niveles, sorteos y roles por reacción',
-    ],
-    stats: (commands, categories) => `-# Gratis para agregar · ${commands} comandos · ${categories} categorías · Con prefijo · English, Español, Português`,
-    buttons: { commands: 'Ver comandos', invite: 'Agregar a Discord', dashboard: 'Abrir dashboard', premium: 'Premium', support: 'Servidor de soporte' },
-  },
-  'pt-BR': {
-    description: 'Moderação, tickets, níveis e sorteios para o seu servidor do Discord, tudo em um só bot.',
-    points: [
-      '🛡️ **Mantenha tudo seguro** com casos, AutoMod, anti-raid e anti-nuke',
-      '🎫 **Mantenha tudo organizado** com tickets, logs e backups',
-      '🏆 **Mantenha tudo animado** com níveis, sorteios e cargos por reação',
-    ],
-    stats: (commands, categories) => `-# Grátis para adicionar · ${commands} comandos · ${categories} categorias · Com prefixo · English, Español, Português`,
-    buttons: { commands: 'Ver comandos', invite: 'Adicionar ao Discord', dashboard: 'Abrir dashboard', premium: 'Premium', support: 'Servidor de suporte' },
-  },
+// The card is kept small and plain: a simple banner, the name, one line and two buttons.
+const copy: Record<Locale, { description: string; buttons: { invite: string; commands: string } }> = {
+  en: { description: 'Moderation, tickets, leveling and giveaways for your Discord server, in one bot.', buttons: { invite: 'Add to Discord', commands: 'Commands' } },
+  es: { description: 'Moderación, tickets, niveles y sorteos para tu servidor de Discord, en un solo bot.', buttons: { invite: 'Agregar a Discord', commands: 'Comandos' } },
+  'pt-BR': { description: 'Moderação, tickets, níveis e sorteios para o seu servidor do Discord, em um só bot.', buttons: { invite: 'Adicionar ao Discord', commands: 'Comandos' } },
 };
 
 const prefix: Record<Locale, string> = { en: '', es: '/es', 'pt-BR': '/pt-br' };
 
-function linkButton(label: string, emoji: string, url: string) {
-  return { type: 2, style: 5, label, emoji: { name: emoji }, url };
-}
+const linkButton = (label: string, url: string) => ({ type: 2, style: 5, label, url });
 
 /**
  * JSON for Discord's component embed link preview, the card Discord draws when someone posts a
- * link to the site. Only standard emoji are used. Discord drops the whole preview when the payload
- * is invalid or over 3,000 bytes, so the size is checked while the site builds.
+ * link to the site. Discord drops the whole preview when the payload is invalid or over 3,000 bytes,
+ * so the size is checked while the site builds.
  */
 export function discordEmbedJson(lang: Locale): string {
   const text = copy[lang];
   const home = `${SITE}${prefix[lang]}`;
-  const commands = getAllCommands().length;
-  const categories = useTranslations('en').commandsPage.categories.length;
   const payload = {
     component: {
       type: 17,
       accent_color: ACCENT,
       components: [
-        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner.webp` }, description: 'Petto, a moderation and community bot for Discord' }] },
-        { type: 10, content: `# **[Petto](${home})**\n${text.description}` },
-        { type: 14, spacing: 1 },
-        { type: 10, content: text.points.join('\n') },
-        { type: 14, spacing: 1 },
-        { type: 10, content: text.stats(commands, categories) },
-        {
-          type: 1,
-          components: [
-            linkButton(text.buttons.commands, '📖', `${home}/commands`),
-            linkButton(text.buttons.invite, '🚀', `${SITE}/invite`),
-            linkButton(text.buttons.dashboard, '🧩', `${SITE}/dash`),
-            linkButton(text.buttons.premium, '⭐', `${home}/premium`),
-            linkButton(text.buttons.support, '💬', `${SITE}/support`),
-          ],
-        },
+        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner-min.png` }, description: 'Petto, a moderation and community bot for Discord' }] },
+        { type: 10, content: `# [Petto](${home})\n${text.description}` },
+        { type: 1, components: [linkButton(text.buttons.invite, `${SITE}/invite`), linkButton(text.buttons.commands, `${home}/commands`)] },
       ],
     },
   };
