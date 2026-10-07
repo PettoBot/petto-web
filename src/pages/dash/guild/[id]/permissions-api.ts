@@ -39,7 +39,7 @@ export const POST: APIRoute = async (astro) => {
   }
 
   async function groupName(groupId: number): Promise<string> {
-    const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${groupId}&select=name,is_base`, { headers: h });
+    const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${groupId}&guild_id=eq.${id}&select=name,is_base`, { headers: h });
     if (!res.ok) return `group #${groupId}`;
     const rows = await res.json();
     if (!rows[0]) return `group #${groupId}`;
@@ -76,11 +76,13 @@ export const POST: APIRoute = async (astro) => {
     if (!res.ok) return fail(res, "Couldn't create the group, maybe it already exists or the permission_groups table isn't set up yet");
     await logAudit('create_group', `Created group "${name}"`);
   } else if (action === 'delete_group') {
+    if (!(await ownsGroup(Number(body.groupId)))) return new Response(JSON.stringify({ error: 'That group does not belong to this server.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     const name = await groupName(Number(body.groupId));
     const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}&is_base=eq.false`, { method: 'DELETE', headers: h });
     if (!res.ok) return fail(res, "Couldn't delete the group");
     await logAudit('delete_group', `Deleted group "${name}"`);
   } else if (action === 'update_group_level') {
+    if (!(await ownsGroup(Number(body.groupId)))) return new Response(JSON.stringify({ error: 'That group does not belong to this server.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     const level = Math.max(0, Math.min(100, Number(body.level) || 0));
     const name = await groupName(Number(body.groupId));
     const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${Number(body.groupId)}&guild_id=eq.${id}`, {

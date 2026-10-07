@@ -2361,7 +2361,6 @@ export const ui = {
         { title: 'Novidade: um gerador de timestamps e um decodificador de snowflake', desc: 'Duas ferramentas web, nenhuma precisa de comando de bot nem de servidor.', date: '15 de julho de 2026', iso: '2026-07-15', category: 'Notícias', href: '/tools', banner: '/assets/tools-banner.svg' },
         { title: 'O código por trás do Petto', desc: 'Sobre o que o Petto realmente roda, e como está a questão do código aberto.', date: '2 de julho de 2026', iso: '2026-07-02', category: 'Notícias', href: '/code', banner: '/assets/tetto-code-banner.svg' },
         { title: 'O blibot está migrando 100% para o Petto', desc: 'Cada sistema que o blibot já teve, reconstruído sobre uma base que realmente vai continuar funcionando.', date: '13 de maio de 2026', iso: '2026-05-13', category: 'Anúncios', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
-        { title: 'Comandos slash interativos', desc: 'O menu de slash está reservado e esperando, primeiro para comandos estilo jogo que não cabem num prefixo de texto.', date: 'Em breve', iso: '', category: 'Roadmap', href: '', banner: '' },
         { title: 'Um editor de verdade para embeds de /giveaway', desc: 'Os embeds de sorteio ainda precisam ser configurados manualmente hoje. Isso vai ganhar seu próprio editor em seguida.', date: 'Em breve', iso: '', category: 'Roadmap', href: '', banner: '' },
       ],
     },
@@ -2670,17 +2669,17 @@ export const ui = {
             { title: 'Embeds salvos em tudo', desc: 'Sanções, starboard, sorteios, verificação e mensagens de bump podem usar o seu próprio design salvo.', href: '/changelog' },
             { title: 'Bot de código aberto', desc: 'O código do bot é público no GitHub com licença AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Quadro de feedback', desc: 'Escreva ideias, comentários e bugs, vote com curtir e não curtir, comente e veja o que a equipe planeja. Também no servidor do Petto, onde as reações contam como votos.', href: '/feedback' },
+            { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '/dash' },
+            { title: 'Comandos slash', desc: 'Os comandos de interação e roleplay, além de /setup e /report, funcionam como comandos slash.', href: '/commands' },
           ],
         },
         {
           key: 'testing', label: 'Em teste', items: [
             { title: 'Um canal do YouTube', desc: 'Demonstrações de recursos e novidades em vídeo. O canal está sendo preparado e os primeiros tutoriais ainda não foram enviados.', href: '' },
-            { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planejado', items: [
-            { title: 'Comandos slash interativos', desc: 'Comandos estilo jogo que não cabem num prefixo de texto.', href: '' },
             { title: 'Nelu', desc: 'Bot só de anime. Planejado, ainda não é público.', href: '/nelu' },
             { title: 'AM', desc: 'Bot de automoderação com IA. Planejado, ainda não é público.', href: '/am' },
           ],
