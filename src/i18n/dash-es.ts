@@ -1264,6 +1264,8 @@ export const dashEs: Record<string, string> = {
   "Welcome text": "Texto de bienvenida",
   "Hi {user}! Tell us what you need and staff will answer soon.": "¡Hola {user}! Cuéntanos qué necesitas y el staff te responderá pronto.",
   "Shown inside the ticket. You can use {user}, {username}, {category}, {server} and {number}. A saved embed set for this type is used instead.": "Se muestra dentro del ticket. Puedes usar {user}, {username}, {category}, {server} y {number}. Si este tipo tiene un embed guardado, se usa ese.",
+  "That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>.": "Eso no es un emoji que Discord acepte en un botón. Usa un emoji normal, o uno personalizado pegado como <:nombre:123456789012345678>.",
+  "That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>. The rest was saved and the emoji did not change.": "Eso no es un emoji que Discord acepte en un botón. Usa un emoji normal, o uno personalizado pegado como <:nombre:123456789012345678>. El resto se guardó y el emoji no cambió.",
   "Ticket details": "Detalles del ticket",
   "Couldn't save that ticket form, try again.": "No se pudo guardar ese formulario de ticket, inténtalo de nuevo.",
   "Couldn't delete that ticket form.": "No se pudo eliminar ese formulario de ticket.",

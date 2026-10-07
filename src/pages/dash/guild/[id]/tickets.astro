@@ -14,6 +14,16 @@ function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 }
 
+// An emoji for a panel button: a normal emoji (also with a skin tone, a flag or a keycap) or a custom one pasted as <:name:123456789012345678>.
+// Cutting it at 4 characters broke every custom emoji and many normal ones, so it is checked as a whole instead.
+function parseTicketEmoji(raw: string): { value: string | null; invalid: boolean } {
+  const text = raw.trim();
+  if (!text) return { value: null, invalid: false };
+  const custom = /^<a?:\w{2,32}:\d{15,25}>$/.test(text);
+  const unicode = /^(?:\p{Extended_Pictographic}(?:[\u{FE0F}\u{1F3FB}-\u{1F3FF}]|\u{200D}\p{Extended_Pictographic})*|[0-9#*]\u{FE0F}?\u{20E3}|\p{Regional_Indicator}{2})$/u.test(text);
+  return custom || unicode ? { value: text.slice(0, 64), invalid: false } : { value: null, invalid: true };
+}
+
 function parseTicketFormFields(spec: string) {
   const plain = spec.trim();
   if (plain && !plain.includes('|') && !plain.includes(';')) {
@@ -129,11 +139,13 @@ if (Astro.request.method === 'POST') {
 
   if (action === 'create') {
     const label = String(form.get('label') ?? '').trim().slice(0, 40);
-    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4) || null;
+    const { value: emoji, invalid: emojiInvalid } = parseTicketEmoji(String(form.get('emoji') ?? ''));
     const parentChannelId = String(form.get('parent_channel_id') ?? '').trim() || null;
     const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
-    if (label) {
+    if (emojiInvalid) {
+      error = dt("That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>.");
+    } else if (label) {
       const countRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=id`, { headers: apiHeaders });
       const current = countRes.ok ? await countRes.json() : null;
       if (!current) {
@@ -158,7 +170,7 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'update') {
     const categoryId = encodeURIComponent(String(form.get('category_id') ?? ''));
     const label = String(form.get('label') ?? '').trim().slice(0, 40);
-    const emoji = String(form.get('emoji') ?? '').trim().slice(0, 4) || null;
+    const { value: emoji, invalid: emojiInvalid } = parseTicketEmoji(String(form.get('emoji') ?? ''));
     const description = String(form.get('description') ?? '').trim().slice(0, 100) || null;
     const buttonStyle = String(form.get('button_style') ?? 'primary');
     const namingPattern = String(form.get('naming_pattern') ?? '').trim().slice(0, 50) || 'ticket-{number}';
@@ -177,7 +189,7 @@ if (Astro.request.method === 'POST') {
       method: 'PATCH',
       headers: { ...apiHeaders, Prefer: 'return=minimal' },
       body: JSON.stringify({
-        label, emoji, description, button_style: buttonStyle, naming_pattern: namingPattern, parent_channel_id: parentChannelId,
+        label, ...(emojiInvalid ? {} : { emoji }), description, button_style: buttonStyle, naming_pattern: namingPattern, parent_channel_id: parentChannelId,
         support_role_ids: supportRoleIds, ping_role_ids: pingRoleIds,
         // Only sent when the database has the column (the field is only shown then), so saving keeps working before it is added.
         ...(welcomeSupported ? { welcome_message: welcomeMessage } : {}),
@@ -188,6 +200,7 @@ if (Astro.request.method === 'POST') {
       saved = true;
       if (panelId) await refreshPanelById(panelId);
     } else error = dt("Couldn't save that ticket type, try again.");
+    if (emojiInvalid) error = dt("That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>. The rest was saved and the emoji did not change.");
   } else if (action === 'create_ticket_form' || action === 'update_ticket_form') {
     const name = String(form.get('form_name') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 50);
     const title = String(form.get('form_title') ?? dt('Ticket details')).trim().slice(0, 45) || dt('Ticket details');
