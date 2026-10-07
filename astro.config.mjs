@@ -55,7 +55,7 @@ export default defineConfig({
           'speaker-slash-fill', 'spinner-gap', 'squares-four-fill', 'star-fill', 'stop-circle-fill', 'sun-fill',
           'stack-fill', 'tag-fill', 'terminal-window-fill', 'ticket', 'timer-fill', 'trash-fill', 'trophy-fill',
           'upload-simple-bold', 'user-fill', 'user-minus-fill', 'user-plus-fill', 'users-three-fill',
-          'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill'],
+          'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-bold', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill'],
         'simple-icons': [
           'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
           'googlegemini', 'nodedotjs', 'npm', 'phosphoricons', 'postgresql', 'simpleicons',
