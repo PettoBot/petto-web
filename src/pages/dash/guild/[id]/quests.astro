@@ -5,6 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { canUseQuests } from '../../../../utils/questAccess';
+import { callPettoQuestMethod } from '../../../../utils/pettoBotApi';
 import { questStarterV2 } from '../../../../utils/questTemplate';
 import { validateTemplate, isV2Data } from '../../../../utils/embedSchema';
 
@@ -25,6 +26,9 @@ const TASK_KINDS = ['video', 'play', 'stream', 'activity'];
 const SECTIONS = ['image', 'rewards', 'tasks', 'platforms', 'limits'];
 
 let saved = false;
+let methodResult: { ok: boolean; message: string } | null = null;
+const ARCHIVE_MINUTES = [60, 1440, 4320, 10080];
+const snowflake = (value: FormDataEntryValue | null) => (/^\d{15,25}$/.test(String(value ?? '').trim()) ? String(value).trim() : null);
 let tableMissing = false;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -43,6 +47,11 @@ if (Astro.request.method === 'POST') {
     }
     return Astro.redirect(`/dash/guild/${id}/quests`);
   }
+  if (String(form.get('action') ?? '') === 'send_method') {
+    methodResult = await callPettoQuestMethod(Astro, id, session.userId, String(form.get('quest_id') ?? '').trim() || undefined);
+  } else {
+  // One saved embed per kind of reward: `type_template_orbs`, `method_type_template_orbs`...
+  const typeMap = (prefix: string) => Object.fromEntries(REWARD_KINDS.map((kind) => [kind, String(form.get(`${prefix}${kind}`) ?? '').trim().slice(0, 40)]).filter(([, name]) => name));
   const pick = (name: string, allowed: string[]) => form.getAll(name).map(String).filter((value) => allowed.includes(value));
   const hex = String(form.get('accent_color') ?? '').trim().replace(/^#/, '');
   const style = String(form.get('style') ?? 'card') === 'template' ? 'template' : 'card';
@@ -61,11 +70,24 @@ if (Astro.request.method === 'POST') {
       hide_sections: SECTIONS.filter((section) => form.get(`hide_${section}`) === 'on'),
       accent_color: /^[0-9a-f]{6}$/i.test(hex) ? parseInt(hex, 16) : null,
       expiring_hours: Math.max(0, Math.min(168, Number(form.get('expiring_hours') ?? 0) || 0)),
+      auto_thread: form.get('auto_thread') === 'on',
+      thread_name: String(form.get('thread_name') ?? '').trim().slice(0, 100) || null,
+      thread_ping: form.get('thread_ping') === 'on',
+      thread_archive: ARCHIVE_MINUTES.includes(Number(form.get('thread_archive'))) ? Number(form.get('thread_archive')) : 1440,
+      method_enabled: form.get('method_enabled') === 'on',
+      method_template: String(form.get('method_template') ?? '').trim().slice(0, 40) || null,
+      method_text: String(form.get('method_text') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000) || null,
+      method_target: String(form.get('method_target') ?? 'thread') === 'channel' ? 'channel' : 'thread',
+      method_channel_id: snowflake(form.get('method_channel_id')),
+      method_ping: form.get('method_ping') === 'on',
+      type_templates: typeMap('type_template_'),
+      method_type_templates: typeMap('method_type_template_'),
       updated_at: new Date().toISOString(),
     }),
   });
   saved = res.ok;
   tableMissing = !res.ok;
+  }
 }
 
 const [guildInfo, configRes, channelsRes, rolesRes, templatesRes] = await Promise.all([
@@ -91,6 +113,18 @@ const config = {
   hideSections: c.hide_sections ?? [],
   accentColor: Number.isInteger(c.accent_color) ? `#${c.accent_color.toString(16).padStart(6, '0')}` : '',
   expiringHours: c.expiring_hours ?? 0,
+  autoThread: c.auto_thread ?? false,
+  threadName: c.thread_name ?? '',
+  threadPing: c.thread_ping ?? false,
+  threadArchive: c.thread_archive ?? 1440,
+  methodEnabled: c.method_enabled ?? false,
+  methodTemplate: c.method_template ?? '',
+  methodText: c.method_text ?? '',
+  methodTarget: c.method_target === 'channel' ? 'channel' : 'thread',
+  methodChannelId: c.method_channel_id ?? '',
+  methodPing: c.method_ping ?? false,
+  typeTemplates: (c.type_templates && typeof c.type_templates === 'object' ? c.type_templates : {}) as Record<string, string>,
+  methodTypeTemplates: (c.method_type_templates && typeof c.method_type_templates === 'object' ? c.method_type_templates : {}) as Record<string, string>,
 };
 const channels = (channelsRes.ok ? await channelsRes.json() : []).filter((ch: any) => ch.type === 0 || ch.type === 5).sort((a: any, b: any) => a.position - b.position).map((ch: any) => ({ id: ch.id, name: ch.name }));
 const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
@@ -107,4 +141,5 @@ const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((r
   embedTemplates={embedTemplates}
   ready={ready}
   saved={saved}
+  methodResult={methodResult}
 />

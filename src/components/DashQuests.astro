@@ -11,14 +11,16 @@ interface Props {
   guildId: string;
   guildName: string;
   guildIcon: string;
-  config: { enabled: boolean; channelId: string; roleId: string; style: string; embedTemplate: string; rewardKinds: string[]; taskKinds: string[]; hideSections: string[]; accentColor: string; expiringHours: number };
+  config: { enabled: boolean; channelId: string; roleId: string; style: string; embedTemplate: string; rewardKinds: string[]; taskKinds: string[]; hideSections: string[]; accentColor: string; expiringHours: number; autoThread: boolean; threadName: string; threadPing: boolean; threadArchive: number; methodEnabled: boolean; methodTemplate: string; methodText: string; methodTarget: string; methodChannelId: string; methodPing: boolean; typeTemplates: Record<string, string>; methodTypeTemplates: Record<string, string> };
   channels: { id: string; name: string }[];
   roles: { id: string; name: string }[];
   embedTemplates: { name: string; v2: boolean }[];
   ready: boolean;
   saved: boolean;
+  methodResult?: { ok: boolean; message: string } | null;
 }
-const { user, guildId, guildName, guildIcon, config, channels, roles, embedTemplates, ready, saved } = Astro.props;
+const { user, guildId, guildName, guildIcon, config, channels, roles, embedTemplates, ready, saved, methodResult } = Astro.props;
+const archiveChoices = [[60, '1 hour'], [1440, '1 day'], [4320, '3 days'], [10080, '1 week']] as const;
 const rewardKinds = [['orbs', 'Orbs'], ['decoration', 'Collectibles (decorations, effects)'], ['code', 'Codes'], ['ingame', 'In-game items'], ['nitro', 'Nitro']];
 const taskKinds = [['video', 'Watch a video'], ['play', 'Play a game'], ['stream', 'Stream'], ['activity', 'Activities']];
 const sections = [['image', 'Picture'], ['rewards', 'Rewards'], ['tasks', 'Tasks'], ['platforms', 'Platforms'], ['limits', 'Region and age limits']];
@@ -28,6 +30,7 @@ const sample = { name: 'Watch the trailer', reward: '200 Orbs | 240', task: 'Wat
   <h1>{dt('Quest alerts')}</h1>
   <p class="qa-sub"><Fragment set:html={dth('A message in a channel of <b>{a}</b> when a new Discord Quest appears.', { a: (guildName) })} /></p>
   {saved && <div class="qa-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {methodResult && <div class={`qa-flash${methodResult.ok ? '' : ' qa-flash-warn'}`}><Icon name={methodResult.ok ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{methodResult.ok ? dt('The method was sent.') : dt('The method could not be sent.')} {methodResult.message}</div>}
   {!ready && <div class="qa-flash qa-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
   <div class="qa-grid">
@@ -60,10 +63,48 @@ const sample = { name: 'Watch the trailer', reward: '200 Orbs | 240', task: 'Wat
         <div class="qa-field"><label>{dt('Card color')}</label><input type="text" name="accent_color" id="qa-color" value={config.accentColor} placeholder="#ff91c2" maxlength="7" /><span class="qa-note">{dt('Empty uses the color of each quest.')}</span></div>
       </fieldset>
 
+      <fieldset class="qa-set"><legend>{dt('A different design for each reward')}</legend>
+        <span class="qa-note">{dt('Choose a saved embed (normal or V2) for the kinds of reward you want to look different, such as Orbs or avatar decorations. A quest uses the one of its reward; if there is none, the general design above.')}</span>
+        {rewardKinds.map(([value, label]) => (
+          <div class="qa-field qa-type">
+            <label>{dt(label)}</label>
+            <select name={`type_template_${value}`}><option value="">{dt('The general design')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === config.typeTemplates[value]}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
+            <select name={`method_type_template_${value}`} aria-label={dt('Method')}><option value="">{dt('The general method')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === config.methodTypeTemplates[value]}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
+          </div>
+        ))}
+        <span class="qa-note">{dt('The first list is the alert, the second one is the method.')}</span>
+      </fieldset>
+
+      <fieldset class="qa-set"><legend>{dt('Thread')}</legend>
+        <label class="qa-check"><input type="checkbox" name="auto_thread" checked={config.autoThread} />{dt('Open a thread under each alert')}</label>
+        <div class="qa-field"><label>{dt('Thread name')}</label><input type="text" name="thread_name" value={config.threadName} placeholder="{quest.name}" maxlength="100" /><span class="qa-note">{dt('Quest variables such as {quest.name} and {quest.game} work. Empty uses the name of the quest.')}</span></div>
+        <label class="qa-check"><input type="checkbox" name="thread_ping" checked={config.threadPing} />{dt('Ping the role inside the thread (its members are added to it)')}</label>
+        <div class="qa-field"><label>{dt('Hide an idle thread after')}</label><select name="thread_archive">{archiveChoices.map(([value, label]) => <option value={value} selected={value === config.threadArchive}>{dt(label)}</option>)}</select></div>
+        <span class="qa-note">{dt('Petto needs the Create Public Threads permission in the alert channel.')}</span>
+      </fieldset>
+
+      <fieldset class="qa-set"><legend>{dt('How to complete it (the method)')}</legend>
+        <span class="qa-note">{dt('A message that tells how to complete the quests, written once and sent with each new quest. It can have several texts, pictures and buttons if you make it as a saved embed.')}</span>
+        <label class="qa-check"><input type="checkbox" name="method_enabled" checked={config.methodEnabled} />{dt('Send the method with each new quest')}</label>
+        <div class="qa-field"><label>{dt('Saved embed')}</label>
+          <select name="method_template"><option value="">{dt('None')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === config.methodTemplate}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
+          {config.methodTemplate && <a class="qa-edit" href={`/dash/guild/${guildId}/embeds?name=${encodeURIComponent(config.methodTemplate)}`}>{dt('Edit this design')}</a>}
+        </div>
+        <div class="qa-field"><label>{dt('Or a plain text')}</label><textarea name="method_text" rows="6" maxlength="2000" placeholder={dt('Step 1: ...')}>{config.methodText}</textarea><span class="qa-note">{dt('Used when there is no saved embed, or when it is missing. The quest variables work, such as {quest.name} and {quest.task}.')}</span></div>
+        <div class="qa-field"><label>{dt('Where it goes')}</label>
+          <select name="method_target"><option value="thread" selected={config.methodTarget !== 'channel'}>{dt('In the thread of the alert')}</option><option value="channel" selected={config.methodTarget === 'channel'}>{dt('In a channel')}</option></select>
+        </div>
+        <div class="qa-field"><label>{dt('Channel for the method')}</label><select name="method_channel_id"><option value="">{dt('The alert channel')}</option>{channels.map((ch) => <option value={ch.id} selected={ch.id === config.methodChannelId}>#{ch.name}</option>)}</select></div>
+        <label class="qa-check"><input type="checkbox" name="method_ping" checked={config.methodPing} />{dt('Ping the role with the method')}</label>
+        <button type="submit" form="qa-method-form" class="btn btn-ghost btn-sm qa-make" disabled={!ready}>{dt('Send the method now')}</button>
+        <span class="qa-note">{dt('Sends it for the newest active quest, in its thread or in the channel above. Save your changes first.')}</span>
+      </fieldset>
+
       <div class="qa-field"><label>{dt('Also alert before a quest ends (hours, 0 is off)')}</label><input type="number" name="expiring_hours" min="0" max="168" value={config.expiringHours} /></div>
       <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
     </form>
 
+    <form method="POST" id="qa-method-form"><input type="hidden" name="action" value="send_method" /></form>
     <form method="POST" id="qa-design-form"><input type="hidden" name="action" value="create_design" /></form>
 
     <aside class="qa-preview" aria-label={dt('Preview')}>
@@ -123,7 +164,11 @@ const sample = { name: 'Watch the trailer', reward: '200 Orbs | 240', task: 'Wat
   .qa-form { display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 20px; }
   .qa-field { display: flex; flex-direction: column; gap: 6px; }
   .qa-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .qa-field textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; resize: vertical; }
   .qa-field input, .qa-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; }
+.qa-type { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr) minmax(0, 2fr); align-items: center; gap: 8px; }
+  .qa-type label { grid-column: 1; }
+  @media (max-width: 600px) { .qa-type { grid-template-columns: 1fr; } }
   .qa-note { font-size: 11.5px; line-height: 1.4; color: var(--text-dim); }
   .qa-set { border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
   .qa-set legend { font-size: 12px; font-weight: 600; color: var(--text-dim); padding: 0 6px; }

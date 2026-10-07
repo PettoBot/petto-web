@@ -63,8 +63,8 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
 
     const afterLogin = cookies.get('petto_after_login')?.value;
     cookies.delete('petto_after_login', { path: '/' });
-    // Only places of this site that need a signed-in member: the dashboard, and the checkout that opens from the Premium page.
-    const returnTo = afterLogin && /^\/(?:dash(?:\/|$)|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
+    // Only places of this site that need a signed-in member: the dashboard, the feedback board, and the checkout that opens from the Premium page.
+    const returnTo = afterLogin && /^\/(?:dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
     return redirect(returnTo);
   } catch {
     return redirect('/dash?error=login_failed');

@@ -1,0 +1,115 @@
+---
+export const prerender = false;
+import { Icon } from 'astro-icon/components';
+import Base from '../../layouts/Base.astro';
+import FeedbackStyles from '../../components/feedback/FeedbackStyles.astro';
+import { ago, avatarOf, KIND_ICON, KIND_LABEL, score, STATUS_LABEL, TAG_LABEL } from '../../components/feedback/feedbackUi';
+import { getDashLang, makeT } from '../../i18n/dash';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { EMOJI, emojiUrl, getPost, isStaff, LIMITS, listComments, STATUSES, votesOf } from '../../utils/feedback';
+
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const id = Number(Astro.params.id);
+const post = await getPost(Astro, id);
+if (!post) return Astro.redirect('/feedback');
+const session = await getDashboardSession(Astro);
+const [comments, mine, staff] = await Promise.all([
+  listComments(Astro, id),
+  session ? votesOf(Astro, session.userId, [id]) : Promise.resolve(new Map<number, number>()),
+  session ? isStaff(Astro, session.userId) : Promise.resolve(false),
+]);
+const vote = mine.get(id) ?? 0;
+const q = Astro.url.searchParams;
+const flash = q.get('new') ? ['ok', dt('Your post is on the board. Thank you!')] : q.get('updated') ? ['ok', dt('Saved.')] : q.get('commented') ? ['ok', dt('Comment added.')]
+  : q.get('error') === 'rate' ? ['warn', dt('Slow down a little, you wrote too many comments.')] : q.get('error') ? ['warn', dt('That did not work. Try again.')] : null;
+const canDelete = staff || (session && session.userId === post.user_id);
+---
+<Base title={`${post.title} · Petto`} lang={lang} description={post.body.slice(0, 150)}>
+  <FeedbackStyles />
+  <main class="fb-wrap">
+    <p><a class="fb-link" href="/feedback">← {dt('All posts')}</a></p>
+    {flash && <div class:list={['fb-flash', flash[0]]}><Icon name={flash[0] === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{flash[1]}</div>}
+
+    <article class="fb-post">
+      <div class="fb-vote" data-vote-box data-post={post.id} data-login={session ? '' : 'yes'}>
+        <button type="button" data-value="1" class:list={{ on: vote === 1 }} aria-label={dt('Like')} title={dt('Like')}><img src={emojiUrl(EMOJI.like)} alt="" width="22" height="22" /></button>
+        <span class="fb-score" data-score>{score(post)}</span>
+        <button type="button" data-value="-1" class:list={{ on: vote === -1 }} aria-label={dt('Dislike')} title={dt('Dislike')}><img src={emojiUrl(EMOJI.dislike)} alt="" width="22" height="22" /></button>
+      </div>
+      <div class="fb-main">
+        <div class="fb-meta" style="margin-bottom: 8px;">
+          <span class:list={['fb-badge', `k-${post.kind}`]}><Icon name={KIND_ICON[post.kind]} width="12" height="12" />{dt(KIND_LABEL[post.kind])}</span>
+          <span class:list={['fb-badge', `s-${post.status}`]}>{dt(STATUS_LABEL[post.status])}</span>
+          {post.tags?.map((value) => <span class="fb-tag">{dt(TAG_LABEL[value] ?? value)}</span>)}
+        </div>
+        <h1>{post.title}</h1>
+        <div class="fb-meta">
+          <span class="fb-by"><img src={avatarOf(post.user_id, post.avatar)} alt="" width="18" height="18" />{post.username || dt('Someone')}</span>
+          <span>{ago(post.created_at, lang)}</span>
+        </div>
+        <div class="fb-body">{post.body}</div>
+        {post.status_note && <div class="fb-note"><b>{dt('From the team')}:</b> {post.status_note}</div>}
+        {canDelete && (
+          <form method="POST" action={`/api/feedback/${post.id}/status`} onsubmit={`return confirm(${JSON.stringify(dt('Delete this post? This cannot be undone.'))})`}>
+            <input type="hidden" name="action" value="delete" />
+            <button class="fb-link fb-danger" type="submit" style="all: unset; cursor: pointer; font-size: 13px;">{dt('Delete this post')}</button>
+          </form>
+        )}
+      </div>
+    </article>
+
+    {staff && (
+      <form class="fb-staff" method="POST" action={`/api/feedback/${post.id}/status`}>
+        <h2>{dt('Team')}</h2>
+        <div class="fb-field"><label for="fb-status">{dt('State')}</label>
+          <select id="fb-status" name="status">{STATUSES.map((value) => <option value={value} selected={value === post.status}>{dt(STATUS_LABEL[value])}</option>)}</select></div>
+        <div class="fb-field"><label for="fb-note">{dt('Note for the author (optional)')}</label>
+          <textarea id="fb-note" name="note" maxlength={LIMITS.note} style="min-height: 70px;">{post.status_note}</textarea>
+          <span class="fb-hint">{dt('It is shown on the post and added as a comment.')}</span></div>
+        <div class="fb-actions"><button class="btn btn-accent btn-sm" type="submit">{dt('Save state')}</button></div>
+      </form>
+    )}
+
+    <section class="fb-comments" id="comments">
+      <h2>{dt('Comments')} · {comments.length}</h2>
+      {comments.map((comment) => (
+        <div class="fb-comment">
+          <img src={avatarOf(comment.user_id, comment.avatar)} alt="" width="32" height="32" loading="lazy" />
+          <div><b>{comment.username || dt('Someone')}</b>{comment.staff && <span class="fb-staff-mark">{dt('TEAM')}</span>} <span class="fb-hint">· {ago(comment.created_at, lang)}</span>
+            <p>{comment.body}</p></div>
+        </div>
+      ))}
+      {session ? (
+        <form class="fb-comment-form" method="POST" action={`/api/feedback/${post.id}/comment`}>
+          <div class="fb-field"><label for="fb-comment">{dt('Add a comment')}</label>
+            <textarea id="fb-comment" name="body" maxlength={LIMITS.comment} required style="min-height: 90px;"></textarea></div>
+          <div class="fb-trap" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+          <div class="fb-actions"><button class="btn btn-accent btn-sm" type="submit">{dt('Comment')}</button></div>
+        </form>
+      ) : (
+        <p class="fb-hint" style="margin-top: 14px;"><a class="fb-link" href={`/feedback/login?next=/feedback/${post.id}`}>{dt('Log in with Discord')}</a> {dt('to vote and comment.')}</p>
+      )}
+    </section>
+  </main>
+</Base>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-vote-box]').forEach((box) => {
+    box.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (box.dataset.login) { location.href = `/feedback/login?next=/feedback/${box.dataset.post}`; return; }
+        button.disabled = true;
+        try {
+          const response = await fetch(`/api/feedback/${box.dataset.post}/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: Number(button.dataset.value) }) });
+          if (response.status === 401) { location.href = `/feedback/login?next=/feedback/${box.dataset.post}`; return; }
+          const data = await response.json();
+          if (data.ok) {
+            box.querySelector('[data-score]')!.textContent = String(data.up - data.down);
+            box.querySelectorAll('button[data-value]').forEach((other) => other.classList.toggle('on', Number((other as HTMLElement).dataset.value) === data.vote));
+          }
+        } finally { button.disabled = false; }
+      });
+    });
+  });
+</script>

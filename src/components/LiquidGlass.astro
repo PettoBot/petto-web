@@ -40,6 +40,10 @@
     content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; overflow: hidden;
     -webkit-backdrop-filter: blur(9px) saturate(1.8) brightness(1.06); backdrop-filter: blur(9px) saturate(1.8) brightness(1.06);
   }
+  /* The glass layer shows when the page has drawn the map and the entry animation of the bar is over. Until then it is only the tint, and then
+     the glass fades in, instead of snapping from a plain bar to the liquid one. */
+  .lg-glass::after, body.public-body header.nav::after { opacity: 1; transition: opacity 0.5s ease; }
+  html:not([data-lg-ready]) .lg-glass::after, html:not([data-lg-ready]) body.public-body header.nav::after { opacity: 0; }
   html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
     -webkit-backdrop-filter: blur(4px) var(--lg-filter) saturate(1.5) brightness(1.08); backdrop-filter: blur(4px) var(--lg-filter) saturate(1.5) brightness(1.08);
   }
@@ -135,6 +139,7 @@
     }
 
     var counter = 0;
+    var pending = [];
     function fit(element) {
       // The layout size, which an entry animation (a scale) does not change.
       var width = element.offsetWidth, height = element.offsetHeight;
@@ -147,8 +152,10 @@
       if (!url) return;
       var id = element.getAttribute('data-lg-id');
       if (!id) { counter += 1; id = 'lg-f-' + counter; element.setAttribute('data-lg-id', id); }
-      var old = document.getElementById(id);
-      if (old) old.remove();
+      // A new filter with a new name takes the place of the old one, and the old one goes a moment later, so the glass is never left without one.
+      var previous = element.getAttribute('data-lg-filter');
+      counter += 1;
+      id = id + '-' + counter;
       var filter = document.createElementNS(SVG, 'filter');
       filter.setAttribute('id', id);
       filter.setAttribute('filterUnits', 'userSpaceOnUse');
@@ -168,7 +175,13 @@
       filter.appendChild(image); filter.appendChild(displace);
       defs.appendChild(filter);
       element.setAttribute('data-lg-size', width + 'x' + height);
+      element.setAttribute('data-lg-filter', id);
       element.style.setProperty('--lg-filter', 'url(#' + id + ')');
+      if (previous) requestAnimationFrame(function () { var old = document.getElementById(previous); if (old) old.remove(); });
+      // The picture of the map is decoded before the glass shows, or the first frames would be drawn without the bend.
+      var probe = new Image();
+      probe.src = url;
+      pending.push(probe.decode ? probe.decode().catch(function () {}) : Promise.resolve());
     }
 
     var glass = [];
@@ -176,10 +189,30 @@
       glass = Array.prototype.slice.call(document.querySelectorAll('.lg-glass, body.public-body header.nav'));
     }
     function fitAll() { glass.forEach(fit); }
+    var shown = false;
+    function show() {
+      if (shown) return;
+      shown = true;
+      root.setAttribute('data-lg-ready', '');
+    }
     function start() {
       collect();
-      if (!lens || !defs) return;
+      if (!lens || !defs) { show(); return; }
       fitAll();
+      // The glass shows when the maps are decoded and the entry animation of the bars is over (while it runs the bar is the root of its own
+      // backdrop and cannot see the page, so showing the glass then would make it snap on at the end).
+      var settle = function (tries) {
+        var running = [];
+        glass.forEach(function (element) { if (element.getAnimations) running = running.concat(element.getAnimations()); });
+        if (running.length && tries < 6) {
+          Promise.all(running.map(function (animation) { return animation.finished.catch(function () {}); })).then(function () { settle(tries + 1); });
+        } else {
+          Promise.all(pending).then(function () { requestAnimationFrame(show); });
+        }
+      };
+      // A moment later, so that the page has had time to start those animations.
+      setTimeout(function () { settle(0); }, 150);
+      setTimeout(show, 2200);
       // The bars change size with the screen, so their maps are drawn again.
       if (window.ResizeObserver) {
         var observer = new ResizeObserver(function () { fitAll(); });
@@ -219,33 +252,21 @@
       }, { passive: true });
     }
 
-    // The point of light follows the page and the finger.
-    if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-      var frame = 0;
-      // Set on the glass only: a custom property on the root would restyle the whole page on every frame of a scroll.
-      var set = function (x) {
-        var value = Math.max(0, Math.min(100, x)).toFixed(1) + '%';
-        for (var i = 0; i < glass.length; i += 1) glass[i].style.setProperty('--lg-x', value);
-      };
-      var lastSet = 0;
-      window.addEventListener('scroll', function () {
-        if (frame) return;
+    // The point of light follows the mouse. It does not move with the scroll or the finger: changing it makes the glass draw again, and a bar that
+    // draws again while the page moves under it flickers.
+    if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) && window.matchMedia && window.matchMedia('(hover: hover)').matches) {
+      var frame = 0, lastX = -10;
+      window.addEventListener('pointermove', function (event) {
+        if (event.pointerType !== 'mouse' || frame) return;
         frame = requestAnimationFrame(function () {
           frame = 0;
-          // The light moves a little slower than the page (about 20 times a second), which costs the phone less and is not noticed.
-          var now = Date.now();
-          if (now - lastSet < 50) return;
-          lastSet = now;
-          var room = document.documentElement.scrollHeight - window.innerHeight;
-          set(room > 0 ? (window.scrollY / room) * 100 : 30);
+          var x = Math.max(0, Math.min(100, (event.clientX / window.innerWidth) * 100));
+          if (Math.abs(x - lastX) < 4) return;
+          lastX = x;
+          var value = x.toFixed(0) + '%';
+          for (var i = 0; i < glass.length; i += 1) glass[i].style.setProperty('--lg-x', value);
         });
       }, { passive: true });
-      var onMove = function (event) {
-        var point = event.touches ? event.touches[0] : event;
-        if (point) set((point.clientX / window.innerWidth) * 100);
-      };
-      window.addEventListener('pointermove', onMove, { passive: true });
-      window.addEventListener('touchmove', onMove, { passive: true });
     }
   })();
 </script>
