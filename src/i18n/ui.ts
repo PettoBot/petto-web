@@ -432,19 +432,20 @@ export const ui = {
         },
         {
           key: 'testing', label: 'In testing', items: [
-            { title: 'Nelu', desc: 'Anime-only bot. Built, not public yet.', href: '/nelu' },
-            { title: 'AM', desc: 'AI-powered automoderation bot. Built, not public yet.', href: '/am' },
+            { title: 'A YouTube channel', desc: 'Feature walkthroughs and updates on video. The channel is being set up and the first tutorials are not uploaded yet.', href: '' },
             { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planned', items: [
             { title: 'Interactive slash commands', desc: "Game-style commands that don't fit a text prefix.", href: '' },
+            { title: 'Nelu', desc: 'Anime-only bot. Planned, not public yet.', href: '/nelu' },
+            { title: 'AM', desc: 'AI-powered automoderation bot. Planned, not public yet.', href: '/am' },
           ],
         },
         {
           key: 'considering', label: 'Under consideration', items: [
-            { title: 'A YouTube channel', desc: 'Feature walkthroughs and updates on video.', href: '' },
+            { title: 'Social notifications', desc: 'Notifications in your server when there is something new on X, YouTube, Instagram and more.', href: '' },
           ],
         },
       ],
@@ -459,7 +460,7 @@ export const ui = {
         { q: 'Prefix or slash commands?', a: 'Prefix for almost everything. Every command uses the server\'s configured prefix (the default is `!`). Slash commands (`/`) exist only for the interaction and roleplay commands (such as `/hug` and `/pat`), for `/setup` and for reports (`/report`).' },
         { q: 'Is my server\'s data safe?', a: 'Data lives in a real Postgres database behind Petto\'s private API, not a spreadsheet or a JSON file. See the Privacy Policy for exactly what is and isn\'t stored.' },
         { q: 'What happened to blibot?', a: "It moved 100% to Petto: every system blibot had, rebuilt from the ground up. Read the full announcement on the Blog." },
-        { q: 'What are Nelu and AM?', a: 'Two separate bots built by the same team: Nelu (anime-only) and AM (AI-powered automoderation). Both already exist and are being tested, neither is public yet.' },
+        { q: 'What are Nelu and AM?', a: 'Two separate bots built by the same team: Nelu (anime-only) and AM (AI-powered automoderation). Both are planned and neither is public yet.' },
         { q: 'How do I report a bug or get help?', a: 'The support server is the fastest way, linked from the Community menu and the News page.' },
         { q: 'Is Petto open source?', a: 'The bot is. Its code is public on GitHub under the AGPL-3.0 license. The website and the dashboard are not published.' },
         { q: 'Does Petto sell my data?', a: 'No. See the Privacy Policy for the full breakdown of what is collected and why.' },
@@ -978,7 +979,7 @@ export const ui = {
         s3h: 'Does this change anything about Petto',
         s3p: "No. Petto keeps doing exactly what it does today, nothing is being removed, renamed, or folded into Nelu. If a server never adds Nelu, nothing about its Petto setup changes.",
         s4h: 'What to do right now',
-        s4p: "Nothing yet. Nelu already exists and is being tested, it just isn't public yet. When it opens up, it'll be announced the same way blibot's move to Petto was.",
+        s4p: "Nothing yet. Nelu is planned, it just isn't public yet. When it opens up, it'll be announced the same way blibot's move to Petto was.",
       },
       embedBuilder: {
         pill: 'Product',
@@ -1024,7 +1025,7 @@ export const ui = {
         s3h: "Will this replace Petto's automod",
         s3p: "No. Petto's rule-based automod (word filters, spam detection, anti-raid) isn't going anywhere and isn't changing. AM is additive, not a migration.",
         s4h: 'What to do right now',
-        s4p: "Nothing yet. AM already exists and is being tested, it just isn't public yet. When it opens up, it'll be announced the same way blibot's move to Petto was.",
+        s4p: "Nothing yet. AM is planned, it just isn't public yet. When it opens up, it'll be announced the same way blibot's move to Petto was.",
       },
       code: {
         pill: 'News',
@@ -1552,19 +1553,20 @@ export const ui = {
         },
         {
           key: 'testing', label: 'En pruebas', items: [
-            { title: 'Nelu', desc: 'Bot solo de anime. Ya existe, todavía no es público.', href: '/nelu' },
-            { title: 'AM', desc: 'Bot de automoderación con IA. Ya existe, todavía no es público.', href: '/am' },
+            { title: 'Un canal de YouTube', desc: 'Recorridos de funciones y novedades en video. El canal se está preparando y los primeros tutoriales todavía no están subidos.', href: '' },
             { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planeado', items: [
             { title: 'Comandos slash interactivos', desc: 'Comandos tipo juego que no entran en un prefijo de texto.', href: '' },
+            { title: 'Nelu', desc: 'Bot solo de anime. Planeado, todavía no es público.', href: '/nelu' },
+            { title: 'AM', desc: 'Bot de automoderación con IA. Planeado, todavía no es público.', href: '/am' },
           ],
         },
         {
           key: 'considering', label: 'En evaluación', items: [
-            { title: 'Un canal de YouTube', desc: 'Recorridos de funciones y novedades en video.', href: '' },
+            { title: 'Notificaciones de redes', desc: 'Avisos en tu servidor cuando hay algo nuevo en X, YouTube, Instagram y más.', href: '' },
           ],
         },
       ],
@@ -1579,7 +1581,7 @@ export const ui = {
         { q: '¿Prefijo o comandos slash?', a: 'Prefijo para casi todo. Todos los comandos usan el prefijo configurado del servidor (por defecto `!`). Los comandos slash (`/`) existen solo para los comandos de interacción y roleplay (como `/hug` y `/pat`), para `/setup` y para los reportes (`/report`).' },
         { q: '¿Mis datos están seguros?', a: 'Los datos viven en una base de datos Postgres real detrás de la API privada de Petto, no en una planilla ni un archivo JSON. Revisa la Política de privacidad para ver exactamente qué se guarda y qué no.' },
         { q: '¿Qué pasó con blibot?', a: 'Se mudó 100% a Petto: cada sistema que tenía blibot, reconstruido desde cero. Lee el anuncio completo en el Blog.' },
-        { q: '¿Qué son Nelu y AM?', a: 'Dos bots separados hechos por el mismo equipo: Nelu (solo de anime) y AM (automoderación con IA). Los dos ya existen y se están probando, ninguno es público todavía.' },
+        { q: '¿Qué son Nelu y AM?', a: 'Dos bots separados hechos por el mismo equipo: Nelu (solo de anime) y AM (automoderación con IA). Los dos están planeados y ninguno es público todavía.' },
         { q: '¿Cómo reporto un bug o pido ayuda?', a: 'El servidor de soporte es lo más rápido, enlazado desde el menú Comunidad y la página de Novedades.' },
         { q: '¿Petto es de código abierto?', a: 'El bot sí. Su código es público en GitHub con licencia AGPL-3.0. La web y el dashboard no están publicados.' },
         { q: '¿Petto vende mis datos?', a: 'No. Revisa la Política de privacidad para el detalle completo de qué se recolecta y por qué.' },
@@ -2098,7 +2100,7 @@ export const ui = {
         s3h: 'Esto cambia algo de Petto',
         s3p: 'No. Petto sigue haciendo exactamente lo que hace hoy, no se elimina, renombra, ni se mete nada dentro de Nelu. Si un servidor nunca agrega Nelu, nada de su configuración de Petto cambia.',
         s4h: 'Qué hacer ahora mismo',
-        s4p: 'Nada todavía. Nelu ya existe y se está probando, solo que todavía no es público. Cuando se abra, se va a anunciar de la misma forma que se anunció la mudanza de blibot a Petto.',
+        s4p: 'Nada todavía. Nelu está planeado, solo que todavía no es público. Cuando se abra, se va a anunciar de la misma forma que se anunció la mudanza de blibot a Petto.',
       },
       embedBuilder: {
         pill: 'Producto',
@@ -2144,7 +2146,7 @@ export const ui = {
         s3h: 'Esto reemplaza el automod de Petto',
         s3p: 'No. El automod basado en reglas de Petto (filtros de palabras, detección de spam, anti-raid) no va a ningún lado y no cambia. AM suma, no migra nada.',
         s4h: 'Qué hacer ahora mismo',
-        s4p: 'Nada todavía. AM ya existe y está en pruebas, solo que todavía no es público. Cuando se abra, se va a anunciar de la misma forma que se anunció la mudanza de blibot a Petto.',
+        s4p: 'Nada todavía. AM está planeado, solo que todavía no es público. Cuando se abra, se va a anunciar de la misma forma que se anunció la mudanza de blibot a Petto.',
       },
       code: {
         pill: 'Noticias',
@@ -2672,19 +2674,20 @@ export const ui = {
         },
         {
           key: 'testing', label: 'Em teste', items: [
-            { title: 'Nelu', desc: 'Bot só de anime. Já existe, ainda não é público.', href: '/nelu' },
-            { title: 'AM', desc: 'Bot de automoderação com IA. Já existe, ainda não é público.', href: '/am' },
+            { title: 'Um canal do YouTube', desc: 'Demonstrações de recursos e novidades em vídeo. O canal está sendo preparado e os primeiros tutoriais ainda não foram enviados.', href: '' },
             { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planejado', items: [
             { title: 'Comandos slash interativos', desc: 'Comandos estilo jogo que não cabem num prefixo de texto.', href: '' },
+            { title: 'Nelu', desc: 'Bot só de anime. Planejado, ainda não é público.', href: '/nelu' },
+            { title: 'AM', desc: 'Bot de automoderação com IA. Planejado, ainda não é público.', href: '/am' },
           ],
         },
         {
           key: 'considering', label: 'Em avaliação', items: [
-            { title: 'Um canal do YouTube', desc: 'Demonstrações de recursos e novidades em vídeo.', href: '' },
+            { title: 'Notificações de redes', desc: 'Avisos no seu servidor quando há novidades no X, YouTube, Instagram e mais.', href: '' },
           ],
         },
       ],
@@ -2699,7 +2702,7 @@ export const ui = {
         { q: 'Prefixo ou comandos slash?', a: 'Prefixo para quase tudo. Todos os comandos usam o prefixo configurável do servidor (o padrão é `!`). Os comandos slash (`/`) existem apenas para os comandos de interação e roleplay (como `/hug` e `/pat`), para `/setup` e para denúncias (`/report`).' },
         { q: 'Os dados do meu servidor estão seguros?', a: 'Os dados vivem em um banco de dados Postgres de verdade atrás da API privada do Petto, não em uma planilha ou um arquivo JSON. Veja a Política de privacidade para saber exatamente o que é guardado e o que não é.' },
         { q: 'O que aconteceu com o blibot?', a: 'Ele migrou 100% para o Petto: cada sistema que o blibot tinha, reconstruído do zero. Leia o anúncio completo no Blog.' },
-        { q: 'O que são o Nelu e o AM?', a: 'Dois bots separados feitos pela mesma equipe: o Nelu (só de anime) e o AM (automoderação com IA). Os dois já existem e estão sendo testados, nenhum é público ainda.' },
+        { q: 'O que são o Nelu e o AM?', a: 'Dois bots separados feitos pela mesma equipe: o Nelu (só de anime) e o AM (automoderação com IA). Os dois estão planejados e nenhum é público ainda.' },
         { q: 'Como reporto um bug ou peço ajuda?', a: 'O servidor de suporte é o jeito mais rápido, linkado no menu Comunidade e na página de Novidades.' },
         { q: 'O Petto é de código aberto?', a: 'O bot é. O código dele é público no GitHub com licença AGPL-3.0. O site e o dashboard não são publicados.' },
         { q: 'O Petto vende meus dados?', a: 'Não. Veja a Política de privacidade para o detalhe completo do que é coletado e por quê.' },
@@ -3218,7 +3221,7 @@ export const ui = {
         s3h: 'Isso muda alguma coisa no Petto',
         s3p: 'Não. O Petto continua fazendo exatamente o que faz hoje, nada é removido, renomeado, ou incorporado ao Nelu. Se um servidor nunca adicionar o Nelu, nada na configuração dele do Petto muda.',
         s4h: 'O que fazer agora',
-        s4p: 'Nada ainda. O Nelu já existe e está sendo testado, só ainda não é público. Quando abrir, vai ser anunciado da mesma forma que a mudança do blibot para o Petto foi.',
+        s4p: 'Nada ainda. O Nelu está planejado, só ainda não é público. Quando abrir, vai ser anunciado da mesma forma que a mudança do blibot para o Petto foi.',
       },
       embedBuilder: {
         pill: 'Produto',
@@ -3264,7 +3267,7 @@ export const ui = {
         s3h: 'Isso substitui o automod do Petto',
         s3p: 'Não. O automod baseado em regras do Petto (filtros de palavras, detecção de spam, anti-raid) não vai a lugar nenhum e não muda. O AM soma, não é uma migração.',
         s4h: 'O que fazer agora',
-        s4p: 'Nada ainda. O AM já existe e está sendo testado, só ainda não é público. Quando abrir, vai ser anunciado da mesma forma que a mudança do blibot para o Petto foi.',
+        s4p: 'Nada ainda. O AM está planejado, só ainda não é público. Quando abrir, vai ser anunciado da mesma forma que a mudança do blibot para o Petto foi.',
       },
       code: {
         pill: 'Notícias',
