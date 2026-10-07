@@ -167,6 +167,19 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.2',
+          display: '0.7.2',
+          name: 'Churro',
+          date: 'October 7, 2026',
+          items: [
+            'Quest alerts: a thread under each alert (with its own name, a ping of the role inside it, and the time it hides itself) and the quest method, a message written once that tells how to complete the quests, sent in the thread or in a channel, with a ping or without it. It can be a text with the quest variables or a saved embed with several texts and pictures, and the dashboard has a button to send it now',
+            'Embed codes: an autoresponder reply can be an embed code, and `!editembed` changes a message that Petto already sent',
+            'Logs: new categories (webhooks, threads, integrations and commands) and many more events with who did them; in the channel log the @everyone role is written right and a change of permissions says who made it',
+            'Website: liquid glass in the top bar, the bottom bar of the phone and the menus, which fades in when ready and no longer blinks on a slow scroll; the embeds editor ignores a second press; the variables menu of the dashboard follows its button when you scroll',
+            'Fix: a name that is already taken in the dashboard is no longer reported as an error',
+          ],
+        },
+        {
           version: '0.7.1-2',
           display: '0.7.1~2',
           name: 'Boba',
@@ -1272,6 +1285,19 @@ export const ui = {
       linkCopied: 'Enlace copiado',
       entries: [
         {
+          version: '0.7.2',
+          display: '0.7.2',
+          name: 'Churro',
+          date: '7 de octubre de 2026',
+          items: [
+            'Alertas de misiones: un hilo bajo cada alerta (con su propio nombre, una mención del rol dentro y el tiempo en que se oculta) y el método de la misión, un mensaje escrito una vez que explica cómo completar las misiones, enviado en el hilo o en un canal, con mención o sin ella. Puede ser un texto con las variables de la misión o un embed guardado con varios textos e imágenes, y el dashboard tiene un botón para enviarlo ahora',
+            'Códigos de embed: la respuesta de un autoresponder puede ser un código de embed, y `!editembed` cambia un mensaje que Petto ya envió',
+            'Logs: categorías nuevas (webhooks, hilos, integraciones y comandos) y muchos más eventos con quién los hizo; en el log de canales el rol @everyone se escribe bien y un cambio de permisos dice quién lo hizo',
+            'Sitio web: cristal líquido en la barra de arriba, la barra de abajo del celular y los menús, que aparece con un fundido cuando está listo y ya no parpadea al bajar lento; el editor de embeds ignora una segunda pulsación; el menú de variables del dashboard sigue a su botón al hacer scroll',
+            'Arreglo: un nombre que ya existe en el dashboard ya no se reporta como error',
+          ],
+        },
+        {
           version: '0.7.1-2',
           display: '0.7.1~2',
           name: 'Boba',
@@ -2376,6 +2402,19 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.2',
+          display: '0.7.2',
+          name: 'Churro',
+          date: '7 de outubro de 2026',
+          items: [
+            'Alertas de missões: um tópico sob cada alerta (com nome próprio, uma menção do cargo dentro dele e o tempo em que se oculta) e o método da missão, uma mensagem escrita uma vez que explica como completar as missões, enviada no tópico ou em um canal, com menção ou sem ela. Pode ser um texto com as variáveis da missão ou um embed salvo com vários textos e imagens, e o dashboard tem um botão para enviá-lo agora',
+            'Códigos de embed: a resposta de um autoresponder pode ser um código de embed, e `!editembed` altera uma mensagem que o Petto já enviou',
+            'Logs: categorias novas (webhooks, tópicos, integrações e comandos) e muitos mais eventos com quem os fez; no log de canais o cargo @everyone é escrito certo e uma mudança de permissões diz quem a fez',
+            'Site: vidro líquido na barra de cima, na barra de baixo do celular e nos menus, que aparece com um fade quando está pronto e não pisca mais ao rolar devagar; o editor de embeds ignora um segundo toque; o menu de variáveis do dashboard acompanha o botão ao rolar',
+            'Correção: um nome que já existe no dashboard não é mais reportado como erro',
+          ],
+        },
         {
           version: '0.7.1-2',
           display: '0.7.1~2',
