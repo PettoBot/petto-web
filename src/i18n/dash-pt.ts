@@ -1266,6 +1266,7 @@ export const dashPt: Record<string, string> = {
   "Shown inside the ticket. You can use {user}, {username}, {category}, {server} and {number}. A saved embed set for this type is used instead.": "Mostrado dentro do ticket. Você pode usar {user}, {username}, {category}, {server} e {number}. Se este tipo tiver um embed salvo, ele é usado.",
   "That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>.": "Isso não é um emoji que o Discord aceita em um botão. Use um emoji normal, ou um personalizado colado como <:nome:123456789012345678>.",
   "That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>. The rest was saved and the emoji did not change.": "Isso não é um emoji que o Discord aceita em um botão. Use um emoji normal, ou um personalizado colado como <:nome:123456789012345678>. O resto foi salvo e o emoji não mudou.",
+  "Delete this support type? Its tickets stay, but members can no longer open new ones from it.": "Excluir este tipo de suporte? Os tickets continuam, mas os membros não poderão abrir novos por ele.",
   "Ticket details": "Detalhes do ticket",
   "Couldn't save that ticket form, try again.": "Não foi possível salvar esse formulário de ticket, tente novamente.",
   "Couldn't delete that ticket form.": "Não foi possível excluir esse formulário de ticket.",
