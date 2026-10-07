@@ -1,0 +1,180 @@
+---
+// Liquid glass for the top bar and the bar at the bottom of the phone. It does what real glass does: it does not only blur what is
+// behind it, it bends it. At the thick rim of the glass the picture is pushed along the normal of the edge (more the closer to the
+// rim) and the middle stays clear, like a lens. The bend comes from a map of the rim that the script draws for each piece of glass
+// at its own size and shape, and an SVG filter that moves the backdrop with it. Anything with the `lg-glass` class gets it.
+//
+// The bend needs a Chromium engine. Other browsers get the same glass with a frosted blur and no bend.
+---
+<svg class="lg-defs" width="0" height="0" aria-hidden="true" focusable="false"></svg>
+
+<style is:global>
+  /* Zero-sized and not display:none, so that every browser still finds the filters. */
+  .lg-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+
+  .lg-glass, body.public-body header.nav {
+    isolation: isolate;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  :root[data-theme='light'] .lg-glass, :root[data-theme='light'] body.public-body header.nav { background: rgba(255, 255, 255, 0.34); }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) .lg-glass, :root:not([data-theme='dark']) body.public-body header.nav { background: rgba(255, 255, 255, 0.34); }
+  }
+
+  /* The light on the glass: a bright edge on top, a faint one at the sides, and a point of light that moves with the page and the finger. */
+  .lg-glass::before, body.public-body header.nav::before {
+    content: ''; position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(150px 64px at var(--lg-x, 30%) 0%, rgba(255, 255, 255, 0.22), transparent 70%);
+    box-shadow:
+      inset 0 1.5px 0 0 rgba(255, 255, 255, 0.6),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.1),
+      inset 1px 0 0 0 rgba(255, 255, 255, 0.16),
+      inset -1px 0 0 0 rgba(255, 255, 255, 0.1),
+      inset 0 5px 10px -2px rgba(255, 255, 255, 0.1),
+      inset 0 -8px 14px -8px rgba(255, 255, 255, 0.1);
+  }
+  /* The glass itself. Without the bend it is a frosted layer; with it (html[data-lens]) it is almost clear, because the bend is what
+     makes it look like glass, and the filter of that element is the map of its own rim. */
+  .lg-glass::after, body.public-body header.nav::after {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; overflow: hidden;
+    -webkit-backdrop-filter: blur(9px) saturate(1.8) brightness(1.06); backdrop-filter: blur(9px) saturate(1.8) brightness(1.06);
+  }
+  html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
+    -webkit-backdrop-filter: blur(0.6px) var(--lg-filter) saturate(1.5) brightness(1.08); backdrop-filter: blur(0.6px) var(--lg-filter) saturate(1.5) brightness(1.08);
+  }
+  /* The old blur of the top bar would hide the page from the glass layer (it makes the bar the root of its own backdrop). */
+  body.public-body header.nav { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .lg-glass::after, body.public-body header.nav::after,
+    html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
+      -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card);
+    }
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    var root = document.documentElement;
+    var SVG = 'http://www.w3.org/2000/svg';
+    var ua = navigator.userAgent;
+    // The bend is a backdrop-filter with an SVG filter, which only Chromium engines draw.
+    if (/Chrome\//.test(ua) && !/Firefox\//.test(ua)) root.setAttribute('data-lens', '');
+    var lens = root.hasAttribute('data-lens');
+    var defs = document.querySelector('.lg-defs');
+
+    // The map of the rim of a rounded box. Grey (128) means "do not move". Near the rim the red and green channels push the picture along
+    // the normal of the edge, and the push fades out towards the middle, so the glass bends at its edge and is clear in the middle.
+    function rimMap(width, height, radius, bezel) {
+      var canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      var ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      var image = ctx.createImageData(width, height);
+      var hw = width / 2, hh = height / 2;
+      for (var y = 0; y < height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          // Signed distance to a rounded box, and the direction of the edge.
+          var px = x + 0.5 - hw, py = y + 0.5 - hh;
+          var qx = Math.abs(px) - (hw - radius), qy = Math.abs(py) - (hh - radius);
+          var ox = Math.max(qx, 0), oy = Math.max(qy, 0);
+          var outside = Math.sqrt(ox * ox + oy * oy);
+          var dist = outside + Math.min(Math.max(qx, qy), 0) - radius; // negative inside
+          var depth = -dist;
+          var r = 128, g = 128;
+          if (depth >= 0 && depth < bezel) {
+            var nx, ny;
+            if (outside > 0) { nx = ox / outside; ny = oy / outside; } else if (qx > qy) { nx = 1; ny = 0; } else { nx = 0; ny = 1; }
+            nx *= px < 0 ? -1 : 1; ny *= py < 0 ? -1 : 1;
+            // A curve that is steep at the very rim and gentle further in, like the surface of a thick glass.
+            var strength = Math.pow(1 - depth / bezel, 2);
+            r = 128 - nx * strength * 127;
+            g = 128 - ny * strength * 127;
+          }
+          var i = (y * width + x) * 4;
+          image.data[i] = r; image.data[i + 1] = g; image.data[i + 2] = 128; image.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      return canvas.toDataURL('image/png');
+    }
+
+    var counter = 0;
+    function fit(element) {
+      // The layout size, which an entry animation (a scale) does not change.
+      var width = element.offsetWidth, height = element.offsetHeight;
+      if (!width || !height || element.getAttribute('data-lg-size') === width + 'x' + height) return;
+      var radius = Math.min(parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0, width / 2, height / 2);
+      var bezel = Math.max(8, Math.min(radius * 0.95 || height / 2, height / 2 * 0.95, 26));
+      // The map is drawn at up to twice the size of the glass; the filter and the picture are in CSS pixels.
+      var quality = Math.min(window.devicePixelRatio || 1, 2);
+      var url = rimMap(Math.round(width * quality), Math.round(height * quality), radius * quality, bezel * quality);
+      if (!url) return;
+      var id = element.getAttribute('data-lg-id');
+      if (!id) { counter += 1; id = 'lg-f-' + counter; element.setAttribute('data-lg-id', id); }
+      var old = document.getElementById(id);
+      if (old) old.remove();
+      var filter = document.createElementNS(SVG, 'filter');
+      filter.setAttribute('id', id);
+      filter.setAttribute('filterUnits', 'userSpaceOnUse');
+      filter.setAttribute('x', '0'); filter.setAttribute('y', '0');
+      filter.setAttribute('width', width); filter.setAttribute('height', height);
+      filter.setAttribute('color-interpolation-filters', 'sRGB');
+      var image = document.createElementNS(SVG, 'feImage');
+      image.setAttribute('x', '0'); image.setAttribute('y', '0');
+      image.setAttribute('width', width); image.setAttribute('height', height);
+      image.setAttribute('preserveAspectRatio', 'none');
+      image.setAttribute('result', 'map');
+      image.setAttribute('href', url);
+      var displace = document.createElementNS(SVG, 'feDisplacementMap');
+      displace.setAttribute('in', 'SourceGraphic'); displace.setAttribute('in2', 'map');
+      displace.setAttribute('scale', String(Math.round(bezel * 2.6)));
+      displace.setAttribute('xChannelSelector', 'R'); displace.setAttribute('yChannelSelector', 'G');
+      filter.appendChild(image); filter.appendChild(displace);
+      defs.appendChild(filter);
+      element.setAttribute('data-lg-size', width + 'x' + height);
+      element.style.setProperty('--lg-filter', 'url(#' + id + ')');
+    }
+
+    var glass = [];
+    function collect() {
+      glass = Array.prototype.slice.call(document.querySelectorAll('.lg-glass, header.nav'));
+    }
+    function fitAll() { glass.forEach(fit); }
+    function start() {
+      collect();
+      fitAll();
+      // The bars change size with the screen, so their maps are drawn again.
+      if (window.ResizeObserver) {
+        var observer = new ResizeObserver(function () { fitAll(); });
+        glass.forEach(function (element) { observer.observe(element); });
+      } else {
+        window.addEventListener('resize', fitAll);
+      }
+    }
+    if (lens && defs) {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+      else start();
+    }
+
+    // The point of light follows the page and the finger.
+    if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      var frame = 0;
+      var set = function (x) { root.style.setProperty('--lg-x', Math.max(0, Math.min(100, x)).toFixed(1) + '%'); };
+      window.addEventListener('scroll', function () {
+        if (frame) return;
+        frame = requestAnimationFrame(function () {
+          frame = 0;
+          var room = document.documentElement.scrollHeight - window.innerHeight;
+          set(room > 0 ? (window.scrollY / room) * 100 : 30);
+        });
+      }, { passive: true });
+      var onMove = function (event) {
+        var point = event.touches ? event.touches[0] : event;
+        if (point) set((point.clientX / window.innerWidth) * 100);
+      };
+      window.addEventListener('pointermove', onMove, { passive: true });
+      window.addEventListener('touchmove', onMove, { passive: true });
+    }
+  })();
+</script>
