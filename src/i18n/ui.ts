@@ -428,7 +428,7 @@ export const ui = {
             { title: 'Leveling v2 and image cards', desc: 'Rank cards, anti-abuse rules, XP events, streaks, weekly rankings and pictures drawn for every message. Version 0.6.1.', href: '/changelog' },
             { title: 'Saved embeds everywhere', desc: 'Sanctions, starboard, giveaways, verification and bump messages can use your own saved design.', href: '/changelog' },
             { title: 'Open source bot', desc: 'The bot\'s code is public on GitHub under the AGPL-3.0 license.', href: 'https://github.com/PettoBot/petto-bot' },
-          ],
+            { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },          ],
         },
         {
           key: 'testing', label: 'In testing', items: [
@@ -1549,6 +1549,7 @@ export const ui = {
             { title: 'Leveling v2 y tarjetas de imagen', desc: 'Tarjetas de rango, reglas anti-abuso, eventos de XP, rachas, rankings semanales e imágenes dibujadas para cada mensaje. Versión 0.6.1.', href: '/changelog' },
             { title: 'Embeds guardados en todo', desc: 'Sanciones, starboard, sorteos, verificación y mensajes de bump pueden usar tu propio diseño guardado.', href: '/changelog' },
             { title: 'Bot de código abierto', desc: 'El código del bot es público en GitHub con licencia AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
+            { title: 'Tablero de feedback', desc: 'Escribe ideas, comentarios y errores, vota con me gusta y no me gusta, comenta y mira qué planea el equipo. También en el servidor de Petto, donde las reacciones cuentan como votos.', href: '/feedback' },
           ],
         },
         {
@@ -2670,6 +2671,7 @@ export const ui = {
             { title: 'Leveling v2 e cartões de imagem', desc: 'Cartões de rank, regras anti-abuso, eventos de XP, sequências, rankings semanais e imagens desenhadas para cada mensagem. Versão 0.6.1.', href: '/changelog' },
             { title: 'Embeds salvos em tudo', desc: 'Sanções, starboard, sorteios, verificação e mensagens de bump podem usar o seu próprio design salvo.', href: '/changelog' },
             { title: 'Bot de código aberto', desc: 'O código do bot é público no GitHub com licença AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
+            { title: 'Quadro de feedback', desc: 'Escreva ideias, comentários e bugs, vote com curtir e não curtir, comente e veja o que a equipe planeja. Também no servidor do Petto, onde as reações contam como votos.', href: '/feedback' },
           ],
         },
         {
