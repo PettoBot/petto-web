@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import http from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -22,5 +23,16 @@ if (!existsSync(entry) || !existsSync(marker)) {
     process.exit(1);
   }
 }
+
+// The proxy in front of the site (Caddy, behind Cloudflare) keeps connections open and reuses them. Node closes an idle connection after 5 seconds
+// by default, so a request sent on a connection that was just closed can hang until something gives up. Keeping the connections open longer than
+// the proxy does avoids that. This is set on the server that Astro creates, which is not reachable from here, so the creation is wrapped.
+const createServer = http.createServer.bind(http);
+http.createServer = (...args) => {
+  const server = createServer(...args);
+  server.keepAliveTimeout = 75_000;
+  server.headersTimeout = 80_000;
+  return server;
+};
 
 await import(entry.href);
