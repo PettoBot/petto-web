@@ -1,12 +1,13 @@
 import { Pool } from 'pg';
 
 /**
- * Read-only shortcut to the database for the Node (Discloud) build.
+ * Shortcut to the database for the Node (Discloud) build.
  *
- * The dashboard asks the bot API for table rows with PostgREST-style GET requests. When the site runs next to
- * the database, this answers the simple ones straight from PostgreSQL and lets everything else go to the API
- * exactly as before: writes, counts, nested selects, `or` filters, ranges and anything it does not understand.
- * If the database fails for any reason, the request falls back to the API too, so this can only make reads faster.
+ * The dashboard asks the bot API for table rows with PostgREST-style requests. When the site runs next to the database, this answers
+ * them straight from PostgreSQL: reads (the simple ones) and writes (insert, upsert, update and delete with a filter). Everything it
+ * does not understand goes to the API exactly as before: counts of other kinds, nested selects, `and` filters, an update or delete with
+ * no filter. If the database cannot be reached, the request goes to the API too, and for a short while the API is used straight away.
+ * A write is only sent to the API when the database could not be reached before the statement was sent, so it is never done twice.
  * The SQL mirrors the bot's own translation (src/web/dashboardDatabase.js and src/db/postgres.js).
  */
 
@@ -66,6 +67,22 @@ function condition(column: string, raw: string, values: unknown[]): string {
   return negated ? `NOT (${sql})` : sql;
 }
 
+/** The filters of a request as a WHERE clause (or nothing), read the way the bot's API reads them. */
+function whereFrom(params: URLSearchParams, values: unknown[], ignore: Set<string> = RESERVED): string {
+  const where: string[] = [];
+  for (const [column, raw] of params) {
+    if (ignore.has(column)) continue;
+    if (column === 'or') {
+      const alternatives = raw.replace(/^\((.*)\)$/, '$1').split(',').map((part) => part.trim()).filter(Boolean).map((part) => orCondition(part, values));
+      where.push(alternatives.length ? `(${alternatives.join(' OR ')})` : 'FALSE');
+      continue;
+    }
+    if (column === 'and' || column.startsWith('not.')) throw new Unsupported('logic');
+    where.push(condition(column, raw, values));
+  }
+  return where.length ? ` WHERE ${where.join(' AND ')}` : '';
+}
+
 function build(table: string, params: URLSearchParams, options: Options = { countExact: false, head: false, range: null }): Parsed {
   const values: unknown[] = [];
   const seen = new Set<string>();
@@ -93,18 +110,7 @@ function build(table: string, params: URLSearchParams, options: Options = { coun
     columns = list.map(quote).join(', ');
   }
 
-  const where: string[] = [];
-  for (const [column, raw] of params) {
-    if (RESERVED.has(column)) continue;
-    if (column === 'or') {
-      const alternatives = raw.replace(/^\((.*)\)$/, '$1').split(',').map((part) => part.trim()).filter(Boolean).map((part) => orCondition(part, values));
-      where.push(alternatives.length ? `(${alternatives.join(' OR ')})` : 'FALSE');
-      continue;
-    }
-    if (column === 'and' || column.startsWith('not.')) throw new Unsupported('logic');
-    where.push(condition(column, raw, values));
-  }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+  const whereSql = whereFrom(params, values);
 
   let order = '';
   const orders = (params.get('order') ?? '').split(',').map((part) => part.trim()).filter(Boolean);
@@ -172,7 +178,143 @@ function getPool(): Pool | null {
   return pool;
 }
 
+/** A failure to reach the database (as opposed to the database refusing a statement). */
+function isConnectionError(error: unknown): boolean {
+  const code = String((error as { code?: unknown })?.code ?? '');
+  const message = String((error as Error)?.message ?? '');
+  return ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNRESET', 'EHOSTUNREACH', 'EPIPE'].includes(code) || /timeout|terminated|ECONN|ENOTFOUND/i.test(message);
+}
+
+// While the database cannot be reached, requests go straight to the bot API for a short while instead of each one waiting for the
+// connection to fail first.
+const BREAKER_MS = 30_000;
+let blockedUntil = 0;
+const blocked = () => Date.now() < blockedUntil;
+const markUnreachable = (error: unknown) => {
+  blockedUntil = Date.now() + BREAKER_MS;
+  console.warn('[direct-db] not reachable, using the bot API for the next', BREAKER_MS / 1000, 'seconds:', (error as Error)?.message);
+};
+
+// The driver sends a JavaScript array as a PostgreSQL array, which a json or jsonb column refuses, so arrays for those columns go as JSON
+// (the bot's API does the same). The column types are read once per table.
+const jsonColumnCache = new Map<string, { columns: Set<string>; expiresAt: number }>();
+async function jsonColumnsOf(db: { query: (text: string, values?: unknown[]) => Promise<{ rows: any[] }> }, table: string): Promise<Set<string>> {
+  const hit = jsonColumnCache.get(table);
+  if (hit && hit.expiresAt > Date.now()) return hit.columns;
+  const result = await db.query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND data_type IN ('json', 'jsonb')", [table]);
+  const columns = new Set<string>(result.rows.map((row) => row.column_name));
+  jsonColumnCache.set(table, { columns, expiresAt: Date.now() + 10 * 60_000 });
+  return columns;
+}
+
+type Write = { text: string; values: unknown[]; table: string; method: 'POST' | 'PATCH' | 'DELETE'; representation: boolean };
+
+/** A write of the dashboard (insert, upsert, update, delete) as SQL, the way the bot's API builds it. Anything it does not know is left to the API. */
+function buildWrite(table: string, method: 'POST' | 'PATCH' | 'DELETE', params: URLSearchParams, body: unknown, preferences: string[], jsonColumns: Set<string>): Write {
+  const allowed = method === 'POST' ? new Set(['on_conflict']) : new Set<string>();
+  for (const key of params.keys()) {
+    if (key === 'select' && (params.get('select') ?? '*').trim() === '*') continue;
+    if (allowed.has(key) || key === 'or') continue;
+    if (RESERVED.has(key) || key === 'columns' || key === 'on_conflict') throw new Unsupported('write parameter');
+  }
+  const merge = preferences.includes('resolution=merge-duplicates');
+  const representation = preferences.includes('return=representation');
+  if (!preferences.every((part) => part === 'return=representation' || part === 'return=minimal' || part === 'resolution=merge-duplicates')) throw new Unsupported('prefer');
+  if (merge && method !== 'POST') throw new Unsupported('prefer');
+
+  const values: unknown[] = [];
+  const add = (value: unknown) => { values.push(value); return `$${values.length}`; };
+  const jsonSafe = (row: Record<string, unknown>) => {
+    const copy: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (value === undefined) continue;
+      copy[key] = Array.isArray(value) && jsonColumns.has(key) ? JSON.stringify(value) : value;
+    }
+    return copy;
+  };
+  const target = `"public".${quote(table)}`;
+  const returning = ' RETURNING *';
+
+  if (method === 'POST') {
+    const rows = Array.isArray(body) ? body : [body];
+    if (!rows.length || rows.some((row) => !row || typeof row !== 'object' || Array.isArray(row))) throw new Unsupported('rows');
+    const prepared = rows.map((row) => jsonSafe(row as Record<string, unknown>));
+    const columns = [...new Set(prepared.flatMap((row) => Object.keys(row)))];
+    if (!columns.length) throw new Unsupported('empty');
+    const tuples = prepared.map((row) => `(${columns.map((column) => add(row[column] === undefined ? null : row[column])).join(', ')})`).join(', ');
+    let text = `INSERT INTO ${target} (${columns.map(quote).join(', ')}) VALUES ${tuples}`;
+    if (merge) {
+      const conflict = (params.get('on_conflict') ?? '').split(',').map((column) => column.trim()).filter(Boolean);
+      const updates = columns.filter((column) => !conflict.includes(column));
+      const on = conflict.length ? ` (${conflict.map(quote).join(', ')})` : '';
+      text += on ? (updates.length ? ` ON CONFLICT${on} DO UPDATE SET ${updates.map((column) => `${quote(column)} = EXCLUDED.${quote(column)}`).join(', ')}` : ` ON CONFLICT${on} DO NOTHING`) : ' ON CONFLICT DO NOTHING';
+    }
+    return { text: text + returning, values, table, method, representation };
+  }
+
+  // An update or a delete without a filter would touch every row; that is left to the API.
+  const where = whereFrom(params, values, new Set(['select']));
+  if (!where) throw new Unsupported('no filter');
+  if (method === 'PATCH') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Unsupported('rows');
+    const prepared = jsonSafe(body as Record<string, unknown>);
+    const keys = Object.keys(prepared);
+    if (!keys.length) throw new Unsupported('empty');
+    // The filters were read first, so their numbers come first; the new values are numbered after them.
+    const assignments = keys.map((key) => `${quote(key)} = ${add(prepared[key])}`);
+    return { text: `UPDATE ${target} SET ${assignments.join(', ')}${where}${returning}`, values, table, method, representation };
+  }
+  return { text: `DELETE FROM ${target}${where}${returning}`, values, table, method, representation };
+}
+
 let installed = false;
+
+/**
+ * A write of the dashboard answered straight from the database, with the answers of the bot's API (201 for an insert, 204 or the rows for an
+ * update or delete, 409 for a value that is already taken, 400 for any other refusal). Returns null when the API has to answer: something it
+ * does not understand, or the database could not be reached before the statement was sent. Once the statement has been sent it is never sent
+ * again through the API, so a write cannot be done twice.
+ */
+async function writeDirect(target: string, method: 'POST' | 'PATCH' | 'DELETE', init: RequestInit | undefined, input: unknown): Promise<Response | null> {
+  const url = new URL(target);
+  const table = url.pathname.slice('/rest/v1/'.length);
+  if (!IDENTIFIER.test(table) || (method !== 'DELETE' && typeof init?.body !== 'string')) return null;
+  let body: unknown;
+  try { body = typeof init?.body === 'string' && init.body.length ? JSON.parse(init.body) : undefined; } catch { return null; }
+  const preferences = (headerOf(init, input, 'prefer') ?? '').split(',').map((part) => part.trim()).filter(Boolean);
+
+  const db = getPool()!;
+  let client;
+  try {
+    client = await db.connect();
+  } catch (error) {
+    markUnreachable(error);
+    return null;
+  }
+  try {
+    let write: Write;
+    try {
+      write = buildWrite(table, method, url.searchParams, body, preferences, await jsonColumnsOf(client, table));
+    } catch (error) {
+      if (error instanceof Unsupported) return null;
+      if (isConnectionError(error)) { markUnreachable(error); return null; }
+      return null;
+    }
+    const headers: Record<string, string> = { 'content-type': 'application/json', 'x-petto-source': 'database' };
+    try {
+      const result = await client.query(write.text, write.values);
+      if (!write.representation) return new Response(null, { status: method === 'POST' ? 201 : 204, headers });
+      return new Response(JSON.stringify(result.rows), { status: method === 'POST' ? 201 : 200, headers });
+    } catch (error) {
+      const code = String((error as { code?: unknown })?.code ?? '');
+      // The statement was sent: the database's answer is the answer, with the same codes as the API.
+      console.warn(`[direct-db] ${method} ${table} refused:`, code || (error as Error)?.message);
+      return new Response(JSON.stringify({ code: code || 'dashboard_database_error', message: 'Database request could not be completed.' }), { status: code === '23505' ? 409 : 400, headers });
+    }
+  } finally {
+    client.release();
+  }
+}
 
 /** Wraps fetch once; does nothing unless a database URL and the bot API address are both configured. */
 export function installDirectDatabase(): void {
@@ -186,8 +328,13 @@ export function installDirectDatabase(): void {
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     try {
+      if (blocked()) return original(input, init);
       const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = (init?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET')).toUpperCase();
+      if ((method === 'POST' || method === 'PATCH' || method === 'DELETE') && target.startsWith(prefix)) {
+        const written = await writeDirect(target, method, init, input);
+        if (written) return written;
+      }
       if ((method === 'GET' || method === 'HEAD') && target.startsWith(prefix) && !init?.body) {
         const preferences = (headerOf(init, input, 'prefer') ?? '').split(',').map((part) => part.trim()).filter(Boolean);
         const accept = headerOf(init, input, 'accept') ?? '';
@@ -233,7 +380,10 @@ export function installDirectDatabase(): void {
         }
       }
     } catch (error) {
-      if (!(error instanceof Unsupported)) console.warn('[direct-db] falling back to the bot API:', (error as Error)?.message);
+      if (!(error instanceof Unsupported)) {
+        if (isConnectionError(error)) markUnreachable(error);
+        else console.warn('[direct-db] falling back to the bot API:', (error as Error)?.message);
+      }
     }
     return original(input, init);
   }) as typeof fetch;
