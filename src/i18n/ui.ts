@@ -120,7 +120,6 @@ export const ui = {
         { title: 'New: a timestamp generator and a snowflake decoder', desc: 'Two web tools, no bot command or server needed for either.', date: 'July 15, 2026', iso: '2026-07-15', category: 'News', href: '/tools', banner: '/assets/tools-banner.svg' },
         { title: 'The code behind Petto', desc: "What Petto actually runs on, and where the open-source question stands.", date: 'July 2, 2026', iso: '2026-07-02', category: 'News', href: '/code', banner: '/assets/tetto-code-banner.svg' },
         { title: 'blibot is moving 100% to Petto', desc: 'Every system blibot ever ran, rebuilt on a stack that will actually keep running.', date: 'May 13, 2026', iso: '2026-05-13', category: 'Announcements', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
-        { title: 'Interactive slash commands', desc: "The slash menu is reserved and waiting, first for game-style commands that don't fit a text prefix.", date: 'Coming soon', iso: '', category: 'Roadmap', href: '', banner: '' },
         { title: 'A real /giveaway embed builder', desc: 'Custom giveaway embeds still need to be seeded by hand today. That gets its own editor next.', date: 'Coming soon', iso: '', category: 'Roadmap', href: '', banner: '' },
       ],
     },
@@ -428,17 +427,17 @@ export const ui = {
             { title: 'Leveling v2 and image cards', desc: 'Rank cards, anti-abuse rules, XP events, streaks, weekly rankings and pictures drawn for every message. Version 0.6.1.', href: '/changelog' },
             { title: 'Saved embeds everywhere', desc: 'Sanctions, starboard, giveaways, verification and bump messages can use your own saved design.', href: '/changelog' },
             { title: 'Open source bot', desc: 'The bot\'s code is public on GitHub under the AGPL-3.0 license.', href: 'https://github.com/PettoBot/petto-bot' },
-            { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },          ],
+            { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },
+            { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '/dash' },
+            { title: 'Slash commands', desc: 'Interaction and roleplay commands, plus /setup and /report, work as slash commands.', href: '/commands' },          ],
         },
         {
           key: 'testing', label: 'In testing', items: [
             { title: 'A YouTube channel', desc: 'Feature walkthroughs and updates on video. The channel is being set up and the first tutorials are not uploaded yet.', href: '' },
-            { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planned', items: [
-            { title: 'Interactive slash commands', desc: "Game-style commands that don't fit a text prefix.", href: '' },
             { title: 'Nelu', desc: 'Anime-only bot. Planned, not public yet.', href: '/nelu' },
             { title: 'AM', desc: 'AI-powered automoderation bot. Planned, not public yet.', href: '/am' },
           ],
@@ -1241,7 +1240,6 @@ export const ui = {
         { title: 'Nuevo: un generador de timestamps y un decodificador de snowflake', desc: 'Dos herramientas web, ninguna necesita comando de bot ni servidor.', date: '15 de julio de 2026', iso: '2026-07-15', category: 'Noticias', href: '/tools', banner: '/assets/tools-banner.svg' },
         { title: 'El código detrás de Petto', desc: 'Sobre qué corre Petto en realidad, y cómo está el tema del código abierto.', date: '2 de julio de 2026', iso: '2026-07-02', category: 'Noticias', href: '/code', banner: '/assets/tetto-code-banner.svg' },
         { title: 'blibot se muda 100% a Petto', desc: 'Cada sistema que blibot tuvo alguna vez, reconstruido sobre una base que sí se va a mantener andando.', date: '13 de mayo de 2026', iso: '2026-05-13', category: 'Anuncios', href: '/blog/blibot-to-petto', banner: '/assets/banner-blibot.svg' },
-        { title: 'Comandos slash interactivos', desc: 'El menú de slash está reservado y esperando, primero para comandos tipo juego que no entran en un prefijo de texto.', date: 'Próximamente', iso: '', category: 'Roadmap', href: '', banner: '' },
         { title: 'Un editor real de embeds de /giveaway', desc: 'Los embeds de sorteo todavía hay que cargarlos a mano hoy. Eso va a tener su propio editor después.', date: 'Próximamente', iso: '', category: 'Roadmap', href: '', banner: '' },
       ],
     },
@@ -1550,17 +1548,17 @@ export const ui = {
             { title: 'Embeds guardados en todo', desc: 'Sanciones, starboard, sorteos, verificación y mensajes de bump pueden usar tu propio diseño guardado.', href: '/changelog' },
             { title: 'Bot de código abierto', desc: 'El código del bot es público en GitHub con licencia AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Tablero de feedback', desc: 'Escribe ideas, comentarios y errores, vota con me gusta y no me gusta, comenta y mira qué planea el equipo. También en el servidor de Petto, donde las reacciones cuentan como votos.', href: '/feedback' },
+            { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '/dash' },
+            { title: 'Comandos slash', desc: 'Los comandos de interacción y roleplay, más /setup y /report, funcionan como comandos slash.', href: '/commands' },
           ],
         },
         {
           key: 'testing', label: 'En pruebas', items: [
             { title: 'Un canal de YouTube', desc: 'Recorridos de funciones y novedades en video. El canal se está preparando y los primeros tutoriales todavía no están subidos.', href: '' },
-            { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '' },
           ],
         },
         {
           key: 'planned', label: 'Planeado', items: [
-            { title: 'Comandos slash interactivos', desc: 'Comandos tipo juego que no entran en un prefijo de texto.', href: '' },
             { title: 'Nelu', desc: 'Bot solo de anime. Planeado, todavía no es público.', href: '/nelu' },
             { title: 'AM', desc: 'Bot de automoderación con IA. Planeado, todavía no es público.', href: '/am' },
           ],
