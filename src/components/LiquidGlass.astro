@@ -12,13 +12,14 @@
   /* Zero-sized and not display:none, so that every browser still finds the filters. */
   .lg-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
 
-  .lg-glass, body.public-body header.nav {
+  .lg-glass, html body.public-body header.nav {
     isolation: isolate;
     background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 16px 36px -22px rgba(0, 0, 0, 0.8);
   }
-  :root[data-theme='light'] .lg-glass, :root[data-theme='light'] body.public-body header.nav { background: rgba(255, 255, 255, 0.34); }
+  :root[data-theme='light'] .lg-glass, :root[data-theme='light'] html body.public-body header.nav, html[data-theme='light'] body.public-body header.nav { background: rgba(255, 255, 255, 0.34); }
   @media (prefers-color-scheme: light) {
-    :root:not([data-theme='dark']) .lg-glass, :root:not([data-theme='dark']) body.public-body header.nav { background: rgba(255, 255, 255, 0.34); }
+    :root:not([data-theme='dark']) .lg-glass, html:not([data-theme='dark']) body.public-body header.nav { background: rgba(255, 255, 255, 0.34); }
   }
 
   /* The light on the glass: a bright edge on top, a faint one at the sides, and a point of light that moves with the page and the finger. */
@@ -33,14 +34,14 @@
       inset 0 5px 10px -2px rgba(255, 255, 255, 0.1),
       inset 0 -8px 14px -8px rgba(255, 255, 255, 0.1);
   }
-  /* The glass itself. Without the bend it is a frosted layer; with it (html[data-lens]) it is almost clear, because the bend is what
-     makes it look like glass, and the filter of that element is the map of its own rim. */
+  /* The glass itself. Without the bend it is a frosted layer; with it (html[data-lens]) it is a light blur, a bend at the rim and slow waves all over
+     (the filter of that element is made by the script from the map of its own rim). */
   .lg-glass::after, body.public-body header.nav::after {
     content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; overflow: hidden;
     -webkit-backdrop-filter: blur(9px) saturate(1.8) brightness(1.06); backdrop-filter: blur(9px) saturate(1.8) brightness(1.06);
   }
   html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
-    -webkit-backdrop-filter: blur(0.6px) var(--lg-filter) saturate(1.5) brightness(1.08); backdrop-filter: blur(0.6px) var(--lg-filter) saturate(1.5) brightness(1.08);
+    -webkit-backdrop-filter: blur(3px) var(--lg-filter) saturate(1.5) brightness(1.08); backdrop-filter: blur(3px) var(--lg-filter) saturate(1.5) brightness(1.08);
   }
   /* The old blur of the top bar would hide the page from the glass layer (it makes the bar the root of its own backdrop). */
   body.public-body header.nav { -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -126,11 +127,25 @@
       image.setAttribute('preserveAspectRatio', 'none');
       image.setAttribute('result', 'map');
       image.setAttribute('href', url);
-      var displace = document.createElementNS(SVG, 'feDisplacementMap');
-      displace.setAttribute('in', 'SourceGraphic'); displace.setAttribute('in2', 'map');
-      displace.setAttribute('scale', String(Math.round(bezel * 2.6)));
-      displace.setAttribute('xChannelSelector', 'R'); displace.setAttribute('yChannelSelector', 'G');
-      filter.appendChild(image); filter.appendChild(displace);
+      // 1. The rim bends the picture like a lens.
+      var rim = document.createElementNS(SVG, 'feDisplacementMap');
+      rim.setAttribute('in', 'SourceGraphic'); rim.setAttribute('in2', 'map'); rim.setAttribute('result', 'rim');
+      rim.setAttribute('scale', String(Math.round(bezel * 2.6)));
+      rim.setAttribute('xChannelSelector', 'R'); rim.setAttribute('yChannelSelector', 'G');
+      // 2. Slow waves over the whole glass make what is under it flow and smear, like liquid.
+      var noise = document.createElementNS(SVG, 'feTurbulence');
+      noise.setAttribute('type', 'fractalNoise'); noise.setAttribute('baseFrequency', '0.014 0.03');
+      noise.setAttribute('numOctaves', '2'); noise.setAttribute('seed', '7'); noise.setAttribute('result', 'noise');
+      var soft = document.createElementNS(SVG, 'feGaussianBlur');
+      soft.setAttribute('in', 'noise'); soft.setAttribute('stdDeviation', '2.2'); soft.setAttribute('result', 'soft');
+      var waves = document.createElementNS(SVG, 'feDisplacementMap');
+      waves.setAttribute('in', 'rim'); waves.setAttribute('in2', 'soft'); waves.setAttribute('result', 'waves');
+      waves.setAttribute('scale', '34');
+      waves.setAttribute('xChannelSelector', 'R'); waves.setAttribute('yChannelSelector', 'G');
+      // 3. A little smear on top of the waves.
+      var smear = document.createElementNS(SVG, 'feGaussianBlur');
+      smear.setAttribute('in', 'waves'); smear.setAttribute('stdDeviation', '1.6');
+      [image, rim, noise, soft, waves, smear].forEach(function (node) { filter.appendChild(node); });
       defs.appendChild(filter);
       element.setAttribute('data-lg-size', width + 'x' + height);
       element.style.setProperty('--lg-filter', 'url(#' + id + ')');
