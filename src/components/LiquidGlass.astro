@@ -41,12 +41,27 @@
     -webkit-backdrop-filter: blur(9px) saturate(1.8) brightness(1.06); backdrop-filter: blur(9px) saturate(1.8) brightness(1.06);
   }
   html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
-    -webkit-backdrop-filter: blur(3px) var(--lg-filter) saturate(1.5) brightness(1.08); backdrop-filter: blur(3px) var(--lg-filter) saturate(1.5) brightness(1.08);
+    -webkit-backdrop-filter: blur(4px) var(--lg-filter) saturate(1.5) brightness(1.08); backdrop-filter: blur(4px) var(--lg-filter) saturate(1.5) brightness(1.08);
   }
   /* The old blur of the top bar would hide the page from the glass layer (it makes the bar the root of its own backdrop). */
   body.public-body header.nav { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
+  /* The lighter glass, for what floats over the page and only exists while it is open (the menus, the cookie notice, the dashboard menus and
+     the save bar): a tint, a blur, a bright edge and a soft light, with no bend, so it costs almost nothing. */
+  html :is(.mega-panel, .lang-menu, .cookie-banner, .dgl-savebar, .dgl-varmenu, .dgl-ms-dropdown) {
+    background: linear-gradient(160deg, color-mix(in srgb, var(--card) 84%, transparent), color-mix(in srgb, var(--card) 74%, transparent));
+    -webkit-backdrop-filter: blur(20px) saturate(1.7) brightness(1.05); backdrop-filter: blur(20px) saturate(1.7) brightness(1.05);
+    border-color: color-mix(in srgb, var(--text) 16%, transparent);
+    box-shadow:
+      inset 0 1.5px 0 0 rgba(255, 255, 255, 0.34),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.06),
+      inset 1px 0 0 0 rgba(255, 255, 255, 0.08),
+      inset -1px 0 0 0 rgba(255, 255, 255, 0.06),
+      0 20px 44px -18px rgba(0, 0, 0, 0.6);
+  }
+
   @media (prefers-reduced-transparency: reduce) {
+    html :is(.mega-panel, .lang-menu, .cookie-banner, .dgl-savebar, .dgl-varmenu, .dgl-ms-dropdown) { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card); }
     .lg-glass::after, body.public-body header.nav::after,
     html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
       -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card);
@@ -61,18 +76,36 @@
     var ua = navigator.userAgent;
     // The bend is a backdrop-filter with an SVG filter, which only Chromium engines draw.
     if (/Chrome\//.test(ua) && !/Firefox\//.test(ua)) root.setAttribute('data-lens', '');
+    // A phone that is slow, or that already showed it cannot keep up (below), gets the frosted glass without the bend.
+    var STORE = 'petto-glass-lite';
+    var remembered = false;
+    try { remembered = sessionStorage.getItem(STORE) === '1'; } catch (e) { /* storage can be blocked */ }
+    if (remembered || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)) root.removeAttribute('data-lens');
     var lens = root.hasAttribute('data-lens');
     var defs = document.querySelector('.lg-defs');
 
-    // The map of the rim of a rounded box. Grey (128) means "do not move". Near the rim the red and green channels push the picture along
-    // the normal of the edge, and the push fades out towards the middle, so the glass bends at its edge and is clear in the middle.
-    function rimMap(width, height, radius, bezel) {
+    // The map of the glass, a picture that the filter reads to know how far to move each point of what is behind it. Grey (128) means
+    // "do not move". It holds two things at once, so one filter pass is enough: (1) the rim of the rounded box, where the picture is pushed
+    // along the normal of the edge, more the closer to the rim, so the glass bends at its edge and is clear in the middle, and (2) slow
+    // waves over the whole surface, a few sines drawn once here, so what passes under the glass flows and smears like liquid.
+    var WAVES = 23; // the distortion of the waves, in pixels
+    var waveSet = [[0.083, 0.4, 1.3, 2.1], [0.047, 1.9, 4.2, 0.7], [0.121, 3.1, 2.6, 5.0], [0.061, 5.0, 0.3, 3.4]];
+    function wave(x, y, shift) {
+      var total = 0;
+      for (var k = 0; k < waveSet.length; k += 1) {
+        var w = waveSet[k];
+        total += Math.sin(w[0] * (x * Math.cos(w[1] + shift) + y * Math.sin(w[1] + shift)) + w[2] + shift * w[3]);
+      }
+      return total / waveSet.length; // -1..1
+    }
+    function glassMap(width, height, radius, bezel, span) {
       var canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
       var ctx = canvas.getContext('2d');
       if (!ctx) return null;
       var image = ctx.createImageData(width, height);
       var hw = width / 2, hh = height / 2;
+      var rimMax = bezel * 1.3, waveMax = WAVES / 2;
       for (var y = 0; y < height; y += 1) {
         for (var x = 0; x < width; x += 1) {
           // Signed distance to a rounded box, and the direction of the edge.
@@ -80,20 +113,21 @@
           var qx = Math.abs(px) - (hw - radius), qy = Math.abs(py) - (hh - radius);
           var ox = Math.max(qx, 0), oy = Math.max(qy, 0);
           var outside = Math.sqrt(ox * ox + oy * oy);
-          var dist = outside + Math.min(Math.max(qx, qy), 0) - radius; // negative inside
-          var depth = -dist;
-          var r = 128, g = 128;
+          var depth = radius - (outside + Math.min(Math.max(qx, qy), 0));
+          var dx = wave(x, y, 0) * waveMax, dy = wave(x, y, 1.7) * waveMax;
           if (depth >= 0 && depth < bezel) {
             var nx, ny;
             if (outside > 0) { nx = ox / outside; ny = oy / outside; } else if (qx > qy) { nx = 1; ny = 0; } else { nx = 0; ny = 1; }
             nx *= px < 0 ? -1 : 1; ny *= py < 0 ? -1 : 1;
-            // A curve that is steep at the very rim and gentle further in, like the surface of a thick glass.
+            // A curve that is steep at the very rim and gentle further in, like the surface of a thick glass. The light is taken from further in.
             var strength = Math.pow(1 - depth / bezel, 2);
-            r = 128 - nx * strength * 127;
-            g = 128 - ny * strength * 127;
+            dx -= nx * strength * rimMax;
+            dy -= ny * strength * rimMax;
           }
           var i = (y * width + x) * 4;
-          image.data[i] = r; image.data[i + 1] = g; image.data[i + 2] = 128; image.data[i + 3] = 255;
+          image.data[i] = Math.max(0, Math.min(255, 128 + (dx / span) * 255));
+          image.data[i + 1] = Math.max(0, Math.min(255, 128 + (dy / span) * 255));
+          image.data[i + 2] = 128; image.data[i + 3] = 255;
         }
       }
       ctx.putImageData(image, 0, 0);
@@ -107,9 +141,9 @@
       if (!width || !height || element.getAttribute('data-lg-size') === width + 'x' + height) return;
       var radius = Math.min(parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0, width / 2, height / 2);
       var bezel = Math.max(8, Math.min(radius * 0.95 || height / 2, height / 2 * 0.95, 26));
-      // The map is drawn at up to twice the size of the glass; the filter and the picture are in CSS pixels.
-      var quality = Math.min(window.devicePixelRatio || 1, 2);
-      var url = rimMap(Math.round(width * quality), Math.round(height * quality), radius * quality, bezel * quality);
+      // One displacement of up to rimMax + waveMax pixels in each direction; the picture is the size of the glass in CSS pixels.
+      var span = (bezel * 1.3 + WAVES / 2) * 2;
+      var url = glassMap(width, height, radius, bezel, span);
       if (!url) return;
       var id = element.getAttribute('data-lg-id');
       if (!id) { counter += 1; id = 'lg-f-' + counter; element.setAttribute('data-lg-id', id); }
@@ -127,25 +161,11 @@
       image.setAttribute('preserveAspectRatio', 'none');
       image.setAttribute('result', 'map');
       image.setAttribute('href', url);
-      // 1. The rim bends the picture like a lens.
-      var rim = document.createElementNS(SVG, 'feDisplacementMap');
-      rim.setAttribute('in', 'SourceGraphic'); rim.setAttribute('in2', 'map'); rim.setAttribute('result', 'rim');
-      rim.setAttribute('scale', String(Math.round(bezel * 2.6)));
-      rim.setAttribute('xChannelSelector', 'R'); rim.setAttribute('yChannelSelector', 'G');
-      // 2. Slow waves over the whole glass make what is under it flow and smear, like liquid.
-      var noise = document.createElementNS(SVG, 'feTurbulence');
-      noise.setAttribute('type', 'fractalNoise'); noise.setAttribute('baseFrequency', '0.014 0.03');
-      noise.setAttribute('numOctaves', '2'); noise.setAttribute('seed', '7'); noise.setAttribute('result', 'noise');
-      var soft = document.createElementNS(SVG, 'feGaussianBlur');
-      soft.setAttribute('in', 'noise'); soft.setAttribute('stdDeviation', '2.2'); soft.setAttribute('result', 'soft');
-      var waves = document.createElementNS(SVG, 'feDisplacementMap');
-      waves.setAttribute('in', 'rim'); waves.setAttribute('in2', 'soft'); waves.setAttribute('result', 'waves');
-      waves.setAttribute('scale', '34');
-      waves.setAttribute('xChannelSelector', 'R'); waves.setAttribute('yChannelSelector', 'G');
-      // 3. A little smear on top of the waves.
-      var smear = document.createElementNS(SVG, 'feGaussianBlur');
-      smear.setAttribute('in', 'waves'); smear.setAttribute('stdDeviation', '1.6');
-      [image, rim, noise, soft, waves, smear].forEach(function (node) { filter.appendChild(node); });
+      var displace = document.createElementNS(SVG, 'feDisplacementMap');
+      displace.setAttribute('in', 'SourceGraphic'); displace.setAttribute('in2', 'map');
+      displace.setAttribute('scale', String(Math.round(span)));
+      displace.setAttribute('xChannelSelector', 'R'); displace.setAttribute('yChannelSelector', 'G');
+      filter.appendChild(image); filter.appendChild(displace);
       defs.appendChild(filter);
       element.setAttribute('data-lg-size', width + 'x' + height);
       element.style.setProperty('--lg-filter', 'url(#' + id + ')');
@@ -153,11 +173,12 @@
 
     var glass = [];
     function collect() {
-      glass = Array.prototype.slice.call(document.querySelectorAll('.lg-glass, header.nav'));
+      glass = Array.prototype.slice.call(document.querySelectorAll('.lg-glass, body.public-body header.nav'));
     }
     function fitAll() { glass.forEach(fit); }
     function start() {
       collect();
+      if (!lens || !defs) return;
       fitAll();
       // The bars change size with the screen, so their maps are drawn again.
       if (window.ResizeObserver) {
@@ -167,19 +188,54 @@
         window.addEventListener('resize', fitAll);
       }
     }
-    if (lens && defs) {
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-      else start();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+
+    // The bend is the part that costs the most, because the browser draws it again on every frame of a scroll. While the page scrolls, the
+    // time of the frames is watched, and if the phone cannot keep about 40 frames a second the bend is turned off for the rest of the visit.
+    if (lens) {
+      var watching = false, last = 0, deltas = [], quiet = 0;
+      var watch = function (now) {
+        if (last) deltas.push(now - last);
+        last = now;
+        if (deltas.length >= 36) {
+          deltas.sort(function (a, b) { return a - b; });
+          var median = deltas[Math.floor(deltas.length / 2)];
+          deltas = [];
+          if (median > 25) {
+            root.removeAttribute('data-lens');
+            try { sessionStorage.setItem(STORE, '1'); } catch (e) { /* storage can be blocked */ }
+            watching = false;
+            return;
+          }
+        }
+        // It stops looking when the scroll stops.
+        if (now - quiet > 300) { watching = false; last = 0; deltas = []; return; }
+        requestAnimationFrame(watch);
+      };
+      window.addEventListener('scroll', function () {
+        quiet = performance.now();
+        if (!watching && root.hasAttribute('data-lens')) { watching = true; last = 0; requestAnimationFrame(watch); }
+      }, { passive: true });
     }
 
     // The point of light follows the page and the finger.
     if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
       var frame = 0;
-      var set = function (x) { root.style.setProperty('--lg-x', Math.max(0, Math.min(100, x)).toFixed(1) + '%'); };
+      // Set on the glass only: a custom property on the root would restyle the whole page on every frame of a scroll.
+      var set = function (x) {
+        var value = Math.max(0, Math.min(100, x)).toFixed(1) + '%';
+        for (var i = 0; i < glass.length; i += 1) glass[i].style.setProperty('--lg-x', value);
+      };
+      var lastSet = 0;
       window.addEventListener('scroll', function () {
         if (frame) return;
         frame = requestAnimationFrame(function () {
           frame = 0;
+          // The light moves a little slower than the page (about 20 times a second), which costs the phone less and is not noticed.
+          var now = Date.now();
+          if (now - lastSet < 50) return;
+          lastSet = now;
           var room = document.documentElement.scrollHeight - window.innerHeight;
           set(room > 0 ? (window.scrollY / room) * 100 : 30);
         });
