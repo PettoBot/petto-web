@@ -5,7 +5,7 @@ const SITE = 'https://petto.sbs';
 const ACCENT = 0xf0a88f;
 const MAX_BYTES = 3000;
 
-// The card is kept small and plain: the name, one line and two buttons.
+// The card is kept small and plain: a simple banner, the name, one line and two buttons.
 const copy: Record<Locale, { description: string; buttons: { invite: string; commands: string } }> = {
   en: { description: 'Moderation, tickets, leveling and giveaways for your Discord server, in one bot.', buttons: { invite: 'Add to Discord', commands: 'Commands' } },
   es: { description: 'Moderación, tickets, niveles y sorteos para tu servidor de Discord, en un solo bot.', buttons: { invite: 'Agregar a Discord', commands: 'Comandos' } },
@@ -29,6 +29,7 @@ export function discordEmbedJson(lang: Locale): string {
       type: 17,
       accent_color: ACCENT,
       components: [
+        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner-min.png` }, description: 'Petto, a moderation and community bot for Discord' }] },
         { type: 10, content: `# [Petto](${home})\n${text.description}` },
         { type: 1, components: [linkButton(text.buttons.invite, `${SITE}/invite`), linkButton(text.buttons.commands, `${home}/commands`)] },
       ],
