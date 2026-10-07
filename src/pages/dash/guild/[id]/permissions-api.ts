@@ -46,6 +46,16 @@ export const POST: APIRoute = async (astro) => {
     return rows[0].is_base ? '@everyone' : rows[0].name;
   }
 
+  // A group is only touched when it belongs to this server. The ids of the groups are plain numbers, so without this check anyone who can
+  // manage one server could add or remove members of a group of another server by sending its number.
+  async function ownsGroup(groupId: number): Promise<boolean> {
+    if (!Number.isInteger(groupId) || groupId <= 0) return false;
+    const res = await fetch(`${apiUrl}/rest/v1/permission_groups?id=eq.${groupId}&guild_id=eq.${id}&select=id`, { headers: h });
+    if (!res.ok) return false;
+    const rows = await res.json().catch(() => []);
+    return Array.isArray(rows) && rows.length === 1;
+  }
+
   async function logAudit(logAction: string, summary: string) {
     await fetch(`${apiUrl}/rest/v1/permission_audit_log`, {
       method: 'POST',
@@ -84,6 +94,7 @@ export const POST: APIRoute = async (astro) => {
     const subjectType = body.subjectType === 'user' ? 'user' : 'role';
     const subjectId = String(body.subjectId ?? '').trim();
     if (!subjectId) return new Response(JSON.stringify({ error: 'subjectId required' }), { status: 400 });
+    if (!(await ownsGroup(Number(body.groupId)))) return new Response(JSON.stringify({ error: 'That group does not belong to this server.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     const name = await groupName(Number(body.groupId));
     const res = await fetch(`${apiUrl}/rest/v1/permission_group_members?on_conflict=group_id,subject_type,subject_id`, {
       method: 'POST',
@@ -93,9 +104,10 @@ export const POST: APIRoute = async (astro) => {
     if (!res.ok) return fail(res, "Couldn't add that member, the permission_group_members table may not exist yet");
     await logAudit('add_member', `Added ${subjectType} ${subjectId} to "${name}"`);
   } else if (action === 'remove_member') {
+    if (!(await ownsGroup(Number(body.groupId)))) return new Response(JSON.stringify({ error: 'That group does not belong to this server.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     const name = await groupName(Number(body.groupId));
     const res = await fetch(
-      `${apiUrl}/rest/v1/permission_group_members?group_id=eq.${Number(body.groupId)}&subject_type=eq.${body.subjectType}&subject_id=eq.${encodeURIComponent(String(body.subjectId ?? ''))}`,
+      `${apiUrl}/rest/v1/permission_group_members?group_id=eq.${Number(body.groupId)}&subject_type=eq.${body.subjectType === 'user' ? 'user' : 'role'}&subject_id=eq.${encodeURIComponent(String(body.subjectId ?? ''))}`,
       { method: 'DELETE', headers: h },
     );
     if (!res.ok) return fail(res, "Couldn't remove that member");

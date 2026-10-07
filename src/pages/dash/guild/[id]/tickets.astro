@@ -241,6 +241,15 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'delete') {
     const rawCategoryId = String(form.get('category_id') ?? '').trim();
     const categoryId = encodeURIComponent(rawCategoryId);
+    // Deleting a type also deletes every ticket opened with it (their notes, ratings and saved transcripts go with them), and that cannot be
+    // undone. A type that has tickets is not deleted from here.
+    const usedRes = await fetch(`${apiUrl}/rest/v1/tickets?category_id=eq.${categoryId}&guild_id=eq.${id}&select=id&limit=1`, { headers: apiHeaders });
+    const used = usedRes.ok ? await usedRes.json().catch(() => null) : null;
+    if (!Array.isArray(used)) {
+      error = dt("Couldn't check whether this type has tickets, so it was not deleted. Try again.");
+    } else if (used.length > 0) {
+      error = dt('This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted.');
+    } else {
     const categoryRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: apiHeaders });
     const [category] = categoryRes.ok ? await categoryRes.json() : [];
     const res = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
@@ -257,6 +266,7 @@ if (Astro.request.method === 'POST') {
       }
     } else {
       error = dt("Couldn't delete that ticket type. It may still be referenced by existing tickets.");
+    }
     }
   } else if (action === 'create_panel') {
     const channelId = String(form.get('channel_id') ?? '').trim();
@@ -420,7 +430,7 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
     else warnings.push(dt('The design you picked has nothing in it, so the plain panel was posted.'));
   }
   if (messageId !== panel.message_id) {
-    await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
+    await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: messageId }) });
   }
   return true;
 }
