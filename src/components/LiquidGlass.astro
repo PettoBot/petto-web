@@ -46,7 +46,22 @@
   /* The old blur of the top bar would hide the page from the glass layer (it makes the bar the root of its own backdrop). */
   body.public-body header.nav { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
+  /* The lighter glass, for what floats over the page and only exists while it is open (the menus, the cookie notice, the dashboard menus and
+     the save bar): a tint, a blur, a bright edge and a soft light, with no bend, so it costs almost nothing. */
+  html :is(.mega-panel, .lang-menu, .cookie-banner, .dgl-savebar, .dgl-varmenu, .dgl-ms-dropdown) {
+    background: linear-gradient(160deg, color-mix(in srgb, var(--card) 84%, transparent), color-mix(in srgb, var(--card) 74%, transparent));
+    -webkit-backdrop-filter: blur(20px) saturate(1.7) brightness(1.05); backdrop-filter: blur(20px) saturate(1.7) brightness(1.05);
+    border-color: color-mix(in srgb, var(--text) 16%, transparent);
+    box-shadow:
+      inset 0 1.5px 0 0 rgba(255, 255, 255, 0.34),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.06),
+      inset 1px 0 0 0 rgba(255, 255, 255, 0.08),
+      inset -1px 0 0 0 rgba(255, 255, 255, 0.06),
+      0 20px 44px -18px rgba(0, 0, 0, 0.6);
+  }
+
   @media (prefers-reduced-transparency: reduce) {
+    html :is(.mega-panel, .lang-menu, .cookie-banner, .dgl-savebar, .dgl-varmenu, .dgl-ms-dropdown) { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card); }
     .lg-glass::after, body.public-body header.nav::after,
     html[data-lens] .lg-glass[style*='--lg-filter']::after, html[data-lens] body.public-body header.nav[style*='--lg-filter']::after {
       -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card);
@@ -61,6 +76,11 @@
     var ua = navigator.userAgent;
     // The bend is a backdrop-filter with an SVG filter, which only Chromium engines draw.
     if (/Chrome\//.test(ua) && !/Firefox\//.test(ua)) root.setAttribute('data-lens', '');
+    // A phone that is slow, or that already showed it cannot keep up (below), gets the frosted glass without the bend.
+    var STORE = 'petto-glass-lite';
+    var remembered = false;
+    try { remembered = sessionStorage.getItem(STORE) === '1'; } catch (e) { /* storage can be blocked */ }
+    if (remembered || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)) root.removeAttribute('data-lens');
     var lens = root.hasAttribute('data-lens');
     var defs = document.querySelector('.lg-defs');
 
@@ -153,7 +173,7 @@
 
     var glass = [];
     function collect() {
-      glass = Array.prototype.slice.call(document.querySelectorAll('.lg-glass, header.nav'));
+      glass = Array.prototype.slice.call(document.querySelectorAll('.lg-glass, body.public-body header.nav'));
     }
     function fitAll() { glass.forEach(fit); }
     function start() {
@@ -170,6 +190,34 @@
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
     else start();
+
+    // The bend is the part that costs the most, because the browser draws it again on every frame of a scroll. While the page scrolls, the
+    // time of the frames is watched, and if the phone cannot keep about 40 frames a second the bend is turned off for the rest of the visit.
+    if (lens) {
+      var watching = false, last = 0, deltas = [], quiet = 0;
+      var watch = function (now) {
+        if (last) deltas.push(now - last);
+        last = now;
+        if (deltas.length >= 36) {
+          deltas.sort(function (a, b) { return a - b; });
+          var median = deltas[Math.floor(deltas.length / 2)];
+          deltas = [];
+          if (median > 25) {
+            root.removeAttribute('data-lens');
+            try { sessionStorage.setItem(STORE, '1'); } catch (e) { /* storage can be blocked */ }
+            watching = false;
+            return;
+          }
+        }
+        // It stops looking when the scroll stops.
+        if (now - quiet > 300) { watching = false; last = 0; deltas = []; return; }
+        requestAnimationFrame(watch);
+      };
+      window.addEventListener('scroll', function () {
+        quiet = performance.now();
+        if (!watching && root.hasAttribute('data-lens')) { watching = true; last = 0; requestAnimationFrame(watch); }
+      }, { passive: true });
+    }
 
     // The point of light follows the page and the finger.
     if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
