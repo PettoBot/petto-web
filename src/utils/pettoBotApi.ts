@@ -109,8 +109,8 @@ export async function renderPollMessage(context: AstroContext, guildId: string, 
   }
 }
 
-/** Starts, ends or draws again a giveaway through the bot, as the person who manages the server. */
-export async function callPettoGiveaway(context: AstroContext, guildId: string, userId: string, action: 'start' | 'end' | 'reroll', body: Record<string, unknown>): Promise<{ ok: boolean; error?: string; message?: string; winners?: string[] }> {
+/** Starts, changes, ends or draws again a giveaway through the bot, as the person who manages the server. */
+export async function callPettoGiveaway(context: AstroContext, guildId: string, userId: string, action: 'start' | 'edit' | 'end' | 'reroll', body: Record<string, unknown>): Promise<{ ok: boolean; error?: string; message?: string; winners?: string[] }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, error: 'not_configured', message: 'The dashboard is not connected to the bot.' };
   try {
