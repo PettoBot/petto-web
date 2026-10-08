@@ -1,4 +1,5 @@
 import { commandRows, type CommandRow } from '../data/commandCatalog';
+import { CODE_GENERATOR_URL } from '../data/codeGenerator';
 
 export const locales = ['en', 'es', 'pt-BR'] as const;
 export type Locale = (typeof locales)[number];
@@ -33,6 +34,7 @@ export const ui = {
             { icon: 'ph:link-fill', title: 'Linked roles', desc: 'Connect Petto to Discord and earn a verified role.', href: '/linked-roles', badge: '' },
             { icon: 'ph:megaphone-fill', title: 'Releases', desc: "What just shipped, and what's next.", href: '/news', badge: '' },
             { icon: 'ph:code-fill', title: 'Petto Code docs', desc: 'Write your own commands with code: embeds, buttons, forms and reactions.', href: 'https://code.petto.sbs', badge: '' },
+            { icon: 'ph:magic-wand-fill', title: 'Code Generator', desc: 'Build Petto Code commands with forms and try them before you install them.', href: CODE_GENERATOR_URL, badge: 'New' },
           ],
         },
         community: {
@@ -113,6 +115,7 @@ export const ui = {
       notPublished: 'Not published yet',
       seeAll: 'See every announcement',
       items: [
+        { title: 'New: the Petto Code Generator', desc: 'Build custom commands with forms, try them in a test channel, and install them with one command.', date: 'October 8, 2026', iso: '2026-10-08', category: 'Product', href: '/codegen', banner: '/assets/codegen-banner.svg' },
         { title: 'Embed Builder is now part of Petto', desc: 'The visual builder for Discord embeds and Components V2 joins Petto, under the same Terms and Privacy Policy.', date: 'September 30, 2026', iso: '2026-09-30', category: 'Announcements', href: '/blog/embed-builder-joins-petto', banner: '/assets/embed-builder-banner.webp' },
         { title: "What Discord's 2026 API updates mean for bots like Petto", desc: "Social SDK 1.10, API v10, and why none of it breaks anything Petto does.", date: 'July 22, 2026', iso: '2026-07-22', category: 'Discord', href: '/discord-api-2026', banner: '/assets/discord-banner.svg' },
         { title: 'Every Discord call is now end-to-end encrypted', desc: "What Discord's DAVE protocol rollout does and doesn't change for a server running Petto.", date: 'July 20, 2026', iso: '2026-07-20', category: 'Discord', href: '/discord-encryption', banner: '/assets/discord-banner.svg' },
@@ -997,6 +1000,29 @@ export const ui = {
         s4h: 'What to do right now',
         s4p: "Nothing yet. Nelu is planned, it just isn't public yet. When it opens up, it'll be announced the same way blibot's move to Petto was.",
       },
+      codegen: {
+        pill: 'Product',
+        title: 'Petto Code Generator, build commands with forms',
+        author: 'Petto Team',
+        date: 'October 8, 2026',
+        h1: 'The Petto Code Generator, a builder for Petto Code commands',
+        lede: 'The Petto Code Generator is a website to build Petto custom commands with forms, try them in a channel that looks like Discord, and install them with one command. It runs the same engine as the bot.',
+        s1h: 'What it does',
+        s1p: 'You pick what the command should do and the generator writes the Petto Code for you. It covers messages, embeds, buttons, menus, forms, reactions, roles, counters, random replies, cooldowns, role and channel requirements, stored data like coins and rankings, and triggers. If you prefer to write code, there is an editor with colors, line numbers and a check on every key, with every function and piece of data ready to insert.',
+        facts: [
+          'A visual builder and a code editor, in English, Spanish and Portuguese, with a light and a dark theme',
+          '17 recipes for the builder, plus the official templates of the bot',
+          'A test channel that runs your command with the real engine of the bot',
+          'Install commands and pc1. share codes, ready to paste in Discord',
+        ],
+        ctaLabel: 'Open the Code Generator',
+        s2h: 'A test channel before your server',
+        s2p: 'The test channel looks like a Discord channel. You type the command, press its buttons, pick from its menus, fill its forms and react. You see what it would print and what it would do, like giving a role or sending a DM, plus the stored data and a log of each run. You can test it as two different people. It uses the same engine and the same limits as the bot, so what works there works in your server. Nothing reaches your server until you paste the command.',
+        s3h: 'Installing and sharing',
+        s3p: 'When the command is ready, the generator gives you the !customcommand code command to paste, the one for its trigger, and a pc1. share code for !customcommand import. It also reads pc1. codes, so you can see the code of a shared command before you use it. In the dashboard, Commands in code now has a link that opens the command you are editing in the generator. Your drafts are saved in your browser, not on a server.',
+        s4h: 'New in Petto Code',
+        s4p: 'Petto Code has about 70 new functions, many with the names YAGPDB uses, so code written for it is easier to bring over. getMember, getRole and getChannel read members, roles and channels of the server. dbRank gives the place of a member in a ranking. deleteTrigger and deleteResponse take a delay of up to 5 minutes, and complexMessage can reply to the command message or be sent without a notification. .Mentions gives the users mentioned, with their name and avatar. They come to the bot with the next Petto update. The generator already knows them, so you can try them now.',
+      },
       embedBuilder: {
         pill: 'Product',
         title: 'Embed Builder, a Petto product',
@@ -1170,6 +1196,7 @@ export const ui = {
             { icon: 'ph:link-fill', title: 'Roles vinculados', desc: 'Conecta Petto con Discord y consigue un rol verificado.', href: '/linked-roles', badge: '' },
             { icon: 'ph:megaphone-fill', title: 'Novedades', desc: 'Qué se lanzó, y qué sigue.', href: '/news', badge: '' },
             { icon: 'ph:code-fill', title: 'Docs de Petto Code', desc: 'Escribe tus propios comandos con código: embeds, botones, formularios y reacciones.', href: 'https://code.petto.sbs', badge: '' },
+            { icon: 'ph:magic-wand-fill', title: 'Code Generator', desc: 'Crea comandos de Petto Code con formularios y pruébalos antes de instalarlos.', href: CODE_GENERATOR_URL, badge: 'Nuevo' },
           ],
         },
         community: {
@@ -1250,6 +1277,7 @@ export const ui = {
       notPublished: 'Todavía no publicado',
       seeAll: 'Ver todas las novedades',
       items: [
+        { title: 'Nuevo: el Petto Code Generator', desc: 'Crea comandos personalizados con formularios, pruébalos en un canal de prueba e instálalos con un comando.', date: '8 de octubre de 2026', iso: '2026-10-08', category: 'Producto', href: '/codegen', banner: '/assets/codegen-banner.svg' },
         { title: 'Embed Builder ahora es parte de Petto', desc: 'El creador visual de embeds y Components V2 de Discord se une a Petto, bajo los mismos Términos y la misma Política de privacidad.', date: '30 de septiembre de 2026', iso: '2026-09-30', category: 'Anuncios', href: '/blog/embed-builder-joins-petto', banner: '/assets/embed-builder-banner.webp' },
         { title: 'Qué significan las actualizaciones de API 2026 de Discord para bots como Petto', desc: 'Social SDK 1.10, API v10, y por qué nada de eso rompe algo de lo que hace Petto.', date: '22 de julio de 2026', iso: '2026-07-22', category: 'Discord', href: '/discord-api-2026', banner: '/assets/discord-banner.svg' },
         { title: 'Todas las llamadas de Discord ahora tienen cifrado de extremo a extremo', desc: 'Qué cambia y qué no el despliegue del protocolo DAVE para un servidor que corre Petto.', date: '20 de julio de 2026', iso: '2026-07-20', category: 'Discord', href: '/discord-encryption', banner: '/assets/discord-banner.svg' },
@@ -2135,6 +2163,29 @@ export const ui = {
         s4h: 'Qué hacer ahora mismo',
         s4p: 'Nada todavía. Nelu está planeado, solo que todavía no es público. Cuando se abra, se va a anunciar de la misma forma que se anunció la mudanza de blibot a Petto.',
       },
+      codegen: {
+        pill: 'Producto',
+        title: 'Petto Code Generator, crea comandos con formularios',
+        author: 'Equipo Petto',
+        date: '8 de octubre de 2026',
+        h1: 'Petto Code Generator, un creador de comandos de Petto Code',
+        lede: 'Petto Code Generator es una web para crear comandos personalizados de Petto con formularios, probarlos en un canal que se ve como Discord e instalarlos con un comando. Usa el mismo motor que el bot.',
+        s1h: 'Qué hace',
+        s1p: 'Eliges lo que debe hacer el comando y el generador escribe el Petto Code por ti. Cubre mensajes, embeds, botones, menús, formularios, reacciones, roles, contadores, respuestas al azar, tiempos de espera, requisitos de rol y de canal, datos guardados como monedas y rankings, y triggers. Si prefieres escribir código, hay un editor con colores, números de línea y una comprobación en cada tecla, con todas las funciones y los datos listos para insertar.',
+        facts: [
+          'Un constructor visual y un editor de código, en español, inglés y portugués, con tema claro y oscuro',
+          '17 recetas para el constructor, y las plantillas oficiales del bot',
+          'Un canal de prueba que ejecuta tu comando con el motor real del bot',
+          'Comandos para instalar y códigos para compartir pc1., listos para pegar en Discord',
+        ],
+        ctaLabel: 'Abrir el Code Generator',
+        s2h: 'Un canal de prueba antes que tu servidor',
+        s2p: 'El canal de prueba se ve como un canal de Discord. Escribes el comando, pulsas sus botones, eliges en sus menús, rellenas sus formularios y reaccionas. Ves lo que imprimiría y lo que haría, como dar un rol o mandar un MD, además de los datos guardados y un registro de cada ejecución. Puedes probarlo como dos personas distintas. Usa el mismo motor y los mismos límites que el bot, así que lo que funciona ahí funciona en tu servidor. Nada llega a tu servidor hasta que pegas el comando.',
+        s3h: 'Instalar y compartir',
+        s3p: 'Cuando el comando está listo, el generador te da el comando !customcommand code para pegar, el de su trigger y un código para compartir pc1. para !customcommand import. También lee códigos pc1., así ves el código de un comando compartido antes de usarlo. En el dashboard, Comandos en código ahora tiene un enlace que abre en el generador el comando que estás editando. Tus borradores se guardan en tu navegador, no en un servidor.',
+        s4h: 'Nuevo en Petto Code',
+        s4p: 'Petto Code tiene unas 70 funciones nuevas, muchas con los nombres que usa YAGPDB, para que el código escrito para él sea más fácil de traer. getMember, getRole y getChannel leen miembros, roles y canales del servidor. dbRank da el puesto de un miembro en un ranking. deleteTrigger y deleteResponse aceptan una espera de hasta 5 minutos, y complexMessage puede responder al mensaje del comando o enviarse sin notificación. .Mentions da los usuarios mencionados, con su nombre y su avatar. Llegan al bot con la próxima actualización de Petto. El generador ya las conoce, así que puedes probarlas ahora.',
+      },
       embedBuilder: {
         pill: 'Producto',
         title: 'Embed Builder, un producto de Petto',
@@ -2308,6 +2359,7 @@ export const ui = {
             { icon: 'ph:link-fill', title: 'Cargos vinculados', desc: 'Conecte o Petto ao Discord e ganhe um cargo verificado.', href: '/linked-roles', badge: '' },
             { icon: 'ph:megaphone-fill', title: 'Novidades', desc: 'O que acabou de sair, e o que vem a seguir.', href: '/news', badge: '' },
             { icon: 'ph:code-fill', title: 'Docs do Petto Code', desc: 'Escreva os seus próprios comandos com código: embeds, botões, formulários e reações.', href: 'https://code.petto.sbs', badge: '' },
+            { icon: 'ph:magic-wand-fill', title: 'Code Generator', desc: 'Crie comandos de Petto Code com formulários e teste antes de instalar.', href: CODE_GENERATOR_URL, badge: 'Novo' },
           ],
         },
         community: {
@@ -2388,6 +2440,7 @@ export const ui = {
       notPublished: 'Ainda não publicado',
       seeAll: 'Ver todas as novidades',
       items: [
+        { title: 'Novidade: o Petto Code Generator', desc: 'Crie comandos personalizados com formulários, teste num canal de teste e instale com um comando.', date: '8 de outubro de 2026', iso: '2026-10-08', category: 'Produto', href: '/codegen', banner: '/assets/codegen-banner.svg' },
         { title: 'O Embed Builder agora faz parte do Petto', desc: 'O criador visual de embeds e Components V2 do Discord entra para o Petto, sob os mesmos Termos e a mesma Política de privacidade.', date: '30 de setembro de 2026', iso: '2026-09-30', category: 'Anúncios', href: '/blog/embed-builder-joins-petto', banner: '/assets/embed-builder-banner.webp' },
         { title: 'O que as atualizações de API 2026 do Discord significam pra bots como o Petto', desc: 'Social SDK 1.10, API v10, e por que nada disso quebra alguma coisa que o Petto faz.', date: '22 de julho de 2026', iso: '2026-07-22', category: 'Discord', href: '/discord-api-2026', banner: '/assets/discord-banner.svg' },
         { title: 'Toda chamada do Discord agora tem criptografia de ponta a ponta', desc: 'O que muda e o que não muda no lançamento do protocolo DAVE pra um server que roda o Petto.', date: '20 de julho de 2026', iso: '2026-07-20', category: 'Discord', href: '/discord-encryption', banner: '/assets/discord-banner.svg' },
@@ -3272,6 +3325,29 @@ export const ui = {
         s3p: 'Não. O Petto continua fazendo exatamente o que faz hoje, nada é removido, renomeado, ou incorporado ao Nelu. Se um servidor nunca adicionar o Nelu, nada na configuração dele do Petto muda.',
         s4h: 'O que fazer agora',
         s4p: 'Nada ainda. O Nelu está planejado, só ainda não é público. Quando abrir, vai ser anunciado da mesma forma que a mudança do blibot para o Petto foi.',
+      },
+      codegen: {
+        pill: 'Produto',
+        title: 'Petto Code Generator, crie comandos com formulários',
+        author: 'Equipe Petto',
+        date: '8 de outubro de 2026',
+        h1: 'Petto Code Generator, um criador de comandos de Petto Code',
+        lede: 'O Petto Code Generator é um site para criar comandos personalizados do Petto com formulários, testá-los num canal que parece o Discord e instalá-los com um comando. Ele usa o mesmo motor do bot.',
+        s1h: 'O que ele faz',
+        s1p: 'Você escolhe o que o comando deve fazer e o gerador escreve o Petto Code por você. Cobre mensagens, embeds, botões, menus, formulários, reações, cargos, contadores, respostas aleatórias, tempos de espera, requisitos de cargo e de canal, dados salvos como moedas e rankings, e triggers. Se preferir escrever código, há um editor com cores, números de linha e uma verificação a cada tecla, com todas as funções e dados prontos para inserir.',
+        facts: [
+          'Um construtor visual e um editor de código, em português, inglês e espanhol, com tema claro e escuro',
+          '17 receitas para o construtor, e os modelos oficiais do bot',
+          'Um canal de teste que roda seu comando com o motor real do bot',
+          'Comandos para instalar e códigos de compartilhamento pc1., prontos para colar no Discord',
+        ],
+        ctaLabel: 'Abrir o Code Generator',
+        s2h: 'Um canal de teste antes do seu servidor',
+        s2p: 'O canal de teste parece um canal do Discord. Você digita o comando, aperta os botões, escolhe nos menus, preenche os formulários e reage. Você vê o que ele imprimiria e o que faria, como dar um cargo ou mandar uma DM, além dos dados salvos e um registro de cada execução. Dá para testar como duas pessoas diferentes. Ele usa o mesmo motor e os mesmos limites do bot, então o que funciona ali funciona no seu servidor. Nada chega ao seu servidor até você colar o comando.',
+        s3h: 'Instalar e compartilhar',
+        s3p: 'Quando o comando está pronto, o gerador te dá o comando !customcommand code para colar, o do trigger e um código de compartilhamento pc1. para o !customcommand import. Ele também lê códigos pc1., então você vê o código de um comando compartilhado antes de usar. No dashboard, Comandos em código agora tem um link que abre no gerador o comando que você está editando. Seus rascunhos ficam salvos no seu navegador, não em um servidor.',
+        s4h: 'Novidades no Petto Code',
+        s4p: 'O Petto Code tem cerca de 70 funções novas, muitas com os nomes que o YAGPDB usa, para que código escrito para ele seja mais fácil de trazer. getMember, getRole e getChannel leem membros, cargos e canais do servidor. dbRank dá a posição de um membro num ranking. deleteTrigger e deleteResponse aceitam uma espera de até 5 minutos, e complexMessage pode responder à mensagem do comando ou ser enviada sem notificação. .Mentions dá os usuários mencionados, com nome e avatar. Elas chegam ao bot na próxima atualização do Petto. O gerador já as conhece, então você pode testá-las agora.',
       },
       embedBuilder: {
         pill: 'Produto',

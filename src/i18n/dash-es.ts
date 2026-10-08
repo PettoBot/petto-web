@@ -2058,4 +2058,12 @@ export const dashEs: Record<string, string> = {
   "Joining, leaving, and switching voice channels, and stages": "Entrar, salir y cambiar de canales de voz, y escenarios",
   "Server emoji, sticker and soundboard changes": "Cambios en los emojis, stickers y sonidos del servidor",
   "Name, icon, vanity URL, security settings, and scheduled events": "Nombre, ícono, URL personalizada, ajustes de seguridad y eventos programados",
+  "Open in the generator": "Abrir en el generador",
+  "The command was imported. It is not saved until you press Save.": "El comando se importó. No se guarda hasta que pulses Guardar.",
+  "The command was imported. A command with this name already exists: saving replaces it.": "El comando se importó. Ya existe un comando con este nombre: al guardar, se reemplaza.",
+  "That share code is not valid. Nothing was changed.": "Ese código para compartir no es válido. No se cambió nada.",
+  "Import a command · Petto": "Importar un comando · Petto",
+  "Choose the server for this command": "Elige el servidor para este comando",
+  "No command came with this link. Open it again from the Code Generator.": "Este enlace no trajo ningún comando. Ábrelo de nuevo desde el Code Generator.",
+  "It opens Commands in code there, with the command in the editor. Nothing is saved until you press Save.": "Abre Comandos en código allí, con el comando en el editor. No se guarda nada hasta que pulses Guardar.",
 };

@@ -2058,4 +2058,12 @@ export const dashPt: Record<string, string> = {
   "Joining, leaving, and switching voice channels, and stages": "Entrar, sair e trocar de canais de voz, e palcos",
   "Server emoji, sticker and soundboard changes": "Mudanças nos emojis, stickers e sons do servidor",
   "Name, icon, vanity URL, security settings, and scheduled events": "Nome, ícone, URL personalizada, configurações de segurança e eventos agendados",
+  "Open in the generator": "Abrir no gerador",
+  "The command was imported. It is not saved until you press Save.": "O comando foi importado. Ele não é salvo até você apertar Salvar.",
+  "The command was imported. A command with this name already exists: saving replaces it.": "O comando foi importado. Já existe um comando com este nome: ao salvar, ele é substituído.",
+  "That share code is not valid. Nothing was changed.": "Esse código de compartilhamento não é válido. Nada foi alterado.",
+  "Import a command · Petto": "Importar um comando · Petto",
+  "Choose the server for this command": "Escolha o servidor para este comando",
+  "No command came with this link. Open it again from the Code Generator.": "Este link não trouxe nenhum comando. Abra-o novamente pelo Code Generator.",
+  "It opens Commands in code there, with the command in the editor. Nothing is saved until you press Save.": "Abre Comandos em código lá, com o comando no editor. Nada é salvo até você apertar Salvar.",
 };
