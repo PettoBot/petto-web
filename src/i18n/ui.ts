@@ -180,7 +180,7 @@ export const ui = {
             'Dashboard: saving goes straight to the database first, so it is faster; permission groups can no longer be touched from another server; deleting a ticket type asks first and is blocked while it has tickets',
             'Website: links to petto.sbs show a card in Discord again, and the public pages are kept by Cloudflare so they load faster',
             'Logs: several permission changes of a channel come in one message',
-            'Fix: the partner replies really ping the manager of the partnership',
+            'Fix: the partner replies really ping the manager of the partnership, and pinned and unpinned messages are logged again (the log failed with an error each time)',
           ],
         },
         {
@@ -1317,7 +1317,7 @@ export const ui = {
             'Dashboard: guardar va primero directo a la base de datos, así que es más rápido; los grupos de permisos ya no se pueden tocar desde otro servidor; borrar un tipo de ticket pregunta antes y se bloquea mientras tenga tickets',
             'Sitio web: los enlaces a petto.sbs vuelven a mostrar una tarjeta en Discord, y las páginas públicas las guarda Cloudflare para que carguen más rápido',
             'Logs: varios cambios de permisos de un canal llegan en un solo mensaje',
-            'Arreglo: las respuestas de partners mencionan de verdad al encargado de la alianza',
+            'Arreglo: las respuestas de partners mencionan de verdad al encargado de la alianza, y los mensajes fijados y desfijados vuelven a registrarse en el log (fallaba con un error cada vez)',
           ],
         },
         {
@@ -2455,7 +2455,7 @@ export const ui = {
             'Dashboard: salvar vai primeiro direto ao banco de dados, então é mais rápido; os grupos de permissões não podem mais ser mexidos de outro servidor; apagar um tipo de ticket pergunta antes e fica bloqueado enquanto tiver tickets',
             'Site: os links do petto.sbs voltam a mostrar um cartão no Discord, e as páginas públicas ficam guardadas pelo Cloudflare para carregar mais rápido',
             'Logs: várias mudanças de permissões de um canal chegam em uma só mensagem',
-            'Correção: as respostas de parcerias mencionam de verdade o responsável pela parceria',
+            'Correção: as respostas de parcerias mencionam de verdade o responsável pela parceria, e as mensagens fixadas e desafixadas voltam a ser registradas no log (dava erro toda vez)',
           ],
         },
         {
