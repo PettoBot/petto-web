@@ -9,6 +9,8 @@ const MAX_BYTES = 3000;
 // The card is kept small and plain: a simple banner, the name, one line about the bot and a few buttons. It keeps the same order of parts
 // as the card that Discord accepted before (banner, text, divider, text, divider, text, buttons with emoji), because Discord drops the
 // whole preview when something in it is not to its liking and does not say what.
+// The banner is the same file as in that card (a plain WebP, not the smaller one with a colour profile): Discord already keeps a copy of it,
+// and a new image has to be fetched from the site within the 10 seconds Discord gives the whole preview.
 const copy: Record<Locale, { description: string; line: string; stats: (commands: number) => string; buttons: { invite: string; commands: string; dashboard: string } }> = {
   en: { description: 'Moderation, tickets, leveling and giveaways for your Discord server, in one bot.', line: 'Safe, organized and lively.', stats: (n) => `-# Free to add · ${n} commands · English, Español, Português`, buttons: { invite: 'Add to Discord', commands: 'Commands', dashboard: 'Dashboard' } },
   es: { description: 'Moderación, tickets, niveles y sorteos para tu servidor de Discord, en un solo bot.', line: 'Seguro, organizado y animado.', stats: (n) => `-# Gratis para agregar · ${n} comandos · English, Español, Português`, buttons: { invite: 'Agregar a Discord', commands: 'Comandos', dashboard: 'Dashboard' } },
@@ -33,7 +35,7 @@ export function discordEmbedJson(lang: Locale): string {
       type: 17,
       accent_color: ACCENT,
       components: [
-        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner-min.webp` }, description: 'Petto, a moderation and community bot for Discord' }] },
+        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner.webp` }, description: 'Petto, a moderation and community bot for Discord' }] },
         { type: 10, content: `# **[Petto](${home})**\n${text.description}` },
         { type: 14, spacing: 1 },
         { type: 10, content: text.line },
