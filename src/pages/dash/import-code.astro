@@ -1,0 +1,76 @@
+---
+export const prerender = false;
+import { Icon } from 'astro-icon/components';
+import Base from '../../layouts/Base.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { canManageGuild, guildIconUrl } from '../../utils/discord';
+import { getCachedUserGuilds, getCachedBotGuildIds } from '../../utils/discordCache';
+import { getEnv } from '../../utils/env';
+import { getDashLang, makeT } from '../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+// The Petto Code Generator sends people here with the command in the URL fragment (#import=pc1...), which never reaches
+// the server. This page only lists the servers they can manage, and the script adds the fragment to each link so the
+// Commands in code page can open it in the editor.
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+let guilds: { id: string; name: string; icon: string | null }[] = [];
+let unavailable = false;
+try {
+  const [userGuilds, botGuildIds] = await Promise.all([
+    getCachedUserGuilds(session.accessToken, Astro.request),
+    botToken ? getCachedBotGuildIds(botToken, Astro.request) : Promise.resolve(new Set<string>()),
+  ]);
+  guilds = userGuilds
+    .filter((g: any) => canManageGuild(g) && botGuildIds.has(g.id))
+    .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+} catch {
+  unavailable = true;
+}
+---
+<Base title={dt('Import a command · Petto')} active="dash" showFooter>
+  <main>
+    <section class="imp-sec">
+      <div class="wrap imp-wrap">
+        <h1>{dt('Choose the server for this command')}</h1>
+        <p class="imp-note" data-imp-nomsg hidden>{dt('No command came with this link. Open it again from the Code Generator.')}</p>
+        <p class="imp-sub">{dt('It opens Commands in code there, with the command in the editor. Nothing is saved until you press Save.')}</p>
+        {unavailable && <p class="imp-note">{dt('Discord did not respond in time. Reload the page in a few seconds to load your servers again.')}</p>}
+        {!unavailable && guilds.length === 0 && <p class="imp-note">{dt('Petto is not in any server you can manage yet.')} <a href="/dash/manage">{dt('Manage servers')}</a></p>}
+        <div class="imp-list">
+          {guilds.map((g) => (
+            <a class="imp-item" data-imp-link href={`/dash/guild/${g.id}/code`}>
+              {g.icon ? <img src={g.icon} alt="" /> : <span class="imp-fallback"><Icon name="ph:hard-drives-fill" width="16" height="16" /></span>}
+              <span>{g.name}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<script>
+  const hash = location.hash;
+  if (hash.startsWith('#import=')) {
+    document.querySelectorAll<HTMLAnchorElement>('[data-imp-link]').forEach((link) => { link.href += hash; });
+  } else {
+    document.querySelector<HTMLElement>('[data-imp-nomsg]')?.removeAttribute('hidden');
+  }
+</script>
+
+<style>
+  .imp-sec { padding: 56px 0 72px; }
+  .imp-wrap { max-width: 640px; }
+  h1 { font-size: 26px; margin: 0 0 8px; }
+  .imp-sub, .imp-note { color: var(--text-muted); font-size: 14px; margin: 0 0 18px; line-height: 1.5; }
+  .imp-note a { color: var(--accent); }
+  .imp-list { display: flex; flex-direction: column; gap: 8px; }
+  .imp-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); text-decoration: none; font-weight: 600; transition: border-color .15s, background .15s; }
+  .imp-item:hover { border-color: var(--accent); background: var(--card-hover); }
+  .imp-item img, .imp-fallback { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+  .imp-fallback { display: grid; place-items: center; background: var(--bg-raise); color: var(--text-dim); }
+</style>

@@ -1,6 +1,7 @@
 ---
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import { CODE_GENERATOR_URL } from '../data/codeGenerator';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -43,6 +44,9 @@ const ui = {
   closed: dt('Commands in code are turned off for now.'),
   triggerSaved: dt('The trigger was saved.'),
   saveFirst: dt('Save the command first.'),
+  imported: dt('The command was imported. It is not saved until you press Save.'),
+  importedExists: dt('The command was imported. A command with this name already exists: saving replaces it.'),
+  importBad: dt('That share code is not valid. Nothing was changed.'),
 };
 const triggerTypes = [
   ['command', dt('The prefix of Petto')],
@@ -54,7 +58,7 @@ const triggerTypes = [
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="code" pageTitle="Commands in code">
   <h1>{dt('Commands in code')}</h1>
-  <p class="cc-sub"><Fragment set:html={dth('Write commands of <b>{a}</b> in Petto Code: embeds, buttons, forms, reactions, stored data and your own prefixes.', { a: guildName })} /> <a href="https://code.petto.sbs" target="_blank" rel="noopener">{dt('Read the docs')}</a></p>
+  <p class="cc-sub"><Fragment set:html={dth('Write commands of <b>{a}</b> in Petto Code: embeds, buttons, forms, reactions, stored data and your own prefixes.', { a: guildName })} /> <a href="https://code.petto.sbs" target="_blank" rel="noopener">{dt('Read the docs')}</a> · <a href={CODE_GENERATOR_URL} id="cc-generator" target="_blank" rel="noopener">{dt('Open in the generator')}</a></p>
   {loadFailed && <div class="cc-flash"><Icon name="ph:warning-fill" width="15" height="15" />{dt('We could not load your commands. Reload the page: nothing was deleted.')} <a href="" onclick="location.reload(); return false;">{dt('Reload')}</a></div>}
   {!ready && <div class="cc-flash"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
@@ -65,6 +69,7 @@ const triggerTypes = [
     data-prefix={prefix}
     data-commands={JSON.stringify(commands)}
     data-ui={JSON.stringify(ui)}
+    data-generator={CODE_GENERATOR_URL}
   >
     <aside class="cc-side">
       <div class="cc-box">
@@ -404,10 +409,63 @@ const triggerTypes = [
 
     window.addEventListener('beforeunload', (event) => { if (dirty() && code.value.trim()) { event.preventDefault(); } });
 
+    // ── The Code Generator: share codes in and out ──
+    // A share code is pc1. + the base64url of {"v":1,"n":name,"d":description,"c":code}, the same as !customcommand export.
+    function toShareCode(name: string, source: string) {
+      const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, n: name, d: '', c: source }));
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return `pc1.${btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+    }
+    function fromShareCode(text: string): { name: string; code: string } | null {
+      try {
+        const raw = text.trim();
+        if (!raw.startsWith('pc1.')) return null;
+        const clean = raw.slice(4).replace(/-/g, '+').replace(/_/g, '/');
+        const binary = atob(clean + '='.repeat((4 - (clean.length % 4)) % 4));
+        const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))));
+        if (!data || data.v !== 1 || typeof data.c !== 'string' || data.c.length > 10000) return null;
+        const name = typeof data.n === 'string' ? data.n.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
+        return { name, code: data.c };
+      } catch {
+        return null;
+      }
+    }
+    const generatorUrl = (root.dataset.generator || '').replace(/\/+$/, '');
+    document.getElementById('cc-generator')?.addEventListener('click', (event) => {
+      if (!generatorUrl || !code.value.trim()) return; // nothing written: the link just opens the generator
+      event.preventDefault();
+      const share = toShareCode(nameInput.value.trim().toLowerCase() || 'command', code.value);
+      window.open(`${generatorUrl}/#/import?share=${encodeURIComponent(share)}`, '_blank', 'noopener');
+    });
+
     // ── Start ──
     drawList();
     drawGutter();
     if (commands[0]) load(commands[0].name, commands[0].code, commands[0].triggerType, commands[0].triggerText);
+
+    // A command sent from the Code Generator arrives in the URL fragment (#import=pc1...). It opens like a template:
+    // a new command in the editor, not saved until Save is pressed.
+    const importMatch = location.hash.match(/^#import=(.+)$/);
+    if (importMatch) {
+      let text = importMatch[1];
+      try { text = decodeURIComponent(text); } catch { /* keep it as it came */ }
+      const imported = fromShareCode(text);
+      if (imported) {
+        current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false;
+        nameInput.value = imported.name;
+        code.value = imported.code;
+        savedCode = '';
+        showTrigger('command', '');
+        result.hidden = true;
+        errorLine = 0;
+        drawGutter(); drawList(); checkNow();
+        say(commands.some((entry) => entry.name === imported.name) ? ui.importedExists : ui.imported, 'ok');
+      } else {
+        say(ui.importBad, 'bad');
+      }
+      history.replaceState(null, '', location.pathname + location.search);
+    }
     let metaStatus = 0;
     (async () => {
       try {
