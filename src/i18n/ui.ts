@@ -1021,7 +1021,7 @@ export const ui = {
         s3h: 'Installing and sharing',
         s3p: 'When the command is ready, the generator gives you the !customcommand code command to paste, the one for its trigger, and a pc1. share code for !customcommand import. It also reads pc1. codes, so you can see the code of a shared command before you use it. In the dashboard, Commands in code now has a link that opens the command you are editing in the generator. Your drafts are saved in your browser, not on a server.',
         s4h: 'New in Petto Code',
-        s4p: 'Petto Code has about 70 new functions, many with the names YAGPDB uses, so code written for it is easier to bring over. getMember, getRole and getChannel read members, roles and channels of the server. dbRank gives the place of a member in a ranking. deleteTrigger and deleteResponse take a delay of up to 5 minutes, and complexMessage can reply to the command message or be sent without a notification. .Mentions gives the users mentioned, with their name and avatar. They come to the bot with the next Petto update. The generator already knows them, so you can try them now.',
+        s4p: 'Petto Code has about 70 new functions. getMember, getRole and getChannel read members, roles and channels of the server. dbRank gives the place of a member in a ranking. deleteTrigger and deleteResponse take a delay of up to 5 minutes, and complexMessage can reply to the command message or be sent without a notification. .Mentions gives the users mentioned, with their name and avatar. They come to the bot with the next Petto update. The generator already knows them, so you can try them now.',
       },
       embedBuilder: {
         pill: 'Product',
@@ -2184,7 +2184,7 @@ export const ui = {
         s3h: 'Instalar y compartir',
         s3p: 'Cuando el comando está listo, el generador te da el comando !customcommand code para pegar, el de su trigger y un código para compartir pc1. para !customcommand import. También lee códigos pc1., así ves el código de un comando compartido antes de usarlo. En el dashboard, Comandos en código ahora tiene un enlace que abre en el generador el comando que estás editando. Tus borradores se guardan en tu navegador, no en un servidor.',
         s4h: 'Nuevo en Petto Code',
-        s4p: 'Petto Code tiene unas 70 funciones nuevas, muchas con los nombres que usa YAGPDB, para que el código escrito para él sea más fácil de traer. getMember, getRole y getChannel leen miembros, roles y canales del servidor. dbRank da el puesto de un miembro en un ranking. deleteTrigger y deleteResponse aceptan una espera de hasta 5 minutos, y complexMessage puede responder al mensaje del comando o enviarse sin notificación. .Mentions da los usuarios mencionados, con su nombre y su avatar. Llegan al bot con la próxima actualización de Petto. El generador ya las conoce, así que puedes probarlas ahora.',
+        s4p: 'Petto Code tiene unas 70 funciones nuevas. getMember, getRole y getChannel leen miembros, roles y canales del servidor. dbRank da el puesto de un miembro en un ranking. deleteTrigger y deleteResponse aceptan una espera de hasta 5 minutos, y complexMessage puede responder al mensaje del comando o enviarse sin notificación. .Mentions da los usuarios mencionados, con su nombre y su avatar. Llegan al bot con la próxima actualización de Petto. El generador ya las conoce, así que puedes probarlas ahora.',
       },
       embedBuilder: {
         pill: 'Producto',
@@ -3347,7 +3347,7 @@ export const ui = {
         s3h: 'Instalar e compartilhar',
         s3p: 'Quando o comando está pronto, o gerador te dá o comando !customcommand code para colar, o do trigger e um código de compartilhamento pc1. para o !customcommand import. Ele também lê códigos pc1., então você vê o código de um comando compartilhado antes de usar. No dashboard, Comandos em código agora tem um link que abre no gerador o comando que você está editando. Seus rascunhos ficam salvos no seu navegador, não em um servidor.',
         s4h: 'Novidades no Petto Code',
-        s4p: 'O Petto Code tem cerca de 70 funções novas, muitas com os nomes que o YAGPDB usa, para que código escrito para ele seja mais fácil de trazer. getMember, getRole e getChannel leem membros, cargos e canais do servidor. dbRank dá a posição de um membro num ranking. deleteTrigger e deleteResponse aceitam uma espera de até 5 minutos, e complexMessage pode responder à mensagem do comando ou ser enviada sem notificação. .Mentions dá os usuários mencionados, com nome e avatar. Elas chegam ao bot na próxima atualização do Petto. O gerador já as conhece, então você pode testá-las agora.',
+        s4p: 'O Petto Code tem cerca de 70 funções novas. getMember, getRole e getChannel leem membros, cargos e canais do servidor. dbRank dá a posição de um membro num ranking. deleteTrigger e deleteResponse aceitam uma espera de até 5 minutos, e complexMessage pode responder à mensagem do comando ou ser enviada sem notificação. .Mentions dá os usuários mencionados, com nome e avatar. Elas chegam ao bot na próxima atualização do Petto. O gerador já as conhece, então você pode testá-las agora.',
       },
       embedBuilder: {
         pill: 'Produto',
