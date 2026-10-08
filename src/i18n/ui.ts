@@ -167,6 +167,23 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.3',
+          display: '0.7.3',
+          name: 'Flan',
+          date: 'October 8, 2026',
+          items: [
+            'Tickets: `!ticket setup` guides you through the whole setup with menus and buttons, forms are built with buttons instead of typing the field syntax (also in the dashboard), every ticket type has its own welcome text and an emoji you can change, and staff get priority, transfer, private notes and close requests',
+            'Config cards: every module has a `!<module>config` card (`!brconfig`, `!levelconfig`, `!ticketconfig`, `!automodconfig`...) with what the server has set now and every command of the module, every other command gets its own card (`!banconfig`), a short name works too (`!arconfig`), and `!cmdconfig` shows the recommended configuration',
+            'Votes: Petto counts each vote from top.gg once, thanks the voter in a channel with a card that shows the total, and gives a role that stays; `!votes` shows yours and `!votes top` the members who voted the most',
+            'Giveaways: a giveaway that is running can be changed from the dashboard (prize, winners and end), and `!giveaway edit` reads a prize with several words and no quotes',
+            'Status: Petto is online with the phone icon, and the team can change the dot with `!botstatus`',
+            'Dashboard: saving goes straight to the database first, so it is faster; permission groups can no longer be touched from another server; deleting a ticket type asks first and is blocked while it has tickets',
+            'Website: links to petto.sbs show a card in Discord again, and the public pages are kept by Cloudflare so they load faster',
+            'Logs: several permission changes of a channel come in one message',
+            'Fix: the partner replies really ping the manager of the partnership',
+          ],
+        },
+        {
           version: '0.7.2',
           display: '0.7.2',
           name: 'Churro',
@@ -1286,6 +1303,23 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.3',
+          display: '0.7.3',
+          name: 'Flan',
+          date: '8 de octubre de 2026',
+          items: [
+            'Tickets: `!ticket setup` te guía en toda la configuración con menús y botones, los formularios se arman con botones en vez de escribir la sintaxis de los campos (también en el dashboard), cada tipo de ticket tiene su propio texto de bienvenida y un emoji que puedes cambiar, y el staff tiene prioridad, traspaso, notas privadas y solicitudes de cierre',
+            'Tarjetas de configuración: cada módulo tiene una tarjeta `!<módulo>config` (`!brconfig`, `!levelconfig`, `!ticketconfig`, `!automodconfig`...) con lo que el servidor tiene configurado ahora y todos los comandos del módulo, cada otro comando tiene su propia tarjeta (`!banconfig`), también funciona el nombre corto (`!arconfig`), y `!cmdconfig` muestra la configuración recomendada',
+            'Votos: Petto cuenta cada voto de top.gg una sola vez, agradece al votante en un canal con una tarjeta que muestra el total, y le da un rol que se queda; `!votes` muestra los tuyos y `!votes top` quienes más votaron',
+            'Sorteos: un sorteo en curso se puede cambiar desde el dashboard (premio, ganadores y final), y `!giveaway edit` lee un premio de varias palabras sin comillas',
+            'Estado: Petto está en línea con el icono de celular, y el team puede cambiar el punto con `!botstatus`',
+            'Dashboard: guardar va primero directo a la base de datos, así que es más rápido; los grupos de permisos ya no se pueden tocar desde otro servidor; borrar un tipo de ticket pregunta antes y se bloquea mientras tenga tickets',
+            'Sitio web: los enlaces a petto.sbs vuelven a mostrar una tarjeta en Discord, y las páginas públicas las guarda Cloudflare para que carguen más rápido',
+            'Logs: varios cambios de permisos de un canal llegan en un solo mensaje',
+            'Arreglo: las respuestas de partners mencionan de verdad al encargado de la alianza',
+          ],
+        },
         {
           version: '0.7.2',
           display: '0.7.2',
@@ -2407,6 +2441,23 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.3',
+          display: '0.7.3',
+          name: 'Flan',
+          date: '8 de outubro de 2026',
+          items: [
+            'Tickets: `!ticket setup` guia você em toda a configuração com menus e botões, os formulários são montados com botões em vez de digitar a sintaxe dos campos (também no dashboard), cada tipo de ticket tem o seu texto de boas-vindas e um emoji que você pode mudar, e a equipe tem prioridade, transferência, notas privadas e pedidos de fechamento',
+            'Cartões de configuração: cada módulo tem um cartão `!<módulo>config` (`!brconfig`, `!levelconfig`, `!ticketconfig`, `!automodconfig`...) com o que o servidor tem configurado agora e todos os comandos do módulo, cada outro comando tem o seu cartão (`!banconfig`), o nome curto também funciona (`!arconfig`), e `!cmdconfig` mostra a configuração recomendada',
+            'Votos: o Petto conta cada voto do top.gg uma só vez, agradece ao votante em um canal com um cartão que mostra o total, e dá um cargo que fica; `!votes` mostra os seus e `!votes top` quem mais votou',
+            'Sorteios: um sorteio em andamento pode ser alterado pelo dashboard (prêmio, ganhadores e fim), e `!giveaway edit` lê um prêmio de várias palavras sem aspas',
+            'Status: o Petto fica online com o ícone de celular, e a equipe pode mudar a bolinha com `!botstatus`',
+            'Dashboard: salvar vai primeiro direto ao banco de dados, então é mais rápido; os grupos de permissões não podem mais ser mexidos de outro servidor; apagar um tipo de ticket pergunta antes e fica bloqueado enquanto tiver tickets',
+            'Site: os links do petto.sbs voltam a mostrar um cartão no Discord, e as páginas públicas ficam guardadas pelo Cloudflare para carregar mais rápido',
+            'Logs: várias mudanças de permissões de um canal chegam em uma só mensagem',
+            'Correção: as respostas de parcerias mencionam de verdade o responsável pela parceria',
+          ],
+        },
         {
           version: '0.7.2',
           display: '0.7.2',
