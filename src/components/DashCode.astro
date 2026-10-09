@@ -47,7 +47,37 @@ const ui = {
   imported: dt('The command was imported. It is not saved until you press Save.'),
   importedExists: dt('The command was imported. A command with this name already exists: saving replaces it.'),
   importBad: dt('That share code is not valid. Nothing was changed.'),
+  // The Discord-like preview of a test.
+  onlyYou: dt('Only you can see this'),
+  dmTo: dt('Direct message to {name}'),
+  otherChannel: dt('In another channel ({channel})'),
+  after: dt('After {s} s'),
+  updated: dt('Changes the message of the button'),
+  deletedAfter: dt('Deleted after {s} s'),
+  deletedNow: dt('Deleted'),
+  form: dt('Form'),
+  submit: dt('Submit'),
+  cancel: dt('Cancel'),
+  usedButton: dt('{name} used the button {id}'),
+  usedMenu: dt('{name} used the menu {id}'),
+  noReply: dt('No answer is shown.'),
+  // The suggestions of the editor.
+  suggestions: dt('Suggestions'),
+  limitNear: dt('Close to the limit of characters.'),
+  limitOver: dt('Over the limit of characters: it cannot be saved.'),
 };
+const snippetLabels: [string, string][] = [
+  ['embed', dt('Embed')],
+  ['button', dt('Button and what it does')],
+  ['menu', dt('Menu and what it does')],
+  ['modal', dt('Form that pops up')],
+  ['reaction', dt('Reaction and what it does')],
+  ['cooldown', dt('Cooldown (dbSetExpire)')],
+  ['counter', dt('Counter (dbIncr)')],
+  ['ranking', dt('Ranking (dbTop and dbRank)')],
+  ['mentions', dt('Mentioned member (.Mentions)')],
+];
+const avatar = user.avatar || '/assets/mascot-icon.png';
 const triggerTypes = [
   ['command', dt('The prefix of Petto')],
   ['prefix', dt('Its own prefix')],
@@ -70,6 +100,8 @@ const triggerTypes = [
     data-commands={JSON.stringify(commands)}
     data-ui={JSON.stringify(ui)}
     data-generator={CODE_GENERATOR_URL}
+    data-lang={dashLang}
+    data-user={JSON.stringify({ name: user.username, avatar })}
   >
     <aside class="cc-side">
       <div class="cc-box">
@@ -103,11 +135,30 @@ const triggerTypes = [
           </div>
         </div>
 
-        <div class="cc-editor">
-          <div class="cc-gutter" id="cc-gutter" aria-hidden="true"></div>
-          <textarea id="cc-code" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" placeholder={'Hello {{ .User.Username }}!'}></textarea>
+        <div class="cc-toolbar">
+          <label class="cc-insert">
+            <Icon name="ph:code-fill" width="14" height="14" />
+            <span class="cc-sr">{dt('Insert')}</span>
+            <select id="cc-snippet" class="cc-input">
+              <option value="">{dt('Insert...')}</option>
+              {snippetLabels.map(([value, label]) => <option value={value}>{label}</option>)}
+            </select>
+          </label>
+          <span class="cc-note cc-keys" id="cc-keys">{dt('Tab and Shift+Tab indent, Ctrl+Space suggests, Ctrl+S saves, Ctrl+Enter runs the test.')}</span>
+        </div>
+        <div class="cc-editor-wrap" id="cc-editor-wrap">
+          <div class="cc-editor">
+            <div class="cc-gutter" id="cc-gutter" aria-hidden="true"></div>
+            <div class="cc-area" id="cc-area">
+              <div class="cc-layer" id="cc-layer" aria-hidden="true"><div class="cc-errband" id="cc-errband" hidden></div><pre class="cc-pre" id="cc-pre"></pre></div>
+              <span class="cc-measure" id="cc-measure" aria-hidden="true"></span>
+              <textarea id="cc-code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label={dt('Code')} aria-describedby="cc-keys" aria-autocomplete="list" aria-controls="cc-ac" placeholder={'Hello {{ .User.Username }}!'}></textarea>
+            </div>
+          </div>
+          <ul class="cc-ac" id="cc-ac" role="listbox" aria-label={dt('Suggestions')} hidden></ul>
         </div>
         <div class="cc-status" id="cc-status" role="status"><span class="cc-dot"></span><span id="cc-status-text">{dt('Checking...')}</span><span class="cc-count" id="cc-count"></span></div>
+        <ul class="cc-hints" id="cc-hints" hidden></ul>
         <p class="cc-message" id="cc-message" hidden></p>
       </div>
 
@@ -139,6 +190,11 @@ const triggerTypes = [
 </DashGuildLayout>
 
 <script>
+  import { highlight, caretContext, esc } from '../utils/codeEditor/highlight';
+  import { renderPreview } from '../utils/codeEditor/discord';
+  import { FUNCTIONS, KEYWORDS, dataChildren, catalogLang } from '../utils/codeEditor/catalog';
+  import { snippets } from '../utils/codeEditor/snippets';
+
   const root = document.getElementById('cc') as HTMLElement | null;
   if (root) {
     const ui = JSON.parse(root.dataset.ui || '{}');
@@ -164,6 +220,19 @@ const triggerTypes = [
     const triggerType = $<HTMLSelectElement>('cc-trigger-type');
     const triggerText = $<HTMLInputElement>('cc-trigger-text');
     const result = $('cc-result');
+    const pre = $('cc-pre');
+    const layer = $('cc-layer');
+    const errBand = $('cc-errband');
+    const measure = $('cc-measure');
+    const wrap = $('cc-editor-wrap');
+    const area = $('cc-area');
+    const acList = $('cc-ac');
+    const hintsBox = $('cc-hints');
+    const dashLang = root.dataset.lang || 'en';
+    const lang = catalogLang(dashLang);
+    const viewer: { name: string; avatar: string } = JSON.parse(root.dataset.user || '{"name":"you","avatar":""}');
+    // The functions the colors know: the catalog first, then the list of the bot when it arrives.
+    let functionNames = new Set(FUNCTIONS.map((fn) => fn.name));
     let errorLine = 0;
 
     // Why a request did not work: the answer of the page or the bot, or that nothing came back.
@@ -181,31 +250,201 @@ const triggerTypes = [
       }
     }
 
-    // ── The editor: line numbers that follow the scroll, and a mark on the line with a mistake ──
+    // ── The editor: colors under a clear textarea, line numbers that follow the scroll, and a mark on the line with a mistake ──
+    // The lines never wrap, so a line of the colors, of the textarea and of the numbers always has the same height.
+    const LINE = 20;
+    const PAD_TOP = 10;
+    const LIMIT = () => Number(meta?.limits?.source ?? 10000);
+    function follow() {
+      gutter.scrollTop = code.scrollTop;
+      layer.style.transform = `translate(${-code.scrollLeft}px, ${-code.scrollTop}px)`;
+    }
+    function paintCode() {
+      pre.innerHTML = `${highlight(code.value, functionNames)}\n`;
+      errBand.hidden = !errorLine;
+      if (errorLine) errBand.style.top = `${PAD_TOP + (errorLine - 1) * LINE}px`;
+      follow();
+    }
     function drawGutter() {
       const lines = code.value.split('\n').length;
       let html = '';
       for (let n = 1; n <= lines; n += 1) html += `<div class="${n === errorLine ? 'cc-err' : ''}">${n}</div>`;
       gutter.innerHTML = html;
       gutter.scrollTop = code.scrollTop;
-      countBox.textContent = `${code.value.length.toLocaleString()} / ${(meta?.limits?.source ?? 10000).toLocaleString()}`;
+      const length = code.value.length;
+      countBox.textContent = `${length.toLocaleString()} / ${LIMIT().toLocaleString()}`;
+      countBox.dataset.level = length > LIMIT() ? 'over' : length > LIMIT() * 0.9 ? 'near' : '';
+      countBox.title = length > LIMIT() ? ui.limitOver : length > LIMIT() * 0.9 ? ui.limitNear : '';
+      paintCode();
     }
-    code.addEventListener('scroll', () => { gutter.scrollTop = code.scrollTop; });
+    code.addEventListener('scroll', follow);
+
+    // Typing through the browser keeps Ctrl+Z working; when it cannot, the text is set and the page is told.
+    function typeText(text: string) {
+      code.focus();
+      let done = false;
+      try { done = document.execCommand('insertText', false, text); } catch { done = false; }
+      if (!done) {
+        code.setRangeText(text, code.selectionStart, code.selectionEnd, 'end');
+        code.dispatchEvent(new Event('input'));
+      }
+    }
+    // Tab and Shift+Tab move the lines of the selection by two spaces.
+    function indentLines(outdent: boolean) {
+      const value = code.value;
+      const { selectionStart: start, selectionEnd: end } = code;
+      const from = value.lastIndexOf('\n', start - 1) + 1;
+      const lastEnd = end > start && value[end - 1] === '\n' ? end - 1 : end;
+      let to = value.indexOf('\n', lastEnd);
+      if (to === -1) to = value.length;
+      const lines = value.slice(from, to).split('\n');
+      let firstShift = 0;
+      let total = 0;
+      const changed = lines.map((text, i) => {
+        if (!outdent) { if (i === 0) firstShift = 2; total += 2; return `  ${text}`; }
+        const cut = /^ {1,2}/.exec(text)?.[0].length ?? 0;
+        if (i === 0) firstShift = -cut;
+        total -= cut;
+        return text.slice(cut);
+      }).join('\n');
+      if (!total) return;
+      code.setSelectionRange(from, to);
+      typeText(changed);
+      const newStart = Math.max(from, start + firstShift);
+      code.setSelectionRange(newStart, start === end ? newStart : end + total);
+    }
 
     code.addEventListener('keydown', (event) => {
-      if (event.key === 'Tab') {
+      if (suggestKeys(event)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
+        event.preventDefault();
+        suggest(true);
+      } else if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         const { selectionStart: start, selectionEnd: end } = code;
-        code.setRangeText('  ', start, end, 'end');
-        code.dispatchEvent(new Event('input'));
+        if (event.shiftKey || code.value.slice(start, end).includes('\n')) indentLines(event.shiftKey);
+        else typeText('  ');
       } else if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault();
         save();
       } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
         runTest();
+      } else if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
+        // A new line keeps the indentation of the line before it.
+        const start = code.selectionStart;
+        const lineText = code.value.slice(code.value.lastIndexOf('\n', start - 1) + 1, start);
+        const spaces = /^[ \t]*/.exec(lineText)?.[0] ?? '';
+        if (spaces) { event.preventDefault(); typeText(`\n${spaces}`); }
+      } else if (event.key === '{' && !event.ctrlKey && !event.metaKey && code.selectionStart === code.selectionEnd && code.value[code.selectionStart - 1] === '{' && code.value.slice(code.selectionStart, code.selectionStart + 2) !== '}}') {
+        // {{ closes itself: {{ | }}
+        event.preventDefault();
+        const at = code.selectionStart;
+        typeText('{  }}');
+        code.setSelectionRange(at + 2, at + 2);
+        suggestClose();
       }
     });
+
+    // ── Suggestions: functions inside {{ }}, and the fields of the data after a dot ──
+    type Suggestion = { name: string; kind: 'fn' | 'kw' | 'data'; detail: string; more: boolean; arity: string };
+    let suggestions: Suggestion[] = [];
+    let active = 0;
+    let suggestFrom = -1;
+    const catalogText = new Map(FUNCTIONS.map((fn) => [fn.name, fn.text[lang] ?? fn.text.en]));
+    const arityOf = (fn: any) => (fn.max === null ? `${fn.min}+` : fn.min === fn.max ? `${fn.min}` : `${fn.min}-${fn.max}`);
+    function suggestClose() {
+      suggestions = [];
+      suggestFrom = -1;
+      acList.hidden = true;
+      acList.textContent = '';
+      code.removeAttribute('aria-activedescendant');
+    }
+    function suggestPick(index: number) {
+      active = (index + suggestions.length) % suggestions.length;
+      acList.querySelectorAll('[role="option"]').forEach((item, i) => item.setAttribute('aria-selected', String(i === active)));
+      const chosen = document.getElementById(`cc-ac-${active}`);
+      if (chosen) { code.setAttribute('aria-activedescendant', chosen.id); chosen.scrollIntoView({ block: 'nearest' }); }
+    }
+    function caretPoint() {
+      const value = code.value;
+      const at = code.selectionStart;
+      const lineStart = value.lastIndexOf('\n', at - 1) + 1;
+      const row = value.slice(0, at).split('\n').length - 1;
+      measure.textContent = value.slice(lineStart, at);
+      const x = 12 + measure.getBoundingClientRect().width - code.scrollLeft;
+      const y = PAD_TOP + row * LINE - code.scrollTop;
+      const areaBox = area.getBoundingClientRect();
+      const wrapBox = wrap.getBoundingClientRect();
+      return { x: areaBox.left - wrapBox.left + x, y: areaBox.top - wrapBox.top + y, bottom: areaBox.bottom - wrapBox.top };
+    }
+    function suggest(forced = false) {
+      const where = caretContext(code.value, code.selectionStart);
+      if (!where || code.selectionStart !== code.selectionEnd || (!forced && where.kind === 'word' && !where.partial)) { suggestClose(); return; }
+      const partial = where.partial.toLowerCase();
+      let found: Suggestion[];
+      if (where.kind === 'data') {
+        found = dataChildren(where.parent).map((entry) => ({ name: entry.name, kind: 'data' as const, detail: entry.text ? entry.text[lang] ?? entry.text.en : '', more: entry.children, arity: '' }));
+      } else {
+        const known: any[] = meta?.functions ?? FUNCTIONS.map((fn) => ({ name: fn.name, min: null, max: null }));
+        found = [
+          ...KEYWORDS.map((name) => ({ name, kind: 'kw' as const, detail: catalogText.get(name) ?? '', more: false, arity: '' })),
+          ...known.map((fn) => ({ name: String(fn.name), kind: 'fn' as const, detail: catalogText.get(fn.name) ?? '', more: false, arity: fn.min === null || fn.min === undefined ? '' : arityOf(fn) })),
+        ];
+      }
+      const starts = found.filter((item) => item.name.toLowerCase().startsWith(partial));
+      const has = found.filter((item) => !item.name.toLowerCase().startsWith(partial) && item.name.toLowerCase().includes(partial));
+      suggestions = [...starts.sort((a, b) => a.name.localeCompare(b.name)), ...has].slice(0, 40);
+      if (!suggestions.length || (suggestions.length === 1 && suggestions[0].name === where.partial && !suggestions[0].more)) { suggestClose(); return; }
+      suggestFrom = where.start;
+      acList.innerHTML = suggestions.map((item, i) => `<li id="cc-ac-${i}" role="option" aria-selected="false" data-index="${i}" class="cc-ac-${item.kind}"><code>${esc(item.kind === 'data' ? `.${item.name}${item.more ? '.' : ''}` : item.name)}</code>${item.arity ? `<em>${esc(item.arity)}</em>` : ''}${item.detail ? `<span>${esc(item.detail)}</span>` : ''}</li>`).join('');
+      acList.hidden = false;
+      const point = caretPoint();
+      const width = Math.min(360, wrap.clientWidth - 8);
+      acList.style.width = `${width}px`;
+      acList.style.left = `${Math.max(4, Math.min(point.x, wrap.clientWidth - width - 4))}px`;
+      const below = point.y + LINE + 4;
+      const height = acList.offsetHeight;
+      const room = point.bottom - below;
+      acList.style.top = `${room < Math.min(height, 120) && point.y - height - 4 > 0 ? point.y - height - 4 : below}px`;
+      suggestPick(0);
+    }
+    function suggestAccept(index = active) {
+      const item = suggestions[index];
+      if (!item || suggestFrom < 0) { suggestClose(); return; }
+      const next = code.value[code.selectionStart] ?? '';
+      const tail = item.kind === 'data' ? (item.more ? '.' : '') : /\s/.test(next) ? '' : ' ';
+      code.setSelectionRange(suggestFrom, code.selectionStart);
+      typeText(`${item.name}${tail}`);
+      if (item.more) suggest(true); else suggestClose();
+    }
+    // The keys of the open list; true when the key was for it.
+    function suggestKeys(event: KeyboardEvent) {
+      if (acList.hidden || !suggestions.length) return false;
+      if (event.key === 'ArrowDown') { event.preventDefault(); suggestPick(active + 1); return true; }
+      if (event.key === 'ArrowUp') { event.preventDefault(); suggestPick(active - 1); return true; }
+      if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); suggestAccept(); return true; }
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); suggestClose(); return true; }
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) suggestClose();
+      return false;
+    }
+    acList.addEventListener('mousedown', (event) => {
+      const item = (event.target as HTMLElement).closest('[role="option"]') as HTMLElement | null;
+      if (!item) return;
+      event.preventDefault();
+      suggestAccept(Number(item.dataset.index));
+    });
+    code.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== code) suggestClose(); }, 120));
+    code.addEventListener('mousedown', suggestClose);
+    code.addEventListener('scroll', () => { if (!acList.hidden) suggestClose(); });
+
+    // ── Hints the bot gives with a check or a test ──
+    function showHints(list: unknown) {
+      const hints = Array.isArray(list) ? list.filter((hint) => typeof hint === 'string' && hint.trim()) : [];
+      hintsBox.textContent = '';
+      hintsBox.hidden = !hints.length;
+      for (const hint of hints) { const item = document.createElement('li'); item.textContent = String(hint); hintsBox.appendChild(item); }
+    }
 
     // ── Checking while writing ──
     let checkTimer: ReturnType<typeof setTimeout> | undefined;
@@ -213,7 +452,7 @@ const triggerTypes = [
     function setStatus(kind: 'ok' | 'bad' | 'wait', text: string) { statusBox.dataset.kind = kind; statusText.textContent = text; }
     async function checkNow() {
       const ticket = ++checkId;
-      if (!code.value.trim()) { errorLine = 0; drawGutter(); setStatus('wait', ''); return; }
+      if (!code.value.trim()) { errorLine = 0; drawGutter(); showHints(null); setStatus('wait', ''); return; }
       setStatus('wait', ui.checking);
       const answer = await api({ action: 'check', code: code.value });
       const payload = answer.payload;
@@ -222,10 +461,19 @@ const triggerTypes = [
       const problem = payload.problem;
       errorLine = problem?.line ?? 0;
       drawGutter();
+      showHints(payload.hints);
       if (!problem) setStatus('ok', ui.ok);
       else setStatus('bad', `${problem.line ? `${String(ui.line).replace('{n}', problem.line)}: ` : ''}${problem.message}`);
     }
-    code.addEventListener('input', () => { drawGutter(); clearTimeout(checkTimer); checkTimer = setTimeout(checkNow, 450); });
+    code.addEventListener('input', (event) => {
+      drawGutter();
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(checkNow, 450);
+      // Suggestions follow what is typed or deleted by hand, not the code a template or a snippet puts.
+      const kind = (event as InputEvent).inputType ?? '';
+      if (kind === 'insertText' || kind === 'deleteContentBackward' || kind === 'insertCompositionText') suggest(!acList.hidden || (event as InputEvent).data === '.');
+      else suggestClose();
+    });
 
     // ── The list of commands ──
     function triggerLabel(command: { triggerType: string; triggerText: string; name: string }) {
@@ -268,6 +516,8 @@ const triggerTypes = [
       showTrigger(type, text);
       result.hidden = true;
       say('');
+      showHints(null);
+      suggestClose();
       errorLine = 0;
       drawGutter();
       drawList();
@@ -337,6 +587,14 @@ const triggerTypes = [
       block.append(title, body);
       return block;
     }
+    // The message that would start the command, as someone would write it.
+    function testedMessage() {
+      const name = nameInput.value.trim().toLowerCase() || 'command';
+      const args = $<HTMLInputElement>('cc-test-args').value.trim();
+      const type = triggerType.value;
+      const start = type === 'prefix' ? `${triggerText.value.trim()}${name}` : type === 'command' ? `${prefix}${name}` : triggerText.value.trim();
+      return [start, args].filter(Boolean).join(' ');
+    }
     async function runTest() {
       result.hidden = false;
       result.textContent = ui.running;
@@ -353,14 +611,41 @@ const triggerTypes = [
         if (payload.error.line) { errorLine = payload.error.line; drawGutter(); }
         return;
       }
-      result.appendChild(line(ui.prints, payload.output.trim() || ui.nothing));
-      result.appendChild(line(ui.does, payload.actions.length ? payload.actions.map((action: string) => `• ${action}`).join('\n') : ui.nothingElse));
+      showHints(payload.hints);
+      const output = String(payload.output ?? '');
+      const actions: string[] = Array.isArray(payload.actions) ? payload.actions : [];
+      if (Array.isArray(payload.effects)) {
+        // The bot gave what the code does: it is drawn like Discord, and the printed text stays one click away.
+        const preview = document.createElement('div');
+        preview.className = 'cc-preview';
+        preview.innerHTML = renderPreview(output, payload.effects, {
+          ctx: { locale: document.documentElement.lang || dashLang },
+          t: { onlyYou: ui.onlyYou, dmTo: ui.dmTo, otherChannel: ui.otherChannel, after: ui.after, updated: ui.updated, deletedAfter: ui.deletedAfter, form: ui.form, submit: ui.submit, cancel: ui.cancel, usedButton: ui.usedButton, usedMenu: ui.usedMenu, deleted: ui.deletedNow, nothing: ui.noReply },
+          user: { name: viewer.name, avatar: viewer.avatar },
+          bot: { name: 'Petto', avatar: '/assets/bot-avatar.png' },
+          trigger: { mode: mode.value, text: mode.value === 'command' ? testedMessage() : $<HTMLInputElement>('cc-test-handler').value.trim() },
+        });
+        result.appendChild(preview);
+        result.appendChild(line(ui.does, actions.length ? actions.map((action: string) => `• ${action}`).join('\n') : ui.nothingElse));
+        const raw = document.createElement('details');
+        raw.className = 'cc-res-block cc-raw';
+        const summary = document.createElement('summary');
+        summary.textContent = ui.prints;
+        const body = document.createElement('pre');
+        body.textContent = output.trim() || ui.nothing;
+        raw.append(summary, body);
+        result.appendChild(raw);
+      } else {
+        result.appendChild(line(ui.prints, output.trim() || ui.nothing));
+        result.appendChild(line(ui.does, actions.length ? actions.map((action: string) => `• ${action}`).join('\n') : ui.nothingElse));
+      }
       const foot = document.createElement('p');
       foot.className = 'cc-note';
       foot.textContent = String(ui.stepsTime).replace('{steps}', payload.steps).replace('{ms}', payload.millis);
       result.appendChild(foot);
     }
     $('cc-run').addEventListener('click', runTest);
+    result.addEventListener('click', (event) => { (event.target as HTMLElement).closest('.dc-spoiler')?.classList.toggle('shown'); });
 
     // ── Templates and functions ──
     function insert(text: string) {
@@ -391,6 +676,17 @@ const triggerTypes = [
       }
     }
     $<HTMLInputElement>('cc-fn-search').addEventListener('input', (event) => drawFunctions((event.target as HTMLInputElement).value));
+
+    // ── Snippets: common pieces put where the caret is ──
+    const snippetPicker = $<HTMLSelectElement>('cc-snippet');
+    const snippetCode = new Map(snippets(lang).map((snippet) => [snippet.id, snippet.code]));
+    snippetPicker.addEventListener('change', () => {
+      const text = snippetCode.get(snippetPicker.value);
+      snippetPicker.value = '';
+      if (!text) return;
+      const before = code.value.slice(0, code.selectionStart);
+      typeText(`${before && !before.endsWith('\n') ? '\n' : ''}${text}`);
+    });
 
     const templates = $<HTMLSelectElement>('cc-templates');
     templates.addEventListener('change', () => {
@@ -475,6 +771,7 @@ const triggerTypes = [
       } catch { meta = null; }
       if (!meta?.ok) { setStatus('wait', `${ui.unavailable} ${why({ status: metaStatus, payload: meta })}`); return; }
       for (const template of meta.templates) { const option = document.createElement('option'); option.value = template.id; option.textContent = template.name; templates.appendChild(option); }
+      if (Array.isArray(meta.functions) && meta.functions.length) functionNames = new Set(meta.functions.map((fn: any) => String(fn.name)));
       drawFunctions();
       drawGutter();
       if (!meta.canWrite) say(ui.closed, 'bad');
@@ -497,6 +794,7 @@ const triggerTypes = [
   .cc-box-head strong { display: inline-flex; align-items: center; gap: 6px; }
   .cc-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
   .cc-grow { flex: 1; min-width: 160px; }
+  @media (max-width: 520px) { .cc-row > .cc-input { flex: 1 1 100%; } }
   .cc-field { display: flex; flex-direction: column; gap: 6px; }
   .cc-field > span:first-child { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
   .cc-prefixed { display: flex; align-items: center; gap: 8px; }
@@ -524,10 +822,34 @@ const triggerTypes = [
   :global(.cc-fn span) { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
   .cc-empty, .cc-note, :global(li.cc-note) { font-size: 12px; color: var(--text-dim); margin: 0; line-height: 1.45; }
 
+  .cc-toolbar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+  .cc-insert { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+  .cc-insert .cc-input { padding: 6px 8px; font-size: 13px; }
+  .cc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .cc-keys { flex: 1 1 220px; }
+  @media (max-width: 640px) { .cc-keys { display: none; } }
+
+  /* The editor: a clear textarea over the code with colors. Both use the same font, size, line height and padding. */
+  .cc-editor-wrap { position: relative; }
   .cc-editor { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-raise, var(--card)); min-height: 340px; }
-  .cc-gutter { flex: 0 0 auto; min-width: 42px; padding: 10px 8px 10px 10px; text-align: right; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--text-dim); background: var(--border-soft); overflow: hidden; user-select: none; }
+  .cc-editor:focus-within { border-color: var(--accent); }
+  .cc-gutter { flex: 0 0 auto; min-width: 42px; padding: 10px 8px 10px 10px; text-align: right; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--text-dim); background: var(--border-soft); overflow: hidden; user-select: none; font-variant-numeric: tabular-nums; }
   .cc-gutter :global(.cc-err) { color: #fff; background: var(--red); border-radius: 4px; padding: 0 4px; margin-right: -4px; }
-  .cc-editor textarea { flex: 1; min-width: 0; border: 0; outline: 0; resize: vertical; padding: 10px 12px; min-height: 340px; background: transparent; color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 20px; tab-size: 2; white-space: pre; overflow: auto; }
+  .cc-area { position: relative; flex: 1; min-width: 0; overflow: hidden; display: flex; }
+  .cc-layer { position: absolute; top: 0; left: 0; min-width: 100%; pointer-events: none; will-change: transform; }
+  .cc-errband { position: absolute; left: 0; right: 0; height: 20px; background: var(--red-soft); border-left: 2px solid var(--red); }
+  .cc-pre, .cc-editor textarea, .cc-measure { font-family: var(--mono); font-size: 13px; line-height: 20px; tab-size: 2; white-space: pre; letter-spacing: 0; font-variant-ligatures: none; font-weight: 400; }
+  .cc-pre { position: relative; margin: 0; padding: 10px 12px; border: 0; border-radius: 0; background: transparent; color: var(--c-text); overflow: visible; min-height: 100%; }
+  .cc-measure { position: absolute; top: 0; left: 0; visibility: hidden; pointer-events: none; }
+  .cc-editor textarea { position: relative; z-index: 1; display: block; flex: 1; width: 100%; min-width: 0; border: 0; outline: 0; resize: vertical; padding: 10px 12px; min-height: 340px; background: transparent; color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text); overflow: auto; }
+  .cc-editor textarea::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+  .cc-editor textarea::placeholder { color: var(--text-dim); -webkit-text-fill-color: var(--text-dim); }
+  .cc-count[data-level='near'] { color: var(--yellow); }
+  .cc-count[data-level='over'] { color: var(--red); font-weight: 700; }
+  .cc-hints { list-style: none; margin: 0; padding: 8px 12px; border: 1px solid var(--yellow); background: var(--yellow-soft); border-radius: 8px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
+  .cc-hints :global(li) { padding-left: 14px; position: relative; overflow-wrap: anywhere; }
+  .cc-hints :global(li)::before { content: ''; position: absolute; left: 2px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); }
+  .cc-result :global(.cc-raw summary) { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); font-weight: 700; }
   .cc-status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-dim); }
   .cc-status .cc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: 0 0 auto; }
   .cc-status[data-kind='ok'] { color: var(--green); }
@@ -544,4 +866,140 @@ const triggerTypes = [
   .cc-result :global(.cc-res-bad) { border-color: var(--red); background: var(--red-soft); }
   .cc-result :global(strong) { font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
   .cc-result :global(pre) { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12.5px; }
+</style>
+
+<style is:global>
+  /* Colors of the code and of the Discord preview of the editor of commands in code. Dark first, like the site. */
+  .cc-grid {
+    --c-text: #d8d5ce; --c-brace: #f08fd6; --c-kw: #f0a88f; --c-fn: #8fb4ff; --c-str: #a5ea7a; --c-num: #fed53c;
+    --c-var: #c9a2ff; --c-field: #7fd8e0; --c-com: #8d887f;
+    --dc-bg: #313338; --dc-text: #dbdee1; --dc-muted: #949ba4; --dc-embed: #2b2d31; --dc-border: #1e1f22; --dc-hover: #2e3035;
+    --dc-mention: rgba(88, 101, 242, 0.3); --dc-mention-text: #c9cdfb; --dc-code: #2b2d31; --dc-secondary: #4e5058; --dc-select: #1e1f22;
+  }
+  :root[data-theme='light'] .cc-grid {
+    --c-text: #3d4450; --c-brace: #b0519b; --c-kw: #a3461f; --c-fn: #2c5fc4; --c-str: #2f7d32; --c-num: #9a6700;
+    --c-var: #8340c2; --c-field: #0d7a86; --c-com: #7d8794;
+    --dc-bg: #ffffff; --dc-text: #313338; --dc-muted: #5c5e66; --dc-embed: #f2f3f5; --dc-border: #e3e5e8; --dc-hover: #f2f3f5;
+    --dc-mention: rgba(88, 101, 242, 0.15); --dc-mention-text: #4752c4; --dc-code: #ebedef; --dc-secondary: #6d6f78; --dc-select: #ebedef;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) .cc-grid {
+      --c-text: #3d4450; --c-brace: #b0519b; --c-kw: #a3461f; --c-fn: #2c5fc4; --c-str: #2f7d32; --c-num: #9a6700;
+      --c-var: #8340c2; --c-field: #0d7a86; --c-com: #7d8794;
+      --dc-bg: #ffffff; --dc-text: #313338; --dc-muted: #5c5e66; --dc-embed: #f2f3f5; --dc-border: #e3e5e8; --dc-hover: #f2f3f5;
+      --dc-mention: rgba(88, 101, 242, 0.15); --dc-mention-text: #4752c4; --dc-code: #ebedef; --dc-secondary: #6d6f78; --dc-select: #ebedef;
+    }
+  }
+  .cc-grid .tk-b { color: var(--c-brace); font-weight: 700; }
+  .cc-grid .tk-k { color: var(--c-kw); font-weight: 700; }
+  .cc-grid .tk-f { color: var(--c-fn); }
+  .cc-grid .tk-s { color: var(--c-str); }
+  .cc-grid .tk-n { color: var(--c-num); }
+  .cc-grid .tk-v { color: var(--c-var); }
+  .cc-grid .tk-d { color: var(--c-field); }
+  .cc-grid .tk-c { color: var(--c-com); font-style: italic; }
+  .cc-grid .tk-t { color: var(--text); }
+  .cc-grid .tk-u { text-decoration: wavy underline var(--red); text-decoration-skip-ink: none; }
+  /* Bold must not make the colored code wider than the textarea text. */
+  .cc-grid .cc-pre .tk-b, .cc-grid .cc-pre .tk-k { font-weight: 400; }
+
+  /* The list of suggestions. */
+  .cc-ac { position: absolute; z-index: 30; list-style: none; margin: 0; padding: 4px; max-height: 232px; overflow: auto; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.45); font-size: 12.5px; }
+  .cc-ac li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: baseline; gap: 2px 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+  .cc-ac li[aria-selected='true'] { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .cc-ac li code { font-family: var(--mono); font-size: 12.5px; background: transparent; border: 0; padding: 0; color: var(--c-fn); }
+  .cc-ac li.cc-ac-data code { color: var(--c-field); }
+  .cc-ac li.cc-ac-kw code { color: var(--c-kw); font-weight: 700; }
+  .cc-ac li em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .cc-ac li span { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 520px) {
+    .cc-ac li { grid-template-columns: auto minmax(0, 1fr); }
+    .cc-ac li span { grid-column: 1 / -1; white-space: normal; }
+  }
+
+  /* The test drawn like Discord. */
+  .cc-preview .dc { background: var(--dc-bg); color: var(--dc-text); border: 1px solid var(--border); border-radius: 10px; padding: 4px 0 12px; font-family: var(--sans); font-size: 14.5px; line-height: 1.375; overflow: hidden; }
+  .cc-preview .dc-msg { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 0 14px; padding: 4px 16px 4px 14px; margin-top: 10px; }
+  .cc-preview .dc-msg:hover { background: var(--dc-hover); }
+  .cc-preview .dc-msg.ephemeral { background: rgba(88, 101, 242, 0.07); }
+  .cc-preview .dc-msg.deleted { opacity: 0.5; }
+  .cc-preview .dc-msg.deleted .dc-text { text-decoration: line-through; }
+  .cc-preview .dc-av { width: 40px; height: 40px; border-radius: 50%; background: var(--dc-embed); object-fit: cover; grid-column: 1; }
+  .cc-preview .dc-body { min-width: 0; grid-column: 2; }
+  .cc-preview .dc-reply, .cc-preview .dc-sys { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dc-muted); min-width: 0; }
+  .cc-preview .dc-reply { grid-column: 1 / -1; margin-bottom: 4px; padding-left: 54px; }
+  .cc-preview .dc-sys { padding: 10px 16px 2px 68px; }
+  .cc-preview .dc-i { flex: 0 0 auto; vertical-align: -2px; }
+  .cc-preview .dc-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .cc-preview .dc-name { font-weight: 600; color: var(--dc-text); }
+  .cc-preview .dc-bot { background: #5865f2; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px; position: relative; top: -1px; }
+  .cc-preview .dc-time { font-size: 12px; color: var(--dc-muted); }
+  .cc-preview .dc-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cc-preview .dc-text h1, .cc-preview .dc-text h2, .cc-preview .dc-text h3 { margin: 4px 0; font-weight: 700; line-height: 1.3; }
+  .cc-preview .dc-text h1 { font-size: 22px; } .cc-preview .dc-text h2 { font-size: 19px; } .cc-preview .dc-text h3 { font-size: 16px; }
+  .cc-preview .dc-text .dc-sub { font-size: 12.5px; color: var(--dc-muted); }
+  .cc-preview .dc-text blockquote { margin: 2px 0; padding-left: 10px; border-left: 4px solid var(--dc-secondary); }
+  .cc-preview .dc-text code { font-family: var(--mono); background: var(--dc-code); color: inherit; border: 0; padding: 1px 4px; border-radius: 4px; font-size: 85%; }
+  .cc-preview .dc-text pre { background: var(--dc-code); border: 1px solid var(--dc-border); padding: 8px; border-radius: 4px; margin: 4px 0; white-space: pre-wrap; font-size: 13px; }
+  .cc-preview .dc-text pre code { background: none; padding: 0; }
+  .cc-preview .dc-text a, .cc-preview .dc-e-title a { color: #00a8fc; text-decoration: none; }
+  .cc-preview .dc-spoiler { background: var(--dc-secondary); color: transparent; border-radius: 3px; cursor: pointer; }
+  .cc-preview .dc-spoiler.shown { background: var(--dc-code); color: inherit; }
+  .cc-preview .dc-ts { background: var(--dc-code); border-radius: 3px; padding: 0 2px; }
+  .cc-preview .dc-emoji { display: inline-block; width: 20px; height: 20px; vertical-align: -4px; object-fit: contain; }
+  .cc-preview .dc-mention { background: var(--dc-mention); color: var(--dc-mention-text); border-radius: 3px; padding: 0 2px; font-weight: 500; }
+  .cc-preview .dc-embed { margin-top: 6px; max-width: 520px; background: var(--dc-embed); border-left: 4px solid var(--dc-border); border-radius: 4px; padding: 10px 14px 14px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 14px; }
+  .cc-preview .dc-embed > * { grid-column: 1; }
+  .cc-preview .dc-e-thumb { grid-column: 2; grid-row: 1 / span 6; width: 80px; height: 80px; border-radius: 4px; object-fit: cover; margin-top: 4px; }
+  .cc-preview .dc-e-author { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; margin-top: 4px; }
+  .cc-preview .dc-e-author img { width: 24px; height: 24px; border-radius: 50%; }
+  .cc-preview .dc-e-title { font-weight: 700; font-size: 15.5px; margin-top: 6px; }
+  .cc-preview .dc-e-desc { font-size: 14px; margin-top: 6px; }
+  .cc-preview .dc-e-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+  .cc-preview .dc-e-field { grid-column: 1 / -1; font-size: 14px; min-width: 0; }
+  .cc-preview .dc-e-field.inline { grid-column: auto; }
+  .cc-preview .dc-e-field b { display: block; font-weight: 600; margin-bottom: 2px; }
+  .cc-preview .dc-e-image { margin-top: 12px; border-radius: 4px; max-width: 100%; max-height: 300px; object-fit: contain; grid-column: 1 / -1; }
+  .cc-preview .dc-e-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dc-muted); margin-top: 8px; grid-column: 1 / -1; }
+  .cc-preview .dc-e-foot img { width: 20px; height: 20px; border-radius: 50%; }
+  .cc-preview .dc-rows { display: grid; gap: 8px; margin-top: 8px; }
+  .cc-preview .dc-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cc-preview .dc-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 2px 16px; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 500; }
+  .cc-preview .dc-btn.off { opacity: 0.5; }
+  .cc-preview .dc-btn.s1 { background: #5865f2; } .cc-preview .dc-btn.s2, .cc-preview .dc-btn.s5 { background: var(--dc-secondary); } .cc-preview .dc-btn.s3 { background: #248046; } .cc-preview .dc-btn.s4 { background: #da373c; }
+  .cc-preview .dc-ext { display: inline-flex; opacity: 0.8; }
+  .cc-preview .dc-select { width: min(100%, 400px); display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; background: var(--dc-select); border: 1px solid var(--dc-border); border-radius: 8px; color: var(--dc-muted); font-size: 14px; }
+  .cc-preview .dc-reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .cc-preview .dc-react { display: inline-flex; align-items: center; gap: 6px; padding: 2px 7px; border-radius: 8px; background: rgba(88, 101, 242, 0.15); border: 1px solid #5865f2; font-size: 14px; }
+  .cc-preview .dc-react b { font-size: 13px; font-weight: 600; }
+  .cc-preview .dc-ephemeral { font-size: 12.5px; color: var(--dc-muted); margin-top: 4px; display: flex; gap: 5px; align-items: center; }
+  .cc-preview .dc-notes { font-size: 12.5px; color: var(--dc-muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .cc-preview .dc-notes span { background: var(--dc-embed); border-radius: 5px; padding: 1px 7px; }
+  .cc-preview .dc-dm { margin: 12px 16px 0 14px; border: 1px dashed var(--dc-secondary); border-radius: 8px; padding: 8px 0 4px; }
+  .cc-preview .dc-dm .dc-msg { margin-top: 0; padding: 4px 10px; }
+  .cc-preview .dc-dm-label { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dc-muted); padding: 0 10px 4px; }
+  .cc-preview .dc-modal { margin: 12px 16px 0 68px; max-width: 440px; background: var(--dc-bg); border: 1px solid var(--dc-border); border-radius: 10px; box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.5); overflow: hidden; }
+  .cc-preview .dc-modal-title { padding: 14px 16px 4px; font-size: 17px; font-weight: 700; }
+  .cc-preview .dc-modal-body { padding: 6px 16px 14px; display: grid; gap: 12px; }
+  .cc-preview .dc-modal-field { display: grid; gap: 6px; }
+  .cc-preview .dc-modal-field > span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--dc-muted); }
+  .cc-preview .dc-modal-field i { color: #da373c; font-style: normal; }
+  .cc-preview .dc-modal-input { min-height: 38px; background: var(--dc-select); border: 1px solid var(--dc-border); border-radius: 6px; padding: 9px 10px; color: var(--dc-muted); font-size: 14px; overflow-wrap: anywhere; }
+  .cc-preview .dc-modal-input.tall { min-height: 76px; }
+  .cc-preview .dc-modal-foot { display: flex; justify-content: flex-end; align-items: center; gap: 14px; padding: 10px 16px; background: var(--dc-embed); font-size: 14px; font-weight: 600; }
+  .cc-preview .dc-modal-foot .go { background: #5865f2; color: #fff; border-radius: 4px; padding: 6px 14px; }
+  @media (max-width: 520px) {
+    .cc-preview .dc { font-size: 14px; }
+    .cc-preview .dc-msg { grid-template-columns: 32px minmax(0, 1fr); gap: 0 10px; padding: 4px 10px; }
+    .cc-preview .dc-av { width: 32px; height: 32px; }
+    .cc-preview .dc-reply { padding-left: 42px; }
+    .cc-preview .dc-sys { padding: 10px 10px 2px; }
+    .cc-preview .dc-dm { margin: 12px 8px 0; }
+    .cc-preview .dc-modal { margin: 12px 10px 0; }
+    .cc-preview .dc-embed { padding: 8px 10px 10px; }
+    .cc-preview .dc-e-thumb { width: 56px; height: 56px; }
+    .cc-preview .dc-e-fields { grid-template-columns: minmax(0, 1fr); }
+    .cc-preview .dc-e-field.inline { grid-column: 1 / -1; }
+    .cc-preview .dc-btn { padding: 2px 12px; }
+  }
 </style>
