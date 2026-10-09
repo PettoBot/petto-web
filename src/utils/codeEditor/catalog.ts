@@ -160,6 +160,7 @@ export const FUNCTIONS: CatalogFunction[] = [
   F('server', 'getChannel', 'getChannel "ID"', 'A channel: name, topic, type…', 'Un canal: nombre, tema, tipo…', 'Um canal: nome, tópico, tipo…'),
   F('server', 'targetHasRole', 'targetHasRole "userID" "roleID"', 'If another member has a role', 'Si otro miembro tiene un rol', 'Se outro membro tem um cargo'),
   F('actions', 'addReactions', 'addReactions "👍" "❤️"', 'Several reactions at once', 'Varias reacciones a la vez', 'Várias reações de uma vez'),
+  F('actions', 'execCC', 'execCC "name" 30', 'Runs another command with code of this server, after this one (or after a delay of up to 5 minutes). It can pass data, read with .ExecData.', 'Ejecuta otro comando con código de este servidor, después de este (o tras una espera de hasta 5 minutos). Puede pasar datos, que se leen con .ExecData.', 'Executa outro comando com código deste servidor, depois deste (ou depois de uma espera de até 5 minutos). Pode passar dados, lidos com .ExecData.'),
   F('actions', 'deleteResponse', 'deleteResponse 10', 'Deletes the answer after some seconds', 'Borra la respuesta tras unos segundos', 'Apaga a resposta depois de alguns segundos'),
   F('data', 'dbRank', 'dbRank "coins" .User.ID', 'Place in a ranking (1 is the highest)', 'Puesto en un ranking (1 es el más alto)', 'Posição num ranking (1 é o maior)'),
   F('data', 'dbBottom', 'dbBottom "coins" 10', 'The lowest numbers', 'Los números más bajos', 'Os menores números'),
@@ -192,7 +193,7 @@ export const DATA: [string, Texts][] = [
   ['.RawArgs', { en: 'Everything after the command', es: 'Todo lo que va tras el comando', pt: 'Tudo depois do comando' }],
   ['.Cmd', { en: 'Name of the command', es: 'Nombre del comando', pt: 'Nome do comando' }],
   ['.Prefix', { en: 'Prefix that started it', es: 'Prefijo que lo inició', pt: 'Prefixo que iniciou' }],
-  ['.Trigger', { en: '"command", "button", "select", "modal" or "reaction"', es: '"command", "button", "select", "modal" o "reaction"', pt: '"command", "button", "select", "modal" ou "reaction"' }],
+  ['.Trigger', { en: '"command", "button", "select", "modal", "reaction" or "exec"', es: '"command", "button", "select", "modal", "reaction" o "exec"', pt: '"command", "button", "select", "modal", "reaction" ou "exec"' }],
   ['.Button.ID', { en: 'Id of the button or menu used', es: 'Id del botón o menú usado', pt: 'Id do botão ou menu usado' }],
   ['.Button.Data', { en: 'Data of the button', es: 'Data del botón', pt: 'Data do botão' }],
   ['.Values', { en: 'Options chosen in a menu', es: 'Opciones elegidas en un menú', pt: 'Opções escolhidas num menu' }],
@@ -240,6 +241,8 @@ DATA.push(
   ['.Message.ReplyToID', { en: 'ID of the message it answers', es: 'ID del mensaje al que responde', pt: 'ID da mensagem que responde' }],
   ['.Modal.ID', { en: 'Id of the form sent', es: 'Id del formulario enviado', pt: 'Id do formulário enviado' }],
   ['.Modal.Data', { en: 'Data of the form', es: 'Data del formulario', pt: 'Data do formulário' }],
+  ['.ExecData', { en: 'The data that execCC passed, or nothing', es: 'Los datos que pasó execCC, o nada', pt: 'Os dados que o execCC passou, ou nada' }],
+  ['.ExecBy', { en: 'The command that ran this one with execCC', es: 'El comando que ejecutó este con execCC', pt: 'O comando que executou este com execCC' }],
 );
 
 /** What the parts of the data are, for the first step of a path such as `.User`. */

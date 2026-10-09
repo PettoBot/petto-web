@@ -2092,4 +2092,6 @@ export const dashPt: Record<string, string> = {
   "Insert": "Inserir",
   "Insert...": "Inserir...",
   "Tab and Shift+Tab indent, Ctrl+Space suggests, Ctrl+S saves, Ctrl+Enter runs the test.": "Tab e Shift+Tab recuam, Ctrl+Espaço sugere, Ctrl+S salva, Ctrl+Enter roda o teste.",
+  "Runs {name}": "Executa {name}",
+  "Runs {name} after {s} s": "Executa {name} depois de {s} s",
 };

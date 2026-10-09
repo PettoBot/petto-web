@@ -2092,4 +2092,6 @@ export const dashEs: Record<string, string> = {
   "Insert": "Insertar",
   "Insert...": "Insertar...",
   "Tab and Shift+Tab indent, Ctrl+Space suggests, Ctrl+S saves, Ctrl+Enter runs the test.": "Tab y Shift+Tab sangran, Ctrl+Espacio sugiere, Ctrl+S guarda, Ctrl+Enter ejecuta la prueba.",
+  "Runs {name}": "Ejecuta {name}",
+  "Runs {name} after {s} s": "Ejecuta {name} tras {s} s",
 };
