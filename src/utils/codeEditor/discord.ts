@@ -153,6 +153,8 @@ export function renderReactions(reactions: unknown[]) {
 export interface PreviewTexts {
   onlyYou: string; dmTo: string; otherChannel: string; after: string; updated: string; deletedAfter: string;
   form: string; submit: string; cancel: string; usedButton: string; usedMenu: string; deleted: string; nothing: string;
+  /** execCC: "Runs {name}" and "Runs {name} after {s} s". */
+  execRuns?: string; execRunsAfter?: string;
 }
 export interface PreviewOptions {
   ctx: RenderContext;
@@ -161,6 +163,8 @@ export interface PreviewOptions {
   bot: { name: string; avatar: string };
   /** What the person typed (a command), or the id of the button or menu used. */
   trigger: { mode: string; text: string };
+  /** The prefix of the server, to show the commands that execCC runs as someone would type them. */
+  prefix?: string;
 }
 
 interface Message { author: 'user' | 'bot'; content?: string; embed?: any; components?: any; reactions?: unknown[]; ephemeral?: boolean; notes?: string[]; deleted?: boolean; head?: string; dm?: boolean }
@@ -219,6 +223,13 @@ export function renderPreview(output: string, effects: any[], o: PreviewOptions)
       case 'respond': parts.push(renderMessage({ author: 'bot', ...base, ephemeral: Boolean(e.ephemeral) }, o)); break;
       case 'update': parts.push(renderMessage({ author: 'bot', ...base, head: o.t.updated }, o)); break;
       case 'modal': parts.push(renderModal(e.modal ?? e, o)); break;
+      case 'execCC': {
+        // Another command with code runs after this one: a line in the channel, like a button that was used.
+        const name = `${o.prefix ?? ''}${String(e.name ?? '').trim().replace(/^[^A-Za-z0-9_-]+/, '').toLowerCase() || '…'}`;
+        const text = e.delay ? fill(o.t.execRunsAfter ?? 'Runs {name} after {s} s', { name, s: seconds(e.delay) }) : fill(o.t.execRuns ?? 'Runs {name}', { name });
+        parts.push(`<div class="dc-sys">${ICONS.arrow}<span>${esc(text)}</span></div>`);
+        break;
+      }
       default: break;
     }
   }
