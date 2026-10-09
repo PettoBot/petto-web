@@ -19,7 +19,7 @@ const categoryOf: Record<string, string[]> = {
   tickets: ['ticket'],
   leveling: ['level', 'rank', 'top', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
-  automation: ['automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel'],
+  automation: ['automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity'],
   community: ['remind', 'invites', 'afk', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes'],
   onboarding: ['welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
