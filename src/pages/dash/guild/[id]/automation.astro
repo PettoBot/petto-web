@@ -3,7 +3,9 @@ export const prerender = false;
 import DashAutomation from '../../../../components/DashAutomation.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
+import { validateTemplate } from '../../../../utils/embedSchema';
+import { buildDiscordMessage } from '../../../../utils/embedSend';
 import { runBatched } from '../../../../utils/concurrency';
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
@@ -253,13 +255,32 @@ if (Astro.request.method === 'POST') {
     saved = true;
   } else if (action === 'add_reactionrole') {
     const channelId = String(form.get('channel_id') ?? '');
-    const messageId = String(form.get('message_id') ?? '').trim();
+    let messageId = String(form.get('message_id') ?? '').trim();
+    const embedName = String(form.get('embed_template') ?? '').trim();
     const emoji = String(form.get('emoji') ?? '').trim().slice(0, 100);
     const roleId = String(form.get('role_id') ?? '');
     const mode = String(form.get('mode') ?? 'toggle');
-    const interactionType = String(form.get('interaction_type') ?? 'reaction') === 'button' ? 'button' : 'reaction';
+    let interactionType = String(form.get('interaction_type') ?? 'reaction') === 'button' ? 'button' : 'reaction';
     const buttonLabel = String(form.get('button_label') ?? '').trim().slice(0, 80) || null;
-    if (channelId && messageId && emoji && roleId) {
+    let createdMessage = false;
+    // A saved embed instead of a message id: Petto posts the message itself and puts the role button on it.
+    if (channelId && !messageId && embedName) {
+      const templateRes = await fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&name=eq.${encodeURIComponent(embedName)}&select=data`, { headers: apiHeaders });
+      const row = templateRes.ok ? (await templateRes.json())[0] : null;
+      const checked = row ? validateTemplate(row.data) : null;
+      if (!checked || !checked.ok) reactionRoleError = dt('That saved embed was not found.');
+      else if (checked.data.v2) reactionRoleError = dt('A V2 design cannot hold role buttons. Pick a classic embed.');
+      else {
+        const details = await getGuildDetails(id, botToken);
+        const message = buildDiscordMessage(checked.data, {
+          userId: String(session.userId), userName: String(session.username ?? 'you'), serverName: details?.name ?? 'this server', memberCount: details?.approximate_member_count ?? null,
+        }, { userAvatar: session.avatar ?? null, serverIcon: details?.icon ? `https://cdn.discordapp.com/icons/${id}/${details.icon}.png?size=256` : null });
+        const sendRes = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, { method: 'POST', headers: { Authorization: 'Bot ' + botToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message.content, embeds: message.embeds, allowed_mentions: { parse: [] } }) });
+        if (!sendRes.ok) reactionRoleError = dt("Petto couldn't post the message there. Check the channel and its permissions.");
+        else { messageId = String((await sendRes.json()).id); createdMessage = true; interactionType = 'button'; }
+      }
+    } else if (channelId && !messageId) reactionRoleError = dt('Type a message ID or pick a saved embed.');
+    if (!reactionRoleError && channelId && messageId && emoji && roleId) {
       if (interactionType === 'reaction') {
         const customMatch = emoji.match(/^<a?:(\w+):(\d+)>$/);
         const reactionParam = customMatch ? customMatch[1] + ':' + customMatch[2] : emoji;
@@ -280,7 +301,9 @@ if (Astro.request.method === 'POST') {
         }
         saved = !reactionRoleError;
       }
-    }
+      // A message that Petto posted for this and that ended with no button would be left over, so it is taken down.
+      if (reactionRoleError && createdMessage) await deleteDiscordMessage(channelId, messageId);
+    } else if (!reactionRoleError && createdMessage) await deleteDiscordMessage(channelId, messageId);
   } else if (action === 'edit_reactionrole') {
     const roleBindingId = String(form.get('id') ?? '');
     const roleId = String(form.get('role_id') ?? '').trim();
