@@ -97,6 +97,8 @@ export const dashPt: Record<string, string> = {
   "You reached the limit of rules for this server.": "Você chegou ao limite de regras deste servidor.",
   "That embed does not exist. Create it in Embeds first.": "Esse embed não existe. Crie-o primeiro em Embeds.",
   "The bot did not answer in time, try again in a moment.": "O bot não respondeu a tempo, tente de novo em um momento.",
+  "Managed by an integration, Petto cannot give it": "É de uma integração, o Petto não pode dar",
+  "Above Petto's highest role: move Petto's role above it": "Está acima do cargo mais alto do Petto: suba o cargo do Petto acima dele",
   "Announcement channel": "Canal de anúncios",
   "Stage channel": "Canal de palco",
   "Create counter": "Criar contador",

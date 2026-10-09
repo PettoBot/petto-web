@@ -97,6 +97,8 @@ export const dashEs: Record<string, string> = {
   "You reached the limit of rules for this server.": "Llegaste al límite de reglas de este servidor.",
   "That embed does not exist. Create it in Embeds first.": "Ese embed no existe. Créalo primero en Embeds.",
   "The bot did not answer in time, try again in a moment.": "El bot no respondió a tiempo, inténtalo de nuevo en un momento.",
+  "Managed by an integration, Petto cannot give it": "Es de una integración, Petto no puede darlo",
+  "Above Petto's highest role: move Petto's role above it": "Está por encima del rol más alto de Petto: sube el rol de Petto por encima",
   "Announcement channel": "Canal de anuncios",
   "Stage channel": "Canal de escenario",
   "Create counter": "Crear contador",

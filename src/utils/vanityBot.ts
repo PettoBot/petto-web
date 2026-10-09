@@ -91,9 +91,10 @@ export async function getVanityOverview(astro: { locals?: any }, guildId: string
     const rawRoles: any[] = await rolesRes.json();
     const rawChannels: any[] = await channelsRes.json();
 
-    // The roles the bot can hand out: not an integration's role and below the bot's own role (the one Discord makes for it).
-    const botId = Buffer.from(botToken.split('.')[0], 'base64').toString('utf8');
-    const botTop = Math.max(-1, ...rawRoles.filter((role) => role.tags?.bot_id === botId).map((role) => Number(role.position)));
+    // The roles the bot can hand out: not an integration's role and below the highest role the bot itself has. The bot marks the
+    // roles it has (`mine`) in its saved copy of the server. Until it does, nothing is claimed about the position, because the role
+    // Discord makes for a bot is often not the highest one it has, and the bot checks the role again when a rule is saved.
+    const botTop = Math.max(-1, ...rawRoles.filter((role) => role.mine === true).map((role) => Number(role.position)));
     const roles: VanityRole[] = rawRoles
       .filter((role) => role.id !== guildId)
       .sort((a, b) => b.position - a.position)
