@@ -1,7 +1,7 @@
 // Every guild dashboard page needs the user's full Discord guild list at least once (to verify
 // they can actually manage this server), and the sidebar's server-switcher needs the exact same
 // list again on the exact same page load. Without this, that's two identical Discord API calls
-// per request. A short in-memory TTL cache (same idea YAGPDB uses for its own Discord API reads)
+// per request. A short in-memory TTL cache
 // collapses that back down to one real fetch, and also covers rapid dashboard nagivation.
 import { edgeDelete, edgeGet, edgePut } from './edgeCache';
 import { memoPerRequest } from './requestMemo';
