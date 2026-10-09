@@ -16,7 +16,7 @@ interface AutoResponder {
 }
 interface StickyMessage { channelId: string; content: string; embedTemplate: string; }
 interface DisabledCommand { id: number; command: string; channelId: string | null; }
-interface ReactionRole { id: number; messageId: string; emoji: string; roleId: string; mode: string; interactionType: string; buttonLabel: string | null; }
+interface ReactionRole { id: number; channelId?: string; messageId: string; emoji: string; roleId: string; mode: string; interactionType: string; buttonLabel: string | null; }
 interface ReactionTrigger { id: number; emoji: string; trigger: string; ownerId: string; matchMode: string; channelIds: string[]; roleIds: string[]; caseSensitive: boolean; cooldownSeconds: number; enabled: boolean; }
 interface ReactionMessageConfig { id: number; channelId: string; emojis: string[]; }
 interface ManagedWebhook { id: number; name: string; channelId: string; webhookId: string; defaultUsername: string | null; defaultAvatarUrl: string | null; defaultMessage: string | null; enabled: boolean; }
@@ -24,7 +24,7 @@ interface ServerCounter { id: number; channelId: string; option: string; type: s
 interface AutoThread { channelId: string; nameTemplate: string; messageText: string | null; embedTemplate: string | null; archiveMinutes: number; }
 interface CommandAlias { id: number; name: string; command: string; }
 interface AutoTimer { id: number; channelId: string; intervalMs: number; message: string; nextRunAt: string; }
-interface StarboardSettings { channel_id: string | null; threshold: number; emoji: string; selfstar: boolean; timestamp: boolean; jumpurl: boolean; attachments: boolean; embed_template?: string | null; ignoredChannelIds: string[]; ignoredRoleIds: string[]; ignoredUserIds: string[]; }
+interface StarboardSettings { channel_id: string | null; threshold: number; emoji: string; color?: number | null; selfstar: boolean; timestamp: boolean; jumpurl: boolean; attachments: boolean; embed_template?: string | null; ignoredChannelIds: string[]; ignoredRoleIds: string[]; ignoredUserIds: string[]; }
 interface VoiceMasterSettings { creatorChannelId: string; panelChannelId: string; panelMessageId: string | null; categoryId: string | null; defaultLimit: number; defaultName: string; }
 
 interface Props {
@@ -43,7 +43,7 @@ interface Props {
   reactionMessages: ReactionMessageConfig[];
   autoThreads: AutoThread[];
   roles: { id: string; name: string }[];
-  channels: { id: string; name: string }[];
+  channels: { id: string; name: string; type?: number }[];
   embedTemplateNames: string[];
   saved: boolean;
   reactionRoleError?: string | null;
@@ -51,6 +51,8 @@ interface Props {
   aliases: CommandAlias[];
   timers: AutoTimer[];
   starboard: StarboardSettings | null;
+  stickyRolesEnabled?: boolean;
+  stickyRolesSaved?: number;
   voiceMaster: VoiceMasterSettings | null;
   voiceChannels: { id: string; name: string }[];
   channelCategories: { id: string; name: string }[];
@@ -58,10 +60,11 @@ interface Props {
   serverCounters: ServerCounter[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, prefix = '!', customCommands, premiumActive, autoResponders, stickyMessages, disabledCommands, reactionRoles, reactionTriggers, reactionMessages, autoThreads, roles, channels, embedTemplateNames, saved, reactionRoleError, error, aliases, timers, starboard, voiceMaster, voiceChannels, channelCategories, managedWebhooks, serverCounters, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, prefix = '!', customCommands, premiumActive, autoResponders, stickyMessages, disabledCommands, reactionRoles, reactionTriggers, reactionMessages, autoThreads, roles, channels, embedTemplateNames, saved, reactionRoleError, error, aliases, timers, starboard, voiceMaster, voiceChannels, channelCategories, managedWebhooks, serverCounters, stickyRolesEnabled = false, stickyRolesSaved = 0, section } = Astro.props;
 
 const ARCHIVE_LABELS: Record<number, string> = { 60: '1 hour', 1440: '1 day', 4320: '3 days', 10080: '1 week' };
 
+const newsChannelIds = new Set(channels.filter((c) => c.type === 5).map((c) => c.id));
 function channelName(id: string) {
   return channels.find((c) => c.id === id)?.name ?? id;
 }
@@ -84,6 +87,7 @@ const sectionMeta: Record<string, { label: string; description: string }> = {
   starboard: { label: dt('Starboard'), description: dt('Configure how highlighted messages are collected and displayed.') },
   voicemaster: { label: dt('VoiceMaster'), description: dt('Configure the temporary voice channel system and its control panel.') },
   webhooks: { label: dt('Webhooks'), description: dt('Manage multiple webhooks and send customized messages from one place.') },
+  'sticky-roles': { label: dt('Sticky roles'), description: dt('Give members back the roles they had when they come back to the server.') },
   counters: { label: dt('Live counters'), description: dt('Create multiple live counters with their own channel, format, and interval.') },
 };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'overview';
@@ -96,7 +100,7 @@ const sectionIcons: Record<string, string> = {
   'custom-commands': 'ph:chat-circle-dots-fill', autoresponders: 'ph:robot-fill', 'sticky-messages': 'ph:push-pin-fill',
   'reaction-roles': 'ph:smiley-fill', 'reaction-triggers': 'ph:smiley-fill', 'reaction-messages': 'ph:chat-circle-dots-fill',
   'auto-threads': 'ph:chats-circle-fill', 'disabled-commands': 'ph:prohibit-fill', aliases: 'ph:command-fill',
-  timers: 'ph:timer-fill', starboard: 'ph:star-fill', voicemaster: 'ph:speaker-high-fill', webhooks: 'ph:webhooks-logo-fill', counters: 'ph:chart-line-up-fill',
+  timers: 'ph:timer-fill', starboard: 'ph:star-fill', voicemaster: 'ph:speaker-high-fill', webhooks: 'ph:webhooks-logo-fill', counters: 'ph:chart-line-up-fill', 'sticky-roles': 'ph:arrow-counter-clockwise-fill',
 };
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'overview' ? 'automation-overview' : selectedSection} pageTitle={selectedMeta.label}>
@@ -128,10 +132,15 @@ const sectionIcons: Record<string, string> = {
     <h2><span class="am-h2-icon" style="--c:#c792ea"><Icon name="ph:command-fill" width="14" height="14" /></span><Fragment set:html={dth('Command aliases <span class="am-count">{a}</span>', { a: (aliases.length) })} /></h2>
     <div class="am-list">
       {aliases.map((a) => (
-        <div class="am-row">
-          <code class="am-row-key">{prefix}{a.name}</code><span class="am-row-val" title={a.command}>{a.command}</span>
-          <form method="POST"><input type="hidden" name="action" value="delete_alias" /><input type="hidden" name="name" value={a.name} /><button type="submit" class="am-del"><Icon name="ph:trash-fill" width="13" height="13" /></button></form>
-        </div>
+        <details class="am-ar">
+          <summary class="am-row"><code class="am-row-key">{prefix}{a.name}</code><span class="am-row-val" title={a.command}>{a.command}</span><Icon name="ph:caret-right-bold" width="12" height="12" class="am-ar-chevron" /></summary>
+          <form method="POST" class="am-add am-add-wide am-ar-edit">
+            <input type="hidden" name="action" value="add_alias" /><input type="hidden" name="name" value={a.name} />
+            <input type="text" name="command" value={a.command} maxlength="500" required />
+            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save')}</button>
+          </form>
+          <form method="POST" class="am-ar-delete"><input type="hidden" name="action" value="delete_alias" /><input type="hidden" name="name" value={a.name} /><button type="submit" class="am-del-text"><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete')}</button></form>
+        </details>
       ))}
     </div>
     <form method="POST" class="am-add">
@@ -158,6 +167,17 @@ const sectionIcons: Record<string, string> = {
       <input type="hidden" name="action" value="create_webhook" /><select name="channel_id" required><option value="" disabled selected>{dt('Channel')}</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select><input type="text" name="name" placeholder={dt('Webhook name')} maxlength="80" required /><input type="text" name="default_username" placeholder={dt('Default username')} maxlength="80" /><input type="url" name="default_avatar_url" placeholder={dt('Default avatar URL')} /><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Create')}</button>
     </form>
     {managedWebhooks.length > 0 && <form method="POST" class="am-add am-add-wide"><input type="hidden" name="action" value="send_webhook" /><select name="webhook_id" required><option value="" disabled selected>{dt('Webhook')}</option>{managedWebhooks.map((w) => <option value={w.id}>{w.name} · #{channelName(w.channelId)}</option>)}</select><textarea name="message" placeholder={dt('Message (empty uses the default)')} maxlength="2000"></textarea><input type="text" name="username" placeholder={dt('Username override')} maxlength="80" /><input type="url" name="avatar_url" placeholder={dt('Avatar URL override')} /><div class="am-add-row"><input type="text" name="embed_title" placeholder={dt('Embed title')} maxlength="256" /><input type="text" name="embed_description" placeholder={dt('Embed description')} maxlength="4096" /><ColorPicker name="embed_color" value="#8399ff" label={dt('Embed color')} /></div><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="12" height="12" />{dt('Send')}</button></form>}
+  </div>
+
+  <div class:list={['am-section', showSection('sticky-roles')]} data-section="sticky-roles">
+    <h2><span class="am-h2-icon" style="--c:#5eead4"><Icon name="ph:arrow-counter-clockwise-fill" width="14" height="14" /></span>{dt('Sticky roles')}</h2>
+    <p class="am-hint am-section-intro">{dt('When this is on, Petto remembers the roles of a member who leaves and gives them back once if the member returns.')}</p>
+    <form method="POST" class="am-add am-add-wide">
+      <input type="hidden" name="action" value="save_sticky_roles" />
+      <label class="am-check"><input type="checkbox" name="enabled" checked={stickyRolesEnabled} />{dt('Give back the roles of members who return')}</label>
+      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save')}</button>
+    </form>
+    <p class="am-hint">{dt('Members waiting to get their roles back: {a}', { a: stickyRolesSaved >= 1000 ? '1000+' : stickyRolesSaved })}</p>
   </div>
 
   <div class:list={['am-section', showSection('counters')]} data-section="counters">
@@ -205,18 +225,23 @@ const sectionIcons: Record<string, string> = {
 
   <div class:list={['am-section', showSection('reaction-messages')]} data-section="reaction-messages">
     <h2><span class="am-h2-icon" style="--c:#f59e0b"><Icon name="ph:chat-circle-dots-fill" width="14" height="14" /></span><Fragment set:html={dth('React to every message <span class="am-count">{a}</span>', { a: (reactionMessages.length) })} /></h2>
-    <p class="am-hint am-section-intro">{dt('Add up to three emojis to every new message in a channel. Save the channel with no emojis to disable it.')}</p>
+    <p class="am-hint am-section-intro">{dt('Add up to five emojis to every new message in a channel, announcement channels included (posts from followed channels and webhooks get them too). Save the channel with no emojis to disable it.')}</p>
     <div class="am-list">
       {reactionMessages.map((r) => (
-        <div class="am-row">
-          <span class="am-row-key">#{channelName(r.channelId)}</span><span class="am-row-val">{r.emojis.join(' ')}</span>
-          <form method="POST"><input type="hidden" name="action" value="delete_reaction_messages" /><input type="hidden" name="channel_id" value={r.channelId} /><button type="submit" class="am-del"><Icon name="ph:trash-fill" width="13" height="13" /></button></form>
-        </div>
+        <details class="am-ar">
+          <summary class="am-row"><span class="am-row-key">{newsChannelIds.has(r.channelId) ? '📢 ' : '#'}{channelName(r.channelId)}</span><span class="am-row-val">{r.emojis.join(' ')}</span><span class="am-row-mode">{r.emojis.length}/5</span><Icon name="ph:caret-right-bold" width="12" height="12" class="am-ar-chevron" /></summary>
+          <form method="POST" class="am-add am-add-wide am-ar-edit">
+            <input type="hidden" name="action" value="save_reaction_messages" /><input type="hidden" name="channel_id" value={r.channelId} />
+            <div class="am-add-row">{[0, 1, 2, 3, 4].map((n) => <input type="text" name="emojis" placeholder={n === 0 ? dt('Emoji 1') : dt('Emoji {a} (optional)', { a: n + 1 })} maxlength="100" value={r.emojis[n] ?? ''} required={n === 0} />)}</div>
+            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save channel')}</button>
+          </form>
+          <form method="POST" class="am-ar-delete"><input type="hidden" name="action" value="delete_reaction_messages" /><input type="hidden" name="channel_id" value={r.channelId} /><button type="submit" class="am-del-text"><Icon name="ph:trash-fill" width="12" height="12" />{dt('Remove channel')}</button></form>
+        </details>
       ))}
     </div>
     <form method="POST" class="am-add am-add-wide">
       <input type="hidden" name="action" value="save_reaction_messages" />
-      <div class="am-add-row"><select name="channel_id" required><option value="" disabled selected>{dt('Channel')}</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select><input type="text" name="emojis" placeholder={dt('Emoji 1')} maxlength="100" required /><input type="text" name="emojis" placeholder={dt('Emoji 2 (optional)')} maxlength="100" /><input type="text" name="emojis" placeholder={dt('Emoji 3 (optional)')} maxlength="100" /></div>
+      <div class="am-add-row"><select name="channel_id" required><option value="" disabled selected>{dt('Channel')}</option>{channels.map((c) => <option value={c.id}>{c.type === 5 ? '📢 ' : '#'}{c.name}</option>)}</select>{[0, 1, 2, 3, 4].map((n) => <input type="text" name="emojis" placeholder={n === 0 ? dt('Emoji 1') : dt('Emoji {a} (optional)', { a: n + 1 })} maxlength="100" required={n === 0} />)}</div>
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save channel')}</button>
     </form>
   </div>
@@ -225,10 +250,16 @@ const sectionIcons: Record<string, string> = {
     <h2><span class="am-h2-icon" style="--c:#5eead4"><Icon name="ph:timer-fill" width="14" height="14" /></span><Fragment set:html={dth('Repeating timers <span class="am-count">{a}</span>', { a: (timers.length) })} /></h2>
     <div class="am-list">
       {timers.map((t) => (
-        <div class="am-row">
-          <span class="am-row-key">#{channelName(t.channelId)}</span><span class="am-row-mode">{Math.round(t.intervalMs / 60000)} min</span><span class="am-row-val" title={t.message}>{t.message}</span>
-          <form method="POST"><input type="hidden" name="action" value="delete_timer" /><input type="hidden" name="id" value={t.id} /><button type="submit" class="am-del"><Icon name="ph:trash-fill" width="13" height="13" /></button></form>
-        </div>
+        <details class="am-ar">
+          <summary class="am-row"><span class="am-row-key">#{channelName(t.channelId)}</span><span class="am-row-mode">{Math.round(t.intervalMs / 60000)} min</span><span class="am-row-val" title={t.message}>{t.message}</span><Icon name="ph:caret-right-bold" width="12" height="12" class="am-ar-chevron" /></summary>
+          <form method="POST" class="am-add am-add-wide am-ar-edit">
+            <input type="hidden" name="action" value="edit_timer" /><input type="hidden" name="id" value={t.id} />
+            <div class="am-add-row"><input type="number" name="interval_minutes" min="10" max="525600" value={Math.round(t.intervalMs / 60000)} required /><span class="am-inline-label">minutes</span></div>
+            <input type="text" name="message" value={t.message} maxlength="2000" required />
+            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save timer')}</button>
+          </form>
+          <form method="POST" class="am-ar-delete"><input type="hidden" name="action" value="delete_timer" /><input type="hidden" name="id" value={t.id} /><button type="submit" class="am-del-text"><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete')}</button></form>
+        </details>
       ))}
     </div>
     <form method="POST" class="am-add am-add-wide">
@@ -243,6 +274,7 @@ const sectionIcons: Record<string, string> = {
     <form method="POST" class="am-add am-add-wide">
       <input type="hidden" name="action" value="save_starboard" />
       <div class="am-add-row"><select name="channel_id"><option value="">{dt('Disabled / no channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === starboard?.channel_id}>#{c.name}</option>)}</select><input type="number" name="threshold" min="1" max="100" value={starboard?.threshold ?? 3} required /><input type="text" name="emoji" maxlength="100" value={starboard?.emoji ?? '⭐'} placeholder={dt('Emoji')} required /></div>
+      <ColorPicker name="color" value={`#${(starboard?.color ?? 0xffc107).toString(16).padStart(6, '0')}`} label={dt('Color of the repost')} />
       <label class="am-check"><input type="checkbox" name="selfstar" checked={starboard?.selfstar ?? false} />{dt('Count the message author\'s own reaction')}</label>
       <label class="am-check"><input type="checkbox" name="timestamp" checked={starboard?.timestamp ?? true} />{dt('Show the original timestamp')}</label>
       <label class="am-check"><input type="checkbox" name="jumpurl" checked={starboard?.jumpurl ?? true} />{dt('Include a jump link to the original')}</label>
@@ -483,14 +515,19 @@ const sectionIcons: Record<string, string> = {
     {reactionRoleError && <p class="am-error"><Icon name="ph:warning-fill" width="13" height="13" />{reactionRoleError}</p>}
     <div class="am-list">
       {reactionRoles.map((r) => (
-        <div class="am-row">
-          <span class="am-row-key">{r.interactionType === 'button' ? 'button' : r.emoji}</span>
-          <span class="am-row-val" title={roleName(r.roleId)}>{roleName(r.roleId)}</span>
-          <span class="am-row-mode">{r.interactionType} · {r.mode}</span>
-          <form method="POST"><input type="hidden" name="action" value="delete_reactionrole" /><input type="hidden" name="id" value={r.id} />
-            <button type="submit" class="am-del"><Icon name="ph:trash-fill" width="13" height="13" /></button>
+        <details class="am-ar">
+          <summary class="am-row"><span class="am-row-key">{r.interactionType === 'button' ? (r.buttonLabel || 'button') : r.emoji}</span><span class="am-row-val" title={roleName(r.roleId)}>{roleName(r.roleId)}</span><span class="am-row-mode">{r.interactionType} · {r.mode}</span>{r.channelId && <a class="am-row-mode" href={`https://discord.com/channels/${guildId}/${r.channelId}/${r.messageId}`} target="_blank" rel="noopener" onclick="event.stopPropagation()">{dt('Open message')}</a>}<Icon name="ph:caret-right-bold" width="12" height="12" class="am-ar-chevron" /></summary>
+          <form method="POST" class="am-add am-add-wide am-ar-edit">
+            <input type="hidden" name="action" value="edit_reactionrole" /><input type="hidden" name="id" value={r.id} />
+            <div class="am-add-row">
+              <select name="role_id" required>{roles.map((role) => <option value={role.id} selected={role.id === r.roleId}>{role.name}</option>)}</select>
+              <select name="mode"><option value="toggle" selected={r.mode === 'toggle'}>toggle</option><option value="add" selected={r.mode === 'add'}>{dt('add only')}</option><option value="remove" selected={r.mode === 'remove'}>{dt('remove only')}</option></select>
+              {r.interactionType === 'button' && <input type="text" name="button_label" value={r.buttonLabel ?? ''} placeholder={dt('Button label (optional)')} maxlength="80" />}
+            </div>
+            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save')}</button>
           </form>
-        </div>
+          <form method="POST" class="am-ar-delete"><input type="hidden" name="action" value="delete_reactionrole" /><input type="hidden" name="id" value={r.id} /><button type="submit" class="am-del-text"><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete')}</button></form>
+        </details>
       ))}
     </div>
     <form method="POST" class="am-add">
@@ -499,7 +536,12 @@ const sectionIcons: Record<string, string> = {
         <option value="" disabled selected>{dt('Channel')}</option>
         {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
       </select>
-      <input type="text" name="message_id" placeholder={dt('Message ID')} maxlength="24" required />
+      <input type="text" name="message_id" list="rr-messages" placeholder={dt('Message ID')} maxlength="24" />
+      <datalist id="rr-messages">{[...new Set(reactionRoles.map((r) => r.messageId))].map((mid) => <option value={mid} />)}</datalist>
+      <select name="embed_template">
+        <option value="">{dt('Or post a new message with a saved embed')}</option>
+        {embedTemplateNames.map((name) => <option value={name}>{name}</option>)}
+      </select>
       <input type="text" name="emoji" placeholder={dt('Emoji or custom emoji')} maxlength="100" required />
       <select name="role_id" required>
         <option value="" disabled selected>{dt('Role')}</option>
@@ -518,6 +560,7 @@ const sectionIcons: Record<string, string> = {
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
     </form>
     <p class="am-hint">{dt('Use reaction mode for emoji reactions or button mode for a clickable role menu. Button mode can add up to 25 buttons to a message without another component panel.')}</p>
+    <p class="am-hint">{dt('Type the ID of a message, or pick a saved embed to post a new message with the role button on it (classic embeds only; a V2 design cannot hold role buttons). To add more buttons to that message, use its ID.')}</p>
   </div>
 
   <div class:list={['am-section', showSection('auto-threads')]} data-section="auto-threads">
