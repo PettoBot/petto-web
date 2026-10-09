@@ -24,14 +24,12 @@ interface Props {
   variableGroups?: { label: string; vars: { tok: string; desc: string }[] }[] | null;
   /** The route that stores the messages, relative to the server. The default is the Petto bot's own. */
   apiPath?: string;
-  /** How many embeds one message can hold. Petto allows 10, the Vanity bot sends one. */
+  /** How many embeds one message can hold. Petto allows 10. */
   maxEmbeds?: number;
   /** Whether the test message can be sent from here. */
   allowTestSend?: boolean;
   /** Whether link buttons can carry an emoji. */
   allowButtonEmoji?: boolean;
-  /** Which bot's variables the preview fills in. */
-  sampleSet?: 'vanity';
   /** How many messages a server can save, when there is a limit. */
   maxTemplates?: number;
   /** Shown instead of the test controls when they are off. */
@@ -43,7 +41,7 @@ async function api(guildId: string, apiPath: string, path: string, init?: Reques
   return res;
 }
 
-export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups, apiPath = 'embeds-api', maxEmbeds = 10, allowTestSend = true, allowButtonEmoji = true, maxTemplates, sampleSet, testSendNote }: Props) {
+export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups, apiPath = 'embeds-api', maxEmbeds = 10, allowTestSend = true, allowButtonEmoji = true, maxTemplates, testSendNote }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
   const [data, setData] = useState<TemplateData>(emptyTemplate());
@@ -269,7 +267,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}</div>
-              {data.v2 ? <V2Preview doc={data.v2} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} /> : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} sampleSet={sampleSet} />}
+              {data.v2 ? <V2Preview doc={data.v2} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} /> : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />}
             </div>
 
             <div className="ebr-form-col">
