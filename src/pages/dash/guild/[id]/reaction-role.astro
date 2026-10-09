@@ -1,0 +1,218 @@
+---
+export const prerender = false;
+import DashReactionRoleBuilder from '../../../../components/DashReactionRoleBuilder.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { validateTemplate } from '../../../../utils/embedSchema';
+import { buildRoleButtonComponents, buttonStyleOf, placeInRows, NO_EMOJI, MAX_BUTTONS, MAX_ROWS, PER_ROW, type RoleButtonRow } from '../../../../utils/reactionRoleButtons';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+// The builder of reaction roles: a message with an embed and rows of role buttons. It posts or edits the message, saves each button as a
+// reaction role (the bot answers the clicks) and puts the buttons on the message.
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const DISCORD = 'https://discord.com/api/v10';
+const discordHeaders = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
+
+const [guildInfo, rolesRes, channelsRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'roles'), getGuildList(Astro, id, botToken, 'channels')]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const allRoles: any[] = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles.filter((r) => r.id !== id && !r.managed).sort((a, b) => b.position - a.position).map((r) => ({ id: String(r.id), name: String(r.name), color: Number(r.color ?? 0) }));
+const roleName = (roleId: string) => roles.find((r) => r.id === roleId)?.name;
+const allChannels: any[] = channelsRes.ok ? await channelsRes.json() : [];
+const channels = allChannels.filter((c) => c.type === 0 || c.type === 5).sort((a, b) => a.position - b.position).map((c) => ({ id: String(c.id), name: String(c.name), type: Number(c.type) }));
+
+const hexOf = (value: unknown) => (typeof value === 'number' ? `#${value.toString(16).padStart(6, '0')}` : '#f9d3e0');
+const isLink = (value: string) => /^https?:\/\/\S+$/i.test(value) && value.length <= 500;
+const CUSTOM_EMOJI = /^<a?:\w{2,32}:\d{15,25}>$/;
+const UNICODE_EMOJI = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]️?⃣)/u;
+
+type Button = { id: number | null; key: string; label: string; empty: boolean; style: number; roleId: string; mode: string; emoji: string };
+type Payload = { messageId: string; channelId: string; content: string; embed: { enabled: boolean; title: string; description: string; color: string; footer: string; image: string; thumbnail: string }; rows: Button[][] };
+
+/** Cleans what the form sent and says what is wrong with it. */
+function readPayload(raw: string): { ok: true; payload: Payload } | { ok: false; error: string } {
+  let source: any;
+  try { source = JSON.parse(raw); } catch { return { ok: false, error: dt('The form could not be read, try again.') }; }
+  const text = (value: unknown, max: number) => String(value ?? '').slice(0, max);
+  const embed = source?.embed ?? {};
+  const payload: Payload = {
+    messageId: /^\d{15,25}$/.test(String(source?.messageId ?? '')) ? String(source.messageId) : '',
+    channelId: String(source?.channelId ?? ''),
+    content: text(source?.content, 2000),
+    embed: {
+      enabled: Boolean(embed.enabled), title: text(embed.title, 256), description: text(embed.description, 4096),
+      color: /^#[0-9a-f]{6}$/i.test(String(embed.color)) ? String(embed.color) : '#f9d3e0', footer: text(embed.footer, 2048),
+      image: isLink(String(embed.image ?? '')) ? String(embed.image) : '', thumbnail: isLink(String(embed.thumbnail ?? '')) ? String(embed.thumbnail) : '',
+    },
+    rows: [],
+  };
+  if (!channels.some((c) => c.id === payload.channelId)) return { ok: false, error: dt('That channel is not in this server.') };
+  if (!payload.content.trim() && !(payload.embed.enabled && (payload.embed.title.trim() || payload.embed.description.trim()))) return { ok: false, error: dt('Write some text or turn the embed on.') };
+  const rows = Array.isArray(source?.rows) ? source.rows : [];
+  if (!rows.length || rows.length > MAX_ROWS) return { ok: false, error: dt('A message can have from 1 to 5 rows of buttons.') };
+  let total = 0;
+  for (const rawRow of rows) {
+    if (!Array.isArray(rawRow) || !rawRow.length || rawRow.length > PER_ROW) return { ok: false, error: dt('A row has from 1 to 5 buttons.') };
+    const row: Button[] = [];
+    for (const b of rawRow) {
+      total += 1;
+      const emoji = String(b?.emoji ?? '').trim();
+      const empty = Boolean(b?.empty);
+      const label = empty ? '' : text(b?.label, 80).trim();
+      if (!roleName(String(b?.roleId ?? ''))) return { ok: false, error: dt('Every button needs a role of this server.') };
+      if (emoji && !CUSTOM_EMOJI.test(emoji) && !(UNICODE_EMOJI.test(emoji) && emoji.length <= 32)) return { ok: false, error: dt('One of the emojis is not valid.') };
+      if (empty && !emoji) return { ok: false, error: dt('A button with no name needs an emoji.') };
+      if (!empty && !label && !emoji) return { ok: false, error: dt('Every button needs a name or an emoji.') };
+      const key = /^label:[0-9a-f]{8}$/.test(String(b?.key ?? '')) ? String(b.key) : '';
+      row.push({ id: Number.isInteger(b?.id) ? Number(b.id) : null, key, label, empty, style: [1, 2, 3, 4].includes(Number(b?.style)) ? Number(b.style) : 1, roleId: String(b.roleId), mode: ['toggle', 'add', 'remove'].includes(String(b?.mode)) ? String(b.mode) : 'toggle', emoji });
+    }
+    payload.rows.push(row);
+  }
+  if (total > MAX_BUTTONS) return { ok: false, error: dt('A message can have at most 25 button roles.') };
+  const seen = new Set<string>();
+  for (const b of payload.rows.flat()) {
+    if (!b.emoji) continue;
+    if (seen.has(b.emoji)) return { ok: false, error: dt('The same emoji is on two buttons of this message. Use a different emoji for each.') };
+    seen.add(b.emoji);
+  }
+  return { ok: true, payload };
+}
+
+async function discord(method: string, path: string, body?: unknown) {
+  return fetch(`${DISCORD}${path}`, { method, headers: discordHeaders, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+}
+async function rowsOfMessage(messageId: string): Promise<RoleButtonRow[] & { interaction_type?: string }[]> {
+  const res = await fetch(`${apiUrl}/rest/v1/reaction_roles?guild_id=eq.${id}&message_id=eq.${encodeURIComponent(messageId)}&select=*&order=id.asc`, { headers: apiHeaders });
+  return res.ok ? await res.json() : [];
+}
+const newKey = () => `label:${Array.from(crypto.getRandomValues(new Uint8Array(4))).map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+const embedBody = (payload: Payload) => (payload.embed.enabled && (payload.embed.title.trim() || payload.embed.description.trim() || payload.embed.footer.trim() || payload.embed.image || payload.embed.thumbnail)
+  ? [{ ...(payload.embed.title.trim() ? { title: payload.embed.title } : {}), ...(payload.embed.description.trim() ? { description: payload.embed.description } : {}), color: parseInt(payload.embed.color.slice(1), 16), ...(payload.embed.footer.trim() ? { footer: { text: payload.embed.footer } } : {}), ...(payload.embed.image ? { image: { url: payload.embed.image } } : {}), ...(payload.embed.thumbnail ? { thumbnail: { url: payload.embed.thumbnail } } : {}) }]
+  : []);
+
+/** Posts or edits the message and saves its buttons. Returns the id of the message, or what went wrong. */
+async function save(payload: Payload): Promise<{ ok: true; messageId: string } | { ok: false; error: string }> {
+  const editing = Boolean(payload.messageId);
+  let existing: any[] = [];
+  if (editing) {
+    existing = await rowsOfMessage(payload.messageId);
+    if (!existing.length || existing.some((row) => row.channel_id !== payload.channelId)) return { ok: false, error: dt('That message has no role buttons made here, so it cannot be edited.') };
+    const me = await discord('GET', '/users/@me');
+    const message = await discord('GET', `/channels/${payload.channelId}/messages/${payload.messageId}`);
+    if (!message.ok) return { ok: false, error: dt("Couldn't fetch that message.") };
+    if (me.ok && (await message.json()).author?.id !== (await me.json()).id) return { ok: false, error: dt('Petto did not send that message, so it cannot change it.') };
+  }
+  let messageId = payload.messageId;
+  let created = false;
+  if (!editing) {
+    const posted = await discord('POST', `/channels/${payload.channelId}/messages`, { content: payload.content || undefined, embeds: embedBody(payload), allowed_mentions: { parse: [] } });
+    if (!posted.ok) return { ok: false, error: dt("Petto couldn't post the message there. Check the channel and its permissions.") };
+    messageId = String((await posted.json()).id);
+    created = true;
+  }
+  const insertedIds: number[] = [];
+  const undo = async () => {
+    for (const rowId of insertedIds) await fetch(`${apiUrl}/rest/v1/reaction_roles?id=eq.${rowId}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+    if (created) await discord('DELETE', `/channels/${payload.channelId}/messages/${messageId}`);
+  };
+  const fail = async (error: string) => { await undo(); return { ok: false as const, error }; };
+
+  // What was there and is no longer in the form goes first, so the emojis it held are free for the rest.
+  const keptIds = new Set(payload.rows.flat().map((b) => b.id).filter((value): value is number => value !== null));
+  for (const row of existing) if (!keptIds.has(Number(row.id))) await fetch(`${apiUrl}/rest/v1/reaction_roles?id=eq.${row.id}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+  const existingById = new Map(existing.map((row) => [Number(row.id), row]));
+
+  for (const [r, row] of payload.rows.entries()) {
+    for (const [p, b] of row.entries()) {
+      const previous = b.id !== null ? existingById.get(b.id) : undefined;
+      const emojiKey = b.emoji || (previous && NO_EMOJI.test(previous.emoji) ? previous.emoji : (b.key || newKey()));
+      const body = { guild_id: id, channel_id: payload.channelId, message_id: messageId, emoji: emojiKey, role_id: b.roleId, mode: b.mode, interaction_type: 'button', button_label: b.empty ? '' : (b.label || null), button_style: b.style, button_row: r, button_position: p };
+      if (previous) {
+        const res = await fetch(`${apiUrl}/rest/v1/reaction_roles?id=eq.${previous.id}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
+        if (!res.ok) return fail(dt("Couldn't save that role binding."));
+      } else {
+        const res = await fetch(`${apiUrl}/rest/v1/reaction_roles`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=representation' }, body: JSON.stringify(body) });
+        if (!res.ok) return fail(dt("Couldn't save that role binding. The database may need the latest schema.sql (button_style, button_row and button_position)."));
+        const inserted = (await res.json())?.[0];
+        if (inserted?.id) insertedIds.push(Number(inserted.id));
+      }
+    }
+  }
+  const finalRows = await rowsOfMessage(messageId);
+  const built = buildRoleButtonComponents(finalRows, roleName);
+  if ('reason' in built) return fail(built.reason === 'too_many_rows' ? dt('A message can have from 1 to 5 rows of buttons.') : dt('A message can have at most 25 button roles.'));
+  const edit = await discord('PATCH', `/channels/${payload.channelId}/messages/${messageId}`, { content: payload.content || '', embeds: embedBody(payload), components: built.components, allowed_mentions: { parse: [] } });
+  if (!edit.ok) return fail(dt("Couldn't update the message components."));
+  return { ok: true, messageId };
+}
+
+// ---- The request
+let error: string | null = null;
+let saved = false;
+let savedMessageId = '';
+let initial: Record<string, unknown> = { channelId: '', content: '', embed: { enabled: true }, rows: [[{}]] };
+const messageParam = Astro.url.searchParams.get('message') ?? '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const raw = String(form.get('payload') ?? '');
+  const read = readPayload(raw);
+  if ('error' in read) { error = read.error; try { initial = JSON.parse(raw); } catch { /* keeps the blank one */ } }
+  else {
+    const result = await save(read.payload);
+    if ('error' in result) { error = result.error; initial = read.payload; }
+    else { saved = true; savedMessageId = result.messageId; }
+  }
+}
+
+// What the page shows: a message being edited (from its buttons and from Discord), or the blank one.
+// After a save the page is read again from the database, so every button has its id and the next save changes the message instead of making another.
+let editingId = savedMessageId || String((initial as any).messageId ?? '') || (/^\d{15,25}$/.test(messageParam) ? messageParam : '');
+if (editingId && (savedMessageId || !(initial as any).messageId)) {
+  const rows = (await rowsOfMessage(editingId)) as any[];
+  if (!rows.length) return Astro.redirect(`/dash/guild/${id}/automation?section=reaction-roles`);
+  const channelId = String(rows[0].channel_id);
+  const message = await discord('GET', `/channels/${channelId}/messages/${editingId}`);
+  const body: any = message.ok ? await message.json() : null;
+  const first = body?.embeds?.[0];
+  initial = {
+    messageId: editingId, channelId, content: body?.content ?? '',
+    embed: { enabled: Boolean(first), title: first?.title ?? '', description: first?.description ?? '', color: hexOf(first?.color), footer: first?.footer?.text ?? '', image: first?.image?.url ?? '', thumbnail: first?.thumbnail?.url ?? '' },
+    rows: placeInRows(rows as RoleButtonRow[]).map((row) => row.map((b: any) => ({ id: Number(b.id), key: NO_EMOJI.test(b.emoji) ? b.emoji : '', label: b.button_label ?? '', empty: b.button_label === '', style: buttonStyleOf(b), roleId: String(b.role_id), mode: b.mode, emoji: NO_EMOJI.test(b.emoji) ? '' : b.emoji }))),
+  };
+}
+
+// Custom emojis of the server and saved embeds (a classic design, as a starting point).
+const emojiRes = await fetch(`${DISCORD}/guilds/${id}/emojis`, { headers: { Authorization: `Bot ${botToken}` } }).catch(() => null);
+const customEmojis = emojiRes?.ok ? (await emojiRes.json()).map((e: any) => ({ id: String(e.id), name: String(e.name), animated: Boolean(e.animated) })) : [];
+const templatesRes = await fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }).catch(() => null);
+const templates = (templatesRes?.ok ? await templatesRes.json() : []).flatMap((row: any) => {
+  const checked = validateTemplate(row.data);
+  if (!checked.ok || checked.data.v2) return [];
+  const first = checked.data.embeds[0];
+  return [{ name: String(row.name), content: checked.data.content ?? '', embed: first ? { title: first.title ?? '', description: first.description ?? '', color: typeof first.color === 'number' ? hexOf(first.color) : '#f9d3e0', footer: first.footer?.text ?? '', image: first.image ?? '', thumbnail: first.thumbnail ?? '' } : null }];
+});
+---
+<DashReactionRoleBuilder
+  user={auth.session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  channels={channels}
+  roles={roles}
+  customEmojis={customEmojis}
+  templates={templates}
+  initial={initial}
+  editing={Boolean((initial as any).messageId)}
+  error={error}
+  saved={saved}
+/>

@@ -6,6 +6,7 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { validateTemplate } from '../../../../utils/embedSchema';
 import { buildDiscordMessage } from '../../../../utils/embedSend';
+import { buildRoleButtonComponents, type RoleButtonRow } from '../../../../utils/reactionRoleButtons';
 import { runBatched } from '../../../../utils/concurrency';
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
@@ -43,13 +44,6 @@ async function deleteDiscordMessage(channelId: string | null, messageId: string 
   return res.ok || res.status === 404;
 }
 
-function discordButtonEmoji(value: string) {
-  const custom = value.match(/^<a?:(\w+):(\d+)>$/);
-  return custom
-    ? { id: custom[2], name: custom[1], animated: value.startsWith('<a:') }
-    : { name: value };
-}
-
 async function syncReactionRoleButtons(channelId: string, messageId: string) {
   const base = 'https://discord.com/api/v10/channels/' + channelId + '/messages/' + messageId;
   const messageRes = await fetch(base, { headers: { Authorization: 'Bot ' + botToken } });
@@ -58,21 +52,13 @@ async function syncReactionRoleButtons(channelId: string, messageId: string) {
   const foreignComponents = (message.components ?? []).some((row: any) => (row.components ?? []).some((component: any) => component.custom_id && !String(component.custom_id).startsWith('rr:')));
   if (foreignComponents) return { ok: false, message: dt('That message already has another component panel. Use a message without buttons or selects for button roles.') };
 
-  const rowsUrl = apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&message_id=eq.' + encodeURIComponent(messageId) + '&interaction_type=eq.button&select=id,emoji,role_id,mode,button_label&order=id.asc';
+  const rowsUrl = apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&message_id=eq.' + encodeURIComponent(messageId) + '&interaction_type=eq.button&select=id,emoji,role_id,mode,button_label,button_style,button_row,button_position&order=id.asc';
   const rowsRes = await fetch(rowsUrl, { headers: apiHeaders });
   if (!rowsRes.ok) return { ok: false, message: dt("Couldn't read the button role configuration.") };
   const rows = await rowsRes.json();
-  if (rows.length > 25) return { ok: false, message: dt('A message can have at most 25 button roles.') };
-
-  const buttons = rows.map((row: any) => ({
-    type: 2,
-    custom_id: 'rr:' + row.id,
-    style: row.mode === 'add' ? 3 : row.mode === 'remove' ? 4 : 1,
-    label: String(row.button_label || 'Role').trim().slice(0, 80) || 'Role',
-    emoji: discordButtonEmoji(row.emoji),
-  }));
-  const components = [] as any[];
-  for (let index = 0; index < buttons.length; index += 5) components.push({ type: 1, components: buttons.slice(index, index + 5) });
+  const built = buildRoleButtonComponents(rows as RoleButtonRow[], () => undefined);
+  if (!built.ok) return { ok: false, message: built.reason === 'too_many_rows' ? dt('A message can have at most 5 rows of buttons.') : dt('A message can have at most 25 button roles.') };
+  const components = built.components;
   const editRes = await fetch(base, {
     method: 'PATCH',
     headers: { Authorization: 'Bot ' + botToken, 'Content-Type': 'application/json' },
