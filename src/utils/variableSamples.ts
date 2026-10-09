@@ -91,22 +91,11 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     'user.boost_since': { text: 'Jul 1, 2026' }, user_boostsince: { text: 'Jul 1, 2026' }, 'user.joined_at': { text: 'Jul 1, 2026' }, 'user.created_at': { text: 'Jul 1, 2020' },
     'user.color': { text: '#8399ff' }, 'user.role_list': { text: '@Member @Booster' }, user_discrim: { text: '' },
     'channel.mention': { text: '#general', mention: true }, 'channel.id': { text: '1498210265458675853' }, channel_name: { text: 'general' }, 'channel.topic': { text: 'Say hi' },
-  };
-}
-
-/** Sample values for the variables of the Vanity bot, which has its own set. */
-export function vanitySamples(ctx: TokenContext = sampleContext): Record<string, TokenValue> {
-  const mention: TokenValue = { text: `@${ctx.userName}`, mention: true };
-  const role: TokenValue = { text: '@Vanity', mention: true };
-  const word: TokenValue = { text: 'discord.gg/petto' };
-  return {
-    'guild.icon': { text: '' }, 'role': role, 'role.id': { text: '1010101010101010101' },
-    'rule.name': { text: 'cinnamochi' }, 'rule.source': { text: 'custom_status' }, 'rule.value': word, 'rule.condition': { text: 'contains' }, 'rule.reason': { text: 'Custom Status contains the vanity' },
-    'vanity.rule': { text: 'cinnamochi' }, 'vanity.word': word, 'vanity.source': { text: 'custom_status' }, 'vanity.value': { text: 'join discord.gg/petto' }, 'vanity.role': role, 'vanity.role.id': { text: '1010101010101010101' },
-    'tag.rule': { text: 'partner-server' }, 'tag.condition': { text: 'is_guild_id' }, tag: { text: 'PETT' }, 'tag.value': { text: 'PETT' }, 'tag.rule_value': { text: '707307527846625280' },
-    'tag.guild_id': { text: '707307527846625280' }, 'tag.enabled': { text: 'true' }, 'tag.badge': { text: 'badge' }, 'tag.role': role,
-    action: { text: 'add_role' }, 'action.text': { text: 'Role added' }, result: { text: 'completed' }, event: { text: 'vanity_add' }, 'event.name': { text: 'vanity_add' }, 'event.title': { text: 'Vanity role added' },
-    'event.error': { text: '' }, 'event.matched_value': { text: 'join discord.gg/petto' }, 'identity.source': { text: 'custom_status' }, 'identity.value': { text: 'join discord.gg/petto' },
-    timestamp: { text: 'Today at 12:00 PM' }, 'date.utc_timestamp': { text: 'Today at 12:00 PM' }, newline: { text: ' ' }, separator: { text: '—' }, 'user.tag': { text: ctx.userName }, user: mention,
+    'rule.name': { text: 'cinnamochi' }, 'rule.source': { text: 'vanity' }, 'rule.value': { text: 'discord.gg/petto' }, 'rule.condition': { text: 'contains' }, 'rule.reason': { text: 'Matched custom_status condition for value join discord.gg/petto' },
+    'rule.role': { text: '@Vanity', mention: true }, 'rule.role_id': { text: '1010101010101010101' }, 'rule.action': { text: 'add_role' }, 'rule.action_text': { text: 'add' }, 'rule.result': { text: 'completed' }, 'rule.error': { text: '' },
+    'rule.matched_value': { text: 'join discord.gg/petto' }, 'rule.event': { text: 'vanity_add' }, 'rule.event_title': { text: 'Vanity role added' },
+    'vanity.rule': { text: 'cinnamochi' }, 'vanity.word': { text: 'discord.gg/petto' }, 'vanity.source': { text: 'custom_status' }, 'vanity.value': { text: 'join discord.gg/petto' }, 'vanity.role': { text: '@Vanity', mention: true },
+    tag: { text: 'PETT' }, 'tag.rule': { text: 'partner-server' }, 'tag.condition': { text: 'is_guild_id' }, 'tag.rule_value': { text: '707307527846625280' }, 'tag.guild_id': { text: '707307527846625280' },
+    'tag.enabled': { text: 'true' }, 'tag.badge': { text: 'badge' }, 'tag.role': { text: '@Partner', mention: true },
   };
 }

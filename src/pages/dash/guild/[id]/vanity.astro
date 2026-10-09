@@ -4,7 +4,7 @@ import DashVanity from '../../../../components/DashVanity.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getCachedUserGuilds } from '../../../../utils/discordCache';
 import { guildIconUrl } from '../../../../utils/discord';
-import { getVanityOverview, vanityAction, vanityConfig, vanityInviteUrl } from '../../../../utils/vanityBot';
+import { getVanityOverview, vanityAction, vanityConfig } from '../../../../utils/vanityBot';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
 
@@ -13,8 +13,10 @@ const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
 
-const sections = ['rules', 'tags', 'messages', 'embeds', 'logs'];
+const sections = ['rules', 'tags', 'messages', 'logs'];
 const requested = new URL(Astro.request.url).searchParams.get('section') ?? 'rules';
+// The messages are Petto's own saved embeds now, edited in Embeds.
+if (requested === 'embeds') return Astro.redirect(`/dash/guild/${id}/embeds`);
 const section = sections.includes(requested) ? requested : 'rules';
 
 // Turns a submitted form into the action the Vanity bot's API expects. Anything else is ignored.
@@ -39,25 +41,32 @@ function readAction(form: FormData): Record<string, unknown> | null {
     case 'notify_set':
       return { action, notify_source: text('notify_source'), channel_id: text('channel_id'), embed: text('embed'), ping: text('ping') };
     case 'logs_set':
-      return { action, channel_id: text('channel_id'), events: form.getAll('events').map(String) };
+      return {
+        action, channel_id: text('channel_id'), events: form.getAll('events').map(String),
+        embeds: Object.fromEntries(['vanity_add', 'vanity_remove', 'tag_add', 'tag_remove', 'error'].map((key) => [key, text(`embed_${key}`)]).filter(([, value]) => value)),
+      };
     default:
       return null;
   }
 }
 
 const knownErrors: Record<string, string> = {
-  not_installed: dt('The Vanity bot is not in this server yet.'),
+  not_installed: dt('Petto is not in this server yet.'),
   no_access: dt('You need Manage Server or Administrator in this server.'),
   duplicate_name: dt('A rule with that name already exists.'),
   rule_not_found: dt('That rule does not exist anymore.'),
   role_not_found: dt('That role does not exist in this server.'),
   role_managed: dt('That role is managed by an integration and cannot be assigned.'),
-  role_above_bot: dt("Move the Vanity bot's role above that role in Server Settings, Roles."),
+  role_above_bot: dt("Move Petto's role above that role in Server Settings, Roles."),
+  role_above_you: dt('You can only use roles below your own highest role.'),
+  invalid_rule: dt('That rule is not valid. Check the text, the pattern and the role.'),
+  invalid_name: dt('The name can have letters, numbers, - and _ (1 to 40 characters).'),
+  limit: dt('You reached the limit of rules for this server.'),
   channel_not_found: dt('Choose a text channel of this server.'),
-  embed_not_found: dt('That embed does not exist. Create it with /embed create in Discord.'),
+  embed_not_found: dt('That embed does not exist. Create it in Embeds first.'),
   no_events: dt('Choose at least one log event.'),
   rate_limited: dt('Too many changes, wait a minute and try again.'),
-  unavailable: dt('The Vanity bot did not answer in time, try again in a moment.'),
+  unavailable: dt('The bot did not answer in time, try again in a moment.'),
 };
 
 let saved = false;
@@ -85,7 +94,7 @@ else if (overview?.ok) state = 'ok';
 else if ((overview as any)?.code === 'not_installed') state = 'not_installed';
 else if ((overview as any)?.code === 'no_access') state = 'no_access';
 
-// The page must work before the Vanity bot is in the server, so the name and icon come from the visitor's own server list.
+// The page must work before Petto is in the server, so the name and icon come from the visitor's own server list.
 let guildName = id;
 let guildIcon = '/assets/mascot-icon.png';
 if (overview?.ok) {
@@ -108,7 +117,6 @@ if (overview?.ok) {
   guildIcon={guildIcon}
   state={state}
   overview={overview?.ok ? overview.data : null}
-  inviteUrl={vanityInviteUrl(Astro, id)}
   section={section}
   saved={saved}
   note={note}
