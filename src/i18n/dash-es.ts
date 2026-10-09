@@ -166,7 +166,7 @@ export const dashEs: Record<string, string> = {
   "Start from a saved embed": "Empezar desde un embed guardado",
   "That message has no role buttons made here, so it cannot be edited.": "Ese mensaje no tiene botones de rol hechos aquí, así que no se puede editar.",
   "The form could not be read, try again.": "No se pudo leer el formulario, inténtalo de nuevo.",
-  "The message is posted in this channel. Announcement channels are marked with 📢.": "El mensaje se publica en este canal. Los canales de anuncios llevan 📢.",
+  "The message is posted in this channel. Announcement channels say so next to their name.": "El mensaje se publica en este canal. Los canales de anuncios lo indican junto a su nombre.",
   "The message stays in its channel.": "El mensaje se queda en su canal.",
   "The same emoji is on two buttons of this message. Use a different emoji for each.": "El mismo emoji está en dos botones de este mensaje. Usa un emoji distinto en cada uno.",
   "This server has no custom emojis.": "Este servidor no tiene emojis propios.",

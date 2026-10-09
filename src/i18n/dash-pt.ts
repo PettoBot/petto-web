@@ -166,7 +166,7 @@ export const dashPt: Record<string, string> = {
   "Start from a saved embed": "Começar de um embed salvo",
   "That message has no role buttons made here, so it cannot be edited.": "Essa mensagem não tem botões de cargo feitos aqui, então não pode ser editada.",
   "The form could not be read, try again.": "Não foi possível ler o formulário, tente de novo.",
-  "The message is posted in this channel. Announcement channels are marked with 📢.": "A mensagem é publicada neste canal. Os canais de anúncios têm 📢.",
+  "The message is posted in this channel. Announcement channels say so next to their name.": "A mensagem é publicada neste canal. Os canais de anúncios indicam isso ao lado do nome.",
   "The message stays in its channel.": "A mensagem fica no seu canal.",
   "The same emoji is on two buttons of this message. Use a different emoji for each.": "O mesmo emoji está em dois botões desta mensagem. Use um emoji diferente em cada um.",
   "This server has no custom emojis.": "Este servidor não tem emojis próprios.",
