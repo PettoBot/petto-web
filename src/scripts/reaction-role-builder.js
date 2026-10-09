@@ -109,7 +109,11 @@
     rowsEl.innerHTML = state.rows.map(function (row, r) {
       var buttons = row.map(function (b, i) {
         return '<div class="rb-btn-card" data-r="' + r + '" data-i="' + i + '">' +
-          '<button type="button" class="rb-del" data-act="del-button" title="' + esc(W.removeButton) + '" aria-label="' + esc(W.removeButton) + '">×</button>' +
+          '<div class="rb-tools">' +
+            (i > 0 ? '<button type="button" class="rb-tool" data-act="left" title="' + esc(W.moveLeft) + '" aria-label="' + esc(W.moveLeft) + '">←</button>' : '') +
+            (i < row.length - 1 ? '<button type="button" class="rb-tool" data-act="right" title="' + esc(W.moveRight) + '" aria-label="' + esc(W.moveRight) + '">→</button>' : '') +
+            (row.length < PER_ROW || state.rows.length < MAX_ROWS ? '<button type="button" class="rb-tool" data-act="copy" title="' + esc(W.duplicate) + '" aria-label="' + esc(W.duplicate) + '">⧉</button>' : '') +
+            '<button type="button" class="rb-del" data-act="del-button" title="' + esc(W.removeButton) + '" aria-label="' + esc(W.removeButton) + '">×</button></div>' +
           '<div class="rb-btn-grid">' +
             '<div class="full"><label class="rb-lbl">' + esc(W.button) + '</label><input type="text" data-f="label" maxlength="80" value="' + esc(b.label) + '"' + (b.empty ? ' disabled' : '') + ' placeholder="' + esc(W.button) + '">' +
               '<label class="rb-empty-check"><input type="checkbox" data-f="empty"' + (b.empty ? ' checked' : '') + '>' + esc(W.noName) + '</label></div>' +
@@ -120,6 +124,7 @@
           '</div></div>';
       }).join('');
       return '<div class="rb-row" data-r="' + r + '"><div class="rb-row-head"><span>' + esc(String(W.row || 'Row {a}').replace('{a}', r + 1)) + '</span>' +
+        '<span class="rb-tools">' + (r > 0 ? '<button type="button" class="rb-tool" data-act="row-up" title="' + esc(W.moveUp) + '" aria-label="' + esc(W.moveUp) + '">↑</button>' : '') + (r < state.rows.length - 1 ? '<button type="button" class="rb-tool" data-act="row-down" title="' + esc(W.moveDown) + '" aria-label="' + esc(W.moveDown) + '">↓</button>' : '') + '</span>' +
         (state.rows.length > 1 ? '<button type="button" class="rb-del" data-act="del-row" title="' + esc(W.removeRow) + '" aria-label="' + esc(W.removeRow) + '">×</button>' : '') + '</div>' +
         buttons + (row.length < PER_ROW ? '<button type="button" class="rb-add-btn" data-act="add-button">+ ' + esc(W.addButton) + '</button>' : '') + '</div>';
     }).join('');
@@ -151,6 +156,22 @@
     if (act === 'add-button') state.rows[r].push(blankButton());
     else if (act === 'del-button') { state.rows[r].splice(Number(card.getAttribute('data-i')), 1); if (!state.rows[r].length) state.rows.splice(r, 1); if (!state.rows.length) state.rows = [[blankButton()]]; }
     else if (act === 'del-row') state.rows.splice(r, 1);
+    else if (act === 'left' || act === 'right') {
+      var at = Number(card.getAttribute('data-i'));
+      var to = act === 'left' ? at - 1 : at + 1;
+      var moved = state.rows[r].splice(at, 1)[0];
+      state.rows[r].splice(to, 0, moved);
+    } else if (act === 'row-up' || act === 'row-down') {
+      var other = act === 'row-up' ? r - 1 : r + 1;
+      var tmp = state.rows[r]; state.rows[r] = state.rows[other]; state.rows[other] = tmp;
+    } else if (act === 'copy') {
+      // The copy has no emoji of its own (each button of a message needs a different one) and is saved as a new button.
+      var src = state.rows[r][Number(card.getAttribute('data-i'))];
+      var twin = Object.assign({}, src, { id: null, key: '', emoji: '' });
+      if (twin.empty) { twin.empty = false; twin.label = twin.label || ''; }
+      if (state.rows[r].length < PER_ROW) state.rows[r].splice(Number(card.getAttribute('data-i')) + 1, 0, twin);
+      else if (state.rows.length < MAX_ROWS) state.rows.splice(r + 1, 0, [twin]);
+    }
     else if (act === 'pick-emoji') { openPicker(r, Number(card.getAttribute('data-i'))); return; }
     renderRows();
     sync(true);
