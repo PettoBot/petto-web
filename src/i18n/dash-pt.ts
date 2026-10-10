@@ -2295,4 +2295,5 @@ export const dashPt: Record<string, string> = {
   "Show": "Mostrar",
   "Remove this partner?": "Remover este parceiro?",
   "Delete every saved partner and go back to the original list?": "Apagar todos os parceiros salvos e voltar à lista original?",
+  "Deleted or temporary channel": "Canal excluído ou temporário",
 };

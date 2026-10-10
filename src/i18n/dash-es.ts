@@ -2295,4 +2295,5 @@ export const dashEs: Record<string, string> = {
   "Show": "Mostrar",
   "Remove this partner?": "¿Quitar este partner?",
   "Delete every saved partner and go back to the original list?": "¿Borrar todos los partners guardados y volver a la lista original?",
+  "Deleted or temporary channel": "Canal eliminado o temporal",
 };
