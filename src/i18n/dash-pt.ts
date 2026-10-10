@@ -1605,7 +1605,7 @@ export const dashPt: Record<string, string> = {
   "Inside the first embed": "Dentro do primeiro embed",
   "Layers": "Camadas",
   "Layout and text": "Layout e texto",
-  "Left": "Esquerda",
+  "Left": "Saíram",
   "Letter spacing": "Espaçamento de letras",
   "Line height": "Altura da linha",
   "Make or edit cards": "Criar ou editar cartões",

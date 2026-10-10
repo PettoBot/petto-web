@@ -1605,7 +1605,7 @@ export const dashEs: Record<string, string> = {
   "Inside the first embed": "Dentro del primer embed",
   "Layers": "Capas",
   "Layout and text": "Diseño y texto",
-  "Left": "Izquierda",
+  "Left": "Salieron",
   "Letter spacing": "Espaciado de letras",
   "Line height": "Altura de línea",
   "Make or edit cards": "Crear o editar tarjetas",
