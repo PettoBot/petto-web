@@ -2,7 +2,7 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { STAT_TABS, type StatsData } from '../utils/activityStats';
+import { STAT_TABS, BOT_TIME_LABEL, type StatsData } from '../utils/activityStats';
 
 const dt = makeT(getDashLang(Astro));
 interface Props {
@@ -27,6 +27,7 @@ const tabs: Record<string, { label: string; icon: string; color: string }> = {
   joins: { label: 'Joins', icon: 'ph:user-plus-fill', color: '#8fdca8' },
   leaves: { label: 'Leaves', icon: 'ph:user-minus-fill', color: '#f08fa0' },
   invites: { label: 'Invites', icon: 'ph:link-fill', color: '#c6a8f5' },
+  sanctions: { label: 'Sanctions', icon: 'ph:gavel-fill', color: '#f5c26b' },
 };
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const FULL_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -70,18 +71,24 @@ const voiceHours = stats.daily.voice.map((s) => s / 3600);
 const fmtHours = (v: number) => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
 const bestDayOf = (values: number[]) => { const b = peakIndex(values); return b === -1 ? null : { day: stats.days[b], value: values[b] }; };
 
+const kindNames = ['Bans', 'Mutes', 'Warns', 'Kicks', 'Jails'];
+const kindValues = [stats.sanctions.byGroup.bans, stats.sanctions.byGroup.mutes, stats.sanctions.byGroup.warns, stats.sanctions.byGroup.kicks, stats.sanctions.byGroup.jails];
+const kindPeak = peakIndex(kindValues);
+const sourceNames: Record<string, string> = { moderator: 'Moderators', automod: 'Automod', honeypot: 'Honeypot', escalation: 'Warn escalation', expiry: 'Automatic expiry', antinuke: 'Anti-nuke' };
+const sourceRows = Object.entries(stats.sanctions.bySource).filter(([, count]) => count > 0) as [string, number][];
+
 const panels: Record<string, { charts: { title: string; sub: string; chart: ReturnType<typeof chart> }[] }> = {
   overview: { charts: [
     { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color) },
-    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} UTC` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
+    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
   ] },
   messages: { charts: [
     { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color) },
-    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} UTC` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
+    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
   ] },
   voice: { charts: [
     { title: 'Voice hours per day', sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, chart: chart(voiceHours, dailyLabels, tabs.voice.color, fmtHours) },
-    { title: 'Most active hours', sub: stats.peakHour.voice ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.voice.hour)} UTC` : dt('Not enough data yet'), chart: chart(stats.hours.voice.map((s) => s / 3600), hourLabels, tabs.voice.color, fmtHours, peakIndex(stats.hours.voice)) },
+    { title: 'Most active hours', sub: stats.peakHour.voice ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.voice.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.voice.map((s) => s / 3600), hourLabels, tabs.voice.color, fmtHours, peakIndex(stats.hours.voice)) },
   ] },
   joins: { charts: [
     { title: 'Members who joined per day', sub: `${n(stats.totals.joins)} ${dt('in total')}`, chart: chart(stats.daily.joins, dailyLabels, tabs.joins.color) },
@@ -90,6 +97,10 @@ const panels: Record<string, { charts: { title: string; sub: string; chart: Retu
   leaves: { charts: [
     { title: 'Members who left per day', sub: `${n(stats.totals.leaves)} ${dt('in total')}`, chart: chart(stats.daily.leaves, dailyLabels, tabs.leaves.color) },
     { title: 'Best days of the week', sub: peakIndex(stats.weekdays.leaves) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.leaves)])}`, chart: chart(stats.weekdays.leaves, WEEKDAYS.map((d) => dt(d)), tabs.leaves.color, n, peakIndex(stats.weekdays.leaves)) },
+  ] },
+  sanctions: { charts: [
+    { title: 'Sanctions per day', sub: `${n(stats.sanctions.total)} ${dt('in total')}`, chart: chart(stats.sanctions.daily, dailyLabels, tabs.sanctions.color) },
+    { title: 'Sanctions by kind', sub: kindPeak === -1 ? dt('Not enough data yet') : `${dt('Most')}: ${dt(kindNames[kindPeak])}`, chart: chart(kindValues, kindNames.map((k) => dt(k)), tabs.sanctions.color, n, kindPeak) },
   ] },
   invites: { charts: [
     { title: 'Joins through invites per day', sub: `${n(stats.totals.invited)} ${dt('in total')}`, chart: chart(stats.daily.invited, dailyLabels, tabs.invites.color) },
@@ -116,7 +127,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
   <div class="st-head">
     <div>
       <h1>{dt('Statistics')}</h1>
-      <p class="st-sub">{dt('How active the server is. All times are UTC.')}</p>
+      <p class="st-sub">{dt('How active the server is. All times are GMT-5 (Colombia).')}</p>
     </div>
     <nav class="st-range" aria-label={dt('Period')}>
       {[7, 14, 30].map((value) => (
@@ -145,7 +156,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
         {panels[id].charts.map((c) => (
           <article class="st-card">
             <h2>{dt(c.title)}</h2>
-            <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(' UTC') || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
+            <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(BOT_TIME_LABEL) || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
             <svg viewBox={`0 0 ${c.chart.W} ${c.chart.H}`} role="img" aria-label={dt(c.title)} class="st-svg">
               {c.chart.grid.map((g) => (
                 <g><line x1={c.chart.left} x2={c.chart.left + c.chart.plotW} y1={g.y} y2={g.y} class="st-grid" /><text x={c.chart.left - 8} y={g.y + 4} text-anchor="end" class="st-axis">{g.label}</text></g>
@@ -206,11 +217,35 @@ const bestMessage = bestDayOf(stats.daily.messages);
             {inviters.length ? <ol>{inviters.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{n(row.net)}</em></li>)}</ol> : <p class="st-empty">{dt('No tracked invites yet.')}</p>}
           </article>
         )}
+        {id === 'sanctions' && (
+          <Fragment>
+            <article class="st-card st-list">
+              <h2>{dt('Sanctions')}</h2>
+              <ol>
+                <li><span><Icon name="ph:gavel-fill" width="14" height="14" /></span><b>{dt('Total')}</b><em>{n(stats.sanctions.total)}</em></li>
+                {kindNames.map((name, i) => <li><span>{i + 1}</span><b>{dt(name)}</b><em>{n(kindValues[i])}</em></li>)}
+                <li><span><Icon name="ph:arrow-counter-clockwise-fill" width="14" height="14" /></span><b>{dt('Undone')}</b><em>{n(stats.sanctions.byGroup.undone)}</em></li>
+              </ol>
+            </article>
+            <article class="st-card st-list">
+              <h2>{dt('Applied by')}</h2>
+              {sourceRows.length ? <ol>{sourceRows.map(([key, count]) => <li><span><Icon name="ph:robot-fill" width="14" height="14" /></span><b>{dt(sourceNames[key] ?? key)}</b><em>{n(count)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+            <article class="st-card st-list">
+              <h2>{dt('Most active moderators')}</h2>
+              {stats.sanctions.topModerators.length ? <ol>{stats.sanctions.topModerators.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{n(row.count)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+            <article class="st-card st-list">
+              <h2>{dt('Most sanctioned')}</h2>
+              {stats.sanctions.topUsers.length ? <ol>{stats.sanctions.topUsers.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{n(row.count)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+          </Fragment>
+        )}
         {id === 'overview' && stats.peakHour.messages && (
           <article class="st-card st-list">
             <h2>{dt('Highlights')}</h2>
             <ol>
-              <li><span><Icon name="ph:clock-fill" width="14" height="14" /></span><b>{dt('Most active hour')}</b><em>{hourLabel(stats.peakHour.messages.hour)} UTC</em></li>
+              <li><span><Icon name="ph:clock-fill" width="14" height="14" /></span><b>{dt('Most active hour')}</b><em>{hourLabel(stats.peakHour.messages.hour)} {BOT_TIME_LABEL}</em></li>
               {bestMessage && <li><span><Icon name="ph:calendar-check-fill" width="14" height="14" /></span><b>{dt('Best day')}</b><em>{dayLabel(bestMessage.day)} · {n(bestMessage.value)}</em></li>}
               <li><span><Icon name="ph:users-three-fill" width="14" height="14" /></span><b>{dt('Net members')}</b><em>{growth >= 0 ? '+' : ''}{n(growth)}</em></li>
             </ol>

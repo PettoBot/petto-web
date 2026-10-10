@@ -4,7 +4,7 @@ import DashStats from '../../../../components/DashStats.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
-import { buildStats, STAT_TABS } from '../../../../utils/activityStats';
+import { buildStats, STAT_TABS, botDay } from '../../../../utils/activityStats';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -21,9 +21,9 @@ const requestedTab = Astro.url.searchParams.get('tab') ?? 'overview';
 const tab = (STAT_TABS as readonly string[]).includes(requestedTab) ? requestedTab : 'overview';
 
 const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
-const start = new Date();
-start.setUTCDate(start.getUTCDate() - days + 1);
-const since = start.toISOString().slice(0, 10);
+// Days are counted in GMT-5 (Colombia), the time Petto works in.
+const since = botDay(new Date(Date.now() - (days - 1) * 86_400_000));
+const sinceInstant = new Date(`${since}T00:00:00-05:00`).toISOString();
 
 // A table that is not there yet (the bot has not been updated) gives an empty list, so the page still opens.
 async function rows(table: string, select: string, extra = ''): Promise<any[]> {
@@ -37,18 +37,20 @@ async function rows(table: string, select: string, extra = ''): Promise<any[]> {
   }
 }
 
-const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, inviterRows] = await Promise.all([
+const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, caseRows, inviterRows] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'channels').catch(() => null),
   rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${since}`),
   rows('activity_hourly', 'day,hour,messages,voice_seconds', `&day=gte.${since}`),
   rows('member_flow', 'day,joins,leaves,invited', `&day=gte.${since}`),
   rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`),
+  rows('mod_actions', 'type,source,moderator_id,user_id,created_at', `&created_at=gte.${sinceInstant}&limit=20000`),
   rows('invite_uses', 'inviter_id,joins,leaves,bonus', '&order=joins.desc&limit=50'),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-const stats = buildStats({ days, channelRows, hourlyRows, flowRows, memberRows });
+const botId = getEnv(Astro, 'DISCORD_CLIENT_ID') || null;
+const stats = buildStats({ days, channelRows, hourlyRows, flowRows, memberRows, caseRows, botId });
 
 const channels: any[] = channelsRes && channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
 const channelNames: Record<string, string> = Object.fromEntries(channels.map((c: any) => [c.id, c.name]));
@@ -60,7 +62,7 @@ const inviters = inviterRows
   .slice(0, 6);
 
 // Names of the members that are named on the page. A user that cannot be read is shown by its ID.
-const wanted = [...new Set([...stats.topMembers.messages, ...stats.topMembers.voice].map((m) => m.id).concat(inviters.map((i) => i.id)))].slice(0, 20);
+const wanted = [...new Set([...stats.topMembers.messages, ...stats.topMembers.voice, ...stats.sanctions.topModerators, ...stats.sanctions.topUsers].map((m) => m.id).concat(inviters.map((i) => i.id)))].slice(0, 30);
 const memberNames: Record<string, string> = {};
 await Promise.all(wanted.map(async (userId) => {
   try {

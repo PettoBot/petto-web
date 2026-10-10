@@ -1,6 +1,15 @@
 // Turns the activity counters the bot writes (per channel, hour, member and day, plus joins and leaves) into what the
 // Statistics page shows. Same numbers as the bot's `/summary`.
-export const STAT_TABS = ['overview', 'messages', 'voice', 'joins', 'leaves', 'invites'] as const;
+export const STAT_TABS = ['overview', 'messages', 'voice', 'joins', 'leaves', 'invites', 'sanctions'] as const;
+
+// The time of Petto: GMT-5, Colombia (no daylight saving). Days and hours are counted in it.
+export const BOT_OFFSET_MS = -5 * 60 * 60 * 1000;
+export const BOT_TIME_LABEL = 'GMT-5';
+export const botDay = (date: Date | string | number = new Date()) => new Date(new Date(date).getTime() + BOT_OFFSET_MS).toISOString().slice(0, 10);
+
+const GROUPS: Record<string, string[]> = { bans: ['ban', 'hardban', 'tempban', 'softban'], mutes: ['mute', 'tempmute'], warns: ['warn'], kicks: ['kick'], jails: ['jail'] };
+const UNDONE = ['unban', 'unmute', 'unjail'];
+const SOURCES = ['moderator', 'automod', 'honeypot', 'escalation', 'expiry', 'antinuke'];
 export type StatTab = (typeof STAT_TABS)[number];
 
 type Row = Record<string, any>;
@@ -8,13 +17,8 @@ const num = (value: unknown) => Number(value ?? 0) || 0;
 const dayKey = (value: unknown) => String(value).slice(0, 10);
 
 export function rangeDays(now = new Date(), days = 7): string[] {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const list: string[] = [];
-  for (let back = days - 1; back >= 0; back -= 1) {
-    const day = new Date(end);
-    day.setUTCDate(day.getUTCDate() - back);
-    list.push(day.toISOString().slice(0, 10));
-  }
+  for (let back = days - 1; back >= 0; back -= 1) list.push(botDay(new Date(now.getTime() - back * 86_400_000)));
   return list;
 }
 
@@ -32,7 +36,7 @@ function peakOf(values: number[]) {
   return best === -1 ? null : { hour: best, value: values[best] };
 }
 
-export function buildStats({ days, channelRows, hourlyRows, flowRows, memberRows, now = new Date() }: { days: number; channelRows: Row[]; hourlyRows: Row[]; flowRows: Row[]; memberRows: Row[]; now?: Date }) {
+export function buildStats({ days, channelRows, hourlyRows, flowRows, memberRows, caseRows = [], botId = null, now = new Date() }: { days: number; channelRows: Row[]; hourlyRows: Row[]; flowRows: Row[]; memberRows: Row[]; caseRows?: Row[]; botId?: string | null; now?: Date }) {
   const list = rangeDays(now, days);
   const index = new Map(list.map((day, i) => [day, i]));
   const zeros = () => list.map(() => 0);
@@ -75,6 +79,28 @@ export function buildStats({ days, channelRows, hourlyRows, flowRows, memberRows
     members.set(row.user_id, current);
   }
 
+  // Sanctions: by day, kind, who applied them and who got them.
+  const sanctionDaily = list.map(() => 0);
+  const byGroup: Record<string, number> = { bans: 0, mutes: 0, warns: 0, kicks: 0, jails: 0, undone: 0 };
+  const bySource: Record<string, number> = Object.fromEntries(SOURCES.map((source) => [source, 0]));
+  const moderators = new Map<string, number>();
+  const sanctioned = new Map<string, number>();
+  for (const row of caseRows) {
+    const i = index.get(botDay(row.created_at));
+    if (i === undefined) continue;
+    if (UNDONE.includes(row.type)) { byGroup.undone += 1; continue; }
+    const group = Object.keys(GROUPS).find((key) => GROUPS[key].includes(row.type));
+    if (!group) continue;
+    byGroup[group] += 1;
+    sanctionDaily[i] += 1;
+    const source = row.source && row.source !== 'moderator' ? row.source : (botId && row.moderator_id === botId ? 'automod' : 'moderator');
+    bySource[source in bySource ? source : 'moderator'] += 1;
+    if (source === 'moderator') moderators.set(row.moderator_id, (moderators.get(row.moderator_id) ?? 0) + 1);
+    sanctioned.set(row.user_id, (sanctioned.get(row.user_id) ?? 0) + 1);
+  }
+  const ranked = (map: Map<string, number>) => [...map.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 6);
+  const sanctionTotal = sanctionDaily.reduce((a, b) => a + b, 0);
+
   const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
   const weekdays = { messages: Array(7).fill(0) as number[], voice: Array(7).fill(0) as number[], joins: Array(7).fill(0) as number[], leaves: Array(7).fill(0) as number[], invited: Array(7).fill(0) as number[] };
   list.forEach((day, i) => {
@@ -91,6 +117,7 @@ export function buildStats({ days, channelRows, hourlyRows, flowRows, memberRows
       messages: sum(daily.messages), reactions: sum(daily.reactions), voiceSeconds: sum(daily.voice),
       joins: sum(daily.joins), leaves: sum(daily.leaves), invited: sum(daily.invited), activeMembers: members.size,
     },
+    sanctions: { total: sanctionTotal, daily: sanctionDaily, byGroup, bySource, automatic: sanctionTotal - bySource.moderator, topModerators: ranked(moderators), topUsers: ranked(sanctioned) },
     peakHour: { messages: peakOf(hours.messages), voice: peakOf(hours.voice) },
     topChannels: { messages: topOf(channels, 'messages', 6), voice: topOf(channels, 'voiceSeconds', 6) },
     topMembers: { messages: topOf(members, 'messages', 6), voice: topOf(members, 'voiceSeconds', 6) },
