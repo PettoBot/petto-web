@@ -151,6 +151,21 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.4',
+          display: '0.7.4',
+          name: 'Brownie',
+          date: 'October 10, 2026',
+          items: [
+            'Vanity in Petto: `!vanity`, `!guildtag` and `!identity` (short names `!vy` and `!tag`) give or take a role by the Custom Status, the name or the Server Tag of a member, with a thank-you message, a log and persistent roles; the data of the old Vanity bot can be imported',
+            'Sanctions: a new default look in Components V2 for the reply, the log and the member DM, `!hardban` is real (only the server owner and the antinuke admins can unban), and kicking or banning an administrator bot works when Petto is above it',
+            'Statistics: `!summary` by messages, voice, joins, leaves, invites or sanctions, with the most active hour and a new picture, a Statistics page in the dashboard, and an invite tracker with fake and bonus invites, who invited whom, links and a leaderboard',
+            'Your own prefix: `!myprefix` gives boosters of the support server, Premium users, partners and the team a prefix of their own in every server',
+            'Time: Petto works in GMT-5, the time of Colombia, and says so: the days, weeks and hours it counts and the times you write (`tomorrow 8pm`)',
+            'Partners: the Partners page is edited from the dashboard by the owner and the team (types such as hosting, servers and apps, a link, a logo and a description in three languages), instead of changing the page each time',
+            'Messages with their own name and picture (`!sender`) also for level-ups and the Vanity thank-yous; role buttons with a color, a row and only an emoji; Petto Code gets `execCC` and about 70 new functions',
+          ],
+        },
+        {
           version: '0.7.3',
           display: '0.7.3',
           name: 'Flan',
@@ -1315,6 +1330,21 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.4',
+          display: '0.7.4',
+          name: 'Brownie',
+          date: '10 de octubre de 2026',
+          items: [
+            'Vanity en Petto: `!vanity`, `!guildtag` e `!identity` (nombres cortos `!vy` y `!tag`) dan o quitan un rol según el estado personalizado, el nombre o la Server Tag de un miembro, con mensaje de agradecimiento, registro y roles persistentes; los datos del antiguo bot Vanity se pueden importar',
+            'Sanciones: un nuevo diseño por defecto en Components V2 para la respuesta, el registro y el DM del miembro, `!hardban` es real (solo el dueño del servidor y los admins de antinuke pueden desbanear), y expulsar o banear a un bot administrador funciona cuando Petto está por encima',
+            'Estadísticas: `!summary` por mensajes, voz, entradas, salidas, invitaciones o sanciones, con la hora más activa y una imagen nueva, una página de Estadísticas en el dashboard y un rastreador de invitaciones con invitaciones falsas y extra, quién invitó a quién, enlaces y una tabla',
+            'Tu propio prefijo: `!myprefix` da a quienes impulsan el servidor de soporte, usuarios Premium, partners y al equipo un prefijo propio en todos los servidores',
+            'Hora: Petto trabaja en GMT-5, la hora de Colombia, y lo dice: los días, semanas y horas que cuenta y las horas que escribes (`mañana 8pm`)',
+            'Partners: la página de Partners se edita desde el dashboard por el dueño y el equipo (tipos como hosting, servidores y apps, un enlace, un logo y una descripción en tres idiomas), en vez de cambiar la página cada vez',
+            'Mensajes con su propio nombre e imagen (`!sender`) también para subidas de nivel y los agradecimientos de Vanity; botones de rol con color, fila y solo un emoji; Petto Code recibe `execCC` y unas 70 funciones nuevas',
+          ],
+        },
         {
           version: '0.7.3',
           display: '0.7.3',
@@ -2481,6 +2511,21 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.4',
+          display: '0.7.4',
+          name: 'Brownie',
+          date: '10 de outubro de 2026',
+          items: [
+            'Vanity no Petto: `!vanity`, `!guildtag` e `!identity` (nomes curtos `!vy` e `!tag`) dão ou tiram um cargo conforme o status personalizado, o nome ou a Server Tag de um membro, com mensagem de agradecimento, registro e cargos persistentes; os dados do antigo bot Vanity podem ser importados',
+            'Sanções: um novo visual padrão em Components V2 para a resposta, o registro e a DM do membro, `!hardban` é real (só o dono do servidor e os admins do antinuke podem desbanir), e expulsar ou banir um bot administrador funciona quando o Petto está acima',
+            'Estatísticas: `!summary` por mensagens, voz, entradas, saídas, convites ou sanções, com a hora mais ativa e uma imagem nova, uma página de Estatísticas no dashboard e um rastreador de convites com convites falsos e bônus, quem convidou quem, links e um ranking',
+            'Seu próprio prefixo: `!myprefix` dá a quem impulsiona o servidor de suporte, usuários Premium, parceiros e à equipe um prefixo próprio em todos os servidores',
+            'Hora: o Petto trabalha em GMT-5, a hora da Colômbia, e diz isso: os dias, semanas e horas que conta e os horários que você escreve (`amanhã 8pm`)',
+            'Parceiros: a página de Parceiros é editada pelo dashboard pelo dono e pela equipe (tipos como hospedagem, servidores e apps, um link, um logo e uma descrição em três idiomas), em vez de mudar a página toda vez',
+            'Mensagens com nome e imagem próprios (`!sender`) também para subidas de nível e os agradecimentos do Vanity; botões de cargo com cor, linha e só um emoji; o Petto Code ganha `execCC` e cerca de 70 funções novas',
+          ],
+        },
         {
           version: '0.7.3',
           display: '0.7.3',

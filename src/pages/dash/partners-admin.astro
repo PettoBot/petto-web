@@ -1,0 +1,39 @@
+---
+export const prerender = false;
+import DashPartnersAdmin from '../../components/DashPartnersAdmin.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+import { addPartner, canEditPartners, DEFAULT_PARTNERS, movePartner, readPartnerForm, readPartners, removePartner, resetPartners, startCustomPartners, togglePartner, updatePartner } from '../../utils/partners';
+
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!(await canEditPartners(Astro, session.userId))) return Astro.redirect('/dash/manage?error=forbidden');
+if (!getEnv(Astro, 'PETTO_BOT_API_URL')) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) return Astro.redirect('/dash/partners-admin?error=invalid');
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const id = Number(form.get('id'));
+  let result: { ok: true } | { ok: false; error: string } = { ok: false, error: 'invalid' };
+  if (action === 'start') result = await startCustomPartners(Astro);
+  else if (action === 'add' || action === 'update') {
+    const read = readPartnerForm(form);
+    if (!read.ok) result = read;
+    else result = action === 'add' ? await addPartner(Astro, read.value) : await updatePartner(Astro, id, read.value);
+  } else if (action === 'remove') result = await removePartner(Astro, id);
+  else if (action === 'toggle') result = await togglePartner(Astro, id);
+  else if (action === 'up' || action === 'down') result = await movePartner(Astro, id, action);
+  else if (action === 'reset') result = await resetPartners(Astro);
+  return Astro.redirect(`/dash/partners-admin?${result.ok ? 'saved=1' : `error=${'error' in result ? result.error : 'invalid'}`}`);
+}
+
+const rows = await readPartners(Astro);
+const custom = Boolean(rows && rows.length);
+const partners = custom ? rows! : DEFAULT_PARTNERS;
+const error = Astro.url.searchParams.get('error') ?? undefined;
+const saved = Astro.url.searchParams.get('saved') === '1';
+---
+
+<DashPartnersAdmin partners={partners} custom={custom} error={error} saved={saved} />

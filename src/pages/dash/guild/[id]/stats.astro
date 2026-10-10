@@ -1,0 +1,89 @@
+---
+export const prerender = false;
+import DashStats from '../../../../components/DashStats.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { buildStats, STAT_TABS, botDay } from '../../../../utils/activityStats';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const days = [7, 14, 30].includes(Number(Astro.url.searchParams.get('days'))) ? Number(Astro.url.searchParams.get('days')) : 7;
+const requestedTab = Astro.url.searchParams.get('tab') ?? 'overview';
+const tab = (STAT_TABS as readonly string[]).includes(requestedTab) ? requestedTab : 'overview';
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
+// Days are counted in GMT-5 (Colombia), the time Petto works in.
+const since = botDay(new Date(Date.now() - (days - 1) * 86_400_000));
+const sinceInstant = new Date(`${since}T00:00:00-05:00`).toISOString();
+
+// A table that is not there yet (the bot has not been updated) gives an empty list, so the page still opens.
+async function rows(table: string, select: string, extra = ''): Promise<any[]> {
+  try {
+    const res = await fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${extra}&select=${select}`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, caseRows, inviterRows] = await Promise.all([
+  getGuildInfo(id, botToken),
+  getGuildList(Astro, id, botToken, 'channels').catch(() => null),
+  rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${since}`),
+  rows('activity_hourly', 'day,hour,messages,voice_seconds', `&day=gte.${since}`),
+  rows('member_flow', 'day,joins,leaves,invited', `&day=gte.${since}`),
+  rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`),
+  rows('mod_actions', 'type,source,moderator_id,user_id,created_at', `&created_at=gte.${sinceInstant}&limit=20000`),
+  rows('invite_uses', 'inviter_id,joins,leaves,bonus', '&order=joins.desc&limit=50'),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const botId = getEnv(Astro, 'DISCORD_CLIENT_ID') || null;
+const stats = buildStats({ days, channelRows, hourlyRows, flowRows, memberRows, caseRows, botId });
+
+const channels: any[] = channelsRes && channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
+const channelNames: Record<string, string> = Object.fromEntries(channels.map((c: any) => [c.id, c.name]));
+
+const inviters = inviterRows
+  .map((row) => ({ id: String(row.inviter_id), joins: Number(row.joins) || 0, leaves: Number(row.leaves) || 0, net: (Number(row.joins) || 0) - (Number(row.leaves) || 0) + (Number(row.bonus) || 0) }))
+  .filter((row) => row.joins || row.leaves || row.net)
+  .sort((a, b) => b.net - a.net)
+  .slice(0, 6);
+
+// Names of the members that are named on the page. A user that cannot be read is shown by its ID.
+const wanted = [...new Set([...stats.topMembers.messages, ...stats.topMembers.voice, ...stats.sanctions.topModerators, ...stats.sanctions.topUsers].map((m) => m.id).concat(inviters.map((i) => i.id)))].slice(0, 30);
+const memberNames: Record<string, string> = {};
+await Promise.all(wanted.map(async (userId) => {
+  try {
+    const res = await fetch(`https://discord.com/api/users/${userId}`, { headers: { Authorization: `Bot ${botToken}` } });
+    if (!res.ok) return;
+    const user = await res.json();
+    memberNames[userId] = user.global_name || user.username || userId;
+  } catch { /* shown by ID */ }
+}));
+const hasFlow = flowRows.length > 0;
+---
+<DashStats
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  stats={stats}
+  days={days}
+  tab={tab}
+  channelNames={channelNames}
+  memberNames={memberNames}
+  inviters={inviters}
+  hasFlow={hasFlow}
+/>
