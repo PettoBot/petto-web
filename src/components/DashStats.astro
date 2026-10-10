@@ -1,0 +1,297 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { STAT_TABS, type StatsData } from '../utils/activityStats';
+
+const dt = makeT(getDashLang(Astro));
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  stats: StatsData;
+  days: number;
+  tab: string;
+  channelNames: Record<string, string>;
+  memberNames: Record<string, string>;
+  inviters: { id: string; joins: number; leaves: number; net: number }[];
+  hasFlow: boolean;
+}
+const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow } = Astro.props;
+
+const tabs: Record<string, { label: string; icon: string; color: string }> = {
+  overview: { label: 'Overview', icon: 'ph:squares-four-fill', color: '#f0a88f' },
+  messages: { label: 'Messages', icon: 'ph:chat-circle-text-fill', color: '#f0a88f' },
+  voice: { label: 'Voice', icon: 'ph:microphone-fill', color: '#9bd0f5' },
+  joins: { label: 'Joins', icon: 'ph:user-plus-fill', color: '#8fdca8' },
+  leaves: { label: 'Leaves', icon: 'ph:user-minus-fill', color: '#f08fa0' },
+  invites: { label: 'Invites', icon: 'ph:link-fill', color: '#c6a8f5' },
+};
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const FULL_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const n = (value: number) => Math.round(value).toLocaleString('en-US');
+function hoursText(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  return minutes >= 60 ? Math.floor(minutes / 60) + 'h ' + (minutes % 60) + 'm' : minutes + 'm';
+}
+const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
+const growth = stats.totals.joins - stats.totals.leaves;
+
+function niceMax(value: number) {
+  const raw = Math.max(value, 4) / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => candidate >= raw) ?? raw;
+  return step * 4;
+}
+
+// One bar chart as SVG: the grid, the bars (the busiest one lit) and sparse labels. Text sits in HTML-friendly <title> tooltips.
+function chart(values: number[], labels: string[], color: string, format: (v: number) => string = n, highlight = -1) {
+  const W = 640, H = 240, left = 44, bottom = 26, top = 8;
+  const plotW = W - left - 6, plotH = H - bottom - top;
+  const max = niceMax(Math.max(0, ...values));
+  const slot = plotW / Math.max(1, values.length);
+  const barW = Math.max(3, Math.min(30, slot * 0.64));
+  const every = Math.ceil(values.length / 10);
+  const grid = [0, 1, 2, 3, 4].map((i) => ({ y: top + plotH - (plotH * i) / 4, label: format((max * i) / 4) }));
+  const bars = values.map((value, i) => {
+    const h = (value / max) * plotH;
+    return { x: left + slot * i + (slot - barW) / 2, y: top + plotH - h, h, w: barW, label: labels[i], value, lit: i === highlight, delay: Math.min(i * 18, 500) };
+  });
+  const ticks = labels.map((label, i) => ({ label, x: left + slot * i + slot / 2, show: i % every === 0 || i === labels.length - 1 }));
+  return { W, H, left, plotW, bottom, grid, bars, ticks, color, format, highlight, empty: values.every((v) => v === 0) };
+}
+
+const dailyLabels = stats.days.map(dayLabel);
+const hourLabels = Array.from({ length: 24 }, (_, h) => (h % 3 === 0 ? String(h).padStart(2, '0') : ''));
+const peakIndex = (values: number[]) => { let b = -1; values.forEach((v, i) => { if (v > 0 && (b === -1 || v > values[b])) b = i; }); return b; };
+const voiceHours = stats.daily.voice.map((s) => s / 3600);
+const fmtHours = (v: number) => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
+const bestDayOf = (values: number[]) => { const b = peakIndex(values); return b === -1 ? null : { day: stats.days[b], value: values[b] }; };
+
+const panels: Record<string, { charts: { title: string; sub: string; chart: ReturnType<typeof chart> }[] }> = {
+  overview: { charts: [
+    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color) },
+    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} UTC` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
+  ] },
+  messages: { charts: [
+    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color) },
+    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} UTC` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
+  ] },
+  voice: { charts: [
+    { title: 'Voice hours per day', sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, chart: chart(voiceHours, dailyLabels, tabs.voice.color, fmtHours) },
+    { title: 'Most active hours', sub: stats.peakHour.voice ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.voice.hour)} UTC` : dt('Not enough data yet'), chart: chart(stats.hours.voice.map((s) => s / 3600), hourLabels, tabs.voice.color, fmtHours, peakIndex(stats.hours.voice)) },
+  ] },
+  joins: { charts: [
+    { title: 'Members who joined per day', sub: `${n(stats.totals.joins)} ${dt('in total')}`, chart: chart(stats.daily.joins, dailyLabels, tabs.joins.color) },
+    { title: 'Best days of the week', sub: peakIndex(stats.weekdays.joins) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.joins)])}`, chart: chart(stats.weekdays.joins, WEEKDAYS.map((d) => dt(d)), tabs.joins.color, n, peakIndex(stats.weekdays.joins)) },
+  ] },
+  leaves: { charts: [
+    { title: 'Members who left per day', sub: `${n(stats.totals.leaves)} ${dt('in total')}`, chart: chart(stats.daily.leaves, dailyLabels, tabs.leaves.color) },
+    { title: 'Best days of the week', sub: peakIndex(stats.weekdays.leaves) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.leaves)])}`, chart: chart(stats.weekdays.leaves, WEEKDAYS.map((d) => dt(d)), tabs.leaves.color, n, peakIndex(stats.weekdays.leaves)) },
+  ] },
+  invites: { charts: [
+    { title: 'Joins through invites per day', sub: `${n(stats.totals.invited)} ${dt('in total')}`, chart: chart(stats.daily.invited, dailyLabels, tabs.invites.color) },
+    { title: 'Best days of the week', sub: peakIndex(stats.weekdays.invited) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.invited)])}`, chart: chart(stats.weekdays.invited, WEEKDAYS.map((d) => dt(d)), tabs.invites.color, n, peakIndex(stats.weekdays.invited)) },
+  ] },
+};
+
+const tiles = [
+  { label: 'Messages', value: n(stats.totals.messages), color: tabs.messages.color },
+  { label: 'Active members', value: n(stats.totals.activeMembers), color: '#f0a88f' },
+  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), color: tabs.voice.color },
+  { label: 'Joined', value: n(stats.totals.joins), color: tabs.joins.color },
+  { label: 'Left', value: n(stats.totals.leaves), color: tabs.leaves.color },
+  { label: 'Through invites', value: n(stats.totals.invited), color: tabs.invites.color },
+];
+const channelName = (id: string) => `#${channelNames[id] ?? id}`;
+const memberName = (id: string) => memberNames[id] ?? id;
+const bestJoin = bestDayOf(stats.daily.joins);
+const bestLeave = bestDayOf(stats.daily.leaves);
+const bestInvite = bestDayOf(stats.daily.invited);
+const bestMessage = bestDayOf(stats.daily.messages);
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="stats" pageTitle="Statistics">
+  <div class="st-head">
+    <div>
+      <h1>{dt('Statistics')}</h1>
+      <p class="st-sub">{dt('How active the server is. All times are UTC.')}</p>
+    </div>
+    <nav class="st-range" aria-label={dt('Period')}>
+      {[7, 14, 30].map((value) => (
+        <a href={`/dash/guild/${guildId}/stats?days=${value}&tab=${tab}`} class:list={['st-range-link', { current: value === days }]} data-keep-tab>{value} {dt('days')}</a>
+      ))}
+    </nav>
+  </div>
+
+  <div class="st-tabs" role="tablist" aria-label={dt('Statistics')}>
+    {STAT_TABS.map((id) => (
+      <button type="button" role="tab" class:list={['st-tab', { current: id === tab }]} data-tab={id} aria-selected={id === tab ? 'true' : 'false'} style={`--tab:${tabs[id].color}`}>
+        <Icon name={tabs[id].icon} width="15" height="15" />{dt(tabs[id].label)}
+      </button>
+    ))}
+  </div>
+
+  <div class="st-tiles">
+    {tiles.map((tile) => (
+      <div class="st-tile" style={`--tile:${tile.color}`}><i></i><span>{dt(tile.label)}</span><b>{tile.value}</b></div>
+    ))}
+  </div>
+
+  {STAT_TABS.map((id) => (
+    <section class:list={['st-panel', { 'st-panel-hidden': id !== tab }]} data-panel={id} role="tabpanel" style={`--tab:${tabs[id].color}`}>
+      <div class="st-charts">
+        {panels[id].charts.map((c) => (
+          <article class="st-card">
+            <h2>{dt(c.title)}</h2>
+            <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(' UTC') || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
+            <svg viewBox={`0 0 ${c.chart.W} ${c.chart.H}`} role="img" aria-label={dt(c.title)} class="st-svg">
+              {c.chart.grid.map((g) => (
+                <g><line x1={c.chart.left} x2={c.chart.left + c.chart.plotW} y1={g.y} y2={g.y} class="st-grid" /><text x={c.chart.left - 8} y={g.y + 4} text-anchor="end" class="st-axis">{g.label}</text></g>
+              ))}
+              {c.chart.bars.map((b, i) => (
+                <rect x={b.x} y={b.y} width={b.w} height={Math.max(0, b.h)} rx="4" class:list={['st-bar', { 'st-bar-lit': b.lit, 'st-bar-dim': c.chart.highlight !== -1 && !b.lit }]} style={`--c:${c.chart.color};--d:${b.delay}ms`}><title>{b.label || `${String(i).padStart(2, '0')}:00`} · {c.chart.format(b.value)}</title></rect>
+              ))}
+              {c.chart.ticks.filter((t) => t.show && t.label).map((t) => <text x={t.x} y={c.chart.H - 6} text-anchor="middle" class="st-axis">{t.label}</text>)}
+            </svg>
+            {c.chart.empty && <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+          </article>
+        ))}
+      </div>
+
+      <div class="st-lists">
+        {(id === 'overview' || id === 'messages') && (
+          <Fragment>
+            <article class="st-card st-list">
+              <h2>{dt('Top channels')}</h2>
+              {stats.topChannels.messages.length ? <ol>{stats.topChannels.messages.map((row, i) => <li><span>{i + 1}</span><b>{channelName(row.id)}</b><em>{n(row.messages)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+            <article class="st-card st-list">
+              <h2>{dt('Top members')}</h2>
+              {stats.topMembers.messages.length ? <ol>{stats.topMembers.messages.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{n(row.messages)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+          </Fragment>
+        )}
+        {id === 'voice' && (
+          <Fragment>
+            <article class="st-card st-list">
+              <h2>{dt('Top voice channels')}</h2>
+              {stats.topChannels.voice.length ? <ol>{stats.topChannels.voice.map((row, i) => <li><span>{i + 1}</span><b>{channelName(row.id)}</b><em>{hoursText(row.voiceSeconds)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+            <article class="st-card st-list">
+              <h2>{dt('Top in voice')}</h2>
+              {stats.topMembers.voice.length ? <ol>{stats.topMembers.voice.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{hoursText(row.voiceSeconds)}</em></li>)}</ol> : <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
+            </article>
+          </Fragment>
+        )}
+        {(id === 'joins' || id === 'leaves' || id === 'invites') && (
+          <article class="st-card st-list">
+            <h2>{dt('Growth')}</h2>
+            <ol>
+              <li><span><Icon name="ph:users-three-fill" width="14" height="14" /></span><b>{dt('Net members')}</b><em>{growth >= 0 ? '+' : ''}{n(growth)}</em></li>
+              <li><span><Icon name="ph:user-plus-fill" width="14" height="14" /></span><b>{dt('Joined')}</b><em>{n(stats.totals.joins)}</em></li>
+              <li><span><Icon name="ph:user-minus-fill" width="14" height="14" /></span><b>{dt('Left')}</b><em>{n(stats.totals.leaves)}</em></li>
+              <li><span><Icon name="ph:link-fill" width="14" height="14" /></span><b>{dt('Through invites')}</b><em>{n(stats.totals.invited)}{stats.totals.joins ? ` (${Math.round((stats.totals.invited / stats.totals.joins) * 100)}%)` : ''}</em></li>
+              {id === 'joins' && bestJoin && <li><span><Icon name="ph:calendar-check-fill" width="14" height="14" /></span><b>{dt('Best day')}</b><em>{dayLabel(bestJoin.day)} · {n(bestJoin.value)}</em></li>}
+              {id === 'leaves' && bestLeave && <li><span><Icon name="ph:calendar-check-fill" width="14" height="14" /></span><b>{dt('Best day')}</b><em>{dayLabel(bestLeave.day)} · {n(bestLeave.value)}</em></li>}
+              {id === 'invites' && bestInvite && <li><span><Icon name="ph:calendar-check-fill" width="14" height="14" /></span><b>{dt('Best day')}</b><em>{dayLabel(bestInvite.day)} · {n(bestInvite.value)}</em></li>}
+            </ol>
+            {!hasFlow && <p class="st-empty">{dt('Joins and leaves are counted from the moment this was added.')}</p>}
+          </article>
+        )}
+        {id === 'invites' && (
+          <article class="st-card st-list">
+            <h2>{dt('Top inviters')}</h2>
+            {inviters.length ? <ol>{inviters.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{n(row.net)}</em></li>)}</ol> : <p class="st-empty">{dt('No tracked invites yet.')}</p>}
+          </article>
+        )}
+        {id === 'overview' && stats.peakHour.messages && (
+          <article class="st-card st-list">
+            <h2>{dt('Highlights')}</h2>
+            <ol>
+              <li><span><Icon name="ph:clock-fill" width="14" height="14" /></span><b>{dt('Most active hour')}</b><em>{hourLabel(stats.peakHour.messages.hour)} UTC</em></li>
+              {bestMessage && <li><span><Icon name="ph:calendar-check-fill" width="14" height="14" /></span><b>{dt('Best day')}</b><em>{dayLabel(bestMessage.day)} · {n(bestMessage.value)}</em></li>}
+              <li><span><Icon name="ph:users-three-fill" width="14" height="14" /></span><b>{dt('Net members')}</b><em>{growth >= 0 ? '+' : ''}{n(growth)}</em></li>
+            </ol>
+          </article>
+        )}
+      </div>
+    </section>
+  ))}
+</DashGuildLayout>
+
+<script>
+  // Switching section: the new one slides in while the old one fades out, and the address keeps the section.
+  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.st-tab'));
+  const panels = Array.from(document.querySelectorAll<HTMLElement>('.st-panel'));
+  function show(id: string) {
+    tabs.forEach((tab) => {
+      const on = tab.dataset.tab === id;
+      tab.classList.toggle('current', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    panels.forEach((panel) => {
+      const on = panel.dataset.panel === id;
+      if (on) { panel.classList.remove('st-panel-hidden'); panel.classList.remove('st-enter'); void panel.offsetWidth; panel.classList.add('st-enter'); }
+      else panel.classList.add('st-panel-hidden');
+    });
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('tab', id);
+      history.replaceState(null, '', url);
+      document.querySelectorAll<HTMLAnchorElement>('a[data-keep-tab]').forEach((a) => { const u = new URL(a.href, location.origin); u.searchParams.set('tab', id); a.href = u.pathname + u.search; });
+    } catch { /* the address is just a convenience */ }
+  }
+  tabs.forEach((tab) => tab.addEventListener('click', () => show(tab.dataset.tab ?? 'overview')));
+</script>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .st-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .st-sub { font-size: 14px; color: var(--text-muted); margin: 0; }
+  .st-range { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); }
+  .st-range-link { font-size: 12.5px; padding: 6px 12px; border-radius: 999px; color: var(--text-muted); text-decoration: none; }
+  .st-range-link:hover { color: var(--text); }
+  .st-range-link.current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .st-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; scrollbar-width: none; }
+  .st-tabs::-webkit-scrollbar { display: none; }
+  .st-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); cursor: pointer; transition: background .18s, color .18s, border-color .18s, transform .18s; }
+  .st-tab:hover { color: var(--text); transform: translateY(-1px); }
+  .st-tab.current { color: var(--tab); border-color: var(--tab); background: color-mix(in srgb, var(--tab) 14%, transparent); font-weight: 600; }
+  .st-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .st-tile { position: relative; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .st-tile i { width: 22px; height: 4px; border-radius: 2px; background: var(--tile); margin-bottom: 6px; }
+  .st-tile span { font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st-tile b { font-size: 22px; line-height: 1.1; }
+  .st-panel-hidden { display: none; }
+  .st-panel { animation: st-in .32s ease both; }
+  .st-enter { animation: st-in .32s ease both; }
+  @keyframes st-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .st-charts { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+  .st-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .st-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px; min-width: 0; }
+  .st-card h2 { font-size: 15.5px; margin: 0 0 3px; }
+  .st-card-sub { font-size: 12.5px; color: var(--text-dim); margin: 0 0 8px; }
+  .st-lit { color: var(--tab); }
+  .st-svg { width: 100%; height: auto; display: block; }
+  .st-grid { stroke: var(--border); stroke-dasharray: 3 5; }
+  .st-axis { fill: var(--text-dim); font-size: 10.5px; font-family: var(--mono); }
+  .st-bar { fill: var(--c); transform-box: fill-box; transform-origin: bottom; animation: st-grow .6s cubic-bezier(.2, .8, .2, 1) both; animation-delay: var(--d); }
+  .st-bar-dim { fill: color-mix(in srgb, var(--c) 45%, transparent); }
+  .st-bar-lit { fill: var(--accent); }
+  @keyframes st-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .st-empty { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; }
+  .st-list ol { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .st-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 4px; border-top: 1px solid var(--border); font-size: 13.5px; }
+  .st-list li:first-child { border-top: 0; }
+  .st-list li span { color: var(--text-dim); font-family: var(--mono); font-size: 12px; display: grid; place-items: center; }
+  .st-list li b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st-list li em { font-style: normal; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  @media (max-width: 900px) {
+    .st-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .st-charts { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 520px) { .st-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (prefers-reduced-motion: reduce) { .st-bar, .st-panel, .st-enter { animation: none; } }
+</style>
