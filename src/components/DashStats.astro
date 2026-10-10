@@ -47,10 +47,11 @@ function niceMax(value: number) {
   return step * 4;
 }
 
-// One bar chart as SVG: the grid, the bars (the busiest one lit) and sparse labels. Text sits in HTML-friendly <title> tooltips.
-function chart(values: number[], labels: string[], color: string, format: (v: number) => string = n, highlight = -1) {
-  const W = 640, H = 240, left = 44, bottom = 26, top = 8;
-  const plotW = W - left - 6, plotH = H - bottom - top;
+// One chart as SVG: the grid and sparse labels, then bars (the busiest one lit) or, for the day-by-day charts, a line with its area
+// and markers that draw themselves like the ones of the overview.
+function chart(values: number[], labels: string[], color: string, format: (v: number) => string = n, highlight = -1, kind: 'bars' | 'line' = 'bars') {
+  const W = 640, H = 176, left = 44, bottom = 24, top = 8;
+  const plotW = W - left - 10, plotH = H - bottom - top;
   const max = niceMax(Math.max(0, ...values));
   const slot = plotW / Math.max(1, values.length);
   const barW = Math.max(3, Math.min(30, slot * 0.64));
@@ -61,7 +62,23 @@ function chart(values: number[], labels: string[], color: string, format: (v: nu
     return { x: left + slot * i + (slot - barW) / 2, y: top + plotH - h, h, w: barW, label: labels[i], value, lit: i === highlight, delay: Math.min(i * 18, 500) };
   });
   const ticks = labels.map((label, i) => ({ label, x: left + slot * i + slot / 2, show: i % every === 0 || i === labels.length - 1 }));
-  return { W, H, left, plotW, bottom, grid, bars, ticks, color, format, highlight, empty: values.every((v) => v === 0) };
+  // The line goes through the middle of each slot; the curve is smoothed with Catmull-Rom and never leaves the range of its neighbours.
+  const points = values.map((value, i) => ({ x: left + slot * i + slot / 2, y: top + plotH - (value / max) * plotH, value, label: labels[i] }));
+  let line = '';
+  if (points.length === 1) line = `M${points[0].x},${points[0].y} L${points[0].x + 0.01},${points[0].y}`;
+  else if (points.length > 1) {
+    line = `M${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const p0 = points[Math.max(0, i - 1)], p1 = points[i], p2 = points[i + 1], p3 = points[Math.min(points.length - 1, i + 2)];
+      const lo = Math.min(p1.y, p2.y), hi = Math.max(p1.y, p2.y);
+      const c1y = Math.max(lo, Math.min(hi, p1.y + (p2.y - p0.y) / 6));
+      const c2y = Math.max(lo, Math.min(hi, p2.y - (p3.y - p1.y) / 6));
+      line += ` C${p1.x + (p2.x - p0.x) / 6},${c1y} ${p2.x - (p3.x - p1.x) / 6},${c2y} ${p2.x},${p2.y}`;
+    }
+  }
+  const baseline = top + plotH;
+  const area = points.length > 1 ? `${line} L${points[points.length - 1].x},${baseline} L${points[0].x},${baseline} Z` : '';
+  return { W, H, left, plotW, bottom, grid, bars, ticks, color, format, highlight, kind, points, line, area, empty: values.every((v) => v === 0) };
 }
 
 const dailyLabels = stats.days.map(dayLabel);
@@ -79,44 +96,45 @@ const sourceRows = Object.entries(stats.sanctions.bySource).filter(([, count]) =
 
 const panels: Record<string, { charts: { title: string; sub: string; chart: ReturnType<typeof chart> }[] }> = {
   overview: { charts: [
-    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color) },
+    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color, n, -1, 'line') },
     { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
   ] },
   messages: { charts: [
-    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color) },
+    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color, n, -1, 'line') },
     { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
   ] },
   voice: { charts: [
-    { title: 'Voice hours per day', sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, chart: chart(voiceHours, dailyLabels, tabs.voice.color, fmtHours) },
+    { title: 'Voice hours per day', sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, chart: chart(voiceHours, dailyLabels, tabs.voice.color, fmtHours, -1, 'line') },
     { title: 'Most active hours', sub: stats.peakHour.voice ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.voice.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.voice.map((s) => s / 3600), hourLabels, tabs.voice.color, fmtHours, peakIndex(stats.hours.voice)) },
   ] },
   joins: { charts: [
-    { title: 'Members who joined per day', sub: `${n(stats.totals.joins)} ${dt('in total')}`, chart: chart(stats.daily.joins, dailyLabels, tabs.joins.color) },
+    { title: 'Members who joined per day', sub: `${n(stats.totals.joins)} ${dt('in total')}`, chart: chart(stats.daily.joins, dailyLabels, tabs.joins.color, n, -1, 'line') },
     { title: 'Best days of the week', sub: peakIndex(stats.weekdays.joins) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.joins)])}`, chart: chart(stats.weekdays.joins, WEEKDAYS.map((d) => dt(d)), tabs.joins.color, n, peakIndex(stats.weekdays.joins)) },
   ] },
   leaves: { charts: [
-    { title: 'Members who left per day', sub: `${n(stats.totals.leaves)} ${dt('in total')}`, chart: chart(stats.daily.leaves, dailyLabels, tabs.leaves.color) },
+    { title: 'Members who left per day', sub: `${n(stats.totals.leaves)} ${dt('in total')}`, chart: chart(stats.daily.leaves, dailyLabels, tabs.leaves.color, n, -1, 'line') },
     { title: 'Best days of the week', sub: peakIndex(stats.weekdays.leaves) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.leaves)])}`, chart: chart(stats.weekdays.leaves, WEEKDAYS.map((d) => dt(d)), tabs.leaves.color, n, peakIndex(stats.weekdays.leaves)) },
   ] },
   sanctions: { charts: [
-    { title: 'Sanctions per day', sub: `${n(stats.sanctions.total)} ${dt('in total')}`, chart: chart(stats.sanctions.daily, dailyLabels, tabs.sanctions.color) },
+    { title: 'Sanctions per day', sub: `${n(stats.sanctions.total)} ${dt('in total')}`, chart: chart(stats.sanctions.daily, dailyLabels, tabs.sanctions.color, n, -1, 'line') },
     { title: 'Sanctions by kind', sub: kindPeak === -1 ? dt('Not enough data yet') : `${dt('Most')}: ${dt(kindNames[kindPeak])}`, chart: chart(kindValues, kindNames.map((k) => dt(k)), tabs.sanctions.color, n, kindPeak) },
   ] },
   invites: { charts: [
-    { title: 'Joins through invites per day', sub: `${n(stats.totals.invited)} ${dt('in total')}`, chart: chart(stats.daily.invited, dailyLabels, tabs.invites.color) },
+    { title: 'Joins through invites per day', sub: `${n(stats.totals.invited)} ${dt('in total')}`, chart: chart(stats.daily.invited, dailyLabels, tabs.invites.color, n, -1, 'line') },
     { title: 'Best days of the week', sub: peakIndex(stats.weekdays.invited) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.invited)])}`, chart: chart(stats.weekdays.invited, WEEKDAYS.map((d) => dt(d)), tabs.invites.color, n, peakIndex(stats.weekdays.invited)) },
   ] },
 };
 
 const tiles = [
-  { label: 'Messages', value: n(stats.totals.messages), color: tabs.messages.color },
-  { label: 'Active members', value: n(stats.totals.activeMembers), color: '#f0a88f' },
-  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), color: tabs.voice.color },
-  { label: 'Joined', value: n(stats.totals.joins), color: tabs.joins.color },
-  { label: 'Left', value: n(stats.totals.leaves), color: tabs.leaves.color },
-  { label: 'Through invites', value: n(stats.totals.invited), color: tabs.invites.color },
+  { label: 'Messages', value: n(stats.totals.messages), count: stats.totals.messages, color: tabs.messages.color },
+  { label: 'Active members', value: n(stats.totals.activeMembers), count: stats.totals.activeMembers, color: '#f0a88f' },
+  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), count: null, color: tabs.voice.color },
+  { label: 'Joined', value: n(stats.totals.joins), count: stats.totals.joins, color: tabs.joins.color },
+  { label: 'Left', value: n(stats.totals.leaves), count: stats.totals.leaves, color: tabs.leaves.color },
+  { label: 'Through invites', value: n(stats.totals.invited), count: stats.totals.invited, color: tabs.invites.color },
 ];
-const channelName = (id: string) => `#${channelNames[id] ?? id}`;
+// A channel that is not in the server any more (deleted, or a temporary voice channel) has no name to show.
+const channelName = (id: string) => (channelNames[id] ? `#${channelNames[id]}` : dt('Deleted or temporary channel'));
 const memberName = (id: string) => memberNames[id] ?? id;
 const bestJoin = bestDayOf(stats.daily.joins);
 const bestLeave = bestDayOf(stats.daily.leaves);
@@ -147,25 +165,32 @@ const bestMessage = bestDayOf(stats.daily.messages);
   </div>
 
   <div class="st-tiles">
-    {tiles.map((tile) => (
-      <div class="st-tile" style={`--tile:${tile.color}`}><i></i><span>{dt(tile.label)}</span><b>{tile.value}</b></div>
+    {tiles.map((tile, i) => (
+      <div class="st-tile" style={`--tile:${tile.color};--i:${i}`}><i></i><span>{dt(tile.label)}</span><b data-count={tile.count ?? undefined}>{tile.value}</b></div>
     ))}
   </div>
 
   {STAT_TABS.map((id) => (
     <section class:list={['st-panel', { 'st-panel-hidden': id !== tab }]} data-panel={id} role="tabpanel" style={`--tab:${tabs[id].color}`}>
       <div class="st-charts">
-        {panels[id].charts.map((c) => (
-          <article class="st-card">
+        {panels[id].charts.map((c, ci) => (
+          <article class="st-card" style={`--i:${ci}`}>
             <h2>{dt(c.title)}</h2>
             <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(BOT_TIME_LABEL) || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
             <svg viewBox={`0 0 ${c.chart.W} ${c.chart.H}`} role="img" aria-label={dt(c.title)} class="st-svg">
               {c.chart.grid.map((g) => (
                 <g><line x1={c.chart.left} x2={c.chart.left + c.chart.plotW} y1={g.y} y2={g.y} class="st-grid" /><text x={c.chart.left - 8} y={g.y + 4} text-anchor="end" class="st-axis">{g.label}</text></g>
               ))}
-              {c.chart.bars.map((b, i) => (
+              {c.chart.kind === 'bars' && c.chart.bars.map((b, i) => (
                 <rect x={b.x} y={b.y} width={b.w} height={Math.max(0, b.h)} rx="4" class:list={['st-bar', { 'st-bar-lit': b.lit, 'st-bar-dim': c.chart.highlight !== -1 && !b.lit }]} style={`--c:${c.chart.color};--d:${b.delay}ms`}><title>{b.label || `${String(i).padStart(2, '0')}:00`} · {c.chart.format(b.value)}</title></rect>
               ))}
+              {c.chart.kind === 'line' && (
+                <g style={`--c:${c.chart.color}`}>
+                  {c.chart.area && <path d={c.chart.area} class="st-area" />}
+                  <path d={c.chart.line} pathLength="1" class="st-line" />
+                  {c.chart.points.map((pt, i) => <circle cx={pt.x} cy={pt.y} r="3.2" class="st-dot" style={`animation-delay:${0.45 + i * 0.03}s`}><title>{pt.label} · {c.chart.format(pt.value)}</title></circle>)}
+                </g>
+              )}
               {c.chart.ticks.filter((t) => t.show && t.label).map((t) => <text x={t.x} y={c.chart.H - 6} text-anchor="middle" class="st-axis">{t.label}</text>)}
             </svg>
             {c.chart.empty && <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
@@ -291,6 +316,21 @@ const bestMessage = bestDayOf(stats.daily.messages);
           });
         } catch (e) { /* the address is just a convenience */ }
       }
+      // The numbers of the tiles count up to their value.
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      root.querySelectorAll('[data-count]').forEach(function (el) {
+        var target = Number(el.dataset.count);
+        if (!isFinite(target) || target <= 0 || reduce) return;
+        var started = null;
+        function step(time) {
+          if (started === null) started = time;
+          var t = Math.min(1, (time - started) / 700);
+          el.textContent = Math.round(target * (1 - Math.pow(1 - t, 3))).toLocaleString('en-US');
+          if (t < 1) requestAnimationFrame(step);
+        }
+        el.textContent = '0';
+        requestAnimationFrame(step);
+      });
       tabs.forEach(function (tab) { tab.addEventListener('click', function () { show(tab.dataset.tab || 'overview'); }); });
       root.querySelectorAll('a[data-keep-tab]').forEach(function (a) {
         a.addEventListener('click', function () { root.classList.add('st-loading'); });
@@ -302,23 +342,23 @@ const bestMessage = bestDayOf(stats.daily.messages);
   </div>
 </DashGuildLayout>
 <style>
-  h1 { font-size: 24px; margin: 0 0 6px; }
-  .st-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .st-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
   .st-sub { font-size: 14px; color: var(--text-muted); margin: 0; }
   .st-range { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); }
   .st-range-link { font-size: 12.5px; padding: 6px 12px; border-radius: 999px; color: var(--text-muted); text-decoration: none; }
   .st-range-link:hover { color: var(--text); }
   .st-range-link.current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .st-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 5px 3px 7px; margin: -5px -3px 11px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .st-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 5px 3px 6px; margin: -5px -3px 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .st-tabs::-webkit-scrollbar { display: none; }
-  .st-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); cursor: pointer; transition: background .18s, color .18s, border-color .18s; white-space: nowrap; line-height: 1.2; }
+  .st-tab { display: inline-flex; align-items: center; gap: 7px; flex: none; font: inherit; font-size: 12.5px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); cursor: pointer; transition: background .18s, color .18s, border-color .18s; white-space: nowrap; line-height: 1.2; }
   .st-tab:hover { color: var(--text); }
   .st-tab.current { color: var(--tab); border-color: var(--tab); background: color-mix(in srgb, var(--tab) 14%, transparent); font-weight: 600; }
-  .st-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .st-tile { position: relative; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .st-tile i { width: 22px; height: 4px; border-radius: 2px; background: var(--tile); margin-bottom: 6px; }
+  .st-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .st-tile { position: relative; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 10px 12px 9px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .st-tile i { width: 20px; height: 3px; border-radius: 2px; background: var(--tile); margin-bottom: 4px; }
   .st-tile span { font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .st-tile b { font-size: 22px; line-height: 1.1; }
+  .st-tile b { font-size: 19px; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .st-root { position: relative; }
   .st-loadbar { position: absolute; left: 0; right: 0; top: -6px; height: 3px; border-radius: 2px; overflow: hidden; opacity: 0; transition: opacity .15s; pointer-events: none; }
   .st-loadbar::after { content: ''; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: st-slide 1s ease-in-out infinite; }
@@ -327,15 +367,24 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-loading .st-tiles, .st-loading .st-panel { opacity: .45; filter: saturate(.7); transition: opacity .2s; pointer-events: none; }
   .st-loading .st-tile b, .st-loading .st-card h2 { animation: st-pulse 1.1s ease-in-out infinite; }
   @keyframes st-pulse { 50% { opacity: .5; } }
+  .st-line { fill: none; stroke: var(--c); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1s cubic-bezier(.16, 1, .3, 1) forwards; }
+  @keyframes st-draw { to { stroke-dashoffset: 0; } }
+  .st-area { fill: color-mix(in srgb, var(--c) 18%, transparent); opacity: 0; animation: st-fade .6s ease-out .3s forwards; }
+  @keyframes st-fade { to { opacity: 1; } }
+  .st-dot { fill: var(--c); opacity: 0; transform-box: fill-box; transform-origin: center; animation: st-pop .3s cubic-bezier(.34, 1.56, .64, 1) forwards; }
+  @keyframes st-pop { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+  .st-tile { animation: st-rise .45s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i, 0) * 55ms); }
+  .st-card { animation: st-rise .5s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(120ms + var(--i, 0) * 90ms); }
+  @keyframes st-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   .st-panel-hidden { display: none; }
   .st-panel { animation: st-in .32s ease both; }
   .st-enter { animation: st-in .32s ease both; }
   @keyframes st-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  .st-charts { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
-  .st-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-  .st-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px; min-width: 0; }
-  .st-card h2 { font-size: 15.5px; margin: 0 0 3px; }
-  .st-card-sub { font-size: 12.5px; color: var(--text-dim); margin: 0 0 8px; }
+  .st-charts { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 10px; margin-bottom: 10px; }
+  .st-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+  .st-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 13px 14px; min-width: 0; }
+  .st-card h2 { font-size: 14.5px; margin: 0 0 2px; }
+  .st-card-sub { font-size: 12px; color: var(--text-dim); margin: 0 0 4px; }
   .st-lit { color: var(--tab); }
   .st-svg { width: 100%; height: auto; display: block; }
   .st-grid { stroke: var(--border); stroke-dasharray: 3 5; }
@@ -345,8 +394,8 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-bar-lit { fill: var(--accent); }
   @keyframes st-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
   .st-empty { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; }
-  .st-list ol { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-  .st-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 4px; border-top: 1px solid var(--border); font-size: 13.5px; }
+  .st-list ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+  .st-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 2px; border-top: 1px solid var(--border); font-size: 13px; }
   .st-list li:first-child { border-top: 0; }
   .st-list li span { color: var(--text-dim); font-family: var(--mono); font-size: 12px; display: grid; place-items: center; }
   .st-list li b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -356,5 +405,5 @@ const bestMessage = bestDayOf(stats.daily.messages);
     .st-charts { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 520px) { .st-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (prefers-reduced-motion: reduce) { .st-bar, .st-panel, .st-enter, .st-loadbar::after, .st-loading .st-tile b, .st-loading .st-card h2 { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .st-bar, .st-panel, .st-enter, .st-loadbar::after, .st-loading .st-tile b, .st-loading .st-card h2, .st-tile, .st-card, .st-line, .st-area, .st-dot { animation: none; opacity: 1; stroke-dashoffset: 0; } }
 </style>

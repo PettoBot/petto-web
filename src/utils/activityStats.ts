@@ -98,7 +98,7 @@ export function buildStats({ days, channelRows, hourlyRows, flowRows, memberRows
     if (source === 'moderator') moderators.set(row.moderator_id, (moderators.get(row.moderator_id) ?? 0) + 1);
     sanctioned.set(row.user_id, (sanctioned.get(row.user_id) ?? 0) + 1);
   }
-  const ranked = (map: Map<string, number>) => [...map.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 6);
+  const ranked = (map: Map<string, number>) => [...map.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 5);
   const sanctionTotal = sanctionDaily.reduce((a, b) => a + b, 0);
 
   const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
@@ -119,8 +119,8 @@ export function buildStats({ days, channelRows, hourlyRows, flowRows, memberRows
     },
     sanctions: { total: sanctionTotal, daily: sanctionDaily, byGroup, bySource, automatic: sanctionTotal - bySource.moderator, topModerators: ranked(moderators), topUsers: ranked(sanctioned) },
     peakHour: { messages: peakOf(hours.messages), voice: peakOf(hours.voice) },
-    topChannels: { messages: topOf(channels, 'messages', 6), voice: topOf(channels, 'voiceSeconds', 6) },
-    topMembers: { messages: topOf(members, 'messages', 6), voice: topOf(members, 'voiceSeconds', 6) },
+    topChannels: { messages: topOf(channels, 'messages', 5), voice: topOf(channels, 'voiceSeconds', 5) },
+    topMembers: { messages: topOf(members, 'messages', 5), voice: topOf(members, 'voiceSeconds', 5) },
   };
 }
 
