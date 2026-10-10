@@ -77,7 +77,40 @@ export async function canEditPartners(astro: any, userId: string): Promise<boole
   return Object.values(ids).some((list) => list.includes(userId));
 }
 
-export type PartnerResult = { ok: true } | { ok: false; error: 'not_configured' | 'invalid' | 'full' | 'database' | 'name' | 'url' | 'logo' };
+/**
+ * Turns what was pasted in the logo box into a picture link. A Discord invite gives the icon of its server, a page of Imgur
+ * (imgur.com/abc123) becomes the picture itself (i.imgur.com/abc123.png), and any other https link is used as it is.
+ * Returns `null` for an empty box, and `{ error }` when an invite cannot be read or an album cannot be used.
+ */
+export async function resolveLogo(input: string): Promise<{ url: string | null } | { error: 'invite' | 'album' }> {
+  const value = input.trim();
+  if (!value) return { url: null };
+  const invite = value.match(/^https?:\/\/(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/([A-Za-z0-9-]{2,32})\/?(?:[?#].*)?$/i);
+  if (invite) {
+    try {
+      const res = await fetch(`https://discord.com/api/v10/invites/${invite[1]}`, { headers: { Accept: 'application/json' } });
+      if (!res.ok) return { error: 'invite' };
+      const data: any = await res.json();
+      const guild = data?.guild;
+      if (!guild?.icon) return { error: 'invite' };
+      return { url: `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${String(guild.icon).startsWith('a_') ? 'gif' : 'png'}?size=128` };
+    } catch {
+      return { error: 'invite' };
+    }
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return { url: value };
+    if (/(^|\.)imgur\.com$/i.test(url.hostname) && url.hostname.toLowerCase() !== 'i.imgur.com') {
+      if (/^\/(a|gallery)\//i.test(url.pathname)) return { error: 'album' };
+      const id = url.pathname.replace(/^\/+/, '').split(/[/.]/)[0];
+      if (/^[A-Za-z0-9]{5,10}$/.test(id)) return { url: `https://i.imgur.com/${id}.png` };
+    }
+  } catch { /* the form checks the link */ }
+  return { url: value };
+}
+
+export type PartnerResult = { ok: true } | { ok: false; error: 'not_configured' | 'invalid' | 'full' | 'database' | 'name' | 'url' | 'logo' | 'invite' | 'album' };
 
 async function write(astro: any, path: string, method: string, body?: unknown): Promise<boolean> {
   const config = api(astro);

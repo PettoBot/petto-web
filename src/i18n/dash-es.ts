@@ -2296,4 +2296,7 @@ export const dashEs: Record<string, string> = {
   "Remove this partner?": "¿Quitar este partner?",
   "Delete every saved partner and go back to the original list?": "¿Borrar todos los partners guardados y volver a la lista original?",
   "Deleted or temporary channel": "Canal eliminado o temporal",
+  "That invite could not be read, or its server has no icon. Paste a direct link to the picture instead.": "No se pudo leer esa invitación, o su servidor no tiene icono. Pega mejor un enlace directo a la imagen.",
+  "An Imgur album cannot be used. Open the picture and copy its link (i.imgur.com/...).": "No se puede usar un álbum de Imgur. Abre la imagen y copia su enlace (i.imgur.com/...).",
+  "A link to the picture (.png, .jpg, .webp), an Imgur link, or a Discord invite to use the icon of its server.": "Un enlace a la imagen (.png, .jpg, .webp), un enlace de Imgur o una invitación de Discord para usar el icono de su servidor.",
 };
