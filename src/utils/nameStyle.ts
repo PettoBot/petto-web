@@ -64,6 +64,15 @@ export function nameStyleBody(style: NameStyle | null): Record<string, unknown> 
     : { display_name_font_id: 0, display_name_effect_id: 0, display_name_colors: [] };
 }
 
+/** The ways of clearing the style, from the cleanest (null) to the one that sets everything to nothing. */
+export function nameStyleClearBodies(): Record<string, unknown>[] {
+  return [
+    { display_name_font_id: null, display_name_effect_id: null, display_name_colors: null },
+    { display_name_font_id: 0, display_name_effect_id: 0, display_name_colors: [] },
+    { display_name_effect_id: 0, display_name_colors: [] },
+  ];
+}
+
 /** CSS that approximates the effect for the preview. Discord draws the font and the final look itself. */
 export function nameStyleCss(style: NameStyle | null): string {
   if (!style) return '';
