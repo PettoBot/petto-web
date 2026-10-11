@@ -2322,4 +2322,7 @@ export const dashEs: Record<string, string> = {
   "Filters": "Filtros",
   "Servers of 3 to 50 members": "Servidores de 3 a 50 miembros",
   "Data from": "Datos de",
+  "Kind": "Tipo",
+  "Rollout list": "Lista de rollouts",
+  "When many changes arrive at once, Petto sends them in order, a message every few seconds, grouped in cards of up to 10 changes, so a big day never floods the channel.": "Cuando llegan muchos cambios a la vez, Petto los envía en orden, un mensaje cada pocos segundos y agrupados en tarjetas de hasta 10 cambios, así un día grande nunca llena el canal.",
 };

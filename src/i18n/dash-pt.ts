@@ -2322,4 +2322,7 @@ export const dashPt: Record<string, string> = {
   "Filters": "Filtros",
   "Servers of 3 to 50 members": "Servidores de 3 a 50 membros",
   "Data from": "Dados de",
+  "Kind": "Tipo",
+  "Rollout list": "Lista de rollouts",
+  "When many changes arrive at once, Petto sends them in order, a message every few seconds, grouped in cards of up to 10 changes, so a big day never floods the channel.": "Quando chegam muitas mudanças de uma vez, o Petto as envia em ordem, uma mensagem a cada poucos segundos e agrupadas em cartões de até 10 mudanças, assim um dia grande nunca enche o canal.",
 };
