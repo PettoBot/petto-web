@@ -1,0 +1,117 @@
+---
+export const prerender = false;
+import DashRollouts from '../../../../components/DashRollouts.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { canUseRollouts } from '../../../../utils/rolloutAccess';
+import { rolloutStarterV2 } from '../../../../utils/rolloutTemplate';
+import { validateTemplate, isV2Data } from '../../../../utils/embedSchema';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!canUseRollouts(Astro, session.userId)) return Astro.redirect(`/dash/guild/${id}/overview`);
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const KINDS = ['user', 'guild', 'apex_user', 'installation'];
+const EVENTS = ['new', 'increase', 'decrease', 'status'];
+const SECTIONS = ['variants', 'ranges', 'status', 'platforms', 'filters'];
+
+let saved = false;
+let tableMissing = false;
+const snowflake = (value: FormDataEntryValue | null) => (/^\d{15,25}$/.test(String(value ?? '').trim()) ? String(value).trim() : null);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (String(form.get('action') ?? '') === 'create_design') {
+    // A V2 design that starts as the card Petto sends, ready to edit in the Embeds page and used by the alerts.
+    const taken = new Set<string>(((await (await fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name`, { headers: apiHeaders })).json().catch(() => [])) as any[]).map((row) => row.name));
+    let name = 'rollout-alert';
+    for (let n = 2; taken.has(name) && n < 50; n += 1) name = `rollout-alert-${n}`;
+    const checked = validateTemplate({ v2: rolloutStarterV2() });
+    if (checked.ok) {
+      const created = await fetch(`${apiUrl}/rest/v1/embed_templates`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, name, data: checked.data }) });
+      if (created.ok) {
+        await fetch(`${apiUrl}/rest/v1/rollout_config?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, style: 'template', embed_template: name, updated_at: new Date().toISOString() }) });
+        return Astro.redirect(`/dash/guild/${id}/embeds?name=${encodeURIComponent(name)}`);
+      }
+    }
+    return Astro.redirect(`/dash/guild/${id}/rollouts`);
+  }
+  // One saved embed per kind of experiment: `type_template_guild`...
+  const typeMap = Object.fromEntries(KINDS.map((kind) => [kind, String(form.get(`type_template_${kind}`) ?? '').trim().slice(0, 40)]).filter(([, name]) => name));
+  const pick = (name: string, allowed: string[]) => form.getAll(name).map(String).filter((value) => allowed.includes(value));
+  const hex = String(form.get('accent_color') ?? '').trim().replace(/^#/, '');
+  const res = await fetch(`${apiUrl}/rest/v1/rollout_config?on_conflict=guild_id`, {
+    method: 'POST',
+    headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      guild_id: id,
+      enabled: form.get('enabled') === 'on',
+      channel_id: snowflake(form.get('channel_id')),
+      role_id: snowflake(form.get('role_id')),
+      style: String(form.get('style') ?? 'card') === 'template' ? 'template' : 'card',
+      embed_template: String(form.get('embed_template') ?? '').trim().slice(0, 40) || null,
+      kinds: pick('kinds', KINDS),
+      events: pick('events', EVENTS),
+      min_change: Math.max(0, Math.min(100, Number(form.get('min_change') ?? 0) || 0)),
+      include_unrolled: form.get('include_unrolled') === 'on',
+      hide_sections: SECTIONS.filter((section) => form.get(`hide_${section}`) === 'on'),
+      accent_color: /^[0-9a-f]{6}$/i.test(hex) ? parseInt(hex, 16) : null,
+      type_templates: typeMap,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  saved = res.ok;
+  tableMissing = !res.ok;
+}
+
+const [guildInfo, configRes, channelsRes, rolesRes, templatesRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/rollout_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+// The table comes with the bot update that adds rollout alerts; until then the page says so.
+const ready = configRes.ok && !tableMissing;
+const c = (ready ? (await configRes.json())[0] : null) ?? {};
+const config = {
+  enabled: c.enabled ?? false,
+  channelId: c.channel_id ?? '',
+  roleId: c.role_id ?? '',
+  style: c.style ?? 'card',
+  embedTemplate: c.embed_template ?? '',
+  kinds: c.kinds ?? [],
+  events: c.events ?? [],
+  minChange: Number(c.min_change ?? 0) || 0,
+  includeUnrolled: c.include_unrolled ?? false,
+  hideSections: c.hide_sections ?? [],
+  accentColor: Number.isInteger(c.accent_color) ? `#${c.accent_color.toString(16).padStart(6, '0')}` : '',
+  typeTemplates: (c.type_templates && typeof c.type_templates === 'object' ? c.type_templates : {}) as Record<string, string>,
+};
+const channels = (channelsRes.ok ? await channelsRes.json() : []).filter((ch: any) => ch.type === 0 || ch.type === 5).sort((a: any, b: any) => a.position - b.position).map((ch: any) => ({ id: ch.id, name: ch.name }));
+const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((row: any) => ({ name: row.name as string, v2: isV2Data(row.data) }));
+---
+<DashRollouts
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  config={config}
+  channels={channels}
+  roles={roles}
+  embedTemplates={embedTemplates}
+  ready={ready}
+  saved={saved}
+/>
