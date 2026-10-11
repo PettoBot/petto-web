@@ -2310,7 +2310,7 @@ export const dashPt: Record<string, string> = {
   "Leave all empty for every event.": "Deixe tudo vazio para qualquer evento.",
   "Ignore changes smaller than (percentage points)": "Ignorar mudanças menores que (pontos percentuais)",
   "Also announce new experiments that have no rollout yet": "Anunciar também os experimentos novos que ainda não têm rollout",
-  "Empty uses green when it grows, red when it shrinks, blue for a new one and yellow for a status change.": "Vazio usa verde se cresce, vermelho se diminui, azul se é novo e amarelo se muda o estado.",
+  "Empty sends the card with no color.": "Vazio envia o card sem cor.",
   "A different design for each kind": "Um design diferente para cada tipo",
   "Choose a saved embed (normal or V2) for the kinds of experiment you want to look different. An experiment uses the one of its kind; if there is none, the general design above.": "Escolha um embed salvo (normal ou V2) para os tipos de experimento que você quer que fiquem diferentes. Um experimento usa o do seu tipo; se não houver, o design geral de cima.",
   "Users experiment (A/B)": "Experimento de usuários (A/B)",
