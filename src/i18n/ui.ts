@@ -548,6 +548,7 @@ export const ui = {
         { title: 'Refunds', href: '/refunds' },
       ],
       partners: 'Partners',
+      credits: 'Credits',
       copy: '© 2026 Petto. Actively in development.',
     },
     toolsPage: {
@@ -1729,6 +1730,7 @@ export const ui = {
         { title: 'Reembolsos', href: '/refunds' },
       ],
       partners: 'Partners',
+      credits: 'Créditos',
       copy: '© 2026 Petto. En desarrollo activo.',
     },
     toolsPage: {
@@ -2910,6 +2912,7 @@ export const ui = {
         { title: 'Reembolsos', href: '/refunds' },
       ],
       partners: 'Partners',
+      credits: 'Créditos',
       copy: '© 2026 Petto. Em desenvolvimento ativo.',
     },
     toolsPage: {
