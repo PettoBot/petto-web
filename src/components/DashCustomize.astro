@@ -307,14 +307,31 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
         // drafts instead of being saved by accident.
         const resetField = btn.dataset.resetField;
         if (!resetField) return;
-        const marker = document.createElement('input');
-        marker.type = 'hidden';
-        marker.name = 'reset_field';
-        marker.value = resetField;
-        form.appendChild(marker);
+        const label = btn.textContent;
         btn.disabled = true;
         btn.textContent = cdt('Resetting…');
-        form.requestSubmit();
+        const body = new FormData();
+        body.set('reset_field', resetField);
+        const flashes = document.querySelector('.cz-flashes');
+        const flash = (kind: 'ok' | 'warn' | 'err', text: string) => {
+          if (!flashes) return;
+          flashes.innerHTML = '';
+          const el = document.createElement('div');
+          el.className = `cz-flash cz-flash-${kind}`;
+          el.textContent = text;
+          flashes.appendChild(el);
+        };
+        // Only the field being reset is sent, and the page stays where it is: the answer says what to show.
+        fetch(location.href, { method: 'POST', body, headers: { 'x-petto-ajax': '1' }, credentials: 'same-origin' })
+          .then(async (res) => {
+            if (!(res.headers.get('content-type') ?? '').includes('application/json')) { location.reload(); return; }
+            const result = await res.json() as { saved: boolean; warning: boolean; error: string | null };
+            if (result.error || !result.saved) flash('err', cdt('Something went wrong, try again.'));
+            else if (result.warning) flash('warn', cdt("Discord didn't accept the profile sync, it'll retry next save."));
+            else flash('ok', cdt('Saved.'));
+          })
+          .catch(() => flash('err', cdt('Something went wrong, try again.')))
+          .finally(() => { btn.disabled = false; btn.textContent = label; });
       });
     });
   }

@@ -1,5 +1,5 @@
 import { memoPerRequest } from './requestMemo';
-import { nameStyleBody, type NameStyle } from './nameStyle';
+import { nameStyleBody, nameStyleClearBodies, type NameStyle } from './nameStyle';
 import { readGuildSnapshot, iconUrl, recentlyWritten } from './guildSnapshots';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
@@ -203,12 +203,18 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
  */
 export async function setBotNameStyle(guildId: string, botToken: string, style: NameStyle | null): Promise<boolean> {
   botIdentityCache.delete(`${botToken}:${guildId}`);
-  const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(nameStyleBody(style)),
-  });
-  return res.ok;
+  const send = async (body: Record<string, unknown>) => {
+    const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  };
+  if (style) return send(nameStyleBody(style));
+  // Clearing: Discord does not document these fields, so the accepted way of saying "no style" is tried in order.
+  for (const body of nameStyleClearBodies()) if (await send(body)) return true;
+  return false;
 }
 
 /**
