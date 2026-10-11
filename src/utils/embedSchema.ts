@@ -15,7 +15,7 @@ export interface TemplateData { content: string; embeds: EmbedData[]; buttons: L
 // A Components V2 message: containers, text, pictures, sections, dividers and rows of link buttons. It follows Discord's
 // own component JSON, so the bot and the Embed Builder read it as it is. It has no message text and no embeds.
 export interface V2Emoji { name: string; id?: string; animated?: boolean }
-export interface V2Button { type: 2; style: 5; label: string; url: string; emoji?: V2Emoji; disabled?: boolean }
+export interface V2Button { type: 2; style: 1 | 2 | 3 | 4 | 5; label: string; url?: string; custom_id?: string; emoji?: V2Emoji; disabled?: boolean }
 export interface V2Text { type: 10; content: string }
 export interface V2Separator { type: 14; divider: boolean; spacing: 1 | 2 }
 export interface V2Thumbnail { type: 11; media: { url: string }; description?: string; spoiler?: boolean }
@@ -183,6 +183,10 @@ const cleanEmoji = (raw: any): V2Emoji | undefined => {
 function cleanButton(raw: any): V2Button | null {
   if (!raw || raw.type !== 2) return null;
   const emoji = cleanEmoji(raw.emoji);
+  // A button that is not a link only shows something (such as the change of a rollout in its label): it can never be pressed, so it is
+  // always disabled. Its label and its emoji can hold variables.
+  const style = Number(raw.style);
+  if ([1, 2, 3, 4].includes(style)) return { type: 2, style: style as 1 | 2 | 3 | 4, label: clip(raw.label, V2_LIMITS.buttonLabel), custom_id: clip(raw.custom_id, 100) || 'display', ...(emoji ? { emoji } : {}), disabled: true };
   return { type: 2, style: 5, label: clip(raw.label, V2_LIMITS.buttonLabel), url: cleanV2Url(raw.url), ...(emoji ? { emoji } : {}), ...(raw.disabled ? { disabled: true } : {}) };
 }
 function cleanThumbnail(raw: any): V2Thumbnail | null {
