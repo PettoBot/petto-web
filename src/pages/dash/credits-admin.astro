@@ -1,0 +1,48 @@
+---
+export const prerender = false;
+import DashCreditsAdmin from '../../components/DashCreditsAdmin.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+import { resolveLogo } from '../../utils/partners';
+import { addCredit, canEditCredits, DEFAULT_CREDITS, moveCredit, readCreditForm, readCredits, removeCredit, resetCredits, startCustomCredits, toggleCredit, updateCredit } from '../../utils/credits';
+
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!(await canEditCredits(Astro, session.userId))) return Astro.redirect('/dash/manage?error=forbidden');
+if (!getEnv(Astro, 'PETTO_BOT_API_URL')) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) return Astro.redirect('/dash/credits-admin?error=invalid');
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const id = Number(form.get('id'));
+  let result: { ok: true } | { ok: false; error: string } = { ok: false, error: 'invalid' };
+  if (action === 'start') result = await startCustomCredits(Astro);
+  else if (action === 'add' || action === 'update') {
+    const read = readCreditForm(form);
+    if (!read.ok) result = read;
+    else {
+      // The logo box takes a picture link, an Imgur page or a Discord invite (its server icon is used), like the partners.
+      const logo = await resolveLogo(read.value.logo_url ?? '');
+      if ('error' in logo) result = { ok: false, error: logo.error };
+      else {
+        const value = { ...read.value, logo_url: logo.url };
+        result = action === 'add' ? await addCredit(Astro, value) : await updateCredit(Astro, id, value);
+      }
+    }
+  } else if (action === 'remove') result = await removeCredit(Astro, id);
+  else if (action === 'toggle') result = await toggleCredit(Astro, id);
+  else if (action === 'up' || action === 'down') result = await moveCredit(Astro, id, action);
+  else if (action === 'reset') result = await resetCredits(Astro);
+  return Astro.redirect(`/dash/credits-admin?${result.ok ? 'saved=1' : `error=${'error' in result ? result.error : 'invalid'}`}`);
+}
+
+const rows = await readCredits(Astro);
+const custom = Boolean(rows && rows.length);
+const credits = custom ? rows! : DEFAULT_CREDITS;
+const error = Astro.url.searchParams.get('error') ?? undefined;
+const saved = Astro.url.searchParams.get('saved') === '1';
+---
+
+<DashCreditsAdmin credits={credits} custom={custom} error={error} saved={saved} />
