@@ -2310,7 +2310,7 @@ export const dashEs: Record<string, string> = {
   "Leave all empty for every event.": "Deja todo vacío para cualquier evento.",
   "Ignore changes smaller than (percentage points)": "Ignorar cambios menores a (puntos porcentuales)",
   "Also announce new experiments that have no rollout yet": "Anunciar también los experimentos nuevos que aún no tienen rollout",
-  "Empty uses green when it grows, red when it shrinks, blue for a new one and yellow for a status change.": "Vacío usa verde si crece, rojo si baja, azul si es nuevo y amarillo si cambia el estado.",
+  "Empty sends the card with no color.": "Vacío envía la card sin color.",
   "A different design for each kind": "Un diseño distinto para cada tipo",
   "Choose a saved embed (normal or V2) for the kinds of experiment you want to look different. An experiment uses the one of its kind; if there is none, the general design above.": "Elige un embed guardado (normal o V2) para los tipos de experimento que quieras que se vean distintos. Un experimento usa el de su tipo; si no hay, el diseño general de arriba.",
   "Users experiment (A/B)": "Experimento de usuarios (A/B)",
