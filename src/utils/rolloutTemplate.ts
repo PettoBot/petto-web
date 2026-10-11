@@ -11,9 +11,9 @@ export function rolloutStarterV2(): V2Doc {
       components: [
         { type: 10, content: '# {rollout.kind_icon} {rollout.name}\n-# {rollout.event_icon} {rollout.type} · **{rollout.badge}**' },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: '- {rollout.kind_icon} **Kind:** {rollout.kind}\n- <:pe_cl:1542054021416751174> **Status:** {rollout.status}\n- <:pe_pc:1542053996028633108> **Platforms:** {rollout.platforms}\n-# `{rollout.id}`' },
+        { type: 10, content: '- {rollout.kind_icon} **Kind:** {rollout.kind}\n- <:pe_rstatus:1558964324414783568> **Status:** {rollout.status}\n- <:pe_rplataform:1558964325450911746> **Platforms:** {rollout.platforms}\n-# `{rollout.id}`' },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: '## <:pe_reload:1542053990282567752> Rollouts\n```py\n{rollout.variants}\n```\n## <:pe_note:1542048566657155153> Ranges\n```py\n{rollout.ranges}\n```' },
+        { type: 10, content: '## <:pe_reload:1533575051947802764> Rollouts\n```py\n{rollout.variants}\n```\n## <:pe_rranges:1558964320770072627> Ranges\n```py\n{rollout.ranges}\n```' },
       ],
     }, {
       type: 1,
