@@ -1,6 +1,6 @@
 import { memoPerRequest } from './requestMemo';
 import { nameStyleBody, nameStyleClearBodies, type NameStyle } from './nameStyle';
-import { readGuildSnapshot, iconUrl, recentlyWritten } from './guildSnapshots';
+import { readGuildSnapshot, iconUrl, recentlyWritten, noteGuildWrite, snapshotEpoch } from './guildSnapshots';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
 
@@ -16,17 +16,19 @@ export function guildIconUrl(guild: { id: string; icon?: string | null }, size =
 
 /** Lightweight guild lookup (name + icon only) via the bot token, shared by every dashboard section page for the sidebar/breadcrumb without repeating the full stats fetch each time. */
 const GUILD_INFO_TTL_MS = 20_000;
-const guildInfoCache = new Map<string, { value: { id: string; name: string; icon: string | null }; expiresAt: number }>();
+const guildInfoCache = new Map<string, { value: { id: string; name: string; icon: string | null }; expiresAt: number; epoch: number }>();
 
 export async function getGuildInfo(guildId: string, botToken: string): Promise<{ id: string; name: string; icon: string | null } | null> {
   const cacheKey = `${botToken}:${guildId}`;
   const cached = guildInfoCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  // A copy the bot saved again (or a change made from here) drops the name and icon kept from the old one.
+  const epoch = snapshotEpoch(guildId);
+  if (cached && cached.expiresAt > Date.now() && cached.epoch === epoch) return cached.value;
 
   const saved = await readGuildSnapshot(guildId);
   if (saved) {
     const value = { id: saved.id, name: saved.name, icon: iconUrl(saved.id, saved.icon) };
-    guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS });
+    guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS, epoch });
     return value;
   }
 
@@ -34,7 +36,7 @@ export async function getGuildInfo(guildId: string, botToken: string): Promise<{
   if (!res.ok) return null;
   const guild = await res.json();
   const value = { id: guild.id, name: guild.name, icon: guildIconUrl(guild) };
-  guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS });
+  guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS, epoch });
   return value;
 }
 
@@ -68,20 +70,20 @@ const guildListCache = new Map<string, { status: number; text: string; expiresAt
 
 /**
  * Roles or channels of a server, as a Response. Every dashboard page asks for the same lists, so a
- * short cache turns page-to-page navigation into zero Discord calls. Writes (POST) skip the cache
- * and refresh it, so a page rendered right after a change shows the change.
+ * short cache turns page-to-page navigation into zero Discord calls. A change made in Discord from the
+ * dashboard (see noteGuildWrite) skips the cache for a few seconds, so the page that follows shows it.
  * Only finished results are shared between requests. A Worker cannot wait on a fetch that another
  * request started, so a request that finds nothing cached always makes its own call.
  */
 export async function getGuildList(astro: { request?: Request }, guildId: string, botToken: string, kind: 'roles' | 'channels'): Promise<Response> {
   const key = `${botToken}:${guildId}:${kind}`;
-  const method = String(astro.request?.method ?? 'GET').toUpperCase();
-  const cacheable = method === 'GET' || method === 'HEAD';
+  // Right after a change made in Discord from here (a channel, a webhook, the bot's look) the saved copy is behind, so Discord is
+  // asked. Any other save (a setting stored in the database) reads the copy like a normal page.
+  const changed = recentlyWritten(guildId);
   const hit = guildListCache.get(key);
-  if (cacheable && hit && hit.expiresAt > Date.now() && !recentlyWritten(guildId)) return new Response(hit.text, { status: hit.status });
+  if (!changed && hit && hit.expiresAt > Date.now()) return new Response(hit.text, { status: hit.status });
 
-  // The bot's saved copy of the server answers reads; a write always asks Discord so the page that follows shows it.
-  if (cacheable) {
+  if (!changed) {
     const saved = await readGuildSnapshot(guildId);
     if (saved) {
       return new Response(JSON.stringify(kind === 'roles' ? saved.roles : saved.channels), { status: 200 });
@@ -194,6 +196,8 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  // The bot's look in this server changed in Discord: its saved copy is behind until the bot saves it again.
+  noteGuildWrite(guildId);
   return res.ok;
 }
 
@@ -209,6 +213,7 @@ export async function setBotNameStyle(guildId: string, botToken: string, style: 
       headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    noteGuildWrite(guildId);
     return res.ok;
   };
   if (style) return send(nameStyleBody(style));

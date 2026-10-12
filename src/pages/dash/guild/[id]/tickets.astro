@@ -3,6 +3,7 @@ export const prerender = false;
 import DashTickets from '../../../../components/DashTickets.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getGuildEmojis } from '../../../../utils/guildEmojis';
+import { noteGuildWrite } from '../../../../utils/guildSnapshots';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
@@ -318,7 +319,7 @@ if (Astro.request.method === 'POST') {
       const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
       const [panel] = panelRes.ok ? await panelRes.json() : [];
       logTicketPanel('move-panel-load', { panelId, status: panelRes.status, found: Boolean(panel) });
-      const oldMessageDeleted = panel ? await deletePanelMessage(botToken, panel.channel_id, panel.message_id) : false;
+      const oldMessageDeleted = panel ? await removePanelMessage(panel.channel_id, panel.message_id) : false;
       if (!panel) {
         error = dt('That panel was not found.');
       } else if (!oldMessageDeleted) {
@@ -345,7 +346,7 @@ if (Astro.request.method === 'POST') {
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     logTicketPanel('resend-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
     if (panel) {
-      const oldMessageDeleted = await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+      const oldMessageDeleted = await removePanelMessage(panel.channel_id, panel.message_id);
       logTicketPanel('resend-panel-discord-delete', { panelId, ok: oldMessageDeleted });
       if (!oldMessageDeleted) {
         error = dt("Couldn't remove the old panel message, so it was not resent.");
@@ -366,7 +367,7 @@ if (Astro.request.method === 'POST') {
     const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     logTicketPanel('delete-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
-    if (panel) await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+    if (panel) await removePanelMessage(panel.channel_id, panel.message_id);
     const deleteRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'DELETE',
       headers: { ...apiHeaders, Prefer: 'return=representation' },
@@ -414,6 +415,12 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+async function removePanelMessage(channelId: string, messageId: string | null): Promise<boolean> {
+  const removed = await deletePanelMessage(botToken as string, channelId, messageId);
+  noteGuildWrite(id);
+  return removed;
+}
+
 /** Re-renders a panel's live message from its current title/description/style/categories, used after any change that could affect what's shown (category add/edit tied to this panel, panel edit, resend). */
 async function refreshPanelById(panelId: string): Promise<boolean> {
   const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
@@ -424,6 +431,8 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   const templateData = await getTemplateData(panel.embed_template);
   const guildVars = templateData ? await getGuildVars() : null;
   const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats, templateData, guildVars));
+  // A panel message changed in Discord: the pages that follow read Discord until the bot has saved its copy again.
+  noteGuildWrite(id);
   if (!messageId) return false;
   for (const note of panelWarnings(cats, panel.embed_template, templateData)) {
     if (note === 'no_types') warnings.push(dt('The panel is posted, but it has no ticket types yet, so nobody can open a ticket from it. Add a type to this panel.'));
