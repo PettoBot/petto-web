@@ -83,6 +83,9 @@ async function loadSource(src: string, env: CardEnv): Promise<HTMLImageElement |
   if (!value) return null;
   const asset = /^asset:(\d{1,18})$/.exec(value);
   if (asset) return loadPicture(env.assetUrl(asset[1]));
+  // One of the pictures that come with Petto.
+  const own = /^petto:([a-z0-9-]{3,30})$/.exec(value);
+  if (own) return loadPicture(`/assets/backgrounds/${own[1]}.png`);
   return /^https:\/\//i.test(value) ? loadPicture(value) : null;
 }
 
