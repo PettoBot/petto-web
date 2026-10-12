@@ -549,75 +549,81 @@ if (Astro.request.method === 'POST') {
   if (['create_webhook', 'duplicate_webhook', 'delete_webhook', 'create_counter', 'edit_counter', 'save_voicemaster', 'disable_voicemaster'].includes(action)) noteGuildWrite(id);
 }
 
-// The emojis of the picker are read while everything else loads.
-const customEmojisPromise = getGuildEmojis(id, botToken);
-const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes] = await runBatched([
+// Only the section on screen is drawn, so only what it shows is read. The emojis of the picker load alongside the rest.
+const AUTOMATION_SECTIONS = ['overview', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'reaction-triggers', 'reaction-messages', 'auto-threads', 'disabled-commands', 'aliases', 'timers', 'starboard', 'voicemaster', 'webhooks', 'sticky-roles', 'counters'];
+const shown = AUTOMATION_SECTIONS.includes(section) ? section : 'overview';
+const needs = (...sections: string[]) => sections.includes(shown);
+const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
+const customEmojisPromise = needs('reaction-triggers', 'reaction-messages', 'starboard', 'reaction-roles') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
+const WITH_CHANNELS = ['webhooks', 'counters', 'reaction-triggers', 'reaction-messages', 'timers', 'starboard', 'voicemaster', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads', 'disabled-commands'];
+const WITH_ROLES = ['reaction-triggers', 'starboard', 'autoresponders', 'reaction-roles'];
+const WITH_TEMPLATES = ['starboard', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
+const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content,embed_template`, { headers: apiHeaders }),
-  () => fetch(apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,channel_id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id,default_username,default_avatar_url,default_message,default_embed,enabled&order=id.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type,name_template,prefix,suffix,parent_id,interval_seconds,enabled&order=id.asc`, { headers: apiHeaders }),
-  () => getGuildList(Astro, id, botToken, 'roles'),
-  () => getGuildList(Astro, id, botToken, 'channels'),
-  () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/sticky_role_snapshots?guild_id=eq.${id}&select=user_id&limit=1000`, { headers: apiHeaders }),
+  when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders })),
+  when(['autoresponders'], () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: apiHeaders })),
+  when(['sticky-messages'], () => fetch(`${apiUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content,embed_template`, { headers: apiHeaders })),
+  when(['reaction-roles'], () => fetch(apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,channel_id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: apiHeaders })),
+  when(['reaction-triggers'], () => fetch(`${apiUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: apiHeaders })),
+  when(['reaction-messages'], () => fetch(`${apiUrl}/rest/v1/reaction_message_configs?guild_id=eq.${id}&select=id,channel_id,emojis&order=channel_id.asc`, { headers: apiHeaders })),
+  when(['disabled-commands'], () => fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: apiHeaders })),
+  when(['auto-threads'], () => fetch(`${apiUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: apiHeaders })),
+  when(['aliases'], () => fetch(`${apiUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: apiHeaders })),
+  when(['timers'], () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: apiHeaders })),
+  when(['starboard'], () => fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['voicemaster'], () => fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['webhooks'], () => fetch(`${apiUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id,default_username,default_avatar_url,default_message,default_embed,enabled&order=id.asc`, { headers: apiHeaders })),
+  when(['counters'], () => fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type,name_template,prefix,suffix,parent_id,interval_seconds,enabled&order=id.asc`, { headers: apiHeaders })),
+  when(WITH_ROLES, () => getGuildList(Astro, id, botToken, 'roles')),
+  when(WITH_CHANNELS, () => getGuildList(Astro, id, botToken, 'channels')),
+  when(WITH_TEMPLATES, () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders })),
+  when(['sticky-roles'], () => fetch(`${apiUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders })),
+  when(['sticky-roles'], () => fetch(`${apiUrl}/rest/v1/sticky_role_snapshots?guild_id=eq.${id}&select=user_id&limit=1000`, { headers: apiHeaders })),
+  // The prefix of the server and which custom commands are written in code. Both tolerate a database that does not have them yet.
+  when(['aliases', 'custom-commands', 'disabled-commands'], () => fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders }).catch(() => null)),
+  when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&code=not.is.null&select=name`, { headers: apiHeaders }).catch(() => null)),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-// The prefix of the server and which custom commands are written in code. Both are read apart and tolerate a database that
-// does not have them yet, so the list never goes missing.
 let guildPrefix = '!';
 try {
-  const prefixRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders });
-  if (prefixRes.ok) guildPrefix = String((await prefixRes.json())?.[0]?.prefix || '!');
+  if (prefixRes?.ok) guildPrefix = String((await prefixRes.json())?.[0]?.prefix || '!');
 } catch {}
 const codeCommandNames = new Set<string>();
 try {
-  const codeRes = await fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&code=not.is.null&select=name`, { headers: apiHeaders });
-  if (codeRes.ok) for (const row of await codeRes.json()) codeCommandNames.add(row.name);
+  if (codeRes?.ok) for (const row of await codeRes.json()) codeCommandNames.add(row.name);
 } catch {}
 
-const customCommands = commandsRes.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name) })) : [];
-const stickyRolesEnabled = stickyRolesRes.ok ? Boolean((await stickyRolesRes.json())?.[0]?.enabled) : false;
-const stickyRolesSaved = stickySnapshotsRes.ok ? (await stickySnapshotsRes.json()).length : 0;
-const embedTemplateNames = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
-const autoResponders = respondersRes.ok ? (await respondersRes.json()).map((a: any) => ({
+const customCommands = commandsRes?.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name) })) : [];
+const stickyRolesEnabled = stickyRolesRes?.ok ? Boolean((await stickyRolesRes.json())?.[0]?.enabled) : false;
+const stickyRolesSaved = stickySnapshotsRes?.ok ? (await stickySnapshotsRes.json()).length : 0;
+const embedTemplateNames = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
+const autoResponders = respondersRes?.ok ? (await respondersRes.json()).map((a: any) => ({
   id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, replyToTrigger: a.reply_to_trigger ?? false, pingUser: a.ping_user ?? false, channelIds: a.channel_ids ?? [], roleIds: a.role_ids ?? [],
   replyType: a.reply_type ?? 'text', embedColor: a.embed_color, embedTitle: a.embed_title, embedFooter: a.embed_footer, embedTemplate: a.embed_template,
 })) : [];
-const stickyMessages = stickyRes.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content, embedTemplate: s.embed_template ?? '' })) : [];
-const reactionRoles = reactionRolesRes.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id ?? '', messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode, interactionType: r.interaction_type ?? 'reaction', buttonLabel: r.button_label ?? null })) : [];
-const reactionTriggers = reactionTriggersRes.ok ? (await reactionTriggersRes.json()).map((r: any) => ({ id: r.id, emoji: r.emoji, trigger: r.trigger, ownerId: r.owner_id, matchMode: r.match_mode ?? 'contains', channelIds: r.channel_ids ?? [], roleIds: r.role_ids ?? [], caseSensitive: r.case_sensitive ?? false, cooldownSeconds: r.cooldown_seconds ?? 0, enabled: r.enabled !== false })) : [];
-const reactionMessages = reactionMessagesRes.ok ? (await reactionMessagesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id, emojis: r.emojis ?? [] })) : [];
-const disabledCommands = disabledRes.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
-const autoThreads = autoThreadsRes.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
-const aliases = aliasesRes.ok ? (await aliasesRes.json()).map((a: any) => ({ id: a.id, name: a.name, command: a.command })) : [];
-const timers = timersRes.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at })) : [];
-const starboardRows = starboardRes.ok ? await starboardRes.json() : [];
+const stickyMessages = stickyRes?.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content, embedTemplate: s.embed_template ?? '' })) : [];
+const reactionRoles = reactionRolesRes?.ok ? (await reactionRolesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id ?? '', messageId: r.message_id, emoji: r.emoji, roleId: r.role_id, mode: r.mode, interactionType: r.interaction_type ?? 'reaction', buttonLabel: r.button_label ?? null })) : [];
+const reactionTriggers = reactionTriggersRes?.ok ? (await reactionTriggersRes.json()).map((r: any) => ({ id: r.id, emoji: r.emoji, trigger: r.trigger, ownerId: r.owner_id, matchMode: r.match_mode ?? 'contains', channelIds: r.channel_ids ?? [], roleIds: r.role_ids ?? [], caseSensitive: r.case_sensitive ?? false, cooldownSeconds: r.cooldown_seconds ?? 0, enabled: r.enabled !== false })) : [];
+const reactionMessages = reactionMessagesRes?.ok ? (await reactionMessagesRes.json()).map((r: any) => ({ id: r.id, channelId: r.channel_id, emojis: r.emojis ?? [] })) : [];
+const disabledCommands = disabledRes?.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
+const autoThreads = autoThreadsRes?.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
+const aliases = aliasesRes?.ok ? (await aliasesRes.json()).map((a: any) => ({ id: a.id, name: a.name, command: a.command })) : [];
+const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at })) : [];
+const starboardRows = starboardRes?.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
-const voiceRows = voiceMasterRes.ok ? await voiceMasterRes.json() : [];
+const voiceRows = voiceMasterRes?.ok ? await voiceMasterRes.json() : [];
 const voiceMaster = voiceRows[0] ? { creatorChannelId: voiceRows[0].creator_channel_id, panelChannelId: voiceRows[0].panel_channel_id, panelMessageId: voiceRows[0].panel_message_id, categoryId: voiceRows[0].category_id, defaultLimit: voiceRows[0].default_limit ?? 0, defaultName: voiceRows[0].default_name ?? '{user.name}' } : null;
-const managedWebhooks = webhooksRes.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id, defaultUsername: w.default_username, defaultAvatarUrl: w.default_avatar_url, defaultMessage: w.default_message, enabled: w.enabled !== false })) : [];
-const serverCounters = countersRes.ok ? (await countersRes.json()).map((c: any) => ({ id: c.id, channelId: c.channel_id, option: c.counter_option, type: c.channel_type, nameTemplate: c.name_template ?? '{option}: {value}', prefix: c.prefix ?? '', suffix: c.suffix ?? '', parentId: c.parent_id, intervalSeconds: c.interval_seconds ?? 60, enabled: c.enabled !== false })) : [];
+const managedWebhooks = webhooksRes?.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id, defaultUsername: w.default_username, defaultAvatarUrl: w.default_avatar_url, defaultMessage: w.default_message, enabled: w.enabled !== false })) : [];
+const serverCounters = countersRes?.ok ? (await countersRes.json()).map((c: any) => ({ id: c.id, channelId: c.channel_id, option: c.counter_option, type: c.channel_type, nameTemplate: c.name_template ?? '{option}: {value}', prefix: c.prefix ?? '', suffix: c.suffix ?? '', parentId: c.parent_id, intervalSeconds: c.interval_seconds ?? 60, enabled: c.enabled !== false })) : [];
 
-const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const allRoles = rolesRes?.ok ? await rolesRes.json() : [];
 const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
   .map((r: any) => ({ id: r.id, name: r.name }));
 
-const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const allChannels = channelsRes?.ok ? await channelsRes.json() : [];
 const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
   .sort((a: any, b: any) => a.position - b.position)
