@@ -52,10 +52,10 @@ function fromDiscordUser(id: string, user: any): MemberProfile | null {
   return { id, username: String(user.username ?? ''), globalName: user.global_name ?? null, displayName: String(user.global_name || user.username || ''), avatar: user.avatar ?? null, bot: Boolean(user.bot) };
 }
 
-async function askBot(astro: { locals?: any }, guildId: string, ids: string[]): Promise<Map<string, MemberProfile | null> | null> {
+async function askBot(astro: { locals?: any }, guildId: string, ids: string[], userId: string | undefined): Promise<Map<string, MemberProfile | null> | null> {
   const apiUrl = getEnv(astro, 'PETTO_BOT_API_URL');
   const secret = getEnv(astro, 'PETTO_BOT_API_SECRET');
-  if (!apiUrl || !secret || Date.now() < routeMissingUntil) return null;
+  if (!apiUrl || !secret || !userId || Date.now() < routeMissingUntil) return null;
   const found = new Map<string, MemberProfile | null>();
   for (let start = 0; start < ids.length; start += CHUNK) {
     const chunk = ids.slice(start, start + CHUNK);
@@ -65,21 +65,22 @@ async function askBot(astro: { locals?: any }, guildId: string, ids: string[]): 
         method: 'POST',
         signal: AbortSignal.timeout(4_000),
         headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: chunk }),
+        // The bot checks that the person looking can manage the server, like its other dashboard routes.
+        body: JSON.stringify({ ids: chunk, user_id: userId }),
       });
     } catch {
       return found.size ? found : null;
     }
     if (res.status === 404) {
-      // A bot that does not have the route yet. A 404 that is the bot's own answer (`{ ok:false }`) has a JSON body; either way the
-      // per-member path answers until the bot is asked again.
+      // A bot without the route yet (or a server it cannot see): the per-member path answers until the bot is asked again.
       routeMissingUntil = Date.now() + ROUTE_RETRY_MS;
       return found.size ? found : null;
     }
+    // Any other refusal (no access, a bad id, the bot failing) also falls back to the per-member path, for this page only.
     if (!res.ok) return found.size ? found : null;
     const payload: any = await res.json().catch(() => null);
     const members = payload?.members;
-    if (!members || typeof members !== 'object') return found.size ? found : null;
+    if (payload?.ok === false || !members || typeof members !== 'object') return found.size ? found : null;
     for (const id of chunk) found.set(id, fromBot(id, members[id]));
   }
   return found;
@@ -96,7 +97,7 @@ async function inBatches<T>(items: T[], size: number, run: (item: T) => Promise<
  * Profiles for `ids` in one server. A member the bot does not know (left the server) is null, or, with `fallback: 'user'`, read
  * from Discord's global profile, as the statistics page always did.
  */
-export async function getMemberProfiles(astro: { locals?: any }, guildId: string, ids: string[], botToken: string | undefined, options: { fallback?: 'member' | 'user' } = {}): Promise<Map<string, MemberProfile | null>> {
+export async function getMemberProfiles(astro: { locals?: any }, guildId: string, ids: string[], botToken: string | undefined, options: { fallback?: 'member' | 'user'; userId?: string } = {}): Promise<Map<string, MemberProfile | null>> {
   const wanted = [...new Set(ids.map(String).filter((id) => ID.test(id)))];
   const result = new Map<string, MemberProfile | null>();
   if (!wanted.length) return result;
@@ -111,7 +112,7 @@ export async function getMemberProfiles(astro: { locals?: any }, guildId: string
   if (!missing.length) return result;
 
   const learned: Array<[string, MemberProfile | null]> = [];
-  const fromApi = await askBot(astro, guildId, missing);
+  const fromApi = await askBot(astro, guildId, missing, options.userId);
   let left = missing;
   if (fromApi) {
     left = [];

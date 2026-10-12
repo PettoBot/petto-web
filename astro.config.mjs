@@ -82,7 +82,9 @@ export default defineConfig({
   // Dynamic dashboard routes must carry their component styles in the Worker
   // response. Without this, Cloudflare can render the HTML while the SSR page
   // misses the generated CSS asset link and appears as unstyled markup.
-  build: { inlineStylesheets: 'always' },
+  // The Node server (Discloud) links the larger stylesheets instead: they are hashed files the browser keeps for a year, so
+  // every page after the first one is lighter. The dashboard's page swaps add the new page's links (syncHeadAssets).
+  build: { inlineStylesheets: discloudTarget ? 'auto' : 'always' },
   // El JavaScript del navegador siempre puede inspeccionarse; esto endurece el build,
   // no lo convierte en código secreto: lo mantiene minificado y sin source maps.
   vite: {

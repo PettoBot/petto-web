@@ -136,8 +136,10 @@ export async function readGuildSnapshot(guildId: string): Promise<GuildSnapshot 
 const EMOJI_COLUMN_RETRY_MS = 10 * 60_000;
 let emojiColumnMissingUntil = 0;
 
+// An empty list cannot be told apart from a row saved before the bot kept emojis, so it counts as unknown and Discord is asked
+// (that answer is kept a few minutes too).
 function emojiList(raw: unknown): Array<{ id: string; name: string; animated: boolean }> | null {
-  if (!Array.isArray(raw)) return null;
+  if (!Array.isArray(raw) || !raw.length) return null;
   return raw.filter((emoji: any) => emoji?.id).map((emoji: any) => ({ id: String(emoji.id), name: String(emoji.name ?? ''), animated: Boolean(emoji.animated) }));
 }
 
