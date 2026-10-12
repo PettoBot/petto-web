@@ -35,6 +35,23 @@ const formNumber = (form: FormData, name: string, fallback: number) => {
   return Number.isFinite(value) ? value : fallback;
 };
 
+// "10: Level 10!" lines as the levels with a message of their own (up to 25, levels 1 to 10000).
+const parseMilestones = (value: FormDataEntryValue | null) => {
+  const seen = new Set<number>();
+  const list: { level: number; message: string }[] = [];
+  for (const line of String(value ?? '').split(/\r?\n/)) {
+    const match = /^\s*(\d{1,5})\s*[:|-]\s*(.+?)\s*$/.exec(line);
+    if (!match) continue;
+    const level = Number(match[1]);
+    if (level < 1 || level > 10000 || seen.has(level)) continue;
+    seen.add(level);
+    list.push({ level, message: match[2].slice(0, 1000) });
+    if (list.length >= 25) break;
+  }
+  return list.sort((a, b) => a.level - b.level);
+};
+const ids = (values: FormDataEntryValue[]) => values.map(String).filter((value) => /^\d{15,25}$/.test(value)).slice(0, 100);
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
@@ -59,6 +76,11 @@ if (Astro.request.method === 'POST') {
         notify_embed_template: String(form.get('notify_embed_template') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_') || null,
         notify_every: Math.max(1, Math.min(50, formNumber(form, 'notify_every', 1))),
         ignored_channel_ids: ignoredChannelIds,
+        ignored_category_ids: ids(form.getAll('ignored_category_ids')),
+        notify_reply: form.get('notify_reply') === 'on',
+        notify_ping: form.get('notify_ping') === 'on',
+        notify_delete_after: Math.max(0, Math.min(86400, Math.floor(formNumber(form, 'notify_delete_after', 0)))),
+        notify_milestones: parseMilestones(form.get('notify_milestones')),
         join_xp: Math.max(0, Math.min(1000000, formNumber(form, 'join_xp', 0))),
         join_level: Math.max(0, Math.min(1000, formNumber(form, 'join_level', 0))),
         curve_a: Math.max(0, formNumber(form, 'curve_a', 1)),
@@ -95,6 +117,10 @@ if (Astro.request.method === 'POST') {
         voice_notify_every: Math.max(1, Math.min(50, formNumber(form, 'voice_notify_every', 1))),
         voice_role_mode: String(form.get('voice_role_mode') ?? 'highest'),
         voice_ignored_channel_ids: ignoredChannelIds,
+        voice_ignored_category_ids: ids(form.getAll('voice_ignored_category_ids')),
+        voice_notify_ping: form.get('voice_notify_ping') === 'on',
+        voice_notify_delete_after: Math.max(0, Math.min(86400, Math.floor(formNumber(form, 'voice_notify_delete_after', 0)))),
+        voice_notify_milestones: parseMilestones(form.get('voice_notify_milestones')),
         updated_at: new Date().toISOString(),
       }),
     });
@@ -130,6 +156,11 @@ if (Astro.request.method === 'POST') {
         daily_bonus_xp: Math.max(0, Math.min(100000, Math.floor(formNumber(form, 'daily_bonus_xp', 0)))),
         streak_bonus_xp: Math.max(0, Math.min(10000, Math.floor(formNumber(form, 'streak_bonus_xp', 0)))),
         streak_max_days: Math.max(1, Math.min(365, Math.floor(formNumber(form, 'streak_max_days', 7)))),
+        xp_multiplier: Math.max(0, Math.min(20, Math.round(formNumber(form, 'xp_multiplier', 1) * 100) / 100)),
+        multiplier_mode: ['highest', 'stack', 'sum'].includes(String(form.get('multiplier_mode'))) ? String(form.get('multiplier_mode')) : 'highest',
+        multiplier_cap: Math.max(1, Math.min(100, Math.round(formNumber(form, 'multiplier_cap', 20) * 100) / 100)),
+        no_xp_role_ids: ids(form.getAll('no_xp_role_ids')),
+        only_xp_role_ids: ids(form.getAll('only_xp_role_ids')),
         updated_at: new Date().toISOString(),
       }),
     });
@@ -172,44 +203,78 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'add_reward') {
     const level = Number(form.get('level') ?? 0);
     const roleId = String(form.get('role_id') ?? '');
+    const source = String(form.get('source') ?? 'text') === 'voice' ? 'voice' : 'text';
     if (level > 0 && roleId) {
-      const saveResponse = await fetch(`${apiUrl}/rest/v1/level_rewards?on_conflict=guild_id,level`, {
+      const saveResponse = await fetch(`${apiUrl}/rest/v1/level_rewards?on_conflict=guild_id,source,level`, {
         method: 'POST',
         headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ guild_id: id, level, role_id: roleId }),
+        body: JSON.stringify({ guild_id: id, source, level, role_id: roleId }),
       });
       saved = saveResponse.ok;
       saveError = !saveResponse.ok;
     }
   } else if (action === 'delete_reward') {
     const level = Number(form.get('level') ?? 0);
-    const saveResponse = await fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&level=eq.${level}`, {
+    const source = String(form.get('source') ?? 'text') === 'voice' ? 'voice' : 'text';
+    const saveResponse = await fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&source=eq.${source}&level=eq.${level}`, {
       method: 'DELETE',
       headers: apiHeaders,
     });
     saved = saveResponse.ok;
     saveError = !saveResponse.ok;
+  } else if (action === 'add_multiplier') {
+    const targetType = String(form.get('target_type') ?? '');
+    const targetId = String(form.get(`target_${targetType}`) ?? '');
+    const multiplier = Math.round(formNumber(form, 'multiplier', 2) * 100) / 100;
+    if (['role', 'channel', 'category'].includes(targetType) && /^\d{15,25}$/.test(targetId) && multiplier >= 0 && multiplier <= 20) {
+      const countRes = await fetch(`${apiUrl}/rest/v1/level_multipliers?guild_id=eq.${id}&select=target_id`, { headers: apiHeaders });
+      const existing = countRes.ok ? await countRes.json() : [];
+      if (existing.length >= 100 && !existing.some((row: any) => row.target_id === targetId)) {
+        saveError = true;
+      } else {
+        // The server keeps a row for the guild before any child table can point at it.
+        await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, updated_at: new Date().toISOString() }) }).catch(() => null);
+        const saveResponse = await fetch(`${apiUrl}/rest/v1/level_multipliers?on_conflict=guild_id,target_id`, {
+          method: 'POST',
+          headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ guild_id: id, target_id: targetId, target_type: targetType, multiplier }),
+        });
+        saved = saveResponse.ok;
+        saveError = !saveResponse.ok;
+      }
+    } else {
+      saveError = true;
+    }
+  } else if (action === 'delete_multiplier') {
+    const targetId = String(form.get('target_id') ?? '');
+    if (/^\d{15,25}$/.test(targetId)) {
+      const saveResponse = await fetch(`${apiUrl}/rest/v1/level_multipliers?guild_id=eq.${id}&target_id=eq.${targetId}`, { method: 'DELETE', headers: apiHeaders });
+      saved = saveResponse.ok;
+      saveError = !saveResponse.ok;
+    }
   }
 }
 
 // Only the section on screen is drawn, so only what it shows is read (the settings row is small and every section uses it).
-const LEVELING_SECTIONS = ['settings', 'voice', 'rank', 'rules', 'rewards', 'leaderboard', 'leaderboard-voice'];
+const LEVELING_SECTIONS = ['settings', 'voice', 'rank', 'rules', 'multipliers', 'rewards', 'leaderboard', 'leaderboard-voice'];
 const shown = LEVELING_SECTIONS.includes(section) ? section : 'settings';
 const needs = (...sections: string[]) => sections.includes(shown);
-const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, rolesRes, channelsRes, embedTemplatesRes, cardsRes, eventsRes] = await Promise.all([
+const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, rolesRes, channelsRes, embedTemplatesRes, cardsRes, eventsRes, multipliersRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  needs('rewards') ? fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: apiHeaders }) : null,
+  needs('rewards') ? fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=source,level,role_id&order=level.asc`, { headers: apiHeaders }) : null,
   needs('leaderboard') ? fetch(`${apiUrl}/rest/v1/level_users?guild_id=eq.${id}&select=user_id,xp,level&order=xp.desc&limit=10`, { headers: apiHeaders }) : null,
   needs('leaderboard-voice') ? fetch(`${apiUrl}/rest/v1/level_users?guild_id=eq.${id}&voice_xp=gt.0&select=user_id,voice_xp,voice_level,vc_minutes&order=voice_xp.desc&limit=10`, { headers: apiHeaders }) : null,
-  needs('rewards') ? getGuildList(Astro, id, botToken, 'roles') : null,
-  needs('settings', 'voice') ? getGuildList(Astro, id, botToken, 'channels') : null,
+  needs('rewards', 'rules', 'multipliers') ? getGuildList(Astro, id, botToken, 'roles') : null,
+  needs('settings', 'voice', 'multipliers') ? getGuildList(Astro, id, botToken, 'channels') : null,
   needs('settings', 'voice') ? fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }) : null,
   needs('rank') ? fetch(`${apiUrl}/rest/v1/image_cards?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }).catch(() => null) : null,
   needs('rules') ? fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&ends_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,name,multiplier,source,starts_at,ends_at&order=starts_at.asc`, { headers: apiHeaders }).catch(() => null) : null,
+  needs('multipliers') ? fetch(`${apiUrl}/rest/v1/level_multipliers?guild_id=eq.${id}&select=target_id,target_type,multiplier&order=target_type.asc`, { headers: apiHeaders }).catch(() => null) : null,
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
+const milestonesText = (value: unknown) => (Array.isArray(value) ? value : []).map((entry: any) => `${Number(entry.level)}: ${String(entry.message ?? '')}`).join('\n');
 const configRows = configRes.ok ? await configRes.json() : [];
 const c = configRows[0] ?? {};
 const config = {
@@ -226,6 +291,11 @@ const config = {
   notifyEvery: c.notify_every ?? 1,
   roleMode: c.role_mode ?? 'highest',
   ignoredChannelIds: c.ignored_channel_ids ?? [],
+  ignoredCategoryIds: c.ignored_category_ids ?? [],
+  notifyReply: c.notify_reply ?? true,
+  notifyPing: c.notify_ping ?? true,
+  notifyDeleteAfter: c.notify_delete_after ?? 0,
+  notifyMilestones: milestonesText(c.notify_milestones),
   joinXp: c.join_xp ?? 0,
   joinLevel: c.join_level ?? 0,
   curveA: c.curve_a ?? 1,
@@ -252,6 +322,10 @@ const voiceConfig = {
   notifyEvery: c.voice_notify_every ?? 1,
   roleMode: c.voice_role_mode ?? config.roleMode,
   ignoredChannelIds: c.voice_ignored_channel_ids ?? [],
+  ignoredCategoryIds: c.voice_ignored_category_ids ?? [],
+  notifyPing: c.voice_notify_ping ?? true,
+  notifyDeleteAfter: c.voice_notify_delete_after ?? 0,
+  notifyMilestones: milestonesText(c.voice_notify_milestones),
 };
 
 // Rank and rules settings, read with defaults so a database without the new columns still shows the page.
@@ -269,6 +343,11 @@ const rules = {
   dailyBonusXp: c.daily_bonus_xp ?? 0,
   streakBonusXp: c.streak_bonus_xp ?? 0,
   streakMaxDays: c.streak_max_days ?? 7,
+  xpMultiplier: Number(c.xp_multiplier ?? 1),
+  multiplierMode: c.multiplier_mode ?? 'highest',
+  multiplierCap: Number(c.multiplier_cap ?? 20),
+  noXpRoleIds: c.no_xp_role_ids ?? [],
+  onlyXpRoleIds: c.only_xp_role_ids ?? [],
 };
 const rawCards = cardsRes?.ok ? await cardsRes.json() : [];
 const cards = (Array.isArray(rawCards) ? rawCards : []).map((card: any) => ({ name: String(card.name), kind: card.data?.kind === 'rank' ? 'rank' : 'welcome', data: card.data }));
@@ -276,7 +355,9 @@ const rawEvents = eventsRes?.ok ? await eventsRes.json() : [];
 const events = (Array.isArray(rawEvents) ? rawEvents : []).map((event: any) => ({ id: String(event.id), name: String(event.name), multiplier: Number(event.multiplier), source: String(event.source), startsAt: String(event.starts_at), endsAt: String(event.ends_at) }));
 
 const rawRewards = rewardsRes?.ok ? await rewardsRes.json() : [];
-const rewards = rawRewards.map((r: any) => ({ level: r.level, roleId: r.role_id }));
+const rewards = rawRewards.map((r: any) => ({ level: r.level, roleId: r.role_id, source: r.source === 'voice' ? 'voice' : 'text' }));
+const rawMultipliers = multipliersRes?.ok ? await multipliersRes.json() : [];
+const multipliers = (Array.isArray(rawMultipliers) ? rawMultipliers : []).map((row: any) => ({ targetId: String(row.target_id), type: String(row.target_type), multiplier: Number(row.multiplier) }));
 
 // Only the leaderboard on screen is read, and the names of its members come in one call to the bot (kept for a while), not one
 // Discord call per member.
@@ -303,6 +384,10 @@ const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
+const categories = allChannels
+  .filter((c: any) => c.type === 4)
+  .sort((a: any, b: any) => a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name }));
 const voiceChannels = allChannels
   .filter((c: any) => c.type === 2 || c.type === 13)
   .sort((a: any, b: any) => a.position - b.position)
@@ -318,6 +403,8 @@ const embedTemplateNames = embedTemplates.map((template: any) => template.name).
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   config={config}
   rewards={rewards}
+  multipliers={multipliers}
+  categories={categories}
   roles={roles}
   channels={channels}
   voiceChannels={voiceChannels}

@@ -2,7 +2,7 @@
 // in petto-bot), so a layer follows the pointer while it is dragged instead of waiting for the bot to draw again.
 // The saved card is still drawn by the bot when a message is sent. Keep the two in step when one changes.
 import type { AvatarLayer, BarLayer, CardData, ImageLayer, Layer, ShapeLayer, TextLayer } from './cardTypes';
-import { tokenValues, type TokenContext } from '../../utils/variableSamples';
+import { findSample, tokenValues, type TokenContext } from '../../utils/variableSamples';
 
 const MAX_TEXT_LINES = 12;
 const FONT_BASE = '/fonts/cards/';
@@ -71,7 +71,7 @@ function loadPicture(url: string): Promise<HTMLImageElement | null> {
 
 function resolveText(text: string, env: CardEnv): string {
   const values = tokenValues(env.context);
-  return text.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (match, token) => values[token]?.text ?? match);
+  return text.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (match, token) => findSample(values, token)?.text ?? match);
 }
 
 /** The picture for a layer or background source: an uploaded file, a variable such as {user.avatar}, or a link. */

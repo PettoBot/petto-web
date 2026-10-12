@@ -27,6 +27,7 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     'user.join_position': { text: count.text }, 'user.join_position_suffix': { text: `${count.text}th` },
     'user.boost': { text: 'Yes' }, 'user.top_role': { text: 'Member' }, 'user.bot': { text: 'No' },
     level: { text: '12' }, level_next: { text: '13' }, level_xp: { text: '23,450' }, level_xp_needed: { text: '2,350' }, level_xp_current: { text: '1,420' }, level_xp_to_next: { text: '930' },
+    level_bar: { text: '▰▰▰▰▰▰▱▱▱▱' }, level_previous: { text: '11' }, level_role: { text: '@Level 10', mention: true }, level_role_name: { text: 'Level 10' }, level_type: { text: 'text' },
     level_progress: { text: '60' }, level_rank: { text: '3' }, level_rank_total: { text: '120' }, level_streak: { text: '4' }, level_messages: { text: '3,210' }, level_voice_minutes: { text: '540' }, level_type: { text: 'text' }, EMOJI: { text: '✦' },
     'gw.prize': { text: 'Discord Nitro' }, 'gw.host': mention, 'gw.winners': { text: '1' }, 'gw.claim_time': { text: '10 minutes' },
     nextBump: { text: 'in 2 hours' },
@@ -98,4 +99,24 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     tag: { text: 'PETT' }, 'tag.rule': { text: 'partner-server' }, 'tag.condition': { text: 'is_guild_id' }, 'tag.rule_value': { text: '707307527846625280' }, 'tag.guild_id': { text: '707307527846625280' },
     'tag.enabled': { text: 'true' }, 'tag.badge': { text: 'badge' }, 'tag.role': { text: '@Partner', mention: true },
   };
+}
+
+// The names other people (and other bots) use for the same variable, the same ones the bot understands.
+const aliases: Record<string, string> = {
+  mention: 'user', member: 'user', 'member.mention': 'user', 'user.ping': 'user', 'user.tag': 'user_tag', 'user.username': 'user_name', username: 'user_name', 'user.nickname': 'user.display_name',
+  'user.nick': 'user_nick', nickname: 'user_nick', 'member.name': 'user.display_name', 'member.id': 'user.id',
+  'level.level': 'level', 'level.current': 'level', 'level.xp': 'level_xp', 'level.total_xp': 'level_xp', 'level.xp_needed': 'level_xp_needed', 'level.rank': 'level_rank', 'level.next': 'level_next',
+  'level.progress': 'level_progress', 'level.xp_current': 'level_xp_current', 'level.xp_to_next': 'level_xp_to_next', 'level.rank_total': 'level_rank_total', 'level.total': 'level_rank_total',
+  'level.streak': 'level_streak', 'level.messages': 'level_messages', 'level.voice_minutes': 'level_voice_minutes', 'level.type': 'level_type', 'level.bar': 'level_bar', 'level.role': 'level_role',
+  'level.role_name': 'level_role_name', 'level.previous': 'level_previous', 'server.id': 'server_id', 'server.members': 'server_membercount',
+};
+
+/** The sample of a variable written as it comes: whatever its case, with the names of other bots, or undefined when it is not known. */
+export function findSample(samples: Record<string, TokenValue>, token: string): TokenValue | undefined {
+  if (samples[token]) return samples[token];
+  const lower = token.trim().toLowerCase();
+  if (samples[lower]) return samples[lower];
+  const byCase = Object.keys(samples).find((key) => key.toLowerCase() === lower);
+  if (byCase) return samples[byCase];
+  return aliases[lower] ? samples[aliases[lower]] : undefined;
 }
