@@ -2339,4 +2339,9 @@ export const dashEs: Record<string, string> = {
   "Link (optional)": "Enlace (opcional)",
   "Remove this credit?": "¿Quitar este crédito?",
   "Delete every saved credit and go back to the original list?": "¿Borrar todos los créditos guardados y volver a la lista original?",
+  "Servers with Petto": "Servidores con Petto",
+  "Servers without Petto": "Servidores sin Petto",
+  "Search servers": "Buscar servidores",
+  "No server matches your search.": "Ningún servidor coincide con tu búsqueda.",
+  "members": "miembros",
 };

@@ -3,7 +3,7 @@ export const prerender = false;
 import DashManage from '../../../components/DashManage.astro';
 import { getDashboardSession } from '../../../utils/dashAuth';
 import { canManageGuild, guildIconUrl } from '../../../utils/discord';
-import { getCachedUserGuilds, getCachedBotGuildIds } from '../../../utils/discordCache';
+import { getCachedUserGuilds, getCachedBotGuildIds, getBotGuildList } from '../../../utils/discordCache';
 import { getEnv } from '../../../utils/env';
 import { canEditPartners } from '../../../utils/partners';
 import { isPettoOwner } from '../../../utils/premiumAdmin';
@@ -19,13 +19,16 @@ if (!session) {
 
 // Nothing here depends on anything else, so they all start at once: the visitor's servers (Discord), the bot's servers,
 // and the Premium state.
-const [guildsResult, botGuildIds, premiumSnapshot] = await Promise.all([
+const [guildsResult, botGuildIds, botGuildList, premiumSnapshot] = await Promise.all([
   getCachedUserGuilds(session.accessToken, Astro.request).then((list) => ({ list }), () => ({ list: null as any[] | null })),
   botToken ? getCachedBotGuildIds(botToken, Astro.request) : Promise.resolve(new Set<string>()),
+  // Only used to sort by members, so a failure just leaves the order by name.
+  botToken ? getBotGuildList(botToken).catch(() => []) : Promise.resolve([]),
   getPremiumSnapshot(Astro, session.userId),
 ]);
 const discordUnavailable = guildsResult.list === null;
 const manageable = (guildsResult.list ?? []).filter(canManageGuild);
+const memberCounts = new Map(botGuildList.map((guild) => [guild.id, guild.memberCount]));
 const premiumGuildIds = new Set(premiumSnapshot.assignments.map((assignment) => assignment.guild_id));
 
 const guilds = manageable
@@ -36,8 +39,10 @@ const guilds = manageable
     tag: g.owner ? 'Owner' : 'Administrator',
     active: botGuildIds.has(g.id),
     premiumActive: premiumGuildIds.has(g.id),
+    memberCount: memberCounts.get(g.id) ?? null,
   }))
-  .sort((a: any, b: any) => Number(b.active) - Number(a.active));
+  // Where Petto is: the biggest first. Where it is not: by name.
+  .sort((a: any, b: any) => (a.active !== b.active ? Number(b.active) - Number(a.active) : a.active ? (b.memberCount ?? -1) - (a.memberCount ?? -1) || a.name.localeCompare(b.name) : a.name.localeCompare(b.name)));
 
 const inviteUrl = (guildId: string) =>
   `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=8&scope=${encodeURIComponent('bot applications.commands')}&guild_id=${guildId}&disable_guild_select=true`;
