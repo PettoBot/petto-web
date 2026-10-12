@@ -81,6 +81,31 @@ export async function readGuildSnapshot(guildId: string): Promise<GuildSnapshot 
   }
 }
 
+// A bot that does not save the emojis yet has no `emojis` column, and asking for it is refused; it is asked again after a while.
+const EMOJI_COLUMN_RETRY_MS = 10 * 60_000;
+let emojiColumnMissingUntil = 0;
+
+function emojiList(raw: unknown): Array<{ id: string; name: string; animated: boolean }> | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.filter((emoji: any) => emoji?.id).map((emoji: any) => ({ id: String(emoji.id), name: String(emoji.name ?? ''), animated: Boolean(emoji.animated) }));
+}
+
+/** The custom emojis in the bot's saved copy of a server, or null when the copy does not have them (Discord is asked then). */
+export async function readSnapshotEmojis(guildId: string): Promise<Array<{ id: string; name: string; animated: boolean }> | null> {
+  if (!source || !/^\d{5,25}$/.test(guildId) || Date.now() < emojiColumnMissingUntil) return null;
+  try {
+    const res = await fetch(`${source.url}/rest/v1/discord_guild_snapshots?guild_id=eq.${guildId}&select=emojis`, { headers: headers(source.key) });
+    if (!res.ok) {
+      emojiColumnMissingUntil = Date.now() + (res.status >= 500 ? 60_000 : EMOJI_COLUMN_RETRY_MS);
+      return null;
+    }
+    const rows = await res.json();
+    return emojiList(Array.isArray(rows) ? rows[0]?.emojis : null);
+  } catch {
+    return null;
+  }
+}
+
 /** Every server the bot is in, or null when the table is empty or unreadable (a bot that does not save them yet). */
 export async function readBotGuildSnapshots(): Promise<Array<{ id: string; name: string; icon: string | null; memberCount: number | null }> | null> {
   if (!source) return null;

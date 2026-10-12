@@ -89,6 +89,8 @@ export default defineConfig({
     // Only the Node (Discloud) build may bundle the direct database reader; the Worker build drops it.
     define: {
       __DIRECT_DB__: JSON.stringify(discloudTarget),
+      // The Node build (Discloud) may use Node-only modules: Redis and the shared cache's single flight.
+      __NODE_TARGET__: JSON.stringify(discloudTarget),
       __APP_VERSION__: JSON.stringify(appVersion),
       __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
       __BUILD_COMMIT__: JSON.stringify(buildCommit),
