@@ -93,7 +93,7 @@ export async function getGuildSession(astro: any, guildId: string): Promise<Guil
 
   let discordGuilds: any[];
   try {
-    discordGuilds = await getCachedUserGuilds(session.accessToken, request);
+    discordGuilds = await getCachedUserGuilds(session.accessToken, request, { forAccess: true });
   } catch {
     return { redirect: '/dash?error=discord_unavailable' };
   }

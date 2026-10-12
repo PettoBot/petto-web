@@ -1,5 +1,6 @@
 import { getEnv } from './env';
 import { setBotNameStyle } from './discord';
+import { cached, invalidatePrefix } from './sharedCache';
 
 export type PremiumStatus = 'free' | 'pending' | 'active' | 'past_due' | 'canceled' | 'expired';
 
@@ -102,19 +103,30 @@ function isActiveEntitlement(entitlement: PremiumEntitlement): boolean {
 }
 
 /** Reads the account's Premium state from Discloud through the private bot API. */
-// A page and its layout both need the snapshot in the same GET request, so the second call reuses
-// the first one's result. Writes (POST) always read fresh data.
+// A page and its layout both need the snapshot in the same GET request, so the second call reuses the first one's result, and
+// pages that follow within a minute reuse it too (kept in this process). Writes (POST) always read fresh data, and every change
+// to Premium made here or by Polar's webhook forgets the kept copies (forgetPremiumSnapshots).
+const PREMIUM_TTL_MS = 60_000;
 const requestSnapshots = new WeakMap<object, Map<string, Promise<PremiumSnapshot>>>();
+
+export function forgetPremiumSnapshots(userId?: string): void {
+  invalidatePrefix(userId ? `premium:${userId}` : 'premium:');
+}
 
 export function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
   const request = astro?.request as Request | undefined;
   const method = String(request?.method ?? 'GET').toUpperCase();
-  if (!request || (method !== 'GET' && method !== 'HEAD')) return loadPremiumSnapshot(astro, userId);
+  const key = `premium:${userId}`;
+  const keepIt = () => cached(key, () => loadPremiumSnapshot(astro, userId), { freshMs: PREMIUM_TTL_MS });
+  if (!request || (method !== 'GET' && method !== 'HEAD')) {
+    forgetPremiumSnapshots(userId);
+    return keepIt();
+  }
   let byUser = requestSnapshots.get(request);
   if (!byUser) requestSnapshots.set(request, (byUser = new Map()));
   let pending = byUser.get(userId);
   if (!pending) {
-    pending = loadPremiumSnapshot(astro, userId);
+    pending = keepIt();
     byUser.set(userId, pending);
     pending.catch(() => byUser?.delete(userId));
   }
