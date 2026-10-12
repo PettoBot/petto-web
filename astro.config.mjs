@@ -35,7 +35,7 @@ export default defineConfig({
           'bug-fill', 'chat-circle-fill', 'user-circle-fill',
           'arrow-right-bold', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
           'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
-          'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'bell-fill',
+          'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'link-simple-bold', 'bell-fill',
           'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-left-bold',
           'caret-right-bold', 'caret-up-down', 'chart-bar', 'chart-bar-fill', 'chart-line-fill',
           'chart-line-up', 'chart-line-up-fill', 'chat-circle-dots-fill', 'chat-circle-text-fill',

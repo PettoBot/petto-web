@@ -77,14 +77,35 @@ export async function canEditPartners(astro: any, userId: string): Promise<boole
   return Object.values(ids).some((list) => list.includes(userId));
 }
 
+/** The icon of a website (its favicon), from the address of any of its pages. Null when the address is not one. */
+export function faviconUrl(address: string | null | undefined): string | null {
+  const value = String(address ?? '').trim();
+  if (!value) return null;
+  try {
+    const host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`).hostname;
+    return host.includes('.') ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Adds https:// to an address written without it (`petto.sbs`). */
+export function withScheme(address: string): string {
+  const value = address.trim();
+  return value && !/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? `https://${value}` : value;
+}
+
+const IMAGE_PATH = /\.(png|jpe?g|webp|gif|svg|ico|avif)$/i;
+
 /**
  * Turns what was pasted in the logo box into a picture link. A Discord invite gives the icon of its server, a page of Imgur
- * (imgur.com/abc123) becomes the picture itself (i.imgur.com/abc123.png), and any other https link is used as it is.
- * Returns `null` for an empty box, and `{ error }` when an invite cannot be read or an album cannot be used.
+ * (imgur.com/abc123) becomes the picture itself (i.imgur.com/abc123.png), a page of a website (not a picture) gives that website's icon, and any other https link is used as it is.
+ * An empty box gives the icon of the partner's own website (`siteUrl`), and `{ error }` when an invite cannot be read or an album cannot be used.
  */
-export async function resolveLogo(input: string): Promise<{ url: string | null } | { error: 'invite' | 'album' }> {
+export async function resolveLogo(input: string, siteUrl = ''): Promise<{ url: string | null } | { error: 'invite' | 'album' }> {
   const value = input.trim();
-  if (!value) return { url: null };
+  // No logo: the icon of the partner's own website.
+  if (!value) return { url: faviconUrl(siteUrl) };
   const invite = value.match(/^https?:\/\/(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/([A-Za-z0-9-]{2,32})\/?(?:[?#].*)?$/i);
   if (invite) {
     try {
@@ -105,6 +126,11 @@ export async function resolveLogo(input: string): Promise<{ url: string | null }
       if (/^\/(a|gallery)\//i.test(url.pathname)) return { error: 'album' };
       const id = url.pathname.replace(/^\/+/, '').split(/[/.]/)[0];
       if (/^[A-Za-z0-9]{5,10}$/.test(id)) return { url: `https://i.imgur.com/${id}.png` };
+    }
+    // A page of a website (not a picture): its icon is used.
+    if (!IMAGE_PATH.test(url.pathname) && !/(^|\.)(cdn|media|images?)\./i.test(url.hostname) && !/(^|\.)(discordapp\.(com|net)|imgur\.com|githubusercontent\.com)$/i.test(url.hostname)) {
+      const icon = faviconUrl(value);
+      if (icon) return { url: icon };
     }
   } catch { /* the form checks the link */ }
   return { url: value };
@@ -130,9 +156,9 @@ export function readPartnerForm(form: FormData): { ok: true; value: PartnerValue
   if (!(PARTNER_KINDS as readonly string[]).includes(kind)) return { ok: false, error: 'invalid' };
   const name = text('name', 60);
   if (!name) return { ok: false, error: 'name' };
-  const url = text('url', 300);
+  const url = withScheme(text('url', 300));
   if (!isHttps(url)) return { ok: false, error: 'url' };
-  const logo = text('logo_url', 400);
+  const logo = withScheme(text('logo_url', 400));
   if (logo && !isHttps(logo)) return { ok: false, error: 'logo' };
   const description_en = text('description_en', 500);
   return {
