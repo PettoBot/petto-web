@@ -57,7 +57,7 @@ export const BASIC_DEFAULTS: Basic = {
 
 export const RANK_DEFAULTS: Basic = {
   preset: 'rank', title: 'LEVEL {level}', name: '{user.display_name}', subtitle: '{level_xp_current} / {level_xp_needed} XP', extra: 'RANK #{level_rank}',
-  textColor: '#ffffff', accent: '#8399ff', font: 'Poppins', avatarShape: 'circle',
+  textColor: '#ffffff', accent: '#ffb199', font: 'Poppins', avatarShape: 'circle',
   showAvatar: true, showTitle: true, showName: true, showSubtitle: true, showExtra: true,
 };
 
@@ -65,7 +65,8 @@ export function newCard(kind: Kind = 'welcome'): CardData {
   if (kind === 'rank') {
     return {
       kind, mode: 'basic', width: 1024, height: 320,
-      background: { color: '#1e1f22', gradient: { from: '#2b2f6b', to: '#4a2b52', angle: 120 }, image: null, overlay: null },
+      // The picture that comes with Petto, the same one the default rank card has.
+      background: { color: '#120c1a', gradient: null, image: { src: 'petto:rank-default', fit: 'cover', blur: 0 }, overlay: null },
       basic: { ...RANK_DEFAULTS }, layers: [],
     };
   }

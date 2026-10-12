@@ -2389,4 +2389,12 @@ export const dashEs: Record<string, string> = {
   "No rewards yet.": "Todavía no hay recompensas.",
   "Message level": "Nivel de mensajes",
   "Voice level": "Nivel de voz",
+  "Give certain roles extra entries automatically, and ask for a level or give extra entries by level, when a giveaway uses a preset.": "Da entradas extra a ciertos roles automáticamente, y pide un nivel o da entradas extra por nivel, cuando un sorteo usa un preset.",
+  "Levels": "Niveles",
+  "Message level needed": "Nivel de mensajes necesario",
+  "Voice level needed": "Nivel de voz necesario",
+  "From level": "Desde el nivel",
+  "How the level-up announcement is sent": "Cómo se envía el aviso de subida de nivel",
+  "Give the reward roles back to a member who returns": "Devolver los roles de recompensa a un miembro que vuelve",
+  "Wipe the XP and level of a member who leaves": "Borrar el XP y el nivel de un miembro que se va",
 };

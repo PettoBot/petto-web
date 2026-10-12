@@ -117,6 +117,41 @@ if (Astro.request.method === 'POST') {
     const presetId = encodeURIComponent(String(form.get('preset_id') ?? ''));
     await fetch(`${apiUrl}/rest/v1/giveaway_presets?id=eq.${presetId}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
+  } else if (action === 'set_preset_levels') {
+    // The level a member needs to enter (messages and/or voice). The preset must belong to this server.
+    const presetId = Number(form.get('preset_id') ?? 0);
+    const minLevel = Math.max(0, Math.min(10000, Math.floor(Number(form.get('min_level') ?? 0) || 0)));
+    const minVoiceLevel = Math.max(0, Math.min(10000, Math.floor(Number(form.get('min_voice_level') ?? 0) || 0)));
+    if (presetId) {
+      const res = await fetch(`${apiUrl}/rest/v1/giveaway_presets?id=eq.${presetId}&guild_id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { ...apiHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ min_level: minLevel, min_voice_level: minVoiceLevel }),
+      });
+      saved = res.ok;
+    }
+  } else if (action === 'add_preset_level' || action === 'delete_preset_level') {
+    const presetId = Number(form.get('preset_id') ?? 0);
+    const source = String(form.get('source') ?? 'text') === 'voice' ? 'voice' : 'text';
+    const level = Math.max(1, Math.min(10000, Math.floor(Number(form.get('level') ?? 0) || 0)));
+    const owned = presetId ? await fetch(`${apiUrl}/rest/v1/giveaway_presets?id=eq.${presetId}&guild_id=eq.${id}&select=id`, { headers: apiHeaders }) : null;
+    const ownsIt = owned?.ok ? (await owned.json()).length > 0 : false;
+    if (ownsIt && action === 'delete_preset_level') {
+      const res = await fetch(`${apiUrl}/rest/v1/giveaway_preset_levels?preset_id=eq.${presetId}&source=eq.${source}&level=eq.${level}`, { method: 'DELETE', headers: apiHeaders });
+      saved = res.ok;
+    } else if (ownsIt) {
+      const entries = Math.max(1, Math.min(1000, Math.floor(Number(form.get('entries') ?? 1) || 1)));
+      const countRes = await fetch(`${apiUrl}/rest/v1/giveaway_preset_levels?preset_id=eq.${presetId}&select=level`, { headers: apiHeaders });
+      const existing = countRes.ok ? await countRes.json() : [];
+      if (existing.length < 25) {
+        const res = await fetch(`${apiUrl}/rest/v1/giveaway_preset_levels?on_conflict=preset_id,source,level`, {
+          method: 'POST',
+          headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ preset_id: presetId, source, level, entries }),
+        });
+        saved = res.ok;
+      }
+    }
   } else if (action === 'add_preset_role') {
     const presetId = Number(form.get('preset_id') ?? 0);
     const roleId = String(form.get('role_id') ?? '');
@@ -143,7 +178,7 @@ const [guildInfo, configRes, activeRes, presetsRes, rolesRes, embedTemplatesRes,
   getGuildInfo(id, botToken),
   needs('settings') ? fetch(`${apiUrl}/rest/v1/giveaway_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
   needs('active') ? fetch(`${apiUrl}/rest/v1/giveaways?guild_id=eq.${id}&ended=eq.false&select=id,prize,winners_count,ends_at,host_id,channel_id,message_id&order=ends_at.asc`, { headers: apiHeaders }) : null,
-  needs('presets', 'active') ? fetch(`${apiUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id,name&order=name.asc`, { headers: apiHeaders }) : null,
+  needs('presets', 'active') ? fetch(`${apiUrl}/rest/v1/giveaway_presets?guild_id=eq.${id}&select=id,name,min_level,min_voice_level&order=name.asc`, { headers: apiHeaders }) : null,
   needs('presets') ? getGuildList(Astro, id, botToken, 'roles') : null,
   needs('settings', 'active') ? fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }) : null,
   needs('active') ? getGuildList(Astro, id, botToken, 'channels') : null,
@@ -185,13 +220,19 @@ const active = await Promise.all(
 const rawPresets = presetsRes?.ok ? await presetsRes.json() : [];
 const presetIds = rawPresets.map((p: any) => p.id);
 let rawPresetRoles: any[] = [];
+let rawPresetLevels: any[] = [];
 if (presetIds.length > 0 && needs('presets')) {
   const presetRolesRes = await fetch(`${apiUrl}/rest/v1/giveaway_preset_roles?preset_id=in.(${presetIds.join(',')})&select=preset_id,role_id,entries,claim_time_ms,entries_stack,claim_time_stack`, { headers: apiHeaders });
   rawPresetRoles = presetRolesRes.ok ? await presetRolesRes.json() : [];
+  const presetLevelsRes = await fetch(`${apiUrl}/rest/v1/giveaway_preset_levels?preset_id=in.(${presetIds.join(',')})&select=preset_id,source,level,entries&order=level.asc`, { headers: apiHeaders }).catch(() => null);
+  rawPresetLevels = presetLevelsRes?.ok ? await presetLevelsRes.json() : [];
 }
 const presets = rawPresets.map((p: any) => ({
   id: p.id,
   name: p.name,
+  minLevel: Number(p.min_level ?? 0),
+  minVoiceLevel: Number(p.min_voice_level ?? 0),
+  levels: rawPresetLevels.filter((pl: any) => pl.preset_id === p.id).map((pl: any) => ({ source: pl.source === 'voice' ? 'voice' : 'text', level: Number(pl.level), entries: Number(pl.entries) })),
   roles: rawPresetRoles.filter((pr: any) => pr.preset_id === p.id).map((pr: any) => ({ roleId: pr.role_id, entries: pr.entries, claimTimeMs: pr.claim_time_ms ?? 0, entriesStack: pr.entries_stack ?? false, claimTimeStack: pr.claim_time_stack ?? false })),
 }));
 
