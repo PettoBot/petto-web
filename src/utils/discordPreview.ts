@@ -2,7 +2,7 @@
 // It follows the same markdown subset and layout as the Embed Builder, and fills the bot's
 // {variable} tokens with sample values so a preview reads like the message members will see.
 
-import { sampleContext, tokenValues } from './variableSamples';
+import { findSample, sampleContext, tokenValues } from './variableSamples';
 
 export interface PreviewEmbed {
   title?: string;
@@ -64,9 +64,9 @@ function inline(html: string, ctx: PreviewContext): string {
   const samples = { ...tokenValues({ userId: sampleContext.userId, userName: ctx.userName, serverName: ctx.serverName, memberCount: sampleContext.memberCount }), ...(ctx.samples ?? {}) };
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
-  out = out.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (m, token) => {
+  out = out.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (m, token) => {
     if (token.toLowerCase() === 'newline') return '<br>';
-    const sample = samples[token];
+    const sample = findSample(samples, token);
     if (!sample) return `<span class="dp-var">${m}</span>`;
     return sample.mention ? `<span class="dp-mention">${sample.text}</span>` : sample.text;
   });

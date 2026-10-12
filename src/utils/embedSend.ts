@@ -1,5 +1,5 @@
 import type { TemplateData, V2Node } from './embedSchema';
-import { tokenValues } from './variableSamples';
+import { findSample, tokenValues } from './variableSamples';
 import type { TokenContext } from './variableSamples';
 
 const API = 'https://discord.com/api/v10';
@@ -7,8 +7,8 @@ const API = 'https://discord.com/api/v10';
 /** Fills the bot's {variable} tokens with the given user and server. Unknown tokens stay as written. */
 export function fillTokens(text: string, ctx: TokenContext): string {
   const values = tokenValues(ctx);
-  return text.replace(/\{([a-zA-Z0-9_.:|-]+)\}/g, (match, token) => {
-    const value = values[token];
+  return text.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (match, token) => {
+    const value = findSample(values, token);
     if (!value) return match;
     return value.mention ? `<@${ctx.userId}>` : value.text;
   });

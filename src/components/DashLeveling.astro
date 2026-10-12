@@ -22,6 +22,11 @@ interface Config {
   notifyEvery: number;
   roleMode: string;
   ignoredChannelIds: string[];
+  ignoredCategoryIds: string[];
+  notifyReply: boolean;
+  notifyPing: boolean;
+  notifyDeleteAfter: number;
+  notifyMilestones: string;
   joinXp: number;
   joinLevel: number;
   curveA: number;
@@ -31,7 +36,8 @@ interface Config {
   rounding: number;
   maxLevel: number;
 }
-interface Reward { level: number; roleId: string; }
+interface Reward { level: number; roleId: string; source: string; }
+interface Multiplier { targetId: string; type: string; multiplier: number }
 interface LeaderboardRow {
   rank: number;
   userId: string;
@@ -59,10 +65,14 @@ interface VoiceConfig {
   notifyEvery: number;
   roleMode: string;
   ignoredChannelIds: string[];
+  ignoredCategoryIds: string[];
+  notifyPing: boolean;
+  notifyDeleteAfter: number;
+  notifyMilestones: string;
 }
 
 interface RankConfig { style: string; card: string; notifyCard: string; voiceNotifyCard: string }
-interface Rules { minMessageChars: number; antiRepeat: boolean; voiceMinMembers: number; voiceIgnoreMuted: boolean; dailyBonusXp: number; streakBonusXp: number; streakMaxDays: number }
+interface Rules { minMessageChars: number; antiRepeat: boolean; voiceMinMembers: number; voiceIgnoreMuted: boolean; dailyBonusXp: number; streakBonusXp: number; streakMaxDays: number; xpMultiplier: number; multiplierMode: string; multiplierCap: number; noXpRoleIds: string[]; onlyXpRoleIds: string[] }
 interface CardRow { name: string; kind: string; data: unknown }
 interface XpEvent { id: string; name: string; multiplier: number; source: string; startsAt: string; endsAt: string }
 
@@ -73,6 +83,8 @@ interface Props {
   guildIcon: string;
   config: Config;
   rewards: Reward[];
+  multipliers?: Multiplier[];
+  categories?: { id: string; name: string }[];
   roles: { id: string; name: string }[];
   channels: { id: string; name: string }[];
   voiceChannels: { id: string; name: string }[];
@@ -88,12 +100,16 @@ interface Props {
   saveError: boolean;
   section?: string;
 }
+const { multipliers = [], categories = [] } = Astro.props;
 const { user, guildId, guildName, guildIcon, config, rewards, roles, channels, voiceChannels, leaderboard, voiceConfig, voiceLeaderboard, embedTemplateNames, rank, rules, cards, events, saved, saveError, section } = Astro.props;
-const sectionMeta: Record<string, string> = { settings: dt('Leveling settings'), voice: dt('Voice leveling'), rank: dt('Rank card'), rules: dt('Rules and events'), rewards: dt('Level rewards'), leaderboard: dt('Leaderboard'), 'leaderboard-voice': dt('Voice leaderboard') };
+const sectionMeta: Record<string, string> = { settings: dt('Leveling settings'), voice: dt('Voice leveling'), rank: dt('Rank card'), rules: dt('Rules and events'), multipliers: dt('Multipliers'), rewards: dt('Level rewards'), leaderboard: dt('Leaderboard'), 'leaderboard-voice': dt('Voice leaderboard') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
 const leaderboardIsVoice = selectedSection === 'leaderboard-voice';
 const displayLeaderboard = leaderboardIsVoice ? voiceLeaderboard : leaderboard;
+const roleName = (roleId: string) => roles.find((role) => role.id === roleId)?.name ?? roleId;
+const channelName = (channelId: string) => { const found = channels.find((c) => c.id === channelId) ?? voiceChannels.find((c) => c.id === channelId) ?? categories.find((c) => c.id === channelId); return found ? found.name : channelId; };
+const multiplierLabel = (row: Multiplier) => (row.type === 'role' ? `@${roleName(row.targetId)}` : row.type === 'category' ? `${channelName(row.targetId)} (${dt('category')})` : `#${channelName(row.targetId)}`);
 const rankCards = cards.filter((card) => card.kind === 'rank');
 const sourceLabel = (source: string) => (source === 'text' ? dt('Messages only') : source === 'voice' ? dt('Voice only') : dt('All XP'));
 const eventTime = (value: string) => new Date(value).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
@@ -222,6 +238,18 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
         <input type="number" name="notify_every" value={config.notifyEvery} min="1" max="50" />
       </div>
       <div class="lv-field">
+        <label>{dt('Delete the announcement after (seconds)')}</label>
+        <input type="number" name="notify_delete_after" value={config.notifyDeleteAfter} min="0" max="86400" />
+        <p class="lv-hint">{dt('0 keeps it. Otherwise Petto deletes the announcement after this time, so the channel stays clean.')}</p>
+      </div>
+      <label class="lv-inline-check"><input type="checkbox" name="notify_reply" checked={config.notifyReply} />{dt('Answer the message that made them level up')}</label>
+      <label class="lv-inline-check"><input type="checkbox" name="notify_ping" checked={config.notifyPing} />{dt('Ping the member in the announcement')}</label>
+      <div class="lv-field lv-field-wide">
+        <label>{dt('Levels with a message of their own')}</label>
+        <textarea name="notify_milestones" rows="3" placeholder={'10: {user} is now level {level} and got {level_role}!'}>{config.notifyMilestones}</textarea>
+        <p class="lv-hint">{dt('One level per line, like 10: your message. That level is always announced with its own message, even with "every N levels".')}</p>
+      </div>
+      <div class="lv-field">
         <label>{dt('XP on join')}</label>
         <input type="number" name="join_xp" value={config.joinXp} min="0" />
       </div>
@@ -233,6 +261,11 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
         <label>{dt('Ignored channels')}</label>
         <MultiSelect name="ignored_channel_ids" options={channels.map((ch) => ({ id: ch.id, name: `#${ch.name}` }))} selected={config.ignoredChannelIds} placeholder={dt('Search channels...')} />
         <p class="lv-hint">{dt('No XP is granted for messages in these channels.')}</p>
+      </div>
+      <div class="lv-field lv-field-wide">
+        <label>{dt('Ignored categories')}</label>
+        <MultiSelect name="ignored_category_ids" options={categories.map((category) => ({ id: category.id, name: category.name }))} selected={config.ignoredCategoryIds} placeholder={dt('Search categories...')} />
+        <p class="lv-hint">{dt('No XP is granted in any channel of these categories.')}</p>
       </div>
     </div>
 
@@ -330,6 +363,7 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
         <label>{dt('Voice level-up announcement')}</label>
         <select name="voice_notify_mode">
           <option value="off" selected={voiceConfig.notifyMode === 'off'}>{dt('Off')}</option>
+          <option value="reply" selected={voiceConfig.notifyMode === 'reply'}>{dt('In the voice channel chat')}</option>
           <option value="channel" selected={voiceConfig.notifyMode === 'channel'}>{dt('Fixed channel')}</option>
           <option value="dm" selected={voiceConfig.notifyMode === 'dm'}>{dt('Direct message')}</option>
         </select>
@@ -357,11 +391,27 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
         <label>{dt('Announce every N levels')}</label>
         <input type="number" name="voice_notify_every" value={voiceConfig.notifyEvery} min="1" max="50" />
       </div>
+      <div class="lv-field">
+        <label>{dt('Delete the announcement after (seconds)')}</label>
+        <input type="number" name="voice_notify_delete_after" value={voiceConfig.notifyDeleteAfter} min="0" max="86400" />
+        <p class="lv-hint">{dt('0 keeps it. Otherwise Petto deletes the announcement after this time, so the channel stays clean.')}</p>
+      </div>
+      <label class="lv-inline-check"><input type="checkbox" name="voice_notify_ping" checked={voiceConfig.notifyPing} />{dt('Ping the member in the announcement')}</label>
+      <div class="lv-field lv-field-wide">
+        <label>{dt('Voice levels with a message of their own')}</label>
+        <textarea name="voice_notify_milestones" rows="3" placeholder={'10: {user} reached voice level {level} and got {level_role}!'}>{voiceConfig.notifyMilestones}</textarea>
+        <p class="lv-hint">{dt('One level per line, like 10: your message. That level is always announced with its own message, even with "every N levels".')}</p>
+      </div>
       <label class="lv-inline-check"><input type="checkbox" name="voice_notify_embed" checked={voiceConfig.notifyEmbed} />{dt('Use a simple embed when no template is selected')}</label>
       <div class="lv-field lv-field-wide">
         <label>{dt('Ignored voice channels')}</label>
         <MultiSelect name="voice_ignored_channel_ids" options={voiceChannels.map((channel) => ({ id: channel.id, name: `Voice · ${channel.name}` }))} selected={voiceConfig.ignoredChannelIds} placeholder={dt('Search voice channels...')} />
         <p class="lv-hint">{dt('Members in these voice channels do not gain voice XP.')}</p>
+      </div>
+      <div class="lv-field lv-field-wide">
+        <label>{dt('Ignored voice categories')}</label>
+        <MultiSelect name="voice_ignored_category_ids" options={categories.map((category) => ({ id: category.id, name: category.name }))} selected={voiceConfig.ignoredCategoryIds} placeholder={dt('Search categories...')} />
+        <p class="lv-hint">{dt('Members in voice channels of these categories do not gain voice XP.')}</p>
       </div>
     </div>
 
@@ -458,11 +508,8 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
         <div class="lv-preview-label">{dt('Embed preview')}</div>
         <div class="lv-embed" aria-hidden="true">
           <div class="lv-embed-author"><span class="lv-embed-dot"></span>{user.username}</div>
-          <div class="lv-embed-title">{dt('Level')} 12</div>
-          <div>{dt('Rank')} <b>#3</b> {dt('of')} 120</div>
-          <div class="lv-embed-bar"><span style="width:60%"></span></div>
-          <div><code>1,420 / 2,350 XP</code> · 930 {dt('to level')} 13</div>
-          <div class="lv-embed-fields"><div><b>{dt('Total XP')}</b><br />23,450</div><div><b>{dt('Messages')}</b><br />3,210</div><div><b>{dt('Streak')}</b><br />4 {dt('days')}</div><div><b>{dt('This week')}</b><br />#2 · 400 XP</div></div>
+          <div class="lv-embed-fields lv-embed-stack"><div><b>{dt('Level')}</b><br />12</div><div><b>{dt('Server Rank')}</b><br />#3 {dt('out of')} 120</div><div><b>{dt('Experience')}</b><br />1,420/2,350 XP</div><div><b>{dt('Progress')} (60%)</b><div class="lv-embed-bar"><span style="width:60%"></span></div></div></div>
+          <div class="lv-embed-foot">{dt('Total Experience')}: 23,450</div>
         </div>
       </div>
     </div>
@@ -484,6 +531,23 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
         <div class="lv-field"><label>{dt('Daily bonus XP')}</label><input type="number" name="daily_bonus_xp" value={rules.dailyBonusXp} min="0" max="100000" /><span class="lv-hint">{dt('Given on the first activity of each day. 0 turns it off.')}</span></div>
         <div class="lv-field"><label>{dt('Streak bonus XP per day')}</label><input type="number" name="streak_bonus_xp" value={rules.streakBonusXp} min="0" max="10000" /><span class="lv-hint">{dt('Added for each earlier day in a row.')}</span></div>
         <div class="lv-field"><label>{dt('Streak bonus stops after (days)')}</label><input type="number" name="streak_max_days" value={rules.streakMaxDays} min="1" max="365" /></div>
+        <div class="lv-field"><label>{dt('Base multiplier for all XP')}</label><input type="number" name="xp_multiplier" value={rules.xpMultiplier} min="0" max="20" step="0.05" /><span class="lv-hint">{dt('1 changes nothing, 1.5 gives half more XP to everyone. Role, channel and category multipliers add to it.')}</span></div>
+        <div class="lv-field"><label>{dt('Several role multipliers')}</label>
+          <select name="multiplier_mode">
+            <option value="highest" selected={rules.multiplierMode === 'highest'}>{dt('Only the highest')}</option>
+            <option value="stack" selected={rules.multiplierMode === 'stack'}>{dt('Multiply them all')}</option>
+            <option value="sum" selected={rules.multiplierMode === 'sum'}>{dt('Add each extra to 1')}</option>
+          </select>
+          <span class="lv-hint">{dt('What happens when a member has more than one role with a multiplier.')}</span>
+        </div>
+        <div class="lv-field"><label>{dt('Most a multiplier can reach')}</label><input type="number" name="multiplier_cap" value={rules.multiplierCap} min="1" max="100" step="0.5" /><span class="lv-hint">{dt('The combined multiplier never goes above this.')}</span></div>
+        <div class="lv-field lv-field-wide"><label>{dt('Roles that earn no XP')}</label>
+          <MultiSelect name="no_xp_role_ids" options={roles.map((role) => ({ id: role.id, name: role.name }))} selected={rules.noXpRoleIds} placeholder={dt('Search roles...')} />
+        </div>
+        <div class="lv-field lv-field-wide"><label>{dt('Only these roles earn XP')}</label>
+          <MultiSelect name="only_xp_role_ids" options={roles.map((role) => ({ id: role.id, name: role.name }))} selected={rules.onlyXpRoleIds} placeholder={dt('Search roles...')} />
+          <span class="lv-hint">{dt('Leave it empty so everyone can earn XP.')}</span>
+        </div>
       </div>
       <button type="submit" class="btn btn-accent btn-sm">{dt('Save changes')}</button>
     </form>
@@ -518,23 +582,75 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   </div>
   )}
 
-  {selectedSection === 'rewards' && (
-  <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rewards' }]}>
-    <h2><Icon name="ph:trophy-fill" width="15" height="15" />{dt('Level rewards')}</h2>
+  {selectedSection === 'multipliers' && (
+  <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'multipliers' }]}>
+    <h2><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('Multipliers')}</h2>
+    <p class="lv-note">{dt('Give more XP (or less) to a role, a channel or a whole category. 2 is double, 0.5 is half and 0 earns nothing.')}</p>
     <div class="lv-rewards">
-      {rewards.map((r) => (
+      {multipliers.length === 0 && <p class="lv-empty-note">{dt('No multipliers yet.')}</p>}
+      {multipliers.map((row) => (
         <form method="POST" class="lv-reward-row">
-          <input type="hidden" name="action" value="delete_reward" />
-          <input type="hidden" name="level" value={r.level} />
-          <span class="lv-reward-level">{dt('Level {a}', { a: (r.level) })}</span>
+          <input type="hidden" name="action" value="delete_multiplier" />
+          <input type="hidden" name="target_id" value={row.targetId} />
+          <span class="lv-reward-level">×{row.multiplier}</span>
           <span class="lv-reward-arrow"><Icon name="ph:arrow-right" width="12" height="12" /></span>
-          <span class="lv-reward-role">{roles.find((role) => role.id === r.roleId)?.name ?? r.roleId}</span>
+          <span class="lv-reward-role">{multiplierLabel(row)}</span>
           <button type="submit" class="lv-reward-del" title={dt('Remove')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
         </form>
       ))}
     </div>
+    <form method="POST" class="lv-form lv-event-form" data-mult-form>
+      <input type="hidden" name="action" value="add_multiplier" />
+      <div class="lv-grid">
+        <div class="lv-field"><label>{dt('Applies to')}</label>
+          <select name="target_type" data-mult-type>
+            <option value="role">{dt('A role')}</option>
+            <option value="channel">{dt('A channel')}</option>
+            <option value="category">{dt('A category')}</option>
+          </select>
+        </div>
+        <div class="lv-field" data-mult-target="role"><label>{dt('Role')}</label>
+          <select name="target_role"><option value="" disabled selected>{dt('Choose a role')}</option>{roles.map((role) => <option value={role.id}>{role.name}</option>)}</select>
+        </div>
+        <div class="lv-field" data-mult-target="channel" hidden><label>{dt('Channel')}</label>
+          <select name="target_channel"><option value="" disabled selected>{dt('Choose a channel')}</option>{channels.map((channel) => <option value={channel.id}>#{channel.name}</option>)}{voiceChannels.map((channel) => <option value={channel.id}>{dt('Voice')} · {channel.name}</option>)}</select>
+        </div>
+        <div class="lv-field" data-mult-target="category" hidden><label>{dt('Category')}</label>
+          <select name="target_category"><option value="" disabled selected>{dt('Choose a category')}</option>{categories.map((category) => <option value={category.id}>{category.name}</option>)}</select>
+        </div>
+        <div class="lv-field"><label>{dt('Multiplier')}</label><input type="number" name="multiplier" value="2" min="0" max="20" step="0.05" required /></div>
+      </div>
+      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add multiplier')}</button>
+      <p class="lv-hint">{dt('A channel wins over its category. Several roles follow the rule in Rules and events.')}</p>
+    </form>
+  </div>
+  )}
+
+  {selectedSection === 'rewards' && (
+  <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rewards' }]}>
+    <h2><Icon name="ph:trophy-fill" width="15" height="15" />{dt('Level rewards')}</h2>
+    {['text', 'voice'].map((kind) => (
+      <>
+        <p class="lv-note">{kind === 'voice' ? dt('Roles for voice levels') : dt('Roles for message levels')}</p>
+        <div class="lv-rewards">
+          {rewards.filter((r) => r.source === kind).length === 0 && <p class="lv-empty-note">{dt('No rewards yet.')}</p>}
+          {rewards.filter((r) => r.source === kind).map((r) => (
+            <form method="POST" class="lv-reward-row">
+              <input type="hidden" name="action" value="delete_reward" />
+              <input type="hidden" name="level" value={r.level} />
+              <input type="hidden" name="source" value={kind} />
+              <span class="lv-reward-level">{dt('Level {a}', { a: (r.level) })}</span>
+              <span class="lv-reward-arrow"><Icon name="ph:arrow-right" width="12" height="12" /></span>
+              <span class="lv-reward-role">{roleName(r.roleId)}</span>
+              <button type="submit" class="lv-reward-del" title={dt('Remove')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+            </form>
+          ))}
+        </div>
+      </>
+    ))}
     <form method="POST" class="lv-add-reward">
       <input type="hidden" name="action" value="add_reward" />
+      <select name="source"><option value="text">{dt('Message level')}</option><option value="voice">{dt('Voice level')}</option></select>
       <input type="number" name="level" placeholder={dt('Level')} min="1" max="1000" required />
       <select name="role_id" required>
         <option value="" disabled selected>{dt('Choose a role')}</option>
@@ -723,6 +839,14 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   window.PettoRankPreviewInit(document);
 </script>
 
+<script>
+  // The target of a multiplier: only the picker of the chosen kind is shown (a role, a channel or a category).
+  const typeSelect = document.querySelector<HTMLSelectElement>('[data-mult-type]');
+  const showTarget = () => document.querySelectorAll<HTMLElement>('[data-mult-target]').forEach((box) => { box.hidden = box.dataset.multTarget !== typeSelect?.value; });
+  typeSelect?.addEventListener('change', showTarget);
+  showTarget();
+</script>
+
 <style>
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
@@ -768,7 +892,11 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   .lv-embed-title { font-size: 18px; font-weight: 700; color: #f2f3f5; margin-top: 4px; }
   .lv-embed-bar { height: 10px; border-radius: 6px; background: #1e1f22; overflow: hidden; margin: 4px 0; }
   .lv-embed-bar span { display: block; height: 100%; background: #8399ff; border-radius: 6px; }
-  .lv-embed-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin-top: 6px; font-size: 12.5px; }
+  .lv-embed-stack { grid-template-columns: 1fr; }
+  .lv-embed-foot { margin-top: 8px; font-size: 11.5px; font-weight: 600; color: var(--text-dim); }
+  [data-mult-target][hidden] { display: none !important; }
+  .lv-field textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; resize: vertical; width: 100%; }
+  .lv-embed-fields {  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin-top: 6px; font-size: 12.5px; }
   @media (max-width: 1100px) { .lv-rank-layout { grid-template-columns: 1fr; } .lv-rank-preview { position: static; } }
 
 
