@@ -1,7 +1,9 @@
+import type { APIContext, MiddlewareNext } from 'astro';
 import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
 import { configureSnapshots } from './utils/guildSnapshots';
 import { warmShared } from './utils/sharedCache';
+import { timed } from './utils/serverTiming';
 
 // On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
 const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
@@ -16,9 +18,17 @@ const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: '
 
 // /es/dash and /pt-br/dash pick the dashboard language and render the single /dash route.
 // The prefix is kept on the links, forms, and redirects of the page, so it stays in the address bar.
-export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite, request }, next) => {
+const DASH_PATH = /^\/(?:(?:es|pt-br)\/)?dash(?:\/|$)/i;
+
+export const onRequest = defineMiddleware(async (context, next) => {
   await directDatabase;
-  configureSnapshots({ locals });
+  configureSnapshots({ locals: context.locals });
+  // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
+  if (DASH_PATH.test(context.url.pathname)) return timed(context, () => handle(context, next));
+  return handle(context, next);
+});
+
+async function handle({ url, cookies, locals, rewrite, request }: APIContext, next: MiddlewareNext): Promise<Response> {
   // Public pages rendered on each visit (stats, status, team, credits, partners) are the same for everyone, so a cache in front
   // (Cloudflare) may keep them a minute and serve an older copy for ten while it fetches a new one.
   if (PUBLIC_SHARED_PAGE.test(url.pathname) && ['GET', 'HEAD'].includes(request.method.toUpperCase())) {
@@ -60,4 +70,4 @@ export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   return new Response(html, { status: response.status, statusText: response.statusText, headers });
-});
+}

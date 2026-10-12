@@ -6,6 +6,7 @@ import { getBotIdentity } from './discord';
 import { getPremiumSnapshot } from './premium';
 import { getCachedBotGuildIds } from './discordCache';
 import { isPettoOwner } from './premiumAdmin';
+import { markTiming } from './serverTiming';
 
 export type GuildAuth = { session: Session; devView?: boolean } | { redirect: string };
 
@@ -74,6 +75,15 @@ export async function getDashboardSession(astro: any): Promise<Session | null> {
 
 /** Confirms the visitor is logged in and can actually manage this specific guild, via a live Discord check (never trusts the cookie alone for authorization). */
 export async function getGuildSession(astro: any, guildId: string): Promise<GuildAuth> {
+  const started = performance.now();
+  try {
+    return await checkGuildSession(astro, guildId);
+  } finally {
+    markTiming('auth', started);
+  }
+}
+
+async function checkGuildSession(astro: any, guildId: string): Promise<GuildAuth> {
   const session = await getDashboardSession(astro);
   if (!session) return { redirect: '/dash' };
 
