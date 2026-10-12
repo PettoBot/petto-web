@@ -2,7 +2,7 @@
  * Runs fetch-like tasks with a concurrency cap. Cloudflare Workers close the
  * response with "connection limit" once too many outbound connections are open
  * at the same time in a single request, overview.astro hit this by firing 14
- * fetches in one Promise.all (Discord + 13 private API calls).
+ * fetches in one Promise.all (Discord + 13 private API calls). The Node build has no such limit and runs them all at once.
  */
 type TaskResult<T> = T extends () => Promise<infer R> ? R : never;
 type BatchedResults<T extends readonly (() => Promise<any>)[]> = {
@@ -13,6 +13,8 @@ export async function runBatched<const T extends readonly (() => Promise<any>)[]
   tasks: T,
   concurrency = 6,
 ): Promise<BatchedResults<T>> {
+  // Node (Discloud) has no such limit: everything starts at once.
+  if (__NODE_TARGET__) return Promise.all(tasks.map((task) => task())) as Promise<BatchedResults<T>>;
   const results: unknown[] = new Array(tasks.length);
   let next = 0;
   async function worker() {

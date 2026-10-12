@@ -74,12 +74,12 @@ const catIcon: Record<string, string> = {
   automation: 'ph:robot',
   community: 'ph:users-three-fill',
   onboarding: 'ph:hand-waving-fill',
-  logging: 'fi-sr-clipboard-list',
+  logging: 'ph:clipboard-text-fill',
   setup: 'ph:gear-fill',
 };
 const catLabel: Record<string, string> = { setup: dt('General'), onboarding: dt('Join Gate'), leveling: dt('Level Rewards') };
 
-interface NavItem { id: string; href: string; icon: string; label: string; uicon?: boolean; premium?: boolean; full?: boolean; }
+interface NavItem { id: string; href: string; icon: string; label: string; premium?: boolean; full?: boolean; }
 
 // The sections of the menu, each one in the group it belongs to.
 const groups: { label: string; items: NavItem[] }[] = [
@@ -105,7 +105,7 @@ const groups: { label: string; items: NavItem[] }[] = [
     label: dt('Moderation'),
     items: [
       ...['moderation'].filter((id) => catById[id]).map((id) => ({
-        id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], uicon: id === 'logging', label: catLabel[id] ?? catById[id].title,
+        id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], label: catLabel[id] ?? catById[id].title,
       })),
       { id: 'silent-channels', href: `/dash/guild/${guildId}/moderation?section=silent-channels`, icon: 'ph:speaker-slash-fill', label: dt('Silent Channels') },
       { id: 'warn-escalation', href: `/dash/guild/${guildId}/moderation?section=warn-escalation`, icon: 'ph:warning-fill', label: dt('Warn Escalation') },
@@ -117,13 +117,13 @@ const groups: { label: string; items: NavItem[] }[] = [
     label: dt('Security'),
     items: [
       ...['onboarding'].filter((id) => catById[id]).map((id) => ({
-        id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], uicon: id === 'logging', label: catLabel[id] ?? catById[id].title,
+        id, href: `/dash/guild/${guildId}/${id}`, icon: catIcon[id], label: catLabel[id] ?? catById[id].title,
       })),
       { id: 'security', href: `/dash/guild/${guildId}/security`, icon: 'ph:shield-warning-fill', label: dt('Security') },
       { id: 'security-unrestricted', href: `/dash/guild/${guildId}/security?section=unrestricted`, icon: 'ph:keyhole-fill', label: dt('Command Coverage') },
       { id: 'permissions', href: `/dash/guild/${guildId}/permissions`, icon: 'ph:key-fill', label: dt('Permissions') },
       { id: 'audit', href: `/dash/guild/${guildId}/audit`, icon: 'ph:clock-counter-clockwise-fill', label: dt('Audit Log') },
-      { id: 'logging', href: `/dash/guild/${guildId}/logging`, icon: catIcon.logging, uicon: true, label: dt('Logging') },
+      { id: 'logging', href: `/dash/guild/${guildId}/logging`, icon: catIcon.logging, label: dt('Logging') },
     ],
   },
   {
@@ -270,7 +270,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
             <button type="button" class="dgl-mobile-toggle" id="dgl-mobile-toggle" aria-expanded="false">
               <span>
-                {activeNavItem?.uicon ? <i class={`dgl-uicon fi ${activeNavItem.icon}`} aria-hidden="true" /> : stableInlineItems.has(activeNavItem?.id ?? '') ? <InlineIcon name={activeNavItem?.icon ?? 'ph:squares-four-fill'} width="15" height="15" /> : <Icon name={activeNavItem?.icon ?? 'ph:squares-four-fill'} width="15" height="15" />}
+                {stableInlineItems.has(activeNavItem?.id ?? '') ? <InlineIcon name={activeNavItem?.icon ?? 'ph:squares-four-fill'} width="15" height="15" /> : <Icon name={activeNavItem?.icon ?? 'ph:squares-four-fill'} width="15" height="15" />}
                 {activeNavItem?.label ?? pageTitle}
               </span>
               <Icon name="ph:caret-down" width="14" height="14" class="dgl-mobile-toggle-caret" />
@@ -282,7 +282,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                   <div class="dgl-label">{group.label}</div>
                   {group.items.map((item) => (
                     <a href={item.href} data-full={item.full ? '' : undefined} class:list={['dgl-link', { active: active === item.id }]} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
-                      {item.uicon ? <i class={`dgl-uicon fi ${item.icon}`} aria-hidden="true" /> : stableInlineItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
+                      {stableInlineItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
                       {item.label}
                 {item.premium && <InlineIcon name="ph:crown-fill" width="12" height="12" class="dgl-premium-crown" />}
                     </a>
@@ -708,6 +708,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         initContent(fresh);
         if (window.PettoLevelingInit) window.PettoLevelingInit(fresh);
         if (window.PettoVoiceLevelingInit) window.PettoVoiceLevelingInit(fresh);
+        if (window.PettoRankPreviewInit) window.PettoRankPreviewInit(fresh);
         if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
         // The sticky top bar covers the first 80px of the page, so the new section is placed below it (scroll-margin-top in
         // Base.astro). Moving to another section starts at its top; a save keeps the place the person was at.
@@ -749,15 +750,24 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // Keep the next dashboard section ready while the user is deciding where to go.
     // The cache is memory-only and is cleared after a save, so it never persists stale
     // configuration across a meaningful write.
+    // A pointer that only passes over the menu does not fetch anything: the page is asked for after it rests on a link for
+    // 80 ms, and at most two of those reads run at once (a click never waits for that limit).
     var prefetchedPages = new Map();
-    function prefetchPage(href) {
+    var HOVER_DELAY_MS = 80;
+    var MAX_HOVER_PREFETCHES = 2;
+    var hoverPrefetches = 0;
+    function prefetchPage(href, fromHover) {
       if (dirtyForm || prefetchedPages.has(href)) return;
+      if (fromHover && hoverPrefetches >= MAX_HOVER_PREFETCHES) return;
+      if (fromHover) hoverPrefetches += 1;
+      var done = function () { if (fromHover) hoverPrefetches -= 1; };
       var request = fetch(href, { method: 'GET' })
         .then(function (res) {
           if (!res.ok) throw new Error('prefetch failed');
           return res.text();
         })
-        .catch(function () {
+        .then(function (html) { done(); return html; }, function () {
+          done();
           prefetchedPages.delete(href);
           return null;
         });
@@ -777,8 +787,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         if (a.hasAttribute('data-full')) return;
         var href = a.getAttribute('href');
         if (href) {
-          a.addEventListener('mouseenter', function () { prefetchPage(href); }, { passive: true });
-          a.addEventListener('focus', function () { prefetchPage(href); }, { passive: true });
+          var hoverTimer = 0;
+          var later = function () { clearTimeout(hoverTimer); hoverTimer = setTimeout(function () { prefetchPage(href, true); }, HOVER_DELAY_MS); };
+          var cancel = function () { clearTimeout(hoverTimer); };
+          a.addEventListener('mouseenter', later, { passive: true });
+          a.addEventListener('mouseleave', cancel, { passive: true });
+          a.addEventListener('focus', later, { passive: true });
+          a.addEventListener('blur', cancel, { passive: true });
         }
         a.addEventListener('click', function (e) {
           if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
@@ -986,7 +1001,47 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           return Array.prototype.slice.call(wrap.querySelectorAll('[data-ms-option] input[type="checkbox"]'));
         }
 
+        // A select with a shared list (data-ms-source) only has its chosen options in the page; the rest are added the first
+        // time it opens, in the order of the list, around the ones already there.
+        var sourceName = wrap.getAttribute('data-ms-source');
+        var filled = !sourceName;
+        function fill() {
+          if (filled) return;
+          filled = true;
+          var scope = wrap.closest('#dgl-content') || document;
+          var holder = scope.querySelector('script[data-ms-options="' + sourceName + '"]') || document.querySelector('script[data-ms-options="' + sourceName + '"]');
+          if (!holder) return;
+          var list;
+          try { list = JSON.parse(holder.textContent || '[]'); } catch (e) { return; }
+          var fieldName = wrap.getAttribute('data-ms-name') || '';
+          var present = {};
+          checkboxes().forEach(function (cb) { present[cb.value] = cb.closest('[data-ms-option]'); });
+          var fragment = document.createDocumentFragment();
+          list.forEach(function (option) {
+            var label = present[option.id];
+            if (!label) {
+              label = document.createElement('label');
+              label.className = 'dgl-ms-option';
+              label.setAttribute('data-ms-option', '');
+              var cb = document.createElement('input');
+              cb.type = 'checkbox';
+              cb.name = fieldName;
+              cb.value = option.id;
+              cb.hidden = true;
+              cb.addEventListener('change', render);
+              var text = document.createElement('span');
+              text.textContent = option.name;
+              label.appendChild(cb);
+              label.appendChild(text);
+            }
+            fragment.appendChild(label);
+          });
+          dropdown.insertBefore(fragment, dropdown.firstChild);
+          render();
+        }
+
         function openDropdown() {
+          fill();
           dropdown.hidden = false;
           wrap.classList.add('open');
         }
@@ -1047,7 +1102,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         checkboxes().forEach(function (cb) {
           cb.addEventListener('change', render);
         });
-        input.addEventListener('input', render);
+        input.addEventListener('input', function () { fill(); render(); });
         input.addEventListener('focus', openDropdown);
         control.addEventListener('click', function () {
           input.focus();
@@ -1386,8 +1441,6 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   .dgl-link :global(svg) { flex-shrink: 0; color: var(--text-dim); }
   .dgl-link.active :global(svg) { color: var(--accent); }
   .dgl-link .dgl-premium-crown { margin-left: auto; color: var(--yellow); opacity: .9; }
-  .dgl-uicon { width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 15px; line-height: 1; color: var(--text-dim); }
-  .dgl-link.active .dgl-uicon, .dgl-mobile-toggle .dgl-uicon { color: var(--accent); }
 
   .dgl-side-version { padding: 0 14px 10px; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); opacity: 0.8; }
   .dgl-side-user { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border-soft); font-size: 12.5px; color: var(--text-muted); }

@@ -3,6 +3,7 @@ export const prerender = false;
 import DashTickets from '../../../../components/DashTickets.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getGuildEmojis } from '../../../../utils/guildEmojis';
+import { noteGuildWrite } from '../../../../utils/guildSnapshots';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
@@ -75,7 +76,7 @@ async function getGuildVars(): Promise<GuildVars | null> {
     cachedGuildVars = null;
     return null;
   }
-  const channels = channelsRes.ok ? await channelsRes.json() : [];
+  const channels = channelsRes?.ok ? await channelsRes.json() : [];
   const prefixRows = prefixRes.ok ? await prefixRes.json() : [];
   const channelVars = Object.fromEntries(channels.map((channel: any) => [channel.id, {
     id: channel.id,
@@ -318,7 +319,7 @@ if (Astro.request.method === 'POST') {
       const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
       const [panel] = panelRes.ok ? await panelRes.json() : [];
       logTicketPanel('move-panel-load', { panelId, status: panelRes.status, found: Boolean(panel) });
-      const oldMessageDeleted = panel ? await deletePanelMessage(botToken, panel.channel_id, panel.message_id) : false;
+      const oldMessageDeleted = panel ? await removePanelMessage(panel.channel_id, panel.message_id) : false;
       if (!panel) {
         error = dt('That panel was not found.');
       } else if (!oldMessageDeleted) {
@@ -345,7 +346,7 @@ if (Astro.request.method === 'POST') {
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     logTicketPanel('resend-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
     if (panel) {
-      const oldMessageDeleted = await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+      const oldMessageDeleted = await removePanelMessage(panel.channel_id, panel.message_id);
       logTicketPanel('resend-panel-discord-delete', { panelId, ok: oldMessageDeleted });
       if (!oldMessageDeleted) {
         error = dt("Couldn't remove the old panel message, so it was not resent.");
@@ -366,7 +367,7 @@ if (Astro.request.method === 'POST') {
     const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
     const [panel] = panelRes.ok ? await panelRes.json() : [];
     logTicketPanel('delete-panel-load', { panelId, status: panelRes.status, found: Boolean(panel), messageId: panel?.message_id ?? null });
-    if (panel) await deletePanelMessage(botToken, panel.channel_id, panel.message_id);
+    if (panel) await removePanelMessage(panel.channel_id, panel.message_id);
     const deleteRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'DELETE',
       headers: { ...apiHeaders, Prefer: 'return=representation' },
@@ -414,16 +415,24 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+async function removePanelMessage(channelId: string, messageId: string | null): Promise<boolean> {
+  const removed = await deletePanelMessage(botToken as string, channelId, messageId);
+  noteGuildWrite(id);
+  return removed;
+}
+
 /** Re-renders a panel's live message from its current title/description/style/categories, used after any change that could affect what's shown (category add/edit tied to this panel, panel edit, resend). */
 async function refreshPanelById(panelId: string): Promise<boolean> {
   const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
   const [panel] = panelRes.ok ? await panelRes.json() : [];
   if (!panel) return false;
   const categoriesRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: apiHeaders });
-  const cats = categoriesRes.ok ? await categoriesRes.json() : [];
+  const cats = categoriesRes?.ok ? await categoriesRes.json() : [];
   const templateData = await getTemplateData(panel.embed_template);
   const guildVars = templateData ? await getGuildVars() : null;
   const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats, templateData, guildVars));
+  // A panel message changed in Discord: the pages that follow read Discord until the bot has saved its copy again.
+  noteGuildWrite(id);
   if (!messageId) return false;
   for (const note of panelWarnings(cats, panel.embed_template, templateData)) {
     if (note === 'no_types') warnings.push(dt('The panel is posted, but it has no ticket types yet, so nobody can open a ticket from it. Add a type to this panel.'));
@@ -436,21 +445,27 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   return true;
 }
 
+// Only the section on screen is drawn, so only what it shows is read. The emojis of the picker load alongside the rest.
+const TICKET_SECTIONS = ['panels', 'types', 'forms', 'access', 'settings', 'open'];
+const shown = TICKET_SECTIONS.includes(section) ? section : 'panels';
+const needs = (...sections: string[]) => sections.includes(shown);
+const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
+const customEmojisPromise = needs('types') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
 const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: apiHeaders }),
-  () => getGuildList(Astro, id, botToken, 'roles'),
-  () => getGuildList(Astro, id, botToken, 'channels'),
-  () => fetch(`${apiUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&select=id,name,title,fields&order=name.asc`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&select=id,target_type,target_id,reason&order=id.asc`, { headers: apiHeaders }),
+  when(['panels', 'types'], () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
+  when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: apiHeaders })),
+  when(['types', 'settings'], () => getGuildList(Astro, id, botToken, 'roles')),
+  when(['panels', 'types', 'settings'], () => getGuildList(Astro, id, botToken, 'channels')),
+  when(['panels', 'types'], () => fetch(`${apiUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
+  when(['settings'], () => fetch(`${apiUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['panels'], () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders })),
+  when(['types', 'forms'], () => fetch(`${apiUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&select=id,name,title,fields&order=name.asc`, { headers: apiHeaders })),
+  when(['access'], () => fetch(`${apiUrl}/rest/v1/ticket_blacklist?guild_id=eq.${id}&select=id,target_type,target_id,reason&order=id.asc`, { headers: apiHeaders })),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-const rawCategories = categoriesRes.ok ? await categoriesRes.json() : [];
+const rawCategories = categoriesRes?.ok ? await categoriesRes.json() : [];
 const categories = rawCategories.map((c: any) => ({
   id: c.id,
   panelId: c.panel_id,
@@ -470,7 +485,7 @@ const categories = rawCategories.map((c: any) => ({
   requiredRoleIds: c.required_role_ids ?? [],
 }));
 
-const rawOpenTickets = openTicketsRes.ok ? await openTicketsRes.json() : [];
+const rawOpenTickets = openTicketsRes?.ok ? await openTicketsRes.json() : [];
 const openTickets = rawOpenTickets.map((t: any) => ({
   id: t.id,
   ticketNumber: t.ticket_number,
@@ -480,13 +495,13 @@ const openTickets = rawOpenTickets.map((t: any) => ({
   channelId: t.channel_id,
 }));
 
-const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const allRoles = rolesRes?.ok ? await rolesRes.json() : [];
 const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
   .map((r: any) => ({ id: r.id, name: r.name }));
 
-const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const allChannels = channelsRes?.ok ? await channelsRes.json() : [];
 const channelCategories = allChannels
   .filter((c: any) => c.type === 4)
   .sort((a: any, b: any) => a.position - b.position)
@@ -496,7 +511,7 @@ const textChannels = allChannels
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
 
-const rawPanels = panelsRes.ok ? await panelsRes.json() : [];
+const rawPanels = panelsRes?.ok ? await panelsRes.json() : [];
 const panels = rawPanels.map((p: any) => ({
   id: p.id,
   channelId: p.channel_id,
@@ -509,11 +524,11 @@ const panels = rawPanels.map((p: any) => ({
   types: categories.filter((c: any) => c.panelId === p.id).map((c: any) => ({ label: c.label, emoji: c.emoji })),
 }));
 
-const embedTemplateNames: string[] = embedTemplatesRes.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
-const forms = ticketFormsRes.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? dt('Ticket details'), fields: f.fields ?? [] })) : [];
-const blacklist = ticketBlacklistRes.ok ? await ticketBlacklistRes.json() : [];
+const embedTemplateNames: string[] = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
+const forms = ticketFormsRes?.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? dt('Ticket details'), fields: f.fields ?? [] })) : [];
+const blacklist = ticketBlacklistRes?.ok ? await ticketBlacklistRes.json() : [];
 
-const settingsRows = settingsRes.ok ? await settingsRes.json() : [];
+const settingsRows = settingsRes?.ok ? await settingsRes.json() : [];
 const s = settingsRows[0] ?? {};
 const settings = {
   claimMode: s.claim_mode ?? 'shared',
@@ -535,14 +550,14 @@ const settings = {
   closedLogChannelId: s.closed_log_channel_id ?? '',
   blockedRoleIds: s.blocked_role_ids ?? [],
 };
-const customEmojis = await getGuildEmojis(id, botToken);
+const customEmojis = await customEmojisPromise;
 ---
 <DashTickets
   customEmojis={customEmojis}
   user={session}
   guildId={id}
   guildName={guildInfo.name}
-  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   categories={categories}
   panels={panels}
   settings={settings}

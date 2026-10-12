@@ -1,22 +1,48 @@
+import type { APIContext, MiddlewareNext } from 'astro';
 import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
-import { configureSnapshots, noteGuildWrite } from './utils/guildSnapshots';
+import { configureSnapshots } from './utils/guildSnapshots';
+import { warmShared } from './utils/sharedCache';
+import { timed } from './utils/serverTiming';
 
 // On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
 const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
+
+// Connects to Redis (when configured) as the server starts, not on the first page that needs it.
+warmShared();
+
+const PUBLIC_SHARED_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:stats|status|team|credits|partners)\/?$/i;
+const PUBLIC_SHARED_CACHE = 'public, s-maxage=60, stale-while-revalidate=600';
 
 const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: 'es', path: '/es' }, 'pt-br': { lang: 'pt-BR', path: '/pt-br' } };
 
 // /es/dash and /pt-br/dash pick the dashboard language and render the single /dash route.
 // The prefix is kept on the links, forms, and redirects of the page, so it stays in the address bar.
-export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite, request }, next) => {
-  const method = request.method.toUpperCase();
+const DASH_PATH = /^\/(?:(?:es|pt-br)\/)?dash(?:\/|$)/i;
+
+export const onRequest = defineMiddleware(async (context, next) => {
   await directDatabase;
-  configureSnapshots({ locals });
-  // A change made from a server's dashboard must show on the next page, before the bot has saved its own copy.
-  if (method !== 'GET' && method !== 'HEAD') {
-    const guild = /^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//i.exec(url.pathname);
-    if (guild) noteGuildWrite(guild[1]);
+  configureSnapshots({ locals: context.locals });
+  // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
+  if (DASH_PATH.test(context.url.pathname)) return timed(context, () => handle(context, next));
+  return handle(context, next);
+});
+
+async function handle({ url, cookies, locals, rewrite, request }: APIContext, next: MiddlewareNext): Promise<Response> {
+  // Public pages rendered on each visit (stats, status, team, credits, partners) are the same for everyone, so a cache in front
+  // (Cloudflare) may keep them a minute and serve an older copy for ten while it fetches a new one.
+  if (PUBLIC_SHARED_PAGE.test(url.pathname) && ['GET', 'HEAD'].includes(request.method.toUpperCase())) {
+    const response = await next();
+    if (response.status === 200 && !response.headers.has('cache-control') && !response.headers.has('set-cookie')) {
+      try {
+        response.headers.set('Cache-Control', PUBLIC_SHARED_CACHE);
+      } catch {
+        const headers = new Headers(response.headers);
+        headers.set('Cache-Control', PUBLIC_SHARED_CACHE);
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      }
+    }
+    return response;
   }
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
@@ -44,4 +70,4 @@ export const onRequest = defineMiddleware(async ({ url, cookies, locals, rewrite
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   return new Response(html, { status: response.status, statusText: response.statusText, headers });
-});
+}

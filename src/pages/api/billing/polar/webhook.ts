@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getEnv } from '../../../../utils/env';
 import { syncPolarSubscription, verifyPolarWebhook } from '../../../../utils/polarWebhook';
+import { forgetPremiumSnapshots } from '../../../../utils/premium';
 
 export const prerender = false;
 
@@ -13,6 +14,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     await syncPolarSubscription({ locals }, JSON.parse(body));
+    // A subscription changed: the Premium states kept by the dashboard are read again.
+    forgetPremiumSnapshots();
     return new Response('', { status: 202 });
   } catch (error) {
     console.error('Polar Premium webhook failed', error);

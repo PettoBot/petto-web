@@ -5,6 +5,9 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { buildStats, STAT_TABS, botDay } from '../../../../utils/activityStats';
+import { getMemberProfiles } from '../../../../utils/memberNames';
+// On Node the site may add rows up in the database itself (see utils/directDb.ts); elsewhere this is null.
+import { directQuery } from '../../../../utils/directQuery';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -43,7 +46,12 @@ const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, ca
   rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${since}`),
   rows('activity_hourly', 'day,hour,messages,voice_seconds', `&day=gte.${since}`),
   rows('member_flow', 'day,joins,leaves,invited', `&day=gte.${since}`),
-  rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`),
+  // Per member and day, these rows are the largest read of the page; the database adds them up per member when the site can
+  // reach it (one row per member, dated on the first day of the range, which is all the page needs). Members are listed in the
+  // order they first show up, as the rows were, so members with the same count keep a stable place.
+  (directQuery
+    ? directQuery(`SELECT "user_id", SUM("messages") AS "messages", SUM("voice_seconds") AS "voice_seconds", $3::text AS "day" FROM "public"."activity_members" WHERE "guild_id" = $1 AND "day" >= $2 GROUP BY "user_id" ORDER BY MIN("day"), "user_id"`, [id, since, since])
+    : Promise.resolve(null)).then((summed) => summed ?? rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`)),
   rows('mod_actions', 'type,source,moderator_id,user_id,created_at', `&created_at=gte.${sinceInstant}&limit=20000`),
   rows('invite_uses', 'inviter_id,joins,leaves,bonus', '&order=joins.desc&limit=50'),
 ]);
@@ -64,21 +72,16 @@ const inviters = inviterRows
 // Names of the members that are named on the page. A user that cannot be read is shown by its ID.
 const wanted = [...new Set([...stats.topMembers.messages, ...stats.topMembers.voice, ...stats.sanctions.topModerators, ...stats.sanctions.topUsers].map((m) => m.id).concat(inviters.map((i) => i.id)))].slice(0, 30);
 const memberNames: Record<string, string> = {};
-await Promise.all(wanted.map(async (userId) => {
-  try {
-    const res = await fetch(`https://discord.com/api/users/${userId}`, { headers: { Authorization: `Bot ${botToken}` } });
-    if (!res.ok) return;
-    const user = await res.json();
-    memberNames[userId] = user.global_name || user.username || userId;
-  } catch { /* shown by ID */ }
-}));
+// One call to the bot for all of them (kept for a while); people who left are read from Discord's global profile, as before.
+const profiles = await getMemberProfiles(Astro, id, wanted, botToken, { fallback: 'user', userId: session.userId });
+for (const [userId, profile] of profiles) if (profile) memberNames[userId] = profile.globalName || profile.username || userId;
 const hasFlow = flowRows.length > 0;
 ---
 <DashStats
   user={session}
   guildId={id}
   guildName={guildInfo.name}
-  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   stats={stats}
   days={days}
   tab={tab}

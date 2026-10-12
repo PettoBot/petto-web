@@ -5,6 +5,8 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { guildIconUrl, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
+// On Node the site may add rows up in the database itself (see utils/directDb.ts); elsewhere this is null.
+import { directQuery } from '../../../../utils/directQuery';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
 
@@ -98,7 +100,10 @@ const [
   () => fetch(`${apiUrl}/rest/v1/member_events_config?guild_id=eq.${id}&select=welcome_channel_id`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/activity_stats?guild_id=eq.${id}&day=gte.${isoDate(startPrevious)}&select=channel_id,day,messages,reactions,voice_seconds`, { headers: apiHeaders }),
-  () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&created_at=gte.${startPrevious.toISOString()}&select=type,created_at`, { headers: apiHeaders }),
+  // The case history is counted by the database when the site can reach it (one row per day and type instead of one per case).
+  () => (directQuery
+    ? directQuery<{ type: string; day: string; n: number }>(`SELECT "type", to_char("created_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS "day", COUNT(*)::int AS "n" FROM "public"."mod_actions" WHERE "guild_id" = $1 AND "created_at" >= $2 GROUP BY 1, 2`, [id, startPrevious.toISOString()])
+    : Promise.resolve(null)).then((rows) => rows ?? fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&created_at=gte.${startPrevious.toISOString()}&select=type,created_at`, { headers: apiHeaders })),
 ], 6);
 
 const channels = channelsRes.ok ? await channelsRes.json() : [];
@@ -295,10 +300,15 @@ activity = {
 // Two series on one shared "actions per day" axis, bans specifically, and every other case
 // type folded into "Other actions" rather than a 4th/5th low-signal line. ──
 type ModKind = 'bans' | 'other';
-const modRows = (await readRows<{ type?: unknown; created_at?: unknown }>(modActionsRes, 'mod_actions'))
+const modSource: Array<{ type?: unknown; created_at?: unknown; day?: unknown; n?: unknown }> = Array.isArray(modActionsRes)
+  ? modActionsRes.map((row) => ({ type: row.type, created_at: `${row.day}T00:00:00.000Z`, n: row.n }))
+  : await readRows<{ type?: unknown; created_at?: unknown }>(modActionsRes, 'mod_actions');
+const modRows = modSource
   .map((row) => ({
     type: String(row.type ?? ''),
     created_at: String(row.created_at ?? ''),
+    // How many cases the row stands for: one per case, or the count of a day when the database counted them.
+    n: Number('n' in row ? row.n : 1) || 0,
   }))
   .filter((row) => row.type.length > 0 && row.created_at.length > 0);
 function bucketKeyFor(iso: string) {
@@ -319,13 +329,13 @@ for (const r of modCurrentRows) {
   const kind = kindFor(r.type);
   const key = bucketKeyFor(r.created_at);
   const b = modBuckets.get(key) ?? { bans: 0, other: 0 };
-  b[kind] += 1;
+  b[kind] += r.n;
   modBuckets.set(key, b);
 }
 const modPoints = [...modBuckets.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, v]) => ({ label, ...v }));
 
 function modTotal(rows: typeof modRows, kind: ModKind) {
-  return rows.reduce((a, r) => a + (kindFor(r.type) === kind ? 1 : 0), 0);
+  return rows.reduce((a, r) => a + (kindFor(r.type) === kind ? r.n : 0), 0);
 }
 const modTotals = { bans: modTotal(modCurrentRows, 'bans'), other: modTotal(modCurrentRows, 'other') };
 const modPrevTotals = { bans: modTotal(modPreviousRows, 'bans'), other: modTotal(modPreviousRows, 'other') };
@@ -353,7 +363,7 @@ moderation = {
     user={session}
     guildId={id}
     guildName={guild.name}
-    guildIcon={guildIconUrl(guild) ?? '/assets/mascot-icon.png'}
+    guildIcon={guildIconUrl(guild) ?? '/assets/mascot-icon.webp'}
     stats={stats}
     modules={modules}
     activity={activity}

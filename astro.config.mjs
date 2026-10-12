@@ -77,18 +77,24 @@ export default defineConfig({
   },
   // The whole marketing site stays static (prerendered); only src/pages/dash/** opts out
   // via `export const prerender = false`, since it needs a live session per request.
+  // Public pages linked with data-astro-prefetch are fetched on hover (see Base.astro); nothing is prefetched by default.
+  prefetch: { prefetchAll: false, defaultStrategy: 'hover' },
   output: 'hybrid',
   outDir: discloudTarget ? './build/' : './dist/',
   // Dynamic dashboard routes must carry their component styles in the Worker
   // response. Without this, Cloudflare can render the HTML while the SSR page
   // misses the generated CSS asset link and appears as unstyled markup.
-  build: { inlineStylesheets: 'always' },
+  // The Node server (Discloud) links the larger stylesheets instead: they are hashed files the browser keeps for a year, so
+  // every page after the first one is lighter. The dashboard's page swaps add the new page's links (syncHeadAssets).
+  build: { inlineStylesheets: discloudTarget ? 'auto' : 'always' },
   // El JavaScript del navegador siempre puede inspeccionarse; esto endurece el build,
   // no lo convierte en código secreto: lo mantiene minificado y sin source maps.
   vite: {
     // Only the Node (Discloud) build may bundle the direct database reader; the Worker build drops it.
     define: {
       __DIRECT_DB__: JSON.stringify(discloudTarget),
+      // The Node build (Discloud) may use Node-only modules: Redis and the shared cache's single flight.
+      __NODE_TARGET__: JSON.stringify(discloudTarget),
       __APP_VERSION__: JSON.stringify(appVersion),
       __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
       __BUILD_COMMIT__: JSON.stringify(buildCommit),

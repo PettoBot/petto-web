@@ -231,21 +231,25 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+// Only the section on screen is drawn, so only what it shows is read.
+const COMMUNITY_SECTIONS = ['settings', 'reputation', 'boosters', 'polls'];
+const shown = COMMUNITY_SECTIONS.includes(section) ? section : 'settings';
+const needs = (...sections: string[]) => sections.includes(shown);
 const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, pollsRes, templatesRes] = await Promise.all([
   getGuildInfo(id, botToken),
-  fetch(`${apiUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: apiHeaders }),
-  getGuildList(Astro, id, botToken, 'roles'),
-  getGuildList(Astro, id, botToken, 'channels'),
-  fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,embed_template,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
+  needs('settings') ? fetch(`${apiUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
+  needs('settings', 'boosters') ? fetch(`${apiUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
+  needs('boosters') ? fetch(`${apiUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: apiHeaders }) : null,
+  needs('settings', 'boosters') ? getGuildList(Astro, id, botToken, 'roles') : null,
+  needs('settings', 'polls') ? getGuildList(Astro, id, botToken, 'channels') : null,
+  needs('settings') ? fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
+  needs('reputation') ? fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: apiHeaders }) : null,
+  needs('polls') ? fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,embed_template,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }) : null,
+  needs('polls') ? fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }) : null,
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-const reportRows = reportRes.ok ? await reportRes.json() : [];
+const reportRows = reportRes?.ok ? await reportRes.json() : [];
 const r = reportRows[0] ?? {};
 const report = {
   enabled: r.enabled ?? false,
@@ -254,7 +258,7 @@ const report = {
   anonymousReportingEnabled: r.anonymous_reporting_enabled ?? false,
 };
 
-const boosterRows = boosterRes.ok ? await boosterRes.json() : [];
+const boosterRows = boosterRes?.ok ? await boosterRes.json() : [];
 const b = boosterRows[0] ?? {};
 const booster = {
   baseRoleId: b.base_role_id ?? null,
@@ -266,29 +270,30 @@ const booster = {
   renameCooldownHours: Math.round((b.rename_cooldown_ms ?? 0) / 3600000),
 };
 
-const rawBoosterRoles = boosterRolesRes.ok ? await boosterRolesRes.json() : [];
+const rawBoosterRoles = boosterRolesRes?.ok ? await boosterRolesRes.json() : [];
 const boosterRoles = rawBoosterRoles.map((row: any) => ({ userId: row.user_id, roleId: row.role_id, color: row.color }));
 
-const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const allRoles = rolesRes?.ok ? await rolesRes.json() : [];
 const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
   .map((r: any) => ({ id: r.id, name: r.name }));
 
-const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const allChannels = channelsRes?.ok ? await channelsRes.json() : [];
 const channels = (Array.isArray(allChannels) ? allChannels : [])
   .filter((c: any) => Number(c.type) === 0 || Number(c.type) === 5)
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
 
-const repConfigRows = reputationConfigRes.ok ? await reputationConfigRes.json() : [];
+const repConfigRows = reputationConfigRes?.ok ? await reputationConfigRes.json() : [];
 const rc = repConfigRows[0] ?? {};
 const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hours ?? 24 };
-const reputationTop = reputationRes.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
-const pollDesigns: string[] = (templatesRes.ok ? await templatesRes.json() : []).filter((row: any) => isV2Data(row.data)).map((row: any) => String(row.name));
-const peopleMap = await describeTeam(botToken, [...new Set([...reputationTop.map((row: { userId: string }) => row.userId), ...boosterRoles.map((row: { userId: string }) => row.userId)])].filter((value) => /^\d{15,25}$/.test(value)).slice(0, 60) as string[]);
+const reputationTop = reputationRes?.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
+const pollDesigns: string[] = (templatesRes?.ok ? await templatesRes.json() : []).filter((row: any) => isV2Data(row.data)).map((row: any) => String(row.name));
+const peopleIds = [...new Set([...reputationTop.map((row: { userId: string }) => row.userId), ...boosterRoles.map((row: { userId: string }) => row.userId)])].filter((value) => /^\d{15,25}$/.test(value)).slice(0, 60) as string[];
+const peopleMap = peopleIds.length ? await describeTeam(botToken, peopleIds) : new Map();
 const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl }]));
-const rawPolls: PollRecord[] = pollsRes.ok ? await pollsRes.json() : [];
+const rawPolls: PollRecord[] = pollsRes?.ok ? await pollsRes.json() : [];
 const pollIds = rawPolls.map((poll) => poll.id).filter((pollId) => Number.isInteger(pollId));
 const pollVotesRes = pollIds.length > 0 ? await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: apiHeaders }) : null;
 const pollVotes = pollVotesRes?.ok ? await pollVotesRes.json() : [];
@@ -303,7 +308,7 @@ const polls = rawPolls.map((poll) => {
   user={session}
   guildId={id}
   guildName={guildInfo.name}
-  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   report={report}
   booster={booster}
   boosterRoles={boosterRoles}

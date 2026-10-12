@@ -4,6 +4,7 @@ import DashLeveling from '../../../../components/DashLeveling.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
@@ -191,17 +192,21 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+// Only the section on screen is drawn, so only what it shows is read (the settings row is small and every section uses it).
+const LEVELING_SECTIONS = ['settings', 'voice', 'rank', 'rules', 'rewards', 'leaderboard', 'leaderboard-voice'];
+const shown = LEVELING_SECTIONS.includes(section) ? section : 'settings';
+const needs = (...sections: string[]) => sections.includes(shown);
 const [guildInfo, configRes, rewardsRes, leaderboardRes, voiceLeaderboardRes, rolesRes, channelsRes, embedTemplatesRes, cardsRes, eventsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/level_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/level_users?guild_id=eq.${id}&select=user_id,xp,level&order=xp.desc&limit=10`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/level_users?guild_id=eq.${id}&voice_xp=gt.0&select=user_id,voice_xp,voice_level,vc_minutes&order=voice_xp.desc&limit=10`, { headers: apiHeaders }),
-  getGuildList(Astro, id, botToken, 'roles'),
-  getGuildList(Astro, id, botToken, 'channels'),
-  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
-  fetch(`${apiUrl}/rest/v1/image_cards?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }).catch(() => null),
-  fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&ends_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,name,multiplier,source,starts_at,ends_at&order=starts_at.asc`, { headers: apiHeaders }).catch(() => null),
+  needs('rewards') ? fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=level,role_id&order=level.asc`, { headers: apiHeaders }) : null,
+  needs('leaderboard') ? fetch(`${apiUrl}/rest/v1/level_users?guild_id=eq.${id}&select=user_id,xp,level&order=xp.desc&limit=10`, { headers: apiHeaders }) : null,
+  needs('leaderboard-voice') ? fetch(`${apiUrl}/rest/v1/level_users?guild_id=eq.${id}&voice_xp=gt.0&select=user_id,voice_xp,voice_level,vc_minutes&order=voice_xp.desc&limit=10`, { headers: apiHeaders }) : null,
+  needs('rewards') ? getGuildList(Astro, id, botToken, 'roles') : null,
+  needs('settings', 'voice') ? getGuildList(Astro, id, botToken, 'channels') : null,
+  needs('settings', 'voice') ? fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }) : null,
+  needs('rank') ? fetch(`${apiUrl}/rest/v1/image_cards?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }).catch(() => null) : null,
+  needs('rules') ? fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&ends_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id,name,multiplier,source,starts_at,ends_at&order=starts_at.asc`, { headers: apiHeaders }).catch(() => null) : null,
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -270,71 +275,30 @@ const cards = (Array.isArray(rawCards) ? rawCards : []).map((card: any) => ({ na
 const rawEvents = eventsRes?.ok ? await eventsRes.json() : [];
 const events = (Array.isArray(rawEvents) ? rawEvents : []).map((event: any) => ({ id: String(event.id), name: String(event.name), multiplier: Number(event.multiplier), source: String(event.source), startsAt: String(event.starts_at), endsAt: String(event.ends_at) }));
 
-const rawRewards = rewardsRes.ok ? await rewardsRes.json() : [];
+const rawRewards = rewardsRes?.ok ? await rewardsRes.json() : [];
 const rewards = rawRewards.map((r: any) => ({ level: r.level, roleId: r.role_id }));
 
-const rawLeaderboard = leaderboardRes.ok ? await leaderboardRes.json() : [];
-const leaderboard = await Promise.all(rawLeaderboard.map(async (row: any, i: number) => {
+// Only the leaderboard on screen is read, and the names of its members come in one call to the bot (kept for a while), not one
+// Discord call per member.
+const rawLeaderboard = leaderboardRes?.ok ? await leaderboardRes.json() : [];
+const rawVoiceLeaderboard = voiceLeaderboardRes?.ok ? await voiceLeaderboardRes.json() : [];
+const profiles = await getMemberProfiles(Astro, id, [...rawLeaderboard, ...rawVoiceLeaderboard].map((row: any) => String(row.user_id ?? '')), botToken, { userId: session.userId });
+const leaderboardMember = (row: any) => {
   const userId = String(row.user_id ?? '');
-  let member: any = null;
-  if (/^\d{15,25}$/.test(userId)) {
-    try {
-      const memberRes = await fetch(`https://discord.com/api/guilds/${id}/members/${userId}`, {
-        headers: { Authorization: `Bot ${botToken}` },
-      });
-      if (memberRes.ok) member = await memberRes.json();
-    } catch {
-      member = null;
-    }
-  }
-  const discordUser = member?.user ?? {};
-  const username = discordUser.username ?? '';
-  const displayName = member?.nick || discordUser.global_name || username || `Member ${userId.slice(-4)}`;
-  const avatarUrl = discordUser.avatar
-    ? `https://cdn.discordapp.com/avatars/${userId}/${discordUser.avatar}.png?size=64`
-    : `https://cdn.discordapp.com/embed/avatars/${Number(userId || 0) % 6}.png`;
-  return {
-    rank: i + 1,
-    userId,
-    displayName,
-    username,
-    avatarUrl,
-    xp: Number(row.xp ?? 0),
-    level: Number(row.level ?? 0),
-  };
-}));
-const rawVoiceLeaderboard = voiceLeaderboardRes.ok ? await voiceLeaderboardRes.json() : [];
-const voiceLeaderboard = await Promise.all(rawVoiceLeaderboard.map(async (row: any, i: number) => {
-  const userId = String(row.user_id ?? '');
-  let member: any = null;
-  if (/^\d{15,25}$/.test(userId)) {
-    try {
-      const memberRes = await fetch(`https://discord.com/api/guilds/${id}/members/${userId}`, { headers: { Authorization: `Bot ${botToken}` } });
-      if (memberRes.ok) member = await memberRes.json();
-    } catch {
-      member = null;
-    }
-  }
-  const discordUser = member?.user ?? {};
-  return {
-    rank: i + 1,
-    userId,
-    displayName: member?.nick || discordUser.global_name || discordUser.username || `Member ${userId.slice(-4)}`,
-    username: discordUser.username ?? '',
-    avatarUrl: discordUser.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${discordUser.avatar}.png?size=64` : `https://cdn.discordapp.com/embed/avatars/${Number(userId || 0) % 6}.png`,
-    xp: Number(row.voice_xp ?? 0),
-    level: Number(row.voice_level ?? 0),
-    voiceMinutes: Number(row.vc_minutes ?? 0),
-  };
-}));
+  const profile = profiles.get(userId) ?? null;
+  const username = profile?.username ?? '';
+  return { userId, username, displayName: profile?.displayName || profile?.globalName || username || `Member ${userId.slice(-4)}`, avatarUrl: memberAvatarUrl(userId, profile) };
+};
+const leaderboard = rawLeaderboard.map((row: any, i: number) => ({ rank: i + 1, ...leaderboardMember(row), xp: Number(row.xp ?? 0), level: Number(row.level ?? 0) }));
+const voiceLeaderboard = rawVoiceLeaderboard.map((row: any, i: number) => ({ rank: i + 1, ...leaderboardMember(row), xp: Number(row.voice_xp ?? 0), level: Number(row.voice_level ?? 0), voiceMinutes: Number(row.vc_minutes ?? 0) }));
 
-const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const allRoles = rolesRes?.ok ? await rolesRes.json() : [];
 const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
   .map((r: any) => ({ id: r.id, name: r.name }));
 
-const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+const allChannels = channelsRes?.ok ? await channelsRes.json() : [];
 const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
   .sort((a: any, b: any) => a.position - b.position)
@@ -344,14 +308,14 @@ const voiceChannels = allChannels
   .sort((a: any, b: any) => a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name }));
 
-const embedTemplates = embedTemplatesRes.ok ? await embedTemplatesRes.json() : [];
+const embedTemplates = embedTemplatesRes?.ok ? await embedTemplatesRes.json() : [];
 const embedTemplateNames = embedTemplates.map((template: any) => template.name).filter(Boolean);
 ---
 <DashLeveling
   user={session}
   guildId={id}
   guildName={guildInfo.name}
-  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.png'}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   config={config}
   rewards={rewards}
   roles={roles}

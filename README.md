@@ -61,6 +61,9 @@ The dev server runs at `http://localhost:4321`. Always run `npm run check` and `
 | `POLAR_WEBHOOK_SECRET` | Secret used by `petto.sbs/api/billing/polar/webhook` to verify Polar events. |
 | `PETTO_OWNER_ID` | Discord ID allowed to use `/dash/admin` for permanent Premium grants. |
 | `PETTO_FORMS_WEBHOOK_URL` | Discord webhook that receives the applications sent from `/apply` (developer, manager, partner, and staff). Without it the forms show as closed. |
+| `PETTO_DATABASE_URL` | Optional, Discloud (Node) only. The bot's PostgreSQL, read and written directly by the dashboard (see the Discloud checklist). Set it in production: without it every dashboard read and write goes through the bot API, which is rate limited. `PETTO_DATABASE_SSL=true` when the database needs TLS. |
+| `PETTO_DATABASE_POOL_MAX` | Optional. Most connections the dashboard opens to that database at once (default 15; 2 are kept open). |
+| `REDIS_URL` or `DISCLOUD_REDIS_URL` | Optional, Discloud (Node) only. The bot's Redis. The dashboard keeps its shared cache there (keys under `petto:web:`), reads the bot's copy of each server from `petto:snap:<id>`, listens to `petto:snap` and `petto:guilds`, and publishes `petto:invalidate` after a direct database write. Without it everything is kept in memory, as before. `PETTO_REDIS_TIMEOUT_MS` (default 150) is how long a Redis command may take before Redis is skipped for a while. |
 
 **Deploying**
 
@@ -78,7 +81,8 @@ Compiling on Discloud takes minutes (its builder compiles, and the running conta
 2. Discloud's own builder runs `npm run build` inside `/home/node`, and `scripts/build.mjs` picks the Node build there by itself (Cloudflare stays the default; `npm run build:discloud` or `ASTRO_TARGET=discloud` force it). Zip the project root (`.discloudignore` already leaves out `node_modules`, `dist` and docs) and upload it. Discloud runs `npm run build:discloud` and then `npm run start:discloud`.
    If the running container comes up without the `build/` folder, `server.mjs` builds the site itself on the first start. That needs about 800 MB of RAM for a few minutes, which is why `discloud.config` asks for `RAM=1024`; with 512 MB the build is killed half way.
 3. Point the domain at Discloud, and update the Discord OAuth redirect and the Polar webhook only if the address changes.
-4. For the dashboard to feel faster, set `PETTO_DATABASE_URL` (and `PETTO_DATABASE_SSL=true` if your database needs it) to the same database the bot uses. Simple table reads are then answered straight from PostgreSQL (`src/utils/directDb.ts`). Writes, counts, nested selects, `or` filters and anything unusual still go through the bot API, and so does every read if the database is unreachable. The Cloudflare build never includes this code.
+4. Set `PETTO_DATABASE_URL` in production (and `PETTO_DATABASE_SSL=true` if your database needs it) to the same database the bot uses. Without it every page reads and writes through the bot API, which is slower and rate limited. With it, simple reads and the dashboard's writes are answered straight from PostgreSQL (`src/utils/directDb.ts`), and the statistics and overview pages add their numbers up in the database. Nested selects, `and` filters and anything unusual still go through the bot API, and so does everything while the database is unreachable. The Cloudflare build never includes this code.
+5. Optionally set `REDIS_URL` (or `DISCLOUD_REDIS_URL`) to the bot's Redis. Server lists, member names, emojis and the bot's copy of each server are then shared through it and dropped the moment the bot says they changed; a slow or missing Redis is skipped and the site works from memory. Dashboard responses carry a `Server-Timing` header (auth, db, discord, bot, render); `npm run load:check` with `LOAD_TEST_COOKIE` (a `petto_session` value) and `LOAD_TEST_PATHS` (comma-separated dashboard paths) prints it per page.
 
 **Applications**
 

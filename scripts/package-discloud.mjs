@@ -21,7 +21,7 @@ cpSync('server.mjs', resolve(out, 'server.mjs'));
 cpSync('discloud.config', resolve(out, 'discloud.config'));
 
 // Packages only the build or the Cloudflare host use: the compiled site does not load them when it runs on Node.
-const buildOnly = new Set(['@astrojs/cloudflare', '@astrojs/sitemap', '@types/react', '@types/react-dom', '@flaticon/flaticon-uicons', 'dotenv']);
+const buildOnly = new Set(['@astrojs/cloudflare', '@astrojs/sitemap', '@types/react', '@types/react-dom', 'dotenv']);
 const dependencies = Object.fromEntries(Object.entries(pkg.dependencies).filter(([name]) => !buildOnly.has(name)));
 
 const runtime = {
