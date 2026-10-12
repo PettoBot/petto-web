@@ -168,6 +168,100 @@ if (Astro.request.method === 'POST') {
     });
     saved = saveResponse.ok;
     saveError = !saveResponse.ok;
+    // The XP events staged on the page are applied with the same Save.
+    if (saved) {
+      let staged: any = {};
+      try { staged = JSON.parse(String(form.get('events_payload') ?? '{}')); } catch { staged = {}; }
+      const removeIds = (Array.isArray(staged.remove) ? staged.remove : []).map(String).filter((value: string) => /^\d{1,18}$/.test(value)).slice(0, 25);
+      for (const eventId of removeIds) {
+        const res = await fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&id=eq.${eventId}`, { method: 'DELETE', headers: apiHeaders });
+        if (!res.ok) saveError = true;
+      }
+      const toAdd = (Array.isArray(staged.add) ? staged.add : []).slice(0, 25);
+      if (toAdd.length) {
+        const activeRes = await fetch(`${apiUrl}/rest/v1/xp_events?guild_id=eq.${id}&ends_at=gt.${encodeURIComponent(new Date().toISOString())}&select=id`, { headers: apiHeaders });
+        const room = Math.max(0, 25 - (activeRes.ok ? (await activeRes.json()).length : 25));
+        const rows = [];
+        for (const entry of toAdd.slice(0, room)) {
+          const name = String(entry?.name ?? '').trim().slice(0, 60);
+          const multiplier = Math.round(Number(entry?.multiplier) * 100) / 100;
+          const source = String(entry?.source ?? 'all');
+          const startInHours = Math.max(0, Math.min(24 * 30, Number(entry?.startIn) || 0));
+          const durationHours = Math.max(0, Math.min(24 * 60, Number(entry?.duration) || 0));
+          if (!name || !(multiplier > 1 && multiplier <= 20) || !['all', 'text', 'voice'].includes(source) || durationHours < 1 / 60) { saveError = true; continue; }
+          const startsAt = new Date(Date.now() + startInHours * 3_600_000);
+          rows.push({ guild_id: id, name, multiplier, source, starts_at: startsAt.toISOString(), ends_at: new Date(startsAt.getTime() + durationHours * 3_600_000).toISOString(), created_by: String(session.userId) });
+        }
+        if (toAdd.length > room) saveError = true;
+        if (rows.length) {
+          await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, updated_at: new Date().toISOString() }) }).catch(() => null);
+          const res = await fetch(`${apiUrl}/rest/v1/xp_events`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(rows) });
+          if (!res.ok) saveError = true;
+        }
+      }
+      saved = !saveError;
+    }
+  } else if (action === 'save_rewards') {
+    // The whole list as it stands on the page: what is missing is removed, the rest is saved.
+    let list: any[] = [];
+    try { list = JSON.parse(String(form.get('payload') ?? '[]')); } catch { list = []; }
+    const wanted = new Map<string, { guild_id: string; source: string; level: number; role_id: string }>();
+    for (const entry of (Array.isArray(list) ? list : []).slice(0, 400)) {
+      const level = Math.floor(Number(entry?.level));
+      const source = entry?.source === 'voice' ? 'voice' : 'text';
+      const roleId = String(entry?.role_id ?? '');
+      if (level >= 1 && level <= 1000 && /^\d{15,25}$/.test(roleId)) wanted.set(`${source}:${level}`, { guild_id: id, source, level, role_id: roleId });
+    }
+    const currentRes = await fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&select=source,level`, { headers: apiHeaders });
+    if (!currentRes.ok) {
+      saveError = true;
+    } else {
+      let failed = false;
+      for (const row of await currentRes.json()) {
+        if (wanted.has(`${row.source}:${row.level}`)) continue;
+        const res = await fetch(`${apiUrl}/rest/v1/level_rewards?guild_id=eq.${id}&source=eq.${row.source}&level=eq.${row.level}`, { method: 'DELETE', headers: apiHeaders });
+        if (!res.ok) failed = true;
+      }
+      if (wanted.size) {
+        await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, updated_at: new Date().toISOString() }) }).catch(() => null);
+        const res = await fetch(`${apiUrl}/rest/v1/level_rewards?on_conflict=guild_id,source,level`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([...wanted.values()]) });
+        if (!res.ok) failed = true;
+      }
+      saved = !failed;
+      saveError = failed;
+    }
+  } else if (action === 'save_multipliers') {
+    let list: any[] = [];
+    try { list = JSON.parse(String(form.get('payload') ?? '[]')); } catch { list = []; }
+    const wanted = new Map<string, { guild_id: string; target_id: string; target_type: string; multiplier: number }>();
+    for (const entry of (Array.isArray(list) ? list : []).slice(0, 300)) {
+      const targetId = String(entry?.target_id ?? '');
+      const targetType = String(entry?.target_type ?? '');
+      const multiplier = Math.round(Number(entry?.multiplier) * 100) / 100;
+      if (['role', 'channel', 'category'].includes(targetType) && /^\d{15,25}$/.test(targetId) && multiplier >= 0 && multiplier <= 20) wanted.set(targetId, { guild_id: id, target_id: targetId, target_type: targetType, multiplier });
+    }
+    if (wanted.size > 100) {
+      saveError = true;
+    } else {
+      const currentRes = await fetch(`${apiUrl}/rest/v1/level_multipliers?guild_id=eq.${id}&select=target_id`, { headers: apiHeaders });
+      if (!currentRes.ok) {
+        saveError = true;
+      } else {
+        let failed = false;
+        for (const row of await currentRes.json()) {
+          if (wanted.has(row.target_id)) continue;
+          const res = await fetch(`${apiUrl}/rest/v1/level_multipliers?guild_id=eq.${id}&target_id=eq.${row.target_id}`, { method: 'DELETE', headers: apiHeaders });
+          if (!res.ok) failed = true;
+        }
+        if (wanted.size) {
+          await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, updated_at: new Date().toISOString() }) }).catch(() => null);
+          const res = await fetch(`${apiUrl}/rest/v1/level_multipliers?on_conflict=guild_id,target_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([...wanted.values()]) });
+          if (!res.ok) failed = true;
+        }
+        saved = !failed;
+        saveError = failed;
+      }
+    }
   } else if (action === 'add_event') {
     const name = String(form.get('event_name') ?? '').trim().slice(0, 60);
     const multiplier = Math.round(formNumber(form, 'event_multiplier', 2) * 100) / 100;
