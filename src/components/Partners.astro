@@ -56,9 +56,9 @@ const copy = {
 } as const;
 
 const extra = {
-  en: { visitPartner: (name: string) => `Visit ${name}`, kinds: { hosting: 'Hosting', servers: 'Servers', apps: 'Apps', bots: 'Bots', communities: 'Communities', other: 'Other' } },
-  es: { visitPartner: (name: string) => `Visitar ${name}`, kinds: { hosting: 'Hosting', servers: 'Servidores', apps: 'Apps', bots: 'Bots', communities: 'Comunidades', other: 'Otros' } },
-  'pt-BR': { visitPartner: (name: string) => `Visitar ${name}`, kinds: { hosting: 'Hospedagem', servers: 'Servidores', apps: 'Apps', bots: 'Bots', communities: 'Comunidades', other: 'Outros' } },
+  en: { copyLink: 'Copy link', copied: 'Link copied', visitPartner: (name: string) => `Visit ${name}`, kinds: { hosting: 'Hosting', servers: 'Servers', apps: 'Apps', bots: 'Bots', communities: 'Communities', other: 'Other' } },
+  es: { copyLink: 'Copiar enlace', copied: 'Enlace copiado', visitPartner: (name: string) => `Visitar ${name}`, kinds: { hosting: 'Hosting', servers: 'Servidores', apps: 'Apps', bots: 'Bots', communities: 'Comunidades', other: 'Otros' } },
+  'pt-BR': { copyLink: 'Copiar link', copied: 'Link copiado', visitPartner: (name: string) => `Visitar ${name}`, kinds: { hosting: 'Hospedagem', servers: 'Servidores', apps: 'Apps', bots: 'Bots', communities: 'Comunidades', other: 'Outros' } },
 } as const;
 
 const t = { ...copy[lang], ...extra[lang] };
@@ -66,6 +66,8 @@ const t = { ...copy[lang], ...extra[lang] };
 // The partners come from the table the team edits in the dashboard (or the original list), grouped by type.
 const { partners } = await getPartners(Astro);
 const groups = PARTNER_KINDS.map((kind) => ({ kind, items: partners.filter((partner) => partner.kind === kind) })).filter((group) => group.items.length > 0);
+// The link to one partner: /partners#part_<type>:<name>, which scrolls to its card.
+const partnerAnchor = (partner: PartnerRow) => `part_${partner.kind}:${partner.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
 const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.description_es : lang === 'pt-BR' ? partner.description_pt : partner.description_en) || partner.description_en;
 ---
 
@@ -94,7 +96,7 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
             {groups.length > 1 && <h2 class="pa-kind">{t.kinds[group.kind]}</h2>}
             <div class="pa-grid">
               {group.items.map((partner) => (
-                <article class="pa-card">
+                <article class="pa-card" id={partnerAnchor(partner)}>
                   <div class="pa-card-top">
                     {partner.icon === 'discloud' ? (
                       <div class="pa-icon" aria-label={partner.name} role="img">
@@ -113,9 +115,14 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
                   </div>
                   <h2>{partner.name}</h2>
                   <p>{descriptionOf(partner)}</p>
-                  <a class="pa-link" href={partner.url} target="_blank" rel="noopener noreferrer">
-                    {t.visitPartner(partner.name)}<Icon name="ph:arrow-up-right" width="14" height="14" />
-                  </a>
+                  <div class="pa-actions">
+                    <a class="pa-link" href={partner.url} target="_blank" rel="noopener noreferrer">
+                      {t.visitPartner(partner.name)}<Icon name="ph:arrow-up-right" width="14" height="14" />
+                    </a>
+                    <button type="button" class="pa-copy" data-copy-anchor={partnerAnchor(partner)} data-copied={t.copied} title={t.copyLink} aria-label={t.copyLink}>
+                      <Icon name="ph:link-simple-bold" width="14" height="14" /><span>{t.copyLink}</span>
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -134,6 +141,31 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
   </main>
 </Base>
 
+<script>
+  // Copies the link to one partner (the page and #part_<type>:<name>) and, when the page is opened with one, scrolls to its card.
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-anchor]').forEach((button) => {
+    const label = button.querySelector('span');
+    const original = label?.textContent ?? '';
+    button.addEventListener('click', async () => {
+      const link = `${location.origin}${location.pathname}#${button.dataset.copyAnchor}`;
+      try { await navigator.clipboard.writeText(link); } catch {
+        const box = document.createElement('textarea'); box.value = link; document.body.append(box); box.select(); document.execCommand('copy'); box.remove();
+      }
+      if (label) { label.textContent = button.dataset.copied ?? original; setTimeout(() => { label.textContent = original; }, 1800); }
+    });
+  });
+  const open = () => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    const card = id.startsWith('part_') ? document.getElementById(id) : null;
+    if (!card) return;
+    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card.classList.add('pa-target');
+    setTimeout(() => card.classList.remove('pa-target'), 2600);
+  };
+  open();
+  window.addEventListener('hashchange', open);
+</script>
+
 <style>
   .pa-hero { padding: 64px 0 40px; }
   .pa-hero h1 { font-size: 36px; margin: 14px 0 12px; }
@@ -143,6 +175,11 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
   .pa-notice > :global(svg) { flex: 0 0 auto; color: var(--accent); margin-top: 1px; }
   .pa-notice strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 4px; }
   .pa-notice p { margin: 0; font-size: 13.5px; line-height: 1.6; }
+  .pa-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pa-copy { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .pa-copy:hover { color: var(--text); border-color: var(--accent); }
+  .pa-card { scroll-margin-top: 90px; }
+  .pa-card.pa-target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .pa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 360px)); gap: 16px; margin-top: 28px; }
   .pa-card { border: 1px solid var(--border); border-radius: 16px; padding: 22px; background: var(--card); }
   .pa-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
