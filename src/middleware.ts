@@ -1,9 +1,13 @@
 import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
 import { configureSnapshots } from './utils/guildSnapshots';
+import { warmShared } from './utils/sharedCache';
 
 // On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
 const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
+
+// Connects to Redis (when configured) as the server starts, not on the first page that needs it.
+warmShared();
 
 const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: 'es', path: '/es' }, 'pt-br': { lang: 'pt-BR', path: '/pt-br' } };
 

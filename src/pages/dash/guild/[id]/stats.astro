@@ -8,6 +8,8 @@ import { buildStats, STAT_TABS, botDay } from '../../../../utils/activityStats';
 import { getMemberProfiles } from '../../../../utils/memberNames';
 
 const { id } = Astro.params as { id: string };
+// On Node the site may add rows up in the database itself (see utils/directDb.ts); the Worker build leaves this out.
+const directQuery = __DIRECT_DB__ ? (await import('../../../../utils/directDb')).queryDirect : null;
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
 const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
@@ -44,7 +46,11 @@ const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, ca
   rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${since}`),
   rows('activity_hourly', 'day,hour,messages,voice_seconds', `&day=gte.${since}`),
   rows('member_flow', 'day,joins,leaves,invited', `&day=gte.${since}`),
-  rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`),
+  // Per member and day, these rows are the largest read of the page; the database adds them up per member when the site can
+  // reach it (one row per member, dated on the first day of the range, which is all the page needs).
+  (directQuery
+    ? directQuery(`SELECT "user_id", SUM("messages") AS "messages", SUM("voice_seconds") AS "voice_seconds", $3::text AS "day" FROM "public"."activity_members" WHERE "guild_id" = $1 AND "day" >= $2 GROUP BY "user_id"`, [id, since, since])
+    : Promise.resolve(null)).then((summed) => summed ?? rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`)),
   rows('mod_actions', 'type,source,moderator_id,user_id,created_at', `&created_at=gte.${sinceInstant}&limit=20000`),
   rows('invite_uses', 'inviter_id,joins,leaves,bonus', '&order=joins.desc&limit=50'),
 ]);

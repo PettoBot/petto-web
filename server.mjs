@@ -170,3 +170,9 @@ http.createServer = (...args) => {
 };
 
 await import(entry.href);
+
+// The first request loads the middleware, which opens the database connections kept ready and connects to Redis. Making it
+// here, right after start, means no visitor waits for that.
+setTimeout(() => {
+  fetch(`http://127.0.0.1:${process.env.PORT}/version.json`).then((res) => res.arrayBuffer()).catch(() => {});
+}, 300).unref?.();

@@ -165,17 +165,56 @@ function getPool(): Pool | null {
       connectionString = parsed.toString();
     } catch { /* pg reports a malformed URL itself */ }
   }
+  // A dashboard page reads up to twenty tables at once, so the pool is large enough for a few pages together, and a couple of
+  // connections stay open (and alive) so the first page after a quiet while does not pay for opening them.
+  const max = Math.max(1, Math.min(100, Number(process.env.PETTO_DATABASE_POOL_MAX) || 15));
   pool = new Pool({
     connectionString,
     ssl: ssl ? { rejectUnauthorized: false } : false,
-    max: 5,
+    max,
+    min: Math.min(2, max),
     connectionTimeoutMillis: 3000,
-    idleTimeoutMillis: 30_000,
+    idleTimeoutMillis: 600_000,
+    keepAlive: true,
     statement_timeout: 8000,
     allowExitOnIdle: true,
   });
   pool.on('error', () => { /* a dropped idle connection must not crash the site */ });
   return pool;
+}
+
+/** Opens the connections kept ready, at boot, so the first page does not wait for them. */
+function warmPool(db: Pool): void {
+  const ready = Math.min(2, Number(db.options.max) || 2);
+  Promise.all(Array.from({ length: ready }, () => db.query('select 1'))).catch((error) => {
+    if (isConnectionError(error)) markUnreachable(error);
+  });
+}
+
+/**
+ * A read the bot's API cannot express (an aggregate), straight from the database. Null when there is no database or it fails,
+ * and the caller then reads the rows through the API as before.
+ */
+export async function queryDirect<T = Record<string, unknown>>(text: string, values: unknown[]): Promise<T[] | null> {
+  const db = getPool();
+  if (!db || blocked()) return null;
+  try {
+    return (await db.query(text, values)).rows as T[];
+  } catch (error) {
+    if (isConnectionError(error)) markUnreachable(error);
+    else console.warn('[direct-db] aggregate read failed, using the bot API:', (error as Error)?.message);
+    return null;
+  }
+}
+
+// After a dashboard write, the bot drops its own short-lived copy of that table's settings for the server (petto:invalidate).
+async function announceWrite(table: string, body: unknown, target: URL): Promise<void> {
+  const fromBody = (Array.isArray(body) ? body[0] : body) as Record<string, unknown> | undefined;
+  const fromFilter = /^eq\.(\d{5,25})$/.exec(target.searchParams.get('guild_id') ?? '')?.[1];
+  const guildId = String(fromBody?.guild_id ?? fromFilter ?? '');
+  if (!/^\d{5,25}$/.test(guildId)) return;
+  const { sharedPublish } = await import('./sharedCache');
+  await sharedPublish('petto:invalidate', JSON.stringify({ table, guildId }));
 }
 
 /** A failure to reach the database (as opposed to the database refusing a statement). */
@@ -303,6 +342,7 @@ async function writeDirect(target: string, method: 'POST' | 'PATCH' | 'DELETE', 
     const headers: Record<string, string> = { 'content-type': 'application/json', 'x-petto-source': 'database' };
     try {
       const result = await client.query(write.text, write.values);
+      void announceWrite(table, body, url).catch(() => {});
       if (!write.representation) return new Response(null, { status: method === 'POST' ? 201 : 204, headers });
       return new Response(JSON.stringify(result.rows), { status: method === 'POST' ? 201 : 200, headers });
     } catch (error) {
@@ -322,6 +362,7 @@ export function installDirectDatabase(): void {
   const apiBase = (process.env.PETTO_BOT_API_URL || '').replace(/\/+$/, '');
   if (!apiBase || !getPool()) return;
   installed = true;
+  warmPool(getPool()!);
 
   const prefix = `${apiBase}/rest/v1/`;
   const original = globalThis.fetch.bind(globalThis);
