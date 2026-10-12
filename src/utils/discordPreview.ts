@@ -40,9 +40,9 @@ export const defaultContext: PreviewContext = {
   userName: 'Liam',
   serverName: 'Petto Support',
   botName: 'Petto',
-  botIcon: '/assets/mascot-icon.png',
-  userAvatar: '/assets/mascot-icon.png',
-  serverIcon: '/assets/mascot-icon.png',
+  botIcon: '/assets/mascot-icon.webp',
+  userAvatar: '/assets/mascot-icon.webp',
+  serverIcon: '/assets/mascot-icon.webp',
 };
 
 const tr = (ctx: PreviewContext, key: string) => (ctx.t ? ctx.t(key) : key);

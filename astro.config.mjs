@@ -77,6 +77,8 @@ export default defineConfig({
   },
   // The whole marketing site stays static (prerendered); only src/pages/dash/** opts out
   // via `export const prerender = false`, since it needs a live session per request.
+  // Public pages linked with data-astro-prefetch are fetched on hover (see Base.astro); nothing is prefetched by default.
+  prefetch: { prefetchAll: false, defaultStrategy: 'hover' },
   output: 'hybrid',
   outDir: discloudTarget ? './build/' : './dist/',
   // Dynamic dashboard routes must carry their component styles in the Worker
