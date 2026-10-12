@@ -750,15 +750,24 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // Keep the next dashboard section ready while the user is deciding where to go.
     // The cache is memory-only and is cleared after a save, so it never persists stale
     // configuration across a meaningful write.
+    // A pointer that only passes over the menu does not fetch anything: the page is asked for after it rests on a link for
+    // 80 ms, and at most two of those reads run at once (a click never waits for that limit).
     var prefetchedPages = new Map();
-    function prefetchPage(href) {
+    var HOVER_DELAY_MS = 80;
+    var MAX_HOVER_PREFETCHES = 2;
+    var hoverPrefetches = 0;
+    function prefetchPage(href, fromHover) {
       if (dirtyForm || prefetchedPages.has(href)) return;
+      if (fromHover && hoverPrefetches >= MAX_HOVER_PREFETCHES) return;
+      if (fromHover) hoverPrefetches += 1;
+      var done = function () { if (fromHover) hoverPrefetches -= 1; };
       var request = fetch(href, { method: 'GET' })
         .then(function (res) {
           if (!res.ok) throw new Error('prefetch failed');
           return res.text();
         })
-        .catch(function () {
+        .then(function (html) { done(); return html; }, function () {
+          done();
           prefetchedPages.delete(href);
           return null;
         });
@@ -778,8 +787,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         if (a.hasAttribute('data-full')) return;
         var href = a.getAttribute('href');
         if (href) {
-          a.addEventListener('mouseenter', function () { prefetchPage(href); }, { passive: true });
-          a.addEventListener('focus', function () { prefetchPage(href); }, { passive: true });
+          var hoverTimer = 0;
+          var later = function () { clearTimeout(hoverTimer); hoverTimer = setTimeout(function () { prefetchPage(href, true); }, HOVER_DELAY_MS); };
+          var cancel = function () { clearTimeout(hoverTimer); };
+          a.addEventListener('mouseenter', later, { passive: true });
+          a.addEventListener('mouseleave', cancel, { passive: true });
+          a.addEventListener('focus', later, { passive: true });
+          a.addEventListener('blur', cancel, { passive: true });
         }
         a.addEventListener('click', function (e) {
           if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
