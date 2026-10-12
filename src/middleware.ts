@@ -13,6 +13,9 @@ warmShared();
 
 const PUBLIC_SHARED_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:stats|status|team|credits|partners)\/?$/i;
 const PUBLIC_SHARED_CACHE = 'public, s-maxage=60, stale-while-revalidate=600';
+// The partners are edited by the team and checked right after saving, so the copy in front is kept shorter and never served stale.
+const PARTNERS_PAGE = /^\/(?:(?:es|pt-br)\/)?partners\/?$/i;
+const PARTNERS_CACHE = 'public, s-maxage=20';
 
 const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: 'es', path: '/es' }, 'pt-br': { lang: 'pt-BR', path: '/pt-br' } };
 
@@ -33,12 +36,13 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
   // (Cloudflare) may keep them a minute and serve an older copy for ten while it fetches a new one.
   if (PUBLIC_SHARED_PAGE.test(url.pathname) && ['GET', 'HEAD'].includes(request.method.toUpperCase())) {
     const response = await next();
+    const cacheControl = PARTNERS_PAGE.test(url.pathname) ? PARTNERS_CACHE : PUBLIC_SHARED_CACHE;
     if (response.status === 200 && !response.headers.has('cache-control') && !response.headers.has('set-cookie')) {
       try {
-        response.headers.set('Cache-Control', PUBLIC_SHARED_CACHE);
+        response.headers.set('Cache-Control', cacheControl);
       } catch {
         const headers = new Headers(response.headers);
-        headers.set('Cache-Control', PUBLIC_SHARED_CACHE);
+        headers.set('Cache-Control', cacheControl);
         return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
       }
     }
