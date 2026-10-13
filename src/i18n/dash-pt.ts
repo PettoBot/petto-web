@@ -1402,6 +1402,7 @@ export const dashPt: Record<string, string> = {
   "Activity": "Atividade",
   "Ignored": "Ignorados",
   "Reactions needed": "Reações necessárias",
+  "At the top of the first container": "No topo do primeiro contêiner",
   "Saving...": "Salvando...",
   "Couldn't load the preview, try refreshing.": "Não foi possível carregar a prévia, tente recarregar.",
   "No matches.": "Nenhum resultado.",

@@ -65,8 +65,8 @@ export function readReactions(raw: unknown): string[] {
 export function normalizeTemplateData(raw: any): TemplateData {
   const reactions = readReactions(raw?.reactions);
   const withReactions = (data: TemplateData): TemplateData => (reactions.length ? { ...data, reactions } : data);
-  if (raw && typeof raw === 'object' && Array.isArray(raw.v2?.components)) return withReactions({ content: '', embeds: [], buttons: [], v2: cleanV2(raw.v2) });
   const card = readCard(raw?.card);
+  if (raw && typeof raw === 'object' && Array.isArray(raw.v2?.components)) return withReactions({ content: '', embeds: [], buttons: [], v2: cleanV2(raw.v2), ...(card ? { card } : {}) });
   const withCard = (data: TemplateData): TemplateData => withReactions(card ? { ...data, card } : data);
   if (raw && Array.isArray(raw.embeds)) {
     return withCard({
@@ -102,7 +102,7 @@ export type TemplateCheck = { ok: true; data: TemplateData } | { ok: false; erro
 export function validateTemplate(raw: unknown): TemplateCheck {
   const source = normalizeTemplateData(raw);
   const reactions = readReactions(source.reactions);
-  if (source.v2) return { ok: true, data: { content: '', embeds: [], buttons: [], v2: source.v2, ...(reactions.length ? { reactions } : {}) } };
+  if (source.v2) return { ok: true, data: { content: '', embeds: [], buttons: [], v2: source.v2, ...(source.card ? { card: source.card } : {}), ...(reactions.length ? { reactions } : {}) } };
   const data: TemplateData = {
     content: trim(source.content, EMBED_LIMITS.content),
     embeds: source.embeds.slice(0, EMBED_LIMITS.embeds).map((e) => ({

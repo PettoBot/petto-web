@@ -223,6 +223,24 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
 
   const e = data.embeds[activeEmbed];
 
+  const cardField = cardsEnabled ? (
+                <div className="ebr-field">
+                  <div className="ebr-field-head"><label>{t('Image card')}</label></div>
+                  <div className="ebr-card-pick">
+                    <select value={data.card?.name ?? ''} onChange={(ev) => { const name = ev.target.value; const next = { ...data }; if (name) next.card = { name, placement: data.card?.placement ?? 'default' }; else delete next.card; setData(next); setDirty(true); }}>
+                      <option value="">{t('No image card')}</option>
+                      {cardNames.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      {data.card && !cardNames.some((c) => c.name === data.card!.name) && <option value={data.card.name}>{data.card.name}</option>}
+                    </select>
+                    <select value={data.card?.placement ?? 'default'} disabled={!data.card} onChange={(ev) => update({ card: { name: data.card!.name, placement: ev.target.value as 'default' | 'embed' | 'attachment' } })}>
+                      <option value="default">{data.v2 ? t('At the top of the first container') : t('Inside the first embed')}</option>
+                      <option value="attachment">{t('Above the message, as a file')}</option>
+                    </select>
+                  </div>
+                  <a className="ebr-card-link" href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a>
+                </div>
+  ) : null;
+
   return (
     <div className="ebr-app">
       {flash && <div className="ebr-flash">{flash}</div>}
@@ -267,7 +285,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}</div>
-              {data.v2 ? <V2Preview doc={data.v2} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} /> : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />}
+              {data.v2 ? <V2Preview doc={data.v2} cardImage={cardImage} cardPlacement={data.card?.placement} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} /> : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />}
             </div>
 
             <div className="ebr-form-col">
@@ -284,6 +302,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                   <div className="v2e-starters">
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm(t('Replace this design with the Petto quest alert design?'))) update({ v2: questStarterV2() }); }}>{t('Use the quest alert design')}</button>
                   </div>
+                  {cardField}
                   <V2Editor doc={data.v2} onChange={(v2) => update({ v2 })} />
                 </>
               ) : (
@@ -294,23 +313,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                 <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
               </div>
 
-              {cardsEnabled && (
-                <div className="ebr-field">
-                  <div className="ebr-field-head"><label>{t('Image card')}</label></div>
-                  <div className="ebr-card-pick">
-                    <select value={data.card?.name ?? ''} onChange={(ev) => { const name = ev.target.value; const next = { ...data }; if (name) next.card = { name, placement: data.card?.placement ?? 'default' }; else delete next.card; setData(next); setDirty(true); }}>
-                      <option value="">{t('No image card')}</option>
-                      {cardNames.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                      {data.card && !cardNames.some((c) => c.name === data.card!.name) && <option value={data.card.name}>{data.card.name}</option>}
-                    </select>
-                    <select value={data.card?.placement ?? 'default'} disabled={!data.card} onChange={(ev) => update({ card: { name: data.card!.name, placement: ev.target.value as 'default' | 'embed' | 'attachment' } })}>
-                      <option value="default">{t('Inside the first embed')}</option>
-                      <option value="attachment">{t('Above the message, as a file')}</option>
-                    </select>
-                  </div>
-                  <a className="ebr-card-link" href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a>
-                </div>
-              )}
+              {cardField}
 
               <div className="ebr-embed-tabs">
                 {data.embeds.map((_, i) => (

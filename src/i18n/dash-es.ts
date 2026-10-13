@@ -1402,6 +1402,7 @@ export const dashEs: Record<string, string> = {
   "Activity": "Actividad",
   "Ignored": "Ignorados",
   "Reactions needed": "Reacciones necesarias",
+  "At the top of the first container": "Arriba del primer contenedor",
   "Saving...": "Guardando...",
   "Couldn't load the preview, try refreshing.": "No se pudo cargar la vista previa, intenta recargar.",
   "No matches.": "Sin resultados.",
