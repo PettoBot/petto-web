@@ -1,0 +1,118 @@
+---
+export const prerender = false;
+import DashConfessions from '../../../../components/DashConfessions.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const whole = (value: FormDataEntryValue | null, min: number, max: number, fallback: number) => {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const hex = (n: number | undefined, fallback: string) => (typeof n === 'number' ? `#${n.toString(16).padStart(6, '0')}` : fallback);
+
+let saved = false;
+let failed = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const text = (key: string, max: number) => String(form.get(key) ?? '').trim().slice(0, max);
+  const channelId = text('channel_id', 30);
+  const reviewId = text('review_channel_id', 30);
+  const roleId = text('staff_role_id', 30);
+  const avatar = text('webhook_avatar', 400);
+  const color = /^#?([0-9a-f]{6})$/i.exec(text('color', 7));
+  const design = text('embed_template', 60).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  if ((channelId && !SNOWFLAKE.test(channelId)) || (reviewId && !SNOWFLAKE.test(reviewId))) failed = 'channel';
+  else if (roleId && !SNOWFLAKE.test(roleId)) failed = 'role';
+  else if (avatar && !/^https:\/\//i.test(avatar)) failed = 'avatar';
+  else {
+    await ensureGuildRow(apiUrl, apiHeaders, id);
+    const res = await fetch(`${apiUrl}/rest/v1/confession_config?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        channel_id: channelId || null,
+        review_channel_id: reviewId || null,
+        require_review: form.get('require_review') === 'on',
+        allow_command: form.get('allow_command') === 'on',
+        allow_images: form.get('allow_images') === 'on',
+        allow_replies: form.get('allow_replies') === 'on',
+        keep_author: form.get('keep_author') === 'on',
+        use_webhook: form.get('use_webhook') === 'on',
+        webhook_name: text('webhook_name', 80) || 'Anonymous',
+        webhook_avatar: avatar || null,
+        title: text('title', 200) || 'Anonymous confession #{confession.number}',
+        footer: text('footer', 200),
+        color: color ? parseInt(color[1], 16) : 0xa5ea7a,
+        button_label: text('button_label', 80) || 'Confess',
+        reply_label: text('reply_label', 80) || 'Reply anonymously',
+        panel_text: text('panel_text', 400) || 'Press the button and write it. Nobody will know it was you.',
+        cooldown_seconds: whole(form.get('cooldown_seconds'), 0, 86400, 60),
+        staff_role_id: roleId || null,
+        embed_template: design || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = res.ok;
+    if (!res.ok) failed = 'save';
+  }
+}
+
+const [guildInfo, configRes, rolesRes, channelsRes, templatesRes, countRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/confession_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null),
+  getGuildList(Astro, id, botToken, 'roles'),
+  getGuildList(Astro, id, botToken, 'channels'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
+  fetch(`${apiUrl}/rest/v1/confessions?guild_id=eq.${id}&reply_to=is.null&select=status&limit=1000`, { headers: apiHeaders }).catch(() => null),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const ready = Boolean(configRes?.ok);
+const row = ready ? ((await configRes!.json())[0] ?? {}) : {};
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+const templates: string[] = (templatesRes?.ok ? await templatesRes.json() : []).map((t: any) => t.name).filter(Boolean);
+const list: any[] = countRes?.ok ? await countRes.json() : [];
+const counts = { posted: list.filter((r) => r.status === 'posted').length, pending: list.filter((r) => r.status === 'pending').length, rejected: list.filter((r) => r.status === 'rejected').length };
+
+const config = {
+  enabled: row.enabled ?? false,
+  channelId: row.channel_id ?? '',
+  reviewChannelId: row.review_channel_id ?? '',
+  requireReview: row.require_review ?? false,
+  allowCommand: row.allow_command ?? true,
+  allowImages: row.allow_images ?? true,
+  allowReplies: row.allow_replies ?? true,
+  keepAuthor: row.keep_author ?? true,
+  useWebhook: row.use_webhook ?? true,
+  webhookName: row.webhook_name ?? 'Anonymous',
+  webhookAvatar: row.webhook_avatar ?? '',
+  title: row.title ?? 'Anonymous confession #{confession.number}',
+  footer: row.footer ?? 'Confession ID: {confession.id}',
+  color: hex(row.color, '#a5ea7a'),
+  buttonLabel: row.button_label ?? 'Confess',
+  replyLabel: row.reply_label ?? 'Reply anonymously',
+  panelText: row.panel_text ?? 'Press the button and write it. Nobody will know it was you.',
+  cooldownSeconds: row.cooldown_seconds ?? 60,
+  staffRoleId: row.staff_role_id ?? '',
+  embedTemplate: row.embed_template ?? '',
+  panelChannelId: row.panel_channel_id ?? '',
+};
+---
+<DashConfessions user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} config={config} channels={channels} roles={roles} templates={templates} counts={counts} ready={ready} saved={saved} failed={failed} />

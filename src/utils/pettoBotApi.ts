@@ -163,3 +163,21 @@ export async function callPettoVerification(context: AstroContext, guildId: stri
     return { ok: false, message: 'The bot did not answer in time.' };
   }
 }
+
+/** Posts (or updates) the panel of the confessions of a server in a channel. */
+export async function callPettoConfessionPanel(context: AstroContext, guildId: string, userId: string, channelId: string | null): Promise<{ ok: boolean; message: string }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/confessions/panel`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, channel_id: channelId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : response.ok ? 'Done.' : 'The bot could not do it.' };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}
