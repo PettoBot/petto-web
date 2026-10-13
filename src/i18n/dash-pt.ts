@@ -2598,4 +2598,8 @@ export const dashPt: Record<string, string> = {
   "To post a button that opens the form, use !suggestion panel in the channel you want.": "Para publicar um botão que abre o formulário, use !suggestion panel no canal que quiser.",
   "Latest suggestions": "Últimas sugestões",
   "There are no suggestions yet.": "Ainda não há sugestões.",
+  "Loading your data": "Carregando seus dados",
+  "Getting your server ready…": "Preparando seu servidor…",
+  "Loading your servers": "Carregando seus servidores",
+  "Signing you in…": "Iniciando sua sessão…",
 };

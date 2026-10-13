@@ -10,7 +10,8 @@ import { canManageGuild, guildIconUrl, getBotIdentity } from '../utils/discord';
 import { getCachedUserGuilds, getCachedBotGuildIds } from '../utils/discordCache';
 import { getEnv } from '../utils/env';
 import { vanityConfig } from '../utils/vanityBot';
-import { getPremiumSnapshot } from '../utils/premium';
+import { getPremiumGuildIds } from '../utils/premium';
+import DashLoader from './DashLoader.astro';
 import { isPettoOwner } from '../utils/premiumAdmin';
 import { canUseQuests } from '../utils/questAccess';
 import { canUseRollouts } from '../utils/rolloutAccess';
@@ -33,16 +34,17 @@ const pageTitle = dt(rawPageTitle);
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 // The premium snapshot, the visitor's servers, and the servers Petto is in do not depend on each
 // other, so they load together instead of one after the other.
-const [premiumSnapshot, discordGuilds, activeBotGuildIds, botIdentity] = await Promise.all([
-  user.userId ? getPremiumSnapshot(Astro, user.userId) : Promise.resolve(null),
+const [discordGuilds, activeBotGuildIds, botIdentity] = await Promise.all([
   user.accessToken ? getCachedUserGuilds(user.accessToken, Astro.request) : Promise.resolve(null),
   user.accessToken && botToken ? getCachedBotGuildIds(botToken, Astro.request) : Promise.resolve(null),
   botToken ? getBotIdentity(guildId, botToken, Astro.request).catch(() => null) : Promise.resolve(null),
 ]);
-const premiumGuildIds = new Set(premiumSnapshot?.assignments.map((assignment) => assignment.guild_id) ?? []);
+// Premium belongs to the server, not to who bought it: every admin sees this server (and the ones in the switcher) as Premium.
+const switchable = discordGuilds && activeBotGuildIds ? discordGuilds.filter(canManageGuild).filter((g: any) => activeBotGuildIds.has(g.id)).map((g: any) => g.id as string) : [];
+const premiumGuildIds = user.userId ? await getPremiumGuildIds(Astro, user.userId, [guildId, ...switchable]) : new Set<string>();
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
-const resolvedPremiumActive = premiumGuildIds.has(guildId) && Boolean(premiumSnapshot?.status === 'active');
+const resolvedPremiumActive = premiumGuildIds.has(guildId);
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
 // different server doesn't need a round trip through /dash/manage every time.
@@ -321,6 +323,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
               </div>
             )}
             <slot />
+            <DashLoader scope="#dgl-switcher-panel" />
           </div>
         </div>
       </div>

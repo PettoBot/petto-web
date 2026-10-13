@@ -2598,4 +2598,8 @@ export const dashEs: Record<string, string> = {
   "To post a button that opens the form, use !suggestion panel in the channel you want.": "Para publicar un botón que abre el formulario, usa !suggestion panel en el canal que quieras.",
   "Latest suggestions": "Últimas sugerencias",
   "There are no suggestions yet.": "Todavía no hay sugerencias.",
+  "Loading your data": "Cargando tus datos",
+  "Getting your server ready…": "Preparando tu servidor…",
+  "Loading your servers": "Cargando tus servidores",
+  "Signing you in…": "Iniciando tu sesión…",
 };
