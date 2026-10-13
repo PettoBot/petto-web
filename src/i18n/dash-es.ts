@@ -2643,4 +2643,12 @@ export const dashEs: Record<string, string> = {
   "Nobody has counted yet.": "Nadie ha contado todavía.",
   "{a} right · {b} mistakes · highest {c}": "{a} correctos · {b} errores · máximo {c}",
   "The message takes the color of its status. Pick the colors below.": "El mensaje toma el color de su estado. Elige los colores abajo.",
+  "Role for who gets a number wrong": "Rol para quien se equivoca",
+  "Petto has to be above it.": "Petto tiene que estar por encima.",
+  "Minutes the mistake role lasts": "Minutos que dura el rol del error",
+  "0 keeps it until their next right number.": "0 lo deja hasta su próximo número correcto.",
+  "Role of the best counter": "Rol del mejor contador",
+  "It moves to whoever has the most right numbers.": "Pasa a quien tenga más números correctos.",
+  "Seconds until the alerts delete themselves": "Segundos hasta que las alertas se borran solas",
+  "The messages about a mistake. 0 keeps them.": "Los mensajes sobre un error. 0 las deja.",
 };

@@ -29,8 +29,11 @@ let failed = '';
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const channelId = String(form.get('channel_id') ?? '').trim();
+  const wrongRole = String(form.get('wrong_role_id') ?? '').trim();
+  const topRole = String(form.get('top_role_id') ?? '').trim();
   const emoji = (key: string, fallback: string) => String(form.get(key) ?? '').trim().slice(0, 64) || fallback;
   if (channelId && !SNOWFLAKE.test(channelId)) failed = 'channel';
+  else if ((wrongRole && !SNOWFLAKE.test(wrongRole)) || (topRole && !SNOWFLAKE.test(topRole))) failed = 'role';
   else {
     await ensureGuildRow(apiUrl, apiHeaders, id);
     const res = await fetch(`${apiUrl}/rest/v1/counting_config?on_conflict=guild_id`, {
@@ -52,6 +55,10 @@ if (Astro.request.method === 'POST') {
         save_every: whole(form.get('save_every'), 10, 10000, 100),
         milestone_every: whole(form.get('milestone_every'), 0, 100000, 100),
         start_number: whole(form.get('start_number'), 0, 1000000, 0),
+        wrong_role_id: wrongRole || null,
+        wrong_role_minutes: whole(form.get('wrong_role_minutes'), 0, 10080, 60),
+        top_role_id: topRole || null,
+        alert_seconds: whole(form.get('alert_seconds'), 0, 3600, 30),
         updated_at: new Date().toISOString(),
       }),
     });
@@ -60,11 +67,12 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, configRes, topRes, channelsRes, customEmojis] = await Promise.all([
+const [guildInfo, configRes, topRes, channelsRes, rolesRes, customEmojis] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/counting_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null),
   fetch(`${apiUrl}/rest/v1/counting_users?guild_id=eq.${id}&select=user_id,correct,wrong,best&order=correct.desc&limit=10`, { headers: apiHeaders }).catch(() => null),
   getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
   getGuildEmojis(id, botToken),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
@@ -72,6 +80,7 @@ if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const ready = Boolean(configRes?.ok);
 const row = ready ? ((await configRes!.json())[0] ?? {}) : {};
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
 const topRows: any[] = topRes?.ok ? await topRes.json() : [];
 // The names of the best counters; a name that cannot be read stays as the ID.
 const names = await Promise.all(topRows.map((r) => fetch(`https://discord.com/api/v10/users/${r.user_id}`, { headers: { Authorization: `Bot ${botToken}` }, signal: AbortSignal.timeout(3000) }).then((res) => (res.ok ? res.json() : null)).then((u) => u?.global_name ?? u?.username ?? null).catch(() => null)));
@@ -92,10 +101,14 @@ const config = {
   saveEvery: row.save_every ?? 100,
   milestoneEvery: row.milestone_every ?? 100,
   startNumber: row.start_number ?? 0,
+  wrongRoleId: row.wrong_role_id ?? '',
+  wrongRoleMinutes: row.wrong_role_minutes ?? 60,
+  topRoleId: row.top_role_id ?? '',
+  alertSeconds: row.alert_seconds ?? 30,
   current: row.current_number ?? 0,
   highScore: row.high_score ?? 0,
   totalCorrect: row.total_correct ?? 0,
   totalWrong: row.total_wrong ?? 0,
 };
 ---
-<DashCounting user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} config={config} channels={channels} customEmojis={customEmojis} top={top} ready={ready} saved={saved} failed={failed} />
+<DashCounting user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} config={config} channels={channels} roles={roles} customEmojis={customEmojis} top={top} ready={ready} saved={saved} failed={failed} />

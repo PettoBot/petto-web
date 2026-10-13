@@ -2643,4 +2643,12 @@ export const dashPt: Record<string, string> = {
   "Nobody has counted yet.": "Ninguém contou ainda.",
   "{a} right · {b} mistakes · highest {c}": "{a} certos · {b} erros · máximo {c}",
   "The message takes the color of its status. Pick the colors below.": "A mensagem toma a cor do seu estado. Escolha as cores abaixo.",
+  "Role for who gets a number wrong": "Cargo para quem erra um número",
+  "Petto has to be above it.": "O Petto precisa estar acima.",
+  "Minutes the mistake role lasts": "Minutos que o cargo do erro dura",
+  "0 keeps it until their next right number.": "0 mantém até o próximo número certo.",
+  "Role of the best counter": "Cargo do melhor contador",
+  "It moves to whoever has the most right numbers.": "Passa para quem tiver mais números certos.",
+  "Seconds until the alerts delete themselves": "Segundos até os alertas se apagarem sozinhos",
+  "The messages about a mistake. 0 keeps them.": "As mensagens sobre um erro. 0 mantém.",
 };
