@@ -27,6 +27,7 @@ const apiHeaders = {
 
 let saved = false;
 let saveError = false;
+let boardError = '';
 
 const formNumber = (form: FormData, name: string, fallback: number) => {
   const raw = form.get(name);
@@ -94,6 +95,25 @@ if (Astro.request.method === 'POST') {
     });
     saved = saveResponse.ok;
     saveError = !saveResponse.ok;
+  } else if (action === 'board_page') {
+    // The public page of the leaderboard: on or off, its name in the address and the link to join the server.
+    const slug = String(form.get('leaderboard_slug') ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, 32);
+    const joinUrl = String(form.get('leaderboard_join_url') ?? '').trim().slice(0, 200);
+    let joinOk = true;
+    if (joinUrl) { try { joinOk = new URL(joinUrl).protocol === 'https:'; } catch { joinOk = false; } }
+    if (slug && !/^[a-z0-9][a-z0-9-]{1,31}$/.test(slug)) {
+      boardError = 'slug';
+    } else if (!joinOk) {
+      boardError = 'join';
+    } else {
+      const saveResponse = await fetch(`${apiUrl}/rest/v1/level_config?on_conflict=guild_id`, {
+        method: 'POST',
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, leaderboard_public: form.get('leaderboard_public') === 'on', leaderboard_slug: slug || null, leaderboard_join_url: joinUrl || null, updated_at: new Date().toISOString() }),
+      });
+      saved = saveResponse.ok;
+      if (!saveResponse.ok) boardError = saveResponse.status === 409 ? 'taken' : 'save';
+    }
   } else if (action === 'voice_config') {
     const ignoredChannelIds = form.getAll('voice_ignored_channel_ids').map(String);
     const saveResponse = await fetch(`${apiUrl}/rest/v1/level_config?on_conflict=guild_id`, {
@@ -401,6 +421,7 @@ const config = {
   rounding: c.rounding ?? 50,
   maxLevel: c.max_level ?? 1000,
 };
+const publicBoard = { enabled: c.leaderboard_public ?? false, slug: c.leaderboard_slug ?? '', joinUrl: c.leaderboard_join_url ?? '' };
 const voiceConfig = {
   enabled: c.voice_enabled ?? config.enabled,
   xpPerMinute: c.xp_per_vc_minute ?? 5,
@@ -516,5 +537,7 @@ const embedTemplateNames = embedTemplates.map((template: any) => template.name).
   events={events}
   saved={saved}
   saveError={saveError}
+  publicBoard={publicBoard}
+  boardError={boardError}
   section={section}
 />

@@ -46,6 +46,7 @@ export const commandText: Record<string, CommandText> = {
   honeypot: ['Catch spam bots in a bait channel and apply a moderation action.', 'Atrapa bots de spam en un canal señuelo y aplica una acción de moderación.', 'Pega bots de spam em um canal isca e aplica uma ação de moderação.'],
   reaction: ['Automatically react to matching messages.', 'Reacciona automáticamente a los mensajes que coincidan.', 'Reage automaticamente às mensagens que coincidirem.'],
   reactionrole: ['Give members a role with a reaction or a button.', 'Da un rol a los miembros con una reacción o un botón.', 'Dá um cargo aos membros com uma reação ou um botão.'],
+  monkeyboard: ['Configure the monkeyboard, the starboard with the monkey.', 'Configura el monkeyboard, el starboard con el monito.', 'Configura o monkeyboard, o starboard com o macaquinho.'],
   starboard: ['Configure the reaction-based starboard.', 'Configura el starboard basado en reacciones.', 'Configura o starboard baseado em reações.'],
   stickymessage: ['A message that re-posts itself at the bottom of a channel.', 'Un mensaje que se vuelve a publicar solo al final de un canal.', 'Uma mensagem que se republica sozinha no fim de um canal.'],
   vanity: ['Give or remove a role from members by their Custom Status, name or nickname.', 'Da o quita un rol a los miembros según su estado personalizado, nombre o apodo.', 'Dá ou remove um cargo dos membros pelo status personalizado, nome ou apelido.'],
@@ -57,6 +58,8 @@ export const commandText: Record<string, CommandText> = {
 
   remind: ['Set a personal reminder.', 'Crea un recordatorio personal.', 'Cria um lembrete pessoal.'],
   invites: ['Invite tracker: invites, fake and bonus invites, who invited whom, the leaderboard and the links of a member.', 'Rastreador de invitaciones: invitaciones, falsas y extra, quién invitó a quién, la tabla y los enlaces de un miembro.', 'Rastreador de convites: convites, falsos e bônus, quem convidou quem, o ranking e os links de um membro.'],
+  birthday: ['Save your birthday so Petto can celebrate it, and see the ones coming.', 'Guarda tu cumpleaños para que Petto lo celebre y mira los próximos.', 'Salve seu aniversário para o Petto comemorar e veja os próximos.'],
+  profilehistory: ['The avatars, names and nicknames a member has had.', 'Los avatares, nombres y apodos que ha tenido un miembro.', 'Os avatares, nomes e apelidos que um membro já teve.'],
   afk: ['Set an AFK status, or view the mentions you got while away.', 'Activa un estado AFK, o mira las menciones que recibiste mientras no estabas.', 'Ativa um status AFK, ou veja as menções que você recebeu enquanto estava ausente.'],
   boosterrole: ['Custom colored role for server boosters. Create your own or share it with friends.', 'Rol de color personalizado para boosters del servidor. Crea el tuyo o compártelo con amigos.', 'Cargo de cor personalizada para boosters do servidor. Crie o seu ou compartilhe com amigos.'],
   report: ['Report a member to the staff team.', 'Reporta a un miembro al equipo de staff.', 'Denuncia um membro à equipe de staff.'],

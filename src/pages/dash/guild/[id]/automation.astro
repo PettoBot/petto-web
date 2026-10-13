@@ -520,6 +520,21 @@ if (Astro.request.method === 'POST') {
     const entriesRes = await fetch(`${apiUrl}/rest/v1/starboard_entries?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     const res = await fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = entriesRes.ok && res.ok;
+  } else if (action === 'save_monkeyboard') {
+    const channelId = String(form.get('channel_id') ?? '').trim() || null;
+    const threshold = Math.max(1, Math.min(100, Number(form.get('threshold') ?? 3) || 3));
+    const emoji = String(form.get('emoji') ?? '🐒').trim().slice(0, 100) || '🐒';
+    const colorHex = String(form.get('color') ?? '').trim();
+    const monkeyColor = /^#[0-9a-f]{6}$/i.test(colorHex) ? parseInt(colorHex.slice(1), 16) : 0x8b5a2b;
+    const ignoredChannelIds = form.getAll('ignored_channel_ids').map(String);
+    const ignoredRoleIds = form.getAll('ignored_role_ids').map(String);
+    const ignoredUserIds = String(form.get('ignored_user_ids') ?? '').split(/[\s,]+/).map((v) => v.trim()).filter((v) => /^\d{15,25}$/.test(v)).slice(0, 100);
+    const res = await fetch(`${apiUrl}/rest/v1/monkeyboards?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, threshold, emoji, color: monkeyColor, selfstar: form.get('selfstar') === 'on', timestamp: form.get('timestamp') === 'on', jumpurl: form.get('jumpurl') === 'on', attachments: form.get('attachments') === 'on', ...(form.get('design_ready') || String(form.get('embed_template') ?? '').trim() ? { embed_template: String(form.get('embed_template') ?? '').trim().slice(0, 40) || null } : {}), ignored_channel_ids: ignoredChannelIds, ignored_role_ids: ignoredRoleIds, ignored_user_ids: ignoredUserIds }) });
+    saved = res.ok;
+  } else if (action === 'disable_monkeyboard') {
+    const entriesRes = await fetch(`${apiUrl}/rest/v1/monkeyboard_entries?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+    const res = await fetch(`${apiUrl}/rest/v1/monkeyboards?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+    saved = entriesRes.ok && res.ok;
   } else if (action === 'save_voicemaster') {
     const creatorChannelId = String(form.get('creator_channel_id') ?? '').trim();
     const panelChannelId = String(form.get('panel_channel_id') ?? '').trim();
@@ -550,15 +565,15 @@ if (Astro.request.method === 'POST') {
 }
 
 // Only the section on screen is drawn, so only what it shows is read. The emojis of the picker load alongside the rest.
-const AUTOMATION_SECTIONS = ['overview', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'reaction-triggers', 'reaction-messages', 'auto-threads', 'disabled-commands', 'aliases', 'timers', 'starboard', 'voicemaster', 'webhooks', 'sticky-roles', 'counters'];
+const AUTOMATION_SECTIONS = ['overview', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'reaction-triggers', 'reaction-messages', 'auto-threads', 'disabled-commands', 'aliases', 'timers', 'starboard', 'monkeyboard', 'voicemaster', 'webhooks', 'sticky-roles', 'counters'];
 const shown = AUTOMATION_SECTIONS.includes(section) ? section : 'overview';
 const needs = (...sections: string[]) => sections.includes(shown);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
-const customEmojisPromise = needs('reaction-triggers', 'reaction-messages', 'starboard', 'reaction-roles') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
-const WITH_CHANNELS = ['webhooks', 'counters', 'reaction-triggers', 'reaction-messages', 'timers', 'starboard', 'voicemaster', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads', 'disabled-commands'];
-const WITH_ROLES = ['reaction-triggers', 'starboard', 'autoresponders', 'reaction-roles'];
-const WITH_TEMPLATES = ['starboard', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
-const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
+const customEmojisPromise = needs('reaction-triggers', 'reaction-messages', 'starboard', 'monkeyboard', 'reaction-roles') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
+const WITH_CHANNELS = ['webhooks', 'counters', 'reaction-triggers', 'reaction-messages', 'timers', 'starboard', 'monkeyboard', 'voicemaster', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads', 'disabled-commands'];
+const WITH_ROLES = ['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders', 'reaction-roles'];
+const WITH_TEMPLATES = ['starboard', 'monkeyboard', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
+const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, monkeyboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders })),
   when(['autoresponders'], () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: apiHeaders })),
@@ -571,6 +586,7 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
   when(['aliases'], () => fetch(`${apiUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: apiHeaders })),
   when(['timers'], () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: apiHeaders })),
   when(['starboard'], () => fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['monkeyboard'], () => fetch(`${apiUrl}/rest/v1/monkeyboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['voicemaster'], () => fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['webhooks'], () => fetch(`${apiUrl}/rest/v1/managed_webhooks?guild_id=eq.${id}&select=id,name,channel_id,webhook_id,default_username,default_avatar_url,default_message,default_embed,enabled&order=id.asc`, { headers: apiHeaders })),
   when(['counters'], () => fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id,channel_id,counter_option,channel_type,name_template,prefix,suffix,parent_id,interval_seconds,enabled&order=id.asc`, { headers: apiHeaders })),
@@ -612,6 +628,8 @@ const aliases = aliasesRes?.ok ? (await aliasesRes.json()).map((a: any) => ({ id
 const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at })) : [];
 const starboardRows = starboardRes?.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
+const monkeyboardRows = monkeyboardRes?.ok ? await monkeyboardRes.json() : [];
+const monkeyboard = monkeyboardRows[0] ? { ...monkeyboardRows[0], ignoredChannelIds: monkeyboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: monkeyboardRows[0].ignored_role_ids ?? [], ignoredUserIds: monkeyboardRows[0].ignored_user_ids ?? [] } : null;
 const voiceRows = voiceMasterRes?.ok ? await voiceMasterRes.json() : [];
 const voiceMaster = voiceRows[0] ? { creatorChannelId: voiceRows[0].creator_channel_id, panelChannelId: voiceRows[0].panel_channel_id, panelMessageId: voiceRows[0].panel_message_id, categoryId: voiceRows[0].category_id, defaultLimit: voiceRows[0].default_limit ?? 0, defaultName: voiceRows[0].default_name ?? '{user.name}' } : null;
 const managedWebhooks = webhooksRes?.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id, defaultUsername: w.default_username, defaultAvatarUrl: w.default_avatar_url, defaultMessage: w.default_message, enabled: w.enabled !== false })) : [];
@@ -657,6 +675,7 @@ const customEmojis = await customEmojisPromise;
   aliases={aliases}
   timers={timers}
   starboard={starboard}
+  monkeyboard={monkeyboard}
   stickyRolesEnabled={stickyRolesEnabled}
   stickyRolesSaved={stickyRolesSaved}
   voiceMaster={voiceMaster}
