@@ -1,0 +1,85 @@
+---
+// Tabs for a long dashboard page. The page marks a container with data-tabs="name", its buttons with data-tab="x" and its panels
+// with data-panel="x" (the panels may sit inside a form: they all stay in the page, so one Save still sends everything).
+// The tab you were on is kept in the address (#x) and in the session; a dot marks the tabs with changes not saved yet.
+---
+<script is:inline>
+  (function () {
+    document.querySelectorAll('[data-tabs]').forEach(function (root) {
+      if (root.dataset.tabsBound) return;
+      root.dataset.tabsBound = '1';
+      var key = 'tab:' + root.getAttribute('data-tabs');
+      var tabs = Array.prototype.slice.call(root.querySelectorAll('[data-tab]'));
+      var panels = Array.prototype.slice.call(root.querySelectorAll('[data-panel]'));
+      if (!tabs.length || !panels.length) return;
+      function has(name) { return panels.some(function (p) { return p.getAttribute('data-panel') === name; }); }
+      function remembered() { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+      function show(name, animate) {
+        if (!has(name)) name = tabs[0].getAttribute('data-tab');
+        tabs.forEach(function (t) {
+          var on = t.getAttribute('data-tab') === name;
+          t.classList.toggle('on', on);
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+          t.tabIndex = on ? 0 : -1;
+        });
+        panels.forEach(function (p) {
+          var on = p.getAttribute('data-panel') === name;
+          p.hidden = !on;
+          if (on && animate) { p.classList.remove('tab-in'); void p.offsetWidth; p.classList.add('tab-in'); }
+        });
+        try { sessionStorage.setItem(key, name); } catch (e) { /* private window */ }
+        if (history.replaceState) history.replaceState(history.state, '', '#' + name);
+      }
+      tabs.forEach(function (t, i) {
+        t.addEventListener('click', function () { show(t.getAttribute('data-tab'), true); });
+        t.addEventListener('keydown', function (e) {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+          var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+          next.focus(); show(next.getAttribute('data-tab'), true);
+        });
+      });
+      function changedIn(panel) {
+        return Array.prototype.some.call(panel.querySelectorAll('select, input, textarea'), function (el) {
+          if (el.tagName === 'SELECT') return Array.prototype.some.call(el.options, function (o) { return o.selected !== o.defaultSelected; });
+          if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
+          return el.value !== el.defaultValue;
+        });
+      }
+      // A dot on the tabs whose panels hold something changed.
+      root.__tabDots = function (forms) {
+        tabs.forEach(function (t) {
+          var panel = root.querySelector('[data-panel="' + t.getAttribute('data-tab') + '"]');
+          t.classList.toggle('dirty', !!panel && forms.some(function (f) {
+            if (panel.contains(f)) return true;
+            // A form that holds several panels: only the panel with a field that differs from what was saved gets the dot.
+            return f.contains(panel) && changedIn(panel);
+          }));
+        });
+      };
+      var hash = (location.hash || '').replace('#', '');
+      show(has(hash) ? hash : (remembered() || tabs[0].getAttribute('data-tab')), false);
+    });
+    if (!window.__tabsDirty) {
+      window.__tabsDirty = true;
+      document.addEventListener('dgl:dirty', function (e) {
+        document.querySelectorAll('[data-tabs]').forEach(function (root) { if (root.__tabDots) root.__tabDots(e.detail.forms); });
+      });
+    }
+  })();
+</script>
+<style is:global>
+  .dgl-tabs { display: flex; gap: 6px; margin: 0 0 18px; padding: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow-x: auto; scrollbar-width: none; position: sticky; top: calc(var(--dgl-header-h, 60px) + 8px); z-index: 4; }
+  .dgl-tabs::-webkit-scrollbar { display: none; }
+  .dgl-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background .18s ease, color .18s ease, transform .18s ease; }
+  .dgl-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .dgl-tab:active { transform: scale(.97); }
+  .dgl-tab.on { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+  .dgl-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dgl-tab .dgl-tab-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); }
+  .dgl-tab.dirty .dgl-tab-dot { display: inline-block; }
+  .dgl-tab em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
+  [data-panel][hidden] { display: none !important; }
+  [data-panel].tab-in { animation: dglTabIn .28s cubic-bezier(.2,.7,.3,1); }
+  @keyframes dglTabIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { [data-panel].tab-in { animation: none; } }
+</style>
