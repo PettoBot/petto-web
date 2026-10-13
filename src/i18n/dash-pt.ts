@@ -2608,4 +2608,6 @@ export const dashPt: Record<string, string> = {
   "Send the panel now": "Enviar o painel agora",
   "Working on it…": "Trabalhando nisso…",
   "It could not be done. Try again.": "Não foi possível fazer. Tente de novo.",
+  "Color each suggestion by its status": "Colorir cada sugestão conforme o estado",
+  "Off by default: the message has no color. Pick the colors below.": "Desativado por padrão: a mensagem não tem cor. Escolha as cores abaixo.",
 };

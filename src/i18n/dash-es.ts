@@ -2608,4 +2608,6 @@ export const dashEs: Record<string, string> = {
   "Send the panel now": "Enviar el panel ahora",
   "Working on it…": "Trabajando en ello…",
   "It could not be done. Try again.": "No se pudo hacer. Inténtalo otra vez.",
+  "Color each suggestion by its status": "Colorear cada sugerencia según su estado",
+  "Off by default: the message has no color. Pick the colors below.": "Desactivado por defecto: el mensaje no lleva color. Elige los colores abajo.",
 };
