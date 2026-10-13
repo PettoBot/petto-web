@@ -19,6 +19,30 @@ const p = t.toolsPage.embedCode;
 
         <div class="ec-layout" id="ecRoot" data-i18n={JSON.stringify(p)}>
           <div class="ec-form">
+            <div class="ec-modes" role="tablist">
+              <button type="button" class="ec-modetab ec-mode active" data-mode="classic" role="tab">{p.modeClassic}</button>
+              <button type="button" class="ec-modetab ec-mode" data-mode="v2" role="tab">{p.modeV2}</button>
+            </div>
+
+            <div id="ecV2" class="ec-v2" hidden>
+              <p class="ec-v2-intro">{p.v2Intro}</p>
+              <div class="ec-row">
+                <div class="ec-field"><label for="ecAccent">{p.v2AccentLabel}</label><input id="ecAccent" type="color" value="#8399ff" /></div>
+              </div>
+              <div class="ec-group">
+                <h2>{p.v2Title}</h2>
+                <div id="ecBlocks"></div>
+                <div class="ec-add-row">
+                  <button type="button" class="btn btn-ghost btn-sm" data-add="text">+ {p.v2AddText}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-add="section">+ {p.v2AddSection}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-add="images">+ {p.v2AddImages}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-add="sep">+ {p.v2AddSeparator}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-add="buttons">+ {p.v2AddButtons}</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="ecClassic" class="ec-classic">
             <div class="ec-field"><label for="ecContent">{p.contentLabel}</label><textarea id="ecContent" rows="2" maxlength="2000"></textarea></div>
             <div class="ec-row">
               <div class="ec-field"><label for="ecTitle">{p.titleLabel}</label><input id="ecTitle" type="text" maxlength="256" /></div>
@@ -59,6 +83,7 @@ const p = t.toolsPage.embedCode;
               <textarea id="ecImport" rows="3" placeholder={p.importPlaceholder}></textarea>
               <div class="ec-actions"><button type="button" class="btn btn-ghost btn-sm" id="ecImportBtn">{p.importButton}</button><span class="ec-note" id="ecImportNote" role="status"></span></div>
             </div>
+            </div>
           </div>
 
           <div class="ec-side">
@@ -68,7 +93,7 @@ const p = t.toolsPage.embedCode;
             </div>
             <div class="ec-group">
               <h2>{p.outputTitle}</h2>
-              <div class="ec-tabs" role="tablist">
+              <div class="ec-tabs" id="ecTabs" role="tablist">
                 <button type="button" class="ec-tab active" data-format="script" role="tab">{p.formatScript}</button>
                 <button type="button" class="ec-tab" data-format="petto" role="tab">{p.formatPetto}</button>
               </div>
@@ -86,6 +111,7 @@ const p = t.toolsPage.embedCode;
               <h2>{p.howTitle}</h2>
               <p>{p.howScript}</p>
               <p>{p.howPetto}</p>
+              <p>{p.howV2}</p>
             </div>
           </div>
         </div>
@@ -95,9 +121,9 @@ const p = t.toolsPage.embedCode;
 </Base>
 
 <script>
-  import { renderMessage, defaultContext } from '../utils/discordPreview';
+  import { renderMessage, renderV2Message, defaultContext } from '../utils/discordPreview';
   import { parseEmbedScript, toEmbedScript } from '../utils/embedScript';
-  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, type TemplateData } from '../utils/embedSchema';
+  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, type TemplateData, type V2Doc, type V2Node } from '../utils/embedSchema';
 
   const root = document.getElementById('ecRoot')!;
   const text = JSON.parse(root.dataset.i18n || '{}') as Record<string, string>;
@@ -130,7 +156,173 @@ const p = t.toolsPage.embedCode;
   // The color picker always holds a value, so a color is only used once somebody chose one or a code carried it.
   let colorUsed = false;
 
+  // ---- Components V2 -------------------------------------------------------------------------------------------------
+  // A message made of blocks inside one container. It leaves as a p2. code, which the bot reads in !embed create and the dashboard in Import.
+  type Block =
+    | { kind: 'text'; content: string }
+    | { kind: 'sep'; divider: boolean; large: boolean }
+    | { kind: 'images'; urls: string }
+    | { kind: 'section'; content: string; thumb: string }
+    | { kind: 'buttons'; lines: string };
+  let mode: 'classic' | 'v2' = 'classic';
+  const blocks: Block[] = [];
+  let accentUsed = false;
+
+  function v2Doc(): V2Doc {
+    const children: any[] = [];
+    for (const block of blocks) {
+      if (block.kind === 'text' && block.content.trim()) children.push({ type: 10, content: block.content });
+      else if (block.kind === 'sep') children.push({ type: 14, divider: block.divider, spacing: block.large ? 2 : 1 });
+      else if (block.kind === 'images') {
+        const items = block.urls.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 10).map((url) => ({ media: { url } }));
+        if (items.length) children.push({ type: 12, items });
+      } else if (block.kind === 'section' && block.content.trim()) {
+        const thumb = block.thumb.trim();
+        children.push(thumb ? { type: 9, components: [{ type: 10, content: block.content }], accessory: { type: 11, media: { url: thumb } } } : { type: 10, content: block.content });
+      } else if (block.kind === 'buttons') {
+        const row = block.lines.split('\n').map((line) => line.split('|').map((part) => part.trim())).filter((parts) => parts[0] && parts[1]).slice(0, 5).map((parts) => ({ type: 2, style: 5, label: parts[0], url: parts[1] }));
+        if (row.length) children.push({ type: 1, components: row });
+      }
+    }
+    const accent = accentUsed ? parseInt($<HTMLInputElement>('ecAccent').value.slice(1), 16) : null;
+    return { components: children.length ? [{ type: 17, accent_color: accent, components: children } as unknown as V2Node] : [] };
+  }
+
+  function blocksFromDoc(doc: V2Doc) {
+    blocks.length = 0;
+    const walk = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (node.type === 17) {
+          if (typeof node.accent_color === 'number') { accentUsed = true; $<HTMLInputElement>('ecAccent').value = `#${node.accent_color.toString(16).padStart(6, '0')}`; }
+          walk(node.components ?? []);
+        } else if (node.type === 10) blocks.push({ kind: 'text', content: node.content ?? '' });
+        else if (node.type === 14) blocks.push({ kind: 'sep', divider: node.divider !== false, large: node.spacing === 2 });
+        else if (node.type === 12) blocks.push({ kind: 'images', urls: (node.items ?? []).map((item: any) => item.media?.url ?? '').filter(Boolean).join('\n') });
+        else if (node.type === 9) {
+          const content = (node.components ?? []).map((child: any) => child.content ?? '').join('\n');
+          blocks.push(node.accessory?.type === 11 ? { kind: 'section', content, thumb: node.accessory.media?.url ?? '' } : { kind: 'text', content });
+        } else if (node.type === 1) blocks.push({ kind: 'buttons', lines: (node.components ?? []).filter((b: any) => b.url).map((b: any) => `${b.label ?? ''} | ${b.url}`).join('\n') });
+      }
+    };
+    walk(doc.components);
+  }
+
+  function blockField(label: string, control: HTMLElement): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'ec-field';
+    const name = document.createElement('label');
+    name.textContent = label;
+    box.append(name, control);
+    return box;
+  }
+  function areaInput(value: string, rows: number, onInput: (value: string) => void, placeholder = ''): HTMLTextAreaElement {
+    const area = document.createElement('textarea');
+    area.rows = rows;
+    area.value = value;
+    area.placeholder = placeholder;
+    area.addEventListener('input', () => onInput(area.value));
+    return area;
+  }
+  function checkInput(label: string, value: boolean, onChange: (value: boolean) => void): HTMLElement {
+    const wrap = document.createElement('label');
+    wrap.className = 'ec-check';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = value;
+    box.addEventListener('change', () => { onChange(box.checked); render(); });
+    wrap.append(box, document.createTextNode(label));
+    return wrap;
+  }
+
+  function drawBlocks() {
+    const box = $('ecBlocks');
+    box.innerHTML = '';
+    const names: Record<Block['kind'], string> = { text: text.v2AddText, sep: text.v2AddSeparator, images: text.v2AddImages, section: text.v2AddSection, buttons: text.v2AddButtons };
+    blocks.forEach((block, index) => {
+      const card = document.createElement('div');
+      card.className = 'ec-block';
+      const head = document.createElement('div');
+      head.className = 'ec-block-head';
+      const title = document.createElement('strong');
+      title.textContent = names[block.kind];
+      const tools = document.createElement('div');
+      tools.className = 'ec-block-tools';
+      const tool = (label: string, aria: string, run: () => void, disabled = false) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ec-remove';
+        button.textContent = label;
+        button.title = aria;
+        button.setAttribute('aria-label', aria);
+        button.disabled = disabled;
+        button.addEventListener('click', () => { run(); drawBlocks(); render(); });
+        tools.appendChild(button);
+      };
+      tool('↑', text.v2Up, () => { [blocks[index - 1], blocks[index]] = [blocks[index], blocks[index - 1]]; }, index === 0);
+      tool('↓', text.v2Down, () => { [blocks[index + 1], blocks[index]] = [blocks[index], blocks[index + 1]]; }, index === blocks.length - 1);
+      tool('×', text.removeLabel, () => { blocks.splice(index, 1); });
+      head.append(title, tools);
+      card.appendChild(head);
+      if (block.kind === 'text') card.appendChild(blockField(text.v2Text, areaInput(block.content, 4, (v) => { block.content = v; })));
+      else if (block.kind === 'section') {
+        card.appendChild(blockField(text.v2Text, areaInput(block.content, 3, (v) => { block.content = v; })));
+        const thumb = document.createElement('input');
+        thumb.type = 'text';
+        thumb.placeholder = 'https://';
+        thumb.value = block.thumb;
+        thumb.addEventListener('input', () => { block.thumb = thumb.value; });
+        card.appendChild(blockField(text.v2Thumb, thumb));
+      } else if (block.kind === 'sep') {
+        const row = document.createElement('div');
+        row.className = 'ec-block-checks';
+        row.append(checkInput(text.v2Divider, block.divider, (v) => { block.divider = v; }), checkInput(text.v2Large, block.large, (v) => { block.large = v; }));
+        card.appendChild(row);
+      } else if (block.kind === 'images') {
+        card.appendChild(blockField(text.v2Images, areaInput(block.urls, 3, (v) => { block.urls = v; }, 'https://')));
+        const hint = document.createElement('span'); hint.className = 'ec-note'; hint.textContent = text.v2ImagesHint; card.appendChild(hint);
+      } else {
+        card.appendChild(blockField(text.v2AddButtons, areaInput(block.lines, 3, (v) => { block.lines = v; }, 'Website | https://example.com')));
+        const hint = document.createElement('span'); hint.className = 'ec-note'; hint.textContent = text.v2ButtonsHint; card.appendChild(hint);
+      }
+      box.appendChild(card);
+    });
+  }
+
+  function renderV2() {
+    const doc = v2Doc();
+    const has = doc.components.length > 0;
+    $('ecPreview').innerHTML = has ? renderV2Message(doc as any, { ...defaultContext, t: (key) => key }) : `<p class="ec-empty">${text.emptyMessage}</p>`;
+    const output = $<HTMLTextAreaElement>('ecOutput');
+    output.value = has ? encodeShareCode({ content: '', embeds: [], buttons: [], v2: doc }) : '';
+    const openDash = $<HTMLAnchorElement>('ecOpenDash');
+    openDash.hidden = !output.value;
+    openDash.href = output.value ? `/dash/import#import=${encodeURIComponent(output.value)}` : '/dash/import';
+    const list = $('ecWarnings');
+    list.hidden = true;
+    list.innerHTML = '';
+  }
+
+  function setMode(next: 'classic' | 'v2') {
+    mode = next;
+    $('ecV2').hidden = next !== 'v2';
+    $('ecClassic').hidden = next !== 'classic';
+    $('ecTabs').hidden = next === 'v2';
+    $('ecSepRow').hidden = next === 'v2' || format !== 'script';
+    document.querySelectorAll('.ec-mode').forEach((tab) => tab.classList.toggle('active', (tab as HTMLElement).dataset.mode === next));
+    if (next === 'v2' && !blocks.length) blocks.push({ kind: 'text', content: '' });
+    drawBlocks();
+    render();
+  }
+  document.querySelectorAll<HTMLButtonElement>('.ec-mode').forEach((tab) => tab.addEventListener('click', () => setMode(tab.dataset.mode === 'v2' ? 'v2' : 'classic')));
+  document.querySelectorAll<HTMLButtonElement>('[data-add]').forEach((button) => button.addEventListener('click', () => {
+    const kind = button.dataset.add as Block['kind'];
+    blocks.push(kind === 'text' ? { kind, content: '' } : kind === 'sep' ? { kind, divider: true, large: false } : kind === 'images' ? { kind, urls: '' } : kind === 'section' ? { kind, content: '', thumb: '' } : { kind, lines: '' });
+    drawBlocks();
+    render();
+  }));
+
   function render() {
+    if (mode === 'v2') { renderV2(); return; }
     const data = read();
     const checked = validateTemplate(data);
     const clean = checked.ok ? checked.data : data;
@@ -233,6 +425,7 @@ const p = t.toolsPage.embedCode;
     if ((event.target as HTMLElement).id === 'ecSeparator') return;
     const target = event.target as HTMLElement;
     if (target.id === 'ecColor') colorUsed = true;
+    if (target.id === 'ecAccent') accentUsed = true;
     if (target.closest('.ec-form') && target.id !== 'ecImport') { notes = []; render(); }
   });
   $('ecAddField').addEventListener('click', () => { fields.push({ name: '', value: '', inline: false }); drawLists(); });
@@ -257,13 +450,14 @@ const p = t.toolsPage.embedCode;
     const note = $('ecImportNote');
     if (!code) return;
     const shared = decodeShareCode(code);
-    if (shared) { load(shared); notes = []; note.textContent = text.importDone; render(); return; }
+    if (shared?.v2) { blocksFromDoc(shared.v2); notes = []; note.textContent = text.importDone; setMode('v2'); return; }
+    if (shared) { load(shared); notes = []; note.textContent = text.importDone; setMode('classic'); return; }
     const parsed = parseEmbedScript(code);
     if (!parsed.data.content && !parsed.data.embeds.length) { note.textContent = text.importInvalid; return; }
     load(parsed.data);
     notes = parsed.warnings;
     note.textContent = text.importDone;
-    render();
+    setMode('classic');
   });
 
   drawLists();
@@ -299,11 +493,36 @@ const p = t.toolsPage.embedCode;
   .ec-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .ec-tab { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
   .ec-tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .ec-modetab { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 7px 16px; font-size: 13.5px; cursor: pointer; }
+  .ec-modetab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
   .ec-preview { background: #313338; border-radius: 10px; padding: 14px; overflow: hidden; }
   .ec-empty { margin: 0; color: #949ba4; font-size: 13px; }
   .ec-warnings { margin: 0; padding-left: 18px; color: var(--yellow); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
   .ec-how p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
   .ec-how h2 { margin-bottom: 2px; }
+  .ec-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ec-classic { display: flex; flex-direction: column; gap: 14px; }
+  .ec-v2 { display: flex; flex-direction: column; gap: 14px; }
+  .ec-v2-intro { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
+  .ec-add-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ec-block { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; background: var(--bg-raise); }
+  .ec-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .ec-block-tools { display: flex; gap: 6px; }
+  .ec-block-tools .ec-remove:disabled { opacity: .35; cursor: default; }
+  .ec-block-checks { display: flex; gap: 18px; flex-wrap: wrap; }
+  .dp-v2-container { background: #2b2d31; border-radius: 8px; border-left: 4px solid var(--dp-c, #5865f2); padding: 12px 14px; margin-top: 6px; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 6px; }
+  .dp-v2-container.noaccent { border-left-color: #3f4147; }
+  .dp-v2-text { line-height: 1.4; }
+  .dp-v2-sep { height: 1px; background: #3f4147; margin: 6px 0; }
+  .dp-v2-sep.nodivider { background: transparent; }
+  .dp-v2-sep.large { margin: 12px 0; }
+  .dp-v2-gallery { display: grid; gap: 4px; border-radius: 8px; overflow: hidden; grid-template-columns: 1fr; }
+  .dp-v2-gallery.n2, .dp-v2-gallery.n4 { grid-template-columns: 1fr 1fr; }
+  .dp-v2-gallery img { width: 100%; max-height: 260px; object-fit: cover; display: block; background: #1e1f22; }
+  .dp-v2-section { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .dp-v2-section-text { min-width: 0; flex: 1; }
+  .dp-v2-thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+  .dp-v2-link { font-size: 11px; opacity: .8; margin-left: 4px; }
   @media (max-width: 880px) { .ec-layout { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 520px) { .ec-row { grid-template-columns: minmax(0, 1fr); } }
 
