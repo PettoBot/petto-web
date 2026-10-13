@@ -3,6 +3,7 @@ import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import { useTranslations, localePath, type Locale } from '../i18n/ui';
 import { getEnv } from '../utils/env';
+import { getServiceStatus } from '../utils/serviceStatus';
 
 interface Props {
   lang: Locale;
@@ -56,6 +57,12 @@ function formatUptime(totalSeconds: number) {
   return `${m}m`;
 }
 
+const live = await getServiceStatus(Astro).catch(() => null);
+const serviceNames: Record<string, string> = { website: s.svcWebsite, dashboard: s.svcDashboard, database: s.svcDatabase, discord: s.svcDiscord, commands: s.svcCommands };
+const serviceLabel: Record<string, string> = { operational: s.shardOperational, slow: s.stateSlow, down: s.stateDown, unknown: s.stateUnknown };
+const headingFor = (overall: string) => (overall === 'down' ? s.headingDown : overall === 'slow' ? s.headingSlow : s.heading);
+const servicesEndpoint = new URL('/api/status-services', Astro.url).pathname;
+
 const now = Date.now();
 const shardRows = await botApiGet('bot_status');
 const shards = shardRows
@@ -79,8 +86,21 @@ const stateLabel: Record<string, string> = {
     <section class="status-sec">
       <div class="wrap status-wrap">
         <div class="eyebrow">{s.pill}</div>
-        <h1><span class="status-hero-dot"></span>{s.heading}</h1>
+        <h1 id="statusHeading" data-ok={s.heading} data-slow={s.headingSlow} data-down={s.headingDown}><span class:list={['status-hero-dot', live?.overall]}></span><span id="statusHeadingText">{headingFor(live?.overall ?? 'operational')}</span></h1>
         <p class="status-desc">{s.desc}</p>
+
+        <div class="status-block-label svc-label first">{s.servicesTitle}</div>
+        <div class="svc-grid" id="svcGrid" data-endpoint={servicesEndpoint} data-operational={s.shardOperational} data-slow={s.stateSlow} data-down={s.stateDown} data-unknown={s.stateUnknown}>
+          {(live?.services ?? []).map((svc) => (
+            <div class={`svc-card ${svc.state}`} data-svc={svc.id}>
+              <span class="svc-dot"></span>
+              <span class="svc-name">{serviceNames[svc.id]}</span>
+              <span class="svc-ms">{svc.ms ? `${svc.ms} ms` : ''}</span>
+              <span class={`status-pill ${svc.state === 'operational' ? 'ok' : ''}`}>{serviceLabel[svc.state]}</span>
+            </div>
+          ))}
+        </div>
+        {live && <p class="svc-foot"><span id="svcChecked">{s.checkedLabel}</span> · {s.websiteUptime}: <b id="svcUptime">{formatUptime(live.website.uptimeSeconds)}</b> · v{live.website.version}</p>}
 
         <div
           id="statusBlock"
@@ -148,18 +168,38 @@ const stateLabel: Record<string, string> = {
           </div>
         </div>
 
-        <div class="status-list">
-          {s.items.map((it) => (
-            <div class="status-row">
-              <span>{it.name}</span>
-              <span class:list={['status-pill', { ok: it.state === s.shardOperational }]}>{it.state}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </section>
   </main>
 </Base>
+
+<script>
+  // The services block follows the real state: it asks again every 30 seconds and changes the dots, the times and the heading.
+  const grid = document.getElementById('svcGrid');
+  if (grid) {
+    const labels: Record<string, string> = { operational: grid.dataset.operational ?? '', slow: grid.dataset.slow ?? '', down: grid.dataset.down ?? '', unknown: grid.dataset.unknown ?? '' };
+    const heading = document.getElementById('statusHeading');
+    const headingText = document.getElementById('statusHeadingText');
+    const dot = heading?.querySelector('.status-hero-dot');
+    async function refresh() {
+      try {
+        const response = await fetch(grid!.dataset.endpoint!, { cache: 'no-store', headers: { Accept: 'application/json' } });
+        const report = await response.json();
+        if (!response.ok || !Array.isArray(report?.services)) return;
+        for (const svc of report.services) {
+          const card = grid!.querySelector<HTMLElement>(`[data-svc="${svc.id}"]`);
+          if (!card) continue;
+          card.className = `svc-card ${svc.state}`;
+          const ms = card.querySelector('.svc-ms'); if (ms) ms.textContent = svc.ms ? `${svc.ms} ms` : '';
+          const pill = card.querySelector('.status-pill'); if (pill) { pill.textContent = labels[svc.state] ?? ''; pill.classList.toggle('ok', svc.state === 'operational'); }
+        }
+        if (headingText && heading) headingText.textContent = (report.overall === 'down' ? heading.dataset.down : report.overall === 'slow' ? heading.dataset.slow : heading.dataset.ok) ?? '';
+        if (dot) dot.className = `status-hero-dot ${report.overall}`;
+      } catch { /* the last values stay on the screen */ }
+    }
+    window.setInterval(refresh, 30_000);
+  }
+</script>
 
 <script>
   const searchForm = document.getElementById('statusSearch') as HTMLFormElement | null;
@@ -310,6 +350,23 @@ const stateLabel: Record<string, string> = {
 </script>
 
 <style>
+  .svc-label { margin-top: 28px; }
+  .svc-label.first { margin-top: 8px; }
+  .svc-card.slow .status-pill { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .svc-card.down .status-pill { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+  .svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+  .svc-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 10px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--card); }
+  .svc-card .svc-name { font-size: 14px; font-weight: 600; }
+  .svc-card .svc-ms { grid-column: 2; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+  .svc-card .status-pill { grid-column: 3; grid-row: 1 / span 2; }
+  .svc-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 20%, transparent); }
+  .svc-card.slow .svc-dot { background: var(--yellow); box-shadow: 0 0 0 4px color-mix(in srgb, var(--yellow) 20%, transparent); }
+  .svc-card.down .svc-dot { background: var(--red); box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 20%, transparent); }
+  .svc-card.unknown .svc-dot { background: var(--text-dim); box-shadow: none; }
+  .svc-foot { margin: 12px 2px 28px; font-size: 12.5px; color: var(--text-dim); }
+  .status-hero-dot.slow { background: var(--yellow); }
+  .status-hero-dot.down { background: var(--red); }
+
   .status-sec { padding: 90px 0 120px; }
   .status-wrap { max-width: 640px; }
   .status-sec h1 { font-size: 30px; margin: 14px 0 12px; display: flex; align-items: center; gap: 12px; }

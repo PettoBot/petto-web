@@ -115,8 +115,10 @@ function targetLabel(target: string) {
         <div class="ob-card-head">
           <div class="ob-card-icon" style="--c:var(--accent)"><Icon name="ph:seal-check-fill" width="16" height="16" /></div>
           <div class="ob-card-title">{dt('Verification')}</div>
-          <label class="ob-switch"><input type="checkbox" name="enabled" checked={verification.enabled} /><span></span></label>
+          <label class="ob-switch"><input type="checkbox" name="enabled" checked={verification.enabled} data-vf-switch data-no-dirty /><span></span></label>
         </div>
+        <div class="ob-auto"><div><strong>{dt('Set it up for me')}</strong><span>{dt('Makes the roles and a #verify channel, posts the panel and turns verification on. What you already chose is kept.')}</span></div><button type="button" class="btn btn-accent btn-sm" data-vf-action="setup"><Icon name="ph:magic-wand-fill" width="14" height="14" /> {dt('Set it up')}</button></div>
+        <p class="ob-vf-msg" id="ob-vf-msg" role="status" hidden data-working={dt('Working on it…')} data-failed={dt('It could not be done. Try again.')}></p>
         <p class="ob-card-desc">{dt('A Cloudflare Turnstile captcha gate, new members must pass it to get in.')}</p>
         <div class="ob-row"><label>{dt('Role while unverified')}</label><select name="unverified_role_id"><option value="">{dt('None')}</option>{roles.map((r) => <option value={r.id} selected={r.id === verification.unverifiedRoleId}>{r.name}</option>)}</select></div>
         <div class="ob-row"><label>{dt('Role once verified')}</label><select name="verified_role_id"><option value="">{dt('None')}</option>{roles.map((r) => <option value={r.id} selected={r.id === verification.verifiedRoleId}>{r.name}</option>)}</select></div>
@@ -132,6 +134,7 @@ function targetLabel(target: string) {
         <div class="ob-row"><label>{dt('Verified DM design')}</label><select name="verified_embed_template" data-dp-template-only><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === verification.verifiedTemplate}>{n}</option>)}</select></div>
         <div class="ob-row"><label>{dt('Verification channel')} <span class="ob-new">{dt('New')}</span></label><select name="panel_channel_id" disabled={!verification.panelReady}><option value="">{dt('Off')}</option>{channels.map((c) => <option value={c.id} selected={c.id === verification.panelChannelId}>#{c.name}</option>)}</select></div>
         {verification.panelReady && <input type="hidden" name="panel_ready" value="1" />}
+        <div class="ob-row"><label>{dt('Panel')}</label><button type="button" class="btn btn-ghost btn-sm" data-vf-action="panel" disabled={!verification.panelReady}><Icon name="ph:paper-plane-tilt-fill" width="14" height="14" /> {dt('Send the panel now')}</button></div>
         <label class="ob-check"><input type="checkbox" name="panel_repost" />{dt('Post the panel again when I save')}</label>
         <p class="ob-sub">{dt('Petto posts a panel there with the verify buttons, so members can verify in the server and not only by DM. Only the member who presses a button sees the picture. Changing the method? Post the panel again.')}</p>
         {verification.designReady && <input type="hidden" name="design_ready" value="1" />}
@@ -247,6 +250,44 @@ function targetLabel(target: string) {
   </div>
 
   <script is:inline>
+    // The verification card: set it up, post the panel and switch it on or off right away, without the Save button.
+    (function () {
+      var msg = document.getElementById('ob-vf-msg');
+      if (!msg) return;
+      var guild = location.pathname.split('/')[3];
+      var words = { working: msg.getAttribute('data-working') || '', failed: msg.getAttribute('data-failed') || '' };
+      function say(text, ok) { msg.hidden = false; msg.textContent = text; msg.className = 'ob-vf-msg ' + (ok ? 'ok' : 'bad'); }
+      function call(action, extra) {
+        return fetch('/dash/guild/' + guild + '/verification-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action: action }, extra || {})) })
+          .then(function (r) { return r.json().catch(function () { return { ok: false, message: words.failed }; }); })
+          .catch(function () { return { ok: false, message: words.failed }; });
+      }
+      document.querySelectorAll('[data-vf-action]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var action = button.getAttribute('data-vf-action');
+          button.disabled = true; button.classList.add('ob-busy'); say(words.working, true);
+          var select = document.querySelector('select[name="panel_channel_id"]');
+          call(action, action === 'panel' && select ? { channel_id: select.value } : {}).then(function (result) {
+            button.disabled = false; button.classList.remove('ob-busy');
+            say(result.message || words.failed, !!result.ok);
+            if (result.ok && action === 'setup') setTimeout(function () { location.reload(); }, 1200);
+          });
+        });
+      });
+      var toggle = document.querySelector('[data-vf-switch]');
+      if (toggle) toggle.addEventListener('change', function () {
+        var on = toggle.checked;
+        toggle.disabled = true; say(words.working, true);
+        call(on ? 'enable' : 'disable').then(function (result) {
+          toggle.disabled = false;
+          if (!result.ok) toggle.checked = !on;
+          say(result.message || words.failed, !!result.ok);
+        });
+      });
+    })();
+  </script>
+
+  <script is:inline>
     (function () {
       var root = document.getElementById('ob-panels');
       if (!root) return;
@@ -340,6 +381,14 @@ function targetLabel(target: string) {
   .ob-card-desc { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin: 0; }
   .ob-card-desc :global(code){ font-family: var(--mono); color: var(--accent); }
 
+  .ob-auto { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border: 1px dashed var(--accent); border-radius: 12px; padding: 12px 14px; background: var(--accent-soft); grid-column: 1 / -1; }
+  .ob-auto div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
+  .ob-auto strong { font-size: 14px; }
+  .ob-auto span { font-size: 12.5px; color: var(--text-muted); }
+  .ob-vf-msg { margin: 0; font-size: 13px; grid-column: 1 / -1; }
+  .ob-vf-msg.ok { color: var(--green); }
+  .ob-vf-msg.bad { color: var(--red); }
+  .ob-busy { opacity: .7; cursor: progress; }
   .ob-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
   .ob-switch input { opacity: 0; width: 0; height: 0; }
   .ob-switch span { position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background 0.15s; cursor: pointer; }

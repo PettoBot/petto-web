@@ -145,3 +145,21 @@ export async function callPettoQuestMethod(context: AstroContext, guildId: strin
     return { ok: false, message: 'The bot did not answer in time.' };
   }
 }
+
+/** Sets the verification up, posts its panel or switches it, now, through the bot, as the person who manages the server. */
+export async function callPettoVerification(context: AstroContext, guildId: string, userId: string, action: 'setup' | 'panel' | 'enable' | 'disable'): Promise<{ ok: boolean; message: string }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/${action}`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : response.ok ? 'Done.' : 'The bot could not do it.' };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}

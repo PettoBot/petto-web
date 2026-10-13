@@ -172,7 +172,14 @@ http.createServer = (...args) => {
 await import(entry.href);
 
 // The first request loads the middleware, which opens the database connections kept ready and connects to Redis. Making it
-// here, right after start, means no visitor waits for that.
-setTimeout(() => {
-  fetch(`http://127.0.0.1:${process.env.PORT}/version.json`).then((res) => res.arrayBuffer()).catch(() => {});
+// here, right after start, means no visitor waits for that. Then the pages and the lists a first visitor would wait for are
+// asked once (each one loads its code the first time it is used), and the cheap warm-up is repeated so the caches do not go cold.
+const origin = () => `http://127.0.0.1:${process.env.PORT}`;
+const touch = (path) => fetch(`${origin()}${path}`, { headers: { 'user-agent': 'petto-warmup' } }).then((res) => res.arrayBuffer()).catch(() => {});
+setTimeout(async () => {
+  await touch('/version.json');
+  await touch('/api/warm');
+  // The server-rendered pages load their code on the first visit; the dashboard entry and the status page are the usual first ones.
+  for (const path of ['/dash', '/status', '/']) await touch(path);
 }, 300).unref?.();
+setInterval(() => { touch('/api/warm'); }, 4 * 60_000).unref?.();

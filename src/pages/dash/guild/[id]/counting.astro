@@ -1,0 +1,101 @@
+---
+export const prerender = false;
+import DashCounting from '../../../../components/DashCounting.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getGuildEmojis } from '../../../../utils/guildEmojis';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const whole = (value: FormDataEntryValue | null, min: number, max: number, fallback: number) => {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+let saved = false;
+let failed = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const channelId = String(form.get('channel_id') ?? '').trim();
+  const emoji = (key: string, fallback: string) => String(form.get(key) ?? '').trim().slice(0, 64) || fallback;
+  if (channelId && !SNOWFLAKE.test(channelId)) failed = 'channel';
+  else {
+    await ensureGuildRow(apiUrl, apiHeaders, id);
+    const res = await fetch(`${apiUrl}/rest/v1/counting_config?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        channel_id: channelId || null,
+        allow_double: form.get('allow_double') === 'on',
+        math: form.get('math') === 'on',
+        reset_on_wrong: form.get('reset_on_wrong') === 'on',
+        delete_wrong: form.get('delete_wrong') === 'on',
+        announce_edits: form.get('announce_edits') === 'on',
+        react_ok: emoji('react_ok', '✅'),
+        react_bad: emoji('react_bad', '❌'),
+        react_record: emoji('react_record', '🏆'),
+        saves_max: whole(form.get('saves_max'), 0, 5, 0),
+        save_every: whole(form.get('save_every'), 10, 10000, 100),
+        milestone_every: whole(form.get('milestone_every'), 0, 100000, 100),
+        start_number: whole(form.get('start_number'), 0, 1000000, 0),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    saved = res.ok;
+    if (!res.ok) failed = 'save';
+  }
+}
+
+const [guildInfo, configRes, topRes, channelsRes, customEmojis] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/counting_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null),
+  fetch(`${apiUrl}/rest/v1/counting_users?guild_id=eq.${id}&select=user_id,correct,wrong,best&order=correct.desc&limit=10`, { headers: apiHeaders }).catch(() => null),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildEmojis(id, botToken),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const ready = Boolean(configRes?.ok);
+const row = ready ? ((await configRes!.json())[0] ?? {}) : {};
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+const topRows: any[] = topRes?.ok ? await topRes.json() : [];
+// The names of the best counters; a name that cannot be read stays as the ID.
+const names = await Promise.all(topRows.map((r) => fetch(`https://discord.com/api/v10/users/${r.user_id}`, { headers: { Authorization: `Bot ${botToken}` }, signal: AbortSignal.timeout(3000) }).then((res) => (res.ok ? res.json() : null)).then((u) => u?.global_name ?? u?.username ?? null).catch(() => null)));
+const top = topRows.map((r, i) => ({ userId: r.user_id, name: names[i], correct: r.correct, wrong: r.wrong, best: r.best }));
+
+const config = {
+  enabled: row.enabled ?? false,
+  channelId: row.channel_id ?? '',
+  allowDouble: row.allow_double ?? false,
+  math: row.math ?? true,
+  resetOnWrong: row.reset_on_wrong ?? true,
+  deleteWrong: row.delete_wrong ?? false,
+  announceEdits: row.announce_edits ?? true,
+  reactOk: row.react_ok ?? '✅',
+  reactBad: row.react_bad ?? '❌',
+  reactRecord: row.react_record ?? '🏆',
+  savesMax: row.saves_max ?? 0,
+  saveEvery: row.save_every ?? 100,
+  milestoneEvery: row.milestone_every ?? 100,
+  startNumber: row.start_number ?? 0,
+  current: row.current_number ?? 0,
+  highScore: row.high_score ?? 0,
+  totalCorrect: row.total_correct ?? 0,
+  totalWrong: row.total_wrong ?? 0,
+};
+---
+<DashCounting user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} config={config} channels={channels} customEmojis={customEmojis} top={top} ready={ready} saved={saved} failed={failed} />
