@@ -2633,6 +2633,8 @@ export const dashPt: Record<string, string> = {
   "Right number": "Número certo",
   "Wrong number": "Número errado",
   "New record": "Novo recorde",
+  "Record reaction every this many numbers": "Reação de recorde a cada tantos números",
+  "0 for never.": "0 para nunca.",
   "A message every this many numbers": "Uma mensagem a cada tantos números",
   "0 for none.": "0 para nenhuma.",
   "Saves the server can keep": "Salvamentos que o servidor pode guardar",

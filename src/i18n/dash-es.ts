@@ -2633,6 +2633,8 @@ export const dashEs: Record<string, string> = {
   "Right number": "Número correcto",
   "Wrong number": "Número equivocado",
   "New record": "Nuevo récord",
+  "Record reaction every this many numbers": "Reacción de récord cada tantos números",
+  "0 for never.": "0 para nunca.",
   "A message every this many numbers": "Un mensaje cada tantos números",
   "0 for none.": "0 para ninguno.",
   "Saves the server can keep": "Salvaciones que el servidor puede guardar",
