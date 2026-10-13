@@ -2642,4 +2642,5 @@ export const dashEs: Record<string, string> = {
   "Who counts the most": "Quién cuenta más",
   "Nobody has counted yet.": "Nadie ha contado todavía.",
   "{a} right · {b} mistakes · highest {c}": "{a} correctos · {b} errores · máximo {c}",
+  "The message takes the color of its status. Pick the colors below.": "El mensaje toma el color de su estado. Elige los colores abajo.",
 };

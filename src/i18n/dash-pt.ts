@@ -2642,4 +2642,5 @@ export const dashPt: Record<string, string> = {
   "Who counts the most": "Quem mais conta",
   "Nobody has counted yet.": "Ninguém contou ainda.",
   "{a} right · {b} mistakes · highest {c}": "{a} certos · {b} erros · máximo {c}",
+  "The message takes the color of its status. Pick the colors below.": "A mensagem toma a cor do seu estado. Escolha as cores abaixo.",
 };
