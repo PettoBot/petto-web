@@ -1,0 +1,123 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import EmojiPicker from './EmojiPicker.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  config: {
+    enabled: boolean; channelId: string; allowDouble: boolean; math: boolean; resetOnWrong: boolean; deleteWrong: boolean; announceEdits: boolean;
+    reactOk: string; reactBad: string; reactRecord: string; savesMax: number; saveEvery: number; milestoneEvery: number; startNumber: number;
+    current: number; highScore: number; totalCorrect: number; totalWrong: number;
+  };
+  channels: { id: string; name: string }[];
+  customEmojis?: { id: string; name: string; animated: boolean }[];
+  top: { userId: string; name: string | null; correct: number; wrong: number; best: number }[];
+  ready: boolean;
+  saved: boolean;
+  failed: string;
+}
+const { user, guildId, guildName, guildIcon, config, channels, customEmojis = [], top, ready, saved, failed } = Astro.props;
+const errors: Record<string, string> = { channel: dt('Choose a channel from the list.'), save: dt('It could not be saved. Try again in a moment.') };
+const switches = [
+  { name: 'math', on: config.math, label: dt('Sums count as a number'), hint: dt('2*3+1 is 7. Only whole numbers.') },
+  { name: 'reset_on_wrong', on: config.resetOnWrong, label: dt('A mistake sends the count back to the start'), hint: dt('If it is off, the count goes on from where it was.') },
+  { name: 'allow_double', on: config.allowDouble, label: dt('The same person can count twice in a row'), hint: dt('Off by default: someone else has to count in between.') },
+  { name: 'delete_wrong', on: config.deleteWrong, label: dt('Delete the wrong numbers'), hint: '' },
+  { name: 'announce_edits', on: config.announceEdits, label: dt('Say when the last number is edited or deleted'), hint: dt('So nobody counts from a number that is not there.') },
+];
+const rate = config.totalCorrect + config.totalWrong ? Math.round((config.totalCorrect / (config.totalCorrect + config.totalWrong)) * 100) : 0;
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="counting" pageTitle={dt('Counting')}>
+  <h1>{dt('Counting')}</h1>
+  <p class="ct-sub">{dt('A channel where members count one number after the other. A wrong number sends the count back to the start, and the same person cannot count twice in a row.')}</p>
+  {saved && <div class="ct-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {failed && <div class="ct-flash ct-warn"><Icon name="ph:warning-fill" width="15" height="15" />{errors[failed] ?? errors.save}</div>}
+  {!ready && <div class="ct-flash ct-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+
+  <div class="ct-stats">
+    <div><b>{config.current}</b><span>{dt('Now at')}</span></div>
+    <div><b>{config.highScore}</b><span>{dt('Record')}</span></div>
+    <div><b>{config.totalCorrect}</b><span>{dt('Right numbers')}</span></div>
+    <div><b>{config.totalWrong}</b><span>{dt('Mistakes')}</span></div>
+    <div><b>{rate}%</b><span>{dt('Accuracy')}</span></div>
+  </div>
+
+  <form method="POST" class="ct-form">
+    <label class="ct-check"><input type="checkbox" name="enabled" checked={config.enabled} />{dt('The counting game is on')}</label>
+    <div class="ct-grid">
+      <div class="ct-field"><label>{dt('Channel')}</label>
+        <select name="channel_id">
+          <option value="">{dt('Choose a channel')}</option>
+          {channels.map((c) => <option value={c.id} selected={c.id === config.channelId}>#{c.name}</option>)}
+        </select>
+        <span class="ct-hint">{dt('Members count here. Messages that are not numbers are left alone.')}</span>
+      </div>
+      <div class="ct-field"><label>{dt('The count starts after')}</label><input type="number" name="start_number" min="0" max="1000000" value={config.startNumber} /><span class="ct-hint">{dt('0 means the first number is 1.')}</span></div>
+      <div class="ct-field"><label>{dt('Right number')}</label><input type="text" name="react_ok" data-emoji-input value={config.reactOk} maxlength="64" /></div>
+      <div class="ct-field"><label>{dt('Wrong number')}</label><input type="text" name="react_bad" data-emoji-input value={config.reactBad} maxlength="64" /></div>
+      <div class="ct-field"><label>{dt('New record')}</label><input type="text" name="react_record" data-emoji-input value={config.reactRecord} maxlength="64" /></div>
+      <div class="ct-field"><label>{dt('A message every this many numbers')}</label><input type="number" name="milestone_every" min="0" max="100000" value={config.milestoneEvery} /><span class="ct-hint">{dt('0 for none.')}</span></div>
+      <div class="ct-field"><label>{dt('Saves the server can keep')}</label><input type="number" name="saves_max" min="0" max="5" value={config.savesMax} /><span class="ct-hint">{dt('A save forgives one mistake. 0 turns them off.')}</span></div>
+      <div class="ct-field"><label>{dt('A save is earned every this many numbers')}</label><input type="number" name="save_every" min="10" max="10000" value={config.saveEvery} /></div>
+    </div>
+    <div class="ct-switches">
+      {switches.map((s) => (
+        <label class="ct-switch"><input type="checkbox" name={s.name} checked={s.on} /><span><b>{s.label}</b>{s.hint && <em>{s.hint}</em>}</span></label>
+      ))}
+    </div>
+    <div class="ct-foot">
+      <button class="btn btn-accent btn-sm" type="submit" disabled={!ready}>{dt('Save')}</button>
+      <span class="ct-hint">{dt('With the prefix: !counting setup, next, stats, leaderboard.')}</span>
+    </div>
+  </form>
+
+  <section class="ct-list">
+    <h2>{dt('Who counts the most')}</h2>
+    {top.length === 0 && <p class="ct-empty">{dt('Nobody has counted yet.')}</p>}
+    {top.map((t, i) => (
+      <div class="ct-row"><span class="ct-rank">{i + 1}</span><div><p>{t.name ?? t.userId}</p><small>{dt('{a} right · {b} mistakes · highest {c}', { a: t.correct, b: t.wrong, c: t.best })}</small></div></div>
+    ))}
+  </section>
+  <EmojiPicker customEmojis={customEmojis} />
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .ct-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 20px; max-width: 70ch; }
+  .ct-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 760px; }
+  .ct-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .ct-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px; max-width: 1000px; }
+  .ct-stats div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 16px; }
+  .ct-stats b { display: block; font-size: 22px; }
+  .ct-stats span { font-size: 12.5px; color: var(--text-dim); }
+  .ct-form { display: flex; flex-direction: column; gap: 18px; max-width: 1000px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; margin-bottom: 24px; }
+  .ct-check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .ct-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .ct-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ct-field label { font-size: 13px; font-weight: 600; }
+  .ct-field input[type=text], .ct-field input[type=number], .ct-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; }
+  .ct-field > :global(.ep-wrap) { flex: 0 0 auto; width: 100%; }
+  .ct-hint { font-size: 12px; color: var(--text-dim); }
+  .ct-switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .ct-switch { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+  .ct-switch input { margin-top: 3px; }
+  .ct-switch b { display: block; font-size: 13.5px; font-weight: 600; }
+  .ct-switch em { display: block; font-style: normal; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .ct-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .ct-list { max-width: 1000px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; }
+  .ct-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border); }
+  .ct-row:first-of-type { border-top: 0; }
+  .ct-row p { margin: 0 0 2px; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .ct-row small { font-size: 12px; color: var(--text-dim); }
+  .ct-rank { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; background: var(--accent-soft); color: var(--accent); flex: none; }
+  .ct-empty { font-size: 13.5px; color: var(--text-dim); margin: 0; }
+  @media (max-width: 720px) { .ct-grid, .ct-switches { grid-template-columns: 1fr; } }
+</style>
