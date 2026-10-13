@@ -314,7 +314,7 @@ export const dashPt: Record<string, string> = {
   "Hour of the day": "Hora do dia",
   "Join button link": "Link do botão de entrar",
   "Letters, numbers and dashes. Leave it empty to use the server ID.": "Letras, números e hífens. Deixe vazio para usar o ID do servidor.",
-  "Members save their birthday with /birthday set, and Petto celebrates it: a message at the hour you choose, and a role for the day if you want.": "Os membros salvam o aniversário com /birthday set e o Petto comemora: uma mensagem na hora que você escolher e, se quiser, um cargo pelo dia.",
+  "Members save their birthday with !birthday set, and Petto celebrates it: a message at the hour you choose, and a role for the day if you want.": "Os membros salvam o aniversário com !birthday set e o Petto comemora: uma mensagem na hora que você escolher e, se quiser, um cargo pelo dia.",
   "Name in the address": "Nome no endereço",
   "No message": "Sem mensagem",
   "No role": "Sem cargo",

@@ -314,7 +314,7 @@ export const dashEs: Record<string, string> = {
   "Hour of the day": "Hora del día",
   "Join button link": "Enlace del botón de unirse",
   "Letters, numbers and dashes. Leave it empty to use the server ID.": "Letras, números y guiones. Déjalo vacío para usar el ID del servidor.",
-  "Members save their birthday with /birthday set, and Petto celebrates it: a message at the hour you choose, and a role for the day if you want.": "Los miembros guardan su cumpleaños con /birthday set y Petto lo celebra: un mensaje a la hora que elijas y, si quieres, un rol por el día.",
+  "Members save their birthday with !birthday set, and Petto celebrates it: a message at the hour you choose, and a role for the day if you want.": "Los miembros guardan su cumpleaños con !birthday set y Petto lo celebra: un mensaje a la hora que elijas y, si quieres, un rol por el día.",
   "Name in the address": "Nombre en la dirección",
   "No message": "Sin mensaje",
   "No role": "Sin rol",
