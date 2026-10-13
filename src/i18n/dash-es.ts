@@ -258,6 +258,7 @@ export const dashEs: Record<string, string> = {
   "Only in these channels (empty = everywhere)": "Solo en estos canales (vacío = en todos)",
   "Only for members with these roles (empty = everyone)": "Solo para miembros con estos roles (vacío = todos)",
   "Save changes": "Guardar cambios",
+  "A saved design from the Embeds page. It can use {monkey.count}, {monkey.link}, {monkey.content}, {monkey.image} and the other monkey variables.": "Un diseño guardado de la página Embeds. Puede usar {monkey.count}, {monkey.link}, {monkey.content}, {monkey.image} y las otras variables monkey.",
   "Monkeyboard": "Monkeyboard",
   "Save monkeyboard": "Guardar monkeyboard",
   "The starboard's opposite: messages that get enough monkeys are collected in their own channel.": "Lo contrario al starboard: los mensajes que reciben suficientes monitos se reúnen en su propio canal.",
