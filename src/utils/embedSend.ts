@@ -8,6 +8,8 @@ const API = 'https://discord.com/api/v10';
 export function fillTokens(text: string, ctx: TokenContext): string {
   const values = tokenValues(ctx);
   return text.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (match, token) => {
+    // {imgcard:name} is a picture the bot draws, so a message sent from here cannot hold it.
+    if (/^imgcard:/i.test(token)) return '';
     const value = findSample(values, token);
     if (!value) return match;
     return value.mention ? `<@${ctx.userId}>` : value.text;

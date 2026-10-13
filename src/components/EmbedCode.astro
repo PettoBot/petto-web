@@ -19,6 +19,21 @@ const p = t.toolsPage.embedCode;
 
         <div class="ec-layout" id="ecRoot" data-i18n={JSON.stringify(p)}>
           <div class="ec-form">
+            <div class="ec-modes" role="tablist">
+              <button type="button" class="ec-modetab ec-mode active" data-mode="classic" role="tab">{p.modeClassic}</button>
+              <button type="button" class="ec-modetab ec-mode" data-mode="v2" role="tab">{p.modeV2}</button>
+            </div>
+
+            <div id="ecV2" class="ec-v2" hidden>
+              <p class="ec-v2-intro">{p.v2Intro}</p>
+              <div class="ec-group">
+                <h2>{p.v2Title}</h2>
+                <div id="ecTree"></div>
+                <div class="ec-add-row" id="ecTopAdd"></div>
+              </div>
+            </div>
+
+            <div id="ecClassic" class="ec-classic">
             <div class="ec-field"><label for="ecContent">{p.contentLabel}</label><textarea id="ecContent" rows="2" maxlength="2000"></textarea></div>
             <div class="ec-row">
               <div class="ec-field"><label for="ecTitle">{p.titleLabel}</label><input id="ecTitle" type="text" maxlength="256" /></div>
@@ -59,6 +74,7 @@ const p = t.toolsPage.embedCode;
               <textarea id="ecImport" rows="3" placeholder={p.importPlaceholder}></textarea>
               <div class="ec-actions"><button type="button" class="btn btn-ghost btn-sm" id="ecImportBtn">{p.importButton}</button><span class="ec-note" id="ecImportNote" role="status"></span></div>
             </div>
+            </div>
           </div>
 
           <div class="ec-side">
@@ -68,7 +84,7 @@ const p = t.toolsPage.embedCode;
             </div>
             <div class="ec-group">
               <h2>{p.outputTitle}</h2>
-              <div class="ec-tabs" role="tablist">
+              <div class="ec-tabs" id="ecTabs" role="tablist">
                 <button type="button" class="ec-tab active" data-format="script" role="tab">{p.formatScript}</button>
                 <button type="button" class="ec-tab" data-format="petto" role="tab">{p.formatPetto}</button>
               </div>
@@ -86,6 +102,7 @@ const p = t.toolsPage.embedCode;
               <h2>{p.howTitle}</h2>
               <p>{p.howScript}</p>
               <p>{p.howPetto}</p>
+              <p>{p.howV2}</p>
             </div>
           </div>
         </div>
@@ -95,9 +112,9 @@ const p = t.toolsPage.embedCode;
 </Base>
 
 <script>
-  import { renderMessage, defaultContext } from '../utils/discordPreview';
+  import { renderMessage, renderV2Message, defaultContext } from '../utils/discordPreview';
   import { parseEmbedScript, toEmbedScript } from '../utils/embedScript';
-  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, type TemplateData } from '../utils/embedSchema';
+  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, cleanV2, countV2, type TemplateData, type V2Doc } from '../utils/embedSchema';
 
   const root = document.getElementById('ecRoot')!;
   const text = JSON.parse(root.dataset.i18n || '{}') as Record<string, string>;
@@ -130,7 +147,200 @@ const p = t.toolsPage.embedCode;
   // The color picker always holds a value, so a color is only used once somebody chose one or a code carried it.
   let colorUsed = false;
 
+  // ---- Components V2 -------------------------------------------------------------------------------------------------
+  // The message is kept as the V2 document itself (containers and blocks), so nothing is lost when a code is pasted back in. It
+  // leaves as a p2. code, which the bot reads in !embed create and the dashboard in Import.
+  type AnyNode = Record<string, any>;
+  let mode: 'classic' | 'v2' = 'classic';
+  const newDoc = (): V2Doc => ({ components: [{ type: 17, accent_color: null, components: [{ type: 10, content: '' }] }] } as unknown as V2Doc);
+  let doc: V2Doc = newDoc();
+  const BUTTON_STYLES: [number, string][] = [[5, 'v2StyleLink'], [1, 'v2StylePrimary'], [2, 'v2StyleSecondary'], [3, 'v2StyleSuccess'], [4, 'v2StyleDanger']];
+  const emojiToText = (emoji?: { name: string; id?: string; animated?: boolean }) => (emoji ? (emoji.id ? `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>` : emoji.name) : '');
+  const textToEmoji = (value: string) => {
+    const raw = value.trim();
+    const custom = /^<(a?):(\w{2,32}):(\d{15,25})>$/.exec(raw);
+    if (custom) return { name: custom[2], id: custom[3], animated: custom[1] === 'a' };
+    return raw ? { name: raw.slice(0, 64) } : undefined;
+  };
+  const makeNode = (kind: string): AnyNode => {
+    switch (kind) {
+      case 'container': return { type: 17, accent_color: null, components: [{ type: 10, content: '' }] };
+      case 'text': return { type: 10, content: '' };
+      case 'sep': return { type: 14, divider: true, spacing: 1 };
+      case 'images': return { type: 12, items: [{ media: { url: '' } }] };
+      case 'section': return { type: 9, components: [{ type: 10, content: '' }], accessory: { type: 11, media: { url: '' } } };
+      default: return { type: 1, components: [{ type: 2, style: 5, label: '', url: '' }] };
+    }
+  };
+
+  /** The message without its empty blocks and half-filled buttons, before Discord's limits cut it. */
+  function pruned(): AnyNode {
+    const keepButton = (b: AnyNode) => (b.style === 5 || !b.style ? Boolean(b.url?.trim() && (b.label?.trim() || b.emoji?.name)) : Boolean(b.label?.trim() || b.emoji?.name));
+    const prune = (node: AnyNode): AnyNode | null => {
+      if (node.type === 10) return node.content?.trim() ? node : null;
+      if (node.type === 14) return node;
+      if (node.type === 12) { const items = (node.items ?? []).filter((item: AnyNode) => item.media?.url?.trim()); return items.length ? { ...node, items } : null; }
+      if (node.type === 9) {
+        const texts = (node.components ?? []).filter((c: AnyNode) => c.content?.trim());
+        if (!texts.length) return null;
+        const acc = node.accessory;
+        const accessory = acc?.type === 11 ? (acc.media?.url?.trim() ? acc : null) : acc?.type === 2 ? (keepButton(acc) ? acc : null) : null;
+        // Discord needs the picture or button of a section, so without one it is just text.
+        return accessory ? { ...node, components: texts, accessory } : { type: 10, content: texts.map((c: AnyNode) => c.content).join('\n') };
+      }
+      if (node.type === 1) { const components = (node.components ?? []).filter(keepButton); return components.length ? { ...node, components } : null; }
+      if (node.type === 17) { const components = (node.components ?? []).map(prune).filter(Boolean); return components.length ? { ...node, components } : null; }
+      return null;
+    };
+    return { components: (doc.components as AnyNode[]).map(prune).filter(Boolean) };
+  }
+  /** What would really be sent: the pruned message inside Discord's limits. */
+  const effective = (): V2Doc => cleanV2(pruned());
+
+  // -- small DOM helpers --
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', content = ''): HTMLElementTagNameMap[K] {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (content) node.textContent = content;
+    return node;
+  }
+  const field = (label: string, control: HTMLElement) => { const box = el('div', 'ec-field'); box.append(el('label', '', label), control); return box; };
+  function textarea(value: string, rows: number, onInput: (value: string) => void, placeholder = '') {
+    const node = el('textarea'); node.rows = rows; node.value = value; node.placeholder = placeholder; node.maxLength = 4000;
+    node.addEventListener('input', () => onInput(node.value)); return node;
+  }
+  function input(value: string, onInput: (value: string) => void, placeholder = '', max = 512) {
+    const node = el('input'); node.type = 'text'; node.value = value; node.placeholder = placeholder; node.maxLength = max;
+    node.addEventListener('input', () => onInput(node.value)); return node;
+  }
+  function check(label: string, value: boolean, onChange: (value: boolean) => void) {
+    const wrap = el('label', 'ec-check'); const box = el('input'); box.type = 'checkbox'; box.checked = value;
+    box.addEventListener('change', () => { onChange(box.checked); render(); }); wrap.append(box, document.createTextNode(label)); return wrap;
+  }
+  function tool(parent: HTMLElement, label: string, aria: string, run: () => void, disabled = false) {
+    const button = el('button', 'ec-remove', label); button.type = 'button'; button.title = aria; button.setAttribute('aria-label', aria); button.disabled = disabled;
+    button.addEventListener('click', () => { run(); drawTree(); render(); }); parent.appendChild(button);
+  }
+  function head(title: string, list: AnyNode[], index: number): HTMLElement {
+    const row = el('div', 'ec-block-head'); const tools = el('div', 'ec-block-tools');
+    tool(tools, '↑', text.v2Up, () => { [list[index - 1], list[index]] = [list[index], list[index - 1]]; }, index === 0);
+    tool(tools, '↓', text.v2Down, () => { [list[index + 1], list[index]] = [list[index], list[index + 1]]; }, index === list.length - 1);
+    tool(tools, '×', text.removeLabel, () => { list.splice(index, 1); });
+    row.append(el('strong', '', title), tools); return row;
+  }
+  function addButtons(parent: HTMLElement, list: AnyNode[], kinds: string[]) {
+    const labels: Record<string, string> = { container: text.v2AddContainer, text: text.v2AddText, section: text.v2AddSection, images: text.v2AddImages, sep: text.v2AddSeparator, buttons: text.v2AddButtons };
+    for (const kind of kinds) {
+      const button = el('button', 'btn btn-ghost btn-sm', `+ ${labels[kind]}`); button.type = 'button';
+      button.addEventListener('click', () => { list.push(makeNode(kind)); drawTree(); render(); }); parent.appendChild(button);
+    }
+  }
+
+  function buttonEditor(button: AnyNode, onRemove: (() => void) | null): HTMLElement {
+    const row = el('div', 'ec-btn-edit');
+    const select = el('select');
+    for (const [value, key] of BUTTON_STYLES) { const o = el('option', '', text[key]); o.value = String(value); o.selected = (button.style ?? 5) === value; select.appendChild(o); }
+    const url = input(button.url ?? '', (v) => { button.url = v; }, 'https://');
+    const disabled = check(text.v2Disabled, Boolean(button.disabled), (v) => { button.disabled = v || undefined; });
+    const sync = () => { const link = Number(select.value) === 5; url.hidden = !link; disabled.hidden = !link; };
+    select.addEventListener('change', () => { button.style = Number(select.value); if (button.style === 5) delete button.custom_id; sync(); render(); });
+    const main = el('div', 'ec-btn-row');
+    main.append(input(emojiToText(button.emoji), (v) => { const emoji = textToEmoji(v); if (emoji) button.emoji = emoji; else delete button.emoji; }, text.v2Emoji, 64), input(button.label ?? '', (v) => { button.label = v; }, text.buttonLabel, 80), select);
+    if (onRemove) tool(main, '×', text.removeLabel, onRemove);
+    row.append(main, url, disabled); sync(); return row;
+  }
+
+  function nodeEditor(node: AnyNode, list: AnyNode[], index: number, inContainer: boolean): HTMLElement {
+    const names: Record<number, string> = { 10: text.v2AddText, 14: text.v2AddSeparator, 12: text.v2AddImages, 9: text.v2AddSection, 1: text.v2AddButtons, 17: text.v2Container };
+    const card = el('div', node.type === 17 ? 'ec-block ec-container' : 'ec-block');
+    card.appendChild(head(names[node.type] ?? '', list, index));
+    if (node.type === 10) card.appendChild(field(text.v2Text, textarea(node.content ?? '', 4, (v) => { node.content = v; })));
+    else if (node.type === 14) { const row = el('div', 'ec-block-checks'); row.append(check(text.v2Divider, node.divider !== false, (v) => { node.divider = v; }), check(text.v2Large, node.spacing === 2, (v) => { node.spacing = v ? 2 : 1; })); card.appendChild(row); }
+    else if (node.type === 12) {
+      const items: AnyNode[] = node.items;
+      items.forEach((item, i) => {
+        const row = el('div', 'ec-btn-edit'); const main = el('div', 'ec-btn-row');
+        main.append(input(item.media?.url ?? '', (v) => { item.media = { url: v }; }, 'https://'));
+        tool(main, '×', text.removeLabel, () => { items.splice(i, 1); });
+        row.append(main, input(item.description ?? '', (v) => { if (v) item.description = v; else delete item.description; }, text.v2Desc, 1024), check(text.v2Spoiler, Boolean(item.spoiler), (v) => { item.spoiler = v || undefined; }));
+        card.appendChild(row);
+      });
+      const more = el('button', 'btn btn-ghost btn-sm', `+ ${text.v2AddItem}`); more.type = 'button'; more.disabled = items.length >= 10;
+      more.addEventListener('click', () => { items.push({ media: { url: '' } }); drawTree(); render(); }); card.append(more, el('span', 'ec-note', text.v2ImagesHint));
+    } else if (node.type === 9) {
+      const texts: AnyNode[] = node.components;
+      texts.forEach((child, i) => {
+        const row = el('div', 'ec-btn-edit'); row.appendChild(field(text.v2Text, textarea(child.content ?? '', 3, (v) => { child.content = v; })));
+        if (texts.length > 1) { const rm = el('div', 'ec-block-tools'); tool(rm, '×', text.removeLabel, () => { texts.splice(i, 1); }); row.appendChild(rm); }
+        card.appendChild(row);
+      });
+      if (texts.length < 3) { const more = el('button', 'btn btn-ghost btn-sm', `+ ${text.v2AddText}`); more.type = 'button'; more.addEventListener('click', () => { texts.push({ type: 10, content: '' }); drawTree(); render(); }); card.appendChild(more); }
+      const kind = el('select'); for (const [value, label] of [['11', text.v2AccPicture], ['2', text.v2AccButton]] as const) { const o = el('option', '', label); o.value = value; o.selected = String(node.accessory?.type ?? 11) === value; kind.appendChild(o); }
+      kind.addEventListener('change', () => { node.accessory = kind.value === '2' ? { type: 2, style: 5, label: '', url: '' } : { type: 11, media: { url: '' } }; drawTree(); render(); });
+      card.appendChild(field(text.v2Accessory, kind));
+      const acc = node.accessory;
+      if (acc?.type === 2) card.appendChild(buttonEditor(acc, null));
+      else if (acc) {
+        card.append(field(text.v2Thumb, input(acc.media?.url ?? '', (v) => { acc.media = { url: v }; }, 'https://')), input(acc.description ?? '', (v) => { if (v) acc.description = v; else delete acc.description; }, text.v2Desc, 1024), check(text.v2Spoiler, Boolean(acc.spoiler), (v) => { acc.spoiler = v || undefined; }));
+      }
+    } else if (node.type === 1) {
+      const buttons: AnyNode[] = node.components;
+      buttons.forEach((button, i) => card.appendChild(buttonEditor(button, () => { buttons.splice(i, 1); })));
+      const more = el('button', 'btn btn-ghost btn-sm', `+ ${text.addButton}`); more.type = 'button'; more.disabled = buttons.length >= 5;
+      more.addEventListener('click', () => { buttons.push({ type: 2, style: 5, label: '', url: '' }); drawTree(); render(); }); card.append(more, el('span', 'ec-note', text.v2ButtonsHint));
+    } else if (node.type === 17) {
+      const top = el('div', 'ec-block-checks');
+      const color = el('input'); color.type = 'color'; color.value = typeof node.accent_color === 'number' ? `#${node.accent_color.toString(16).padStart(6, '0')}` : '#8399ff'; color.disabled = typeof node.accent_color !== 'number';
+      color.addEventListener('input', () => { node.accent_color = parseInt(color.value.slice(1), 16); });
+      top.append(check(text.v2AccentLabel, typeof node.accent_color === 'number', (v) => { node.accent_color = v ? parseInt(color.value.slice(1), 16) : null; color.disabled = !v; }), color, check(text.v2Spoiler, Boolean(node.spoiler), (v) => { node.spoiler = v || undefined; }));
+      card.appendChild(top);
+      const inner = el('div', 'ec-inner');
+      (node.components as AnyNode[]).forEach((child, i) => inner.appendChild(nodeEditor(child, node.components, i, true)));
+      const add = el('div', 'ec-add-row'); addButtons(add, node.components, ['text', 'section', 'images', 'sep', 'buttons']);
+      card.append(inner, add);
+    }
+    return card;
+  }
+
+  function drawTree() {
+    const tree = $('ecTree'); tree.innerHTML = '';
+    (doc.components as AnyNode[]).forEach((node, i) => tree.appendChild(nodeEditor(node, doc.components as AnyNode[], i, false)));
+    const add = $('ecTopAdd'); add.innerHTML = '';
+    addButtons(add, doc.components as AnyNode[], ['container', 'text', 'section', 'images', 'sep', 'buttons']);
+  }
+
+  function renderV2() {
+    const sent = effective();
+    const has = sent.components.length > 0;
+    $('ecPreview').innerHTML = has ? renderV2Message(sent as any, { ...defaultContext, t: (key) => key }) : `<p class="ec-empty">${text.emptyMessage}</p>`;
+    const output = $<HTMLTextAreaElement>('ecOutput');
+    output.value = has ? encodeShareCode({ content: '', embeds: [], buttons: [], v2: sent }) : '';
+    const openDash = $<HTMLAnchorElement>('ecOpenDash');
+    openDash.hidden = !output.value;
+    openDash.href = output.value ? `/dash/import#import=${encodeURIComponent(output.value)}` : '/dash/import';
+    const list = $('ecWarnings');
+    const counts = countV2(sent);
+    const raw = countV2(pruned() as V2Doc);
+    const warnings: string[] = [];
+    if (raw.components > counts.components || raw.chars > counts.chars) warnings.push(text.v2TooBig);
+    list.hidden = warnings.length === 0;
+    list.innerHTML = '';
+    for (const warning of warnings) { const li = document.createElement('li'); li.textContent = warning; list.appendChild(li); }
+  }
+  function setMode(next: 'classic' | 'v2') {
+    mode = next;
+    $('ecV2').hidden = next !== 'v2';
+    $('ecClassic').hidden = next !== 'classic';
+    $('ecTabs').hidden = next === 'v2';
+    $('ecSepRow').hidden = next === 'v2' || format !== 'script';
+    document.querySelectorAll('.ec-mode').forEach((tab) => tab.classList.toggle('active', (tab as HTMLElement).dataset.mode === next));
+    if (next === 'v2') drawTree();
+    render();
+  }
+  document.querySelectorAll<HTMLButtonElement>('.ec-mode').forEach((tab) => tab.addEventListener('click', () => setMode(tab.dataset.mode === 'v2' ? 'v2' : 'classic')));
+
   function render() {
+    if (mode === 'v2') { renderV2(); return; }
     const data = read();
     const checked = validateTemplate(data);
     const clean = checked.ok ? checked.data : data;
@@ -257,13 +467,14 @@ const p = t.toolsPage.embedCode;
     const note = $('ecImportNote');
     if (!code) return;
     const shared = decodeShareCode(code);
-    if (shared) { load(shared); notes = []; note.textContent = text.importDone; render(); return; }
+    if (shared?.v2) { doc = JSON.parse(JSON.stringify(shared.v2)) as V2Doc; notes = []; note.textContent = text.importDone; setMode('v2'); return; }
+    if (shared) { load(shared); notes = []; note.textContent = text.importDone; setMode('classic'); return; }
     const parsed = parseEmbedScript(code);
     if (!parsed.data.content && !parsed.data.embeds.length) { note.textContent = text.importInvalid; return; }
     load(parsed.data);
     notes = parsed.warnings;
     note.textContent = text.importDone;
-    render();
+    setMode('classic');
   });
 
   drawLists();
@@ -299,11 +510,45 @@ const p = t.toolsPage.embedCode;
   .ec-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .ec-tab { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
   .ec-tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .ec-modetab { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 7px 16px; font-size: 13.5px; cursor: pointer; }
+  .ec-modetab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
   .ec-preview { background: #313338; border-radius: 10px; padding: 14px; overflow: hidden; }
   .ec-empty { margin: 0; color: #949ba4; font-size: 13px; }
   .ec-warnings { margin: 0; padding-left: 18px; color: var(--yellow); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
   .ec-how p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
   .ec-how h2 { margin-bottom: 2px; }
+  .ec-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ec-classic { display: flex; flex-direction: column; gap: 14px; }
+  .ec-v2 { display: flex; flex-direction: column; gap: 14px; }
+  .ec-v2-intro { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
+  .ec-add-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ec-block { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; background: var(--bg-raise); }
+  .ec-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .ec-block-tools { display: flex; gap: 6px; }
+  .ec-block-tools .ec-remove:disabled { opacity: .35; cursor: default; }
+  .ec-block-checks { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .ec-container { border-color: var(--accent); }
+  .ec-inner { display: flex; flex-direction: column; gap: 4px; padding-left: 10px; border-left: 2px solid var(--border); }
+  .ec-btn-edit { display: flex; flex-direction: column; gap: 6px; border: 1px dashed var(--border); border-radius: 10px; padding: 8px 10px; }
+  .ec-btn-row { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+  .ec-btn-row select { flex: 0 0 auto; max-width: 150px; }
+  .ec-btn-row .ec-remove { flex: 0 0 32px; }
+  .ec-btn-row input[type='text'] { flex: 1 1 110px; min-width: 0; }
+  .ec-btn-row input[type='text']:first-child { flex: 1 1 90px; }
+  .ec-sec select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font: 13px var(--sans); }
+  .dp-v2-container { background: #2b2d31; border-radius: 8px; border-left: 4px solid var(--dp-c, #5865f2); padding: 12px 14px; margin-top: 6px; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 6px; }
+  .dp-v2-container.noaccent { border-left-color: #3f4147; }
+  .dp-v2-text { line-height: 1.4; }
+  .dp-v2-sep { height: 1px; background: #3f4147; margin: 6px 0; }
+  .dp-v2-sep.nodivider { background: transparent; }
+  .dp-v2-sep.large { margin: 12px 0; }
+  .dp-v2-gallery { display: grid; gap: 4px; border-radius: 8px; overflow: hidden; grid-template-columns: 1fr; }
+  .dp-v2-gallery.n2, .dp-v2-gallery.n4 { grid-template-columns: 1fr 1fr; }
+  .dp-v2-gallery img { width: 100%; max-height: 260px; object-fit: cover; display: block; background: #1e1f22; }
+  .dp-v2-section { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .dp-v2-section-text { min-width: 0; flex: 1; }
+  .dp-v2-thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+  .dp-v2-link { font-size: 11px; opacity: .8; margin-left: 4px; }
   @media (max-width: 880px) { .ec-layout { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 520px) { .ec-row { grid-template-columns: minmax(0, 1fr); } }
 

@@ -2,8 +2,26 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { encodeSession } from '../../utils/session';
 import { getEnv } from '../../utils/env';
+import { getDashLang, makeT } from '../../i18n/dash';
 
-export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
+/** A small page that shows the loading animation while the next page (the list of servers) loads. */
+function loadingPage(target: string, dt: (key: string) => string): Response {
+  const href = escapeHtml(target);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="1;url=${href}"><title>Petto</title><style>
+:root{color-scheme:dark light}html,body{height:100%;margin:0}body{display:grid;place-items:center;background:#18191d;color:#f2f1ed;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+@media (prefers-color-scheme:light){body{background:#fff;color:#1b1c20}.b{background:#f7f8fa!important;border-color:#dfe1e6!important}}
+.b{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:30px 40px;border:1px solid #34373e;border-radius:18px;background:#212328;animation:in .35s ease both}
+.o{position:relative;width:54px;height:54px;margin-bottom:10px}.o span{position:absolute;inset:0;border-radius:50%;border:3px solid transparent;border-top-color:#f0a88f;animation:s 1s linear infinite}
+.o span:nth-child(2){inset:7px;opacity:.6;animation-duration:1.4s;animation-direction:reverse}.o span:nth-child(3){inset:16px;opacity:.35;animation-duration:.8s}
+strong{font-size:16px}small{font-size:13px;opacity:.65}.l{width:180px;height:4px;border-radius:4px;background:rgba(240,168,143,.18);overflow:hidden;margin-top:12px}.l i{display:block;height:100%;width:40%;border-radius:4px;background:#f0a88f;animation:m 1.2s ease-in-out infinite}
+@keyframes s{to{transform:rotate(360deg)}}@keyframes m{0%{transform:translateX(-110%)}100%{transform:translateX(350%)}}@keyframes in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+</style></head><body><div class="b" role="status"><div class="o"><span></span><span></span><span></span></div><strong>${escapeHtml(dt('Loading your servers'))}</strong><small>${escapeHtml(dt('Signing you in…'))}</small><div class="l"><i></i></div></div><script>location.replace(${JSON.stringify(target)})</script></body></html>`;
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
+export const GET: APIRoute = async ({ url, redirect, cookies, locals, request }) => {
   const clientId = getEnv({ locals }, 'DISCORD_CLIENT_ID');
   const clientSecret = getEnv({ locals }, 'DISCORD_CLIENT_SECRET');
   if (!clientId || !clientSecret) return redirect('/dash?error=server_not_configured');
@@ -65,6 +83,8 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
     cookies.delete('petto_after_login', { path: '/' });
     // Only places of this site that need a signed-in member: the dashboard, the feedback board, and the checkout that opens from the Premium page.
     const returnTo = afterLogin && /^\/(?:dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
+    // The destination is checked above, so it is safe to put in the page. Only the plain list of servers gets the animation.
+    if (returnTo === '/dash/manage') return loadingPage(returnTo, makeT(getDashLang({ locals, cookies, request } as any)));
     return redirect(returnTo);
   } catch {
     return redirect('/dash?error=login_failed');

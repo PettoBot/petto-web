@@ -66,6 +66,9 @@ function inline(html: string, ctx: PreviewContext): string {
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
   out = out.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (m, token) => {
     if (token.toLowerCase() === 'newline') return '<br>';
+    // {imgcard:name}: the bot draws that image card in the message, so the preview shows a marker where it goes.
+    const card = /^imgcard:\s*([a-z0-9][a-z0-9 _-]*)/i.exec(token);
+    if (card) return `<span class="dp-mention">🖼 ${card[1].trim()}</span>`;
     const sample = findSample(samples, token);
     if (!sample) return `<span class="dp-var">${m}</span>`;
     return sample.mention ? `<span class="dp-mention">${sample.text}</span>` : sample.text;

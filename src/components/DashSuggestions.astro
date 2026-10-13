@@ -1,0 +1,165 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import EmojiPicker from './EmojiPicker.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  config: {
+    enabled: boolean; channelId: string; staffRoleId: string; embedTemplate: string; listenChannel: boolean; allowCommand: boolean; thread: boolean; threadName: string;
+    selfVote: boolean; dmAuthor: boolean; anonymous: boolean; upEmoji: string; downEmoji: string; colors: Record<string, string>;
+  };
+  channels: { id: string; name: string }[];
+  roles: { id: string; name: string }[];
+  templates: string[];
+  customEmojis?: { id: string; name: string; animated: boolean }[];
+  total: number;
+  counts: Record<string, number>;
+  recent: { id: string; number: number; authorId: string; content: string; status: string }[];
+  ready: boolean;
+  saved: boolean;
+  failed: string;
+}
+const { user, guildId, guildName, guildIcon, config, channels, roles, templates, customEmojis = [], total, counts, recent, ready, saved, failed } = Astro.props;
+const errors: Record<string, string> = {
+  channel: dt('Choose a channel from the list.'),
+  role: dt('Choose a role from the list.'),
+  save: dt('It could not be saved. Try again in a moment.'),
+};
+const statuses = [
+  { id: 'pending', label: dt('Pending') },
+  { id: 'approved', label: dt('Approved') },
+  { id: 'denied', label: dt('Denied') },
+  { id: 'considering', label: dt('Considering') },
+  { id: 'implemented', label: dt('Implemented') },
+];
+const switches = [
+  { name: 'allow_command', on: config.allowCommand, label: dt('Members can use the suggest command'), hint: dt('Like !suggest <text>.') },
+  { name: 'listen_channel', on: config.listenChannel, label: dt('Every message in the channel is a suggestion'), hint: dt('Petto turns what they write into a suggestion and removes the original.') },
+  { name: 'thread', on: config.thread, label: dt('Open a thread for each suggestion'), hint: dt('To talk about it without filling the channel.') },
+  { name: 'self_vote', on: config.selfVote, label: dt('The author can vote on their own suggestion'), hint: '' },
+  { name: 'dm_author', on: config.dmAuthor, label: dt('Send a DM to the author when the staff answers'), hint: '' },
+  { name: 'anonymous', on: config.anonymous, label: dt('Hide who made each suggestion'), hint: dt('The staff still sees it in the list below.') },
+];
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="suggestions" pageTitle={dt('Suggestions')}>
+  <h1>{dt('Suggestions')}</h1>
+  <p class="sg-sub">{dt('Members suggest ideas, everyone votes once, and the staff approves, denies or marks them as implemented with a reason.')}</p>
+  {saved && <div class="sg-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {failed && <div class="sg-flash sg-warn"><Icon name="ph:warning-fill" width="15" height="15" />{errors[failed] ?? errors.save}</div>}
+  {!ready && <div class="sg-flash sg-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+
+  <div class="sg-stats">
+    <div><b>{total}</b><span>{dt('Suggestions')}</span></div>
+    {statuses.map((s) => <div><b style={`color:${config.colors[s.id]}`}>{counts[s.id] ?? 0}</b><span>{s.label}</span></div>)}
+  </div>
+
+  <form method="POST" class="sg-form">
+    <label class="sg-check"><input type="checkbox" name="enabled" checked={config.enabled} />{dt('Suggestions are on in this server')}</label>
+    <div class="sg-grid">
+      <div class="sg-field"><label>{dt('Channel')}</label>
+        <select name="channel_id">
+          <option value="">{dt('Choose a channel')}</option>
+          {channels.map((c) => <option value={c.id} selected={c.id === config.channelId}>#{c.name}</option>)}
+        </select>
+        <span class="sg-hint">{dt('The suggestions are posted here.')}</span>
+      </div>
+      <div class="sg-field"><label>{dt('Staff role')}</label>
+        <select name="staff_role_id">
+          <option value="">{dt('Only who has Manage Server')}</option>
+          {roles.map((r) => <option value={r.id} selected={r.id === config.staffRoleId}>{r.name}</option>)}
+        </select>
+        <span class="sg-hint">{dt('Can answer, delete and block.')}</span>
+      </div>
+      <div class="sg-field sg-wide"><label>{dt('Design')}</label>
+        <select name="embed_template">
+          <option value="">{dt('The usual design')}</option>
+          {templates.map((name) => <option value={name} selected={name === config.embedTemplate}>{name}</option>)}
+        </select>
+        <span class="sg-hint">{dt('A design from Embeds (it can be Components V2). Variables: {suggestion.id}, {suggestion.number}, {suggestion.content}, {suggestion.status}, {suggestion.reason}, {suggestion.up}, {suggestion.down}, {suggestion.author} and the usual ones.')}</span>
+      </div>
+      <div class="sg-field"><label>{dt('Vote in favor')}</label><input type="text" name="up_emoji" data-emoji-input value={config.upEmoji} maxlength="64" placeholder="✅" /></div>
+      <div class="sg-field"><label>{dt('Vote against')}</label><input type="text" name="down_emoji" data-emoji-input value={config.downEmoji} maxlength="64" placeholder="❌" /></div>
+      <div class="sg-field sg-wide"><label>{dt('Thread name')}</label><input type="text" name="thread_name" value={config.threadName} maxlength="100" /></div>
+    </div>
+
+    <div class="sg-switches">
+      {switches.map((s) => (
+        <label class="sg-switch"><input type="checkbox" name={s.name} checked={s.on} /><span><b>{s.label}</b>{s.hint && <em>{s.hint}</em>}</span></label>
+      ))}
+    </div>
+
+    <div class="sg-colors">
+      <h2>{dt('Color of each status')}</h2>
+      <div class="sg-color-row">
+        {statuses.map((s) => (
+          <label class="sg-color"><input type="color" name={`color_${s.id}`} value={config.colors[s.id]} /><span>{s.label}</span></label>
+        ))}
+      </div>
+    </div>
+
+    <div class="sg-foot">
+      <button class="btn btn-accent btn-sm" type="submit" disabled={!ready}>{dt('Save')}</button>
+      <span class="sg-hint">{dt('To post a button that opens the form, use !suggestion panel in the channel you want.')}</span>
+    </div>
+  </form>
+
+  <section class="sg-list">
+    <h2>{dt('Latest suggestions')}</h2>
+    {recent.length === 0 && <p class="sg-empty">{dt('There are no suggestions yet.')}</p>}
+    {recent.map((s) => (
+      <div class="sg-item">
+        <span class="sg-dot" style={`background:${config.colors[s.status] ?? '#888'}`}></span>
+        <div>
+          <p>{s.content}</p>
+          <small>#{s.number} · <code>{s.id}</code> · {statuses.find((x) => x.id === s.status)?.label ?? s.status} · <span class="sg-user">{s.authorId}</span></small>
+        </div>
+      </div>
+    ))}
+  </section>
+  <EmojiPicker customEmojis={customEmojis} />
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .sg-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 20px; max-width: 70ch; }
+  .sg-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 760px; }
+  .sg-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .sg-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 20px; max-width: 1000px; }
+  .sg-stats div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 16px; }
+  .sg-stats b { display: block; font-size: 22px; }
+  .sg-stats span { font-size: 12.5px; color: var(--text-dim); }
+  .sg-form { display: flex; flex-direction: column; gap: 18px; max-width: 1000px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; margin-bottom: 24px; }
+  .sg-check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .sg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .sg-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .sg-wide { grid-column: 1 / -1; }
+  .sg-field label { font-size: 13px; font-weight: 600; }
+  .sg-field input[type=text], .sg-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; }
+  .sg-field > :global(.ep-wrap) { flex: 0 0 auto; width: 100%; }
+  .sg-hint { font-size: 12px; color: var(--text-dim); }
+  .sg-switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .sg-switch { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+  .sg-switch input { margin-top: 3px; }
+  .sg-switch b { display: block; font-size: 13.5px; font-weight: 600; }
+  .sg-switch em { display: block; font-style: normal; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .sg-color-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .sg-color { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px 6px 6px; font-size: 13px; }
+  .sg-color input { width: 32px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .sg-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .sg-list { max-width: 1000px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; padding-top: 18px; }
+  .sg-item { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .sg-item:first-of-type { border-top: 0; }
+  .sg-item p { margin: 0 0 4px; font-size: 13.5px; overflow-wrap: anywhere; }
+  .sg-item small { font-size: 12px; color: var(--text-dim); }
+  .sg-dot { width: 4px; align-self: stretch; border-radius: 4px; flex: none; }
+  .sg-empty { font-size: 13.5px; color: var(--text-dim); margin: 0; }
+  @media (max-width: 720px) { .sg-grid, .sg-switches { grid-template-columns: 1fr; } }
+</style>

@@ -25,6 +25,7 @@ const WEIGHTS: Record<string, number[]> = {
   Poppins: [400, 700, 800], Inter: [400, 700, 800], Montserrat: [400, 700, 800], 'Bebas Neue': [400],
   Oswald: [400, 700], 'Playfair Display': [400, 700], 'Roboto Mono': [400, 700], Fredoka: [400, 700], Caveat: [400, 700],
   Anton: [400], Pacifico: [400], Lobster: [400], Righteous: [400], Bangers: [400], 'Permanent Marker': [400], 'Press Start 2P': [400],
+  'Nunito': [400, 700, 800], 'Quicksand': [400, 700], 'Space Grotesk': [400, 700], 'Orbitron': [400, 700, 800], 'Dancing Script': [400, 700], 'Comfortaa': [400, 700], 'Rubik': [400, 700, 800], 'Russo One': [400], 'Cinzel': [400, 700, 800], 'Abril Fatface': [400], 'Satisfy': [400], 'Shadows Into Light': [400], 'VT323': [400], 'Audiowide': [400], 'Baloo 2': [400, 700, 800], 'Bungee': [400], 'Chewy': [400], 'Creepster': [400], 'Special Elite': [400], 'Great Vibes': [400], 'Kanit': [400, 700, 800], 'Archivo Black': [400], 'Lilita One': [400], 'Staatliches': [400],
 };
 const DEFAULT_FONT = 'Poppins';
 

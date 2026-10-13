@@ -173,10 +173,31 @@ async function loadPremiumSnapshot(astro: any, userId: string): Promise<PremiumS
   };
 }
 
-/** Returns whether this account has an active Premium slot on this guild. */
+/**
+ * The servers (out of `guildIds`) that have Premium, whoever gave it. Premium belongs to the server: an admin who did not buy the
+ * plan sees the server as Premium too. A server counts when it has an active slot on an entitlement that is still valid.
+ */
+export function getPremiumGuildIds(astro: any, userId: string, guildIds: string[]): Promise<Set<string>> {
+  const ids = [...new Set(guildIds.filter((id) => /^\d{15,25}$/.test(id)))].sort();
+  if (!ids.length) return Promise.resolve(new Set());
+  const key = `premium:${userId}:guilds:${ids.join(',')}`.slice(0, 480);
+  return cached(key, () => loadPremiumGuildIds(astro, ids), { freshMs: 30_000, keep: () => true });
+}
+
+async function loadPremiumGuildIds(astro: any, ids: string[]): Promise<Set<string>> {
+  const found = new Set<string>();
+  const slots = await read<{ guild_id: string; entitlement_id: number }>(astro, 'premium_slot_assignments', `guild_id=in.(${ids.join(',')})&status=eq.active&select=guild_id,entitlement_id`);
+  if (!slots.length) return found;
+  const entitlementIds = [...new Set(slots.map((slot) => slot.entitlement_id))];
+  const entitlements = await read<PremiumEntitlement>(astro, 'premium_entitlements', `id=in.(${entitlementIds.join(',')})&select=id,user_id,provider,plan_key,status,slot_limit,current_period_end`);
+  const valid = new Set(entitlements.filter(isActiveEntitlement).map((entitlement) => entitlement.id));
+  for (const slot of slots) if (valid.has(slot.entitlement_id)) found.add(slot.guild_id);
+  return found;
+}
+
+/** Returns whether this server has Premium, no matter which of its admins gave it. */
 export async function hasPremiumForGuild(astro: any, userId: string, guildId: string): Promise<boolean> {
-  const snapshot = await getPremiumSnapshot(astro, userId);
-  return snapshot.assignments.some((assignment) => assignment.guild_id === guildId);
+  return (await getPremiumGuildIds(astro, userId, [guildId])).has(guildId);
 }
 
 /** Creates a short-lived Polar checkout tied to this Discord user. */
