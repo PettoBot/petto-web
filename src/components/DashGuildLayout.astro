@@ -400,7 +400,26 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // --- unsaved-changes save bar: tracks whichever form the user last touched, blocks
     // in-app navigation away from it (shakes instead), and doubles as the always-visible
     // "Save" control so users don't have to scroll down to a form's own submit button. ---
+    // One listener for every dropdown on the page. Each widget used to add its own to the document and never took it away, so after a few
+    // visits to other sections the page ran dozens of dead handlers on every click and scroll (and the scroll ones repositioned hidden panels).
+    var outsideClosers = [];
+    var repositioners = [];
+    document.addEventListener('click', function (e) {
+      outsideClosers = outsideClosers.filter(function (c) { return c.wrap.isConnected; });
+      outsideClosers.forEach(function (c) { if (!c.wrap.contains(e.target)) c.close(); });
+    });
+    function reposition() {
+      repositioners = repositioners.filter(function (r) { return r.wrap.isConnected; });
+      repositioners.forEach(function (r) { if (!r.isOpen || r.isOpen()) r.place(); });
+    }
+    window.addEventListener('resize', reposition);
+    document.addEventListener('scroll', reposition, true);
+    function closeOnOutside(wrap, close) { outsideClosers.push({ wrap: wrap, close: close }); }
+    function placeWhileOpen(wrap, isOpen, place) { repositioners.push({ wrap: wrap, isOpen: isOpen, place: place }); }
+
     var dirtyForm = null;
+    // Every form the user changed since the last save, in the order they were first touched. The bar saves them all with one press.
+    var dirtyForms = [];
     // Resetting a form also refreshes custom widgets by dispatching change events.
     // Those synthetic events must not be mistaken for a new user edit.
     var resettingForm = false;
@@ -411,8 +430,30 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     var saveBarBtn = saveBar ? saveBar.querySelector('[data-savebar-save]') : null;
     var discardBtn = saveBar ? saveBar.querySelector('[data-savebar-discard]') : null;
 
+    var saveBarText = saveBar ? saveBar.querySelector('.dgl-savebar-text') : null;
+    function updateSaveBarText() {
+      if (!saveBarText) return;
+      saveBarText.textContent = dirtyForms.length > 1
+        ? cdt('{n} sections have unsaved changes', { n: dirtyForms.length })
+        : cdt('You have unsaved changes');
+    }
+    function markDirty(form) {
+      if (dirtyForms.indexOf(form) === -1) dirtyForms.push(form);
+      dirtyForm = form;
+      form.classList.add('is-dirty');
+      updateSaveBarText();
+      showSaveBar();
+      document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: dirtyForms.slice() } }));
+    }
     function showSaveBar() { if (saveBar) saveBar.classList.add('show'); }
-    function hideSaveBar() { if (saveBar) saveBar.classList.remove('show'); dirtyForm = null; }
+    function hideSaveBar() {
+      if (saveBar) saveBar.classList.remove('show');
+      dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
+      dirtyForms = [];
+      dirtyForm = null;
+      updateSaveBarText();
+      document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
+    }
     function shakeSaveBar() {
       if (!saveBar) return;
       saveBar.classList.add('show');
@@ -427,29 +468,63 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         form.dataset.dirtyBound = '1';
         // File-upload forms do a real page reload on submit anyway (see bindForms), no point tracking those.
         if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
+        // Forms that act at once (add or remove a row) are not part of "unsaved changes".
+        if (form.hasAttribute('data-no-dirty')) return;
         form.addEventListener('input', function () {
           if (resettingForm || Date.now() - savedAt < 1200) return;
-          dirtyForm = form;
-          showSaveBar();
+          markDirty(form);
         });
         form.addEventListener('change', function () {
           if (resettingForm || Date.now() - savedAt < 1200) return;
-          dirtyForm = form;
-          showSaveBar();
+          markDirty(form);
         });
       });
     }
 
+    // Saves every changed form, one after the other, with the same data a press on its own Save would send. The last one goes through the
+    // usual submit, which swaps the page, so what is on screen is what was saved.
+    async function saveAllDirty() {
+      var forms = dirtyForms.slice();
+      if (!forms.length) return;
+      for (var i = 0; i < forms.length; i++) {
+        if (!forms[i].checkValidity()) { forms[i].reportValidity(); return; }
+      }
+      if (saveBarBtn) saveBarBtn.disabled = true;
+      var failed = 0;
+      for (var j = 0; j < forms.length - 1; j++) {
+        if (saveBarText) saveBarText.textContent = cdt('Saving {a} of {b}...', { a: j + 1, b: forms.length });
+        try {
+          var fd = new FormData(forms[j]);
+          var named = forms[j].querySelector('button[type="submit"][name]');
+          if (named) fd.append(named.name, named.value);
+          var res = await fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd });
+          if (!res.ok) failed += 1;
+        } catch (err) { failed += 1; }
+      }
+      var last = forms[forms.length - 1];
+      if (last.requestSubmit) last.requestSubmit();
+      else last.submit();
+      if (failed && saveBarText) saveBarText.textContent = cdt('{n} sections could not be saved', { n: failed });
+    }
     if (saveBarBtn) saveBarBtn.addEventListener('click', function () {
-      if (!dirtyForm) return;
-      if (dirtyForm.requestSubmit) dirtyForm.requestSubmit();
-      else dirtyForm.submit();
+      if (!dirtyForms.length) return;
+      if (dirtyForms.length > 1) { saveAllDirty(); return; }
+      var only = dirtyForms[0];
+      if (only.requestSubmit) only.requestSubmit();
+      else only.submit();
+    });
+    // Ctrl+S (or Cmd+S) does what the bar does.
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && dirtyForms.length) {
+        e.preventDefault();
+        if (saveBarBtn && !saveBarBtn.disabled) saveBarBtn.click();
+      }
     });
     if (discardBtn) discardBtn.addEventListener('click', function () {
-      if (dirtyForm) {
-        var form = dirtyForm;
-        resettingForm = true;
-        try {
+      var forms = dirtyForms.slice();
+      resettingForm = true;
+      try {
+        forms.forEach(function (form) {
           form.reset();
           // Native reset restores hidden widget values but not their visual chips/thumbs.
           form.querySelectorAll('[data-multiselect] input[type="checkbox"]').forEach(function (cb) {
@@ -463,9 +538,9 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
               hexInput.dispatchEvent(new Event('change', { bubbles: true }));
             }
           });
-        } finally {
-          resettingForm = false;
-        }
+        });
+      } finally {
+        resettingForm = false;
       }
       hideSaveBar();
     });
@@ -859,7 +934,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           var btn = submitter && submitter.tagName === 'BUTTON' ? submitter : form.querySelector('button[type="submit"]');
           var originalText = btn ? btn.textContent : null;
           if (btn) { btn.disabled = true; btn.textContent = cdt('Saving...'); }
-          if (saveBarBtn && dirtyForm === form) { saveBarBtn.disabled = true; }
+          if (saveBarBtn && dirtyForms.indexOf(form) !== -1) { saveBarBtn.disabled = true; }
           startProgress();
 
           // The action of the pressed button (save, delete...) is added by hand. The button is disabled above, and a disabled button is left
@@ -1115,8 +1190,10 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         wrap.addEventListener('keydown', function (e) {
           if (e.key === 'Escape') closeDropdown();
         });
-        document.addEventListener('click', function (e) {
-          if (!wrap.contains(e.target)) closeDropdown();
+        closeOnOutside(wrap, closeDropdown);
+        // Tabbing out of the field closes the list too, as a native menu does.
+        wrap.addEventListener('focusout', function (e) {
+          if (e.relatedTarget && !wrap.contains(e.relatedTarget)) closeDropdown();
         });
 
         render();
@@ -1274,11 +1351,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           e.stopPropagation();
           if (panel.hidden) openPanel(); else closePanel();
         });
-        document.addEventListener('click', function (e) {
-          if (!wrap.contains(e.target)) closePanel();
-        });
-        window.addEventListener('resize', positionPanel);
-        document.addEventListener('scroll', positionPanel, true);
+        closeOnOutside(wrap, closePanel);
+        placeWhileOpen(wrap, function () { return !panel.hidden; }, positionPanel);
         wrap.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePanel(); });
 
         function svPointer(e) {
