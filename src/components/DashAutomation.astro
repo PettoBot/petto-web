@@ -1,5 +1,6 @@
 ---
 import { Icon } from 'astro-icon/components';
+import DashBoardMock from './DashBoardMock.astro';
 import DashGuildLayout from './DashGuildLayout.astro';
 import VariableHelp from './VariableHelp.astro';
 import MultiSelect from './MultiSelect.astro';
@@ -179,7 +180,66 @@ const sectionIcons: Record<string, string> = {
     <form method="POST" class="am-add">
       <input type="hidden" name="action" value="create_webhook" /><select name="channel_id" required><option value="" disabled selected>{dt('Channel')}</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select><input type="text" name="name" placeholder={dt('Webhook name')} maxlength="80" required /><input type="text" name="default_username" placeholder={dt('Default username')} maxlength="80" /><input type="url" name="default_avatar_url" placeholder={dt('Default avatar URL')} /><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Create')}</button>
     </form>
-    {managedWebhooks.length > 0 && <form method="POST" class="am-add am-add-wide"><input type="hidden" name="action" value="send_webhook" /><select name="webhook_id" required><option value="" disabled selected>{dt('Webhook')}</option>{managedWebhooks.map((w) => <option value={w.id}>{w.name} · #{channelName(w.channelId)}</option>)}</select><textarea name="message" placeholder={dt('Message (empty uses the default)')} maxlength="2000"></textarea><input type="text" name="username" placeholder={dt('Username override')} maxlength="80" /><input type="url" name="avatar_url" placeholder={dt('Avatar URL override')} /><div class="am-add-row"><input type="text" name="embed_title" placeholder={dt('Embed title')} maxlength="256" /><input type="text" name="embed_description" placeholder={dt('Embed description')} maxlength="4096" /><ColorPicker name="embed_color" value="#8399ff" label={dt('Embed color')} /></div><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="12" height="12" />{dt('Send')}</button></form>}
+    {managedWebhooks.length > 0 && (
+      <form method="POST" class="am-add am-add-wide am-send" data-no-dirty>
+        <input type="hidden" name="action" value="send_webhook" />
+        <div class="am-send-head"><Icon name="ph:paper-plane-tilt-fill" width="14" height="14" /><strong>{dt('Send a message')}</strong><span class="am-new">{dt('New')}</span></div>
+        <select name="webhook_id" required><option value="" disabled selected>{dt('Webhook')}</option>{managedWebhooks.map((w) => <option value={w.id}>{w.name} · #{channelName(w.channelId)}</option>)}</select>
+        <div class="am-send-modes" role="tablist">
+          <label><input type="radio" name="send_mode" value="text" checked /><span>{dt('Text and embed')}</span></label>
+          <label><input type="radio" name="send_mode" value="design" /><span>{dt('Saved design')}</span></label>
+          <label><input type="radio" name="send_mode" value="edit" /><span>{dt('Edit a sent message')}</span></label>
+        </div>
+        <div class="am-send-pane" data-send-pane="text">
+          <textarea name="message" placeholder={dt('Message (empty uses the default)')} maxlength="2000"></textarea>
+          <div class="am-add-row"><input type="text" name="username" placeholder={dt('Username override')} maxlength="80" /><input type="url" name="avatar_url" placeholder={dt('Avatar URL override')} /></div>
+          <div class="am-add-row"><input type="text" name="embed_title" placeholder={dt('Embed title')} maxlength="256" /><input type="text" name="embed_description" placeholder={dt('Embed description')} maxlength="4096" /><ColorPicker name="embed_color" value="#8399ff" label={dt('Embed color')} /></div>
+          <div class="am-add-row"><input type="url" name="embed_image" placeholder={dt('Embed image URL')} /><input type="url" name="embed_thumbnail" placeholder={dt('Embed thumbnail URL')} /></div>
+          <div class="am-add-row"><input type="text" name="embed_footer" placeholder={dt('Embed footer')} maxlength="2048" /><input type="url" name="embed_url" placeholder={dt('Embed title link')} /></div>
+        </div>
+        <div class="am-send-pane" data-send-pane="design" hidden>
+          <select name="send_design"><option value="">{dt('Pick a saved design')}</option>{embedTemplateNames.map((name) => <option value={name}>{name}</option>)}</select>
+          <p class="am-hint">{dt('Sends a design from the Embeds page, with its variables filled in. Components V2 designs work too.')}</p>
+        </div>
+        <div class="am-send-pane" data-send-pane="edit" hidden>
+          <input type="text" name="edit_message_id" placeholder={dt('ID of a message this webhook sent')} inputmode="numeric" pattern="[0-9]{15,22}" />
+          <p class="am-hint">{dt('Fill the text or pick a design above and the message is changed in place instead of sending a new one.')}</p>
+        </div>
+        <details class="am-send-more">
+          <summary>{dt('More options')}</summary>
+          <div class="am-add-row"><input type="text" name="thread_id" placeholder={dt('Send into a thread (thread ID)')} inputmode="numeric" pattern="[0-9]{15,22}" /><input type="text" name="thread_name" placeholder={dt('Or start a forum post with this title')} maxlength="100" /></div>
+          <div class="am-send-checks">
+            <label class="am-check"><input type="checkbox" name="silent" />{dt('Send without a notification (silent)')}</label>
+            <label class="am-check"><input type="checkbox" name="allow_pings" />{dt('Allow @everyone, roles and members to be pinged')}</label>
+          </div>
+        </details>
+        <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="12" height="12" />{dt('Send')}</button>
+      </form>
+    )}
+    <script is:inline>
+      (function () {
+        document.querySelectorAll('.am-send').forEach(function (form) {
+          if (form.dataset.sendBound) return;
+          form.dataset.sendBound = '1';
+          function sync() {
+            var mode = (form.querySelector('input[name="send_mode"]:checked') || {}).value || 'text';
+            form.querySelectorAll('[data-send-pane]').forEach(function (pane) {
+              var name = pane.getAttribute('data-send-pane');
+              // The text fields stay visible while editing: an edit can change the text as well as the design.
+              pane.hidden = !(name === mode || (mode === 'edit' && name === 'text'));
+            });
+            var design = form.querySelector('[data-send-pane="design"]');
+            if (design && mode === 'edit') design.hidden = false;
+            var editPane = form.querySelector('[data-send-pane="edit"]');
+            if (editPane) editPane.hidden = mode !== 'edit';
+            var id = form.querySelector('[name="edit_message_id"]');
+            if (id) id.required = mode === 'edit';
+          }
+          form.querySelectorAll('input[name="send_mode"]').forEach(function (r) { r.addEventListener('change', sync); });
+          sync();
+        });
+      })();
+    </script>
   </div>
   )}
 
@@ -305,10 +365,11 @@ const sectionIcons: Record<string, string> = {
       <label class="am-check"><input type="checkbox" name="jumpurl" checked={starboard?.jumpurl ?? true} />{dt('Add an Original Message button')}</label>
       <label class="am-check"><input type="checkbox" name="attachments" checked={starboard?.attachments ?? true} />{dt('Include attachments and images')}</label>
       <div class="am-channel-scope"><span class="am-channel-scope-label">{dt('Repost design')}</span>
-        <select name="embed_template">
+        <select name="embed_template" data-dp-template-only>
           <option value="" selected={!starboard?.embed_template}>{dt('Use Petto default')}</option>
           {embedTemplateNames.map((name) => <option value={name} selected={name === starboard?.embed_template}>{name}</option>)}
         </select>
+        <div class="am-board-mock" data-mock-for="embed_template" hidden={Boolean(starboard?.embed_template)}><DashBoardMock emoji={starboard?.emoji ?? '⭐'} color={'#' + (Number(starboard?.color ?? 0xffc107)).toString(16).padStart(6, '0')} count={3} /></div>
         {starboard && 'embed_template' in starboard && <input type="hidden" name="design_ready" value="1" />}
         <span class="am-hint">{dt('A saved design from the Embeds page. It can use {star.count}, {star.link}, {star.content}, {star.image} and the other star variables.')}</span>
       </div>
@@ -332,10 +393,11 @@ const sectionIcons: Record<string, string> = {
       <label class="am-check"><input type="checkbox" name="jumpurl" checked={monkeyboard?.jumpurl ?? true} />{dt('Add an Original Message button')}</label>
       <label class="am-check"><input type="checkbox" name="attachments" checked={monkeyboard?.attachments ?? true} />{dt('Include attachments and images')}</label>
       <div class="am-channel-scope"><span class="am-channel-scope-label">{dt('Repost design')}</span>
-        <select name="embed_template">
+        <select name="embed_template" data-dp-template-only>
           <option value="" selected={!monkeyboard?.embed_template}>{dt('Use Petto default')}</option>
           {embedTemplateNames.map((name) => <option value={name} selected={name === monkeyboard?.embed_template}>{name}</option>)}
         </select>
+        <div class="am-board-mock" data-mock-for="embed_template" hidden={Boolean(monkeyboard?.embed_template)}><DashBoardMock emoji={monkeyboard?.emoji ?? '🐒'} color={'#' + (Number(monkeyboard?.color ?? 0xffc107)).toString(16).padStart(6, '0')} count={3} /></div>
         {monkeyboard && 'embed_template' in monkeyboard && <input type="hidden" name="design_ready" value="1" />}
         <span class="am-hint">{dt('A saved design from the Embeds page. It can use {monkey.count}, {monkey.link}, {monkey.content}, {monkey.image} and the other monkey variables.')}</span>
       </div>
@@ -705,9 +767,36 @@ const sectionIcons: Record<string, string> = {
     </>
   )}
   <EmojiPicker customEmojis={customEmojis} />
+  <script is:inline>
+    // The usual look of a starboard repost is drawn while no saved design is picked.
+    if (!window.__boardMock) {
+      window.__boardMock = true;
+      document.addEventListener('change', function (e) {
+        var select = e.target;
+        if (!select || select.name !== 'embed_template') return;
+        var scope = select.closest('.am-channel-scope');
+        var mock = scope && scope.querySelector('[data-board-mock]') ? scope.querySelector('.am-board-mock') : null;
+        if (mock) mock.hidden = !!select.value;
+      });
+    }
+  </script>
 </DashGuildLayout>
 
 <style>
+  .am-send { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+  .am-send-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+  .am-new { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 5px; }
+  .am-send-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .am-send-modes label { cursor: pointer; }
+  .am-send-modes input { position: absolute; opacity: 0; pointer-events: none; }
+  .am-send-modes span { display: inline-block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text-muted); transition: background .16s ease, color .16s ease, border-color .16s ease; }
+  .am-send-modes input:checked + span { color: var(--text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .am-send-modes input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .am-send-pane { display: flex; flex-direction: column; gap: 8px; }
+  .am-send-pane[hidden] { display: none; }
+  .am-send-more summary { cursor: pointer; font-size: 12.5px; color: var(--text-muted); }
+  .am-send-more[open] summary { margin-bottom: 8px; }
+  .am-send-checks { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
   .am-news-icon { vertical-align: -2px; margin-right: 4px; }
 
   .am-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-width: 720px; margin-bottom: 24px; }

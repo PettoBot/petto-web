@@ -1,0 +1,89 @@
+---
+export const prerender = false;
+import DashModules from '../../../../components/DashModules.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { guildIconUrl, getGuildDetails } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const guild = await getGuildDetails(id, botToken);
+if (!guild) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
+const row = (table: string, columns: string) => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&select=${columns}`, { headers }).catch(() => null);
+const total = (table: string, extra = '') => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${extra}&select=id&limit=1`, { headers: { ...headers, Prefer: 'count=exact' } }).catch(() => null);
+
+// Small reads that only say whether a module has been set up. A read that fails leaves its module without a mark.
+const [events, verification, automod, antinuke, logs, level, tickets, giveaways, starboard, monkeyboard, birthdays, reactionRoles, responders, commands, webhooks, embeds, cards] = await runBatched([
+  row('member_events_config', 'welcome_channel_id,leave_channel_id,boost_channel_id'),
+  row('verification_config', 'enabled'),
+  row('automod_config', 'word_filter_enabled,anti_spam_enabled,anti_raid_enabled,anti_alt_enabled'),
+  row('antinuke_config', 'enabled'),
+  total('log_entries'),
+  row('level_config', 'enabled'),
+  total('ticket_categories'),
+  total('giveaways', '&ended=eq.false'),
+  row('starboards', 'channel_id'),
+  row('monkeyboards', 'channel_id'),
+  row('birthday_config', 'enabled,channel_id'),
+  total('reaction_roles'),
+  total('auto_responders'),
+  total('custom_commands'),
+  total('managed_webhooks'),
+  total('embed_templates'),
+  total('image_cards'),
+], 6);
+
+async function first(res: Response | null): Promise<Record<string, any> | null | undefined> {
+  if (!res || !res.ok) return undefined;
+  try { const rows = await res.json(); return Array.isArray(rows) ? (rows[0] ?? null) : undefined; } catch { return undefined; }
+}
+const count = (res: Response | null): number | undefined => {
+  if (!res || !res.ok) return undefined;
+  const n = Number(res.headers.get('content-range')?.split('/')[1]);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+const ev = await first(events); const vf = await first(verification); const am = await first(automod); const an = await first(antinuke);
+const lv = await first(level); const sb = await first(starboard); const mb = await first(monkeyboard); const bd = await first(birthdays);
+const logCount = count(logs); const ticketCount = count(tickets); const giveawayCount = count(giveaways); const rrCount = count(reactionRoles);
+const responderCount = count(responders); const commandCount = count(commands); const webhookCount = count(webhooks); const embedCount = count(embeds); const cardCount = count(cards);
+
+type State = 'on' | 'todo' | 'info';
+const statuses: Record<string, { state: State; note: string }> = {};
+const set = (key: string, known: boolean, on: boolean, note = '') => { if (known) statuses[key] = { state: on ? 'on' : 'todo', note }; };
+set('welcome', ev !== undefined, Boolean(ev?.welcome_channel_id || ev?.leave_channel_id || ev?.boost_channel_id));
+set('verification', vf !== undefined, Boolean(vf?.enabled));
+set('automod', am !== undefined, Boolean(am && (am.word_filter_enabled || am.anti_spam_enabled || am.anti_raid_enabled || am.anti_alt_enabled)));
+set('security', an !== undefined, Boolean(an?.enabled));
+set('logging', logCount !== undefined, (logCount ?? 0) > 0, logCount ? String(logCount) : '');
+set('leveling', lv !== undefined, Boolean(lv?.enabled));
+set('tickets', ticketCount !== undefined, (ticketCount ?? 0) > 0, ticketCount ? String(ticketCount) : '');
+set('giveaways', giveawayCount !== undefined, (giveawayCount ?? 0) > 0, giveawayCount ? String(giveawayCount) : '');
+set('starboard', sb !== undefined || mb !== undefined, Boolean(sb?.channel_id || mb?.channel_id));
+set('birthdays', bd !== undefined, Boolean(bd?.enabled));
+set('reactionroles', rrCount !== undefined, (rrCount ?? 0) > 0, rrCount ? String(rrCount) : '');
+set('autoresponders', responderCount !== undefined, (responderCount ?? 0) > 0, responderCount ? String(responderCount) : '');
+set('commands', commandCount !== undefined, (commandCount ?? 0) > 0, commandCount ? String(commandCount) : '');
+set('webhooks', webhookCount !== undefined, (webhookCount ?? 0) > 0, webhookCount ? String(webhookCount) : '');
+set('embeds', embedCount !== undefined, (embedCount ?? 0) > 0, embedCount ? String(embedCount) : '');
+set('cards', cardCount !== undefined, (cardCount ?? 0) > 0, cardCount ? String(cardCount) : '');
+// Joining roles and the DM have their own tables; the guide only needs the ones above.
+---
+<DashModules
+  user={session}
+  guildId={id}
+  guildName={guild.name}
+  guildIcon={guildIconUrl(guild) ?? '/assets/mascot-icon.webp'}
+  statuses={statuses}
+/>

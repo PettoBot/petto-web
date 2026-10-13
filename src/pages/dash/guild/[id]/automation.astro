@@ -376,18 +376,79 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'send_webhook') {
     const localId = String(form.get('webhook_id') ?? '').trim();
+    const mode = ['design', 'edit'].includes(String(form.get('send_mode'))) ? String(form.get('send_mode')) : 'text';
     const message = String(form.get('message') ?? '').trim().slice(0, 2000);
     const username = String(form.get('username') ?? '').trim().slice(0, 80) || undefined;
     const avatarUrl = String(form.get('avatar_url') ?? '').trim() || undefined;
     const embedTitle = String(form.get('embed_title') ?? '').trim().slice(0, 256) || undefined;
     const embedDescription = String(form.get('embed_description') ?? '').trim().slice(0, 4096) || undefined;
     const embedColor = String(form.get('embed_color') ?? '').trim().replace('#', '');
+    const link = (name: string) => { const value = String(form.get(name) ?? '').trim(); return /^https?:\/\/\S+$/i.test(value) ? value : undefined; };
+    const embedImage = link('embed_image');
+    const embedThumbnail = link('embed_thumbnail');
+    const embedUrl = link('embed_url');
+    const embedFooter = String(form.get('embed_footer') ?? '').trim().slice(0, 2048) || undefined;
+    const threadId = /^\d{15,22}$/.test(String(form.get('thread_id') ?? '').trim()) ? String(form.get('thread_id')).trim() : '';
+    const threadName = String(form.get('thread_name') ?? '').trim().slice(0, 100);
+    const editId = /^\d{15,22}$/.test(String(form.get('edit_message_id') ?? '').trim()) ? String(form.get('edit_message_id')).trim() : '';
+    const silent = form.get('silent') === 'on';
+    const allowPings = form.get('allow_pings') === 'on';
+    const designName = String(form.get('send_design') ?? '').trim();
     const rowRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}&select=webhook_id,webhook_token,default_message,default_username,default_avatar_url,default_embed`, { headers: apiHeaders });
     const [row] = rowRes.ok ? await rowRes.json() : [];
-    const embed = embedTitle || embedDescription ? { ...(embedTitle ? { title: embedTitle } : {}), ...(embedDescription ? { description: embedDescription } : {}), ...( /^[0-9a-fA-F]{6}$/.test(embedColor) ? { color: parseInt(embedColor, 16) } : {}) } : row?.default_embed;
-    if (row && (message || row.default_message || embed)) {
-      const sendRes = await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}?wait=true`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message || row.default_message || undefined, username: username || row.default_username || undefined, avatar_url: avatarUrl || row.default_avatar_url || undefined, embeds: embed ? [embed] : undefined }) });
-      saved = sendRes.ok;
+    let body: Record<string, unknown> | null = null;
+    let withComponents = false;
+    if (!row) error = dt('That webhook was not found.');
+    else if (designName) {
+      // A saved design from the Embeds page, with its variables filled in. A Components V2 design is sent with its flag.
+      const templateRes = await fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&name=eq.${encodeURIComponent(designName)}&select=data`, { headers: apiHeaders });
+      const templateRow = templateRes.ok ? (await templateRes.json())[0] : null;
+      const checked = templateRow ? validateTemplate(templateRow.data) : null;
+      if (!checked || !checked.ok) error = dt('That saved embed was not found.');
+      else {
+        const details = await getGuildDetails(id, botToken);
+        const built: any = buildDiscordMessage(checked.data, {
+          userId: String(session.userId), userName: String(session.username ?? 'you'), serverName: details?.name ?? 'this server', memberCount: details?.approximate_member_count ?? null,
+        }, { userAvatar: session.avatar ?? null, serverIcon: details?.icon ? `https://cdn.discordapp.com/icons/${id}/${details.icon}.png?size=256` : null });
+        body = { ...built };
+        withComponents = Boolean(checked.data.v2);
+        if (!withComponents) body.components = undefined;
+      }
+    } else {
+      const hasEmbed = embedTitle || embedDescription || embedImage || embedThumbnail || embedFooter;
+      const embed = hasEmbed ? {
+        ...(embedTitle ? { title: embedTitle } : {}), ...(embedDescription ? { description: embedDescription } : {}),
+        ...(embedUrl ? { url: embedUrl } : {}), ...(/^[0-9a-fA-F]{6}$/.test(embedColor) ? { color: parseInt(embedColor, 16) } : {}),
+        ...(embedImage ? { image: { url: embedImage } } : {}), ...(embedThumbnail ? { thumbnail: { url: embedThumbnail } } : {}),
+        ...(embedFooter ? { footer: { text: embedFooter } } : {}),
+      } : (mode === 'edit' ? undefined : row.default_embed);
+      if (message || (mode !== 'edit' && row.default_message) || embed) body = { content: message || (mode === 'edit' ? undefined : row.default_message) || undefined, embeds: embed ? [embed] : undefined };
+      else error = dt('Write a message or an embed first.');
+    }
+    if (body) {
+      const flags = (withComponents ? 32768 : 0) | (silent ? 4096 : 0);
+      const payload: Record<string, unknown> = {
+        ...body,
+        ...(flags ? { flags } : {}),
+        allowed_mentions: allowPings ? undefined : { parse: [] },
+      };
+      if (mode !== 'edit') {
+        payload.username = username || row.default_username || undefined;
+        payload.avatar_url = avatarUrl || row.default_avatar_url || undefined;
+        if (threadName && !threadId) payload.thread_name = threadName;
+      }
+      const base = `https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}`;
+      const query = new URLSearchParams({ wait: 'true' });
+      if (withComponents) query.set('with_components', 'true');
+      if (threadId) query.set('thread_id', threadId);
+      const sendRes = mode === 'edit' && editId
+        ? await fetch(`${base}/messages/${editId}?${query}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        : mode === 'edit'
+          ? null
+          : await fetch(`${base}?${query}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!sendRes) error = dt('Write the ID of the message to edit.');
+      else if (!sendRes.ok) error = dt('Discord did not accept the message. Check the thread ID, the message ID and that the design fits.');
+      saved = Boolean(sendRes?.ok);
     }
   } else if (action === 'edit_webhook') {
     const localId = String(form.get('id') ?? '').trim();
@@ -572,7 +633,7 @@ const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(..
 const customEmojisPromise = needs('reaction-triggers', 'reaction-messages', 'starboard', 'monkeyboard', 'reaction-roles') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
 const WITH_CHANNELS = ['webhooks', 'counters', 'reaction-triggers', 'reaction-messages', 'timers', 'starboard', 'monkeyboard', 'voicemaster', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads', 'disabled-commands'];
 const WITH_ROLES = ['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders', 'reaction-roles'];
-const WITH_TEMPLATES = ['starboard', 'monkeyboard', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
+const WITH_TEMPLATES = ['webhooks', 'starboard', 'monkeyboard', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
 const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, monkeyboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders })),
