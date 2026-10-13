@@ -49,6 +49,7 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     'suggestion.score': { text: '7' }, 'suggestion.percent': { text: '89' }, 'suggestion.image': { text: '' }, 'suggestion.link': { text: 'https://discord.com/channels/…' },
     'suggestion.channel': { text: '#suggestions', mention: true }, 'suggestion.thread': { text: '#Thread for suggestion si2tr-foytm', mention: true },
     'suggestion.created': { text: '5 days ago' }, 'suggestion.created_time': { text: 'Oct 8, 2026 5:00 PM' },
+    'confession.id': { text: 'si2tr-foytm' }, 'confession.number': { text: '12' }, 'confession.content': { text: 'I still sleep with the light on.' }, 'confession.image': { text: 'https://petto.sbs/assets/mascot-icon.webp' }, 'confession.link': { text: 'https://discord.com/channels/1/2/3' }, 'confession.channel': { text: '#confessions', mention: true }, 'confession.created': { text: '5 days ago' }, 'confession.created_time': { text: 'Oct 8, 2026 5:00 PM' },
     'verify.link': { text: 'https://petto.bot/verify/…' },
     'quest.name': { text: 'Watch the trailer' }, 'quest.game': { text: 'March of Giants' }, 'quest.publisher': { text: 'Ubisoft' }, 'quest.id': { text: '1552897885883072582' },
     'quest.url': { text: 'https://discord.com/quests/1552897885883072582' }, 'quest.link': { text: 'https://example.com/game' }, 'quest.image': { text: '' }, 'quest.logo': { text: '' }, 'quest.color': { text: '#4752c4' },
