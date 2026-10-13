@@ -2602,4 +2602,10 @@ export const dashPt: Record<string, string> = {
   "Getting your server ready…": "Preparando seu servidor…",
   "Loading your servers": "Carregando seus servidores",
   "Signing you in…": "Iniciando sua sessão…",
+  "Set it up for me": "Configure para mim",
+  "Makes the roles and a #verify channel, posts the panel and turns verification on. What you already chose is kept.": "Cria os cargos e um canal #verify, publica o painel e ativa a verificação. O que você já escolheu é mantido.",
+  "Set it up": "Configurar",
+  "Send the panel now": "Enviar o painel agora",
+  "Working on it…": "Trabalhando nisso…",
+  "It could not be done. Try again.": "Não foi possível fazer. Tente de novo.",
 };

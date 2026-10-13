@@ -2602,4 +2602,10 @@ export const dashEs: Record<string, string> = {
   "Getting your server ready…": "Preparando tu servidor…",
   "Loading your servers": "Cargando tus servidores",
   "Signing you in…": "Iniciando tu sesión…",
+  "Set it up for me": "Configúralo por mí",
+  "Makes the roles and a #verify channel, posts the panel and turns verification on. What you already chose is kept.": "Crea los roles y un canal #verify, publica el panel y activa la verificación. Lo que ya elegiste se queda.",
+  "Set it up": "Configurar",
+  "Send the panel now": "Enviar el panel ahora",
+  "Working on it…": "Trabajando en ello…",
+  "It could not be done. Try again.": "No se pudo hacer. Inténtalo otra vez.",
 };
