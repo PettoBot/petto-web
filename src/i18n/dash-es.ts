@@ -1401,6 +1401,7 @@ export const dashEs: Record<string, string> = {
   "Server changes": "Cambios del servidor",
   "Activity": "Actividad",
   "Ignored": "Ignorados",
+  "Reactions needed": "Reacciones necesarias",
   "Saving...": "Guardando...",
   "Couldn't load the preview, try refreshing.": "No se pudo cargar la vista previa, intenta recargar.",
   "No matches.": "Sin resultados.",
