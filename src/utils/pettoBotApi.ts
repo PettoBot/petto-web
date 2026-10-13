@@ -181,3 +181,21 @@ export async function callPettoConfessionPanel(context: AstroContext, guildId: s
     return { ok: false, message: 'The bot did not answer in time.' };
   }
 }
+
+/** The answer of the staff to a suggestion (approve, deny, consider, implement, pending), made by the bot right away. */
+export async function callPettoSuggestionAnswer(context: AstroContext, guildId: string, userId: string, id: string, status: string, reason: string): Promise<{ ok: boolean; message: string }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/suggestions/answer`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, id, status, reason }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : response.ok ? 'Done.' : 'The bot could not do it.' };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}

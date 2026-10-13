@@ -2697,4 +2697,9 @@ export const dashEs: Record<string, string> = {
   "Log channel": "Canal de registro",
   "What the staff does (approve, reject, look at who made one, block, delete) is written here.": "Aquí se escribe lo que hace el staff (aprobar, rechazar, ver quién fue, bloquear, borrar).",
   "A link. Empty uses the picture Petto has in this server, or the usual one of Petto.": "Un enlace. Vacío usa la imagen que tiene Petto en este servidor, o la de siempre de Petto.",
+  "Approve": "Aprobar",
+  "Deny": "Rechazar",
+  "Consider": "Considerar",
+  "Reopen": "Reabrir",
+  "Under consideration": "En consideración",
 };

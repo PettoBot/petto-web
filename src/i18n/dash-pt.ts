@@ -2697,4 +2697,9 @@ export const dashPt: Record<string, string> = {
   "Log channel": "Canal de registro",
   "What the staff does (approve, reject, look at who made one, block, delete) is written here.": "Aqui fica registrado o que a equipe faz (aprovar, rejeitar, ver quem foi, bloquear, apagar).",
   "A link. Empty uses the picture Petto has in this server, or the usual one of Petto.": "Um link. Vazio usa a imagem que o Petto tem neste servidor, ou a de sempre do Petto.",
+  "Approve": "Aprovar",
+  "Deny": "Rejeitar",
+  "Consider": "Considerar",
+  "Reopen": "Reabrir",
+  "Under consideration": "Em consideração",
 };
