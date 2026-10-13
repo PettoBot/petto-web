@@ -1,0 +1,83 @@
+---
+export const prerender = false;
+import DashHistory from '../../components/DashHistory.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+
+const session = await getDashboardSession(Astro);
+if (!session) {
+  Astro.cookies.set('petto_after_login', `${Astro.url.pathname}${Astro.url.search}`, { httpOnly: true, secure: Astro.url.protocol === 'https:', sameSite: 'lax', path: '/', maxAge: 10 * 60 });
+  return Astro.redirect('/dash');
+}
+
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL')?.replace(/\/+$/, '');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const headers = apiKey ? { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } : null;
+const ID = /^\d{15,25}$/;
+const PAGE = 24;
+
+const asked = (Astro.url.searchParams.get('id') ?? '').trim().replace(/[<@!>]/g, '');
+const own = !asked || asked === session.userId;
+const targetId = own ? session.userId : asked;
+const page = Math.max(1, Math.floor(Number(Astro.url.searchParams.get('page'))) || 1);
+const invalid = Boolean(asked) && !ID.test(asked);
+let flash = '';
+
+// The owner of the history can clear it or stop it from being saved.
+if (Astro.request.method === 'POST' && own && headers && apiUrl) {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const kinds: Record<string, string | null> = { clear_avatars: 'avatar', clear_names: 'name', clear_nicknames: 'nickname', clear_all: null };
+  if (action in kinds) {
+    const filter = kinds[action] ? `&kind=eq.${kinds[action]}` : '';
+    const res = await fetch(`${apiUrl}/rest/v1/identity_history?user_id=eq.${session.userId}${filter}`, { method: 'DELETE', headers: { ...headers, Prefer: 'return=minimal' } });
+    flash = res.ok ? 'cleared' : 'error';
+  } else if (action === 'record_off' || action === 'record_on') {
+    const res = action === 'record_off'
+      ? await fetch(`${apiUrl}/rest/v1/identity_history_optout?on_conflict=user_id`, { method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: session.userId }) })
+      : await fetch(`${apiUrl}/rest/v1/identity_history_optout?user_id=eq.${session.userId}`, { method: 'DELETE', headers: { ...headers, Prefer: 'return=minimal' } });
+    flash = res.ok ? action : 'error';
+  }
+}
+
+let ready = Boolean(headers && apiUrl);
+let hidden = false; // somebody else who turned their history off
+let optedOut = false;
+let avatars: any[] = [];
+let names: any[] = [];
+let nicknames: any[] = [];
+let avatarTotal = 0;
+if (ready && !invalid) {
+  const get = async (path: string) => { try { const res = await fetch(`${apiUrl}/rest/v1/${path}`, { headers: headers! }); return res.ok ? await res.json() : null; } catch { return null; } };
+  const [opt, av, nm, nk] = await Promise.all([
+    get(`identity_history_optout?user_id=eq.${targetId}&select=user_id`),
+    get(`identity_history?user_id=eq.${targetId}&kind=eq.avatar&select=value,seen_at&order=seen_at.desc&limit=200`),
+    get(`identity_history?user_id=eq.${targetId}&kind=eq.name&select=value,seen_at&order=seen_at.desc&limit=200`),
+    get(`identity_history?user_id=eq.${targetId}&kind=eq.nickname&select=value,guild_id,seen_at&order=seen_at.desc&limit=200`),
+  ]);
+  if (opt === null || av === null || nm === null || nk === null) ready = false;
+  optedOut = Array.isArray(opt) && opt.length > 0;
+  hidden = optedOut && !own;
+  if (!hidden) {
+    avatarTotal = (av ?? []).length;
+    avatars = (av ?? []).slice((page - 1) * PAGE, page * PAGE);
+    names = nm ?? [];
+    nicknames = nk ?? [];
+  }
+}
+
+// Who it is: the visitor from the session, anybody else from Discord with the bot's token.
+let profile: { id: string; name: string; username: string; avatar: string | null } = { id: targetId, name: own ? session.username : targetId, username: own ? session.username : '', avatar: own ? session.avatar : null };
+if (!own && !invalid && botToken) {
+  try {
+    const res = await fetch(`https://discord.com/api/v10/users/${targetId}`, { headers: { Authorization: `Bot ${botToken}` } });
+    if (res.ok) {
+      const user: any = await res.json();
+      profile = { id: targetId, name: user.global_name || user.username, username: user.username, avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${targetId}/${user.avatar}.png?size=256` : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(targetId) >> 22n) % 6}.png` };
+    }
+  } catch { /* the page still works with the ID */ }
+}
+const createdMs = ID.test(targetId) ? Number((BigInt(targetId) >> 22n) + 1420070400000n) : null;
+---
+<DashHistory user={session} profile={profile} own={own} invalid={invalid} ready={ready} hidden={hidden} optedOut={optedOut} avatars={avatars} avatarTotal={avatarTotal} names={names} nicknames={nicknames} page={page} pageSize={PAGE} createdMs={createdMs} flash={flash} />
