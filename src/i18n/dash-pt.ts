@@ -3115,4 +3115,5 @@ export const dashPt: Record<string, string> = {
   "Manage permissions": "Gerenciar permissões",
   "Joining and seeing their own room is always allowed.": "Entrar e ver a própria sala é sempre permitido.",
   "No color": "Sem cor",
+  "Set on every event. Press Save changes to keep it.": "Aplicado a todos os eventos. Clique em Salvar alterações para manter.",
 };
