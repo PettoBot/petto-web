@@ -54,6 +54,20 @@ if (Astro.request.method === 'POST') {
           anti_alt_min_age_days: Math.max(0, Math.min(365, Number(form.get('anti_alt_min_age_days') ?? 7) || 7)),
           anti_alt_action: String(form.get('anti_alt_action') ?? 'kick'),
           immune_role_ids: immuneRoleIds,
+          repeat_threshold: Math.max(2, Math.min(20, Number(form.get('repeat_threshold') ?? 3) || 3)),
+          repeat_window_seconds: Math.max(3, Math.min(120, Number(form.get('repeat_window_seconds') ?? 10) || 10)),
+          caps_percent: Math.max(30, Math.min(100, Number(form.get('caps_percent') ?? 70) || 70)),
+          caps_min_length: Math.max(4, Math.min(200, Number(form.get('caps_min_length') ?? 12) || 12)),
+          max_message_length: Math.max(0, Math.min(2000, Math.floor(Number(form.get('max_message_length') ?? 0)) || 0)),
+          max_lines: Math.max(0, Math.min(100, Math.floor(Number(form.get('max_lines') ?? 0)) || 0)),
+          exempt_channel_ids: form.getAll('exempt_channel_ids').map(String).filter((v) => /^\d{15,25}$/.test(v)).slice(0, 50),
+          spam_repeat: form.get('spam_repeat') === 'on',
+          spam_mentions: form.get('spam_mentions') === 'on',
+          spam_invites: form.get('spam_invites') === 'on',
+          spam_caps: form.get('spam_caps') === 'on',
+          strike_limit: Math.max(0, Math.min(20, Math.floor(Number(form.get('strike_limit') ?? 0)) || 0)),
+          strike_window_minutes: Math.max(1, Math.min(1440, Math.floor(Number(form.get('strike_window_minutes') ?? 10)) || 10)),
+          strike_mute_minutes: Math.max(1, Math.min(40320, Math.floor(Number(form.get('strike_mute_minutes') ?? 10)) || 10)),
           updated_at: new Date().toISOString(),
         }),
       }),
@@ -116,15 +130,15 @@ if (Astro.request.method === 'POST') {
 
 const casesLimit = [25, 50, 100, 200].includes(Number(Astro.url.searchParams.get('cases'))) ? Number(Astro.url.searchParams.get('cases')) : 25;
 // Only the section on screen is drawn, so only what it shows is read.
-const MODERATION_SECTIONS = ['protection', 'silent-channels', 'warn-escalation', 'sanction-messages', 'cases'];
+const MODERATION_SECTIONS = ['protection', 'silent-channels', 'warn-escalation', 'sanction-messages', 'cases', 'active', 'stats'];
 const shown = MODERATION_SECTIONS.includes(section) ? section : 'protection';
 const needs = (...sections: string[]) => sections.includes(shown);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
-const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes, stickyRolesRes, sanctionTemplatesRes, embedTemplatesRes] = await runBatched([
+const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, rolesRes, channelsRes, stickyRolesRes, sanctionTemplatesRes, embedTemplatesRes, activeRes, statsRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   when(['protection'], () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['protection'], () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
-  when(['cases'], () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at&order=created_at.desc&limit=${casesLimit}`, { headers: apiHeaders })),
+  when(['cases'], () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=*&order=created_at.desc&limit=${casesLimit}`, { headers: apiHeaders })),
   when(['silent-channels'], () => fetch(`${apiUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: apiHeaders })),
   when(['warn-escalation'], () => fetch(`${apiUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: apiHeaders })),
   when(['protection'], () => getGuildList(Astro, id, botToken, 'roles')),
@@ -132,6 +146,8 @@ const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, r
   when(['protection'], () => fetch(`${apiUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders })),
   when(['sanction-messages'], () => fetch(`${apiUrl}/rest/v1/sanction_templates?guild_id=eq.${id}&select=type,dm_template,reply_template,log_template`, { headers: apiHeaders })),
   when(['sanction-messages'], () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders })),
+  when(['active'], () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&active=eq.true&type=in.(ban,tempban,hardban,mute,tempmute,jail)&select=case_number,type,user_id,moderator_id,reason,created_at,expires_at&order=created_at.desc&limit=100`, { headers: apiHeaders })),
+  when(['stats'], () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&created_at=gte.${new Date(Date.now() - 30 * 86_400_000).toISOString()}&select=type,source,moderator_id,created_at&order=created_at.desc&limit=10000`, { headers: apiHeaders })),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -151,6 +167,20 @@ const automod = {
   antiAltMinAgeDays: a.anti_alt_min_age_days ?? 7,
   antiAltAction: a.anti_alt_action ?? 'kick',
   immuneRoleIds: a.immune_role_ids ?? [],
+  repeatThreshold: a.repeat_threshold ?? 3,
+  repeatWindow: a.repeat_window_seconds ?? 10,
+  capsPercent: a.caps_percent ?? 70,
+  capsMinLength: a.caps_min_length ?? 12,
+  maxMessageLength: a.max_message_length ?? 0,
+  maxLines: a.max_lines ?? 0,
+  exemptChannelIds: a.exempt_channel_ids ?? [],
+  spamRepeat: a.spam_repeat ?? true,
+  spamMentions: a.spam_mentions ?? true,
+  spamInvites: a.spam_invites ?? true,
+  spamCaps: a.spam_caps ?? true,
+  strikeLimit: a.strike_limit ?? 0,
+  strikeWindow: a.strike_window_minutes ?? 10,
+  strikeMute: a.strike_mute_minutes ?? 10,
 };
 
 const antinukeRows = antinukeRes?.ok ? await antinukeRes.json() : [];
@@ -168,11 +198,35 @@ const stickyRolesEnabled: boolean = stickyRolesRows[0]?.enabled ?? false;
 const rawCases = casesRes?.ok ? await casesRes.json() : [];
 const cases = rawCases.map((c: any) => ({
   caseNumber: c.case_number, type: c.type, userId: c.user_id, moderatorId: c.moderator_id,
-  reason: c.reason, active: c.active, createdAt: c.created_at,
+  reason: c.reason, active: c.active, createdAt: c.created_at, evidence: (c.evidence ?? []) as string[],
 }));
 
+const rawActive = activeRes?.ok ? await activeRes.json() : [];
+const activeSanctions = rawActive.map((c: any) => ({ caseNumber: c.case_number, type: c.type, userId: c.user_id, moderatorId: c.moderator_id, reason: c.reason, createdAt: c.created_at, expiresAt: c.expires_at }));
+
+// The last 30 days of cases, as numbers: by kind, by moderator, by day. What the bot did by itself is counted apart.
+const rawStats = statsRes?.ok ? await statsRes.json() : [];
+const moderatorTotals = new Map<string, number>();
+const typeTotals: Record<string, number> = {};
+const dayTotals: Record<string, number> = {};
+let automaticTotal = 0;
+for (const row of rawStats) {
+  typeTotals[row.type] = (typeTotals[row.type] ?? 0) + 1;
+  const day = String(row.created_at).slice(0, 10);
+  dayTotals[day] = (dayTotals[day] ?? 0) + 1;
+  if (row.source && row.source !== 'moderator') { automaticTotal += 1; continue; }
+  moderatorTotals.set(row.moderator_id, (moderatorTotals.get(row.moderator_id) ?? 0) + 1);
+}
+const modStats = {
+  total: rawStats.length,
+  automatic: automaticTotal,
+  byType: Object.entries(typeTotals).sort((x, y) => y[1] - x[1]),
+  moderators: [...moderatorTotals.entries()].sort((x, y) => y[1] - x[1]).slice(0, 10).map(([userId, count]) => ({ userId, count })),
+  days: Array.from({ length: 14 }, (_, i) => { const d = new Date(Date.now() - (13 - i) * 86_400_000).toISOString().slice(0, 10); return { label: d.slice(5), count: dayTotals[d] ?? 0 }; }),
+};
+
 // Names and pictures for the people in the cases, so the log is readable and not a list of ids. Discord answers are kept for a while.
-const caseUserIds = [...new Set(cases.flatMap((c: { userId: string; moderatorId: string }) => [c.userId, c.moderatorId]).filter((value: string) => /^\d{15,25}$/.test(value)))] as string[];
+const caseUserIds = [...new Set([...cases, ...activeSanctions, ...modStats.moderators.map((m: { userId: string }) => ({ userId: m.userId, moderatorId: m.userId }))].flatMap((c: { userId: string; moderatorId: string }) => [c.userId, c.moderatorId]).filter((value: string) => /^\d{15,25}$/.test(value)))] as string[];
 const peopleMap = caseUserIds.length ? await describeTeam(botToken, caseUserIds.slice(0, 120)) : new Map();
 const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl }]));
 
@@ -218,6 +272,8 @@ const escalationRules = rawEscalation.map((e: any) => ({
   antinuke={antinuke}
   stickyRolesEnabled={stickyRolesEnabled}
   cases={cases}
+  activeSanctions={activeSanctions}
+  modStats={modStats}
   people={people}
   casesLimit={casesLimit}
   silentChannels={silentChannels}

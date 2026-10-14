@@ -1,0 +1,106 @@
+---
+export const prerender = false;
+import DashAntiScam from '../../../../components/DashAntiScam.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const whole = (value: FormDataEntryValue | null, min: number, max: number, fallback: number) => {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const snowflake = (value: FormDataEntryValue | null) => { const v = String(value ?? '').trim(); return SNOWFLAKE.test(v) ? v : null; };
+const ids = (name: string, form: FormData) => form.getAll(name).map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 50);
+
+let saved = false;
+let failed = false;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  await ensureGuildRow(apiUrl, apiHeaders, id);
+  const action = String(form.get('action') ?? 'alert');
+  const res = await fetch(`${apiUrl}/rest/v1/scam_config?on_conflict=guild_id`, {
+    method: 'POST',
+    headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      guild_id: id,
+      enabled: form.get('enabled') === 'on',
+      action: ['alert', 'timeout', 'kick', 'ban'].includes(action) ? action : 'alert',
+      timeout_minutes: whole(form.get('timeout_minutes'), 1, 40320, 120),
+      delete_messages: form.get('delete_messages') === 'on',
+      delete_minutes: whole(form.get('delete_minutes'), 1, 120, 15),
+      channels_threshold: whole(form.get('channels_threshold'), 2, 10, 3),
+      window_seconds: whole(form.get('window_seconds'), 5, 300, 30),
+      scan_text: form.get('scan_text') === 'on',
+      scan_new_accounts: form.get('scan_new_accounts') === 'on',
+      new_account_hours: whole(form.get('new_account_hours'), 1, 720, 72),
+      dm_user: form.get('dm_user') === 'on',
+      alert_channel_id: snowflake(form.get('alert_channel_id')),
+      ping_role_id: snowflake(form.get('ping_role_id')),
+      exempt_role_ids: ids('exempt_role_ids', form),
+      exempt_channel_ids: ids('exempt_channel_ids', form),
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  saved = res.ok;
+  failed = !res.ok;
+}
+
+const [guildInfo, configRes, eventsRes, rolesRes, channelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/scam_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/scam_events?guild_id=eq.${id}&select=*&order=created_at.desc&limit=20`, { headers: apiHeaders }),
+  () => getGuildList(Astro, id, botToken, 'roles'),
+  () => getGuildList(Astro, id, botToken, 'channels'),
+], 5);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+// The tables come with the bot update; until then the page shows the usual values, all off.
+const c = (configRes?.ok ? (await configRes.json())[0] : null) ?? {};
+const config = {
+  enabled: c.enabled ?? false,
+  action: c.action ?? 'alert',
+  timeoutMinutes: c.timeout_minutes ?? 120,
+  deleteMessages: c.delete_messages ?? true,
+  deleteMinutes: c.delete_minutes ?? 15,
+  channelsThreshold: c.channels_threshold ?? 3,
+  windowSeconds: c.window_seconds ?? 30,
+  scanText: c.scan_text ?? true,
+  scanNewAccounts: c.scan_new_accounts ?? true,
+  newAccountHours: c.new_account_hours ?? 72,
+  dmUser: c.dm_user ?? true,
+  alertChannelId: c.alert_channel_id ?? '',
+  pingRoleId: c.ping_role_id ?? '',
+  exemptRoleIds: c.exempt_role_ids ?? [],
+  exemptChannelIds: c.exempt_channel_ids ?? [],
+  caught: c.caught ?? 0,
+};
+const events = eventsRes?.ok ? await eventsRes.json() : [];
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((x: any) => x.type === 0 || x.type === 5 || x.type === 4).map((x: any) => ({ id: x.id, name: x.name, category: x.type === 4 }));
+---
+<DashAntiScam
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  config={config}
+  events={events}
+  roles={roles}
+  channels={channels}
+  saved={saved}
+  failed={failed}
+/>

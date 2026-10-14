@@ -16,13 +16,15 @@ interface Props {
   protections: Effective[];
   join: { raidEnabled: boolean; raidThreshold: number; raidWindow: number; raidAction: string; altEnabled: boolean; altDays: number; altAction: string };
   shared: { whitelistIds: string; whitelistRoleIds: string[]; alertChannelId: string; oldSwitch: boolean };
+  lockdownConfig: { channelIds: string[]; pauseInvites: boolean; raiseVerification: boolean; autoEndMinutes: number; announceChannelId: string; message: string };
+  lockdownActive: { startedBy: string; reason: string; startedAt: string; endsAt: string; channels: number } | null;
   events: { id: number; rule: string; executor_id: string; executor_name: string | null; action_count: number; action: string; detail: string | null; restorable: unknown[]; previous_roles: string[]; restored_at: string | null; created_at: string }[];
   roles: { id: string; name: string }[];
   channels: { id: string; name: string }[];
   saved: boolean;
   failed: boolean;
 }
-const { user, guildId, guildName, guildIcon, section, protections, join, shared, events, roles, channels, saved, failed } = Astro.props;
+const { user, guildId, guildName, guildIcon, section, protections, join, shared, events, lockdownConfig, lockdownActive, roles, channels, saved, failed } = Astro.props;
 
 const names: Record<string, { label: string; text: string }> = {
   ban: { label: dt('Anti Ban'), text: dt('Punishes mass bans in a row.') },
@@ -48,6 +50,7 @@ const actionNames: Record<string, string> = {
 const active = protections.filter((p) => p.enabled).length;
 const tabs = [
   { id: 'rules', label: dt('Protections') },
+  { id: 'lockdown', label: dt('Lockdown') },
   { id: 'shared', label: dt('Shared settings') },
   { id: 'log', label: dt('Log') },
 ];
@@ -80,7 +83,7 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
         <div class="an-grid">
           <label class="an-field"><span>{dt('Joins that count as a raid')}</span><input type="number" name="raid_join_threshold" value={join.raidThreshold} min="2" max="50" /></label>
           <label class="an-field"><span>{dt('In how many seconds')}</span><input type="number" name="raid_window_seconds" value={join.raidWindow} min="5" max="120" /></label>
-          <label class="an-field"><span>{dt('What to do')}</span><select name="raid_action"><option value="alert" selected={join.raidAction === 'alert'}>{dt('Only alert')}</option><option value="kick" selected={join.raidAction === 'kick'}>{dt('Kick')}</option></select></label>
+          <label class="an-field"><span>{dt('What to do')}</span><select name="raid_action"><option value="alert" selected={join.raidAction === 'alert'}>{dt('Only alert')}</option><option value="kick" selected={join.raidAction === 'kick'}>{dt('Kick')}</option><option value="lockdown" selected={join.raidAction === 'lockdown'}>{dt('Start a lockdown')}</option></select></label>
         </div>
         <div class="an-sep"></div>
         <div class="an-grid">
@@ -127,6 +130,42 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
       </form>
       );
     })}
+  </div>
+  )}
+
+  {section === 'lockdown' && (
+  <div class="an-card">
+    <h2>{lockdownActive ? dt('Lockdown is ON') : dt('Lockdown is off')}</h2>
+    <p class="an-hint">{dt('A lockdown closes the channels so nobody can write, pauses the invites and can raise the verification, and puts everything back when it ends. Use it while a raid lasts. Anti Raid can start it by itself.')}</p>
+    {lockdownActive ? (
+      <div class="an-old an-on">
+        <p><b>{dt('Since')}</b> {ago(lockdownActive.startedAt)}{lockdownActive.endsAt ? <> · <b>{dt('Ends')}</b> {ago(lockdownActive.endsAt)}</> : <> · {dt('It stays until you end it.')}</>} · {dt('{n} channel(s) closed', { n: lockdownActive.channels })}</p>
+        {lockdownActive.reason && <p class="an-hint">{lockdownActive.reason}</p>}
+        <div class="an-foot"><button type="button" class="btn btn-accent btn-sm" data-lockdown="end">{dt('End the lockdown')}</button></div>
+      </div>
+    ) : (
+      <div class="an-start">
+        <label class="an-field"><span>{dt('Reason (optional)')}</span><input type="text" data-lockdown-reason maxlength="300" /></label>
+        <label class="an-field"><span>{dt('Minutes until it ends (0 uses the setting below)')}</span><input type="number" data-lockdown-minutes value="0" min="0" max="10080" /></label>
+        <button type="button" class="btn btn-accent btn-sm an-danger" data-lockdown="start">{dt('Start a lockdown now')}</button>
+      </div>
+    )}
+    <div class="an-sep"></div>
+    <form method="POST" class="an-lock-form">
+      <input type="hidden" name="action" value="save_lockdown" />
+      <h2>{dt('What a lockdown does')}</h2>
+      <div class="an-field an-wide"><span>{dt('Channels it closes (none chosen means every text channel)')}</span><MultiSelect name="channel_ids" options={channels} selected={lockdownConfig.channelIds} placeholder={dt('Search channels...')} /></div>
+      <label class="an-check"><input type="checkbox" name="pause_invites" checked={lockdownConfig.pauseInvites} />{dt('Delete the invites and block new ones')}</label>
+      <label class="an-check"><input type="checkbox" name="raise_verification" checked={lockdownConfig.raiseVerification} />{dt('Raise the verification level of the server to High while it lasts')}</label>
+      <div class="an-grid">
+        <label class="an-field"><span>{dt('Ends by itself after (minutes, 0 for never)')}</span><input type="number" name="auto_end_minutes" value={lockdownConfig.autoEndMinutes} min="0" max="10080" /></label>
+        <label class="an-field"><span>{dt('Channel for the notice')}</span>
+          <select name="announce_channel_id"><option value="">{dt('No notice')}</option>{channels.map((c) => <option value={c.id} selected={c.id === lockdownConfig.announceChannelId}>#{c.name}</option>)}</select>
+        </label>
+      </div>
+      <label class="an-field an-wide"><span>{dt('The notice')}</span><textarea name="message" rows="2" maxlength="500" placeholder={dt('This server is in lockdown for a moment. The staff is working on it, thank you for waiting.')}>{lockdownConfig.message}</textarea></label>
+      <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+    </form>
   </div>
   )}
 
@@ -183,6 +222,21 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
       var open = event.target.closest && event.target.closest('[data-an-open]');
       var close = event.target.closest && event.target.closest('[data-an-close]');
       var restore = event.target.closest && event.target.closest('[data-an-restore]');
+      var lock = event.target.closest && event.target.closest('[data-lockdown]');
+      if (lock) {
+        var guildId = location.pathname.split('/')[3];
+        var starting = lock.getAttribute('data-lockdown') === 'start';
+        if (!confirm(starting ? 'Start a lockdown now? The channels will be closed.' : 'End the lockdown and reopen everything?')) return;
+        var reasonEl = document.querySelector('[data-lockdown-reason]');
+        var minutesEl = document.querySelector('[data-lockdown-minutes]');
+        lock.disabled = true;
+        fetch('/dash/guild/' + guildId + '/lockdown-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: starting ? 'start' : 'end', reason: reasonEl ? reasonEl.value : '', minutes: minutesEl ? Number(minutesEl.value) : 0 }) })
+          .then(function (r) { return r.json(); })
+          .then(function (data) { if (data && data.ok) location.reload(); else { alert((data && data.message) || 'It could not be done.'); lock.disabled = false; } })
+          .catch(function () { alert('It could not be done.'); lock.disabled = false; });
+        return;
+      }
+
       if (open || close) {
         var row = (open || close).closest('[data-an-row]');
         var body = row.querySelector('.an-body');
@@ -253,6 +307,11 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   .an-card { max-width: 920px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
   .an-card h2 { margin: 0; font-size: 16px; }
   .an-old { border: 1px dashed var(--yellow); border-radius: 10px; padding: 10px 12px; }
+  .an-on { border-color: var(--red, #ff6b6b); color: var(--text); }
+  .an-on p { margin: 0; color: var(--text); }
+  .an-start { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+  .an-danger { background: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); color: #1b1b1f; }
+  .an-lock-form { display: flex; flex-direction: column; gap: 12px; }
   .an-empty { font-size: 13.5px; color: var(--text-dim); }
   .an-events { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .an-event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--card); flex-wrap: wrap; }
@@ -260,5 +319,5 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   .an-event-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
   .an-event-main span { color: var(--text-muted); overflow-wrap: anywhere; }
   .an-event-main em { font-style: normal; font-size: 12px; color: var(--text-dim); }
-  @media (max-width: 720px) { .an-grid { grid-template-columns: 1fr; } .an-head { gap: 8px; padding: 12px 10px; } .an-badge { display: none; } }
+  @media (max-width: 720px) { .an-start { grid-template-columns: 1fr; } .an-grid { grid-template-columns: 1fr; } .an-head { gap: 8px; padding: 12px 10px; } .an-badge { display: none; } }
 </style>

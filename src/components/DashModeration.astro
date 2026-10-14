@@ -21,6 +21,20 @@ interface AutomodConfig {
   antiAltMinAgeDays: number;
   antiAltAction: string;
   immuneRoleIds: string[];
+  repeatThreshold: number;
+  repeatWindow: number;
+  capsPercent: number;
+  capsMinLength: number;
+  maxMessageLength: number;
+  maxLines: number;
+  exemptChannelIds: string[];
+  spamRepeat: boolean;
+  spamMentions: boolean;
+  spamInvites: boolean;
+  spamCaps: boolean;
+  strikeLimit: number;
+  strikeWindow: number;
+  strikeMute: number;
 }
 interface AntinukeConfig {
   enabled: boolean;
@@ -36,7 +50,10 @@ interface Case {
   reason: string | null;
   active: boolean;
   createdAt: string;
+  evidence?: string[];
 }
+interface ActiveSanction { caseNumber: number; type: string; userId: string; moderatorId: string; reason: string | null; createdAt: string; expiresAt: string | null; }
+interface ModStats { total: number; automatic: number; byType: [string, number][]; moderators: { userId: string; count: number }[]; days: { label: string; count: number }[]; }
 interface SilentChannel { channelId: string; name: string; action: string; }
 interface EscalationRule { warnCount: number; action: string; durationMinutes: number | null; }
 
@@ -48,6 +65,8 @@ interface Props {
   automod: AutomodConfig;
   antinuke: AntinukeConfig;
   cases: Case[];
+  activeSanctions?: ActiveSanction[];
+  modStats?: ModStats;
   people?: Record<string, { name: string; avatar: string }>;
   casesLimit?: number;
   stickyRolesEnabled: boolean;
@@ -61,18 +80,18 @@ interface Props {
   embedTemplateNames: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, people = {}, casesLimit = 25, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, section } = Astro.props;
 
 const typeColor: Record<string, string> = {
   ban: '#fe6465', tempban: '#fe6465', kick: '#ff9f5a', warn: '#fed53c',
   mute: '#c792ea', tempmute: '#c792ea', unban: '#a5ea7a', unmute: '#a5ea7a',
 };
-const sectionMeta: Record<string, string> = { protection: dt('Protection'), 'silent-channels': dt('Silent channels'), 'warn-escalation': dt('Warn escalation'), 'sanction-messages': dt('Sanction messages'), cases: dt('Case log') };
+const sectionMeta: Record<string, string> = { protection: dt('Protection'), 'silent-channels': dt('Silent channels'), 'warn-escalation': dt('Warn escalation'), 'sanction-messages': dt('Sanction messages'), cases: dt('Case log'), active: dt('Active sanctions'), stats: dt('Moderator stats') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'protection';
 const selectedTitle = sectionMeta[selectedSection];
 const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hidden';
 ---
-<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'protection' ? 'moderation' : selectedSection} pageTitle={selectedTitle}>
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'protection' ? 'moderation' : selectedSection === 'stats' ? 'mod-stats' : selectedSection === 'active' ? 'active-sanctions' : selectedSection} pageTitle={selectedTitle}>
   <h1>{selectedTitle}</h1>
   <p class="md-sub"><Fragment set:html={dth('Automatic protection for <b>{a}</b>, plus the case log every <code>/ban</code>, <code>/kick</code>, <code>/mute</code> and <code>/warn</code> writes to.', { a: (guildName) })} /></p>
 
@@ -117,6 +136,40 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
           <label>{dt('Max mentions per message')}</label>
           <input type="number" name="max_mentions" value={automod.maxMentions} min="1" max="50" />
         </div>
+        <label class="md-check"><input type="checkbox" name="spam_repeat" checked={automod.spamRepeat} />{dt('Catch the same message again and again')}</label>
+        <div class="md-row md-row-2">
+          <div><label>{dt('Copies that count as a flood')}</label><input type="number" name="repeat_threshold" value={automod.repeatThreshold} min="2" max="20" /></div>
+          <div><label>{dt('In how many seconds')}</label><input type="number" name="repeat_window_seconds" value={automod.repeatWindow} min="3" max="120" /></div>
+        </div>
+        <label class="md-check"><input type="checkbox" name="spam_mentions" checked={automod.spamMentions} />{dt('Catch mass mentions')}</label>
+        <label class="md-check"><input type="checkbox" name="spam_invites" checked={automod.spamInvites} />{dt('Catch invites that are not on the allow-list')}</label>
+        <label class="md-check"><input type="checkbox" name="spam_caps" checked={automod.spamCaps} />{dt('Catch shouting (capital letters)')}</label>
+        <div class="md-row md-row-2">
+          <div><label>{dt('Percent in capitals')}</label><input type="number" name="caps_percent" value={automod.capsPercent} min="30" max="100" /></div>
+          <div><label>{dt('Shortest message checked')}</label><input type="number" name="caps_min_length" value={automod.capsMinLength} min="4" max="200" /></div>
+        </div>
+        <div class="md-row md-row-2">
+          <div><label>{dt('Delete messages longer than (characters)')}</label><input type="number" name="max_message_length" value={automod.maxMessageLength} min="0" max="2000" /></div>
+          <div><label>{dt('Delete messages with more lines than')}</label><input type="number" name="max_lines" value={automod.maxLines} min="0" max="100" /></div>
+        </div>
+        <p class="md-row-hint">{dt('0 turns a limit off. Long messages are only deleted, nobody is punished for them.')}</p>
+        <div class="md-row">
+          <label>{dt('Channels the automod never checks')}</label>
+          <MultiSelect name="exempt_channel_ids" options={channels} selected={automod.exemptChannelIds} placeholder={dt('Search channels...')} />
+        </div>
+      </div>
+
+      <div class="md-card">
+        <div class="md-card-head">
+          <div class="md-card-icon" style="--c:#ff6b6b"><Icon name="ph:warning-fill" width="16" height="16" /></div>
+          <div class="md-card-title">{dt('Strikes')}</div>
+        </div>
+        <p class="md-card-desc">{dt('Mutes a member who breaks the automod again and again, on top of what each rule does.')}</p>
+        <div class="md-row md-row-2">
+          <div><label>{dt('Violations that trigger the mute (0 for off)')}</label><input type="number" name="strike_limit" value={automod.strikeLimit} min="0" max="20" /></div>
+          <div><label>{dt('In how many minutes')}</label><input type="number" name="strike_window_minutes" value={automod.strikeWindow} min="1" max="1440" /></div>
+        </div>
+        <div class="md-row"><label>{dt('Minutes of mute')}</label><input type="number" name="strike_mute_minutes" value={automod.strikeMute} min="1" max="40320" /></div>
       </div>
 
       <div class="md-card">
@@ -137,7 +190,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
         <div class="md-row">
           <label>{dt('Action')}</label>
           <select name="raid_action">
-            {['alert', 'kick'].map((a) => <option value={a} selected={a === automod.raidAction}>{a}</option>)}
+            {['alert', 'kick', 'lockdown'].map((a) => <option value={a} selected={a === automod.raidAction}>{a}</option>)}
           </select>
         </div>
       </div>
@@ -276,6 +329,57 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   </div>
   )}
 
+  {selectedSection === 'active' && (
+  <div class:list={['md-section', showSection('active')]}>
+    <h2><Fragment set:html={dth('Active sanctions <span class="md-count">{a}</span>', { a: (activeSanctions.length) })} /></h2>
+    <p class="md-sub">{dt('Bans, mutes and jails that are on right now. Lift one here and the bot does it, writing the case of the lifting.')}</p>
+    {activeSanctions.length === 0 ? <p class="md-empty-note">{dt('Nothing is active right now.')}</p> : (
+      <div class="md-case-list">
+        {activeSanctions.map((c) => (
+          <div class="md-case-row">
+            <span class="md-case-num">#{c.caseNumber}</span>
+            <span class="md-case-type" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>{c.type}</span>
+            <span class="md-case-person">
+              {people[c.userId] ? <img src={people[c.userId].avatar} alt="" width="20" height="20" loading="lazy" /> : null}
+              <span><b>{people[c.userId]?.name ?? c.userId}</b><code>{c.userId}</code></span>
+            </span>
+            <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
+            {c.expiresAt ? <time class="md-case-when" datetime={c.expiresAt} data-local-time>{c.expiresAt}</time> : <span class="md-case-when">{dt('No end')}</span>}
+            {c.reason && <span class="md-case-reason">{c.reason}</span>}
+            {c.type === 'hardban'
+              ? <span class="md-case-inactive">{dt('Only the owner can lift it')}</span>
+              : <button type="button" class="btn btn-ghost btn-sm md-lift" data-lift={c.caseNumber}>{dt('Lift')}</button>}
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+  )}
+
+  {selectedSection === 'stats' && (
+  <div class:list={['md-section', showSection('stats')]}>
+    <h2>{dt('Moderator stats')} <span class="md-count">{dt('last 30 days')}</span></h2>
+    <div class="md-stat-strip">
+      <div><b>{modStats.total}</b><span>{dt('Cases')}</span></div>
+      <div><b>{modStats.total - modStats.automatic}</b><span>{dt('By moderators')}</span></div>
+      <div><b>{modStats.automatic}</b><span>{dt('By the bot (automatic)')}</span></div>
+    </div>
+    <div class="md-bars" aria-label={dt('Cases in the last 14 days')}>
+      {modStats.days.map((d) => <div class="md-bar" title={`${d.label}: ${d.count}`}><i style={`height:${Math.max(4, d.count / Math.max(1, ...modStats.days.map((x) => x.count)) * 100)}%`}></i><span>{d.label.slice(3)}</span></div>)}
+    </div>
+    <div class="md-stat-cols">
+      <div>
+        <h3>{dt('By kind')}</h3>
+        {modStats.byType.length === 0 ? <p class="md-empty-note">{dt('Nothing yet.')}</p> : modStats.byType.map(([type, count]) => <div class="md-stat-line"><span class="md-case-type" style={`--c:${typeColor[type] ?? '#94a3b8'}`}>{type}</span><b>{count}</b></div>)}
+      </div>
+      <div>
+        <h3>{dt('Moderators')}</h3>
+        {modStats.moderators.length === 0 ? <p class="md-empty-note">{dt('Nothing yet.')}</p> : modStats.moderators.map((m) => <div class="md-stat-line"><span class="md-case-person">{people[m.userId] ? <img src={people[m.userId].avatar} alt="" width="20" height="20" loading="lazy" /> : null}<b>{people[m.userId]?.name ?? m.userId}</b></span><b>{m.count}</b></div>)}
+      </div>
+    </div>
+  </div>
+  )}
+
   {selectedSection === 'cases' && (
   <div class:list={['md-section', showSection('cases')]}>
     <h2><Fragment set:html={dth('Recent cases <span class="md-count">{a}</span>', { a: (cases.length) })} /></h2>
@@ -302,6 +406,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
               <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
               <time class="md-case-when" datetime={c.createdAt} data-local-time>{c.createdAt}</time>
               {c.reason && <span class="md-case-reason">{c.reason}</span>}
+              {(c.evidence ?? []).length > 0 && <span class="md-case-evidence">{dt('Proof')}: {(c.evidence ?? []).map((url, i) => <a href={url} target="_blank" rel="noopener noreferrer">{i + 1}</a>)}</span>}
               {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
             </div>
           ))}
@@ -315,6 +420,24 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
 
   {selectedSection === 'protection' && <button type="submit" form="mdForm" class="btn btn-accent btn-sm">{dt('Save changes')}</button>}
 </DashGuildLayout>
+
+<script is:inline>
+  // The Lift button of the active sanctions: the bot lifts it and the page is read again.
+  if (!window.__mdLiftBound) {
+    window.__mdLiftBound = true;
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-lift]');
+      if (!btn) return;
+      if (!confirm('Lift this sanction now?')) return;
+      var guild = location.pathname.split('/')[3];
+      btn.disabled = true;
+      fetch('/dash/guild/' + guild + '/moderation-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ case: Number(btn.getAttribute('data-lift')) }) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { if (data && data.ok) location.reload(); else { alert((data && data.message) || 'It could not be lifted.'); btn.disabled = false; } })
+        .catch(function () { alert('It could not be lifted.'); btn.disabled = false; });
+    });
+  }
+</script>
 
 <script is:inline>
   (function () {
@@ -373,6 +496,25 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
 
   .md-form { display: flex; flex-direction: column; align-items: flex-start; gap: 24px; margin-bottom: 40px; }
   .md-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 14px; width: 100%; }
+  .md-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .md-row-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .md-row-2 > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .md-row-2 label { font-size: 12.5px; }
+  .md-case-evidence { font-size: 12px; color: var(--text-dim); display: inline-flex; gap: 6px; align-items: center; }
+  .md-case-evidence a { color: var(--accent); }
+  .md-stat-strip { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0 18px; }
+  .md-stat-strip div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 18px; min-width: 130px; }
+  .md-stat-strip b { display: block; font-size: 22px; }
+  .md-stat-strip span { font-size: 12.5px; color: var(--text-dim); }
+  .md-bars { display: flex; align-items: flex-end; gap: 6px; height: 120px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px 8px; background: var(--card); margin-bottom: 18px; max-width: 720px; }
+  .md-bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+  .md-bar i { display: block; width: 100%; max-width: 26px; background: var(--accent); border-radius: 4px 4px 0 0; }
+  .md-bar span { font-size: 10px; color: var(--text-dim); }
+  .md-stat-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: 720px; }
+  .md-stat-cols h3 { font-size: 13px; margin: 0 0 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+  .md-stat-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px; }
+  .md-lift { margin-left: auto; }
+  @media (max-width: 720px) { .md-stat-cols, .md-row-2 { grid-template-columns: 1fr; } }
   .md-card-link { text-decoration: none; color: inherit; transition: border-color .15s; }
   .md-card-link:hover { border-color: var(--accent); }
   .md-card { border: 1px solid var(--border); border-radius: 13px; padding: 15px; background: var(--card); display: flex; flex-direction: column; gap: 11px; }

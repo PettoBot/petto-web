@@ -9,7 +9,7 @@ import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { RULES, ACTIONS, SNOWFLAKE, resolveRule, type RuleRow, type NukeConfig } from '../../../../utils/antinukeRules';
 
 const { id } = Astro.params as { id: string };
-const section = ['rules', 'shared', 'log'].includes(Astro.url.searchParams.get('section') ?? '') ? Astro.url.searchParams.get('section')! : 'rules';
+const section = ['rules', 'lockdown', 'shared', 'log'].includes(Astro.url.searchParams.get('section') ?? '') ? Astro.url.searchParams.get('section')! : 'rules';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
 const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
@@ -72,6 +72,19 @@ if (Astro.request.method === 'POST') {
     });
     saved = res.ok;
     failed = !res.ok;
+  } else if (action === 'save_lockdown') {
+    const res = await post('lockdown_config', 'guild_id', {
+      guild_id: id,
+      channel_ids: form.getAll('channel_ids').map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 100),
+      pause_invites: form.get('pause_invites') === 'on',
+      raise_verification: form.get('raise_verification') === 'on',
+      auto_end_minutes: whole(form.get('auto_end_minutes'), 0, 10080, 0),
+      announce_channel_id: snowflake(form.get('announce_channel_id')),
+      message: String(form.get('message') ?? '').trim().slice(0, 500) || null,
+      updated_at: new Date().toISOString(),
+    });
+    saved = res.ok;
+    failed = !res.ok;
   } else if (action === 'save_shared') {
     const res = await post('antinuke_config', 'guild_id', {
       guild_id: id,
@@ -88,14 +101,16 @@ if (Astro.request.method === 'POST') {
 
 const needs = (...sections: string[]) => sections.includes(section);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
-const [guildInfo, configRes, rulesRes, eventsRes, automodRes, rolesRes, channelsRes] = await runBatched([
+const [guildInfo, configRes, rulesRes, eventsRes, automodRes, rolesRes, channelsRes, lockConfigRes, lockActiveRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   when(['rules', 'shared'], () => fetch(`${apiUrl}/rest/v1/antinuke_rules?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['log'], () => fetch(`${apiUrl}/rest/v1/antinuke_events?guild_id=eq.${id}&select=*&order=created_at.desc&limit=30`, { headers: apiHeaders })),
   when(['rules'], () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=anti_raid_enabled,raid_join_threshold,raid_window_seconds,raid_action,anti_alt_enabled,anti_alt_min_age_days,anti_alt_action`, { headers: apiHeaders })),
   when(['rules', 'shared'], () => getGuildList(Astro, id, botToken, 'roles')),
-  when(['rules', 'shared'], () => getGuildList(Astro, id, botToken, 'channels')),
+  when(['rules', 'shared', 'lockdown'], () => getGuildList(Astro, id, botToken, 'channels')),
+  when(['lockdown'], () => fetch(`${apiUrl}/rest/v1/lockdown_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['lockdown'], () => fetch(`${apiUrl}/rest/v1/lockdowns?guild_id=eq.${id}&select=started_by,reason,started_at,ends_at,locked`, { headers: apiHeaders })),
 ], 4);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -106,6 +121,10 @@ const events = eventsRes?.ok ? await eventsRes.json() : [];
 const join = (automodRes?.ok ? (await automodRes.json())[0] : null) ?? {};
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).map((c: any) => ({ id: c.id, name: c.name }));
+const lc = (lockConfigRes?.ok ? (await lockConfigRes.json())[0] : null) ?? {};
+const lockdownConfig = { channelIds: lc.channel_ids ?? [], pauseInvites: lc.pause_invites ?? true, raiseVerification: lc.raise_verification ?? false, autoEndMinutes: lc.auto_end_minutes ?? 0, announceChannelId: lc.announce_channel_id ?? '', message: lc.message ?? '' };
+const la = lockActiveRes?.ok ? (await lockActiveRes.json())[0] : null;
+const lockdownActive = la ? { startedBy: la.started_by, reason: la.reason ?? '', startedAt: la.started_at, endsAt: la.ends_at ?? '', channels: Array.isArray(la.locked) ? la.locked.length : 0 } : null;
 ---
 <DashAntiNuke
   user={session}
@@ -120,6 +139,8 @@ const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: an
   }}
   shared={{ whitelistIds: (config.whitelist_ids ?? []).join(', '), whitelistRoleIds: config.whitelist_role_ids ?? [], alertChannelId: config.alert_channel_id ?? '', oldSwitch: Boolean(config.enabled) }}
   events={events}
+  lockdownConfig={lockdownConfig}
+  lockdownActive={lockdownActive}
   roles={roles}
   channels={channels}
   saved={saved}
