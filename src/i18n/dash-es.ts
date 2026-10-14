@@ -3076,4 +3076,5 @@ export const dashEs: Record<string, string> = {
   "By kind": "Por tipo",
   "Nothing yet.": "Todavía nada.",
   "Proof": "Pruebas",
+  "Catches hijacked accounts that spam the MrBeast giveaway scam, fake withdrawals and casino promos.": "Atrapa cuentas hackeadas que mandan el scam de sorteos de MrBeast, retiros falsos y promos de casino.",
 };
