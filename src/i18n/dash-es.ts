@@ -2777,4 +2777,6 @@ export const dashEs: Record<string, string> = {
   "Everything is ready. You can still adjust closing, ratings and hours in Ticket Settings.": "Todo está listo. Aún puedes ajustar el cierre, las valoraciones y el horario en Ajustes de tickets.",
   "Three steps, in this order.": "Tres pasos, en este orden.",
   "The saved design \"{name}\" decides how the message looks. This preview shows only the simple panel.": "El diseño guardado \"{name}\" decide cómo se ve el mensaje. Esta vista previa muestra solo el panel simple.",
+  "Remind the staff if nobody claims it (minutes)": "Avisar al staff si nadie lo reclama (minutos)",
+  "The support roles of the type are pinged once in the ticket. 0 for no reminder.": "Los roles de soporte del tipo reciben una mención, una sola vez, en el ticket. 0 para no avisar.",
 };
