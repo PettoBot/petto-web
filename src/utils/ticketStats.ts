@@ -4,6 +4,7 @@ export interface TicketRow { status: string; claimed_by: string | null; created_
 export interface TicketStats {
   total: number; open: number; unclaimed: number; opened7: number; closed7: number; opened30: number; closed30: number;
   averageMinutesOpen: number | null; averageRating: number | null; ratingCount: number;
+  days: { label: string; opened: number; closed: number }[];
 }
 
 const DAY = 86_400_000;
@@ -24,7 +25,27 @@ export function summarizeTickets(tickets: TicketRow[], ratings: { rating: number
     averageMinutesOpen: closedWaits.length ? Math.round(closedWaits.reduce((a, b) => a + b, 0) / closedWaits.length / 60_000) : null,
     averageRating: stars.length ? Math.round((stars.reduce((a, b) => a + b, 0) / stars.length) * 10) / 10 : null,
     ratingCount: stars.length,
+    days: lastDays(tickets, now, 14),
   };
+}
+
+/** What was opened and closed on each of the last `count` days (UTC), oldest first. */
+function lastDays(tickets: TicketRow[], now: number, count: number) {
+  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const out = Array.from({ length: count }, (_, i) => {
+    const ms = now - (count - 1 - i) * DAY;
+    return { key: day(ms), label: new Date(ms).toISOString().slice(5, 10), opened: 0, closed: 0 };
+  });
+  const byKey = new Map(out.map((d) => [d.key, d]));
+  for (const t of tickets) {
+    const a = byKey.get(day(new Date(t.created_at).getTime()));
+    if (a) a.opened += 1;
+    if (t.status === 'closed' && t.closed_at) {
+      const b = byKey.get(day(new Date(t.closed_at).getTime()));
+      if (b) b.closed += 1;
+    }
+  }
+  return out.map(({ label, opened, closed }) => ({ label, opened, closed }));
 }
 
 /** A length of time in minutes as text (`45 min`, `3 h 20 min`, `2 d 4 h`). */
