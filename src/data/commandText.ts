@@ -91,7 +91,7 @@ export const commandText: Record<string, CommandText> = {
   firstmessage: ['Jump to the first message in a channel.', 'Salta al primer mensaje de un canal.', 'Pula para a primeira mensagem de um canal.'],
   inviteinfo: ['Show information about an invite code.', 'Muestra información sobre un código de invitación.', 'Mostra informações sobre um código de convite.'],
   permissions: ['Show a member’s effective permissions in a channel.', 'Muestra los permisos efectivos de un miembro en un canal.', 'Mostra as permissões efetivas de um membro em um canal.'],
-  ping: ['Show Petto’s latency.', 'Muestra la latencia de Petto.', 'Mostra a latência do Petto.'],
+  ping: ['Show Petto’s latency (guild and API) and how big it is.', 'Muestra la latencia de Petto (servidor y API) y qué tan grande es.', 'Mostra a latência do Petto (servidor e API) e o quão grande ele é.'],
   premium: ['View or manage Petto Premium from the message prefix.', 'Consulta o administra Petto Premium desde el prefijo.', 'Consulta ou gerencia o Petto Premium pelo prefixo.'],
   roleinfo: ['Show information about a role.', 'Muestra información sobre un rol.', 'Mostra informações sobre um cargo.'],
   roles: ['List every role in this server, a page at a time, with a menu to sort or filter it.', 'Lista todos los roles de este servidor por páginas, con un menú para ordenarla o filtrarla.', 'Lista todos os cargos deste servidor em páginas, com um menu para ordenar ou filtrar.'],

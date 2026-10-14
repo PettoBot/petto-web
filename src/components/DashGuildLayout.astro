@@ -341,12 +341,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   <div class="dgl-progress" id="dgl-progress"></div>
 
   <div class="dgl-savebar" id="dgl-savebar" role="status" aria-live="polite">
-    <Icon name="ph:floppy-disk-fill" width="18" height="18" class="dgl-savebar-icon" />
+    <Icon name="ph:floppy-disk-fill" width="15" height="15" class="dgl-savebar-icon" />
+    <span class="dgl-savebar-spin" aria-hidden="true"></span>
+    <Icon name="ph:check-circle-fill" width="15" height="15" class="dgl-savebar-done" />
     <span class="dgl-savebar-text">{dt('You have unsaved changes')}</span>
     <div class="dgl-savebar-actions">
       <button type="button" class="dgl-savebar-discard" data-savebar-discard>{dt('Discard')}</button>
       <button type="button" class="dgl-savebar-save" data-savebar-save>
-        <Icon name="ph:check-fill" width="14" height="14" />
         {dt('Save changes')}
         <kbd class="dgl-savebar-kbd" aria-hidden="true">Ctrl S</kbd>
       </button>
@@ -459,9 +460,47 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       showSaveBar();
       document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: dirtyForms.slice() } }));
     }
+    // The bar says what is happening: a spinner while it saves, then "Saved" for a moment, and it goes. The page is not reloaded.
+    var barTimer = null;
+    function setBarState(state, text) {
+      if (!saveBar) return;
+      clearTimeout(barTimer);
+      saveBar.classList.remove('saving', 'saved');
+      if (state) saveBar.classList.add(state, 'show');
+      if (text && saveBarText) saveBarText.textContent = text;
+    }
+    function finishBar(text) {
+      setBarState('saved', text);
+      barTimer = setTimeout(function () {
+        if (saveBar) saveBar.classList.remove('show');
+        barTimer = setTimeout(function () { setBarState(null); updateSaveBarText(); }, 260);
+      }, 1300);
+    }
+    // What a form holds right now becomes what "discard" goes back to, so discarding after a save does not undo the save.
+    function commitDefaults(form) {
+      form.querySelectorAll('input, textarea, select').forEach(function (el) {
+        if (el.tagName === 'SELECT') { Array.prototype.forEach.call(el.options, function (o) { o.defaultSelected = o.selected; }); return; }
+        if (el.type === 'checkbox' || el.type === 'radio') el.defaultChecked = el.checked;
+        else if (el.type !== 'file' && el.type !== 'password') el.defaultValue = el.value;
+      });
+    }
+    // A save that came back with a warning or an error is shown by swapping the page, so the message can be read.
+    function answerHasProblem(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('dgl-content');
+      if (!fresh) return true;
+      // Only a whole word of the class counts (an-bad, md-warn...), so "badge" or "fail-safe" names are not taken for a problem.
+      var problem = /(^|[\s_-])(bad|error|errors|warn|warning|fail|failed)($|[\s_-])/i;
+      var found = fresh.querySelectorAll('[class], [role="alert"]');
+      for (var i = 0; i < found.length; i++) {
+        var el = found[i];
+        if ((el.getAttribute('role') === 'alert' || problem.test(el.getAttribute('class') || '')) && (el.textContent || '').trim()) return true;
+      }
+      return false;
+    }
     function showSaveBar() { if (saveBar) saveBar.classList.add('show'); }
     function hideSaveBar() {
-      if (saveBar) saveBar.classList.remove('show');
+      if (saveBar && !saveBar.classList.contains('saved')) saveBar.classList.remove('show');
       dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
       dirtyForms = [];
       dirtyForm = null;
@@ -506,19 +545,20 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       if (saveBarBtn) saveBarBtn.disabled = true;
       var failed = 0;
       for (var j = 0; j < forms.length - 1; j++) {
-        if (saveBarText) saveBarText.textContent = cdt('Saving {a} of {b}...', { a: j + 1, b: forms.length });
+        setBarState('saving', cdt('Saving {a} of {b}...', { a: j + 1, b: forms.length }));
         try {
           var fd = new FormData(forms[j]);
           var named = forms[j].querySelector('button[type="submit"][name]');
           if (named) fd.append(named.name, named.value);
           var res = await fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd });
           if (!res.ok) failed += 1;
+          else { commitDefaults(forms[j]); forms[j].classList.remove('is-dirty'); dirtyForms = dirtyForms.filter(function (f) { return f !== forms[j]; }); }
         } catch (err) { failed += 1; }
       }
       var last = forms[forms.length - 1];
       if (last.requestSubmit) last.requestSubmit();
       else last.submit();
-      if (failed && saveBarText) saveBarText.textContent = cdt('{n} sections could not be saved', { n: failed });
+      if (failed) { setBarState(null, cdt('{n} sections could not be saved', { n: failed })); if (saveBarBtn) saveBarBtn.disabled = false; }
     }
     if (saveBarBtn) saveBarBtn.addEventListener('click', function () {
       if (!dirtyForms.length) return;
@@ -556,7 +596,14 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       } finally {
         resettingForm = false;
       }
-      hideSaveBar();
+      setBarState('saving', cdt('Discarding...'));
+      setTimeout(function () {
+        dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
+        dirtyForms = [];
+        dirtyForm = null;
+        document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
+        finishBar(cdt('Discarded'));
+      }, 350);
     });
 
     // Anything that leaves the app entirely (header links, closing the tab, refresh) goes
@@ -638,8 +685,11 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         var sk = document.createElement('div');
         sk.className = 'dgl-sk sk-wrap';
         sk.setAttribute('aria-hidden', 'true');
+        // Placeholders across the whole width of the section: title, text, a row of numbers, a big block and cards.
         sk.innerHTML = '<span class="sk sk-title"></span><span class="sk sk-line"></span><span class="sk sk-line short"></span>'
-          + '<div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>';
+          + '<div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>'
+          + '<span class="sk sk-block"></span>'
+          + '<div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>';
         // The placeholders are shorter than the section they replace; holding its height keeps the page from jumping up.
         content.style.minHeight = content.offsetHeight + 'px';
         content.classList.add('is-loading');
@@ -948,31 +998,50 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           var btn = submitter && submitter.tagName === 'BUTTON' ? submitter : form.querySelector('button[type="submit"]');
           var originalText = btn ? btn.textContent : null;
           if (btn) { btn.disabled = true; btn.textContent = cdt('Saving...'); }
-          if (saveBarBtn && dirtyForms.indexOf(form) !== -1) { saveBarBtn.disabled = true; }
-          startProgress();
+          // A form the person edited and is saving from the bar is saved without redrawing the page.
+          var fromBar = dirtyForms.indexOf(form) !== -1;
+          if (saveBarBtn && fromBar) { saveBarBtn.disabled = true; setBarState('saving', cdt('Saving...')); }
+          if (!fromBar) startProgress();
 
           // The action of the pressed button (save, delete...) is added by hand. The button is disabled above, and a disabled button is left
           // out of the form data, so the action was lost and the page did nothing.
           var fd = new FormData(form);
           if (submitter && submitter.name) fd.append(submitter.name, submitter.value);
           fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd })
-            .then(function (res) { return res.text(); })
-            .then(function (html) {
-              return swapContent(html, null);
+            .then(function (res) { return res.text().then(function (html) { return { ok: res.ok, html: html }; }); })
+            .then(function (answer) {
+              if (fromBar && answer.ok && !answerHasProblem(answer.html)) {
+                commitDefaults(form);
+                form.classList.remove('is-dirty');
+                dirtyForms = dirtyForms.filter(function (f) { return f !== form; });
+                dirtyForm = dirtyForms.length ? dirtyForms[dirtyForms.length - 1] : null;
+                prefetchedPages.clear();
+                savedAt = Date.now();
+                if (btn) { btn.disabled = false; btn.textContent = originalText; }
+                if (saveBarBtn) saveBarBtn.disabled = false;
+                if (dirtyForms.length) { setBarState(null); updateSaveBarText(); }
+                else { document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } })); finishBar(cdt('Saved')); }
+                return 'soft';
+              }
+              return swapContent(answer.html, null);
             })
             .then(function (ok) {
+              if (ok === 'soft') return;
               if (ok) {
                 prefetchedPages.clear();
                 hideSaveBar();
                 savedAt = Date.now();
+                setBarState(null);
               }
               if (!ok && btn) { btn.disabled = false; btn.textContent = originalText; }
               if (saveBarBtn) saveBarBtn.disabled = false;
+              if (!ok) setBarState(null, cdt('Something went wrong, try again.'));
               finishProgress();
             })
             .catch(function () {
               if (btn) { btn.disabled = false; btn.textContent = originalText; }
               if (saveBarBtn) saveBarBtn.disabled = false;
+              setBarState(null, cdt('Something went wrong, try again.'));
               finishProgress();
             });
         });
@@ -1603,32 +1672,42 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   }
 
   .dgl-savebar {
-    position: fixed; bottom: 24px; left: 50%;
+    position: fixed; bottom: 20px; left: 50%;
     transform: translateX(-50%) translateY(14px);
-    display: flex; align-items: center; gap: 14px;
-    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 11px 14px 11px 18px; box-shadow: 0 18px 40px -14px rgba(0,0,0,0.55);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 11px;
+    padding: 6px 7px 6px 12px; box-shadow: 0 14px 30px -14px rgba(0,0,0,0.55);
     z-index: 70; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
   }
   .dgl-savebar.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
   .dgl-savebar.shake { animation: dgl-savebar-shake 0.4s; }
   .dgl-savebar :global(.dgl-savebar-icon) { color: var(--yellow); flex-shrink: 0; }
-  .dgl-savebar-text { font-size: 13.5px; color: var(--text); font-weight: 500; white-space: nowrap; }
-  .dgl-savebar-actions { display: flex; align-items: center; gap: 8px; }
+  .dgl-savebar :global(.dgl-savebar-done), .dgl-savebar-spin { display: none; flex-shrink: 0; }
+  .dgl-savebar-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--text) 22%, transparent); border-top-color: var(--accent); animation: dgl-savebar-spin 0.7s linear infinite; }
+  .dgl-savebar :global(.dgl-savebar-done) { color: var(--green); }
+  .dgl-savebar.saving :global(.dgl-savebar-icon), .dgl-savebar.saved :global(.dgl-savebar-icon) { display: none; }
+  .dgl-savebar.saving .dgl-savebar-spin { display: block; }
+  .dgl-savebar.saved :global(.dgl-savebar-done) { display: block; }
+  .dgl-savebar.saving .dgl-savebar-actions, .dgl-savebar.saved .dgl-savebar-actions { display: none; }
+  .dgl-savebar.saving, .dgl-savebar.saved { padding-right: 14px; }
+  .dgl-savebar-text { font-size: 12.5px; color: var(--text); font-weight: 500; white-space: nowrap; }
+  .dgl-savebar-actions { display: flex; align-items: center; gap: 6px; }
   .dgl-savebar-discard {
-    background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: 13px; font-weight: 600;
-    padding: 8px 14px; border-radius: 9px; cursor: pointer; font-family: var(--sans);
+    background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: 12px; font-weight: 600;
+    padding: 5px 11px; border-radius: 8px; cursor: pointer; font-family: var(--sans);
   }
   .dgl-savebar-discard:hover { color: var(--text); border-color: var(--text-dim); }
   .dgl-savebar-save {
-    background: var(--text); color: var(--bg); border: none; font-size: 13px; font-weight: 700;
-    padding: 8px 16px; border-radius: 9px; cursor: pointer; font-family: var(--sans);
+    background: var(--text); color: var(--bg); border: none; font-size: 12px; font-weight: 700;
+    padding: 5px 12px; border-radius: 8px; cursor: pointer; font-family: var(--sans);
     display: flex; align-items: center; gap: 6px;
   }
   .dgl-savebar-save:hover { opacity: 0.85; }
-  .dgl-savebar-kbd { margin-left: 8px; padding: 1px 6px; border-radius: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); font: 600 10px var(--mono); opacity: .7; }
+  .dgl-savebar-kbd { margin-left: 6px; padding: 0 5px; border-radius: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); font: 600 9.5px var(--mono); opacity: .7; }
   @media (hover: none), (max-width: 760px) { .dgl-savebar-kbd { display: none; } }
   .dgl-savebar-save:disabled { opacity: 0.6; cursor: default; }
+  @keyframes dgl-savebar-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .dgl-savebar-spin { animation-duration: 2s; } }
 
   @keyframes dgl-savebar-shake {
     10%, 90% { transform: translateX(calc(-50% - 1px)) translateY(0); }
@@ -1638,19 +1717,19 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   }
 
   @media (max-width: 600px) {
-    .dgl-savebar { left: 12px; right: 12px; bottom: 16px; transform: translateY(14px); width: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; }
+    .dgl-savebar { left: 12px; right: 12px; bottom: 14px; transform: translateY(14px); width: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 7px 8px 7px 12px; }
     .dgl-savebar.show { transform: translateY(0); }
     .dgl-savebar.shake { animation-name: dgl-savebar-shake-mobile; }
     .dgl-savebar-text { white-space: normal; font-size: 12.5px; line-height: 1.35; }
     .dgl-savebar-actions { justify-content: flex-end; }
-    .dgl-savebar-discard, .dgl-savebar-save { min-height: 38px; padding-left: 11px; padding-right: 11px; }
+    .dgl-savebar-discard, .dgl-savebar-save { min-height: 32px; padding-left: 10px; padding-right: 10px; }
   }
 
   @media (max-width: 380px) {
     .dgl-wrap { padding-left: 10px; padding-right: 10px; }
     .dgl-content { padding-left: 14px; padding-right: 14px; }
-    .dgl-savebar { grid-template-columns: 1fr; }
-    .dgl-savebar-actions { justify-content: stretch; }
+    .dgl-savebar { grid-template-columns: auto minmax(0, 1fr); }
+    .dgl-savebar-actions { grid-column: 1 / -1; justify-content: stretch; }
     .dgl-savebar-actions > * { flex: 1; }
   }
 
