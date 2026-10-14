@@ -77,11 +77,14 @@ function inline(html: string, ctx: PreviewContext): string {
   out = out.replace(/&lt;@!?(\d+)&gt;/g, '<span class="dp-mention">@user</span>');
   out = out.replace(/&lt;@&amp;(\d+)&gt;/g, '<span class="dp-mention">@role</span>');
   out = out.replace(/&lt;#(\d+)&gt;/g, '<span class="dp-mention">#channel</span>');
+  // </name:id> is a clickable command, shown as the chip Discord draws.
+  out = out.replace(/&lt;\/([\w-]+(?: [\w-]+){0,2}):(\d+)&gt;/g, (_m, name) => `<span class="dp-mention">/${name}</span>`);
   out = out.replace(/&lt;t:(\d+)(?::[a-zA-Z])?&gt;/g, '<span class="dp-mention">Today at 12:00 PM</span>');
   out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/__(.+?)__/g, '<u>$1</u>');
   out = out.replace(/~~(.+?)~~/g, '<s>$1</s>');
   out = out.replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<em>$2</em>');
+  out = out.replace(/(^|[\s(])_(?!\s)([^_\n]+?)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
   out = out.replace(/\|\|(.+?)\|\|/g, '<span class="dp-spoiler">$1</span>');
   return restore(out);
 }
@@ -97,6 +100,8 @@ export function renderMarkdown(text: string, ctx: PreviewContext = defaultContex
     const escaped = escapeHtml(line).replace(/^(\s*)[-*]\s+(?=\S)/, '$1• ');
     const heading = escaped.match(/^(#{1,3})\s+(.*)$/);
     if (heading) return `<span class="dp-h${heading[1].length}">${inline(heading[2], ctx)}</span>`;
+    const small = escaped.match(/^-#\s+(.*)$/);
+    if (small) return `<span class="dp-sub">${inline(small[1], ctx)}</span>`;
     const quote = escaped.match(/^&gt;\s?(.*)$/);
     if (quote) return `<span class="dp-quote">${inline(quote[1], ctx)}</span>`;
     return inline(escaped, ctx);
