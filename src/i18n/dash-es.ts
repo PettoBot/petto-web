@@ -3115,4 +3115,5 @@ export const dashEs: Record<string, string> = {
   "Manage permissions": "Gestionar permisos",
   "Joining and seeing their own room is always allowed.": "Entrar y ver su propia sala siempre está permitido.",
   "No color": "Sin color",
+  "Set on every event. Press Save changes to keep it.": "Aplicado a todos los eventos. Pulsa Guardar cambios para conservarlo.",
 };
