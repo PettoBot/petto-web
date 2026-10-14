@@ -1,0 +1,294 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import { TEMPLATES, PACKS } from '../utils/automodTemplates';
+import type { NativeResult } from '../utils/pettoBotApi';
+import { getDashLang, makeT } from '../i18n/dash';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  filters: { id: number; name: string; template: string; options: Record<string, boolean | number>; action: string; mute_minutes: number; enabled: boolean; hits: number }[];
+  native: NativeResult;
+  roles: { id: string; name: string }[];
+  channels: { id: string; name: string; category: boolean }[];
+}
+const { user, guildId, guildName, guildIcon, filters, native, roles, channels } = Astro.props;
+const textChannels = channels.filter((c) => !c.category);
+
+const info: Record<string, { name: string; text: string; sample: string }> = {
+  links: { name: dt('All links'), text: dt('Blocks every link, even the ones written with spaces or odd symbols to get past filters.'), sample: 'https://example.com' },
+  invites: { name: dt('Invite links'), text: dt('Blocks Discord invites and server pages.'), sample: 'discord.gg/abc123' },
+  inline_links: { name: dt('Inline links'), text: dt('Blocks links hidden behind a text, like a button that says one thing and goes somewhere else.'), sample: '[click here](https://example.com)' },
+  emails: { name: dt('Email addresses'), text: dt('Stops email addresses from being sent.'), sample: 'name@example.com' },
+  scam: { name: dt('Scam text'), text: dt('Catches the usual lines of scams: free Nitro, gifts, Robux, airdrops, wallets.'), sample: 'FREE NITRO click here' },
+  fake_pings: { name: dt('Fake pings'), text: dt('Blocks the text @everyone and @here, even from people who cannot ping.'), sample: '@everyone' },
+  ip_addresses: { name: dt('IP addresses'), text: dt('Blocks IP addresses.'), sample: '192.168.1.20' },
+  phone_numbers: { name: dt('Phone numbers'), text: dt('Blocks phone numbers.'), sample: '+57 300 123 4567' },
+  emojis: { name: dt('Emoji spam'), text: dt('Limits how many emojis fit in one message.'), sample: '😀😀😀😀😀😀😀' },
+  zalgo: { name: dt('Zalgo text'), text: dt('Blocks text with stacked marks that looks glitchy.'), sample: 'h̷̢͠o̸̡͞l̵̨͠a̴' },
+  headings: { name: dt('Headings'), text: dt('Blocks big heading text made with #.'), sample: '# TITLE' },
+  subtext: { name: dt('Subtext'), text: dt('Blocks small text that can be used to fake official notices.'), sample: '-# small text' },
+  caps: { name: dt('Shouting'), text: dt('Blocks messages written in capital letters.'), sample: 'THIS IS A VERY LONG SHOUT' },
+  repeated_characters: { name: dt('Repeated characters'), text: dt('Blocks letters or symbols repeated again and again.'), sample: 'holaaaaaaaaaaaa!!!!!!!!!!' },
+  spoilers: { name: dt('Spoiler spam'), text: dt('Blocks many spoilers in one message.'), sample: '||a|| ||b|| ||c|| ||d||' },
+  invisible_text: { name: dt('Invisible text'), text: dt('Blocks zero-width characters used to hide or break words.'), sample: '(nothing you can see)' },
+};
+const optionLabels: Record<string, string> = {
+  nonClickable: dt('Also links without https (can block normal text like a.b)'),
+  thirdParty: dt('Also invites from other sites (dsc.gg and similar)'),
+  disguisedOnly: dt('Only when the text looks like a web address'),
+  max: dt('Most allowed'),
+  filterAccents: dt('Also block normal accents'),
+  level: dt('Biggest heading allowed to block (1 to 3)'),
+  words: dt('Words in capitals to block'),
+  times: dt('Repetitions to block'),
+};
+const packInfo: Record<string, { name: string; text: string }> = {
+  basic: { name: dt('Basic'), text: dt('Invites, zalgo, subtext and fake pings. A good start for any server.') },
+  clean_chat: { name: dt('Clean chat'), text: dt('Shouting, repeated characters, emoji and spoiler spam and invisible text.') },
+  anti_scam: { name: dt('Anti scam'), text: dt('Scam text, links, hidden links and fake pings.') },
+  strict: { name: dt('Strict'), text: dt('All links, all invites, emails, zalgo, headings and subtext.') },
+};
+const groups = [
+  { id: 'links', label: dt('Links and addresses') },
+  { id: 'safety', label: dt('Safety') },
+  { id: 'text', label: dt('Text and noise') },
+];
+const actionNames: Record<string, string> = { delete: dt('Delete the message'), warn: dt('Warn'), mute: dt('Mute'), kick: dt('Kick') };
+const used = native.ok ? native.used ?? {} : {};
+const limits = native.ok ? native.limits ?? {} : {};
+const nativeRules = native.ok ? native.rules ?? [] : [];
+const ruleName = (r: { id: number; name: string; template: string }) => info[r.template]?.name ?? r.name;
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="automod-templates" pageTitle={dt('AutoMod templates')}>
+  <h1>{dt('AutoMod templates')}</h1>
+  <p class="am-sub">{dt('Ready filters, built from the same patterns you find in AutoMod regex generators. Add each one in two ways: in Discord AutoMod (it blocks the message before it is sent, but Discord gives only a few rules) or in Petto (no limit, and it can warn, mute or kick). Nothing is on until you add it.')}</p>
+
+  <div class="am-msg" data-am-msg hidden></div>
+
+  <div class="am-card am-settings" data-am-settings>
+    <h2>{dt('Settings for what you add')}</h2>
+    <div class="am-grid">
+      <label class="am-field"><span>{dt('Discord: alert channel')}</span>
+        <select data-s="alert"><option value="">{dt('No alert')}</option>{textChannels.map((c) => <option value={c.id}>#{c.name}</option>)}</select>
+      </label>
+      <label class="am-field"><span>{dt('Discord: also mute the member (minutes, 0 for no)')}</span><input type="number" data-s="timeout" value="0" min="0" max="40320" /></label>
+      <label class="am-field am-wide"><span>{dt('Discord: text the member sees when blocked')}</span><input type="text" data-s="message" maxlength="150" placeholder={dt('Optional')} /></label>
+      <label class="am-field"><span>{dt('Petto: what happens')}</span>
+        <select data-s="action">{Object.entries(actionNames).map(([k, v]) => <option value={k}>{v}</option>)}</select>
+      </label>
+      <label class="am-field"><span>{dt('Petto: minutes of mute')}</span><input type="number" data-s="mute" value="10" min="1" max="40320" /></label>
+      <div class="am-field am-wide"><span>{dt('Roles that are never checked')}</span><MultiSelect name="am_exempt_roles" options={roles} selected={[]} placeholder={dt('Search roles...')} /></div>
+      <div class="am-field am-wide"><span>{dt('Channels that are never checked')}</span><MultiSelect name="am_exempt_channels" options={channels} selected={[]} placeholder={dt('Search channels...')} /></div>
+    </div>
+    <p class="am-hint">{dt('Staff with Manage Messages and the immune roles are never checked by the Petto filters.')}</p>
+  </div>
+
+  <div class="am-slots">
+    <div><b>{native.ok ? `${used.keyword ?? 0}/${limits.keyword ?? 6}` : '–'}</b><span>{dt('Keyword rules of Discord')}</span></div>
+    <div><b>{filters.length}/40</b><span>{dt('Petto filters')}</span></div>
+  </div>
+  {!native.ok && <p class="am-warn">{native.message ?? dt('Discord AutoMod could not be read right now.')} {dt('The Petto filters work anyway.')}</p>}
+
+  <h2 class="am-h">{dt('Packs')}</h2>
+  <div class="am-cards">
+    {PACKS.map((pack) => (
+      <div class="am-tile" data-pack={pack}>
+        <div class="am-tile-head"><Icon name="ph:shield-check-fill" width="16" height="16" /><b>{packInfo[pack].name}</b></div>
+        <p>{packInfo[pack].text}</p>
+        <div class="am-btns"><button type="button" class="btn btn-accent btn-sm" data-add-native-pack={pack}>{dt('Add to Discord (one rule)')}</button></div>
+      </div>
+    ))}
+  </div>
+
+  {groups.map((group) => (
+    <>
+      <h2 class="am-h">{group.label}</h2>
+      <div class="am-cards">
+        {TEMPLATES.filter((t) => t.group === group.id).map((t) => (
+          <div class="am-tile" data-template={t.id}>
+            <div class="am-tile-head"><Icon name={t.icon} width="16" height="16" /><b>{info[t.id].name}</b></div>
+            <p>{info[t.id].text}</p>
+            <code class="am-sample">{info[t.id].sample}</code>
+            {t.options.map((o) => (
+              <label class:list={['am-opt', { 'am-opt-num': o.type === 'number' }]}>
+                {o.type === 'boolean'
+                  ? <><input type="checkbox" data-opt={o.key} checked={Boolean(o.default)} />{optionLabels[o.key]}</>
+                  : <><span>{optionLabels[o.key]}</span><input type="number" data-opt={o.key} value={Number(o.default)} min={o.min} max={o.max} /></>}
+              </label>
+            ))}
+            <div class="am-btns">
+              <button type="button" class="btn btn-accent btn-sm" data-add-native={t.id}>{dt('Add to Discord')}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-add-filter={t.id}>{dt('Add to Petto')}</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  ))}
+
+  <h2 class="am-h">{dt('What Discord does by itself')}</h2>
+  <div class="am-cards">
+    <div class="am-tile" data-kind="spam">
+      <div class="am-tile-head"><Icon name="ph:siren-fill" width="16" height="16" /><b>{dt('Spam')}</b></div>
+      <p>{dt('Discord detects spam and floods of messages on its own.')}</p>
+      <div class="am-btns"><button type="button" class="btn btn-accent btn-sm" data-add-kind="spam">{dt('Add to Discord')}</button></div>
+    </div>
+    <div class="am-tile" data-kind="mentions">
+      <div class="am-tile-head"><Icon name="ph:users-three-fill" width="16" height="16" /><b>{dt('Mention limit')}</b></div>
+      <p>{dt('Blocks messages that mention too many people or roles, and mention raids.')}</p>
+      <label class="am-opt am-opt-num"><span>{dt('Most mentions allowed')}</span><input type="number" data-limit value="5" min="1" max="50" /></label>
+      <div class="am-btns"><button type="button" class="btn btn-accent btn-sm" data-add-kind="mentions">{dt('Add to Discord')}</button></div>
+    </div>
+    <div class="am-tile" data-kind="presets">
+      <div class="am-tile-head"><Icon name="ph:funnel-fill" width="16" height="16" /><b>{dt('Word lists')}</b></div>
+      <p>{dt('The lists of words Discord keeps up to date.')}</p>
+      <label class="am-opt"><input type="checkbox" data-preset="profanity" checked />{dt('Profanity')}</label>
+      <label class="am-opt"><input type="checkbox" data-preset="sexual" checked />{dt('Sexual content')}</label>
+      <label class="am-opt"><input type="checkbox" data-preset="slurs" checked />{dt('Slurs')}</label>
+      <div class="am-btns"><button type="button" class="btn btn-accent btn-sm" data-add-kind="presets">{dt('Add to Discord')}</button></div>
+    </div>
+  </div>
+
+  <h2 class="am-h">{dt('Active in Discord')}</h2>
+  {nativeRules.length === 0 ? <p class="am-empty">{dt('No AutoMod rules in Discord yet.')}</p> : (
+    <div class="am-list">
+      {nativeRules.map((r) => (
+        <div class="am-item">
+          <div class="am-item-main"><b>{r.name}</b>{r.official && <span class="am-tag">{dt('Petto Official')}</span>}{r.patterns > 0 && <em>{dt('{n} pattern(s)', { n: r.patterns })}</em>}</div>
+          {r.mine ? (
+            <>
+              <label class="am-switch"><input type="checkbox" checked={r.enabled} data-native-toggle={r.id} /><span></span></label>
+              <button type="button" class="am-del" data-native-delete={r.id} title={dt('Remove')}><Icon name="ph:trash-fill" width="14" height="14" /></button>
+            </>
+          ) : <span class="am-tag">{r.enabled ? dt('Active') : dt('Inactive')}</span>}
+        </div>
+      ))}
+    </div>
+  )}
+
+  <h2 class="am-h">{dt('Active in Petto')}</h2>
+  {filters.length === 0 ? <p class="am-empty">{dt('No Petto filters yet.')}</p> : (
+    <div class="am-list">
+      {filters.map((f) => (
+        <div class="am-item">
+          <div class="am-item-main"><b>{ruleName(f)}</b><em>{actionNames[f.action] ?? f.action}{f.action === 'mute' ? ` · ${f.mute_minutes} min` : ''} · {dt('{n} hit(s)', { n: f.hits })}</em></div>
+          <label class="am-switch"><input type="checkbox" checked={f.enabled} data-filter-toggle={f.id} /><span></span></label>
+          <button type="button" class="am-del" data-filter-delete={f.id} title={dt('Remove')}><Icon name="ph:trash-fill" width="14" height="14" /></button>
+        </div>
+      ))}
+    </div>
+  )}
+</DashGuildLayout>
+
+<script is:inline>
+  if (!window.__amBound) {
+    window.__amBound = true;
+    var guild = location.pathname.split('/')[3];
+    var msg = function (text, ok) {
+      var box = document.querySelector('[data-am-msg]');
+      box.hidden = false; box.textContent = text; box.className = 'am-msg ' + (ok ? 'ok' : 'bad');
+      box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    var send = function (body, button, okText) {
+      if (button) button.disabled = true;
+      return fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.ok) { msg(okText || 'Done.', true); setTimeout(function () { location.reload(); }, 900); }
+          else { msg((data && data.message) || 'It could not be done.', false); if (button) button.disabled = false; }
+        })
+        .catch(function () { msg('It could not be done.', false); if (button) button.disabled = false; });
+    };
+    var settings = function () {
+      var root = document.querySelector('[data-am-settings]');
+      var val = function (k) { var el = root.querySelector('[data-s="' + k + '"]'); return el ? el.value : ''; };
+      var checked = function (name) { return Array.prototype.map.call(root.querySelectorAll('input[name="' + name + '"]:checked'), function (i) { return i.value; }); };
+      return { alertChannelId: val('alert'), timeoutMinutes: Number(val('timeout')) || 0, customMessage: val('message'), action: val('action'), muteMinutes: Number(val('mute')) || 10, exemptRoleIds: checked('am_exempt_roles'), exemptChannelIds: checked('am_exempt_channels') };
+    };
+    var options = function (tile) {
+      var out = {};
+      tile.querySelectorAll('[data-opt]').forEach(function (el) { out[el.getAttribute('data-opt')] = el.type === 'checkbox' ? el.checked : Number(el.value); });
+      return out;
+    };
+    document.addEventListener('click', function (event) {
+      var t = event.target;
+      var btn = t.closest && t.closest('button');
+      if (!btn) return;
+      var tile = btn.closest('.am-tile');
+      var s = settings();
+      var native = btn.getAttribute('data-add-native');
+      var pack = btn.getAttribute('data-add-native-pack');
+      var filter = btn.getAttribute('data-add-filter');
+      var kind = btn.getAttribute('data-add-kind');
+      if (native) send(Object.assign({ op: 'native_add', template: native, options: options(tile) }, s), btn, 'Rule added to Discord.');
+      else if (pack) send(Object.assign({ op: 'native_add', pack: pack }, s), btn, 'Pack added to Discord.');
+      else if (kind) {
+        var extra = kind === 'mentions' ? { mentionLimit: Number(tile.querySelector('[data-limit]').value) } : kind === 'presets' ? { presets: Array.prototype.map.call(tile.querySelectorAll('[data-preset]:checked'), function (i) { return i.getAttribute('data-preset'); }) } : {};
+        send(Object.assign({ op: 'native_add', kind: kind }, extra, s), btn, 'Rule added to Discord.');
+      } else if (filter) send({ op: 'filter_add', template: filter, options: options(tile), action: s.action, muteMinutes: s.muteMinutes, exemptRoleIds: s.exemptRoleIds, exemptChannelIds: s.exemptChannelIds }, btn, 'Filter added to Petto.');
+      else if (btn.hasAttribute('data-native-delete')) { if (confirm('Remove this rule from Discord?')) send({ op: 'native_delete', id: btn.getAttribute('data-native-delete') }, btn, 'Rule removed.'); }
+      else if (btn.hasAttribute('data-filter-delete')) { if (confirm('Remove this filter?')) send({ op: 'filter_delete', id: Number(btn.getAttribute('data-filter-delete')) }, btn, 'Filter removed.'); }
+    });
+    document.addEventListener('change', function (event) {
+      var el = event.target;
+      if (el.hasAttribute && el.hasAttribute('data-native-toggle')) send({ op: 'native_toggle', id: el.getAttribute('data-native-toggle'), enabled: el.checked }, el, el.checked ? 'Rule on.' : 'Rule off.');
+      else if (el.hasAttribute && el.hasAttribute('data-filter-toggle')) send({ op: 'filter_toggle', id: Number(el.getAttribute('data-filter-toggle')), enabled: el.checked }, el, el.checked ? 'Filter on.' : 'Filter off.');
+    });
+  }
+</script>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .am-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 16px; max-width: 78ch; }
+  .am-msg { border-radius: 9px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 14px; max-width: 920px; }
+  .am-msg[hidden] { display: none; }
+  .am-msg.ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
+  .am-msg.bad { color: var(--red, #ff6b6b); background: color-mix(in srgb, var(--red, #ff6b6b) 12%, transparent); border: 1px solid var(--red, #ff6b6b); }
+  .am-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px 18px; max-width: 980px; display: flex; flex-direction: column; gap: 12px; }
+  .am-card h2 { margin: 0; font-size: 15px; }
+  .am-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .am-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .am-field > span { font-size: 12.5px; font-weight: 600; }
+  .am-field input[type=text], .am-field input[type=number], .am-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13.5px; width: 100%; box-sizing: border-box; }
+  .am-wide { grid-column: 1 / -1; }
+  .am-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
+  .am-slots { display: flex; gap: 12px; margin: 16px 0 4px; flex-wrap: wrap; }
+  .am-slots div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 10px 16px; min-width: 150px; }
+  .am-slots b { display: block; font-size: 20px; }
+  .am-slots span { font-size: 12.5px; color: var(--text-dim); }
+  .am-warn { font-size: 13px; color: var(--yellow); margin: 8px 0 0; }
+  .am-h { font-size: 16px; margin: 26px 0 12px; }
+  .am-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; max-width: 980px; }
+  .am-tile { border: 1px solid var(--border); border-radius: 13px; background: var(--card); padding: 14px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+  .am-tile-head { display: flex; align-items: center; gap: 8px; }
+  .am-tile-head :global(svg) { color: var(--accent); flex: none; }
+  .am-tile p { margin: 0; font-size: 13px; color: var(--text-muted); }
+  .am-sample { font-size: 12px; background: color-mix(in srgb, var(--text) 7%, var(--card)); border-radius: 6px; padding: 4px 8px; overflow-wrap: anywhere; color: var(--text-dim); }
+  .am-opt { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .am-opt-num { justify-content: space-between; }
+  .am-opt-num input { width: 70px; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; background: var(--card); color: var(--text); }
+  .am-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
+  .am-empty { font-size: 13.5px; color: var(--text-dim); }
+  .am-list { max-width: 980px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .am-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--card); }
+  .am-item + .am-item { border-top: 1px solid var(--border); }
+  .am-item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+  .am-item-main em { font-style: normal; font-size: 12px; color: var(--text-dim); }
+  .am-tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; border: 1px dashed var(--border); border-radius: 6px; padding: 2px 7px; color: var(--text-dim); }
+  .am-del { background: none; border: 0; color: var(--text-dim); cursor: pointer; padding: 6px; border-radius: 6px; }
+  .am-del:hover { color: var(--red, #ff6b6b); }
+  .am-switch { position: relative; width: 38px; height: 22px; flex: none; }
+  .am-switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; width: 100%; height: 100%; z-index: 1; }
+  .am-switch span { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 22%, var(--card)); transition: background .15s; }
+  .am-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .am-switch input:checked + span { background: var(--green); }
+  .am-switch input:checked + span::after { transform: translateX(16px); }
+  @media (max-width: 720px) { .am-grid { grid-template-columns: 1fr; } }
+</style>

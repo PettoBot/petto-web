@@ -235,3 +235,42 @@ export async function callPettoTicketTranscript(context: AstroContext, guildId: 
     return { ok: false, message: 'The bot did not answer in time.' };
   }
 }
+
+/** Puts back what an anti-nuke protection stopped (the owner and the administrators only; the bot checks it). */
+export async function callPettoAntinukeRestore(context: AstroContext, guildId: string, userId: string, id: number): Promise<{ ok: boolean; message?: string; done?: string[]; failed?: string[] }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/antinuke/restore`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(40_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, id }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return payload && typeof payload === 'object' && 'ok' in payload ? { ok: Boolean(payload.ok), message: typeof payload.message === 'string' ? payload.message : undefined, done: payload.done, failed: payload.failed } : { ok: false, message: 'The bot could not do it.' };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}
+
+export interface NativeRule { id: string; name: string; enabled: boolean; kind: string; patterns: number; official: boolean; mine: boolean; block: boolean; alertChannelId: string | null; timeoutMinutes: number; }
+export interface NativeResult { ok: boolean; message?: string; rules?: NativeRule[]; used?: Record<string, number>; limits?: Record<string, number>; rule?: { id: string; name: string } }
+
+/** The AutoMod rules of Discord made from the templates: op is list, add, toggle or delete. */
+export async function callPettoNativeAutomod(context: AstroContext, guildId: string, userId: string, body: Record<string, unknown>): Promise<NativeResult> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/automod/native`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(30_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return response.ok && payload?.ok ? payload : { ok: false, message: typeof payload?.message === 'string' ? payload.message : 'The bot could not do it.' };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}
