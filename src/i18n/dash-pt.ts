@@ -2702,4 +2702,8 @@ export const dashPt: Record<string, string> = {
   "Consider": "Considerar",
   "Reopen": "Reabrir",
   "Under consideration": "Em consideração",
+  "Who voted": "Quem votou",
+  "In favor": "A favor",
+  "Against": "Contra",
+  "nobody": "ninguém",
 };

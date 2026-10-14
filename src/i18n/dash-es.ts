@@ -2702,4 +2702,8 @@ export const dashEs: Record<string, string> = {
   "Consider": "Considerar",
   "Reopen": "Reabrir",
   "Under consideration": "En consideración",
+  "Who voted": "Quién votó",
+  "In favor": "A favor",
+  "Against": "En contra",
+  "nobody": "nadie",
 };
