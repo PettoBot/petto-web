@@ -66,6 +66,8 @@ interface TicketSettings {
   ratingLogChannelId: string;
   openedLogChannelId: string;
   closedLogChannelId: string;
+  transcriptChannelId: string;
+  transcriptMode: string;
   blockedRoleIds: string[];
   globalLimit: number;
   unclaimedReminderMinutes: number;
@@ -103,6 +105,7 @@ interface Props {
   forms: TicketForm[];
   blacklist: TicketBlacklistEntry[];
   openTickets: OpenTicket[];
+  closedTickets?: { number: number; openerId: string; closedAt: string | null; reason: string; categoryLabel: string }[];
   quickReplies?: { name: string; content: string }[];
   stats?: TicketStats | null;
   premiumActive: boolean;
@@ -111,7 +114,7 @@ interface Props {
   warnings?: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, customEmojis = [], categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, quickReplies = [], stats = null, saved, error, warnings = [], premiumActive, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, customEmojis = [], categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, closedTickets = [], quickReplies = [], stats = null, saved, error, warnings = [], premiumActive, section } = Astro.props;
 const sectionMeta: Record<string, string> = { panels: dt('Ticket panels'), types: dt('Support types'), forms: dt('Ticket forms'), access: dt('Ticket access'), settings: dt('Ticket settings'), replies: dt('Quick replies'), ai: dt('Ticket AI'), open: dt('Open tickets') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'panels';
 const selectedTitle = sectionMeta[selectedSection];
@@ -519,6 +522,29 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
         </div>
 
         <div class="tk-set-card">
+          <div class="tk-set-head">{dt('Transcripts')}</div>
+          <p class="tk-row-hint">{dt('A transcript is the saved conversation of a ticket. It is made when the ticket closes or when staff press the transcript button.')}</p>
+          <div class="tk-cat-row">
+            <label>{dt('Transcripts channel')}</label>
+            <select name="transcript_channel_id">
+              <option value="">{dt('None')}</option>
+              {textChannels.map((c) => <option value={c.id} selected={c.id === settings.transcriptChannelId}>#{c.name}</option>)}
+            </select>
+            <p class="tk-row-hint">{dt('Every transcript is also sent here, apart from the logs. Leave it empty to not use it.')}</p>
+          </div>
+          <div class="tk-cat-row">
+            <label>{dt('How it is sent')}</label>
+            <select name="transcript_mode">
+              <option value="auto" selected={settings.transcriptMode === 'auto'}>{dt('Automatic, a link, or the file if there is no link')}</option>
+              <option value="link" selected={settings.transcriptMode === 'link'}>{dt('Link to read it online')}</option>
+              <option value="file" selected={settings.transcriptMode === 'file'}>{dt('HTML file to download')}</option>
+              <option value="both" selected={settings.transcriptMode === 'both'}>{dt('Link and file')}</option>
+            </select>
+            <p class="tk-row-hint">{dt('Applies to the logs, the transcripts channel and the message to the opener. The opener only gets it if the option to send it on close is on.')}</p>
+          </div>
+        </div>
+
+        <div class="tk-set-card">
           <div class="tk-set-head">{dt('Autoclose')}</div>
           <label class="tk-check"><input type="checkbox" name="autoclose_leave" checked={settings.autocloseLeave} />{dt('Close a member\'s tickets when they leave')}</label>
           <label class="tk-check"><input type="checkbox" name="autoclose_inactivity_enabled" checked={settings.autocloseInactivityEnabled} />{dt('Close tickets after a period of inactivity')}</label>
@@ -712,10 +738,48 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
         ))}
       </div>
     )}
+    <h2 class="tk-closed-h"><Icon name="ph:archive-fill" width="15" height="15" /><Fragment set:html={dth('Closed, with transcript <span class="tk-count">{a}</span>', { a: (closedTickets.length) })} /></h2>
+    {closedTickets.length === 0 ? (
+      <p class="tk-empty-note">{dt('No closed ticket with a saved transcript yet.')}</p>
+    ) : (
+      <div class="tk-open-list" data-closed-list>
+        {closedTickets.map((t) => (
+          <div class="tk-open-row">
+            <span class="tk-open-num">#{t.number}</span>
+            <span class="tk-open-cat">{t.categoryLabel}</span>
+            <span class="tk-open-opener">{dt('opened by')} <code>{t.openerId}</code></span>
+            {t.reason && <span class="tk-row-hint">{t.reason.slice(0, 80)}</span>}
+            <button type="button" class="btn btn-ghost btn-sm tk-open-link" data-transcript={t.number}><Icon name="ph:scroll-fill" width="13" height="13" />{dt('Transcript')}</button>
+          </div>
+        ))}
+      </div>
+    )}
   </div>
   )}
   <EmojiPicker customEmojis={customEmojis} />
 </DashGuildLayout>
+
+<script is:inline>
+  // The transcript of a closed ticket opens in a new tab; the bot gives the signed link.
+  if (!window.__tkTranscriptBound) {
+    window.__tkTranscriptBound = true;
+    document.addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-transcript]');
+      if (!btn) return;
+      var guild = location.pathname.split('/')[3];
+      var win = window.open('', '_blank');
+      btn.disabled = true;
+      fetch('/dash/guild/' + guild + '/tickets-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'transcript', number: Number(btn.getAttribute('data-transcript')) }) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.ok && data.link) { if (win) win.location = data.link; else location.href = data.link; }
+          else { if (win) win.close(); alert((data && data.message) || 'The transcript could not be opened.'); }
+        })
+        .catch(function () { if (win) win.close(); alert('The transcript could not be opened.'); })
+        .finally(function () { btn.disabled = false; });
+    });
+  }
+</script>
 
 <script is:inline>
   // The preview of a panel follows what is typed (no need to save to see it), the ready designs fill the new-panel form,
@@ -834,6 +898,7 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
   .tk-limit-card .btn { flex-shrink: 0; }
 
   .tk-open-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .tk-closed-h { margin-top: 26px; }
   .tk-open-row { display: flex; align-items: center; gap: 14px; padding: 10px 14px; font-size: 13px; background: var(--card); flex-wrap: wrap; }
   .tk-open-row + .tk-open-row { border-top: 1px solid var(--border-soft); }
   .tk-open-num { font-family: var(--mono); color: var(--accent); font-weight: 600; }

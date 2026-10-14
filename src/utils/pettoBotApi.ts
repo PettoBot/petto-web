@@ -217,3 +217,21 @@ export async function callPettoSuggestionVotes(context: AstroContext, guildId: s
     return { ok: false, message: 'The bot did not answer in time.' };
   }
 }
+
+/** The signed link to the saved transcript of a ticket, for the dashboard. */
+export async function callPettoTicketTranscript(context: AstroContext, guildId: string, userId: string, number: number): Promise<{ ok: boolean; message?: string; link?: string }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/tickets/transcript`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, number }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return response.ok && payload?.ok ? payload : { ok: false, message: typeof payload?.message === 'string' ? payload.message : 'The bot could not do it.' };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}
