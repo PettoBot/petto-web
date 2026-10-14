@@ -49,7 +49,7 @@ export default defineConfig({
           'headset-fill', 'heart-fill', 'identification-badge-fill', 'info-fill', 'key-fill', 'keyhole-fill',
           'lightbulb-fill', 'link-fill', 'link-simple', 'list', 'list-checks-fill', 'list-dashes-fill', 'lock-open-fill', 'lock-simple-fill', 'magic-wand-fill', 'magnifying-glass', 'user', 'clock', 'image', 'text-t', 'users', 'shield-check',
           'map-trifold-fill', 'medal-fill', 'megaphone-fill', 'moon-stars-fill', 'newspaper-fill', 'notebook-fill',
-          'mask-happy-fill', 'paint-brush-fill', 'paper-plane-tilt-fill', 'pencil-fill', 'pencil-simple-fill', 'play-fill', 'plus',
+          'mask-happy-fill', 'users-fill', 'paint-brush-fill', 'paper-plane-tilt-fill', 'pencil-fill', 'pencil-simple-fill', 'play-fill', 'plus',
           'plus-bold', 'plus-circle-fill', 'prohibit-fill', 'pulse-fill', 'push-pin-fill', 'question-fill',
           'ranking-fill', 'robot', 'robot-fill', 'rocket-launch-fill', 'scales-fill', 'seal-check-fill',
           'share-network-fill', 'shield-check-fill', 'shield-fill', 'shield-warning-fill', 'sign-out-fill',

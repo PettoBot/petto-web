@@ -119,12 +119,73 @@ const switches = [
         <span class="sg-dot" style={`background:${config.colors[s.status] ?? '#888'}`}></span>
         <div>
           <p>{s.content}</p>
-          <small>#{s.number} · <code>{s.id}</code> · {statuses.find((x) => x.id === s.status)?.label ?? s.status} · <span class="sg-user">{s.authorId}</span></small>
+          <small>#{s.number} · <code>{s.id}</code> · <span data-sg-status>{statuses.find((x) => x.id === s.status)?.label ?? s.status}</span> · <span class="sg-user">{s.authorId}</span></small>
+          <div class="sg-answer" data-sg-id={s.id}>
+            <input type="text" class="sg-reason" maxlength="1000" placeholder={dt('Reason (optional)')} />
+            <div class="sg-buttons">
+              <button type="button" class="btn btn-ghost btn-sm sg-b-ok" data-sg-status-to="approved" disabled={!ready}>{dt('Approve')}</button>
+              <button type="button" class="btn btn-ghost btn-sm sg-b-no" data-sg-status-to="denied" disabled={!ready}>{dt('Deny')}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-sg-status-to="considering" disabled={!ready}>{dt('Consider')}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-sg-status-to="implemented" disabled={!ready}>{dt('Implemented')}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-sg-status-to="pending" disabled={!ready}>{dt('Reopen')}</button>
+            </div>
+            <span class="sg-msg" data-sg-msg hidden></span>
+            <button type="button" class="sg-votes-btn" data-sg-votes disabled={!ready}><Icon name="ph:users-fill" width="12" height="12" />{dt('Who voted')}</button>
+            <div class="sg-votes" data-sg-votes-box hidden></div>
+          </div>
         </div>
       </div>
     ))}
   </section>
   <EmojiPicker customEmojis={customEmojis} />
+  <script is:inline define:vars={{ labels: { approved: dt('Approved'), denied: dt('Denied'), considering: dt('Under consideration'), implemented: dt('Implemented'), pending: dt('Pending') }, working: dt('Saving...'), votesWords: { up: dt('In favor'), down: dt('Against'), nobody: dt('nobody') }, failed: dt('It could not be saved. Try again in a moment.') }}>
+    (function () {
+      var guild = location.pathname.replace(/^\/(es|pt-br)(?=\/)/i, '').split('/')[3];
+      document.querySelectorAll('[data-sg-status-to]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var box = button.closest('[data-sg-id]');
+          var msg = box.querySelector('[data-sg-msg]');
+          var status = button.getAttribute('data-sg-status-to');
+          var all = box.querySelectorAll('button');
+          all.forEach(function (b) { b.disabled = true; });
+          msg.hidden = false; msg.className = 'sg-msg'; msg.textContent = working;
+          fetch('/dash/guild/' + guild + '/suggestions-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: box.getAttribute('data-sg-id'), status: status, reason: box.querySelector('.sg-reason').value }) })
+            .then(function (r) { return r.json().catch(function () { return { ok: false, message: failed }; }); })
+            .catch(function () { return { ok: false, message: failed }; })
+            .then(function (result) {
+              all.forEach(function (b) { b.disabled = false; });
+              msg.className = 'sg-msg ' + (result.ok ? 'ok' : 'bad');
+              msg.textContent = result.ok ? (labels[status] || '') : (result.message || failed);
+              if (result.ok) { var label = box.parentElement.querySelector('[data-sg-status]'); if (label) label.textContent = labels[status] || status; }
+            });
+        });
+      });
+    })();
+    (function () {
+      var guild = location.pathname.replace(/^\/(es|pt-br)(?=\/)/i, '').split('/')[3];
+      document.querySelectorAll('[data-sg-votes]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var box = button.closest('[data-sg-id]');
+          var out = box.querySelector('[data-sg-votes-box]');
+          if (!out.hidden) { out.hidden = true; return; }
+          out.hidden = false; out.textContent = working;
+          fetch('/dash/guild/' + guild + '/suggestions-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'votes', id: box.getAttribute('data-sg-id') }) })
+            .then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
+            .catch(function () { return { ok: false }; })
+            .then(function (result) {
+              out.textContent = '';
+              if (!result.ok) { out.textContent = result.message || failed; return; }
+              [['up', votesWords.up, result.upTotal], ['down', votesWords.down, result.downTotal]].forEach(function (group) {
+                var line = document.createElement('p');
+                var names = (result[group[0]] || []).map(function (v) { return v.name; });
+                line.textContent = group[1] + ' (' + group[2] + '): ' + (names.length ? names.join(', ') : votesWords.nobody);
+                out.appendChild(line);
+              });
+            });
+        });
+      });
+    })();
+  </script>
 </DashGuildLayout>
 
 <style>
@@ -163,4 +224,16 @@ const switches = [
   .sg-dot { width: 4px; align-self: stretch; border-radius: 4px; flex: none; }
   .sg-empty { font-size: 13.5px; color: var(--text-dim); margin: 0; }
   @media (max-width: 720px) { .sg-grid, .sg-switches { grid-template-columns: 1fr; } }
+  .sg-answer { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .sg-reason { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 12.5px; min-width: 0; max-width: 420px; width: 100%; }
+  .sg-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sg-b-ok { color: var(--green); }
+  .sg-b-no { color: var(--red, #ff6b6b); }
+  .sg-votes-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); background: none; border: 0; padding: 0; cursor: pointer; }
+  .sg-votes-btn:hover { color: var(--text); }
+  .sg-votes { font-size: 12.5px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; max-width: 420px; }
+  .sg-votes p { margin: 0 0 4px; overflow-wrap: anywhere; }
+  .sg-msg { font-size: 12.5px; }
+  .sg-msg.ok { color: var(--green); }
+  .sg-msg.bad { color: var(--red, #ff6b6b); }
 </style>
