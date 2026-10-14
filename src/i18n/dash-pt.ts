@@ -3077,4 +3077,7 @@ export const dashPt: Record<string, string> = {
   "Nothing yet.": "Ainda nada.",
   "Proof": "Provas",
   "Catches hijacked accounts that spam the MrBeast giveaway scam, fake withdrawals and casino promos.": "Pega contas hackeadas que mandam o golpe de sorteios do MrBeast, saques falsos e promoções de cassino.",
+  "Saved": "Salvo",
+  "Discarding...": "Descartando...",
+  "Discarded": "Descartado",
 };
