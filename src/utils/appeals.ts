@@ -132,3 +132,49 @@ export function timeAgo(iso: string | null | undefined, lang: string): string {
   for (const [unit, ms] of units) if (Math.abs(diff) >= ms) return rtf.format(-Math.round(diff / ms), unit);
   return rtf.format(0, 'second');
 }
+
+// ── Forms as the dashboard saves them (the bot cuts a form down the same way; keep the limits in step with src/utils/appeals.js of the bot) ──
+export const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300 };
+export const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number'] as const;
+export const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'] as const;
+export const BLOCKS = ['none', 'day', 'week', 'month', 'forever'] as const;
+const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
+
+export function normalizeForm(input: any) {
+  const form = {
+    name: clip(input?.name, 80) || 'Untitled form',
+    icon: clip(input?.icon, 60) || null,
+    short_description: clip(input?.short_description, 160) || null,
+    description: clip(input?.description, 1500) || null,
+    status: input?.status === 'live' ? 'live' : 'draft',
+    requirement_types: [...new Set((Array.isArray(input?.requirement_types) ? input.requirement_types : []).filter((t: string) => (PUNISHMENT_TYPES as readonly string[]).includes(t)))] as string[],
+    block_on_reject: (BLOCKS as readonly string[]).includes(input?.block_on_reject) ? (input.block_on_reject as string) : 'none',
+    generate_invite: input?.generate_invite === true,
+    messages: {} as Record<string, string>,
+    sections: [] as Section[],
+  };
+  for (const key of ['submitted', 'accepted', 'rejected']) {
+    const text = clip(input?.messages?.[key], 1000);
+    if (text) form.messages[key] = text;
+  }
+  const seen = new Set<string>();
+  const unique = (raw: unknown, prefix: string, index: number) => {
+    let value = /^[a-z0-9_-]{1,24}$/i.test(String(raw ?? '')) ? String(raw) : `${prefix}${index + 1}`;
+    while (seen.has(value)) value = `${value}x`;
+    seen.add(value);
+    return value;
+  };
+  for (const [si, section] of (Array.isArray(input?.sections) ? input.sections : []).slice(0, LIMITS.sections).entries()) {
+    const clean: Section = { id: unique(section?.id, 's', si), title: clip(section?.title, 100) || `Section ${si + 1}`, description: clip(section?.description, 500) || null, questions: [] };
+    for (const [qi, question] of (Array.isArray(section?.questions) ? section.questions : []).slice(0, LIMITS.questions).entries()) {
+      const type = (QUESTION_TYPES as readonly string[]).includes(question?.type) ? (question.type as Question['type']) : 'short';
+      const label = clip(question?.label, LIMITS.label);
+      if (!label) continue;
+      const options = ['choice', 'multi'].includes(type) ? [...new Set((Array.isArray(question?.options) ? question.options : []).map((o: unknown) => clip(o, 100)).filter(Boolean))].slice(0, LIMITS.options) as string[] : [];
+      if (['choice', 'multi'].includes(type) && options.length < 2) continue;
+      clean.questions.push({ id: unique(question?.id, 'q', qi), type, label, help: clip(question?.help, LIMITS.help) || null, required: question?.required !== false, options });
+    }
+    form.sections.push(clean);
+  }
+  return form;
+}
