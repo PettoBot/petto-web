@@ -7,6 +7,7 @@ import TicketFieldsBuilder from './TicketFieldsBuilder.astro';
 import TicketEmoji from './TicketEmoji.astro';
 import TicketGuide from './TicketGuide.astro';
 import TicketPanelPreview from './TicketPanelPreview.astro';
+import { minutesText, type TicketStats } from '../utils/ticketStats';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -68,6 +69,7 @@ interface TicketSettings {
   blockedRoleIds: string[];
   globalLimit: number;
   unclaimedReminderMinutes: number;
+  autoDeleteClosedHours: number;
   hoursEnabled: boolean;
   hoursTimezone: string;
   hoursStart: string;
@@ -101,14 +103,16 @@ interface Props {
   forms: TicketForm[];
   blacklist: TicketBlacklistEntry[];
   openTickets: OpenTicket[];
+  quickReplies?: { name: string; content: string }[];
+  stats?: TicketStats | null;
   premiumActive: boolean;
   saved: boolean;
   error?: string | null;
   warnings?: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, customEmojis = [], categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, saved, error, warnings = [], premiumActive, section } = Astro.props;
-const sectionMeta: Record<string, string> = { panels: dt('Ticket panels'), types: dt('Support types'), forms: dt('Ticket forms'), access: dt('Ticket access'), settings: dt('Ticket settings'), open: dt('Open tickets') };
+const { user, guildId, guildName, guildIcon, customEmojis = [], categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, quickReplies = [], stats = null, saved, error, warnings = [], premiumActive, section } = Astro.props;
+const sectionMeta: Record<string, string> = { panels: dt('Ticket panels'), types: dt('Support types'), forms: dt('Ticket forms'), access: dt('Ticket access'), settings: dt('Ticket settings'), replies: dt('Quick replies'), open: dt('Open tickets') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'panels';
 const selectedTitle = sectionMeta[selectedSection];
 function channelName(id: string | null) {
@@ -382,6 +386,14 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
   {selectedSection === 'types' && (
   <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'types' }]} data-tk-new-type>
     <h2><Icon name="ph:plus-circle-fill" width="15" height="15" />{dt('Add a support type')}</h2>
+    {!ticketCategoryAtLimit && categories.length < 4 && (
+      <form method="POST" class="tk-starter">
+        <input type="hidden" name="action" value="add_starter_types" />
+        <div><strong>{dt('Start with a ready set')}</strong><span>{dt('Adds Support, Report a player, Purchases and Appeals (as many as your plan allows). You can rename or delete them.')}</span></div>
+        <select name="panel_id"><option value="">{dt('No panel yet')}</option>{panels.map((p) => <option value={p.id}>{p.title || `#${channelName(p.channelId)}`}</option>)}</select>
+        <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Add the ready types')}</button>
+      </form>
+    )}
     {ticketCategoryAtLimit ? (
       <div class="tk-limit-card">
         <div><strong>{premiumActive ? dt('Ticket type limit reached') : dt('Free ticket type limit reached')}</strong><span>{premiumActive ? dt('You are using all {n} available ticket types.',{n:ticketCategoryLimit}) : dt('Free includes 5 ticket types. Premium increases this to 20.')}</span></div>
@@ -495,6 +507,11 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
           <label class="tk-check"><input type="checkbox" name="hide_closing_user" checked={settings.hideClosingUser} />{dt('Hide who closed it from the opener')}</label>
           <label class="tk-check"><input type="checkbox" name="dm_user_on_close" checked={settings.dmUserOnClose} />{dt('DM the opener with the transcript on close')}</label>
           <div class="tk-cat-row">
+            <label>{dt('Delete the channel of a closed ticket after (hours)')}</label>
+            <input type="number" name="auto_delete_closed_hours" value={settings.autoDeleteClosedHours} min="0" max="720" />
+            <p class="tk-row-hint">{dt('The transcript is kept. 0 to keep the channels until someone deletes them.')}</p>
+          </div>
+          <div class="tk-cat-row">
             <label>{dt('Default close reason')}</label>
             <input type="text" name="default_close_reason" value={settings.defaultCloseReason} maxlength="300" placeholder={dt('Used when no reason is given')} />
           </div>
@@ -597,6 +614,45 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
       <button type="submit" class="btn btn-accent btn-sm">{dt('Save settings')}</button>
     </form>
   </div>
+  )}
+
+  {selectedSection === 'replies' && (
+  <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'replies' }]}>
+    <h2><Icon name="ph:chat-circle-text-fill" width="15" height="15" /><Fragment set:html={dth('Quick replies <span class="tk-count">{a}</span>', { a: (quickReplies.length) })} /></h2>
+    <p class="tk-section-note"><Fragment set:html={dth('Texts the staff send inside a ticket with one command: <code>!quickreply send name</code> (or <code>!qr send name</code>). Good for the questions that come up again and again.')} /></p>
+    {quickReplies.length === 0 && <p class="tk-empty-note">{dt('No quick replies yet. Add the first one below.')}</p>}
+    <div class="tk-cat-grid">
+      {quickReplies.map((r) => (
+        <form method="POST" class="tk-cat-card">
+          <input type="hidden" name="reply_name" value={r.name} />
+          <div class="tk-cat-head"><code class="tk-reply-name">{r.name}</code></div>
+          <div class="tk-cat-row"><textarea name="reply_content" rows="4" maxlength="1500">{r.content}</textarea></div>
+          <div class="tk-panel-actions">
+            <button type="submit" name="action" value="save_reply" class="btn btn-accent btn-sm">{dt('Save')}</button>
+            <button type="submit" name="action" value="delete_reply" class="tk-cat-del" title={dt('Delete')} data-confirm={dt('Delete this quick reply?')} formnovalidate><Icon name="ph:trash-fill" width="14" height="14" /></button>
+          </div>
+        </form>
+      ))}
+    </div>
+    <form method="POST" class="tk-new-panel tk-reply-new">
+      <input type="hidden" name="action" value="save_reply" />
+      <h2><Icon name="ph:plus-circle-fill" width="15" height="15" />{dt('New quick reply')}</h2>
+      <div class="tk-cat-row"><label>{dt('Name')}</label><input type="text" name="reply_name" maxlength="30" pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,29}" placeholder="rules" required /></div>
+      <div class="tk-cat-row"><label>{dt('Text')}</label><textarea name="reply_content" rows="4" maxlength="1500" placeholder={dt('Hi {user}! Please read the rules and tell us what you need.')} required></textarea><p class="tk-row-hint">{dt('You can use {user}, {username}, {category}, {server} and {number}.')}</p></div>
+      <div class="tk-panel-actions"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Save quick reply')}</button></div>
+    </form>
+  </div>
+  )}
+
+  {selectedSection === 'open' && stats && (
+    <div class="tk-stats">
+      <div><b>{stats.open}</b><span>{dt('Open now')}</span></div>
+      <div><b>{stats.unclaimed}</b><span>{dt('Without a claimer')}</span></div>
+      <div><b>{stats.opened7}</b><span>{dt('Opened in 7 days')}</span></div>
+      <div><b>{stats.closed7}</b><span>{dt('Closed in 7 days')}</span></div>
+      <div><b>{minutesText(stats.averageMinutesOpen)}</b><span>{dt('Average time open')}</span></div>
+      <div><b>{stats.averageRating === null ? '-' : `${stats.averageRating} / 5`}</b><span>{dt('Rating')}{stats.ratingCount ? ` (${stats.ratingCount})` : ''}</span></div>
+    </div>
   )}
 
   {selectedSection === 'open' && (
@@ -788,6 +844,17 @@ const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'Ame
   .tk-check input { flex-shrink: 0; accent-color: var(--accent); }
   .tk-row-hint { font-size: 11.5px; color: var(--text-dim); margin: 0; line-height: 1.5; }
   .tk-row-hint :global(code){ font-family: var(--mono); color: var(--accent); }
+  .tk-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0 0 22px; max-width: 980px; }
+  .tk-stats div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 11px 14px; }
+  .tk-stats b { display: block; font-size: 20px; }
+  .tk-stats span { font-size: 12px; color: var(--text-dim); }
+  .tk-starter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); padding: 12px 14px; margin: 0 0 14px; max-width: 980px; }
+  .tk-starter div { flex: 1 1 260px; display: grid; gap: 2px; }
+  .tk-starter strong { font-size: 13.5px; }
+  .tk-starter span { font-size: 12px; color: var(--text-muted); }
+  .tk-starter select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--card); color: var(--text); font-size: 13px; }
+  .tk-reply-name { font-family: var(--mono); color: var(--accent); }
+  .tk-reply-new { display: grid; gap: 10px; margin-top: 16px; }
   .tk-fields { display: grid; gap: 10px; min-width: 0; }
   [data-only-select][hidden] { display: none !important; }
   .tk-panel-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
