@@ -3094,4 +3094,6 @@ export const dashEs: Record<string, string> = {
   "Room name template": "Plantilla del nombre de la sala",
   "Click to add:": "Clic para añadir:",
   "How the first room of Liam would be named.": "Así se llamaría la sala de Liam.",
+  "Update every (seconds)": "Actualizar cada (segundos)",
+  "Repeat every (minutes)": "Repetir cada (minutos)",
 };

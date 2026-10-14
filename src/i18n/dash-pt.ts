@@ -3094,4 +3094,6 @@ export const dashPt: Record<string, string> = {
   "Room name template": "Modelo do nome da sala",
   "Click to add:": "Clique para adicionar:",
   "How the first room of Liam would be named.": "Assim se chamaria a sala de Liam.",
+  "Update every (seconds)": "Atualizar a cada (segundos)",
+  "Repeat every (minutes)": "Repetir a cada (minutos)",
 };
