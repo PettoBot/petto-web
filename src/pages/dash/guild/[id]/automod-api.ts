@@ -44,6 +44,10 @@ export const POST: APIRoute = async (astro) => {
     });
     return json(result, result.ok ? 200 : 400);
   }
+  if (op === 'native_list') {
+    const result = await callPettoNativeAutomod(astro, id, userId, { op: 'list' });
+    return json(result, result.ok ? 200 : 400);
+  }
   if (op === 'native_toggle' || op === 'native_delete') {
     const rule = String(body.id ?? '');
     if (!SNOWFLAKE.test(rule)) return json({ ok: false, message: 'That is not a rule.' }, 400);
