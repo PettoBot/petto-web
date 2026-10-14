@@ -13,8 +13,8 @@ warmShared();
 
 const PUBLIC_SHARED_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:stats|status|team|credits|partners|lb\/[^/]+)\/?$/i;
 const PUBLIC_SHARED_CACHE = 'public, s-maxage=60, stale-while-revalidate=600';
-// The partners and the leaderboards are edited by their owners and checked right after saving, so the copy in front is kept shorter and never served stale.
-const PARTNERS_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:partners|lb\/[^/]+)\/?$/i;
+// The partners, the team and the leaderboards are edited by their owners and checked right after saving, so the copy in front is kept shorter and never served stale.
+const PARTNERS_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:partners|team|lb\/[^/]+)\/?$/i;
 const PARTNERS_CACHE = 'public, s-maxage=20';
 
 const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: 'es', path: '/es' }, 'pt-br': { lang: 'pt-BR', path: '/pt-br' } };
