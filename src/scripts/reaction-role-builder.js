@@ -37,9 +37,15 @@
   // ---- Fields of the message
   var fields = {
     channel: el('rb-channel'), content: el('rb-content'), on: el('rb-embed-on'), embedBox: el('rb-embed'),
-    title: el('rb-title'), desc: el('rb-desc'), color: el('rb-color'), hex: el('rb-color-hex'), footer: el('rb-footer'), thumb: el('rb-thumb'), image: el('rb-image'),
+    title: el('rb-title'), desc: el('rb-desc'), color: el('rb-color'), footer: el('rb-footer'), thumb: el('rb-thumb'), image: el('rb-image'),
     template: el('rb-template'),
   };
+  // The color field is the picker of the dashboard: its value is set directly and the picker is told to redraw.
+  function setColor(hex) {
+    fields.color.value = hex;
+    var box = fields.color.closest('[data-colorpicker]');
+    if (box) box.dispatchEvent(new CustomEvent('cp-set', { detail: hex }));
+  }
   function writeFields() {
     fields.channel.value = state.channelId;
     fields.content.value = state.content;
@@ -47,8 +53,7 @@
     fields.embedBox.hidden = !state.embed.enabled;
     fields.title.value = state.embed.title;
     fields.desc.value = state.embed.description;
-    fields.color.value = state.embed.color;
-    fields.hex.value = state.embed.color;
+    setColor(state.embed.color);
     fields.footer.value = state.embed.footer;
     fields.thumb.value = state.embed.thumbnail;
     fields.image.value = state.embed.image;
@@ -69,12 +74,7 @@
     node.addEventListener('input', function () { readFields(); sync(); });
     node.addEventListener('change', function () { readFields(); sync(); });
   });
-  fields.color.addEventListener('input', function () { state.embed.color = fields.color.value; fields.hex.value = fields.color.value; sync(); });
-  fields.hex.addEventListener('input', function () {
-    var value = fields.hex.value.trim();
-    if (value && value[0] !== '#') value = '#' + value;
-    if (/^#[0-9a-fA-F]{6}$/.test(value)) { state.embed.color = value.toLowerCase(); fields.color.value = state.embed.color; sync(); }
-  });
+  fields.color.addEventListener('input', function () { state.embed.color = fields.color.value; sync(); });
   if (fields.template) {
     fields.template.addEventListener('change', function () {
       var chosen = data.templates[Number(fields.template.value)];
