@@ -1,0 +1,323 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import { RULES, ACTIONS, type Effective } from '../utils/antinukeRules';
+import { getDashLang, makeT } from '../i18n/dash';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  section: string;
+  protections: Effective[];
+  join: { raidEnabled: boolean; raidThreshold: number; raidWindow: number; raidAction: string; altEnabled: boolean; altDays: number; altAction: string };
+  shared: { whitelistIds: string; whitelistRoleIds: string[]; alertChannelId: string; oldSwitch: boolean };
+  lockdownConfig: { channelIds: string[]; pauseInvites: boolean; raiseVerification: boolean; autoEndMinutes: number; announceChannelId: string; message: string };
+  lockdownActive: { startedBy: string; reason: string; startedAt: string; endsAt: string; channels: number } | null;
+  events: { id: number; rule: string; executor_id: string; executor_name: string | null; action_count: number; action: string; detail: string | null; restorable: unknown[]; previous_roles: string[]; restored_at: string | null; created_at: string }[];
+  roles: { id: string; name: string }[];
+  channels: { id: string; name: string }[];
+  saved: boolean;
+  failed: boolean;
+}
+const { user, guildId, guildName, guildIcon, section, protections, join, shared, events, lockdownConfig, lockdownActive, roles, channels, saved, failed } = Astro.props;
+
+const names: Record<string, { label: string; text: string }> = {
+  ban: { label: dt('Anti Ban'), text: dt('Punishes mass bans in a row.') },
+  kick: { label: dt('Anti Kick'), text: dt('Punishes mass kicks in a row.') },
+  bot_add: { label: dt('Anti Bots'), text: dt('Removes bots added without permission and punishes who added them.') },
+  webhook: { label: dt('Anti Webhooks'), text: dt('Detects the mass creation of webhooks.') },
+  channel_create: { label: dt('Anti Create Channels'), text: dt('Stops the mass creation of channels, and can delete them.') },
+  channel_delete: { label: dt('Anti Delete Channels'), text: dt('Stops the mass deletion of channels, and can rebuild them.') },
+  role_create: { label: dt('Anti Create Roles'), text: dt('Stops the mass creation of roles, and can delete them.') },
+  role_delete: { label: dt('Anti Delete Roles'), text: dt('Stops the mass deletion of roles, and can rebuild them.') },
+  role_assign: { label: dt('Anti Assign Roles'), text: dt('Takes back roles with dangerous permissions given to someone.') },
+  unban: { label: dt('Anti Unban'), text: dt('Detects mass unbans, and can ban them again.') },
+  emoji_delete: { label: dt('Anti Delete Emojis'), text: dt('Detects the mass deletion of emojis.') },
+  emoji_create: { label: dt('Anti Create Emojis'), text: dt('Detects the mass creation of emojis.') },
+  guild_update: { label: dt('Anti Server Changes'), text: dt('Watches who changes the name, the icon or the vanity again and again.') },
+};
+const actionNames: Record<string, string> = {
+  alert: dt('Only alert'),
+  quarantine: dt('Take all their roles'),
+  kick: dt('Kick'),
+  ban: dt('Ban'),
+};
+const active = protections.filter((p) => p.enabled).length;
+const tabs = [
+  { id: 'rules', label: dt('Protections') },
+  { id: 'lockdown', label: dt('Lockdown') },
+  { id: 'shared', label: dt('Shared settings') },
+  { id: 'log', label: dt('Log') },
+];
+const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="antinuke" pageTitle={dt('Anti-raid & nuke')}>
+  <h1>{dt('Anti-raid & nuke')} <span class="an-count">{dt('{n} of {total} active', { n: active, total: protections.length })}</span></h1>
+  <p class="an-sub">{dt('Every protection watches one kind of action. If the same account does too many of them too fast, the protection answers. Everything starts off, and the server owner, Petto and the trusted accounts and roles are never touched.')}</p>
+
+  {saved && <div class="an-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {failed && <div class="an-flash an-bad">{dt('It could not be saved, try again.')}</div>}
+
+  <nav class="an-tabs">
+    {tabs.map((t) => <a href={`?section=${t.id}`} class:list={['an-tab', { on: section === t.id }]}>{t.label}</a>)}
+  </nav>
+
+  {section === 'rules' && (
+  <div class="an-list">
+    <form method="POST" class="an-row" data-an-row>
+      <input type="hidden" name="action" value="save_join" />
+      <div class="an-head">
+        <button type="button" class="an-open" data-an-open aria-expanded="false">
+          <Icon name="ph:users-three-fill" width="16" height="16" />
+          <span><b>{dt('Anti Raid')}</b><em>{dt('Reacts when many accounts join in a few seconds.')}</em></span>
+        </button>
+        <span class:list={['an-badge', { on: join.raidEnabled }]}>{join.raidEnabled ? dt('Active') : dt('Inactive')}</span>
+        <label class="an-switch"><input type="checkbox" name="anti_raid_enabled" checked={join.raidEnabled} data-an-auto /><span></span></label>
+      </div>
+      <div class="an-body" hidden>
+        <div class="an-grid">
+          <label class="an-field"><span>{dt('Joins that count as a raid')}</span><input type="number" name="raid_join_threshold" value={join.raidThreshold} min="2" max="50" /></label>
+          <label class="an-field"><span>{dt('In how many seconds')}</span><input type="number" name="raid_window_seconds" value={join.raidWindow} min="5" max="120" /></label>
+          <label class="an-field"><span>{dt('What to do')}</span><select name="raid_action"><option value="alert" selected={join.raidAction === 'alert'}>{dt('Only alert')}</option><option value="kick" selected={join.raidAction === 'kick'}>{dt('Kick')}</option><option value="lockdown" selected={join.raidAction === 'lockdown'}>{dt('Start a lockdown')}</option></select></label>
+        </div>
+        <div class="an-sep"></div>
+        <div class="an-grid">
+          <label class="an-check"><input type="checkbox" name="anti_alt_enabled" checked={join.altEnabled} />{dt('Anti Alt: catch accounts that are too new when they join')}</label>
+          <label class="an-field"><span>{dt('Minimum account age (days)')}</span><input type="number" name="anti_alt_min_age_days" value={join.altDays} min="1" max="365" /></label>
+          <label class="an-field"><span>{dt('What to do')}</span><select name="anti_alt_action"><option value="kick" selected={join.altAction === 'kick'}>{dt('Kick')}</option><option value="flag" selected={join.altAction === 'flag'}>{dt('Only flag')}</option></select></label>
+        </div>
+        <div class="an-foot"><button type="button" class="btn btn-ghost btn-sm" data-an-close>{dt('Close')}</button><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+      </div>
+    </form>
+
+    {RULES.map((meta) => {
+      const p = protections.find((x) => x.id === meta.id)!;
+      const info = names[meta.id];
+      return (
+      <form method="POST" class="an-row" data-an-row>
+        <input type="hidden" name="action" value="save_rule" />
+        <input type="hidden" name="rule" value={meta.id} />
+        <div class="an-head">
+          <button type="button" class="an-open" data-an-open aria-expanded="false">
+            <Icon name={meta.icon} width="16" height="16" />
+            <span><b>{info.label}</b><em>{info.text}</em></span>
+          </button>
+          {p.followsOldSwitch && <span class="an-badge an-old" title={dt('It follows the old single switch. Save it to tune it on its own.')}>{dt('Old switch')}</span>}
+          <span class:list={['an-badge', { on: p.enabled }]}>{p.enabled ? dt('Active') : dt('Inactive')}</span>
+          <label class="an-switch"><input type="checkbox" name="enabled" checked={p.enabled} data-an-auto /><span></span></label>
+        </div>
+        <div class="an-body" hidden>
+          <div class="an-grid">
+            <label class="an-field"><span>{dt('Actions that count as an attack')}</span><input type="number" name="threshold" value={p.threshold} min="1" max="50" /></label>
+            <label class="an-field"><span>{dt('In how many seconds')}</span><input type="number" name="window_seconds" value={p.window} min="2" max="600" /></label>
+            <label class="an-field"><span>{dt('What to do to the account')}</span>
+              <select name="rule_action">{ACTIONS.map((a) => <option value={a} selected={p.action === a}>{actionNames[a]}</option>)}</select>
+            </label>
+            <label class="an-field"><span>{dt('Alert channel')}</span>
+              <select name="alert_channel_id"><option value="">{dt('The automod log (or the shared channel)')}</option>{channels.map((c) => <option value={c.id} selected={c.id === p.alertChannelId}>#{c.name}</option>)}</select>
+            </label>
+          </div>
+          <div class="an-field an-wide"><span>{dt('Trusted roles for this protection')}</span><MultiSelect name="whitelist_role_ids" options={roles} selected={p.whitelistRoleIds} placeholder={dt('Search roles...')} /></div>
+          <label class="an-field an-wide"><span>{dt('Trusted accounts for this protection (IDs)')}</span><input type="text" name="whitelist_ids" value={p.whitelistIds.join(', ')} placeholder={dt('Paste user IDs, separated by commas')} /></label>
+          <p class="an-hint">{dt('Whoever is in the shared settings is trusted here too. A bot doing the attack is banned, whatever you pick.')}</p>
+          <div class="an-foot"><button type="button" class="btn btn-ghost btn-sm" data-an-close>{dt('Close')}</button><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+        </div>
+      </form>
+      );
+    })}
+  </div>
+  )}
+
+  {section === 'lockdown' && (
+  <div class="an-card">
+    <h2>{lockdownActive ? dt('Lockdown is ON') : dt('Lockdown is off')}</h2>
+    <p class="an-hint">{dt('A lockdown closes the channels so nobody can write, pauses the invites and can raise the verification, and puts everything back when it ends. Use it while a raid lasts. Anti Raid can start it by itself.')}</p>
+    {lockdownActive ? (
+      <div class="an-old an-on">
+        <p><b>{dt('Since')}</b> {ago(lockdownActive.startedAt)}{lockdownActive.endsAt ? <> · <b>{dt('Ends')}</b> {ago(lockdownActive.endsAt)}</> : <> · {dt('It stays until you end it.')}</>} · {dt('{n} channel(s) closed', { n: lockdownActive.channels })}</p>
+        {lockdownActive.reason && <p class="an-hint">{lockdownActive.reason}</p>}
+        <div class="an-foot"><button type="button" class="btn btn-accent btn-sm" data-lockdown="end">{dt('End the lockdown')}</button></div>
+      </div>
+    ) : (
+      <div class="an-start">
+        <label class="an-field"><span>{dt('Reason (optional)')}</span><input type="text" data-lockdown-reason maxlength="300" /></label>
+        <label class="an-field"><span>{dt('Minutes until it ends (0 uses the setting below)')}</span><input type="number" data-lockdown-minutes value="0" min="0" max="10080" /></label>
+        <button type="button" class="btn btn-accent btn-sm an-danger" data-lockdown="start">{dt('Start a lockdown now')}</button>
+      </div>
+    )}
+    <div class="an-sep"></div>
+    <form method="POST" class="an-lock-form">
+      <input type="hidden" name="action" value="save_lockdown" />
+      <h2>{dt('What a lockdown does')}</h2>
+      <div class="an-field an-wide"><span>{dt('Channels it closes (none chosen means every text channel)')}</span><MultiSelect name="channel_ids" options={channels} selected={lockdownConfig.channelIds} placeholder={dt('Search channels...')} /></div>
+      <label class="an-check"><input type="checkbox" name="pause_invites" checked={lockdownConfig.pauseInvites} />{dt('Delete the invites and block new ones')}</label>
+      <label class="an-check"><input type="checkbox" name="raise_verification" checked={lockdownConfig.raiseVerification} />{dt('Raise the verification level of the server to High while it lasts')}</label>
+      <div class="an-grid">
+        <label class="an-field"><span>{dt('Ends by itself after (minutes, 0 for never)')}</span><input type="number" name="auto_end_minutes" value={lockdownConfig.autoEndMinutes} min="0" max="10080" /></label>
+        <label class="an-field"><span>{dt('Channel for the notice')}</span>
+          <select name="announce_channel_id"><option value="">{dt('No notice')}</option>{channels.map((c) => <option value={c.id} selected={c.id === lockdownConfig.announceChannelId}>#{c.name}</option>)}</select>
+        </label>
+      </div>
+      <label class="an-field an-wide"><span>{dt('The notice')}</span><textarea name="message" rows="2" maxlength="500" placeholder={dt('This server is in lockdown for a moment. The staff is working on it, thank you for waiting.')}>{lockdownConfig.message}</textarea></label>
+      <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+    </form>
+  </div>
+  )}
+
+  {section === 'shared' && (
+  <form method="POST" class="an-card">
+    <input type="hidden" name="action" value="save_shared" />
+    <h2>{dt('Trusted by every protection')}</h2>
+    <div class="an-field an-wide"><span>{dt('Trusted roles')}</span><MultiSelect name="whitelist_role_ids" options={roles} selected={shared.whitelistRoleIds} placeholder={dt('Search roles...')} /></div>
+    <label class="an-field an-wide"><span>{dt('Trusted accounts and bots (IDs)')}</span><textarea name="whitelist_ids" rows="3" placeholder={dt('Paste user IDs, separated by commas')}>{shared.whitelistIds}</textarea></label>
+    <label class="an-field an-wide"><span>{dt('Alert channel for every protection')}</span>
+      <select name="alert_channel_id"><option value="">{dt('The automod log')}</option>{channels.map((c) => <option value={c.id} selected={c.id === shared.alertChannelId}>#{c.name}</option>)}</select>
+    </label>
+    {shared.oldSwitch && (
+      <div class="an-old">
+        <input type="hidden" name="old_switch_present" value="1" />
+        <label class="an-check"><input type="checkbox" name="old_switch" checked />{dt('Old single switch is on')}</label>
+        <p class="an-hint">{dt('The protections you have not tuned yet follow this switch (ban, kick, channels, roles, webhooks and emojis, counted together). Turn it off after tuning each one.')}</p>
+      </div>
+    )}
+    <p class="an-hint">{dt('The server owner and Petto are always trusted.')}</p>
+    <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+  </form>
+  )}
+
+  {section === 'log' && (
+  <div class="an-card">
+    <h2>{dt('What the protections did')}</h2>
+    {events.length === 0 ? <p class="an-empty">{dt('No protection has acted yet.')}</p> : (
+      <div class="an-events">
+        {events.map((e) => (
+          <div class="an-event">
+            <div class="an-event-main">
+              <b>#{e.id} · {names[e.rule]?.label ?? e.rule}</b>
+              <span>{e.executor_name ?? e.executor_id} <code>{e.executor_id}</code> · {e.action_count}× {e.detail ?? ''} · {actionNames[e.action] ?? e.action}</span>
+              <em>{ago(e.created_at)}</em>
+            </div>
+            {e.restored_at ? <span class="an-badge on">{dt('Restored')}</span> : (e.restorable.length > 0 || e.previous_roles.length > 0) ? (
+              <button type="button" class="btn btn-ghost btn-sm" data-an-restore={e.id}><Icon name="ph:arrow-counter-clockwise-bold" width="13" height="13" />{dt('Restore')}</button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    )}
+    <p class="an-hint">{dt('Restore rebuilds deleted channels and roles (not their messages), lifts mass bans and gives the roles back. Only the owner and the administrators can do it.')}</p>
+  </div>
+  )}
+</DashGuildLayout>
+
+<script is:inline>
+  // The rows open and close by themselves; the switch of a row saves it right away.
+  if (!window.__anBound) {
+    window.__anBound = true;
+    document.addEventListener('click', function (event) {
+      var open = event.target.closest && event.target.closest('[data-an-open]');
+      var close = event.target.closest && event.target.closest('[data-an-close]');
+      var restore = event.target.closest && event.target.closest('[data-an-restore]');
+      var lock = event.target.closest && event.target.closest('[data-lockdown]');
+      if (lock) {
+        var guildId = location.pathname.split('/')[3];
+        var starting = lock.getAttribute('data-lockdown') === 'start';
+        if (!confirm(starting ? 'Start a lockdown now? The channels will be closed.' : 'End the lockdown and reopen everything?')) return;
+        var reasonEl = document.querySelector('[data-lockdown-reason]');
+        var minutesEl = document.querySelector('[data-lockdown-minutes]');
+        lock.disabled = true;
+        fetch('/dash/guild/' + guildId + '/lockdown-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: starting ? 'start' : 'end', reason: reasonEl ? reasonEl.value : '', minutes: minutesEl ? Number(minutesEl.value) : 0 }) })
+          .then(function (r) { return r.json(); })
+          .then(function (data) { if (data && data.ok) location.reload(); else { alert((data && data.message) || 'It could not be done.'); lock.disabled = false; } })
+          .catch(function () { alert('It could not be done.'); lock.disabled = false; });
+        return;
+      }
+
+      if (open || close) {
+        var row = (open || close).closest('[data-an-row]');
+        var body = row.querySelector('.an-body');
+        var show = open ? body.hidden : false;
+        body.hidden = !show;
+        row.classList.toggle('open', show);
+        var btn = row.querySelector('[data-an-open]');
+        if (btn) btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+      }
+      if (restore) {
+        if (!confirm('Put back what this protection stopped?')) return;
+        var guild = location.pathname.split('/')[3];
+        restore.disabled = true;
+        fetch('/dash/guild/' + guild + '/antinuke-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: Number(restore.getAttribute('data-an-restore')) }) })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            var lines = [].concat(data.done || [], data.failed || []);
+            alert(data.ok ? (lines.join('\n') || 'Done.') : (data.message || lines.join('\n') || 'It could not be restored.'));
+            if (data.ok) location.reload(); else restore.disabled = false;
+          })
+          .catch(function () { alert('It could not be restored.'); restore.disabled = false; });
+      }
+    });
+    document.addEventListener('change', function (event) {
+      var auto = event.target.closest && event.target.closest('[data-an-auto]');
+      if (auto && auto.form) auto.form.requestSubmit();
+    });
+  }
+</script>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .an-count { font-size: 12px; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+  .an-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 18px; max-width: 74ch; }
+  .an-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 14px; max-width: 820px; }
+  .an-bad { color: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); background: color-mix(in srgb, var(--red, #ff6b6b) 12%, transparent); }
+  .an-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; max-width: none; overflow-x: auto; }
+  .an-tab { padding: 9px 14px; font-size: 13.5px; font-weight: 600; color: var(--text-dim); border-bottom: 2px solid transparent; white-space: nowrap; }
+  .an-tab.on { color: var(--accent); border-color: var(--accent); }
+  .an-list { max-width: none; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; }
+  .an-row + .an-row { border-top: 1px solid var(--border); }
+  .an-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+  .an-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; color: var(--text); text-align: left; cursor: pointer; font: inherit; padding: 0; }
+  .an-open :global(svg) { flex: none; color: var(--text-dim); }
+  .an-open b { display: block; font-size: 14.5px; }
+  .an-open em { display: block; font-style: normal; font-size: 12.5px; color: var(--text-dim); margin-top: 2px; overflow-wrap: anywhere; }
+  .an-row.open .an-head { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .an-badge { flex: none; font-family: var(--mono, monospace); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; border: 1px dashed var(--border); border-radius: 6px; padding: 3px 8px; color: var(--text-dim); }
+  .an-badge.on { color: var(--green); border-color: var(--green); }
+  .an-old { color: var(--yellow); border-color: var(--yellow); }
+  .an-switch { flex: none; position: relative; width: 38px; height: 22px; }
+  .an-switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; margin: 0; z-index: 1; }
+  .an-switch span { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 22%, var(--card)); transition: background .15s; }
+  .an-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .an-switch input:checked + span { background: var(--green); }
+  .an-switch input:checked + span::after { transform: translateX(16px); }
+  .an-body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 12px; border-top: 1px dashed var(--border); }
+  .an-body[hidden] { display: none; }
+  .an-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 12px; }
+  .an-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .an-field > span { font-size: 12.5px; font-weight: 600; }
+  .an-field input[type=text], .an-field input[type=number], .an-field select, .an-field textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13.5px; width: 100%; box-sizing: border-box; }
+  .an-wide { grid-column: 1 / -1; }
+  .an-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; grid-column: 1 / -1; }
+  .an-sep { border-top: 1px dashed var(--border); }
+  .an-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
+  .an-foot { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px dashed var(--border); padding-top: 12px; }
+  .an-card { max-width: none; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .an-card h2 { margin: 0; font-size: 16px; }
+  .an-old { border: 1px dashed var(--yellow); border-radius: 10px; padding: 10px 12px; }
+  .an-on { border-color: var(--red, #ff6b6b); color: var(--text); }
+  .an-on p { margin: 0; color: var(--text); }
+  .an-start { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+  .an-danger { background: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); color: #1b1b1f; }
+  .an-lock-form { display: flex; flex-direction: column; gap: 12px; }
+  .an-empty { font-size: 13.5px; color: var(--text-dim); }
+  .an-events { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .an-event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--card); flex-wrap: wrap; }
+  .an-event + .an-event { border-top: 1px solid var(--border); }
+  .an-event-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+  .an-event-main span { color: var(--text-muted); overflow-wrap: anywhere; }
+  .an-event-main em { font-style: normal; font-size: 12px; color: var(--text-dim); }
+  @media (max-width: 720px) { .an-start { grid-template-columns: 1fr; } .an-grid { grid-template-columns: 1fr; } .an-head { gap: 8px; padding: 12px 10px; } .an-badge { display: none; } }
+</style>

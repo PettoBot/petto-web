@@ -453,6 +453,8 @@ if (Astro.request.method === 'POST') {
         auto_delete_closed_hours: Math.max(0, Math.min(720, Math.floor(Number(form.get('auto_delete_closed_hours') ?? 0)) || 0)),
         unclaimed_reminder_minutes: Math.max(0, Math.min(10080, Math.floor(Number(form.get('unclaimed_reminder_minutes') ?? 0)) || 0)),
         global_limit: Math.max(0, Math.min(50, Math.floor(Number(form.get('global_limit') ?? 0)) || 0)),
+        transcript_channel_id: String(form.get('transcript_channel_id') ?? '').trim() || null,
+        transcript_mode: ['auto', 'link', 'file', 'both'].includes(String(form.get('transcript_mode'))) ? String(form.get('transcript_mode')) : 'auto',
         hours_enabled: form.get('hours_enabled') === 'on',
         hours_timezone: validTimezone(String(form.get('hours_timezone') ?? '')) ? String(form.get('hours_timezone')) : 'America/Bogota',
         hours_start: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(form.get('hours_start') ?? '')) ? String(form.get('hours_start')) : '09:00',
@@ -495,7 +497,7 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
   const [panel] = panelRes.ok ? await panelRes.json() : [];
   if (!panel) return false;
   const categoriesRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: apiHeaders });
-  const cats = categoriesRes?.ok ? await categoriesRes.json() : [];
+  const cats = (categoriesRes?.ok ? await categoriesRes.json() : []).map((c: any) => ({ key: c.key, label: c.label, emoji: c.emoji, description: c.description, buttonStyle: c.button_style ?? 'primary' }));
   const templateData = await getTemplateData(panel.embed_template);
   const guildVars = templateData ? await getGuildVars() : null;
   const messageId = await postOrRefreshPanelMessage(botToken, panel.channel_id, panel.message_id, buildPanelPayload(panel, panel.style, cats, templateData, guildVars));
@@ -519,7 +521,7 @@ const shown = TICKET_SECTIONS.includes(section) ? section : 'panels';
 const needs = (...sections: string[]) => sections.includes(shown);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
 const customEmojisPromise = needs('types') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
-const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes, repliesRes, statsTicketsRes, statsRatingsRes] = await runBatched([
+const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes, repliesRes, statsTicketsRes, statsRatingsRes, closedTicketsRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   when(['panels', 'types', 'settings'], () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
   when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: apiHeaders })),
@@ -533,6 +535,7 @@ const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRe
   when(['replies'], () => fetch(`${apiUrl}/rest/v1/ticket_replies?guild_id=eq.${id}&select=name,content&order=name.asc&limit=60`, { headers: apiHeaders })),
   when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&select=status,claimed_by,created_at,closed_at&order=created_at.desc&limit=2000`, { headers: apiHeaders })),
   when(['open'], () => fetch(`${apiUrl}/rest/v1/ticket_ratings?guild_id=eq.${id}&select=rating&limit=2000`, { headers: apiHeaders })),
+  when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.closed&transcript_html=not.is.null&select=ticket_number,opener_id,closed_at,close_reason,ticket_categories(label)&order=closed_at.desc&limit=25`, { headers: apiHeaders })),
 ], 6);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -623,6 +626,8 @@ const settings = {
   ratingLogChannelId: s.rating_log_channel_id ?? '',
   openedLogChannelId: s.opened_log_channel_id ?? '',
   closedLogChannelId: s.closed_log_channel_id ?? '',
+  transcriptChannelId: s.transcript_channel_id ?? '',
+  transcriptMode: s.transcript_mode ?? 'auto',
   blockedRoleIds: s.blocked_role_ids ?? [],
   unclaimedReminderMinutes: s.unclaimed_reminder_minutes ?? 0,
   autoDeleteClosedHours: s.auto_delete_closed_hours ?? 0,
@@ -635,6 +640,7 @@ const settings = {
   hoursBlock: s.hours_block ?? false,
   hoursMessage: s.hours_message ?? '',
 };
+const closedTickets = (closedTicketsRes?.ok ? await closedTicketsRes.json() : []).map((t: any) => ({ number: t.ticket_number, openerId: t.opener_id, closedAt: t.closed_at, reason: t.close_reason ?? '', categoryLabel: t.ticket_categories?.label ?? '' }));
 const quickReplies: { name: string; content: string }[] = repliesRes?.ok ? await repliesRes.json() : [];
 const ticketStats = needs('open') ? summarizeTickets(statsTicketsRes?.ok ? await statsTicketsRes.json() : [], statsRatingsRes?.ok ? await statsRatingsRes.json() : []) : null;
 const customEmojis = await customEmojisPromise;
@@ -656,6 +662,7 @@ const customEmojis = await customEmojisPromise;
   blacklist={blacklist}
   openTickets={openTickets}
   quickReplies={quickReplies}
+  closedTickets={closedTickets}
   stats={ticketStats}
   saved={saved}
   error={error}

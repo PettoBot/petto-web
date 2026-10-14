@@ -1,0 +1,148 @@
+---
+export const prerender = false;
+import DashAntiNuke from '../../../../components/DashAntiNuke.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { RULES, ACTIONS, SNOWFLAKE, resolveRule, type RuleRow, type NukeConfig } from '../../../../utils/antinukeRules';
+
+const { id } = Astro.params as { id: string };
+const section = ['rules', 'lockdown', 'shared', 'log'].includes(Astro.url.searchParams.get('section') ?? '') ? Astro.url.searchParams.get('section')! : 'rules';
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const whole = (value: FormDataEntryValue | null, min: number, max: number, fallback: number) => {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const idList = (text: string) => [...new Set(text.split(/[\s,]+/).filter((v) => SNOWFLAKE.test(v)))].slice(0, 50);
+const snowflake = (value: FormDataEntryValue | null) => { const v = String(value ?? '').trim(); return SNOWFLAKE.test(v) ? v : null; };
+const post = (table: string, conflict: string, body: Record<string, unknown>) => fetch(`${apiUrl}/rest/v1/${table}?on_conflict=${conflict}`, {
+  method: 'POST',
+  headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+  body: JSON.stringify(body),
+});
+
+let saved = false;
+let failed = false;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  await ensureGuildRow(apiUrl, apiHeaders, id);
+
+  if (action === 'save_rule') {
+    const rule = RULES.find((r) => r.id === String(form.get('rule')));
+    if (rule) {
+      const chosen = String(form.get('rule_action') ?? 'quarantine');
+      const res = await post('antinuke_rules', 'guild_id,rule', {
+        guild_id: id,
+        rule: rule.id,
+        enabled: form.get('enabled') === 'on',
+        threshold: whole(form.get('threshold'), 1, 50, rule.threshold),
+        window_seconds: whole(form.get('window_seconds'), 2, 600, rule.window),
+        action: (ACTIONS as readonly string[]).includes(chosen) ? chosen : 'quarantine',
+        alert_channel_id: snowflake(form.get('alert_channel_id')),
+        whitelist_ids: idList(String(form.get('whitelist_ids') ?? '')),
+        whitelist_role_ids: form.getAll('whitelist_role_ids').map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 50),
+        updated_at: new Date().toISOString(),
+      });
+      saved = res.ok;
+      failed = !res.ok;
+    }
+  } else if (action === 'save_join') {
+    const res = await post('automod_config', 'guild_id', {
+      guild_id: id,
+      anti_raid_enabled: form.get('anti_raid_enabled') === 'on',
+      raid_join_threshold: whole(form.get('raid_join_threshold'), 2, 50, 6),
+      raid_window_seconds: whole(form.get('raid_window_seconds'), 5, 120, 10),
+      raid_action: form.get('raid_action') === 'kick' ? 'kick' : 'alert',
+      anti_alt_enabled: form.get('anti_alt_enabled') === 'on',
+      anti_alt_min_age_days: whole(form.get('anti_alt_min_age_days'), 1, 365, 7),
+      anti_alt_action: form.get('anti_alt_action') === 'flag' ? 'flag' : 'kick',
+      updated_at: new Date().toISOString(),
+    });
+    saved = res.ok;
+    failed = !res.ok;
+  } else if (action === 'save_lockdown') {
+    const res = await post('lockdown_config', 'guild_id', {
+      guild_id: id,
+      channel_ids: form.getAll('channel_ids').map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 100),
+      pause_invites: form.get('pause_invites') === 'on',
+      raise_verification: form.get('raise_verification') === 'on',
+      auto_end_minutes: whole(form.get('auto_end_minutes'), 0, 10080, 0),
+      announce_channel_id: snowflake(form.get('announce_channel_id')),
+      message: String(form.get('message') ?? '').trim().slice(0, 500) || null,
+      updated_at: new Date().toISOString(),
+    });
+    saved = res.ok;
+    failed = !res.ok;
+  } else if (action === 'save_shared') {
+    const res = await post('antinuke_config', 'guild_id', {
+      guild_id: id,
+      whitelist_ids: idList(String(form.get('whitelist_ids') ?? '')),
+      whitelist_role_ids: form.getAll('whitelist_role_ids').map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 50),
+      alert_channel_id: snowflake(form.get('alert_channel_id')),
+      ...(form.get('old_switch_present') === '1' ? { enabled: form.get('old_switch') === 'on' } : {}),
+      updated_at: new Date().toISOString(),
+    });
+    saved = res.ok;
+    failed = !res.ok;
+  }
+}
+
+const needs = (...sections: string[]) => sections.includes(section);
+const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
+const [guildInfo, configRes, rulesRes, eventsRes, automodRes, rolesRes, channelsRes, lockConfigRes, lockActiveRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
+  when(['rules', 'shared'], () => fetch(`${apiUrl}/rest/v1/antinuke_rules?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['log'], () => fetch(`${apiUrl}/rest/v1/antinuke_events?guild_id=eq.${id}&select=*&order=created_at.desc&limit=30`, { headers: apiHeaders })),
+  when(['rules'], () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=anti_raid_enabled,raid_join_threshold,raid_window_seconds,raid_action,anti_alt_enabled,anti_alt_min_age_days,anti_alt_action`, { headers: apiHeaders })),
+  when(['rules', 'shared'], () => getGuildList(Astro, id, botToken, 'roles')),
+  when(['rules', 'shared', 'lockdown'], () => getGuildList(Astro, id, botToken, 'channels')),
+  when(['lockdown'], () => fetch(`${apiUrl}/rest/v1/lockdown_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
+  when(['lockdown'], () => fetch(`${apiUrl}/rest/v1/lockdowns?guild_id=eq.${id}&select=started_by,reason,started_at,ends_at,locked`, { headers: apiHeaders })),
+], 4);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const config: NukeConfig = (configRes?.ok ? (await configRes.json())[0] : null) ?? {};
+const rows: RuleRow[] = rulesRes?.ok ? await rulesRes.json() : [];
+const protections = RULES.map((meta) => resolveRule(config, rows, meta));
+const events = eventsRes?.ok ? await eventsRes.json() : [];
+const join = (automodRes?.ok ? (await automodRes.json())[0] : null) ?? {};
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).map((c: any) => ({ id: c.id, name: c.name }));
+const lc = (lockConfigRes?.ok ? (await lockConfigRes.json())[0] : null) ?? {};
+const lockdownConfig = { channelIds: lc.channel_ids ?? [], pauseInvites: lc.pause_invites ?? true, raiseVerification: lc.raise_verification ?? false, autoEndMinutes: lc.auto_end_minutes ?? 0, announceChannelId: lc.announce_channel_id ?? '', message: lc.message ?? '' };
+const la = lockActiveRes?.ok ? (await lockActiveRes.json())[0] : null;
+const lockdownActive = la ? { startedBy: la.started_by, reason: la.reason ?? '', startedAt: la.started_at, endsAt: la.ends_at ?? '', channels: Array.isArray(la.locked) ? la.locked.length : 0 } : null;
+---
+<DashAntiNuke
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  section={section}
+  protections={protections}
+  join={{
+    raidEnabled: Boolean(join.anti_raid_enabled), raidThreshold: join.raid_join_threshold ?? 6, raidWindow: join.raid_window_seconds ?? 10, raidAction: join.raid_action ?? 'alert',
+    altEnabled: Boolean(join.anti_alt_enabled), altDays: join.anti_alt_min_age_days ?? 7, altAction: join.anti_alt_action ?? 'kick',
+  }}
+  shared={{ whitelistIds: (config.whitelist_ids ?? []).join(', '), whitelistRoleIds: config.whitelist_role_ids ?? [], alertChannelId: config.alert_channel_id ?? '', oldSwitch: Boolean(config.enabled) }}
+  events={events}
+  lockdownConfig={lockdownConfig}
+  lockdownActive={lockdownActive}
+  roles={roles}
+  channels={channels}
+  saved={saved}
+  failed={failed}
+/>

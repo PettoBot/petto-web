@@ -1,0 +1,43 @@
+---
+export const prerender = false;
+import DashAutomodTemplates from '../../../../components/DashAutomodTemplates.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { callPettoNativeAutomod } from '../../../../utils/pettoBotApi';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const [guildInfo, filtersRes, rolesRes, channelsRes, native] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/automod_rules?guild_id=eq.${id}&select=id,name,template,options,action,mute_minutes,enabled,hits&order=id.asc`, { headers: apiHeaders }),
+  () => getGuildList(Astro, id, botToken, 'roles'),
+  () => getGuildList(Astro, id, botToken, 'channels'),
+  () => callPettoNativeAutomod(Astro, id, String(session.userId), { op: 'list' }),
+], 3);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const filters = filtersRes?.ok ? await filtersRes.json() : [];
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5 || c.type === 4).map((c: any) => ({ id: c.id, name: c.name, category: c.type === 4 }));
+---
+<DashAutomodTemplates
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  filters={filters}
+  native={native}
+  roles={roles}
+  channels={channels}
+/>

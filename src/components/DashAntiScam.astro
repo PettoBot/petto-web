@@ -1,0 +1,138 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  config: {
+    enabled: boolean; action: string; timeoutMinutes: number; deleteMessages: boolean; deleteMinutes: number; channelsThreshold: number; windowSeconds: number;
+    scanText: boolean; scanNewAccounts: boolean; newAccountHours: number; dmUser: boolean; alertChannelId: string; pingRoleId: string; exemptRoleIds: string[]; exemptChannelIds: string[]; caught: number;
+  };
+  events: { id: number; user_id: string; user_name: string | null; signal: string; detail: string | null; channels: number; action: string; deleted: number; created_at: string }[];
+  roles: { id: string; name: string }[];
+  channels: { id: string; name: string; category: boolean }[];
+  saved: boolean;
+  failed: boolean;
+}
+const { user, guildId, guildName, guildIcon, config, events, roles, channels, saved, failed } = Astro.props;
+const textChannels = channels.filter((c) => !c.category);
+const actionNames: Record<string, string> = { alert: dt('Only alert the staff'), timeout: dt('Mute the account'), kick: dt('Kick the account'), ban: dt('Ban the account') };
+const signalNames: Record<string, string> = { 'multi-channel': dt('Same message in several channels'), wording: dt('Scam wording'), 'new-account': dt('New account with scam wording') };
+const when = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="antiscam" pageTitle={dt('Anti scam')}>
+  <h1>{dt('Anti scam')} <span class:list={['sc-badge', { on: config.enabled }]}>{config.enabled ? dt('Active') : dt('Inactive')}</span></h1>
+  <p class="sc-sub">{dt('Catches hijacked accounts that spam the MrBeast giveaway scam, fake withdrawals and casino promos. Discord does not let a bot read the text inside a picture, so it looks at how the scam behaves: the same message in several channels in seconds, the usual scam wording, and new accounts. It starts off, and when you turn it on it only alerts the staff.')}</p>
+
+  {saved && <div class="sc-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {failed && <div class="sc-flash sc-bad">{dt('It could not be saved, try again.')}</div>}
+
+  <div class="sc-layout">
+  <div class="sc-main-col">
+  <div class="sc-stats">
+    <div><b>{config.caught}</b><span>{dt('Scams caught')}</span></div>
+    <div><b>{events.reduce((sum, e) => sum + e.deleted, 0)}</b><span>{dt('Messages taken down (last 20)')}</span></div>
+  </div>
+
+  <form method="POST" class="sc-card">
+    <label class="sc-main"><input type="checkbox" name="enabled" checked={config.enabled} /><span><b>{dt('Turn the anti scam on')}</b><em>{dt('It never touches the server owner or the roles and channels you exempt below.')}</em></span></label>
+
+    <h2>{dt('What it does when it catches one')}</h2>
+    <div class="sc-grid">
+      <label class="sc-field"><span>{dt('Action on the account')}</span>
+        <select name="action">{Object.entries(actionNames).map(([k, v]) => <option value={k} selected={config.action === k}>{v}</option>)}</select>
+      </label>
+      <label class="sc-field"><span>{dt('Minutes of mute')}</span><input type="number" name="timeout_minutes" value={config.timeoutMinutes} min="1" max="40320" /></label>
+      <label class="sc-check"><input type="checkbox" name="delete_messages" checked={config.deleteMessages} />{dt('Take down what the account sent lately, in every channel')}</label>
+      <label class="sc-field"><span>{dt('How far back (minutes)')}</span><input type="number" name="delete_minutes" value={config.deleteMinutes} min="1" max="120" /></label>
+      <label class="sc-check"><input type="checkbox" name="dm_user" checked={config.dmUser} />{dt('Send the account a DM that it may be hacked, with what to do')}</label>
+    </div>
+
+    <h2>{dt('How it spots them')}</h2>
+    <div class="sc-grid">
+      <label class="sc-field"><span>{dt('Same message in this many channels')}</span><input type="number" name="channels_threshold" value={config.channelsThreshold} min="2" max="10" /></label>
+      <label class="sc-field"><span>{dt('In how many seconds')}</span><input type="number" name="window_seconds" value={config.windowSeconds} min="5" max="300" /></label>
+      <label class="sc-check"><input type="checkbox" name="scan_text" checked={config.scanText} />{dt('Also look for the scam wording (MrBeast, claim your reward, USDT, withdrawal, casino...)')}</label>
+      <label class="sc-check"><input type="checkbox" name="scan_new_accounts" checked={config.scanNewAccounts} />{dt('Be stricter with new accounts that send a picture or link')}</label>
+      <label class="sc-field"><span>{dt('A new account is younger than (hours)')}</span><input type="number" name="new_account_hours" value={config.newAccountHours} min="1" max="720" /></label>
+    </div>
+
+    <h2>{dt('Alerts and exceptions')}</h2>
+    <div class="sc-grid">
+      <label class="sc-field"><span>{dt('Alert channel (with Undo, Ban and Not a scam buttons)')}</span>
+        <select name="alert_channel_id"><option value="">{dt('The automod log')}</option>{textChannels.map((c) => <option value={c.id} selected={c.id === config.alertChannelId}>#{c.name}</option>)}</select>
+      </label>
+      <label class="sc-field"><span>{dt('Role to ping')}</span>
+        <select name="ping_role_id"><option value="">{dt('Nobody')}</option>{roles.map((r) => <option value={r.id} selected={r.id === config.pingRoleId}>{r.name}</option>)}</select>
+      </label>
+      <div class="sc-field sc-wide"><span>{dt('Roles that are never checked')}</span><MultiSelect name="exempt_role_ids" options={roles} selected={config.exemptRoleIds} placeholder={dt('Search roles...')} /></div>
+      <div class="sc-field sc-wide"><span>{dt('Channels that are never checked')}</span><MultiSelect name="exempt_channel_ids" options={channels} selected={config.exemptChannelIds} placeholder={dt('Search channels...')} /></div>
+    </div>
+    <p class="sc-hint">{dt('Tip: leave it on Only alert for a few days, watch what it catches, then let it mute or ban on its own.')}</p>
+    <div class="sc-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+  </form>
+
+  </div>
+  <aside class="sc-side">
+  <h2 class="sc-h">{dt('Latest scams caught')}</h2>
+  {events.length === 0 ? <p class="sc-empty">{dt('It has not caught anything yet.')}</p> : (
+    <div class="sc-events">
+      {events.map((e) => (
+        <div class="sc-event">
+          <div><b>{e.user_name ?? e.user_id}</b> <code>{e.user_id}</code></div>
+          <span>{signalNames[e.signal] ?? e.signal}{e.detail ? ` · ${e.detail}` : ''}</span>
+          <em>{e.deleted} {dt('messages taken down')} · {actionNames[e.action] ?? e.action} · {when(e.created_at)}</em>
+        </div>
+      ))}
+    </div>
+  )}
+  </aside>
+  </div>
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .sc-badge { font-family: var(--mono, monospace); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; border: 1px dashed var(--border); border-radius: 6px; padding: 3px 8px; color: var(--text-dim); }
+  .sc-badge.on { color: var(--green); border-color: var(--green); }
+  .sc-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 18px; max-width: 76ch; }
+  .sc-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 14px; max-width: 820px; }
+  .sc-bad { color: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); background: color-mix(in srgb, var(--red, #ff6b6b) 12%, transparent); }
+  .sc-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 22px; align-items: start; }
+  .sc-main-col { min-width: 0; }
+  .sc-side { position: sticky; top: 16px; min-width: 0; }
+  .sc-side .sc-h { margin-top: 0; }
+  .sc-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .sc-stats div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 18px; min-width: 150px; }
+  .sc-stats b { display: block; font-size: 22px; }
+  .sc-stats span { font-size: 12.5px; color: var(--text-dim); }
+  .sc-card { max-width: none; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .sc-card h2 { margin: 6px 0 0; font-size: 15px; }
+  .sc-main { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+  .sc-main b { display: block; font-size: 14.5px; }
+  .sc-main em { display: block; font-style: normal; font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+  .sc-main input { margin-top: 4px; }
+  .sc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .sc-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .sc-field > span { font-size: 12.5px; font-weight: 600; }
+  .sc-field input[type=number], .sc-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13.5px; width: 100%; box-sizing: border-box; }
+  .sc-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; grid-column: 1 / -1; }
+  .sc-wide { grid-column: 1 / -1; }
+  .sc-hint { font-size: 12.5px; color: var(--text-dim); margin: 0; }
+  .sc-foot { display: flex; justify-content: flex-end; }
+  .sc-h { font-size: 16px; margin: 24px 0 10px; }
+  .sc-empty { font-size: 13.5px; color: var(--text-dim); }
+  .sc-events { max-width: none; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .sc-event { padding: 10px 14px; background: var(--card); display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+  .sc-event + .sc-event { border-top: 1px solid var(--border); }
+  .sc-event span { color: var(--text-muted); }
+  .sc-event em { font-style: normal; font-size: 12px; color: var(--text-dim); }
+  @media (max-width: 1100px) { .sc-layout { grid-template-columns: minmax(0, 1fr); } .sc-side { position: static; } }
+  @media (max-width: 720px) { .sc-grid { grid-template-columns: 1fr; } }
+</style>
