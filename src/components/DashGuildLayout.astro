@@ -420,8 +420,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     var outsideClosers = [];
     var repositioners = [];
     document.addEventListener('click', function (e) {
-      outsideClosers = outsideClosers.filter(function (c) { return c.wrap.isConnected; });
-      outsideClosers.forEach(function (c) { if (!c.wrap.contains(e.target)) c.close(); });
+      outsideClosers = outsideClosers.filter(function (c) { if (!c.wrap.isConnected && c.extra) c.extra.remove(); return c.wrap.isConnected; });
+      outsideClosers.forEach(function (c) { if (!c.wrap.contains(e.target) && !(c.extra && c.extra.contains(e.target))) c.close(); });
     });
     function reposition() {
       repositioners = repositioners.filter(function (r) { return r.wrap.isConnected; });
@@ -429,7 +429,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     }
     window.addEventListener('resize', reposition);
     document.addEventListener('scroll', reposition, true);
-    function closeOnOutside(wrap, close) { outsideClosers.push({ wrap: wrap, close: close }); }
+    // `extra` is a part of the widget that lives elsewhere in the page (a panel moved to the body), so clicks inside it do not count as outside.
+    function closeOnOutside(wrap, close, extra) { outsideClosers.push({ wrap: wrap, close: close, extra: extra || null }); }
     function placeWhileOpen(wrap, isOpen, place) { repositioners.push({ wrap: wrap, isOpen: isOpen, place: place }); }
 
     var dirtyForm = null;
@@ -1427,25 +1428,42 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
         function positionPanel() {
           if (panel.hidden) return;
-          var triggerRect = trigger.getBoundingClientRect();
+          var sheet = window.innerWidth < 640;
+          // On a phone the picker is a sheet at the bottom of the screen, so it never covers the field being edited nor leaves the screen.
+          panel.classList.toggle('dgl-cp-sheet', sheet);
+          panel.style.right = ''; panel.style.bottom = '';
+          panel.style.width = sheet ? (window.innerWidth - 24) + 'px' : '';
           var panelRect = panel.getBoundingClientRect();
-          var left = Math.min(Math.max(12, triggerRect.left), Math.max(12, window.innerWidth - panelRect.width - 12));
-          var top = triggerRect.bottom + 8;
-          if (top + panelRect.height > window.innerHeight - 12) top = triggerRect.top - panelRect.height - 8;
-          if (top < 12) top = 12;
+          var left, top;
+          if (sheet) {
+            left = 12;
+            top = Math.max(12, window.innerHeight - panelRect.height - 12);
+          } else {
+            var triggerRect = trigger.getBoundingClientRect();
+            left = Math.min(Math.max(12, triggerRect.left), Math.max(12, window.innerWidth - panelRect.width - 12));
+            top = triggerRect.bottom + 8;
+            if (top + panelRect.height > window.innerHeight - 12) top = triggerRect.top - panelRect.height - 8;
+            if (top < 12) top = 12;
+          }
           panel.style.left = left + 'px';
           panel.style.top = top + 'px';
+          // An ancestor with a transform or filter becomes the reference of "fixed"; measure where the panel really landed and correct for it.
+          var landed = panel.getBoundingClientRect();
+          if (Math.abs(landed.left - left) > 1) panel.style.left = (left - (landed.left - left)) + 'px';
+          if (Math.abs(landed.top - top) > 1) panel.style.top = (top - (landed.top - top)) + 'px';
         }
-        function openPanel() { panel.hidden = false; wrap.classList.add('open'); drawSV(); drawHue(); positionThumbs(); positionPanel(); }
-        function closePanel() { panel.hidden = true; wrap.classList.remove('open'); }
+        // The panel moves to the body while open: inside the form, a transformed or stacked ancestor would shift it and let fields paint over it.
+        function openPanel() { if (panel.parentNode !== document.body) document.body.appendChild(panel); panel.hidden = false; wrap.classList.add('open'); drawSV(); drawHue(); positionThumbs(); positionPanel(); }
+        function closePanel() { panel.hidden = true; wrap.classList.remove('open'); if (wrap.isConnected && panel.parentNode !== wrap) wrap.appendChild(panel); }
 
         trigger.addEventListener('click', function (e) {
           e.stopPropagation();
           if (panel.hidden) openPanel(); else closePanel();
         });
-        closeOnOutside(wrap, closePanel);
+        closeOnOutside(wrap, closePanel, panel);
         placeWhileOpen(wrap, function () { return !panel.hidden; }, positionPanel);
         wrap.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePanel(); });
+        panel.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePanel(); });
 
         function svPointer(e) {
           var rect = svCanvas.getBoundingClientRect();
