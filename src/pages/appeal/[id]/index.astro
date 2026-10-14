@@ -1,0 +1,35 @@
+---
+export const prerender = false;
+import AppealLanding from '../../../components/AppealLanding.astro';
+import { loadSite } from '../../../utils/appealSite';
+import { callBot, loadLiveForms, loadUserSubmissions, type PunishmentView } from '../../../utils/appeals';
+
+const site = await loadSite(Astro);
+if ('status' in site) return new Response(site.status === 404 ? 'Not found' : 'Unavailable', { status: site.status });
+const { id, lang, config, guild, session } = site;
+const loginHref = `/appeal/${id}/login`;
+
+let state: 'closed' | 'login' | 'ready' | 'unavailable' = !config.enabled ? 'closed' : session ? 'ready' : 'login';
+let punishments: PunishmentView[] = [];
+let blocked = false;
+let blockedUntil: string | null = null;
+let forms: any[] = [];
+let mine: any[] = [];
+if (state === 'ready' && session) {
+  const [punishmentsRes, liveForms, mySubmissions] = await Promise.all([
+    callBot(Astro, id, 'punishments', { userId: session.userId }),
+    loadLiveForms(Astro, id),
+    loadUserSubmissions(Astro, id, session.userId),
+  ]);
+  if (!punishmentsRes.ok) state = 'unavailable';
+  else {
+    punishments = punishmentsRes.payload.punishments ?? [];
+    blocked = Boolean(punishmentsRes.payload.blocked);
+    blockedUntil = punishmentsRes.payload.blockedUntil ?? null;
+  }
+  forms = liveForms ?? [];
+  mine = mySubmissions ?? [];
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<AppealLanding lang={lang} guild={guild} config={config} state={state} loginHref={loginHref} user={session ? { name: session.username, avatar: session.avatar } : null} punishments={punishments} blocked={blocked} blockedUntil={blockedUntil} forms={forms} mine={mine} />
