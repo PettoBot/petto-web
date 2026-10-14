@@ -134,6 +134,8 @@ export function timeAgo(iso: string | null | undefined, lang: string): string {
 }
 
 // ── Forms as the dashboard saves them (the bot cuts a form down the same way; keep the limits in step with src/utils/appeals.js of the bot) ──
+export const FORM_ICONS = ['scales', 'gavel', 'hammer', 'prohibit', 'speaker-slash', 'chat-circle', 'envelope-simple', 'shield-check', 'flag', 'warning', 'question', 'heart', 'star', 'bell', 'megaphone', 'user'];
+
 export const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300 };
 export const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number'] as const;
 export const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'] as const;
@@ -143,7 +145,7 @@ const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u000
 export function normalizeForm(input: any) {
   const form = {
     name: clip(input?.name, 80) || 'Untitled form',
-    icon: clip(input?.icon, 60) || null,
+    icon: FORM_ICONS.includes(String(input?.icon ?? '')) ? String(input.icon) : null,
     short_description: clip(input?.short_description, 160) || null,
     description: clip(input?.description, 1500) || null,
     status: input?.status === 'live' ? 'live' : 'draft',

@@ -33,7 +33,7 @@ export default defineConfig({
         ph: [
           'puzzle-piece-fill', 'magnifying-glass-bold', 'microphone-fill', 'handshake-fill', 'pencil-simple-fill', 'plus-circle-fill', 'trash', 'calendar-check-fill', 'gavel-fill', 'robot-fill',
           'bug-fill', 'chat-circle-fill', 'user-circle-fill', 'browser-fill', 'scales-fill', 'list-checks-fill', 'tray-fill', 'gear-six-fill', 'paint-brush-broad-fill', 'chat-teardrop-text-fill', 'copy-simple-bold', 'link-simple-bold', 'trash-bold', 'circle', 'plus-bold', 'arrow-square-out-bold', 'check-circle-fill',
-          'arrow-right-bold', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
+          'arrow-right-bold', 'lock-fill', 'lightning-fill', 'sword-fill', 'hammer-fill', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
           'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
           'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'link-simple-bold', 'bell-fill',
           'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-left-bold',

@@ -3172,7 +3172,7 @@ export const dashPt: Record<string, string> = {
   "No short description": "Sem descrição curta",
   "questions": "perguntas",
   "All forms": "Todos os formulários",
-  "Icon (an emoji)": "Ícone (um emoji)",
+  "Icon": "Ícone",
   "Shown on the list of forms.": "Aparece na lista de formulários.",
   "Shown at the top of the form.": "Aparece no topo do formulário.",
   "Draft: nobody sees it": "Rascunho: ninguém vê",

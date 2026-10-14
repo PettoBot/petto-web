@@ -3172,7 +3172,7 @@ export const dashEs: Record<string, string> = {
   "No short description": "Sin descripción corta",
   "questions": "preguntas",
   "All forms": "Todos los formularios",
-  "Icon (an emoji)": "Icono (un emoji)",
+  "Icon": "Icono",
   "Shown on the list of forms.": "Se muestra en la lista de formularios.",
   "Shown at the top of the form.": "Se muestra arriba del formulario.",
   "Draft: nobody sees it": "Borrador: nadie lo ve",
