@@ -24,7 +24,7 @@ interface PanelCategory {
   buttonStyle: string;
 }
 
-function buildCategoryRow(style: string, categories: PanelCategory[]) {
+function buildCategoryRow(style: string, categories: PanelCategory[], placeholder?: string | null) {
   if (categories.length === 0) return null;
   if (style === 'select') {
     return {
@@ -33,7 +33,7 @@ function buildCategoryRow(style: string, categories: PanelCategory[]) {
         {
           type: 3,
           custom_id: 'tk_open_select',
-          placeholder: 'Select a ticket category...',
+          placeholder: (placeholder || 'Select a ticket category...').slice(0, 150),
           options: categories.slice(0, 25).map((c) => ({
             label: c.label.slice(0, 100),
             value: c.key,
@@ -201,14 +201,29 @@ function resolveV2(node: any, g: GuildVars, channelId: string): any {
 
 export const COMPONENTS_V2 = 1 << 15;
 
+/** The green of the other cards of Petto, for a panel whose server picked no color. */
+export const DEFAULT_PANEL_COLOR = 0xa5ea7a;
+
+export interface PanelLook { color?: number | null; image_url?: string | null; footer?: string | null; placeholder?: string | null }
+
+/** The usual panel as a Components V2 card: a picture on top if there is one, title and text, a small line under it. The way to open a ticket goes under the card. */
+export function buildDefaultPanelCard(panel: { title: string | null; description: string | null } & PanelLook, hasTypes: boolean) {
+  const children: any[] = [];
+  if (panel.image_url && /^https:\/\//i.test(panel.image_url)) children.push({ type: 12, items: [{ media: { url: panel.image_url } }] });
+  const text = panel.description || (hasTypes ? 'Click a button below to open a ticket.' : 'No ticket types configured yet.');
+  children.push({ type: 10, content: `${panel.title ? `### ${panel.title}\n` : ''}${text}` });
+  if (panel.footer) children.push({ type: 14, divider: true, spacing: 1 }, { type: 10, content: `-# ${panel.footer.slice(0, 300)}` });
+  return { type: 17, accent_color: Number.isInteger(panel.color) ? panel.color : DEFAULT_PANEL_COLOR, components: children };
+}
+
 export function buildPanelPayload(
-  panel: { title: string | null; description: string | null; channel_id?: string },
+  panel: { title: string | null; description: string | null; channel_id?: string } & PanelLook,
   style: string,
   categories: PanelCategory[],
   templateData: any | null,
   guildVars: GuildVars | null,
 ) {
-  const categoryRow = buildCategoryRow(style, categories);
+  const categoryRow = buildCategoryRow(style, categories, panel.placeholder);
 
   // A saved Components V2 design: its own components, and the way to open a ticket as the last row.
   if (templateData && guildVars && Array.isArray(templateData.v2?.components) && templateData.v2.components.length) {
@@ -226,16 +241,7 @@ export function buildPanelPayload(
     if (resolvedContent?.trim() || resolvedEmbeds.length) return { content: resolvedContent, embeds: resolvedEmbeds, components: rows };
   }
 
-  return {
-    embeds: [
-      {
-        title: panel.title || undefined,
-        description: panel.description || (categories.length ? 'Click a button below to open a ticket.' : 'No ticket types configured yet.'),
-        color: 0x8399ff,
-      },
-    ],
-    components: categoryRow ? [categoryRow] : [],
-  };
+  return { flags: COMPONENTS_V2, components: [buildDefaultPanelCard(panel, categories.length > 0), ...(categoryRow ? [categoryRow] : [])] };
 }
 
 /** What is not ready in a panel, before or after it is posted: nothing to open tickets with, or a design with nothing in it. */

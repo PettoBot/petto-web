@@ -4,6 +4,10 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import TicketFieldsBuilder from './TicketFieldsBuilder.astro';
+import TicketEmoji from './TicketEmoji.astro';
+import TicketGuide from './TicketGuide.astro';
+import TicketPanelPreview from './TicketPanelPreview.astro';
+import { minutesText, type TicketStats } from '../utils/ticketStats';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -37,8 +41,12 @@ interface Panel {
   description: string | null;
   style: string;
   embedTemplate: string | null;
+  color: string;
+  imageUrl: string;
+  footer: string;
+  placeholder: string;
   categoryCount: number;
-  types: { label: string; emoji: string | null }[];
+  types: { label: string; emoji: string | null; description?: string | null; buttonStyle?: string }[];
 }
 interface TicketSettings {
   claimMode: string;
@@ -59,6 +67,16 @@ interface TicketSettings {
   openedLogChannelId: string;
   closedLogChannelId: string;
   blockedRoleIds: string[];
+  globalLimit: number;
+  unclaimedReminderMinutes: number;
+  autoDeleteClosedHours: number;
+  hoursEnabled: boolean;
+  hoursTimezone: string;
+  hoursStart: string;
+  hoursEnd: string;
+  hoursDays: number[];
+  hoursBlock: boolean;
+  hoursMessage: string;
 }
 interface OpenTicket {
   id: number;
@@ -85,14 +103,16 @@ interface Props {
   forms: TicketForm[];
   blacklist: TicketBlacklistEntry[];
   openTickets: OpenTicket[];
+  quickReplies?: { name: string; content: string }[];
+  stats?: TicketStats | null;
   premiumActive: boolean;
   saved: boolean;
   error?: string | null;
   warnings?: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, customEmojis = [], categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, saved, error, warnings = [], premiumActive, section } = Astro.props;
-const sectionMeta: Record<string, string> = { panels: dt('Ticket panels'), types: dt('Support types'), forms: dt('Ticket forms'), access: dt('Ticket access'), settings: dt('Ticket settings'), open: dt('Open tickets') };
+const { user, guildId, guildName, guildIcon, customEmojis = [], categories, panels, settings, roles, channelCategories, textChannels, embedTemplateNames, forms, blacklist, openTickets, quickReplies = [], stats = null, saved, error, warnings = [], premiumActive, section } = Astro.props;
+const sectionMeta: Record<string, string> = { panels: dt('Ticket panels'), types: dt('Support types'), forms: dt('Ticket forms'), access: dt('Ticket access'), settings: dt('Ticket settings'), replies: dt('Quick replies'), ai: dt('Ticket AI'), open: dt('Open tickets') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'panels';
 const selectedTitle = sectionMeta[selectedSection];
 function channelName(id: string | null) {
@@ -100,10 +120,31 @@ function channelName(id: string | null) {
 }
 const ticketCategoryLimit = premiumActive ? 20 : 5;
 const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
+const postedCount = panels.filter((p) => p.messageId).length;
+const showGuide = ['panels', 'types', 'settings'].includes(selectedSection);
+const buttonStyles = [
+  { value: 'primary', label: dt('Blue (main)') },
+  { value: 'secondary', label: dt('Gray') },
+  { value: 'success', label: dt('Green') },
+  { value: 'danger', label: dt('Red') },
+];
+// Ready designs for a new panel: pressing one fills the form below, and everything can still be changed.
+const presets = [
+  { id: 'classic', name: dt('Classic support'), icon: 'ph:ticket-fill', color: '#a5ea7a', style: 'button', title: dt('Support'), description: dt('Press a button to open a ticket. Our team will answer you as soon as possible.'), footer: dt('One ticket per topic, please.'), placeholder: '' },
+  { id: 'help', name: dt('Help center (dropdown)'), icon: 'ph:list-bullets-fill', color: '#ffb86c', style: 'select', title: dt('Help center'), description: dt('Choose a category from the menu and a private channel opens with the staff.'), footer: dt('Replies can take a few minutes.'), placeholder: dt('Choose the type of ticket...') },
+  { id: 'reports', name: dt('Reports'), icon: 'ph:flag-fill', color: '#ff6b6b', style: 'button', title: dt('Report a problem'), description: dt('Tell us about a member, a bug or something that is not right. Include proof if you have it.'), footer: dt('Only the staff can see your ticket.'), placeholder: '' },
+  { id: 'apply', name: dt('Applications'), icon: 'ph:hand-waving-fill', color: '#f78fb3', style: 'button', title: dt('Join the team'), description: dt('Want to help? Open a ticket and answer a few questions so we can get to know you.'), footer: dt('We read every application.'), placeholder: '' },
+  { id: 'minimal', name: dt('Minimal'), icon: 'ph:minus-circle-fill', color: '#ffd563', style: 'button', title: dt('Tickets'), description: dt('Press a button to talk to the staff.'), footer: '', placeholder: '' },
+];
+const hourDays = [
+  { n: 1, label: dt('Mon') }, { n: 2, label: dt('Tue') }, { n: 3, label: dt('Wed') }, { n: 4, label: dt('Thu') }, { n: 5, label: dt('Fri') }, { n: 6, label: dt('Sat') }, { n: 0, label: dt('Sun') },
+];
+const timezones = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'America/Argentina/Buenos_Aires', 'America/Santiago', 'America/Sao_Paulo', 'America/New_York', 'America/Los_Angeles', 'Europe/Madrid', 'Europe/London', 'UTC'];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'panels' ? 'tickets' : `tickets-${selectedSection}`} pageTitle={selectedTitle}>
   <h1>{selectedTitle}</h1>
   <p class="tk-sub"><Fragment set:html={dth('Panels, support types, and how tickets close, all configured for <b>{a}</b> from here. The prefix <code>ticket</code> command in Discord still works for everything, this is the same data.', { a: (guildName) })} /></p>
+  {showGuide && <TicketGuide guildId={guildId} section={selectedSection} typeCount={categories.length} panelCount={panels.length} postedCount={postedCount} />}
 
   {saved && <div class="tk-flash tk-flash-ok"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
   {warnings.map((w) => <div class="tk-flash tk-flash-warn"><Icon name="ph:info-fill" width="15" height="15" />{w}</div>)}
@@ -112,95 +153,131 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
   {selectedSection === 'panels' && (
   <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'panels' }]}>
     <h2><Icon name="ph:squares-four-fill" width="15" height="15" /><Fragment set:html={dth('Panels <span class="tk-count">{a}</span>', { a: (panels.length) })} /></h2>
-    <p class="tk-section-note">{dt('The message members click to open a ticket. Editing/resending re-posts it in place; moving posts a fresh one in the new channel.')}</p>
-    {panels.length === 0 && <p class="tk-empty-note">{dt('No panels yet, create one below.')}</p>}
+    <p class="tk-section-note">{dt('The message members use to open a ticket: a card with buttons or a dropdown. Saving posts it or updates it in the same place; moving posts a new one in the new channel.')}</p>
+    {panels.length === 0 && <p class="tk-empty-note">{dt('No panels yet. Pick a ready design below to start.')}</p>}
 
     <div class="tk-panel-grid">
       {panels.map((p) => (
         <div class="tk-panel-card">
-          <form method="POST" class="tk-panel-form">
+          <form method="POST" class="tk-panel-form" data-panel-form>
             <input type="hidden" name="action" value="update_panel" />
             <input type="hidden" name="panel_id" value={p.id} />
             <div class="tk-panel-head">
-              <input type="text" name="title" value={p.title ?? ''} maxlength="100" placeholder={dt('Panel title')} class="tk-panel-title" />
               <span class="tk-panel-chan">#{channelName(p.channelId)}</span>
-            </div>
-            <div class="tk-panel-status">
               {p.messageId
                 ? <a class="tk-chip tk-chip-ok" href={`https://discord.com/channels/${guildId}/${p.channelId}/${p.messageId}`} target="_blank" rel="noopener"><Icon name="ph:check-circle-fill" width="12" height="12" />{dt('Posted')} · {dt('Open in Discord')}</a>
                 : <span class="tk-chip tk-chip-warn"><Icon name="ph:warning-fill" width="12" height="12" />{dt('Not posted yet. Press Resend.')}</span>}
               {p.embedTemplate && <span class="tk-chip">{dt('Design')}: {p.embedTemplate}</span>}
             </div>
-            <textarea name="description" rows="2" maxlength="500" placeholder={dt('Panel description')}>{p.description ?? ''}</textarea>
-            <div class="tk-preview" data-panel-preview data-has-design={p.embedTemplate ? '1' : ''}>
-              <div class="tk-pv-label">{dt('Preview')}</div>
-              <div class="tk-pv-title" data-pv-title>{p.title}</div>
-              <div class="tk-pv-desc" data-pv-desc>{p.description || (p.categoryCount ? dt('Click a button below to open a ticket.') : '')}</div>
-              {p.embedTemplate && <div class="tk-pv-note">{dt('The design "{name}" decides how the message looks. This preview is only the plain panel.', { name: p.embedTemplate })}</div>}
-              <div class="tk-pv-types">
-                {p.types.length ? p.types.slice(0, 25).map((type) => <span class="tk-pv-btn">{type.emoji || '🎫'} {type.label}</span>) : <span class="tk-pv-none">{dt('No types yet, so there is nothing to click. Add one in Support types.')}</span>}
+            <div class="tk-panel-body">
+            <div class="tk-fields">
+              <div class="tk-cat-row"><label>{dt('Title')}</label><input type="text" name="title" value={p.title ?? ''} maxlength="100" placeholder={dt('Panel title')} /></div>
+              <div class="tk-cat-row"><label>{dt('Description')}</label><textarea name="description" rows="3" maxlength="500" placeholder={dt('Panel description')}>{p.description ?? ''}</textarea></div>
+              <div class="tk-two">
+                <div class="tk-cat-row"><label>{dt('Style')}</label>
+                  <select name="style">
+                    <option value="button" selected={p.style === 'button'}>{dt('Buttons (max 5 types)')}</option>
+                    <option value="select" selected={p.style === 'select'}>{dt('Dropdown (up to 25 types)')}</option>
+                  </select>
+                </div>
+                <div class="tk-cat-row"><label>{dt('Card color')}</label>
+                  <div class="tk-color"><input type="color" data-color-pick value={p.color || '#a5ea7a'} aria-label={dt('Card color')} /><input type="text" name="color" value={p.color} maxlength="7" placeholder="#a5ea7a" /></div>
+                </div>
               </div>
+              <div class="tk-cat-row"><label>{dt('Picture on top')}</label><input type="url" name="image_url" value={p.imageUrl} maxlength="500" placeholder="https://..." /><p class="tk-row-hint">{dt('A banner. The link has to start with https.')}</p></div>
+              <div class="tk-cat-row"><label>{dt('Small text under the panel')}</label><input type="text" name="footer" value={p.footer} maxlength="300" placeholder={dt('Optional')} /></div>
+              <div class="tk-cat-row" data-only-select><label>{dt('Text of the dropdown')}</label><input type="text" name="placeholder" value={p.placeholder} maxlength="150" placeholder={dt('Select a ticket category...')} /></div>
+              {embedTemplateNames.length > 0 && (
+                <div class="tk-cat-row"><label>{dt('Saved design')}</label>
+                  <select name="embed_template" data-dp-template-only>
+                    <option value="">{dt('None: use the fields above')}</option>
+                    {embedTemplateNames.map((n) => <option value={n} selected={n === p.embedTemplate}>{n}</option>)}
+                  </select>
+                  <p class="tk-row-hint">{dt('A design made in Embeds replaces the card above.')}</p>
+                </div>
+              )}
             </div>
-            <div class="tk-panel-row">
-              <select name="style">
-                <option value="button" selected={p.style === 'button'}>{dt('Buttons (max 5 types)')}</option>
-                <option value="select" selected={p.style === 'select'}>{dt('Dropdown (up to 25 types)')}</option>
-              </select>
-              <span class:list={['tk-panel-cats', { 'tk-panel-cats-empty': p.categoryCount === 0 }]}>{p.categoryCount === 0 ? dt('No types yet') : `${p.categoryCount} type${p.categoryCount !== 1 ? 's' : ''}`}</span>
+            <TicketPanelPreview title={p.title} description={p.description} color={p.color} imageUrl={p.imageUrl} footer={p.footer} style={p.style} placeholder={p.placeholder} types={p.types} design={p.embedTemplate} />
             </div>
-            {embedTemplateNames.length > 0 && (
-              <select name="embed_template" data-dp-template-only>
-                <option value="">{dt('No template, plain title + description')}</option>
-                {embedTemplateNames.map((n) => <option value={n} selected={n === p.embedTemplate}>{n}</option>)}
-              </select>
-            )}
+            <p class:list={['tk-panel-cats', { 'tk-panel-cats-empty': p.categoryCount === 0 }]}>{p.categoryCount === 0 ? dt('No types on this panel yet. Add one in Support types and pick this panel.') : dt('{n} types on this panel', { n: p.categoryCount })}</p>
             <div class="tk-panel-actions">
-              <button type="submit" name="action" value="update_panel" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+              <button type="submit" name="action" value="update_panel" class="btn btn-accent btn-sm">{dt('Save and update the message')}</button>
             </div>
           </form>
-          <form method="POST" class="tk-panel-move">
-            <input type="hidden" name="action" value="move_panel" />
-            <input type="hidden" name="panel_id" value={p.id} />
-            <select name="channel_id">
-              {textChannels.map((c) => <option value={c.id} selected={c.id === p.channelId}>#{c.name}</option>)}
-            </select>
-            <button type="submit" name="action" value="move_panel" class="btn btn-ghost btn-sm">{dt('Move')}</button>
-          </form>
-          <div class="tk-panel-actions">
-            <form method="POST"><input type="hidden" name="action" value="resend_panel" /><input type="hidden" name="panel_id" value={p.id} /><button type="submit" name="action" value="resend_panel" class="btn btn-ghost btn-sm" data-confirm={dt('Resend this panel? The message in Discord is deleted and posted again.')}>{dt('Resend')}</button></form>
-            <form method="POST"><input type="hidden" name="action" value="delete_panel" /><input type="hidden" name="panel_id" value={p.id} /><button type="submit" name="action" value="delete_panel" class="tk-cat-del" title={dt('Delete this panel')} data-confirm={dt('Delete this panel? Its message in Discord is deleted too. Ticket types stay, but are no longer on a panel.')} formnovalidate><Icon name="ph:trash-fill" width="14" height="14" /></button></form>
-          </div>
+          <details class="tk-more">
+            <summary>{dt('Move, resend or delete')}</summary>
+            <form method="POST" class="tk-panel-move">
+              <input type="hidden" name="action" value="move_panel" />
+              <input type="hidden" name="panel_id" value={p.id} />
+              <select name="channel_id">
+                {textChannels.map((c) => <option value={c.id} selected={c.id === p.channelId}>#{c.name}</option>)}
+              </select>
+              <button type="submit" name="action" value="move_panel" class="btn btn-ghost btn-sm">{dt('Move')}</button>
+            </form>
+            <div class="tk-panel-actions">
+              <form method="POST"><input type="hidden" name="action" value="resend_panel" /><input type="hidden" name="panel_id" value={p.id} /><button type="submit" name="action" value="resend_panel" class="btn btn-ghost btn-sm" data-confirm={dt('Resend this panel? The message in Discord is deleted and posted again.')}>{dt('Resend')}</button></form>
+              <form method="POST"><input type="hidden" name="action" value="delete_panel" /><input type="hidden" name="panel_id" value={p.id} /><button type="submit" name="action" value="delete_panel" class="tk-cat-del" title={dt('Delete this panel')} data-confirm={dt('Delete this panel? Its message in Discord is deleted too. Ticket types stay, but are no longer on a panel.')} formnovalidate><Icon name="ph:trash-fill" width="14" height="14" /></button></form>
+            </div>
+          </details>
         </div>
       ))}
     </div>
 
-    <form method="POST" class="tk-add-form">
-      <input type="hidden" name="action" value="create_panel" />
-      <select name="channel_id" required>
-        <option value="" disabled selected>{dt('Channel')}</option>
-        {textChannels.map((c) => <option value={c.id}>#{c.name}</option>)}
-      </select>
-      <input type="text" name="title" placeholder={dt('Title (optional)')} maxlength="100" />
-      <input type="text" name="description" placeholder={dt('Description (optional)')} maxlength="500" />
-      <select name="style">
-        <option value="button">{dt('Buttons')}</option>
-        <option value="select">{dt('Dropdown')}</option>
-      </select>
-      {embedTemplateNames.length > 0 && (
-        <select name="embed_template" data-dp-template-only>
-          <option value="">{dt('No template, plain title + description')}</option>
-          {embedTemplateNames.map((n) => <option value={n}>{n}</option>)}
-        </select>
-      )}
-      <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Create panel')}</button>
-    </form>
-    {embedTemplateNames.length > 0 && <p class="tk-row-hint">{dt('A template\'s own title/description/color/image win over the fields above. Only server-wide variables resolve here ({a}, {b}, etc), not per-member ones, since no one specific opens a panel.', { a: ('{server_name}'), b: ('{guild.icon}') })}</p>}
+    <div class="tk-new-panel">
+      <h2><Icon name="ph:plus-circle-fill" width="15" height="15" />{dt('New panel')}</h2>
+      <p class="tk-section-note">{dt('Pick a ready design. It fills the form: you can change anything before posting.')}</p>
+      <div class="tk-presets" data-presets>
+        {presets.map((pr) => (
+          <button type="button" class="tk-preset" data-preset={pr.id} data-title={pr.title} data-description={pr.description} data-color={pr.color} data-style={pr.style} data-footer={pr.footer} data-placeholder={pr.placeholder} style={`--pc:${pr.color}`}>
+            <Icon name={pr.icon} width="16" height="16" /><span>{pr.name}</span>
+          </button>
+        ))}
+      </div>
+      <div class="tk-new-grid">
+        <form method="POST" class="tk-panel-form tk-new-form" data-panel-form data-new-panel>
+          <input type="hidden" name="action" value="create_panel" />
+          <div class="tk-fields">
+            <div class="tk-cat-row"><label>{dt('Channel')}</label>
+              <select name="channel_id" required>
+                <option value="" disabled selected>{dt('Choose where to post it')}</option>
+                {textChannels.map((c) => <option value={c.id}>#{c.name}</option>)}
+              </select>
+            </div>
+            <div class="tk-cat-row"><label>{dt('Title')}</label><input type="text" name="title" maxlength="100" placeholder={dt('Panel title')} /></div>
+            <div class="tk-cat-row"><label>{dt('Description')}</label><textarea name="description" rows="3" maxlength="500" placeholder={dt('Panel description')}></textarea></div>
+            <div class="tk-two">
+              <div class="tk-cat-row"><label>{dt('Style')}</label>
+                <select name="style"><option value="button">{dt('Buttons (max 5 types)')}</option><option value="select">{dt('Dropdown (up to 25 types)')}</option></select>
+              </div>
+              <div class="tk-cat-row"><label>{dt('Card color')}</label>
+                <div class="tk-color"><input type="color" data-color-pick value="#a5ea7a" aria-label={dt('Card color')} /><input type="text" name="color" maxlength="7" placeholder="#a5ea7a" /></div>
+              </div>
+            </div>
+            <div class="tk-cat-row"><label>{dt('Picture on top')}</label><input type="url" name="image_url" maxlength="500" placeholder="https://..." /></div>
+            <div class="tk-cat-row"><label>{dt('Small text under the panel')}</label><input type="text" name="footer" maxlength="300" placeholder={dt('Optional')} /></div>
+            <div class="tk-cat-row" data-only-select><label>{dt('Text of the dropdown')}</label><input type="text" name="placeholder" maxlength="150" placeholder={dt('Select a ticket category...')} /></div>
+            {embedTemplateNames.length > 0 && (
+              <div class="tk-cat-row"><label>{dt('Saved design')}</label>
+                <select name="embed_template" data-dp-template-only>
+                  <option value="">{dt('None: use the fields above')}</option>
+                  {embedTemplateNames.map((n) => <option value={n}>{n}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <div class="tk-panel-actions"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />{dt('Create and post the panel')}</button></div>
+        </form>
+        <div class="tk-new-preview"><TicketPanelPreview title="" description="" style="button" types={categories.filter((c) => !c.panelId).slice(0, 5).map((c) => ({ label: c.label, emoji: c.emoji, description: c.description, buttonStyle: c.buttonStyle }))} /></div>
+      </div>
+      {embedTemplateNames.length > 0 && <p class="tk-row-hint">{dt('A template\'s own title/description/color/image win over the fields above. Only server-wide variables resolve here ({a}, {b}, etc), not per-member ones, since no one specific opens a panel.', { a: ('{server_name}'), b: ('{guild.icon}') })}</p>}
+    </div>
   </div>
   )}
 
   {selectedSection === 'types' && (
   <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'types' }]}>
     <h2><Icon name="ph:ticket" width="15" height="15" /><Fragment set:html={dth('Support types <span class="tk-count">{a}/{b}</span>', { a: (categories.length), b: (ticketCategoryLimit) })} />{!premiumActive && <span class="tk-premium-tag">Premium: 20</span>}</h2>
+    <p class="tk-section-note">{dt('A support type is a reason to open a ticket: Support, Report a player, Purchases... Each one appears as a button or option on a panel, and has its own staff and rules.')}</p>
     {categories.length === 0 && <p class="tk-empty-note">{dt('No ticket types yet, add the first one below.')}</p>}
 
     <div class="tk-cat-grid">
@@ -210,92 +287,96 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
           {/* The first button of a form is the one Enter presses, so a save sits before the delete button. */}
           <button type="submit" name="action" value="update" class="tk-default-submit" tabindex="-1" aria-hidden="true"></button>
           <div class="tk-cat-head">
-            <span class="tk-cat-emoji-chip">{cat.emoji || '🎫'}</span>
-            <input type="text" name="label" value={cat.label} maxlength="40" class="tk-cat-label" />
+            <span class="tk-cat-emoji-chip"><TicketEmoji emoji={cat.emoji} size={20} /></span>
+            <input type="text" name="label" value={cat.label} maxlength="40" class="tk-cat-label" aria-label={dt('Name of the type')} />
             <button type="submit" name="action" value="delete" class="tk-cat-del" title={dt('Delete this type')} data-confirm={dt('Delete this support type? Members can no longer open tickets with it. This cannot be undone.')} formnovalidate>
               <Icon name="ph:trash-fill" width="14" height="14" />
             </button>
           </div>
+          <p class="tk-where">{cat.panelId ? dt('On the panel: {name}', { name: panels.find((p) => p.id === cat.panelId)?.title || `#${channelName(panels.find((p) => p.id === cat.panelId)?.channelId ?? null)}` }) : dt('Not on any panel yet: nobody can open it.')}</p>
 
-          <div class="tk-cat-row">
-            <label>{dt('Panel')}</label>
-            <select name="panel_id">
-              <option value="">{dt('None (not on any panel)')}</option>
-              {panels.map((p) => <option value={p.id} selected={p.id === cat.panelId}>{p.title || `#${channelName(p.channelId)}`}</option>)}
-            </select>
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Emoji')}</label>
-            <input type="text" name="emoji" data-emoji-input value={cat.emoji ?? ''} maxlength="64" autocomplete="off" placeholder="🎫" class="tk-emoji-input" />
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Description')}</label>
-            <input type="text" name="description" value={cat.description ?? ''} maxlength="100" placeholder={dt('Shown on the panel button/option')} />
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Button style')}</label>
-            <select name="button_style">
-              {['primary', 'secondary', 'success', 'danger'].map((s) => <option value={s} selected={s === cat.buttonStyle}>{s}</option>)}
-            </select>
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Channel name')}</label>
-            <input type="text" name="naming_pattern" value={cat.namingPattern} maxlength="50" placeholder="ticket-{number}" />
-            <p class="tk-row-hint">{dt('You can use {number}, {username}, {userid} and {category}.')}</p>
-          </div>
-
-          {cat.welcomeSupported && (
+          <details class="tk-group" open>
+            <summary>{dt('How it looks on the panel')}</summary>
             <div class="tk-cat-row">
-              <label>{dt('Welcome text')}</label>
-              <input type="hidden" name="welcome_supported" value="1" />
-              <textarea name="welcome_message" rows="3" maxlength="1000" placeholder={dt('Hi {user}! Tell us what you need and staff will answer soon.')}>{cat.welcomeMessage ?? ''}</textarea>
-              <p class="tk-row-hint">{dt('Shown inside the ticket. You can use {user}, {username}, {category}, {server} and {number}. A saved embed set for this type is used instead.')}</p>
+              <label>{dt('Panel where it appears')}</label>
+              <select name="panel_id">
+                <option value="">{dt('None (not on any panel)')}</option>
+                {panels.map((p) => <option value={p.id} selected={p.id === cat.panelId}>{p.title || `#${channelName(p.channelId)}`}</option>)}
+              </select>
             </div>
-          )}
+            <div class="tk-cat-row">
+              <label>{dt('Emoji')}</label>
+              <input type="text" name="emoji" data-emoji-input value={cat.emoji ?? ''} maxlength="64" autocomplete="off" placeholder="🎫" class="tk-emoji-input" />
+              <p class="tk-row-hint">{dt('Pick one with the button on the right. Server emojis work too.')}</p>
+            </div>
+            <div class="tk-cat-row">
+              <label>{dt('Short description')}</label>
+              <input type="text" name="description" value={cat.description ?? ''} maxlength="100" placeholder={dt('Shown under the name in the dropdown')} />
+            </div>
+            <div class="tk-cat-row">
+              <label>{dt('Button color')}</label>
+              <select name="button_style">
+                {buttonStyles.map((b) => <option value={b.value} selected={b.value === cat.buttonStyle}>{b.label}</option>)}
+              </select>
+            </div>
+          </details>
 
-          <div class="tk-cat-row">
-            <label>{dt('Opens in category')}</label>
-            <select name="parent_channel_id">
-              <option value="">{dt('Server default')}</option>
-              {channelCategories.map((c) => (
-                <option value={c.id} selected={c.id === cat.parentChannelId}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+          <details class="tk-group">
+            <summary>{dt('When the ticket opens')}</summary>
+            <div class="tk-cat-row">
+              <label>{dt('Channel name')}</label>
+              <input type="text" name="naming_pattern" value={cat.namingPattern} maxlength="50" placeholder="ticket-{number}" />
+              <p class="tk-row-hint">{dt('You can use {number}, {username}, {userid} and {category}.')}</p>
+            </div>
+            {cat.welcomeSupported && (
+              <div class="tk-cat-row">
+                <label>{dt('Welcome text')}</label>
+                <input type="hidden" name="welcome_supported" value="1" />
+                <textarea name="welcome_message" rows="3" maxlength="1000" placeholder={dt('Hi {user}! Tell us what you need and staff will answer soon.')}>{cat.welcomeMessage ?? ''}</textarea>
+                <p class="tk-row-hint">{dt('Shown inside the ticket. You can use {user}, {username}, {category}, {server} and {number}. A saved embed set for this type is used instead.')}</p>
+              </div>
+            )}
+            <div class="tk-cat-row">
+              <label>{dt('Discord category where the channel is made')}</label>
+              <select name="parent_channel_id">
+                <option value="">{dt('Server default')}</option>
+                {channelCategories.map((c) => (
+                  <option value={c.id} selected={c.id === cat.parentChannelId}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div class="tk-cat-row">
+              <label>{dt('Intake form')}</label>
+              <select name="form_id">
+                <option value="">{dt('No form')}</option>
+                {forms.map((form) => <option value={form.id} selected={String(form.id) === String(cat.formId)}>{form.name} · {form.title}</option>)}
+              </select>
+            </div>
+          </details>
 
-          <div class="tk-cat-row">
-            <label>{dt('Support roles')}</label>
-            <MultiSelect name="support_role_ids" options={roles} selected={cat.supportRoleIds} placeholder={dt('Search roles...')} />
-          </div>
+          <details class="tk-group">
+            <summary>{dt('Who answers and who can open it')}</summary>
+            <div class="tk-cat-row">
+              <label>{dt('Support roles')}</label>
+              <MultiSelect name="support_role_ids" options={roles} selected={cat.supportRoleIds} placeholder={dt('Search roles...')} />
+              <p class="tk-row-hint">{dt('They can see and answer these tickets.')}</p>
+            </div>
+            <div class="tk-cat-row">
+              <label>{dt('Ping on open')}</label>
+              <MultiSelect name="ping_role_ids" options={roles} selected={cat.pingRoleIds} placeholder={dt('Search roles...')} />
+            </div>
+            <div class="tk-cat-row">
+              <label>{dt('Required roles')}</label>
+              <MultiSelect name="required_role_ids" options={roles} selected={cat.requiredRoleIds} placeholder={dt('Search roles...')} />
+              <p class="tk-row-hint">{dt('Only members with all of them can open this type. Empty for everyone.')}</p>
+            </div>
+            <div class="tk-cat-row">
+              <label>{dt('Max open per member')}</label>
+              <input type="number" name="max_open_per_user" value={cat.maxOpenPerUser} min="1" max="10" />
+            </div>
+          </details>
 
-          <div class="tk-cat-row">
-            <label>{dt('Ping on open')}</label>
-            <MultiSelect name="ping_role_ids" options={roles} selected={cat.pingRoleIds} placeholder={dt('Search roles...')} />
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Max open per member')}</label>
-            <input type="number" name="max_open_per_user" value={cat.maxOpenPerUser} min="1" max="10" />
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Intake form')}</label>
-            <select name="form_id">
-              <option value="">{dt('No form')}</option>
-              {forms.map((form) => <option value={form.id} selected={String(form.id) === String(cat.formId)}>{form.name} · {form.title}</option>)}
-            </select>
-          </div>
-
-          <div class="tk-cat-row">
-            <label>{dt('Required roles')}</label>
-            <MultiSelect name="required_role_ids" options={roles} selected={cat.requiredRoleIds} placeholder={dt('Search roles...')} />
-          </div>
-
-          <button type="submit" name="action" value="update" class="btn btn-ghost btn-sm">{dt('Save this type')}</button>
+          <button type="submit" name="action" value="update" class="btn btn-accent btn-sm">{dt('Save this type')}</button>
         </form>
       ))}
     </div>
@@ -305,23 +386,35 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
   {selectedSection === 'types' && (
   <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'types' }]} data-tk-new-type>
     <h2><Icon name="ph:plus-circle-fill" width="15" height="15" />{dt('Add a support type')}</h2>
+    {!ticketCategoryAtLimit && categories.length < 4 && (
+      <form method="POST" class="tk-starter">
+        <input type="hidden" name="action" value="add_starter_types" />
+        <div><strong>{dt('Start with a ready set')}</strong><span>{dt('Adds Support, Report a player, Purchases and Appeals (as many as your plan allows). You can rename or delete them.')}</span></div>
+        <select name="panel_id"><option value="">{dt('No panel yet')}</option>{panels.map((p) => <option value={p.id}>{p.title || `#${channelName(p.channelId)}`}</option>)}</select>
+        <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Add the ready types')}</button>
+      </form>
+    )}
     {ticketCategoryAtLimit ? (
       <div class="tk-limit-card">
         <div><strong>{premiumActive ? dt('Ticket type limit reached') : dt('Free ticket type limit reached')}</strong><span>{premiumActive ? dt('You are using all {n} available ticket types.',{n:ticketCategoryLimit}) : dt('Free includes 5 ticket types. Premium increases this to 20.')}</span></div>
         {!premiumActive && <a class="btn btn-ghost btn-sm" href={`/dash/premium?guild_id=${guildId}`}>{dt('Unlock Premium')}</a>}
       </div>
-    ) : (<form method="POST" class="tk-add-form">
+    ) : (<form method="POST" class="tk-add-form tk-add-type">
       <input type="hidden" name="action" value="create" />
-      <input type="text" name="label" placeholder={dt('e.g. Report a player')} maxlength="40" required />
-      <input type="text" name="emoji" data-emoji-input placeholder="🎫" maxlength="64" autocomplete="off" class="tk-emoji-input" />
-      <select name="panel_id">
-        <option value="">{dt('No panel yet')}</option>
-        {panels.map((p) => <option value={p.id}>{p.title || `#${channelName(p.channelId)}`}</option>)}
-      </select>
-      <select name="parent_channel_id">
-        <option value="">{dt('Server default category')}</option>
-        {channelCategories.map((c) => <option value={c.id}>{c.name}</option>)}
-      </select>
+      <div class="tk-cat-row"><label>{dt('Name of the type')}</label><input type="text" name="label" placeholder={dt('e.g. Report a player')} maxlength="40" required /></div>
+      <div class="tk-cat-row"><label>{dt('Emoji')}</label><input type="text" name="emoji" data-emoji-input placeholder="🎫" maxlength="64" autocomplete="off" class="tk-emoji-input" /></div>
+      <div class="tk-cat-row"><label>{dt('Panel where it appears')}</label>
+        <select name="panel_id">
+          <option value="">{dt('No panel yet')}</option>
+          {panels.map((p) => <option value={p.id}>{p.title || `#${channelName(p.channelId)}`}</option>)}
+        </select>
+      </div>
+      <div class="tk-cat-row"><label>{dt('Discord category where the channel is made')}</label>
+        <select name="parent_channel_id">
+          <option value="">{dt('Server default category')}</option>
+          {channelCategories.map((c) => <option value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
       <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Add')}</button>
     </form>)}
     {forms.length === 0 && <p class="tk-row-hint"><Fragment set:html={dth('Create forms in Discord with <code>!ticket form create</code>, then assign them here.')} /></p>}
@@ -397,6 +490,11 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
           </div>
           <label class="tk-check"><input type="checkbox" name="ping_on_claim" checked={settings.pingOnClaim} />{dt('Ping the ticket opener when claimed')}</label>
           <div class="tk-cat-row">
+            <label>{dt('Remind the staff if nobody claims it (minutes)')}</label>
+            <input type="number" name="unclaimed_reminder_minutes" value={settings.unclaimedReminderMinutes} min="0" max="10080" />
+            <p class="tk-row-hint">{dt('The support roles of the type are pinged once in the ticket. 0 for no reminder.')}</p>
+          </div>
+          <div class="tk-cat-row">
             <label>{dt('Roles to add on claim')}</label>
             <MultiSelect name="roles_to_add_on_claim" options={roles} selected={settings.rolesToAddOnClaim} placeholder={dt('Search roles...')} />
           </div>
@@ -408,6 +506,11 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
           <label class="tk-check"><input type="checkbox" name="close_requires_reason" checked={settings.closeRequiresReason} />{dt('Require a reason to close')}</label>
           <label class="tk-check"><input type="checkbox" name="hide_closing_user" checked={settings.hideClosingUser} />{dt('Hide who closed it from the opener')}</label>
           <label class="tk-check"><input type="checkbox" name="dm_user_on_close" checked={settings.dmUserOnClose} />{dt('DM the opener with the transcript on close')}</label>
+          <div class="tk-cat-row">
+            <label>{dt('Delete the channel of a closed ticket after (hours)')}</label>
+            <input type="number" name="auto_delete_closed_hours" value={settings.autoDeleteClosedHours} min="0" max="720" />
+            <p class="tk-row-hint">{dt('The transcript is kept. 0 to keep the channels until someone deletes them.')}</p>
+          </div>
           <div class="tk-cat-row">
             <label>{dt('Default close reason')}</label>
             <input type="text" name="default_close_reason" value={settings.defaultCloseReason} maxlength="300" placeholder={dt('Used when no reason is given')} />
@@ -464,6 +567,42 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
         </div>
 
         <div class="tk-set-card">
+          <div class="tk-set-head">{dt('Limits')}</div>
+          <div class="tk-cat-row">
+            <label>{dt('Open tickets at the same time per member')}</label>
+            <input type="number" name="global_limit" value={settings.globalLimit} min="0" max="50" />
+            <p class="tk-row-hint">{dt('In the whole server, whatever the type. 0 for no limit. Each type has its own limit too.')}</p>
+          </div>
+        </div>
+
+        <div class="tk-set-card tk-set-wide">
+          <div class="tk-set-head">{dt('Staff hours')}</div>
+          <label class="tk-check"><input type="checkbox" name="hours_enabled" checked={settings.hoursEnabled} />{dt('Tell members when the staff answers')}</label>
+          <div class="tk-two">
+            <div class="tk-cat-row"><label>{dt('From')}</label><input type="time" name="hours_start" value={settings.hoursStart} /></div>
+            <div class="tk-cat-row"><label>{dt('Until')}</label><input type="time" name="hours_end" value={settings.hoursEnd} /></div>
+          </div>
+          <div class="tk-cat-row">
+            <label>{dt('Timezone')}</label>
+            <select name="hours_timezone">
+              {[...new Set([settings.hoursTimezone, ...timezones])].map((tz) => <option value={tz} selected={tz === settings.hoursTimezone}>{tz}</option>)}
+            </select>
+          </div>
+          <div class="tk-cat-row">
+            <label>{dt('Days')}</label>
+            <div class="tk-days">
+              {hourDays.map((d) => <label class="tk-day"><input type="checkbox" name="hours_days" value={d.n} checked={settings.hoursDays.includes(d.n)} /><span>{d.label}</span></label>)}
+            </div>
+          </div>
+          <label class="tk-check"><input type="checkbox" name="hours_block" checked={settings.hoursBlock} />{dt('Do not let tickets open outside these hours')}</label>
+          <div class="tk-cat-row">
+            <label>{dt('Message outside the hours')}</label>
+            <textarea name="hours_message" rows="3" maxlength="500" placeholder={dt('Our staff is away right now. They answer between {start} and {end} ({timezone}). Your ticket is open and someone will reply when they are back.')}>{settings.hoursMessage}</textarea>
+            <p class="tk-row-hint">{dt('You can use {start}, {end} and {timezone}. Empty uses the message above.')}</p>
+          </div>
+        </div>
+
+        <div class="tk-set-card">
           <div class="tk-set-head">{dt('Blocked roles')}</div>
           <p class="tk-row-hint">{dt('Can\'t open new tickets. Doesn\'t affect tickets they already have.')}</p>
           <div class="tk-cat-row">
@@ -475,6 +614,84 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
       <button type="submit" class="btn btn-accent btn-sm">{dt('Save settings')}</button>
     </form>
   </div>
+  )}
+
+  {selectedSection === 'replies' && (
+  <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'replies' }]}>
+    <h2><Icon name="ph:chat-circle-text-fill" width="15" height="15" /><Fragment set:html={dth('Quick replies <span class="tk-count">{a}</span>', { a: (quickReplies.length) })} /></h2>
+    <p class="tk-section-note"><Fragment set:html={dth('Texts the staff send inside a ticket with one command: <code>!quickreply send name</code> (or <code>!qr send name</code>). Good for the questions that come up again and again.')} /></p>
+    {quickReplies.length === 0 && <p class="tk-empty-note">{dt('No quick replies yet. Add the first one below.')}</p>}
+    <div class="tk-cat-grid">
+      {quickReplies.map((r) => (
+        <form method="POST" class="tk-cat-card">
+          <input type="hidden" name="reply_name" value={r.name} />
+          <div class="tk-cat-head"><code class="tk-reply-name">{r.name}</code></div>
+          <div class="tk-cat-row"><textarea name="reply_content" rows="4" maxlength="1500">{r.content}</textarea></div>
+          <div class="tk-panel-actions">
+            <button type="submit" name="action" value="save_reply" class="btn btn-accent btn-sm">{dt('Save')}</button>
+            <button type="submit" name="action" value="delete_reply" class="tk-cat-del" title={dt('Delete')} data-confirm={dt('Delete this quick reply?')} formnovalidate><Icon name="ph:trash-fill" width="14" height="14" /></button>
+          </div>
+        </form>
+      ))}
+    </div>
+    <form method="POST" class="tk-new-panel tk-reply-new">
+      <input type="hidden" name="action" value="save_reply" />
+      <h2><Icon name="ph:plus-circle-fill" width="15" height="15" />{dt('New quick reply')}</h2>
+      <div class="tk-cat-row"><label>{dt('Name')}</label><input type="text" name="reply_name" maxlength="30" pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,29}" placeholder="rules" required /></div>
+      <div class="tk-cat-row"><label>{dt('Text')}</label><textarea name="reply_content" rows="4" maxlength="1500" placeholder={dt('Hi {user}! Please read the rules and tell us what you need.')} required></textarea><p class="tk-row-hint">{dt('You can use {user}, {username}, {category}, {server} and {number}.')}</p></div>
+      <div class="tk-panel-actions"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Save quick reply')}</button></div>
+    </form>
+  </div>
+  )}
+
+  {selectedSection === 'ai' && (
+  <div class:list={['tk-section', { 'tk-section-hidden': selectedSection !== 'ai' }]}>
+    <div class="tk-ai" aria-disabled="true">
+      <div class="tk-ai-head">
+        <span class="tk-ai-icon"><Icon name="ph:sparkle-fill" width="22" height="22" /></span>
+        <div>
+          <h2>{dt('AI help for tickets')} <span class="tk-ai-soon">{dt('Soon')}</span></h2>
+          <p>{dt('An assistant that helps your staff answer tickets faster. It is not available yet.')}</p>
+        </div>
+      </div>
+      <div class="tk-ai-plan">
+        <Icon name="ph:crown-fill" width="14" height="14" />
+        <span><b>{dt('A separate Premium product.')}</b> {dt('It will not come with the Premium plan: it will be sold on its own, only for servers that want it.')}</span>
+      </div>
+      <ul class="tk-ai-list">
+        <li><Icon name="ph:chat-circle-dots-fill" width="15" height="15" />{dt('Suggested answers for the staff, ready to send.')}</li>
+        <li><Icon name="ph:list-bullets-fill" width="15" height="15" />{dt('A short summary of long tickets.')}</li>
+        <li><Icon name="ph:ticket-fill" width="15" height="15" />{dt('Help with the topic and priority of each ticket.')}</li>
+      </ul>
+      <div class="tk-ai-controls" aria-hidden="true">
+        <label class="tk-check tk-off"><input type="checkbox" disabled />{dt('Turn on AI help')}</label>
+        <button type="button" class="btn btn-ghost btn-sm" disabled><Icon name="ph:lock-simple-fill" width="13" height="13" />{dt('Not available yet')}</button>
+      </div>
+      <p class="tk-row-hint">{dt('Nothing here saves or changes anything. When it opens, you will see it announced in the news.')}</p>
+    </div>
+  </div>
+  )}
+
+  {selectedSection === 'open' && stats && (
+    <div class="tk-stats">
+      <div><b>{stats.open}</b><span>{dt('Open now')}</span></div>
+      <div><b>{stats.unclaimed}</b><span>{dt('Without a claimer')}</span></div>
+      <div><b>{stats.opened7}</b><span>{dt('Opened in 7 days')}</span></div>
+      <div><b>{stats.closed7}</b><span>{dt('Closed in 7 days')}</span></div>
+      <div><b>{minutesText(stats.averageMinutesOpen)}</b><span>{dt('Average time open')}</span></div>
+      <div><b>{stats.averageRating === null ? '-' : `${stats.averageRating} / 5`}</b><span>{dt('Rating')}{stats.ratingCount ? ` (${stats.ratingCount})` : ''}</span></div>
+    </div>
+    <div class="tk-chart" role="img" aria-label={dt('Tickets opened and closed in the last 14 days')}>
+      <div class="tk-chart-head"><b>{dt('Last 14 days')}</b><span class="tk-key tk-key-open">{dt('Opened')}</span><span class="tk-key tk-key-closed">{dt('Closed')}</span></div>
+      <div class="tk-chart-bars">
+        {(() => { const max = Math.max(1, ...stats.days.map((d) => Math.max(d.opened, d.closed))); return stats.days.map((d) => (
+          <div class="tk-bar" title={`${d.label}: ${d.opened} / ${d.closed}`}>
+            <div class="tk-bar-cols"><i class="tk-col-open" style={`height:${Math.round((d.opened / max) * 100)}%`}></i><i class="tk-col-closed" style={`height:${Math.round((d.closed / max) * 100)}%`}></i></div>
+            <span>{d.label.slice(3)}</span>
+          </div>
+        )); })()}
+      </div>
+    </div>
   )}
 
   {selectedSection === 'open' && (
@@ -501,21 +718,64 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
 </DashGuildLayout>
 
 <script is:inline>
-  // The preview of a panel follows what is typed, so there is no need to save to see it.
-  if (!window.__tkPreviewBound) {
-    window.__tkPreviewBound = true;
+  // The preview of a panel follows what is typed (no need to save to see it), the ready designs fill the new-panel form,
+  // and the color picker and the hex box stay in step.
+  if (!window.__tkPanelBound) {
+    window.__tkPanelBound = true;
+    var HEX = /^#[0-9a-fA-F]{6}$/;
+    var refresh = function (form) {
+      var preview = form.parentElement && form.parentElement.querySelector('[data-panel-preview]');
+      if (!preview) preview = form.querySelector('[data-panel-preview]');
+      if (!preview && form.hasAttribute('data-new-panel')) preview = document.querySelector('.tk-new-preview [data-panel-preview]');
+      var val = function (name) { var el = form.querySelector('[name="' + name + '"]'); return el ? el.value : ''; };
+      var style = val('style') === 'select' ? 'select' : 'button';
+      form.querySelectorAll('[data-only-select]').forEach(function (row) { row.hidden = style !== 'select'; });
+      if (!preview) return;
+      preview.setAttribute('data-style', style);
+      var set = function (selector, text) { var el = preview.querySelector(selector); if (el) el.textContent = text; };
+      set('[data-pv-title]', val('title'));
+      var hasTypes = preview.getAttribute('data-has-types') === '1';
+      set('[data-pv-desc]', val('description') || (hasTypes ? 'Click a button below to open a ticket.' : ''));
+      var footer = preview.querySelector('[data-pv-foot]');
+      if (footer) { footer.textContent = val('footer'); footer.hidden = !val('footer'); }
+      var image = preview.querySelector('[data-pv-image]');
+      if (image) { var url = val('image_url'); if (/^https:\/\//i.test(url)) { image.src = url; image.hidden = false; } else { image.hidden = true; } }
+      var card = preview.querySelector('[data-pv-card]');
+      if (card) card.style.setProperty('--pv-color', HEX.test(val('color')) ? val('color') : '#a5ea7a');
+      var ph = preview.querySelector('[data-pv-placeholder]');
+      if (ph && val('placeholder')) ph.textContent = val('placeholder');
+    };
     document.addEventListener('input', function (event) {
       var field = event.target;
       if (!field || !field.closest) return;
-      var form = field.closest('.tk-panel-form');
+      var form = field.closest('[data-panel-form]');
       if (!form) return;
-      var preview = form.querySelector('[data-panel-preview]');
-      if (!preview) return;
-      var title = preview.querySelector('[data-pv-title]');
-      var desc = preview.querySelector('[data-pv-desc]');
-      if (field.name === 'title' && title) title.textContent = field.value;
-      if (field.name === 'description' && desc) desc.textContent = field.value;
+      if (field.matches('[data-color-pick]')) { var hex = form.querySelector('input[name="color"]'); if (hex) hex.value = field.value; }
+      if (field.name === 'color' && HEX.test(field.value)) { var pick = form.querySelector('[data-color-pick]'); if (pick) pick.value = field.value; }
+      refresh(form);
     });
+    document.addEventListener('change', function (event) {
+      var form = event.target && event.target.closest && event.target.closest('[data-panel-form]');
+      if (form) refresh(form);
+    });
+    document.addEventListener('click', function (event) {
+      var button = event.target && event.target.closest && event.target.closest('[data-preset]');
+      if (!button) return;
+      var form = document.querySelector('[data-new-panel]');
+      if (!form) return;
+      var put = function (name, value) { var el = form.querySelector('[name="' + name + '"]'); if (el) el.value = value; };
+      put('title', button.getAttribute('data-title') || '');
+      put('description', button.getAttribute('data-description') || '');
+      put('color', button.getAttribute('data-color') || '');
+      put('style', button.getAttribute('data-style') || 'button');
+      put('footer', button.getAttribute('data-footer') || '');
+      put('placeholder', button.getAttribute('data-placeholder') || '');
+      var pick = form.querySelector('[data-color-pick]'); if (pick) pick.value = button.getAttribute('data-color') || '#a5ea7a';
+      document.querySelectorAll('[data-preset]').forEach(function (b) { b.classList.toggle('on', b === button); });
+      refresh(form);
+      form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    document.querySelectorAll('[data-panel-form]').forEach(refresh);
   }
 </script>
 
@@ -623,4 +883,80 @@ const ticketCategoryAtLimit = categories.length >= ticketCategoryLimit;
   .tk-check input { flex-shrink: 0; accent-color: var(--accent); }
   .tk-row-hint { font-size: 11.5px; color: var(--text-dim); margin: 0; line-height: 1.5; }
   .tk-row-hint :global(code){ font-family: var(--mono); color: var(--accent); }
+  .tk-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0 0 22px; max-width: 980px; }
+  .tk-stats div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 11px 14px; }
+  .tk-stats b { display: block; font-size: 20px; }
+  .tk-stats span { font-size: 12px; color: var(--text-dim); }
+  .tk-chart { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; margin: -8px 0 22px; max-width: 980px; }
+  .tk-chart-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12.5px; margin-bottom: 10px; }
+  .tk-key { color: var(--text-dim); display: inline-flex; align-items: center; gap: 6px; }
+  .tk-key::before { content: ''; width: 9px; height: 9px; border-radius: 3px; background: var(--c); }
+  .tk-key-open { --c: #a5ea7a; }
+  .tk-key-closed { --c: #ffb86c; }
+  .tk-chart-bars { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 6px; height: 120px; align-items: end; }
+  .tk-bar { display: grid; grid-template-rows: 1fr auto; height: 100%; gap: 4px; text-align: center; }
+  .tk-bar-cols { display: flex; align-items: end; justify-content: center; gap: 2px; height: 100%; }
+  .tk-bar-cols i { display: block; width: 45%; min-height: 2px; border-radius: 3px 3px 0 0; }
+  .tk-col-open { background: #a5ea7a; }
+  .tk-col-closed { background: #ffb86c; }
+  .tk-bar span { font-size: 10px; color: var(--text-dim); }
+  .tk-ai { border: 1px dashed var(--border); border-radius: 16px; background: var(--card); padding: 20px; max-width: 760px; display: grid; gap: 14px; opacity: .92; }
+  .tk-ai-head { display: flex; gap: 14px; align-items: center; }
+  .tk-ai-head h2 { margin: 0 0 4px; font-size: 18px; }
+  .tk-ai-head p { margin: 0; font-size: 13.5px; color: var(--text-muted); }
+  .tk-ai-icon { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+  .tk-ai-soon { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 40%, var(--border)); border-radius: 999px; padding: 3px 9px; vertical-align: middle; margin-left: 6px; }
+  .tk-ai-plan { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text-muted); border: 1px solid color-mix(in srgb, var(--yellow) 35%, var(--border)); background: color-mix(in srgb, var(--yellow) 8%, transparent); border-radius: 12px; padding: 10px 12px; }
+  .tk-ai-plan :global(svg) { color: var(--yellow); flex: none; margin-top: 2px; }
+  .tk-ai-plan b { color: var(--text); }
+  .tk-ai-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .tk-ai-list li { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text-muted); }
+  .tk-ai-list :global(svg) { color: var(--accent); flex: none; }
+  .tk-ai-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; pointer-events: none; }
+  .tk-off { opacity: .55; }
+  .tk-starter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); padding: 12px 14px; margin: 0 0 14px; max-width: 980px; }
+  .tk-starter div { flex: 1 1 260px; display: grid; gap: 2px; }
+  .tk-starter strong { font-size: 13.5px; }
+  .tk-starter span { font-size: 12px; color: var(--text-muted); }
+  .tk-starter select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--card); color: var(--text); font-size: 13px; }
+  .tk-reply-name { font-family: var(--mono); color: var(--accent); }
+  .tk-reply-new { display: grid; gap: 10px; margin-top: 16px; }
+  .tk-fields { display: grid; gap: 10px; min-width: 0; }
+  [data-only-select][hidden] { display: none !important; }
+  .tk-panel-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .tk-panel-grid { grid-template-columns: minmax(0, 1fr) !important; max-width: 980px; }
+  @media (max-width: 800px) { .tk-panel-body { grid-template-columns: minmax(0, 1fr); } }
+  .tk-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tk-color { display: flex; gap: 8px; align-items: center; }
+  .tk-color input[type="color"] { width: 40px; height: 34px; padding: 2px; flex: none; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); }
+  .tk-cat-row input[type="url"], .tk-cat-row input[type="time"] { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; }
+  .tk-panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .tk-more { border-top: 1px solid var(--border-soft); padding-top: 8px; }
+  .tk-more summary { cursor: pointer; font-size: 12.5px; color: var(--text-dim); }
+  .tk-more[open] summary { margin-bottom: 8px; }
+  .tk-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+  .tk-preset { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; padding: 8px 12px; cursor: pointer; }
+  .tk-preset :global(svg) { color: var(--pc); }
+  .tk-preset:hover, .tk-preset.on { border-color: var(--pc); background: color-mix(in srgb, var(--pc) 12%, var(--card)); }
+  .tk-new-panel { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px; max-width: 980px; }
+  .tk-new-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .tk-new-form { gap: 12px; }
+  .tk-new-preview { position: sticky; top: 16px; }
+  .tk-where { margin: -4px 0 0; font-size: 11.5px; color: var(--text-dim); }
+  .tk-group { border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px 10px; display: grid; gap: 10px; }
+  .tk-group summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--text-muted); }
+  .tk-group[open] summary { margin-bottom: 4px; }
+  .tk-emoji-input { max-width: none !important; }
+  .tk-cat-row :global(.ep-wrap) { flex: 0 0 auto; width: 100%; }
+  .tk-cat-emoji-chip { overflow: hidden; }
+  .tk-add-type { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; max-width: 980px; }
+  .tk-set-wide { grid-column: span 2; }
+  .tk-days { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tk-day { cursor: pointer; position: relative; }
+  .tk-day input { position: absolute; opacity: 0; pointer-events: none; }
+  .tk-day span { display: inline-block; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 12.5px; color: var(--text-muted); background: var(--bg-raise); }
+  .tk-day input:checked + span { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .tk-day input:focus-visible + span { outline: 2px solid var(--accent); }
+  @media (max-width: 900px) { .tk-new-grid { grid-template-columns: minmax(0, 1fr); } .tk-new-preview { position: static; } .tk-set-wide { grid-column: auto; } }
+  @media (max-width: 520px) { .tk-two { grid-template-columns: minmax(0, 1fr); } }
 </style>
