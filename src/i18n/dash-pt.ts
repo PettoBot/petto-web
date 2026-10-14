@@ -3114,4 +3114,5 @@ export const dashPt: Record<string, string> = {
   "Priority speaker": "Orador prioritário",
   "Manage permissions": "Gerenciar permissões",
   "Joining and seeing their own room is always allowed.": "Entrar e ver a própria sala é sempre permitido.",
+  "No color": "Sem cor",
 };

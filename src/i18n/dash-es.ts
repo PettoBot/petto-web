@@ -3114,4 +3114,5 @@ export const dashEs: Record<string, string> = {
   "Priority speaker": "Orador prioritario",
   "Manage permissions": "Gestionar permisos",
   "Joining and seeing their own room is always allowed.": "Entrar y ver su propia sala siempre está permitido.",
+  "No color": "Sin color",
 };
