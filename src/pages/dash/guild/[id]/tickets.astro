@@ -281,7 +281,7 @@ if (Astro.request.method === 'POST') {
       const createRes = await fetch(`${apiUrl}/rest/v1/ticket_panels`, {
         method: 'POST',
         headers: { ...apiHeaders, Prefer: 'return=representation' },
-        body: JSON.stringify({ guild_id: id, channel_id: channelId, title, description, style, embed_template: embedTemplate }),
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, title, description, style, embed_template: embedTemplate, ...panelLook(form) }),
       });
       if (createRes.ok) {
         const [panel] = await createRes.json();
@@ -302,7 +302,7 @@ if (Astro.request.method === 'POST') {
     const updateRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, {
       method: 'PATCH',
       headers: { ...apiHeaders, Prefer: 'return=representation' },
-      body: JSON.stringify({ title, description, style, embed_template: embedTemplate }),
+      body: JSON.stringify({ title, description, style, embed_template: embedTemplate, ...panelLook(form) }),
     });
     logTicketPanel('update-panel-database', { panelId, status: updateRes.status, ok: updateRes.ok });
     if (!updateRes.ok) {
@@ -408,11 +408,35 @@ if (Astro.request.method === 'POST') {
         opened_log_channel_id: String(form.get('opened_log_channel_id') ?? '').trim() || null,
         closed_log_channel_id: String(form.get('closed_log_channel_id') ?? '').trim() || null,
         blocked_role_ids: roleIds('blocked_role_ids'),
+        global_limit: Math.max(0, Math.min(50, Math.floor(Number(form.get('global_limit') ?? 0)) || 0)),
+        hours_enabled: form.get('hours_enabled') === 'on',
+        hours_timezone: validTimezone(String(form.get('hours_timezone') ?? '')) ? String(form.get('hours_timezone')) : 'America/Bogota',
+        hours_start: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(form.get('hours_start') ?? '')) ? String(form.get('hours_start')) : '09:00',
+        hours_end: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(form.get('hours_end') ?? '')) ? String(form.get('hours_end')) : '21:00',
+        hours_days: form.getAll('hours_days').map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6),
+        hours_block: form.get('hours_block') === 'on',
+        hours_message: String(form.get('hours_message') ?? '').trim().slice(0, 500) || null,
         updated_at: new Date().toISOString(),
       }),
     });
     saved = true;
   }
+}
+
+/** The look a panel form sends: a color (hex, or empty for the usual green), a picture (https only), a small footer and the text of the dropdown. */
+function validTimezone(tz: string): boolean {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return Boolean(tz); } catch { return false; }
+}
+
+function panelLook(form: FormData) {
+  const hex = /^#?([0-9a-f]{6})$/i.exec(String(form.get('color') ?? '').trim());
+  const image = String(form.get('image_url') ?? '').trim();
+  return {
+    color: hex ? parseInt(hex[1], 16) : null,
+    image_url: /^https:\/\/\S+$/i.test(image) ? image.slice(0, 500) : null,
+    footer: String(form.get('footer') ?? '').trim().slice(0, 300) || null,
+    placeholder: String(form.get('placeholder') ?? '').trim().slice(0, 150) || null,
+  };
 }
 
 async function removePanelMessage(channelId: string, messageId: string | null): Promise<boolean> {
@@ -453,11 +477,11 @@ const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(..
 const customEmojisPromise = needs('types') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
 const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  when(['panels', 'types'], () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
+  when(['panels', 'types', 'settings'], () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
   when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: apiHeaders })),
   when(['types', 'settings'], () => getGuildList(Astro, id, botToken, 'roles')),
   when(['panels', 'types', 'settings'], () => getGuildList(Astro, id, botToken, 'channels')),
-  when(['panels', 'types'], () => fetch(`${apiUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
+  when(['panels', 'types', 'settings'], () => fetch(`${apiUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
   when(['settings'], () => fetch(`${apiUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['panels'], () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders })),
   when(['types', 'forms'], () => fetch(`${apiUrl}/rest/v1/ticket_forms?guild_id=eq.${id}&select=id,name,title,fields&order=name.asc`, { headers: apiHeaders })),
@@ -520,6 +544,10 @@ const panels = rawPanels.map((p: any) => ({
   description: p.description,
   style: p.style ?? 'button',
   embedTemplate: p.embed_template,
+  color: typeof p.color === 'number' ? `#${p.color.toString(16).padStart(6, '0')}` : '',
+  imageUrl: p.image_url ?? '',
+  footer: p.footer ?? '',
+  placeholder: p.placeholder ?? '',
   categoryCount: categories.filter((c: any) => c.panelId === p.id).length,
   types: categories.filter((c: any) => c.panelId === p.id).map((c: any) => ({ label: c.label, emoji: c.emoji })),
 }));
@@ -549,6 +577,14 @@ const settings = {
   openedLogChannelId: s.opened_log_channel_id ?? '',
   closedLogChannelId: s.closed_log_channel_id ?? '',
   blockedRoleIds: s.blocked_role_ids ?? [],
+  globalLimit: s.global_limit ?? 0,
+  hoursEnabled: s.hours_enabled ?? false,
+  hoursTimezone: s.hours_timezone ?? 'America/Bogota',
+  hoursStart: s.hours_start ?? '09:00',
+  hoursEnd: s.hours_end ?? '21:00',
+  hoursDays: s.hours_days ?? [1, 2, 3, 4, 5],
+  hoursBlock: s.hours_block ?? false,
+  hoursMessage: s.hours_message ?? '',
 };
 const customEmojis = await customEmojisPromise;
 ---
