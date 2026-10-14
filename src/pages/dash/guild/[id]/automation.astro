@@ -1,5 +1,6 @@
 ---
 export const prerender = false;
+const VOICE_OWNER_PERMISSIONS = ['manage_channels', 'move_members', 'manage_permissions', 'mute_members', 'deafen_members', 'priority_speaker'];
 import DashAutomation from '../../../../components/DashAutomation.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
@@ -610,7 +611,18 @@ if (Astro.request.method === 'POST') {
       if (!panelMessageId) {
         error = dt('Could not post the VoiceMaster panel. Check the bot permissions in that channel.');
       } else {
-        const res = await fetch(`${apiUrl}/rest/v1/voice_configs?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, creator_channel_id: creatorChannelId, panel_channel_id: panelChannelId, panel_message_id: panelMessageId, category_id: categoryId, default_limit: defaultLimit, default_name: defaultName, updated_at: new Date().toISOString() }) });
+        const base = { guild_id: id, creator_channel_id: creatorChannelId, panel_channel_id: panelChannelId, panel_message_id: panelMessageId, category_id: categoryId, default_limit: defaultLimit, default_name: defaultName, updated_at: new Date().toISOString() };
+        const privacy = String(form.get('privacy_mode') ?? 'public');
+        const permissions = {
+          sync_category_permissions: form.get('sync_category_permissions') === 'on',
+          access_role_ids: form.getAll('access_role_ids').map(String).filter((v) => /^\d{5,25}$/.test(v)).slice(0, 25),
+          privacy_mode: ['public', 'locked', 'hidden'].includes(privacy) ? privacy : 'public',
+          owner_permissions: form.getAll('owner_permissions').map(String).filter((v) => VOICE_OWNER_PERMISSIONS.includes(v)),
+        };
+        const send = (body: object) => fetch(`${apiUrl}/rest/v1/voice_configs?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(body) });
+        let res = await send({ ...base, ...permissions });
+        // A database that has not got the new columns yet still saves the rest.
+        if (!res.ok) res = await send(base);
         saved = res.ok;
       }
     }
@@ -632,7 +644,7 @@ const needs = (...sections: string[]) => sections.includes(shown);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
 const customEmojisPromise = needs('reaction-triggers', 'reaction-messages', 'starboard', 'monkeyboard', 'reaction-roles') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
 const WITH_CHANNELS = ['webhooks', 'counters', 'reaction-triggers', 'reaction-messages', 'timers', 'starboard', 'monkeyboard', 'voicemaster', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads', 'disabled-commands'];
-const WITH_ROLES = ['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders', 'reaction-roles'];
+const WITH_ROLES = ['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders', 'reaction-roles', 'voicemaster'];
 const WITH_TEMPLATES = ['webhooks', 'starboard', 'monkeyboard', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
 const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, monkeyboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
   () => getGuildInfo(id, botToken),
@@ -692,7 +704,7 @@ const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: s
 const monkeyboardRows = monkeyboardRes?.ok ? await monkeyboardRes.json() : [];
 const monkeyboard = monkeyboardRows[0] ? { ...monkeyboardRows[0], ignoredChannelIds: monkeyboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: monkeyboardRows[0].ignored_role_ids ?? [], ignoredUserIds: monkeyboardRows[0].ignored_user_ids ?? [] } : null;
 const voiceRows = voiceMasterRes?.ok ? await voiceMasterRes.json() : [];
-const voiceMaster = voiceRows[0] ? { creatorChannelId: voiceRows[0].creator_channel_id, panelChannelId: voiceRows[0].panel_channel_id, panelMessageId: voiceRows[0].panel_message_id, categoryId: voiceRows[0].category_id, defaultLimit: voiceRows[0].default_limit ?? 0, defaultName: voiceRows[0].default_name ?? '{user.name}' } : null;
+const voiceMaster = voiceRows[0] ? { creatorChannelId: voiceRows[0].creator_channel_id, panelChannelId: voiceRows[0].panel_channel_id, panelMessageId: voiceRows[0].panel_message_id, categoryId: voiceRows[0].category_id, defaultLimit: voiceRows[0].default_limit ?? 0, defaultName: voiceRows[0].default_name ?? '{user.name}', syncCategoryPermissions: voiceRows[0].sync_category_permissions === true, accessRoleIds: Array.isArray(voiceRows[0].access_role_ids) ? voiceRows[0].access_role_ids : [], privacyMode: ['public', 'locked', 'hidden'].includes(voiceRows[0].privacy_mode) ? voiceRows[0].privacy_mode : 'public', ownerPermissions: Array.isArray(voiceRows[0].owner_permissions) ? voiceRows[0].owner_permissions : ['manage_channels', 'move_members'] } : null;
 const managedWebhooks = webhooksRes?.ok ? (await webhooksRes.json()).map((w: any) => ({ id: w.id, name: w.name, channelId: w.channel_id, webhookId: w.webhook_id, defaultUsername: w.default_username, defaultAvatarUrl: w.default_avatar_url, defaultMessage: w.default_message, enabled: w.enabled !== false })) : [];
 const serverCounters = countersRes?.ok ? (await countersRes.json()).map((c: any) => ({ id: c.id, channelId: c.channel_id, option: c.counter_option, type: c.channel_type, nameTemplate: c.name_template ?? '{option}: {value}', prefix: c.prefix ?? '', suffix: c.suffix ?? '', parentId: c.parent_id, intervalSeconds: c.interval_seconds ?? 60, enabled: c.enabled !== false })) : [];
 

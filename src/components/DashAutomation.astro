@@ -7,6 +7,7 @@ import MultiSelect from './MultiSelect.astro';
 import MultiSelectOptions from './MultiSelectOptions.astro';
 import ColorPicker from './ColorPicker.astro';
 import EmojiPicker from './EmojiPicker.astro';
+import LiveTextPreview from './LiveTextPreview.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -28,7 +29,7 @@ interface AutoThread { channelId: string; nameTemplate: string; messageText: str
 interface CommandAlias { id: number; name: string; command: string; }
 interface AutoTimer { id: number; channelId: string; intervalMs: number; message: string; nextRunAt: string; }
 interface StarboardSettings { channel_id: string | null; threshold: number; emoji: string; color?: number | null; selfstar: boolean; timestamp: boolean; jumpurl: boolean; attachments: boolean; embed_template?: string | null; ignoredChannelIds: string[]; ignoredRoleIds: string[]; ignoredUserIds: string[]; }
-interface VoiceMasterSettings { creatorChannelId: string; panelChannelId: string; panelMessageId: string | null; categoryId: string | null; defaultLimit: number; defaultName: string; }
+interface VoiceMasterSettings { creatorChannelId: string; panelChannelId: string; panelMessageId: string | null; categoryId: string | null; defaultLimit: number; defaultName: string; syncCategoryPermissions?: boolean; accessRoleIds?: string[]; privacyMode?: string; ownerPermissions?: string[]; }
 
 interface Props {
   user: { username: string; avatar: string | null };
@@ -191,11 +192,24 @@ const sectionIcons: Record<string, string> = {
           <label><input type="radio" name="send_mode" value="edit" /><span>{dt('Edit a sent message')}</span></label>
         </div>
         <div class="am-send-pane" data-send-pane="text">
-          <textarea name="message" placeholder={dt('Message (empty uses the default)')} maxlength="2000"></textarea>
-          <div class="am-add-row"><input type="text" name="username" placeholder={dt('Username override')} maxlength="80" /><input type="url" name="avatar_url" placeholder={dt('Avatar URL override')} /></div>
-          <div class="am-add-row"><input type="text" name="embed_title" placeholder={dt('Embed title')} maxlength="256" /><input type="text" name="embed_description" placeholder={dt('Embed description')} maxlength="4096" /><ColorPicker name="embed_color" value="#8399ff" label={dt('Embed color')} /></div>
-          <div class="am-add-row"><input type="url" name="embed_image" placeholder={dt('Embed image URL')} /><input type="url" name="embed_thumbnail" placeholder={dt('Embed thumbnail URL')} /></div>
-          <div class="am-add-row"><input type="text" name="embed_footer" placeholder={dt('Embed footer')} maxlength="2048" /><input type="url" name="embed_url" placeholder={dt('Embed title link')} /></div>
+          <div class="am-group">
+            <span class="am-group-title"><Icon name="ph:chat-text-fill" width="13" height="13" />{dt('Message')}</span>
+            <textarea name="message" placeholder={dt('Message (empty uses the default)')} maxlength="2000" data-lm-source="wh-message"></textarea>
+            <LiveTextPreview id="wh-message" label={dt('Preview')} />
+            <p class="am-hint">{dt('Works: **bold**, *italic*, __underline__, ~~strike~~, `code`, > quote, and a command as')} <code>{'</bump:123456789>'}</code></p>
+          </div>
+          <div class="am-group">
+            <span class="am-group-title"><Icon name="ph:user-circle-fill" width="13" height="13" />{dt('Sender')}</span>
+            <div class="am-add-row"><input type="text" name="username" placeholder={dt('Username override')} maxlength="80" /><input type="url" name="avatar_url" placeholder={dt('Avatar URL override')} /></div>
+          </div>
+          <details class="am-group am-group-embed">
+            <summary class="am-group-title"><Icon name="ph:browser-fill" width="13" height="13" />{dt('Embed (optional)')}</summary>
+            <div class="am-add-row"><input type="text" name="embed_title" placeholder={dt('Embed title')} maxlength="256" /><ColorPicker name="embed_color" value="#8399ff" label={dt('Embed color')} /></div>
+            <textarea name="embed_description" placeholder={dt('Embed description')} maxlength="4096" data-lm-source="wh-embed"></textarea>
+            <LiveTextPreview id="wh-embed" label={dt('Preview')} />
+            <div class="am-add-row"><input type="url" name="embed_image" placeholder={dt('Embed image URL')} /><input type="url" name="embed_thumbnail" placeholder={dt('Embed thumbnail URL')} /></div>
+            <div class="am-add-row"><input type="text" name="embed_footer" placeholder={dt('Embed footer')} maxlength="2048" /><input type="url" name="embed_url" placeholder={dt('Embed title link')} /></div>
+          </details>
         </div>
         <div class="am-send-pane" data-send-pane="design" hidden>
           <select name="send_design"><option value="">{dt('Pick a saved design')}</option>{embedTemplateNames.map((name) => <option value={name}>{name}</option>)}</select>
@@ -412,15 +426,68 @@ const sectionIcons: Record<string, string> = {
 
   {selectedSection === 'voicemaster' && (
   <div class:list={['am-section', showSection('voicemaster')]} data-section="voicemaster">
-    <h2><span class="am-h2-icon" style="--c:var(--accent)"><Icon name="ph:speaker-high-fill" width="14" height="14" /></span>{dt('VoiceMaster')}</h2>
-    <form method="POST" class="am-add am-add-wide">
+    <h2><span class="am-h2-icon" style="--c:var(--accent)"><Icon name="ph:speaker-high-fill" width="14" height="14" /></span>{dt('VoiceMaster')}<span class:list={['vm-status', voiceMaster ? 'on' : 'off']}>{voiceMaster ? dt('Active') : dt('Not set up')}</span></h2>
+    <form method="POST" class="vm-form" data-vm>
       <input type="hidden" name="action" value="save_voicemaster" />
-      <div class="am-add-row"><select name="creator_channel_id" required><option value="" disabled selected>{dt('Join-to-create voice channel')}</option>{voiceChannels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.creatorChannelId}>{c.name}</option>)}</select><select name="panel_channel_id" required><option value="" disabled selected>{dt('Panel text channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.panelChannelId}>#{c.name}</option>)}</select></div>
-      <div class="am-add-row"><select name="category_id"><option value="">{dt('Use creator category')}</option>{channelCategories.map((c) => <option value={c.id} selected={c.id === voiceMaster?.categoryId}>{c.name}</option>)}</select><input type="number" name="default_limit" min="0" max="99" value={voiceMaster?.defaultLimit ?? 0} placeholder={dt('Default limit')} /><input type="text" name="default_name" maxlength="100" value={voiceMaster?.defaultName ?? '{user.name}'} placeholder={dt('Name template')} /></div>
+      <div class="vm-grid">
+        <label class="vm-field"><span class="vm-label">{dt('Creator channel')}</span>
+          <select name="creator_channel_id" required><option value="" disabled selected>{dt('Join-to-create voice channel')}</option>{voiceChannels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.creatorChannelId}>{c.name}</option>)}</select>
+          <span class="vm-help">{dt('Members join this channel and get their own room.')}</span></label>
+        <label class="vm-field"><span class="vm-label">{dt('Control panel channel')}</span>
+          <select name="panel_channel_id" required><option value="" disabled selected>{dt('Panel text channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.panelChannelId}>#{c.name}</option>)}</select>
+          <span class="vm-help">{dt('Where the panel with the buttons is posted.')}</span></label>
+        <label class="vm-field"><span class="vm-label">{dt('Category')}</span>
+          <select name="category_id"><option value="">{dt('Use creator category')}</option>{channelCategories.map((c) => <option value={c.id} selected={c.id === voiceMaster?.categoryId}>{c.name}</option>)}</select>
+          <span class="vm-help">{dt('Where the new rooms are created.')}</span></label>
+        <label class="vm-field"><span class="vm-label">{dt('Default user limit')}</span>
+          <input type="number" name="default_limit" min="0" max="99" value={voiceMaster?.defaultLimit ?? 0} />
+          <span class="vm-help">{dt('0 means no limit.')}</span></label>
+      </div>
+      <div class="vm-field vm-name">
+        <label class="vm-label" for="vmName">{dt('Room name template')}</label>
+        <input id="vmName" type="text" name="default_name" maxlength="100" value={voiceMaster?.defaultName ?? '{user.name}'} placeholder="{user.name}" data-vm-name />
+        <div class="vm-chips"><span class="vm-help">{dt('Click to add:')}</span>{['{user.name}', '{user.display_name}'].map((v) => <button type="button" class="vm-chip" data-vm-insert={v}>{v}</button>)}</div>
+        <div class="vm-preview"><Icon name="ph:speaker-high-fill" width="14" height="14" /><span data-vm-sample>{(voiceMaster?.defaultName ?? '{user.name}').replace(/\{user\.display_name\}|\{user\.name\}|\{user\}/g, 'Liam')}</span><em>{dt('How the first room of Liam would be named.')}</em></div>
+      </div>
+      <div class="vm-card">
+        <div class="vm-card-head"><Icon name="ph:lock-simple-fill" width="14" height="14" /><strong>{dt('Who can join and what they can do')}</strong></div>
+        <label class="vm-switch"><input type="checkbox" name="sync_category_permissions" checked={voiceMaster?.syncCategoryPermissions === true} />
+          <span><b>{dt('Copy the permissions of the category')}</b><small>{dt('A new room starts with the same permissions as its category, so roles set there work inside the room.')}</small></span></label>
+        <div class="vm-field"><span class="vm-label">{dt('Access roles')}</span>
+          <MultiSelect name="access_role_ids" options={roleOptions} source="am-roles" selected={voiceMaster?.accessRoleIds ?? []} placeholder={dt('Everyone can join')} />
+          <span class="vm-help">{dt('When you pick roles, only they can see and join the rooms.')}</span></div>
+        <label class="vm-field"><span class="vm-label">{dt('Privacy of new rooms')}</span>
+          <select name="privacy_mode">
+            <option value="public" selected={(voiceMaster?.privacyMode ?? 'public') === 'public'}>{dt('Public: everyone can see and join')}</option>
+            <option value="locked" selected={voiceMaster?.privacyMode === 'locked'}>{dt('Locked: everyone sees it, only invited members join')}</option>
+            <option value="hidden" selected={voiceMaster?.privacyMode === 'hidden'}>{dt('Hidden: only invited members see and join')}</option>
+          </select></label>
+        <div class="vm-field"><span class="vm-label">{dt('What the owner of a room can do')}</span>
+          <div class="vm-perms">
+            {[['manage_channels', 'Manage the channel'], ['move_members', 'Move members'], ['mute_members', 'Mute members'], ['deafen_members', 'Deafen members'], ['priority_speaker', 'Priority speaker'], ['manage_permissions', 'Manage permissions']].map(([key, label]) => (
+              <label class="vm-perm"><input type="checkbox" name="owner_permissions" value={key} checked={(voiceMaster?.ownerPermissions ?? ['manage_channels', 'move_members']).includes(key)} />{dt(label)}</label>
+            ))}
+          </div>
+          <span class="vm-help">{dt('Joining and seeing their own room is always allowed.')}</span></div>
+      </div>
       <label class="am-check"><input type="checkbox" name="resend_panel" checked />{dt('Replace and resend the current VoiceMaster panel')}</label>
-      <div class="am-feature-actions"><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save VoiceMaster')}</button>{voiceMaster && <button type="submit" name="action" value="disable_voicemaster" class="am-del-text"><Icon name="ph:prohibit-fill" width="12" height="12" />{dt('Disable')}</button>}</div>
+      <div class="am-feature-actions"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save VoiceMaster')}</button>{voiceMaster && <button type="submit" name="action" value="disable_voicemaster" class="am-del-text"><Icon name="ph:prohibit-fill" width="12" height="12" />{dt('Disable')}</button>}</div>
     </form>
     <p class="am-hint"><Fragment set:html={dth('Users join the creator channel, receive a temporary channel, and manage it from the panel or <code>!vc</code>.')} /></p>
+    <script is:inline>
+      (function () {
+        var f = document.querySelector('[data-vm]'); if (!f || f.dataset.bound) return; f.dataset.bound = '1';
+        var input = f.querySelector('[data-vm-name]'), sample = f.querySelector('[data-vm-sample]');
+        var paint = function () { sample.textContent = (input.value || '{user.name}').replace(/\{user\.display_name\}|\{user\.name\}|\{user\}/g, 'Liam').slice(0, 100); };
+        input.addEventListener('input', paint);
+        f.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-vm-insert]'); if (!b) return;
+          var at = input.selectionStart == null ? input.value.length : input.selectionStart;
+          input.value = (input.value.slice(0, at) + b.getAttribute('data-vm-insert') + input.value.slice(input.selectionEnd == null ? at : input.selectionEnd)).slice(0, 100);
+          input.focus(); paint();
+        });
+      })();
+    </script>
   </div>
   )}
 
@@ -760,7 +827,7 @@ const sectionIcons: Record<string, string> = {
     </form>
   </div>
   )}
-  {['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders'].includes(selectedSection) && (
+  {['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders', 'voicemaster'].includes(selectedSection) && (
     <>
       <MultiSelectOptions name="am-channels" options={channelOptions} />
       <MultiSelectOptions name="am-roles" options={roleOptions} />
@@ -780,6 +847,32 @@ const sectionIcons: Record<string, string> = {
       });
     }
   </script>
+<script is:inline define:vars={{ flNames: { interval_seconds: dt('Update every (seconds)'), interval_minutes: dt('Repeat every (minutes)') } }}>
+  // The add forms use placeholders as their only hint; this gives each field a label that stays visible while typing.
+  (function () {
+    document.querySelectorAll('.am-section form.am-add:not([data-fl])').forEach(function (form) {
+      form.setAttribute('data-fl', '1');
+      form.querySelectorAll('input, select, textarea').forEach(function (el) {
+        var type = (el.getAttribute('type') || '').toLowerCase();
+        if (['hidden', 'checkbox', 'radio', 'file', 'color', 'submit', 'button'].indexOf(type) !== -1) return;
+        if (el.closest('label, [data-colorpicker], .am-send-modes') || el.hasAttribute('data-no-label')) return;
+        var text = el.getAttribute('aria-label') || el.getAttribute('placeholder') || flNames[el.getAttribute('name')] || '';
+        // A select whose first choice is already readable (not a disabled placeholder) needs no extra label.
+        if (!text && el.tagName === 'SELECT' && el.options.length && el.options[0].disabled) text = el.options[0].textContent || '';
+        text = text.trim();
+        if (!text) return;
+        var wrap = document.createElement('label');
+        wrap.className = 'am-fl';
+        var t = document.createElement('span');
+        t.className = 'am-fl-t';
+        t.textContent = text;
+        el.parentNode.insertBefore(wrap, el);
+        wrap.appendChild(t);
+        wrap.appendChild(el);
+      });
+    });
+  })();
+</script>
 </DashGuildLayout>
 
 <style>
@@ -928,4 +1021,49 @@ const sectionIcons: Record<string, string> = {
     .am-heading { flex-direction: column; gap: 12px; }
     .am-overview-grid { grid-template-columns: 1fr; }
   }
+</style>
+
+<style>
+  :global(.am-add .am-fl), :global(.am-fl) { display: flex !important; flex-direction: column !important; align-items: stretch !important; gap: 5px; flex: 1 1 200px; min-width: 0; width: auto; max-width: 100%; }
+  :global(.am-add .am-fl:has(> textarea)), :global(.am-add .am-fl:has(> input[name="message"])), :global(.am-add .am-fl:has(> input[name="response"])) { flex-basis: 100%; }
+  :global(.am-add .am-fl:has(> input[name="interval_minutes"]) + .am-inline-label) { display: none; }
+  :global(.am-add-wide > .am-fl), :global(.am-add-wide > .am-fl:has(> textarea)) { flex: 0 0 auto; width: 100%; }
+  :global(.am-add .am-fl > textarea) { height: 96px; min-height: 80px; flex: none; resize: vertical; }
+  :global(.am-add .am-fl:has(> input[name="content"])) { flex: 1 1 100%; }
+  :global(.am-add .am-fl:has(> input[name="content"]) > input) { height: auto; }
+  :global(.am-fl > input), :global(.am-fl > select), :global(.am-fl > textarea) { flex: none !important; }
+  :global(.am-fl-t) { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+  :global(.am-add .am-fl > input), :global(.am-add .am-fl > select), :global(.am-add .am-fl > textarea) { width: 100% !important; max-width: none !important; box-sizing: border-box; }
+  .am-group { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: color-mix(in srgb, var(--card) 70%, transparent); min-width: 0; }
+  .am-group-title { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text); cursor: default; }
+  details.am-group > summary { cursor: pointer; list-style: none; } details.am-group > summary::-webkit-details-marker { display: none; }
+  details.am-group[open] > summary { margin-bottom: 8px; }
+  .am-send-pane > .am-group { grid-column: 1 / -1; }
+  .am-send-pane .am-group :global(.am-add-row) { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; align-items: center; }
+  .am-send-pane .am-group :global(.am-add-row) > :global(*) { min-width: 0; }
+  .am-group textarea { min-height: 70px; }
+  .vm-card { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: color-mix(in srgb, var(--card) 70%, transparent); }
+  .vm-card-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .vm-switch { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .vm-switch input { margin-top: 3px; accent-color: var(--accent); }
+  .vm-switch span { display: flex; flex-direction: column; gap: 2px; } .vm-switch b { font-size: 13px; font-weight: 600; } .vm-switch small { font-size: 11.5px; color: var(--text-dim); }
+  .vm-perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 14px; }
+  .vm-perm { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
+  .vm-perm input { accent-color: var(--accent); }
+  .vm-status { margin-left: 10px; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; vertical-align: middle; }
+  .vm-status.on { color: var(--green); background: var(--green-soft); }
+  .vm-status.off { color: var(--text-dim); background: var(--card); border: 1px solid var(--border); }
+  .vm-form { display: flex; flex-direction: column; gap: 16px; max-width: 880px; }
+  .vm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+  .vm-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .vm-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .vm-help { font-size: 11.5px; color: var(--text-dim); }
+  .vm-form select, .vm-form input[type="text"], .vm-form input[type="number"] { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13px; }
+  .vm-form select:focus, .vm-form input:focus { outline: none; border-color: var(--accent); }
+  .vm-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .vm-chip { font-family: var(--mono); font-size: 11.5px; color: var(--accent); background: var(--accent-soft, var(--card)); border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px; cursor: pointer; }
+  .vm-chip:hover { border-color: var(--accent); }
+  .vm-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #2b2d31; color: #dbdee1; border-radius: 9px; padding: 9px 12px; font-size: 14px; }
+  .vm-preview em { color: #949ba4; font-size: 11.5px; font-style: normal; margin-left: auto; }
+  @media (max-width: 700px) { .vm-grid { grid-template-columns: minmax(0, 1fr); } .vm-preview em { margin-left: 0; } }
 </style>

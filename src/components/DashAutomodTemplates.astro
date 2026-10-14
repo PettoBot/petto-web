@@ -3,7 +3,6 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import { TEMPLATES, PACKS } from '../utils/automodTemplates';
-import type { NativeResult } from '../utils/pettoBotApi';
 import { getDashLang, makeT } from '../i18n/dash';
 
 const dashLang = getDashLang(Astro);
@@ -14,11 +13,10 @@ interface Props {
   guildName: string;
   guildIcon: string;
   filters: { id: number; name: string; template: string; options: Record<string, boolean | number>; action: string; mute_minutes: number; enabled: boolean; hits: number }[];
-  native: NativeResult;
   roles: { id: string; name: string }[];
   channels: { id: string; name: string; category: boolean }[];
 }
-const { user, guildId, guildName, guildIcon, filters, native, roles, channels } = Astro.props;
+const { user, guildId, guildName, guildIcon, filters, roles, channels } = Astro.props;
 const textChannels = channels.filter((c) => !c.category);
 
 const info: Record<string, { name: string; text: string; sample: string }> = {
@@ -61,9 +59,6 @@ const groups = [
   { id: 'text', label: dt('Text and noise') },
 ];
 const actionNames: Record<string, string> = { delete: dt('Delete the message'), warn: dt('Warn'), mute: dt('Mute'), kick: dt('Kick') };
-const used = native.ok ? native.used ?? {} : {};
-const limits = native.ok ? native.limits ?? {} : {};
-const nativeRules = native.ok ? native.rules ?? [] : [];
 const ruleName = (r: { id: number; name: string; template: string }) => info[r.template]?.name ?? r.name;
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="automod-templates" pageTitle={dt('AutoMod templates')}>
@@ -91,10 +86,10 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
   </div>
 
   <div class="am-slots">
-    <div><b>{native.ok ? `${used.keyword ?? 0}/${limits.keyword ?? 6}` : '–'}</b><span>{dt('Keyword rules of Discord')}</span></div>
+    <div><b data-native-count>–</b><span>{dt('Keyword rules of Discord')}</span></div>
     <div><b>{filters.length}/40</b><span>{dt('Petto filters')}</span></div>
   </div>
-  {!native.ok && <p class="am-warn">{native.message ?? dt('Discord AutoMod could not be read right now.')} {dt('The Petto filters work anyway.')}</p>}
+  <p class="am-warn" data-native-warn hidden>{dt('Discord AutoMod could not be read right now.')} {dt('The Petto filters work anyway.')}</p>
 
   <h2 class="am-h">{dt('Packs')}</h2>
   <div class="am-cards">
@@ -157,21 +152,8 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
   </div>
 
   <h2 class="am-h">{dt('Active in Discord')}</h2>
-  {nativeRules.length === 0 ? <p class="am-empty">{dt('No AutoMod rules in Discord yet.')}</p> : (
-    <div class="am-list">
-      {nativeRules.map((r) => (
-        <div class="am-item">
-          <div class="am-item-main"><b>{r.name}</b>{r.official && <span class="am-tag">{dt('Petto Official')}</span>}{r.patterns > 0 && <em>{dt('{n} pattern(s)', { n: r.patterns })}</em>}</div>
-          {r.mine ? (
-            <>
-              <label class="am-switch"><input type="checkbox" checked={r.enabled} data-native-toggle={r.id} /><span></span></label>
-              <button type="button" class="am-del" data-native-delete={r.id} title={dt('Remove')}><Icon name="ph:trash-fill" width="14" height="14" /></button>
-            </>
-          ) : <span class="am-tag">{r.enabled ? dt('Active') : dt('Inactive')}</span>}
-        </div>
-      ))}
-    </div>
-  )}
+  <div class="am-list" data-native-list><div class="am-item"><div class="am-item-main"><span class="am-loading">…</span></div></div></div>
+  <p class="am-empty" data-native-empty hidden>{dt('No AutoMod rules in Discord yet.')}</p>
 
   <h2 class="am-h">{dt('Active in Petto')}</h2>
   {filters.length === 0 ? <p class="am-empty">{dt('No Petto filters yet.')}</p> : (
@@ -217,6 +199,37 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
       tile.querySelectorAll('[data-opt]').forEach(function (el) { out[el.getAttribute('data-opt')] = el.type === 'checkbox' ? el.checked : Number(el.value); });
       return out;
     };
+    // Discord is asked after the page is drawn, so the page does not wait for it.
+    var renderNative = function (data) {
+      var list = document.querySelector('[data-native-list]');
+      var empty = document.querySelector('[data-native-empty]');
+      var count = document.querySelector('[data-native-count]');
+      var warn = document.querySelector('[data-native-warn]');
+      if (!list) return;
+      if (!data || !data.ok) { list.hidden = true; if (warn) warn.hidden = false; if (count) count.textContent = '–'; return; }
+      if (count) count.textContent = ((data.used && data.used.keyword) || 0) + '/' + ((data.limits && data.limits.keyword) || 6);
+      list.textContent = '';
+      var rules = data.rules || [];
+      list.hidden = rules.length === 0;
+      if (empty) empty.hidden = rules.length !== 0;
+      rules.forEach(function (r) {
+        var item = document.createElement('div'); item.className = 'am-item';
+        var main = document.createElement('div'); main.className = 'am-item-main';
+        var name = document.createElement('b'); name.textContent = r.name; main.appendChild(name);
+        if (r.official) { var tag = document.createElement('span'); tag.className = 'am-tag'; tag.textContent = cdt('Petto Official'); main.appendChild(tag); }
+        if (r.patterns > 0) { var em = document.createElement('em'); em.textContent = cdt('{n} pattern(s)', { n: r.patterns }); main.appendChild(em); }
+        item.appendChild(main);
+        if (r.mine) {
+          var sw = document.createElement('label'); sw.className = 'am-switch';
+          var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = r.enabled; cb.setAttribute('data-native-toggle', r.id);
+          sw.appendChild(cb); sw.appendChild(document.createElement('span')); item.appendChild(sw);
+          var del = document.createElement('button'); del.type = 'button'; del.className = 'am-del'; del.setAttribute('data-native-delete', r.id); del.title = cdt('Remove'); del.textContent = '✕'; item.appendChild(del);
+        } else { var st = document.createElement('span'); st.className = 'am-tag'; st.textContent = r.enabled ? cdt('Active') : cdt('Inactive'); item.appendChild(st); }
+        list.appendChild(item);
+      });
+    };
+    fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'native_list' }) })
+      .then(function (r) { return r.json(); }).then(renderNative).catch(function () { renderNative(null); });
     document.addEventListener('click', function (event) {
       var t = event.target;
       var btn = t.closest && t.closest('button');
