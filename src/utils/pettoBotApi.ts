@@ -328,3 +328,17 @@ export async function callPettoAppeals(context: AstroContext, guildId: string, u
     return { ok: false, status: 502, payload: { ok: false, message: 'bot_unavailable' } as any };
   }
 }
+
+/** The pictures of an appeal page: the dashboard uploads and removes them as the person, the public site reads them with the key alone. */
+export async function callPettoAppealImage(context: AstroContext, guildId: string, kind: string, init: RequestInit & { contentType?: string; userId?: string } = {}) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  const { contentType, userId, ...rest } = init;
+  const headers = new Headers(rest.headers);
+  headers.set('X-Petto-Dashboard-Key', secret);
+  if (rest.body && contentType) headers.set('Content-Type', contentType);
+  const path = userId
+    ? `/api/dashboard/guild/${encodeURIComponent(guildId)}/appeals/image/${encodeURIComponent(kind)}?user_id=${encodeURIComponent(userId)}`
+    : `/api/appeals/${encodeURIComponent(guildId)}/image/${encodeURIComponent(kind)}`;
+  try { return await fetch(`${baseUrl}${path}`, { ...rest, headers, signal: AbortSignal.timeout(20_000) }); } catch { return null; }
+}

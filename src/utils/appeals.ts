@@ -48,10 +48,32 @@ export const THEMES: Record<string, { label: string; accent: string }> = {
 };
 
 export const hexColor = (value: unknown): string | null => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim().toLowerCase() : null);
+/** Why a link cannot be used for a picture, or null when it can. Allowed: https:// links of a public site, up to 500 characters. */
+export function linkProblem(value: unknown): 'format' | 'https' | 'host' | null {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 500) return 'format';
+  let url: URL;
+  try { url = new URL(raw); } catch { return 'format'; }
+  if (url.protocol !== 'https:') return 'https';
+  const host = url.hostname.toLowerCase();
+  // Not a private place: localhost, an address of numbers, or a name that is only inside a network.
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || !host.includes('.') || /^[\d.]+$/.test(host) || host.includes(':')) return 'host';
+  return null;
+}
 export const safeUrl = (value: unknown): string | null => {
-  if (typeof value !== 'string') return null;
-  try { const url = new URL(value.trim()); return url.protocol === 'https:' ? url.toString() : null; } catch { return null; }
+  if (typeof value !== 'string' || linkProblem(value)) return null;
+  try { return new URL(value.trim()).toString(); } catch { return null; }
 };
+
+/** The pictures a server can upload from its device for the appeal page. In the settings they are saved as `upload:<kind>`. */
+export const UPLOAD_KINDS = ['banner', 'icon', 'embed'] as const;
+export type UploadKind = (typeof UPLOAD_KINDS)[number];
+export const uploadMark = (kind: UploadKind) => `upload:${kind}`;
+/** The address of a picture: a link as it is, or the page of the site that serves the uploaded one. `where` is how the page was reached. */
+export function pictureUrl(value: unknown, kind: UploadKind, where?: { path: string; origin: string }): string | null {
+  if (value === uploadMark(kind)) return where ? `${where.origin}/appeal/${where.path}/img/${kind}` : null;
+  return safeUrl(value);
+}
 
 /** The accent of a server's site: the palette it picked, or its own color on top. */
 export function themeFor(brand: Brand | undefined) {
@@ -120,14 +142,14 @@ export async function callBot(ctx: Ctx, guildId: string, route: string, options:
 }
 
 /** The tags the link preview of Discord (and other apps) reads, from what the server set in Brand. */
-export function linkPreview(config: AppealConfig, guild: { name: string; icon: string | null }, lang: 'en' | 'es' | 'pt-BR') {
+export function linkPreview(config: AppealConfig, guild: { name: string; icon: string | null }, lang: 'en' | 'es' | 'pt-BR', where?: { path: string; origin: string }) {
   const defaults = {
     en: { title: `Appeal your punishment in ${guild.name}`, description: `Sign in with Discord and send an appeal to the staff of ${guild.name}.` },
     es: { title: `Apela tu sanción en ${guild.name}`, description: `Entra con Discord y envía una apelación al staff de ${guild.name}.` },
     'pt-BR': { title: `Apele sua punição em ${guild.name}`, description: `Entre com o Discord e envie uma apelação para a equipe de ${guild.name}.` },
   }[lang];
   const theme = themeFor(config.brand);
-  const image = safeUrl(config.embed?.image_url) ?? safeUrl(config.brand?.banner_url) ?? guild.icon;
+  const image = pictureUrl(config.embed?.image_url, 'embed', where) ?? pictureUrl(config.brand?.banner_url, 'banner', where) ?? pictureUrl(config.brand?.icon_url, 'icon', where) ?? guild.icon;
   return {
     title: (config.embed?.title || '').trim().slice(0, 90) || defaults.title,
     description: (config.embed?.description || '').trim().slice(0, 240) || defaults.description,
