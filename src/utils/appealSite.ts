@@ -1,7 +1,7 @@
 // What every page of the public appeal site needs first: the server, its settings, the language and who is signed in.
 import { getDashboardSession } from './dashAuth';
 import { getEnv } from './env';
-import { callBot, loadConfig, resolveGuildId, type AppealConfig } from './appeals';
+import { callBot, loadConfig, resolveAddress, type AppealConfig } from './appeals';
 import { asAppealLang, type AppealLang } from '../i18n/appeal';
 
 export interface Site {
@@ -13,10 +13,17 @@ export interface Site {
 }
 
 /** Loads the site, or answers with the status the page must send: 404 for an id that is not a server of Petto, 503 when the bot cannot be reached. */
-export async function loadSite(astro: any): Promise<Site | { status: 404 | 503 }> {
+export async function loadSite(astro: any): Promise<Site | { status: 404 | 503 } | { redirect: string }> {
   const path = String(astro.params?.id ?? '').toLowerCase();
-  const id = await resolveGuildId(astro, path);
-  if (!id) return { status: 404 };
+  const found = await resolveAddress(astro, path);
+  if (!found) return { status: 404 };
+  const id = found.id;
+  // A name the server changed away from: its old link leads to the address it has now.
+  if (found.reserved) {
+    const now = await loadConfig(astro, id);
+    const target = now?.slug || id;
+    if (target !== path) return { redirect: `${astro.url.pathname.replace(/^\/appeal\/[^/]+/, `/appeal/${target}`)}${astro.url.search}` };
+  }
   const [config, guildRes, session] = await Promise.all([loadConfig(astro, id), callBot(astro, id, 'guild'), getDashboardSession(astro)]);
   if (guildRes.status === 404) return { status: 404 };
   if (!config || !guildRes.payload?.guild) return { status: 503 };

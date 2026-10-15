@@ -10,7 +10,7 @@ import { callPettoAppeals } from '../../../../utils/pettoBotApi';
 import { CONFIG_DEFAULTS, LIMITS, THEMES, PUNISHMENT_TYPES, hexColor, safeUrl, normalizeForm, type AppealConfig } from '../../../../utils/appeals';
 import { cleanSlug, slugProblem } from '../../../../utils/appealSlug';
 import { isStaff } from '../../../../utils/feedback';
-import { cancelClaim, createClaim, lastDecidedClaim, openClaim } from '../../../../utils/appealNames';
+import { cancelClaim, createClaim, dropReservation, lastDecidedClaim, openClaim, reservationOf, reserveName } from '../../../../utils/appealNames';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -72,7 +72,8 @@ if (Astro.request.method === 'POST') {
         slugError = { format: dt('Use 3 to 32 letters, numbers or dashes, and do not start or end with a dash.'), numeric: dt('The name cannot be only numbers.'), reserved: dt('That name is reserved.'), offensive: dt('That name is not allowed.') }[problem];
       } else if (slug) {
         const taken = await rest(`appeal_config?slug=eq.${encodeURIComponent(slug)}&guild_id=neq.${id}&select=guild_id&limit=1`).then((r) => (r.ok ? r.json() : [])).catch(() => []);
-        if (taken?.length) { slugError = dt('That name is already taken, try another.'); claimSlug = slug; }
+        const kept = taken?.length ? null : await reservationOf(Astro, slug);
+        if (taken?.length || (kept && kept !== id)) { slugError = dt('That name is already taken, try another.'); claimSlug = slug; }
       }
       if (!slugError) slugPatch = { slug: slug || null };
     }
@@ -97,6 +98,11 @@ if (Astro.request.method === 'POST') {
       thread_name: text(form.get('thread_name'), 100) || 'Appeal by {username}',
       ping_role_ids: form.getAll('ping_role_ids').map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 25),
     });
+    if (!slugError && !(saveResult?.status === 409) && saveResult?.ok && slugPatch) {
+      // The name it leaves stays reserved for this server for a while, and the old link leads to the new address.
+      if (currentSlug) await reserveName(Astro, currentSlug, id);
+      if (slugPatch.slug) await dropReservation(Astro, slugPatch.slug);
+    }
     if (slugError) message = { kind: 'err', text: slugError };
     else if (saveResult?.status === 409) message = { kind: 'err', text: dt('That name is already taken, try another.') };
     else ok(saveResult);

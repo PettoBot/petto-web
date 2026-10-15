@@ -8,6 +8,21 @@ export interface NameClaim {
 }
 export interface NamedServer { guild_id: string; slug: string; enabled: boolean; updated_at: string }
 
+/** How long a name stays reserved for the server that changed or dropped it. */
+export const RESERVE_DAYS = 30;
+export async function reservationOf(ctx: any, slug: string): Promise<string | null> {
+  const now = encodeURIComponent(new Date().toISOString());
+  return (await rows<{ guild_id: string }>(ctx, `appeal_name_reservations?slug=eq.${encodeURIComponent(slug)}&reserved_until=gt.${now}&select=guild_id&limit=1`))?.[0]?.guild_id ?? null;
+}
+export async function reserveName(ctx: any, slug: string, guildId: string): Promise<boolean> {
+  const until = new Date(Date.now() + RESERVE_DAYS * 86_400_000).toISOString();
+  const res = await rest(ctx, 'appeal_name_reservations?on_conflict=slug', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ slug, guild_id: guildId, reserved_until: until }) });
+  return Boolean(res?.ok);
+}
+export async function dropReservation(ctx: any, slug: string): Promise<void> {
+  await rest(ctx, `appeal_name_reservations?slug=eq.${encodeURIComponent(slug)}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+}
+
 export const CLAIM_LIMITS = { reasonMin: 20, reasonMax: 1000, url: 300, perMonth: 5 };
 export type ClaimError = 'slug' | 'taken_gone' | 'pending' | 'limit' | 'reason' | 'url' | 'extra_url' | 'database' | 'not_configured';
 
@@ -53,7 +68,7 @@ export async function createClaim(ctx: any, input: { guildId: string; slug: stri
   if ((recent?.length ?? 0) >= CLAIM_LIMITS.perMonth) return { ok: false, error: 'limit' };
   // The name has to be held by someone: if it was freed in the meantime, the server can simply take it.
   const holder = await rows<{ guild_id: string }>(ctx, `appeal_config?slug=eq.${encodeURIComponent(input.slug)}&select=guild_id&limit=1`);
-  if (holder && !holder.length) return { ok: false, error: 'taken_gone' };
+  if (holder && !holder.length && !(await reservationOf(ctx, input.slug))) return { ok: false, error: 'taken_gone' };
   const res = await rest(ctx, 'appeal_name_claims', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: input.guildId, slug: input.slug, user_id: input.userId, username: clean(input.username, 80), reason, server_url: serverUrl, extra_url: extra || null }) });
   if (!res) return { ok: false, error: 'database' };
   if (res.status === 409) return { ok: false, error: 'pending' };
@@ -92,6 +107,7 @@ export async function approveClaim(ctx: any, claimId: string, by: { id: string; 
   }
   const set = await rest(ctx, 'appeal_config?on_conflict=guild_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: claim.guild_id, slug: claim.slug, updated_at: new Date().toISOString() }) });
   if (!set?.ok) return { ok: false, error: 'database' };
+  await dropReservation(ctx, claim.slug);
   const done = await rest(ctx, `appeal_name_claims?id=eq.${claimId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'approved', note: clean(note, 500) || null, decided_by: by.id, decided_by_name: clean(by.name, 80), decided_at: new Date().toISOString() }) });
   return done?.ok ? { ok: true } : { ok: false, error: 'database' };
 }

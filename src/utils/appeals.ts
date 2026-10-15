@@ -74,12 +74,17 @@ async function select<T>(ctx: Ctx, table: string, query: string): Promise<T[] | 
   } catch { return null; }
 }
 
-/** The server an appeal link names: its id, or the short name the server chose. */
-export async function resolveGuildId(ctx: Ctx, param: string): Promise<string | null> {
-  if (SNOWFLAKE.test(param)) return param;
+/** The server an appeal link names: its id, the short name it holds, or a name it changed away from (reserved for it, so the old link leads to the new address). */
+export async function resolveAddress(ctx: Ctx, param: string): Promise<{ id: string; reserved: boolean } | null> {
+  if (SNOWFLAKE.test(param)) return { id: param, reserved: false };
   if (!/^[a-z0-9-]{3,32}$/.test(param)) return null;
   const rows = await select<{ guild_id: string }>(ctx, 'appeal_config', `slug=eq.${encodeURIComponent(param)}&select=guild_id&limit=1`);
-  return rows?.[0]?.guild_id ?? null;
+  if (rows?.[0]) return { id: rows[0].guild_id, reserved: false };
+  const kept = await select<{ guild_id: string }>(ctx, 'appeal_name_reservations', `slug=eq.${encodeURIComponent(param)}&reserved_until=gt.${encodeURIComponent(new Date().toISOString())}&select=guild_id&limit=1`);
+  return kept?.[0] ? { id: kept[0].guild_id, reserved: true } : null;
+}
+export async function resolveGuildId(ctx: Ctx, param: string): Promise<string | null> {
+  return (await resolveAddress(ctx, param))?.id ?? null;
 }
 
 export async function loadConfig(ctx: Ctx, guildId: string): Promise<AppealConfig | null> {
