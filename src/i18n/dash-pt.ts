@@ -3336,6 +3336,7 @@ export const dashPt: Record<string, string> = {
   "Appeal your punishment in {a}": "Apele sua punição em {a}",
   "Sign in with Discord and send an appeal to the staff of {a}.": "Entre com o Discord e envie uma apelação para a equipe de {a}.",
   "Empty uses the banner, then the icon of the server.": "Vazio usa o banner e depois o ícone do servidor.",
+  "Show the image small, as a thumbnail": "Mostrar a imagem pequena, como miniatura",
   "Side color": "Cor lateral",
   "Save brand": "Salvar marca",
   "Open the page": "Abrir a página",

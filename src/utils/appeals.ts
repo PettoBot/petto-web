@@ -13,7 +13,7 @@ export interface AppealConfig {
   messages: Record<string, string>; brand: Brand; embed: EmbedMeta;
 }
 export interface Brand { name?: string; tagline?: string; banner_url?: string; icon_url?: string; theme?: string; accent?: string; }
-export interface EmbedMeta { title?: string; description?: string; image_url?: string; color?: string; }
+export interface EmbedMeta { title?: string; description?: string; image_url?: string; color?: string; thumbnail?: boolean; }
 export type QuestionType = 'short' | 'paragraph' | 'choice' | 'multi' | 'yesno' | 'number' | 'dropdown' | 'scale' | 'date' | 'link' | 'file' | 'confirm';
 /** A file question says what it takes (`accept`) and how many files (`max_files`); a scale goes from 1 to `max`. */
 export interface Question { id: string; type: QuestionType; label: string; help: string | null; required: boolean; options: string[]; max?: number; accept?: FileAccept; max_files?: number; }
@@ -158,6 +158,7 @@ export function linkPreview(config: AppealConfig, guild: { name: string; icon: s
     title: (config.embed?.title || '').trim().slice(0, 90) || defaults.title,
     description: (config.embed?.description || '').trim().slice(0, 240) || defaults.description,
     image: image ?? null,
+    small: Boolean(config.embed?.thumbnail),
     color: hexColor(config.embed?.color) ?? theme.accent,
     siteName: (config.brand?.name || guild.name).slice(0, 60),
   };
