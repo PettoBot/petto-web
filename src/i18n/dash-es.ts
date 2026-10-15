@@ -1,5 +1,11 @@
 // Dashboard texts in Spanish. The key is the English text used in the code, so anything missing here shows in English.
 export const dashEs: Record<string, string> = {
+  "Set PREMIUM_LOGS_WEBHOOK_URL in the website first: the webhook of the channel of the team.": "Primero pon PREMIUM_LOGS_WEBHOOK_URL en la web: el webhook del canal del equipo.",
+  "The list of active Premium could not be read from the database.": "No se pudo leer de la base de datos la lista de Premium activos.",
+  "Discord did not accept the message. Check the webhook of the channel.": "Discord no aceptó el mensaje. Revisa el webhook del canal.",
+  "Sent to the channel of the team: {n} active.": "Enviado al canal del equipo: {n} activos.",
+  "Send the active Premium to the log channel": "Enviar los Premium activos al canal de logs",
+  "Lists what the database has, so you can check that the subscriptions of Polar arrived.": "Lista lo que tiene la base de datos, para comprobar que llegaron las suscripciones de Polar.",
   "Invite": "Invitación",
   "The invite that was made is shown on the appeal card in Discord, in the log and here in the appeal. It works once and lasts 7 days. If Petto cannot make one, it says why (it needs Create Invite in a text channel) and uses the invite code below if there is one.": "La invitación que se creó se muestra en la tarjeta de la apelación en Discord, en el registro y aquí en la apelación. Sirve una vez y dura 7 días. Si Petto no puede crearla, dice por qué (necesita Crear invitación en un canal de texto) y usa el código de invitación de abajo si hay uno.",
   "Banner image": "Imagen del banner",

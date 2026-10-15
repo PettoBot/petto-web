@@ -1,5 +1,11 @@
 // Dashboard texts in Brazilian Portuguese. The key is the English text used in the code, so anything missing here shows in English.
 export const dashPt: Record<string, string> = {
+  "Set PREMIUM_LOGS_WEBHOOK_URL in the website first: the webhook of the channel of the team.": "Primeiro defina PREMIUM_LOGS_WEBHOOK_URL no site: o webhook do canal da equipe.",
+  "The list of active Premium could not be read from the database.": "Não foi possível ler do banco de dados a lista de Premium ativos.",
+  "Discord did not accept the message. Check the webhook of the channel.": "O Discord não aceitou a mensagem. Verifique o webhook do canal.",
+  "Sent to the channel of the team: {n} active.": "Enviado ao canal da equipe: {n} ativos.",
+  "Send the active Premium to the log channel": "Enviar os Premium ativos ao canal de logs",
+  "Lists what the database has, so you can check that the subscriptions of Polar arrived.": "Lista o que o banco de dados tem, para conferir que as assinaturas do Polar chegaram.",
   "Invite": "Convite",
   "The invite that was made is shown on the appeal card in Discord, in the log and here in the appeal. It works once and lasts 7 days. If Petto cannot make one, it says why (it needs Create Invite in a text channel) and uses the invite code below if there is one.": "O convite que foi criado aparece no card da apelação no Discord, no log e aqui na apelação. Serve uma vez e dura 7 dias. Se o Petto não conseguir criar, diz por quê (precisa de Criar convite em um canal de texto) e usa o código de convite abaixo se houver um.",
   "Banner image": "Imagem do banner",
