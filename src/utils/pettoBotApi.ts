@@ -310,3 +310,21 @@ export async function callPettoLockdown(context: AstroContext, guildId: string, 
     return { ok: false, message: 'The bot did not answer in time.' };
   }
 }
+
+/** The staff side of appeals, from the dashboard: accept or reject a submission, or write to the member. */
+export async function callPettoAppeals(context: AstroContext, guildId: string, userId: string, route: 'resolve' | 'reply', body: Record<string, unknown>) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, status: 503, payload: { ok: false, message: 'not_configured' } as any };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/appeals/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(20_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    let payload: any = null;
+    try { payload = await response.json(); } catch { /* keep the status */ }
+    return { ok: response.ok && payload?.ok !== false, status: response.status, payload };
+  } catch {
+    return { ok: false, status: 502, payload: { ok: false, message: 'bot_unavailable' } as any };
+  }
+}

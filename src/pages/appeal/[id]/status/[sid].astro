@@ -1,0 +1,32 @@
+---
+export const prerender = false;
+import AppealStatus from '../../../../components/AppealStatus.astro';
+import { loadSite } from '../../../../utils/appealSite';
+import { callBot, loadMessages, loadSubmission } from '../../../../utils/appeals';
+
+const site = await loadSite(Astro);
+if ('status' in site) return new Response(site.status === 404 ? 'Not found' : 'Unavailable', { status: site.status });
+const { id, lang, config, guild, session } = site;
+const sid = String(Astro.params.sid ?? '');
+if (!session) return Astro.redirect(`/appeal/${id}/login?back=${encodeURIComponent(`/appeal/${id}/status/${sid}`)}`);
+const submission = await loadSubmission(Astro, id, sid);
+// Only the member who sent it reads it.
+if (!submission || submission.user_id !== session.userId) return new Response('Not found', { status: 404 });
+
+let error: string | null = null;
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const action = String(data.get('action') ?? '');
+  const result = action === 'withdraw'
+    ? await callBot(Astro, id, 'withdraw', { method: 'POST', userId: session.userId, body: { submission_id: sid } })
+    : action === 'reply'
+      ? await callBot(Astro, id, 'reply', { method: 'POST', userId: session.userId, body: { submission_id: sid, content: String(data.get('content') ?? '') } })
+      : null;
+  if (result?.ok) return Astro.redirect(`/appeal/${id}/status/${sid}`);
+  if (result) error = ['rate_limited', 'bot_unavailable'].includes(String(result.payload?.error)) ? String(result.payload.error) : 'failed';
+}
+const fresh = (await loadSubmission(Astro, id, sid)) ?? submission;
+const messages = (await loadMessages(Astro, sid)) ?? [];
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<AppealStatus lang={lang} guild={guild} config={config} submission={fresh} messages={messages} justSent={Astro.url.searchParams.get('sent') === '1'} error={error} />

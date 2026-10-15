@@ -1,0 +1,39 @@
+---
+export const prerender = false;
+import AppealFormPage from '../../../../components/AppealFormPage.astro';
+import { loadSite } from '../../../../utils/appealSite';
+import { callBot, loadForm } from '../../../../utils/appeals';
+import { appealText } from '../../../../i18n/appeal';
+
+const site = await loadSite(Astro);
+if ('status' in site) return new Response(site.status === 404 ? 'Not found' : 'Unavailable', { status: site.status });
+const { id, lang, config, guild, session } = site;
+const t = appealText(lang);
+const formId = Number(Astro.params.fid);
+if (!config.enabled) return Astro.redirect(`/appeal/${id}`);
+if (!session) return Astro.redirect(`/appeal/${id}/login?back=${encodeURIComponent(`/appeal/${id}/form/${formId}`)}`);
+const form = Number.isInteger(formId) ? await loadForm(Astro, id, formId) : null;
+if (!form || form.status !== 'live') return new Response('Not found', { status: 404 });
+
+let values: Record<string, string | string[]> = {};
+let errors: Record<string, string> = {};
+let message: string | null = null;
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData();
+  const answers: Record<string, string | string[]> = {};
+  for (const section of form.sections) {
+    for (const q of section.questions) {
+      const all = data.getAll(`q_${q.id}`).map(String);
+      answers[q.id] = q.type === 'multi' ? all : (all[0] ?? '');
+    }
+  }
+  values = answers;
+  const result = await callBot(Astro, id, 'submit', { method: 'POST', userId: session.userId, body: { form_id: form.id, answers } });
+  if (result.ok && result.payload?.id) return Astro.redirect(`/appeal/${id}/status/${result.payload.id}?sent=1`);
+  const code = String(result.payload?.error ?? 'failed');
+  if (code === 'invalid') { errors = result.payload.fields ?? {}; message = t('formError'); }
+  else message = t(`err_${code}` as any);
+}
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<AppealFormPage lang={lang} guild={guild} config={config} form={form} values={values} errors={errors} topError={message} />

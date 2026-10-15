@@ -1,0 +1,450 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import ColorPicker from './ColorPicker.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null }; guildId: string; guildName: string; guildIcon: string; origin: string;
+  section: string; config: AppealConfig; forms: any[]; counts: Record<string, number>; submissions: any[]; messages: Record<string, any[]>; statusFilter: string;
+  roles: { id: string; name: string }[]; channels: { id: string; name: string }[]; editing: any; saved: boolean; message: { kind: 'ok' | 'err'; text: string } | null;
+}
+const { user, guildId, guildName, guildIcon, origin, section, config, forms, counts, submissions, messages, statusFilter, roles, channels, editing, message } = Astro.props;
+const link = `${origin.replace(/^http:\/\/localhost[^/]*/, 'https://petto.sbs')}/appeal/${guildId}`;
+const titles: Record<string, string> = { overview: dt('Appeals'), forms: dt('Appeal forms'), submissions: dt('Appeal submissions'), settings: dt('Appeal settings'), brand: dt('Appeal brand'), messages: dt('Appeal messages') };
+const subs: Record<string, string> = {
+  overview: dt('Let banned or muted members appeal on a page of their own, and answer them from Discord or from here.'),
+  forms: dt('The questions a member answers. Sections, choices, and which punishments can open each form.'),
+  submissions: dt('Every appeal that arrives. Read it, write to the member, accept it or reject it.'),
+  settings: dt('Where appeals arrive, what the member sees about their punishment, and how long answered appeals are kept.'),
+  brand: dt('How the page looks and how the link looks when you share it in Discord.'),
+  messages: dt('What the member is told when they send an appeal and when you answer it.'),
+};
+const typeNames: Record<string, string> = { ban: dt('Bans'), mute: dt('Mutes'), warn: dt('Warns'), kick: dt('Kicks') };
+const when = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
+const liveForms = forms.filter((f) => f.status === 'live').length;
+const theme = themeFor(config.brand);
+const monthsOrDays = (days: number) => (days % 30 === 0 && days >= 30 ? { n: days / 30, unit: 'months' } : { n: days, unit: 'days' });
+const warnsAge = monthsOrDays(config.warns_max_age_days);
+const storeAge = monthsOrDays(config.store_days);
+const variableChips = ['{username}', '{server}', '{reason}', '{form}', '{link}'];
+const sampleVars = { username: 'Liam', server: guildName, reason: dt('You can come back, please read the rules.'), form: dt('Ban appeal'), link: 'petto.sbs/appeal/…' };
+const defaults: Record<string, string> = { submitted: 'Your appeal was sent. The staff of {server} will look at it.', accepted: 'Your appeal was accepted. {reason}', rejected: 'Your appeal was rejected. {reason}', reply: 'The staff of {server} wrote to you about your appeal.' };
+const messageTitles: Record<string, string> = { submitted: dt('When the appeal is sent'), accepted: dt('When it is accepted'), rejected: dt('When it is rejected'), reply: dt('When the staff writes to the member') };
+const builderText = { section: dt('Section'), question: dt('Question'), addQuestion: dt('Add a question'), addSection: dt('Add a section'), title: dt('Section title'), description: dt('Description (optional)'), label: dt('Question'), help: dt('Help text (optional)'), required: dt('Required'), options: dt('Options, one per line'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), types: { short: dt('Short answer'), paragraph: dt('Long answer'), choice: dt('Choose one'), multi: dt('Choose several'), yesno: dt('Yes or no'), number: dt('Number') }, limit: dt('Limit reached') };
+const formsBack = `/dash/guild/${guildId}/appeals?section=forms`;
+const editForm = editing === 'new' ? { id: null, name: '', icon: '', short_description: '', description: '', status: 'draft', requirement_types: [], block_on_reject: 'none', generate_invite: false, sections: [{ id: 's1', title: dt('About your punishment'), description: null, questions: [{ id: 'q1', type: 'paragraph', label: dt('Why do you think your punishment should be lifted?'), help: null, required: true, options: [] }] }], messages: {} } : editing;
+const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('Block for a day'), week: dt('Block for a week'), month: dt('Block for a month'), forever: dt('Block for good') };
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={`appeals-${section}`} pageTitle={titles[section]}>
+  <h1>{titles[section]}{section === 'overview' && <span class:list={['da-badge', { on: config.enabled }]}>{config.enabled ? dt('Open') : dt('Closed')}</span>}</h1>
+  <p class="da-sub">{subs[section]}</p>
+  {message && <div class:list={['da-flash', message.kind]}><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
+
+  {section === 'overview' && (
+    <>
+      <form method="POST" class="da-card da-toggle" data-no-dirty>
+        <input type="hidden" name="action" value="toggle" />
+        <label class="da-switch"><input type="checkbox" name="enabled" checked={config.enabled} /><span><b>{dt('Take appeals')}</b><em>{dt('While this is off, the page says appeals are closed.')}</em></span></label>
+        <button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button>
+      </form>
+      <div class="da-card">
+        <h2>{dt('Your appeal page')}</h2>
+        <div class="da-link"><code>{link}</code><button type="button" class="btn btn-ghost btn-sm" data-copy={link}><Icon name="ph:copy-simple-bold" width="13" height="13" />{dt('Copy')}</button><a class="btn btn-ghost btn-sm" href={link} target="_blank" rel="noopener"><Icon name="ph:arrow-square-out-bold" width="13" height="13" />{dt('Open')}</a></div>
+        <p class="da-hint">{dt('Share it in your rules channel or in the message members get when they are punished.')}</p>
+      </div>
+      <div class="da-card">
+        <h2>{dt('Before you open it')}</h2>
+        <ul class="da-checks">
+          <li class:list={{ done: Boolean(config.submission_channel_id) }}><Icon name={config.submission_channel_id ? 'ph:check-circle-fill' : 'ph:circle'} width="16" height="16" /><span>{dt('Pick the channel where appeals arrive')}</span><a href={`/dash/guild/${guildId}/appeals?section=settings`}>{dt('Settings')}</a></li>
+          <li class:list={{ done: liveForms > 0 }}><Icon name={liveForms > 0 ? 'ph:check-circle-fill' : 'ph:circle'} width="16" height="16" /><span>{dt('Publish at least one form')}</span><a href={`/dash/guild/${guildId}/appeals?section=forms`}>{dt('Forms')}</a></li>
+          <li class:list={{ done: config.enabled }}><Icon name={config.enabled ? 'ph:check-circle-fill' : 'ph:circle'} width="16" height="16" /><span>{dt('Turn on Take appeals')}</span></li>
+        </ul>
+      </div>
+      <div class="da-stats">
+        {(['pending', 'accepted', 'rejected', 'withdrawn'] as const).map((s) => <a href={`/dash/guild/${guildId}/appeals?section=submissions&status=${s}`} class="da-stat"><b>{counts[s] ?? 0}</b><span>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s]}</span></a>)}
+      </div>
+    </>
+  )}
+
+  {section === 'forms' && !editForm && (
+    <>
+      <div class="da-row"><span class="da-hint">{forms.length}/{LIMITS.forms}</span><a class="btn btn-accent btn-sm" href={`${formsBack}&form=new`}><Icon name="ph:plus-bold" width="12" height="12" />{dt('New form')}</a></div>
+      {forms.length === 0 && <div class="da-card"><p>{dt('No forms yet. Make one so members have something to fill in.')}</p></div>}
+      <div class="da-list">
+        {forms.map((f) => (
+          <div class="da-card da-form">
+            <div class="da-row"><h3>{f.icon && <Icon name={`ph:${f.icon}-fill`} width="16" height="16" class="da-ico" />}{f.name}</h3><span class:list={['da-chip', f.status]}>{f.status === 'live' ? dt('Live') : dt('Draft')}</span></div>
+            <p class="da-hint">{f.short_description || dt('No short description')} · {(f.sections ?? []).reduce((n: number, s: any) => n + (s.questions?.length ?? 0), 0)} {dt('questions')}</p>
+            <div class="da-actions">
+              <a class="btn btn-ghost btn-sm" href={`${formsBack}&form=${f.id}`}>{dt('Edit')}</a>
+              <form method="POST" data-no-dirty><input type="hidden" name="action" value="duplicate_form" /><input type="hidden" name="form_id" value={f.id} /><button type="submit" class="btn btn-ghost btn-sm">{dt('Duplicate')}</button></form>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )}
+
+  {section === 'forms' && editForm && (
+    <form method="POST" class="da-editor" data-builder-form>
+      <input type="hidden" name="action" value="save_form" />
+      {editForm.id && <input type="hidden" name="form_id" value={editForm.id} />}
+      <a class="da-back" href={formsBack}>← {dt('All forms')}</a>
+      <div class="da-card">
+        <div class="da-grid">
+          <label class="da-field"><span>{dt('Name')}</span><input type="text" name="name" value={editForm.name} maxlength="80" required /></label>
+          <div class="da-field"><span>{dt('Icon')}</span><div class="da-icons">{FORM_ICONS.map((key) => <label class="da-iconpick"><input type="radio" name="icon" value={key} checked={editForm.icon === key} /><Icon name={`ph:${key}-fill`} width="18" height="18" /></label>)}<label class="da-iconpick da-iconnone"><input type="radio" name="icon" value="" checked={!editForm.icon} />{dt('None')}</label></div></div>
+          <label class="da-field da-wide"><span>{dt('Short description')}</span><input type="text" name="short_description" value={editForm.short_description ?? ''} maxlength="160" /><em>{dt('Shown on the list of forms.')}</em></label>
+          <label class="da-field da-wide"><span>{dt('Description')}</span><textarea name="description" maxlength="1500" rows="3">{editForm.description ?? ''}</textarea><em>{dt('Shown at the top of the form.')}</em></label>
+          <label class="da-field"><span>{dt('Status')}</span><select name="status"><option value="draft" selected={editForm.status === 'draft'}>{dt('Draft: nobody sees it')}</option><option value="live" selected={editForm.status === 'live'}>{dt('Live: members can fill it')}</option></select></label>
+          <label class="da-field"><span>{dt('When it is rejected')}</span><select name="block_on_reject">{BLOCKS.map((b) => <option value={b} selected={editForm.block_on_reject === b}>{blockNames[b]}</option>)}</select></label>
+        </div>
+        <div class="da-field"><span>{dt('Who can open it')}</span>
+          <div class="da-checkrow">{PUNISHMENT_TYPES.map((t) => <label class="da-check"><input type="checkbox" name="requirement_types" value={t} checked={(editForm.requirement_types ?? []).includes(t)} />{typeNames[t]}</label>)}</div>
+          <em>{dt('Leave all empty and anyone can open it. Pick types and the member needs one of those punishments.')}</em>
+        </div>
+        <label class="da-check"><input type="checkbox" name="generate_invite" checked={editForm.generate_invite} />{dt('Give a single-use invite when an appeal is accepted')}</label>
+      </div>
+
+      <div class="da-card">
+        <h2>{dt('Questions')}</h2>
+        <div data-builder data-initial={JSON.stringify(editForm.sections ?? [])} data-text={JSON.stringify(builderText)} data-limits={JSON.stringify(LIMITS)} data-types={JSON.stringify(QUESTION_TYPES)}></div>
+        <input type="hidden" name="sections_json" data-builder-output />
+      </div>
+
+      <div class="da-card">
+        <h2>{dt('Messages for this form')}</h2>
+        <p class="da-hint">{dt('Leave empty to use the messages of the Messages page.')}</p>
+        <div class="da-grid">
+          {['submitted', 'accepted', 'rejected'].map((k) => <label class="da-field da-wide"><span>{messageTitles[k]}</span><textarea name={`msg_${k}`} maxlength="1000" rows="2" placeholder={defaults[k]}>{editForm.messages?.[k] ?? ''}</textarea></label>)}
+        </div>
+      </div>
+      <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save form')}</button></div>
+    </form>
+  )}
+  {section === 'forms' && editForm && editForm.id && (
+    <form method="POST" class="da-danger" onsubmit={`return confirm(${JSON.stringify(dt('Delete this form? Appeals already sent stay.'))})`} data-no-dirty>
+      <input type="hidden" name="action" value="delete_form" /><input type="hidden" name="form_id" value={editForm.id} />
+      <button type="submit" class="da-del"><Icon name="ph:trash-bold" width="13" height="13" />{dt('Delete form')}</button>
+    </form>
+  )}
+
+  {section === 'submissions' && (
+    <>
+      <div class="da-tabs">
+        {(['pending', 'accepted', 'rejected', 'withdrawn'] as const).map((s) => <a href={`/dash/guild/${guildId}/appeals?section=submissions&status=${s}`} class:list={['da-tab', { on: statusFilter === s }]}>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s]}</a>)}
+      </div>
+      {submissions.length === 0 && <div class="da-card"><p>{dt('Nothing here.')}</p></div>}
+      <div class="da-list">
+        {submissions.map((s) => (
+          <details class="da-card da-sub">
+            <summary><span class="da-who">{s.avatar_url && <img src={s.avatar_url} alt="" width="26" height="26" />}<b>{s.username}</b></span><span class="da-hint">{s.form_name} · {when(s.created_at)}</span><span class:list={['da-chip', s.status]}>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s.status as 'pending']}</span></summary>
+            <div class="da-body">
+              {(s.punishments ?? []).length > 0 && <div class="da-block"><h4>{dt('Punishments')}</h4>{s.punishments.map((p: any) => <p>• {typeNames[p.type] ?? p.type}{p.reason ? ` — ${p.reason}` : ''}{p.until ? ` · ${when(p.until)}` : ''}</p>)}</div>}
+              <div class="da-block"><h4>{dt('Answers')}</h4>{(s.answers ?? []).map((a: any) => <div class="da-ans"><b>{a.label}</b><span>{Array.isArray(a.value) ? a.value.join(', ') : a.value}</span></div>)}</div>
+              <div class="da-block"><h4>{dt('Conversation')}</h4>
+                {(messages[s.id] ?? []).map((m: any) => <div class:list={['da-msg', m.author_type]}><small>{m.author_type === 'user' ? s.username : m.author_type === 'staff' ? (m.author_name ?? dt('Staff')) : 'Petto'} · {when(m.created_at)}</small><span>{m.content}</span></div>)}
+                {(messages[s.id] ?? []).length === 0 && <p class="da-hint">{dt('No messages yet.')}</p>}
+              </div>
+              <form method="POST" class="da-inline" data-no-dirty><input type="hidden" name="action" value="reply" /><input type="hidden" name="submission_id" value={s.id} /><textarea name="content" rows="2" maxlength="1500" placeholder={dt('Write to the member')} required></textarea><button type="submit" class="btn btn-ghost btn-sm">{dt('Send')}</button></form>
+              {s.status === 'pending' && (
+                <form method="POST" class="da-resolve" data-no-dirty>
+                  <input type="hidden" name="action" value="resolve" /><input type="hidden" name="submission_id" value={s.id} />
+                  <input type="text" name="reason" maxlength="800" placeholder={dt('Reason (the member sees it)')} />
+                  <button type="submit" name="status" value="accepted" class="btn btn-accent btn-sm">{dt('Accept')}</button>
+                  <button type="submit" name="status" value="rejected" class="da-reject">{dt('Reject')}</button>
+                </form>
+              )}
+              {s.status !== 'pending' && s.resolution_reason && <p class="da-hint">{dt('Reason')}: {s.resolution_reason}</p>}
+            </div>
+          </details>
+        ))}
+      </div>
+    </>
+  )}
+
+  {section === 'settings' && (
+    <form method="POST" class="da-editor">
+      <input type="hidden" name="action" value="save_settings" />
+      <div class="da-card">
+        <h2>{dt('Where appeals arrive')}</h2>
+        <div class="da-grid">
+          <label class="da-field"><span>{dt('Channel for appeals')}</span><select name="submission_channel_id"><option value="">{dt('Pick a channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === config.submission_channel_id}>#{c.name}</option>)}</select></label>
+          <label class="da-field"><span>{dt('Log channel')}</span><select name="log_channel_id"><option value="">{dt('No log')}</option>{channels.map((c) => <option value={c.id} selected={c.id === config.log_channel_id}>#{c.name}</option>)}</select></label>
+          <div class="da-field da-wide"><span>{dt('Roles to ping')}</span><MultiSelect name="ping_role_ids" options={roles} selected={config.ping_role_ids} placeholder={dt('No roles')} /></div>
+          <label class="da-check da-wide"><input type="checkbox" name="auto_thread" checked={config.auto_thread} />{dt('Open a thread under each appeal')}</label>
+          <label class="da-field da-wide"><span>{dt('Thread name')}</span><input type="text" name="thread_name" value={config.thread_name} maxlength="100" /><em>{dt('You can use {username}.')}</em></label>
+        </div>
+      </div>
+      <div class="da-card">
+        <h2>{dt('What the member sees')}</h2>
+        <div class="da-field"><span>{dt('Punishments they can see')}</span><div class="da-checkrow">{PUNISHMENT_TYPES.map((t) => <label class="da-check"><input type="checkbox" name="punishment_types" value={t} checked={config.punishment_types.includes(t)} />{typeNames[t]}</label>)}</div></div>
+        <div class="da-field"><span>{dt('Details they can see')}</span><div class="da-checkrow">
+          <label class="da-check"><input type="checkbox" name="punishment_details" value="reason" checked={config.punishment_details.includes('reason')} />{dt('Reason')}</label>
+          <label class="da-check"><input type="checkbox" name="punishment_details" value="duration" checked={config.punishment_details.includes('duration')} />{dt('Duration')}</label>
+          <label class="da-check"><input type="checkbox" name="punishment_details" value="moderator" checked={config.punishment_details.includes('moderator')} />{dt('Moderator')}</label>
+        </div></div>
+        <div class="da-grid">
+          <label class="da-field"><span>{dt('Where punishments come from')}</span><select name="punishment_source"><option value="both" selected={config.punishment_source === 'both'}>Petto + Discord</option><option value="petto" selected={config.punishment_source === 'petto'}>Petto</option><option value="discord" selected={config.punishment_source === 'discord'}>Discord</option></select></label>
+          <div class="da-field"><span>{dt('Warns are shown for')}</span><div class="da-pair"><input type="number" name="warns_age" min="1" max="3650" value={warnsAge.n} /><select name="warns_unit"><option value="days" selected={warnsAge.unit === 'days'}>{dt('days')}</option><option value="months" selected={warnsAge.unit === 'months'}>{dt('months')}</option></select></div></div>
+          <label class="da-field da-wide"><span>{dt('Greeting')}</span><textarea name="greeting" maxlength="600" rows="3" placeholder={dt('Tell the staff why your punishment should be lifted. Be honest and clear.')}>{config.greeting ?? ''}</textarea><em>{dt('Shown at the top of your appeal page.')}</em></label>
+          <label class="da-field"><span>{dt('Page language')}</span><select name="language"><option value="en" selected={config.language === 'en'}>English</option><option value="es" selected={config.language === 'es'}>Español</option><option value="pt-BR" selected={config.language === 'pt-BR'}>Português</option></select></label>
+        </div>
+      </div>
+      <div class="da-card">
+        <h2>{dt('Talking with the member')}</h2>
+        <label class="da-check"><input type="checkbox" name="allow_replies" checked={config.allow_replies} />{dt('Members can reply to the staff')}</label>
+        <label class="da-check"><input type="checkbox" name="anonymous_messages" checked={config.anonymous_messages} />{dt('Hide the name of the moderator when they write')}</label>
+        <label class="da-check"><input type="checkbox" name="allow_server_id" checked={config.allow_server_id} />{dt('Anyone with the link can open the page')}</label>
+      </div>
+      <div class="da-card">
+        <h2>{dt('Accepted appeals')}</h2>
+        <div class="da-grid">
+          <label class="da-field"><span>{dt('Invite code to rejoin')}</span><input type="text" name="rejoin_invite_code" value={config.rejoin_invite_code ?? ''} maxlength="40" placeholder="discord.gg/…" /></label>
+          <label class="da-check da-wide"><input type="checkbox" name="auto_invite" checked={config.auto_invite} />{dt('Make a new single-use invite for each accepted appeal')}</label>
+          <div class="da-field"><span>{dt('Keep answered appeals for')}</span><div class="da-pair"><input type="number" name="store_age" min="1" max="365" value={storeAge.n} /><select name="store_unit"><option value="days" selected={storeAge.unit === 'days'}>{dt('days')}</option><option value="months" selected={storeAge.unit === 'months'}>{dt('months')}</option></select></div><em>{dt('After that they are deleted for good.')}</em></div>
+        </div>
+      </div>
+      <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save settings')}</button></div>
+    </form>
+  )}
+  {section === 'settings' && (
+    <form method="POST" class="da-danger" data-no-dirty onsubmit={`return confirm(${JSON.stringify(dt('This deletes every form and appeal of this server. It cannot be undone.'))})`}>
+      <input type="hidden" name="action" value="delete_all" />
+      <h3>{dt('Delete all appeal data')}</h3>
+      <p class="da-hint">{dt('Forms, appeals, messages and settings are removed.')}</p>
+      <div class="da-inline"><input type="text" name="confirm" placeholder={dt('Type DELETE to confirm.')} autocomplete="off" /><button type="submit" class="da-del">{dt('Delete everything')}</button></div>
+    </form>
+  )}
+
+  {section === 'brand' && (
+    <form method="POST" class="da-editor" data-brand>
+      <input type="hidden" name="action" value="save_brand" />
+      <div class="da-card">
+        <h2>{dt('The page')}</h2>
+        <div class="da-grid">
+          <label class="da-field"><span>{dt('Name on the page')}</span><input type="text" name="brand_name" value={config.brand?.name ?? ''} maxlength="60" placeholder={guildName} data-bind="name" /></label>
+          <label class="da-field"><span>{dt('Tagline')}</span><input type="text" name="tagline" value={config.brand?.tagline ?? ''} maxlength="120" /></label>
+          <label class="da-field"><span>{dt('Banner image link')}</span><input type="url" name="banner_url" value={config.brand?.banner_url ?? ''} placeholder="https://…" /><em>{dt('A wide image, shown above the page. HTTPS only.')}</em></label>
+          <label class="da-field"><span>{dt('Icon link')}</span><input type="url" name="icon_url" value={config.brand?.icon_url ?? ''} placeholder="https://…" /><em>{dt('Empty uses the icon of the server.')}</em></label>
+        </div>
+        <div class="da-field"><span>{dt('Accent color')}</span>
+          <div class="da-themes">{Object.entries(THEMES).map(([key, t]) => <label class="da-theme" title={t.label}><input type="radio" name="theme" value={key} checked={(config.brand?.theme ?? 'peach') === key} data-accent={t.accent} /><i style={`--c:${t.accent}`}></i><span>{t.label}</span></label>)}</div>
+          <div class="da-pair"><ColorPicker name="accent" value={hexColor(config.brand?.accent) ?? ''} label={dt('Your own color')} allowNone /></div>
+        </div>
+      </div>
+      <div class="da-card">
+        <h2>{dt('Link preview')}</h2>
+        <p class="da-hint">{dt('What Discord shows when someone pastes your appeal link.')}</p>
+        <div class="da-grid">
+          <label class="da-field da-wide"><span>{dt('Title')}</span><input type="text" name="embed_title" value={config.embed?.title ?? ''} maxlength="90" placeholder={dt('Appeal your punishment in {a}', { a: guildName })} data-bind="etitle" /></label>
+          <label class="da-field da-wide"><span>{dt('Description')}</span><textarea name="embed_description" maxlength="240" rows="2" placeholder={dt('Sign in with Discord and send an appeal to the staff of {a}.', { a: guildName })} data-bind="edesc">{config.embed?.description ?? ''}</textarea></label>
+          <label class="da-field da-wide"><span>{dt('Image link')}</span><input type="url" name="embed_image" value={config.embed?.image_url ?? ''} placeholder="https://…" data-bind="eimage" /><em>{dt('Empty uses the banner, then the icon of the server.')}</em></label>
+          <div class="da-field"><span>{dt('Side color')}</span><ColorPicker name="embed_color" value={hexColor(config.embed?.color) ?? ''} label={dt('Side color')} allowNone /></div>
+        </div>
+        <div class="da-embed" data-embed style={`--bar:${hexColor(config.embed?.color) ?? theme.accent}`}>
+          <small data-prev="site">{config.brand?.name || guildName}</small>
+          <b data-prev="title" data-default={dt('Appeal your punishment in {a}', { a: guildName })}>{config.embed?.title || dt('Appeal your punishment in {a}', { a: guildName })}</b>
+          <span data-prev="desc" data-default={dt('Sign in with Discord and send an appeal to the staff of {a}.', { a: guildName })}>{config.embed?.description || dt('Sign in with Discord and send an appeal to the staff of {a}.', { a: guildName })}</span>
+          <div class="da-embed-img" data-prev="image" style={config.embed?.image_url ? `background-image:url(${JSON.stringify(config.embed.image_url)})` : ''}></div>
+        </div>
+      </div>
+      <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save brand')}</button><a class="btn btn-ghost" href={link} target="_blank" rel="noopener">{dt('Open the page')}</a></div>
+    </form>
+  )}
+
+  {section === 'messages' && (
+    <form method="POST" class="da-editor" data-messages data-samples={JSON.stringify(sampleVars)}>
+      <input type="hidden" name="action" value="save_messages" />
+      <div class="da-card"><p class="da-hint">{dt('Click a variable to add it:')}</p><div class="da-chips">{variableChips.map((v) => <button type="button" class="da-vchip" data-insert={v}>{v}</button>)}</div></div>
+      {Object.keys(defaults).map((k) => (
+        <div class="da-card">
+          <label class="da-field"><span>{messageTitles[k]}</span><textarea name={`msg_${k}`} rows="3" maxlength="1000" placeholder={defaults[k]} data-msg={k}>{config.messages?.[k] ?? ''}</textarea></label>
+          <div class="da-prev"><small>{dt('Preview')}</small><span data-preview={k} data-default={defaults[k]}></span></div>
+        </div>
+      ))}
+      <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save messages')}</button></div>
+    </form>
+  )}
+</DashGuildLayout>
+
+<script>
+  // Copy buttons, the live preview of the link and of the messages, and the builder of the questions of a form.
+  function initAppeals() {
+    document.querySelectorAll<HTMLElement>('[data-copy]').forEach((b) => { if (b.dataset.bound) return; b.dataset.bound = '1'; b.addEventListener('click', () => { navigator.clipboard?.writeText(b.dataset.copy ?? '').catch(() => {}); }); });
+
+    const brand = document.querySelector<HTMLElement>('[data-brand]');
+    if (brand && !brand.dataset.bound) {
+      brand.dataset.bound = '1';
+      const prev = (name: string) => brand.querySelector<HTMLElement>(`[data-prev="${name}"]`);
+      const sync = () => {
+        const val = (n: string) => (brand.querySelector<HTMLInputElement>(`[data-bind="${n}"]`)?.value ?? '').trim();
+        const set = (n: string, v: string, fallback?: string) => { const el = prev(n); if (el) el.textContent = v || fallback || el.dataset.default || ''; };
+        set('site', val('name'), prev('site')?.textContent ?? '');
+        set('title', val('etitle')); set('desc', val('edesc'));
+        const img = prev('image'); const url = val('eimage');
+        if (img) img.style.backgroundImage = /^https:\/\//.test(url) ? `url(${JSON.stringify(url)})` : '';
+      };
+      brand.addEventListener('input', sync);
+      brand.addEventListener('change', (e) => {
+        const t = e.target as HTMLInputElement;
+        if (t.name === 'theme') brand.querySelector<HTMLElement>('[data-embed]')?.style.setProperty('--bar', t.dataset.accent ?? '');
+      });
+    }
+
+    const msgs = document.querySelector<HTMLElement>('[data-messages]');
+    if (msgs && !msgs.dataset.bound) {
+      msgs.dataset.bound = '1';
+      const samples = JSON.parse(msgs.dataset.samples ?? '{}') as Record<string, string>;
+      const render = (text: string) => text.replace(/\{(username|user|server|reason|form|link)\}/g, (_m, k) => (k === 'user' ? samples.username : samples[k]) ?? '');
+      const paint = () => msgs.querySelectorAll<HTMLElement>('[data-preview]').forEach((el) => {
+        const ta = msgs.querySelector<HTMLTextAreaElement>(`[data-msg="${el.dataset.preview}"]`);
+        el.textContent = render((ta?.value ?? '').trim() || el.dataset.default || '');
+      });
+      let last: HTMLTextAreaElement | null = null;
+      msgs.addEventListener('focusin', (e) => { if ((e.target as HTMLElement).matches('textarea')) last = e.target as HTMLTextAreaElement; });
+      msgs.addEventListener('input', paint);
+      msgs.addEventListener('click', (e) => {
+        const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-insert]');
+        if (!chip) return;
+        const ta = last ?? msgs.querySelector<HTMLTextAreaElement>('textarea');
+        if (!ta) return;
+        const at = ta.selectionStart ?? ta.value.length;
+        ta.value = (ta.value.slice(0, at) + chip.dataset.insert + ta.value.slice(ta.selectionEnd ?? at)).slice(0, 1000);
+        ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      paint();
+    }
+
+    const root = document.querySelector<HTMLElement>('[data-builder]');
+    const output = document.querySelector<HTMLInputElement>('[data-builder-output]');
+    if (root && output && !root.dataset.bound) {
+      root.dataset.bound = '1';
+      type Q = { id: string; type: string; label: string; help: string; required: boolean; options: string[] };
+      type S = { id: string; title: string; description: string; questions: Q[] };
+      const text = JSON.parse(root.dataset.text ?? '{}');
+      const limits = JSON.parse(root.dataset.limits ?? '{}');
+      const types: string[] = JSON.parse(root.dataset.types ?? '[]');
+      let n = 0;
+      const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${(n++).toString(36)}`.slice(0, 24);
+      const state: S[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((s) => ({ id: s.id, title: s.title ?? '', description: s.description ?? '', questions: (s.questions ?? []).map((q: any) => ({ id: q.id, type: q.type, label: q.label ?? '', help: q.help ?? '', required: q.required !== false, options: q.options ?? [] })) }));
+      const save = () => { output.value = JSON.stringify(state.map((s) => ({ ...s, description: s.description || null, questions: s.questions.map((q) => ({ ...q, help: q.help || null })) }))); };
+      const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, any> = {}, ...kids: (Node | string)[]) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k === 'on') for (const [ev, fn] of Object.entries(v as Record<string, EventListener>)) e.addEventListener(ev, fn); else if (v !== undefined && v !== null) (e as any)[k] = v; } for (const kid of kids) e.append(kid); return e; };
+      const field = (label: string, input: HTMLElement, wide = false) => el('label', { class: `da-field${wide ? ' da-wide' : ''}` }, el('span', {}, label), input);
+      const move = <T,>(arr: T[], i: number, d: number) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; draw(); };
+      function drawQuestion(s: S, q: Q, qi: number): HTMLElement {
+        const type = el('select', { on: { change: (e: Event) => { q.type = (e.target as HTMLSelectElement).value; draw(); } } }, ...types.map((t) => el('option', { value: t, selected: q.type === t }, text.types[t])));
+        const label = el('input', { type: 'text', value: q.label, maxLength: limits.label, on: { input: (e: Event) => { q.label = (e.target as HTMLInputElement).value; save(); } } });
+        const help = el('input', { type: 'text', value: q.help, maxLength: limits.help, on: { input: (e: Event) => { q.help = (e.target as HTMLInputElement).value; save(); } } });
+        const req = el('input', { type: 'checkbox', checked: q.required, on: { change: (e: Event) => { q.required = (e.target as HTMLInputElement).checked; save(); } } });
+        const box = el('div', { class: 'da-q' },
+          el('div', { class: 'da-q-head' }, el('b', {}, `${text.question} ${qi + 1}`), el('span', { class: 'da-q-tools' },
+            el('button', { type: 'button', title: text.up, on: { click: () => move(s.questions, qi, -1) } }, '↑'), el('button', { type: 'button', title: text.down, on: { click: () => move(s.questions, qi, 1) } }, '↓'),
+            el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { s.questions.splice(qi, 1); draw(); } } }, '×'))),
+          el('div', { class: 'da-grid' }, field(text.label, label, true), field('', type), field(text.help, help, true)),
+          el('label', { class: 'da-check' }, req, text.required));
+        if (q.type === 'choice' || q.type === 'multi') {
+          const area = el('textarea', { rows: 3, value: q.options.join('\n'), on: { input: (e: Event) => { q.options = (e.target as HTMLTextAreaElement).value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, limits.options); save(); } } });
+          box.append(field(text.options, area, true));
+        }
+        return box;
+      }
+      function draw() {
+        root!.textContent = '';
+        state.forEach((s, si) => {
+          const title = el('input', { type: 'text', value: s.title, maxLength: 100, on: { input: (e: Event) => { s.title = (e.target as HTMLInputElement).value; save(); } } });
+          const desc = el('input', { type: 'text', value: s.description, maxLength: 500, on: { input: (e: Event) => { s.description = (e.target as HTMLInputElement).value; save(); } } });
+          const sec = el('div', { class: 'da-section' },
+            el('div', { class: 'da-q-head' }, el('h3', {}, `${text.section} ${si + 1}`), el('span', { class: 'da-q-tools' },
+              el('button', { type: 'button', title: text.up, on: { click: () => move(state, si, -1) } }, '↑'), el('button', { type: 'button', title: text.down, on: { click: () => move(state, si, 1) } }, '↓'),
+              el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { state.splice(si, 1); draw(); } } }, '×'))),
+            el('div', { class: 'da-grid' }, field(text.title, title), field(text.description, desc)),
+            ...s.questions.map((q, qi) => drawQuestion(s, q, qi)),
+            el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: s.questions.length >= limits.questions, on: { click: () => { s.questions.push({ id: nextId('q'), type: 'short', label: '', help: '', required: true, options: [] }); draw(); } } }, `+ ${text.addQuestion}`));
+          root!.append(sec);
+        });
+        root!.append(el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: state.length >= limits.sections, on: { click: () => { state.push({ id: nextId('s'), title: '', description: '', questions: [] }); draw(); } } }, `+ ${text.addSection}`));
+        save();
+      }
+      draw();
+    }
+  }
+  // The dashboard swaps pages in place: it calls this after every swap, and the first run is right here.
+  (window as any).dashAppealsInit = initAppeals;
+  initAppeals();
+</script>
+
+<style is:global>
+  /* The question builder is drawn by script, so its rules cannot be scoped to the component. */
+  [data-builder] .da-section { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; background: color-mix(in srgb, var(--bg-raise) 60%, transparent); }
+  [data-builder] .da-q { border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--card); }
+  [data-builder] .da-q-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+  [data-builder] .da-q-head h3 { margin: 0; font-size: 14px; }
+  [data-builder] .da-q-tools { display: flex; gap: 4px; }
+  [data-builder] .da-q-tools button { border: 1px solid var(--border); background: var(--bg-raise); color: var(--text-muted); border-radius: 7px; width: 28px; height: 26px; cursor: pointer; }
+  [data-builder] .da-q-tools button:hover { color: var(--text); border-color: var(--accent); } [data-builder] .da-q-tools .del:hover { color: var(--red); border-color: var(--red); }
+  [data-builder] .da-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; } [data-builder] .da-wide { grid-column: 1 / -1; }
+  [data-builder] .da-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; } [data-builder] .da-field > span:first-child { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  [data-builder] input[type="text"], [data-builder] select, [data-builder] textarea { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; }
+  [data-builder] .da-check { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-muted); cursor: pointer; } [data-builder] .da-check input { accent-color: var(--accent); }
+  @media (max-width: 720px) { [data-builder] .da-grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .da-sub { font-size: 13.5px; color: var(--text-muted); margin: 0 0 18px; max-width: 70ch; }
+  .da-badge { font-family: var(--sans); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); color: var(--text-dim); }
+  .da-badge.on { color: var(--green); background: var(--green-soft); border-color: transparent; }
+  .da-flash { display: flex; align-items: center; gap: 8px; font-size: 13px; border-radius: 9px; padding: 9px 13px; margin-bottom: 16px; max-width: fit-content; }
+  .da-flash.ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); } .da-flash.err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
+  .da-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; max-width: 880px; }
+  .da-card h2 { font-size: 17px; margin: 0; } .da-card h3 { font-size: 14px; margin: 0; } .da-card h4 { font-size: 12px; margin: 0 0 4px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+  .da-card p { margin: 0; }
+  .da-hint, .da-field em { font-size: 12px; color: var(--text-dim); font-style: normal; }
+  .da-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .da-toggle { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .da-icons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .da-iconpick { position: relative; display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; }
+  .da-iconpick input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .da-iconpick:has(input:checked) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .da-ico { vertical-align: -2px; margin-right: 7px; color: var(--accent); }
+  .da-switch, .da-check { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+  .da-switch input, .da-check input { margin-top: 3px; accent-color: var(--accent); }
+  .da-switch span { display: flex; flex-direction: column; gap: 2px; } .da-switch b { color: var(--text); font-size: 14px; } .da-switch em { font-style: normal; font-size: 12px; color: var(--text-dim); }
+  .da-link { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .da-link code { font-family: var(--mono); font-size: 12.5px; background: var(--bg-raise); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; color: var(--accent); word-break: break-all; }
+  .da-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; } .da-checks li { display: flex; align-items: center; gap: 9px; color: var(--text-muted); font-size: 13px; } .da-checks li.done { color: var(--text); } .da-checks li.done :global(svg) { color: var(--green); } .da-checks a { margin-left: auto; color: var(--accent); font-size: 12.5px; }
+  .da-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; max-width: 880px; margin-bottom: 14px; }
+  .da-stat { display: flex; flex-direction: column; gap: 2px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; text-decoration: none; color: inherit; } .da-stat b { font-size: 22px; font-family: var(--serif); } .da-stat span { font-size: 12px; color: var(--text-dim); } .da-stat:hover { border-color: var(--accent); }
+  .da-list { display: flex; flex-direction: column; } .da-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .da-chip { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); text-transform: uppercase; }
+  .da-chip.live, .da-chip.accepted { color: var(--green); border-color: transparent; background: var(--green-soft); } .da-chip.pending { color: var(--yellow); border-color: transparent; background: var(--yellow-soft); } .da-chip.rejected { color: var(--red); border-color: transparent; background: var(--red-soft); }
+  .da-editor { display: flex; flex-direction: column; }
+  .da-back { font-size: 13px; color: var(--text-muted); text-decoration: none; margin-bottom: 10px; display: inline-block; } .da-back:hover { color: var(--text); }
+  .da-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; } .da-wide { grid-column: 1 / -1; }
+  .da-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; } .da-field > span:first-child { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .da-field input[type="text"], .da-field input[type="url"], .da-field input[type="number"], .da-field select, .da-field textarea, .da-inline input, .da-inline textarea, .da-resolve input, .da-q textarea { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; }
+  .da-field textarea, .da-inline textarea { resize: vertical; }
+  .da-checkrow { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .da-pair { display: flex; gap: 8px; } .da-pair input { max-width: 110px; } .da-pair select { max-width: 130px; }
+  .da-section { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; background: color-mix(in srgb, var(--bg-raise) 60%, transparent); }
+  .da-q { border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--card); }
+  .da-q-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; } .da-q-tools { display: flex; gap: 4px; } .da-q-tools button { border: 1px solid var(--border); background: var(--bg-raise); color: var(--text-muted); border-radius: 7px; width: 28px; height: 26px; cursor: pointer; } .da-q-tools button:hover { color: var(--text); border-color: var(--accent); } .da-q-tools .del:hover { color: var(--red); border-color: var(--red); }
+  .da-themes { display: flex; flex-wrap: wrap; gap: 8px; } .da-theme { position: relative; display: flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; } .da-theme input { position: absolute; opacity: 0; } .da-theme i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); } .da-theme:has(input:checked) { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .da-embed { position: relative; display: flex; flex-direction: column; gap: 4px; background: #2b2d31; color: #dbdee1; border-radius: 6px; border-left: 4px solid var(--bar); padding: 10px 14px 12px; max-width: 420px; } .da-embed small { color: #949ba4; font-size: 11.5px; } .da-embed b { font-size: 15px; color: #00a8fc; } .da-embed span { font-size: 13.5px; } .da-embed-img { margin-top: 6px; height: 160px; border-radius: 4px; background: #1e1f22 center / cover; } .da-embed-img:not([style*="url"]) { display: none; }
+  .da-chips { display: flex; flex-wrap: wrap; gap: 6px; } .da-vchip { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px; cursor: pointer; }
+  .da-prev { background: var(--bg-raise); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; white-space: pre-wrap; } .da-prev small { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .da-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; } .da-tab { text-decoration: none; font-size: 13px; color: var(--text-muted); padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); } .da-tab.on { color: var(--text); background: var(--accent-soft); border-color: var(--accent); }
+  .da-sub summary, details.da-sub > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .da-sub summary::-webkit-details-marker { display: none; }
+  .da-who { display: flex; align-items: center; gap: 8px; } .da-who img { border-radius: 50%; }
+  .da-body { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 12px; }
+  .da-block p { font-size: 13px; color: var(--text-muted); margin: 2px 0; } .da-ans { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--border); } .da-ans b { font-size: 12px; color: var(--text-dim); font-weight: 600; } .da-ans span { white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+  .da-msg { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border); font-size: 13px; margin-bottom: 6px; white-space: pre-wrap; } .da-msg small { font-size: 11px; color: var(--text-dim); } .da-msg.user { background: var(--accent-soft); } .da-msg.system { border-style: dashed; color: var(--text-dim); }
+  .da-inline { display: flex; gap: 8px; align-items: flex-end; } .da-resolve { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .da-resolve input { flex: 1 1 220px; }
+  .da-reject, .da-del { border: 1px solid var(--red); color: var(--red); background: transparent; border-radius: 9px; padding: 7px 13px; font: 600 13px var(--sans); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; } .da-reject:hover, .da-del:hover { background: var(--red-soft); }
+  .da-danger { border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border)); border-radius: 14px; padding: 14px 18px; max-width: 880px; display: flex; flex-direction: column; gap: 10px; margin-top: 10px; } .da-danger h3 { margin: 0; font-size: 14px; color: var(--red); }
+  @media (max-width: 720px) { .da-grid { grid-template-columns: minmax(0, 1fr); } .da-inline { flex-direction: column; align-items: stretch; } }
+</style>

@@ -1,0 +1,173 @@
+---
+export const prerender = false;
+import DashAppeals from '../../../../components/DashAppeals.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { callPettoAppeals } from '../../../../utils/pettoBotApi';
+import { CONFIG_DEFAULTS, LIMITS, THEMES, PUNISHMENT_TYPES, hexColor, safeUrl, normalizeForm, type AppealConfig } from '../../../../utils/appeals';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dt = makeT(getDashLang(Astro));
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const SECTIONS = ['overview', 'forms', 'submissions', 'settings', 'brand', 'messages'];
+const section = SECTIONS.includes(String(Astro.url.searchParams.get('section'))) ? String(Astro.url.searchParams.get('section')) : 'overview';
+const formParam = Astro.url.searchParams.get('form');
+const statusFilter = ['pending', 'accepted', 'rejected', 'withdrawn'].includes(String(Astro.url.searchParams.get('status'))) ? String(Astro.url.searchParams.get('status')) : 'pending';
+
+const whole = (value: FormDataEntryValue | null, min: number, max: number, fallback: number) => {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const snowflake = (value: FormDataEntryValue | null) => { const v = String(value ?? '').trim(); return SNOWFLAKE.test(v) ? v : null; };
+const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
+const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/${path}`, { ...init, headers: { ...apiHeaders, ...(init.headers as Record<string, string> | undefined) } });
+const saveConfig = (patch: Record<string, unknown>) => rest('appeal_config?on_conflict=guild_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, ...patch, updated_at: new Date().toISOString() }) });
+
+let saved = false;
+let message: { kind: 'ok' | 'err'; text: string } | null = null;
+let redirectTo: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  await ensureGuildRow(apiUrl, apiHeaders, id);
+  const ok = (res: Response | null | undefined, doneText = dt('Saved.')) => { saved = Boolean(res?.ok); message = res?.ok ? { kind: 'ok', text: doneText } : { kind: 'err', text: dt('It could not be saved, try again.') }; };
+
+  if (action === 'toggle') {
+    ok(await saveConfig({ enabled: form.get('enabled') === 'on' }));
+  } else if (action === 'save_settings') {
+    const days = (name: string, unit: string, max: number, fallback: number) => {
+      const n = whole(form.get(name), 1, 3650, fallback);
+      const asDays = String(form.get(unit)) === 'months' ? n * 30 : n;
+      return Math.min(max, asDays);
+    };
+    const code = text(form.get('rejoin_invite_code'), 40).replace(/^(?:https?:\/\/)?(?:discord\.gg|discord\.com\/invite)\//i, '');
+    ok(await saveConfig({
+      greeting: text(form.get('greeting'), 600) || null,
+      language: ['en', 'es', 'pt-BR'].includes(String(form.get('language'))) ? String(form.get('language')) : 'en',
+      rejoin_invite_code: /^[A-Za-z0-9-]{2,32}$/.test(code) ? code : null,
+      auto_invite: form.get('auto_invite') === 'on',
+      allow_server_id: form.get('allow_server_id') === 'on',
+      punishment_types: form.getAll('punishment_types').map(String).filter((t) => (PUNISHMENT_TYPES as readonly string[]).includes(t)),
+      punishment_details: form.getAll('punishment_details').map(String).filter((t) => ['reason', 'duration', 'moderator'].includes(t)),
+      punishment_source: ['petto', 'discord', 'both'].includes(String(form.get('punishment_source'))) ? String(form.get('punishment_source')) : 'both',
+      warns_max_age_days: days('warns_age', 'warns_unit', 3650, 30),
+      anonymous_messages: form.get('anonymous_messages') === 'on',
+      allow_replies: form.get('allow_replies') === 'on',
+      store_days: days('store_age', 'store_unit', 365, 7),
+      submission_channel_id: snowflake(form.get('submission_channel_id')),
+      log_channel_id: snowflake(form.get('log_channel_id')),
+      auto_thread: form.get('auto_thread') === 'on',
+      thread_name: text(form.get('thread_name'), 100) || 'Appeal by {username}',
+      ping_role_ids: form.getAll('ping_role_ids').map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 25),
+    }));
+  } else if (action === 'save_brand') {
+    const theme = String(form.get('theme') ?? 'peach');
+    ok(await saveConfig({
+      brand: { name: text(form.get('brand_name'), 60), tagline: text(form.get('tagline'), 120), theme: theme in THEMES ? theme : 'peach', accent: hexColor(form.get('accent')) ?? '', banner_url: safeUrl(form.get('banner_url')) ?? '', icon_url: safeUrl(form.get('icon_url')) ?? '' },
+      embed: { title: text(form.get('embed_title'), 90), description: text(form.get('embed_description'), 240), image_url: safeUrl(form.get('embed_image')) ?? '', color: hexColor(form.get('embed_color')) ?? '' },
+    }));
+  } else if (action === 'save_messages') {
+    const messages: Record<string, string> = {};
+    for (const key of ['submitted', 'accepted', 'rejected', 'reply']) { const v = text(form.get(`msg_${key}`), 1000); if (v) messages[key] = v; }
+    ok(await saveConfig({ messages }));
+  } else if (action === 'save_form') {
+    let sections: unknown = [];
+    try { sections = JSON.parse(String(form.get('sections_json') ?? '[]')); } catch { /* an empty form */ }
+    const clean = normalizeForm({
+      name: form.get('name'), icon: form.get('icon'), short_description: form.get('short_description'), description: form.get('description'),
+      status: form.get('status'), requirement_types: form.getAll('requirement_types'), block_on_reject: form.get('block_on_reject'), generate_invite: form.get('generate_invite') === 'on',
+      messages: { submitted: form.get('msg_submitted'), accepted: form.get('msg_accepted'), rejected: form.get('msg_rejected') }, sections,
+    });
+    const formId = Number(form.get('form_id'));
+    if (Number.isInteger(formId) && formId > 0) {
+      const res = await rest(`appeal_forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ...clean, updated_at: new Date().toISOString() }) });
+      ok(res); redirectTo = `?section=forms&form=${formId}&saved=1`;
+    } else {
+      const countRes = await rest(`appeal_forms?guild_id=eq.${id}&select=id`);
+      const count = countRes.ok ? (await countRes.json()).length : 0;
+      if (count >= LIMITS.forms) { message = { kind: 'err', text: dt('You reached the limit of forms.') }; }
+      else {
+        const res = await rest('appeal_forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...clean, position: count }) });
+        const row = res.ok ? (await res.json())[0] : null;
+        if (row) redirectTo = `?section=forms&form=${row.id}&saved=1`; else ok(res);
+      }
+    }
+  } else if (action === 'delete_form') {
+    ok(await rest(`appeal_forms?guild_id=eq.${id}&id=eq.${Number(form.get('form_id'))}`, { method: 'DELETE' }), dt('Form deleted.'));
+    redirectTo = '?section=forms';
+  } else if (action === 'duplicate_form') {
+    const res = await rest(`appeal_forms?guild_id=eq.${id}&id=eq.${Number(form.get('form_id'))}&select=*`);
+    const original = res.ok ? (await res.json())[0] : null;
+    if (original) {
+      const { id: _drop, created_at: _c, updated_at: _u, ...copy } = original;
+      const made = await rest('appeal_forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ ...copy, name: `${String(copy.name).slice(0, 70)} (copy)`, status: 'draft' }) });
+      const row = made.ok ? (await made.json())[0] : null;
+      redirectTo = row ? `?section=forms&form=${row.id}` : '?section=forms';
+    }
+  } else if (action === 'resolve' || action === 'reply') {
+    const submissionId = String(form.get('submission_id') ?? '');
+    const result = action === 'resolve'
+      ? await callPettoAppeals(Astro, id, session.userId, 'resolve', { id: submissionId, status: String(form.get('status')), reason: text(form.get('reason'), 800) })
+      : await callPettoAppeals(Astro, id, session.userId, 'reply', { id: submissionId, content: text(form.get('content'), 1500) });
+    saved = Boolean(result.ok);
+    message = result.ok ? { kind: 'ok', text: action === 'resolve' ? dt('Answer sent.') : dt('Message sent.') } : { kind: 'err', text: String(result.payload?.message ?? dt('It could not be saved, try again.')) };
+  } else if (action === 'delete_all') {
+    if (form.get('confirm') === 'DELETE') {
+      await Promise.all(['appeal_submissions', 'appeal_forms', 'appeal_blocks', 'appeal_config'].map((table) => rest(`${table}?guild_id=eq.${id}`, { method: 'DELETE' })));
+      message = { kind: 'ok', text: dt('All appeal data was deleted.') };
+    } else message = { kind: 'err', text: dt('Type DELETE to confirm.') };
+  }
+}
+if (redirectTo) return Astro.redirect(`/dash/guild/${id}/appeals${redirectTo}`);
+if (Astro.url.searchParams.get('saved') === '1') { saved = true; message = { kind: 'ok', text: dt('Saved.') }; }
+
+const needsChannels = ['settings'].includes(section);
+const needsRoles = ['settings'].includes(section);
+const [guildInfo, configRes, formsRes, countsRes, subsRes, rolesRes, channelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => rest(`appeal_config?guild_id=eq.${id}&select=*`),
+  () => rest(`appeal_forms?guild_id=eq.${id}&select=*&order=position.asc,id.asc`),
+  () => section === 'overview' ? rest(`appeal_submissions?guild_id=eq.${id}&select=status,created_at&order=created_at.desc&limit=500`) : Promise.resolve(null),
+  () => section === 'submissions' ? rest(`appeal_submissions?guild_id=eq.${id}&status=eq.${statusFilter}&select=*&order=created_at.desc&limit=40`) : Promise.resolve(null),
+  () => needsRoles ? getGuildList(Astro, id, botToken, 'roles') : Promise.resolve(null),
+  () => needsChannels ? getGuildList(Astro, id, botToken, 'channels') : Promise.resolve(null),
+], 5);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const c = (configRes?.ok ? (await configRes.json())[0] : null) ?? {};
+const config = { ...CONFIG_DEFAULTS, ...c, guild_id: id } as AppealConfig;
+const forms = formsRes?.ok ? await formsRes.json() : [];
+const recent = countsRes?.ok ? await countsRes.json() : [];
+const counts = { pending: 0, accepted: 0, rejected: 0, withdrawn: 0 } as Record<string, number>;
+for (const r of recent) counts[r.status] = (counts[r.status] ?? 0) + 1;
+const submissions = subsRes?.ok ? await subsRes.json() : [];
+let messages: Record<string, any[]> = {};
+if (submissions.length) {
+  const ids = submissions.map((s: any) => s.id).join(',');
+  const msgRes = await rest(`appeal_messages?submission_id=in.(${ids})&select=*&order=created_at.asc`);
+  for (const m of msgRes.ok ? await msgRes.json() : []) (messages[m.submission_id] ??= []).push(m);
+}
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((x: any) => x.type === 0 || x.type === 5).map((x: any) => ({ id: x.id, name: x.name }));
+const editing = formParam === 'new' ? 'new' : formParam && /^\d+$/.test(formParam) ? forms.find((f: any) => String(f.id) === formParam) ?? null : null;
+---
+<DashAppeals
+  user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} origin={Astro.url.origin}
+  section={section} config={config} forms={forms} counts={counts} submissions={submissions} messages={messages} statusFilter={statusFilter}
+  roles={roles} channels={channels} editing={editing} saved={saved} message={message}
+/>
