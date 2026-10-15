@@ -40,6 +40,7 @@ function bindColorPickers(root) {
     var hueCtx = hueCanvas.getContext('2d');
     var W = svCanvas.width, H = svCanvas.height, HUEW = hueCanvas.width;
     var state = { h: 230, s: 0.5, v: 0.5 };
+    var inputQueued = false, dragging = false, dragEndedAt = 0;
 
     function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
@@ -104,9 +105,9 @@ function bindColorPickers(root) {
     }
 
     function positionThumbs() {
-      svThumb.style.left = (state.s * W) + 'px';
-      svThumb.style.top = ((1 - state.v) * H) + 'px';
-      hueThumb.style.left = (state.h / 360 * HUEW) + 'px';
+      svThumb.style.left = (state.s * 100) + '%';
+      svThumb.style.top = ((1 - state.v) * 100) + '%';
+      hueThumb.style.left = (state.h / 360 * 100) + '%';
     }
 
     function syncFields(hex, rgb) {
@@ -118,10 +119,14 @@ function bindColorPickers(root) {
       if (document.activeElement !== rInput) rInput.value = Math.round(rgb.r);
       if (document.activeElement !== gInput) gInput.value = Math.round(rgb.g);
       if (document.activeElement !== bInput) bInput.value = Math.round(rgb.b);
-      valueInput.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+      // Listeners of the page (live previews, the unsaved bar) run once per frame while dragging, not on every pointer event.
+      if (!inputQueued) {
+        inputQueued = true;
+        requestAnimationFrame(function () { inputQueued = false; valueInput.dispatchEvent(new Event('input', { bubbles: true })); });
+      }
+      }
 
-    function applyState(redrawHue) {
+      function applyState(redrawHue) {
       var rgb = hsvToRgb(state.h, state.s, state.v);
       var hex = rgbToHex(rgb.r, rgb.g, rgb.b);
       if (redrawHue) drawSV();
@@ -180,7 +185,8 @@ function bindColorPickers(root) {
       e.stopPropagation();
       if (panel.hidden) openPanel(); else closePanel();
     });
-    closeOnOutside(wrap, closePanel, panel);
+    // Letting go of a drag outside the panel is not a click outside: it must not close it.
+    closeOnOutside(wrap, function () { if (dragging || Date.now() - dragEndedAt < 400) return; closePanel(); }, panel);
     placeWhileOpen(wrap, function () { return !panel.hidden; }, positionPanel);
     wrap.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePanel(); });
     panel.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePanel(); });
@@ -198,17 +204,24 @@ function bindColorPickers(root) {
       state.h = x * 360;
       applyState(true);
     }
-    function drag(moveFn) {
-      function onMove(e) { moveFn(e); }
-      function onUp() {
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-      }
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
+    function drag(moveFn, e) {
+    dragging = true;
+    var target = e.currentTarget;
+    try { target.setPointerCapture(e.pointerId); } catch (err) { /* The listeners on the document still follow the pointer. */ }
+    function onMove(ev) { ev.preventDefault(); moveFn(ev); }
+    function onUp() {
+    dragging = false; dragEndedAt = Date.now();
+    try { target.releasePointerCapture(e.pointerId); } catch (err) { /* Already released. */ }
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
     }
-    svWrap.addEventListener('pointerdown', function (e) { svPointer(e); drag(svPointer); });
-    hueWrap.addEventListener('pointerdown', function (e) { huePointer(e); drag(huePointer); });
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    }
+    svWrap.addEventListener('pointerdown', function (e) { e.preventDefault(); svPointer(e); drag(svPointer, e); });
+    hueWrap.addEventListener('pointerdown', function (e) { e.preventDefault(); huePointer(e); drag(huePointer, e); });
 
     hexInput.addEventListener('change', function () {
       var v = hexInput.value.trim();
