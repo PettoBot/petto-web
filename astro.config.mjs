@@ -31,7 +31,7 @@ export default defineConfig({
     icon({
       include: {
         ph: [
-          'puzzle-piece-fill', 'translate-fill', 'magnifying-glass-bold', 'microphone-fill', 'handshake-fill', 'pencil-simple-fill', 'plus-circle-fill', 'trash', 'calendar-check-fill', 'gavel-fill', 'robot-fill',
+          'puzzle-piece-fill', 'translate-fill', 'paperclip-bold', 'file-text-bold', 'magnifying-glass-bold', 'microphone-fill', 'handshake-fill', 'pencil-simple-fill', 'plus-circle-fill', 'trash', 'calendar-check-fill', 'gavel-fill', 'robot-fill',
           'bug-fill', 'chat-circle-fill', 'user-circle-fill', 'browser-fill', 'scales-fill', 'list-checks-fill', 'tray-fill', 'gear-six-fill', 'paint-brush-broad-fill', 'chat-teardrop-text-fill', 'copy-simple-bold', 'link-simple-bold', 'trash-bold', 'circle', 'plus-bold', 'arrow-square-out-bold', 'check-circle-fill',
           'arrow-right-bold', 'lock-fill', 'lightning-fill', 'sword-fill', 'hammer-fill', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
           'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',

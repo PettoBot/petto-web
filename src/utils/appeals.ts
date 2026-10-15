@@ -14,7 +14,11 @@ export interface AppealConfig {
 }
 export interface Brand { name?: string; tagline?: string; banner_url?: string; icon_url?: string; theme?: string; accent?: string; }
 export interface EmbedMeta { title?: string; description?: string; image_url?: string; color?: string; }
-export interface Question { id: string; type: 'short' | 'paragraph' | 'choice' | 'multi' | 'yesno' | 'number'; label: string; help: string | null; required: boolean; options: string[]; }
+export type QuestionType = 'short' | 'paragraph' | 'choice' | 'multi' | 'yesno' | 'number' | 'dropdown' | 'scale' | 'date' | 'link' | 'file' | 'confirm';
+/** A file question says what it takes (`accept`) and how many files (`max_files`); a scale goes from 1 to `max`. */
+export interface Question { id: string; type: QuestionType; label: string; help: string | null; required: boolean; options: string[]; max?: number; accept?: FileAccept; max_files?: number; }
+export type FileAccept = 'images' | 'pdf' | 'images_pdf' | 'documents';
+export interface AnswerFile { id: string; name: string; mime: string; size: number; }
 export interface Section { id: string; title: string; description: string | null; questions: Question[]; }
 export interface AppealForm {
   id: number; guild_id: string; name: string; icon: string | null; short_description: string | null; description: string | null;
@@ -22,7 +26,7 @@ export interface AppealForm {
 }
 export interface Submission {
   id: string; guild_id: string; form_id: number | null; form_name: string; user_id: string; username: string; avatar_url: string | null;
-  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn'; answers: { id: string; label: string; type: string; value: string | string[] }[];
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn'; answers: { id: string; label: string; type: string; value: string | string[] | AnswerFile[]; max?: number }[];
   punishments: { source: string; type: string; reason?: string | null; until?: string | null; moderator?: string | null }[];
   channel_id: string | null; message_id: string | null; thread_id: string | null; resolved_by: string | null; resolved_at: string | null; resolution_reason: string | null; created_at: string;
 }
@@ -172,7 +176,11 @@ export function timeAgo(iso: string | null | undefined, lang: string): string {
 export const FORM_ICONS = ['scales', 'gavel', 'hammer', 'prohibit', 'speaker-slash', 'chat-circle', 'envelope-simple', 'shield-check', 'flag', 'warning', 'question', 'heart', 'star', 'bell', 'megaphone', 'user'];
 
 export const LIMITS = { forms: 10, sections: 6, questions: 12, options: 20, label: 200, help: 300 };
-export const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number'] as const;
+export const QUESTION_TYPES = ['short', 'paragraph', 'choice', 'multi', 'yesno', 'number', 'dropdown', 'scale', 'date', 'link', 'file', 'confirm'] as const;
+export const LIST_TYPES = ['choice', 'multi', 'dropdown'] as const;
+export const FILE_ACCEPTS = ['images', 'pdf', 'images_pdf', 'documents'] as const;
+/** The limits of a file answer (the bot keeps the same numbers). */
+export const FILE_LIMITS = { bytes: 5 * 1024 * 1024, maxFiles: 5 };
 export const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'] as const;
 export const BLOCKS = ['none', 'day', 'week', 'month', 'forever'] as const;
 const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -204,14 +212,26 @@ export function normalizeForm(input: any) {
   for (const [si, section] of (Array.isArray(input?.sections) ? input.sections : []).slice(0, LIMITS.sections).entries()) {
     const clean: Section = { id: unique(section?.id, 's', si), title: clip(section?.title, 100) || `Section ${si + 1}`, description: clip(section?.description, 500) || null, questions: [] };
     for (const [qi, question] of (Array.isArray(section?.questions) ? section.questions : []).slice(0, LIMITS.questions).entries()) {
-      const type = (QUESTION_TYPES as readonly string[]).includes(question?.type) ? (question.type as Question['type']) : 'short';
+      const type = (QUESTION_TYPES as readonly string[]).includes(question?.type) ? (question.type as QuestionType) : 'short';
       const label = clip(question?.label, LIMITS.label);
       if (!label) continue;
-      const options = ['choice', 'multi'].includes(type) ? [...new Set((Array.isArray(question?.options) ? question.options : []).map((o: unknown) => clip(o, 100)).filter(Boolean))].slice(0, LIMITS.options) as string[] : [];
-      if (['choice', 'multi'].includes(type) && options.length < 2) continue;
-      clean.questions.push({ id: unique(question?.id, 'q', qi), type, label, help: clip(question?.help, LIMITS.help) || null, required: question?.required !== false, options });
+      const options = (LIST_TYPES as readonly string[]).includes(type) ? [...new Set((Array.isArray(question?.options) ? question.options : []).map((o: unknown) => clip(o, 100)).filter(Boolean))].slice(0, LIMITS.options) as string[] : [];
+      if ((LIST_TYPES as readonly string[]).includes(type) && options.length < 2) continue;
+      const num = (value: unknown, min: number, max: number, fallback: number) => { const n = Math.trunc(Number(value)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback; };
+      clean.questions.push({
+        id: unique(question?.id, 'q', qi), type, label, help: clip(question?.help, LIMITS.help) || null, required: question?.required !== false, options,
+        ...(type === 'scale' ? { max: num(question?.max, 3, 10, 5) } : {}),
+        ...(type === 'file' ? { accept: (FILE_ACCEPTS as readonly string[]).includes(question?.accept) ? (question.accept as FileAccept) : 'images', max_files: num(question?.max_files, 1, FILE_LIMITS.maxFiles, 3) } : {}),
+      });
     }
     form.sections.push(clean);
   }
   return form;
+}
+
+/** How an answer is shown: plain text, or the files it holds. A scale reads `3 / 5`. */
+export function answerView(answer: Submission['answers'][number]): { kind: 'text'; text: string } | { kind: 'files'; files: AnswerFile[] } {
+  if (answer.type === 'file') return { kind: 'files', files: (Array.isArray(answer.value) ? answer.value : []).filter((f): f is AnswerFile => typeof f === 'object' && f !== null && 'id' in f) };
+  if (answer.type === 'scale') return { kind: 'text', text: `${String(answer.value)} / ${answer.max ?? 5}` };
+  return { kind: 'text', text: Array.isArray(answer.value) ? (answer.value as string[]).join(', ') : String(answer.value) };
 }

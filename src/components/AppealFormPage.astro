@@ -7,8 +7,14 @@ import { linkPreview, type AppealConfig, type AppealForm } from '../utils/appeal
 interface Props {
   lang: AppealLang; guild: { id: string; name: string; icon: string | null }; config: AppealConfig; form: AppealForm;
   values?: Record<string, string | string[]>; errors?: Record<string, string>; topError?: string | null;
+  /** The names of files already uploaded, by file id (when the form comes back with a mistake). */
+  fileNames?: Record<string, string>;
 }
-const { lang, guild, config, form, values = {}, errors = {}, topError = null } = Astro.props;
+const { lang, guild, config, form, values = {}, errors = {}, topError = null, fileNames = {} } = Astro.props;
+const formUrl = `/appeal/${(guild as any).path ?? guild.id}/form/${form.id}`;
+const ACCEPT_ATTR: Record<string, string> = { images: 'image/png,image/jpeg,image/webp,image/gif', pdf: 'application/pdf,.pdf', images_pdf: 'image/png,image/jpeg,image/webp,image/gif,application/pdf,.pdf', documents: 'image/png,image/jpeg,image/webp,image/gif,application/pdf,.pdf,text/plain,.txt' };
+const ACCEPT_TEXT: Record<string, string> = { images: 'acceptImages', pdf: 'acceptPdf', images_pdf: 'acceptImagesPdf', documents: 'acceptDocuments' };
+const asList = (id: string) => (Array.isArray(values[id]) ? (values[id] as string[]) : values[id] ? [String(values[id])] : []);
 const t = appealText(lang);
 const base = linkPreview(config, guild, lang, { path: (guild as any).path ?? guild.id, origin: Astro.url.origin });
 const preview = { ...base, title: `${form.name} · ${base.title}` };
@@ -41,6 +47,52 @@ const total = form.sections.length;
                 {q.help && <span class="ap-help">{q.help}</span>}
                 <textarea class="ap-area" id={`q_${q.id}`} name={`q_${q.id}`} maxlength="1500">{String(val(q.id))}</textarea>
               </>
+            ) : q.type === 'dropdown' ? (
+              <>
+                <label class="ap-q" for={`q_${q.id}`}>{q.label}{q.required ? <span class="ap-req" title={t('required')}>*</span> : <span class="ap-help"> · {t('optional')}</span>}</label>
+                {q.help && <span class="ap-help">{q.help}</span>}
+                <select class="ap-input" id={`q_${q.id}`} name={`q_${q.id}`}>
+                  <option value="">{t('choose')}</option>
+                  {q.options.map((option) => <option value={option} selected={val(q.id) === option}>{option}</option>)}
+                </select>
+              </>
+            ) : q.type === 'date' || q.type === 'link' ? (
+              <>
+                <label class="ap-q" for={`q_${q.id}`}>{q.label}{q.required ? <span class="ap-req" title={t('required')}>*</span> : <span class="ap-help"> · {t('optional')}</span>}</label>
+                {q.help && <span class="ap-help">{q.help}</span>}
+                <input class="ap-input" id={`q_${q.id}`} name={`q_${q.id}`} type={q.type === 'date' ? 'date' : 'url'} min={q.type === 'date' ? '1900-01-01' : undefined} max={q.type === 'date' ? '2100-12-31' : undefined} maxlength={q.type === 'link' ? 300 : undefined} placeholder={q.type === 'link' ? 'https://…' : undefined} inputmode={q.type === 'link' ? 'url' : undefined} value={String(val(q.id))} />
+              </>
+            ) : q.type === 'scale' ? (
+              <fieldset style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px">
+                <legend class="ap-q" style="padding:0">{q.label}{q.required ? <span class="ap-req" title={t('required')}>*</span> : <span class="ap-help"> · {t('optional')}</span>}</legend>
+                {q.help && <span class="ap-help">{q.help}</span>}
+                <div class="ap-scale">
+                  {Array.from({ length: q.max ?? 5 }, (_, i) => String(i + 1)).map((n) => (
+                    <label class="ap-step-opt"><input type="radio" name={`q_${q.id}`} value={n} checked={val(q.id) === n} /><span>{n}</span></label>
+                  ))}
+                </div>
+                <div class="ap-scale-caption"><span>1 · {t('scaleLow')}</span><span>{q.max ?? 5} · {t('scaleHigh')}</span></div>
+              </fieldset>
+            ) : q.type === 'confirm' ? (
+              <fieldset style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px">
+                <legend class="ap-q" style="padding:0">{q.label}{q.required ? <span class="ap-req" title={t('required')}>*</span> : <span class="ap-help"> · {t('optional')}</span>}</legend>
+                {q.help && <span class="ap-help">{q.help}</span>}
+                <div class="ap-opts"><label class="ap-opt"><input type="checkbox" name={`q_${q.id}`} value="on" checked={val(q.id) === 'on'} /><span>{t('confirmYes')}</span></label></div>
+              </fieldset>
+            ) : q.type === 'file' ? (
+              <div data-files data-q={q.id} data-max={q.max_files ?? 3} data-upload={`${formUrl}/upload`} data-view={`/appeal/${(guild as any).path ?? guild.id}/file`}
+                data-err-big={t('err_file_big')} data-err-type={t('err_file_type')} data-err-unreadable={t('err_file_unreadable')} data-err-many={t('err_file_many')} data-err-fail={t('err_file_fail')} data-uploading={t('uploading')} data-remove={t('removeFile')}>
+                <span class="ap-q">{q.label}{q.required ? <span class="ap-req" title={t('required')}>*</span> : <span class="ap-help"> · {t('optional')}</span>}</span>
+                {q.help && <span class="ap-help">{q.help}</span>}
+                <span class="ap-help">{t(ACCEPT_TEXT[q.accept ?? 'images'] as any)} · {t('filesHint', { max: q.max_files ?? 3 })}</span>
+                <ul class="ap-filelist" data-list>
+                  {asList(q.id).map((fileId) => (
+                    <li class="ap-filechip"><span>{fileNames[fileId] ?? '…'}</span><button type="button" data-remove-file data-id={fileId} aria-label={t('removeFile')}>×</button><input type="hidden" name={`q_${q.id}`} value={fileId} /><input type="hidden" name={`fn_${fileId}`} value={fileNames[fileId] ?? ''} /></li>
+                  ))}
+                </ul>
+                <label class="ap-btn sec ap-addfile"><Icon name="ph:paperclip-bold" width="14" height="14" /> {t('addFile')}<input type="file" hidden data-input multiple={(q.max_files ?? 3) > 1} accept={ACCEPT_ATTR[q.accept ?? 'images']} /></label>
+                <span class="ap-err" data-file-error hidden></span>
+              </div>
             ) : (
               <fieldset style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px">
                 <legend class="ap-q" style="padding:0">{q.label}{q.required ? <span class="ap-req" title={t('required')}>*</span> : <span class="ap-help"> · {t('optional')}</span>}</legend>
@@ -60,3 +112,83 @@ const total = form.sections.length;
     <div><button class="ap-btn" type="submit">{t('send')}</button></div>
   </form>
 </AppealLayout>
+
+<style is:global>
+  .ap-scale { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ap-step-opt { position: relative; }
+  .ap-step-opt input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .ap-step-opt span { display: grid; place-items: center; min-width: 42px; height: 42px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--raise); font-weight: 700; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
+  .ap-step-opt:hover span { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+  .ap-step-opt input:checked + span { background: var(--accent); color: var(--on-accent, #1b1b1f); border-color: var(--accent); transform: scale(1.06); }
+  .ap-step-opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ap-scale-caption { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+  [data-files] { display: flex; flex-direction: column; gap: 8px; }
+  .ap-filelist { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .ap-filechip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 6px 8px 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--raise); font-size: 13px; animation: ap-chip-in .25s cubic-bezier(.2, .8, .2, 1) both; }
+  .ap-filechip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+  .ap-filechip button { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; border-radius: 50%; }
+  .ap-filechip button:hover { color: var(--text); }
+  .ap-filechip.busy { opacity: .6; }
+  .ap-addfile { align-self: flex-start; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  @keyframes ap-chip-in { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .ap-filechip, .ap-step-opt span { animation: none; transition: none; } }
+</style>
+
+<script>
+  // The files of an answer are uploaded as they are picked: the bot checks and keeps each one, and the form only sends their ids.
+  const MAX_BYTES = 5 * 1024 * 1024;
+  document.querySelectorAll<HTMLElement>('[data-files]').forEach((box) => {
+    if (box.dataset.bound) return; box.dataset.bound = '1';
+    const q = box.dataset.q ?? '';
+    const max = Number(box.dataset.max ?? 3);
+    const list = box.querySelector<HTMLElement>('[data-list]')!;
+    const input = box.querySelector<HTMLInputElement>('[data-input]')!;
+    const error = box.querySelector<HTMLElement>('[data-file-error]')!;
+    const form = box.closest('form') as HTMLFormElement;
+    const send = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    let busy = 0;
+    const fail = (text: string) => { error.textContent = text; error.hidden = !text; };
+    const count = () => list.querySelectorAll('li').length;
+    const mistakes: Record<string, string | undefined> = { too_big: box.dataset.errBig, unsupported: box.dataset.errType, unreadable: box.dataset.errUnreadable, too_many_files: box.dataset.errMany };
+    const bind = (chip: HTMLElement) => {
+      chip.querySelector<HTMLButtonElement>('[data-remove-file]')?.addEventListener('click', async () => {
+        const id = chip.querySelector<HTMLButtonElement>('[data-remove-file]')!.dataset.id ?? '';
+        chip.classList.add('busy');
+        await fetch(`${box.dataset.upload}?file=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+        chip.remove(); fail('');
+      });
+    };
+    list.querySelectorAll<HTMLElement>('li').forEach(bind);
+
+    async function upload(file: File) {
+      if (file.size > MAX_BYTES) { fail(box.dataset.errBig ?? ''); return; }
+      if (count() >= max) { fail(box.dataset.errMany ?? ''); return; }
+      const chip = document.createElement('li');
+      chip.className = 'ap-filechip busy';
+      const name = document.createElement('span'); name.textContent = `${box.dataset.uploading ?? ''} ${file.name}`;
+      chip.append(name); list.append(chip);
+      busy += 1; if (send) send.disabled = true;
+      try {
+        const res = await fetch(`${box.dataset.upload}?q=${encodeURIComponent(q)}&name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) { chip.remove(); fail(mistakes[data?.error] ?? box.dataset.errFail ?? ''); return; }
+        const id = String(data.file.id);
+        chip.className = 'ap-filechip';
+        name.textContent = data.file.name;
+        const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeFile = ''; remove.dataset.id = id; remove.textContent = '×'; remove.setAttribute('aria-label', box.dataset.remove ?? '');
+        const value = document.createElement('input'); value.type = 'hidden'; value.name = `q_${q}`; value.value = id;
+        const label = document.createElement('input'); label.type = 'hidden'; label.name = `fn_${id}`; label.value = data.file.name;
+        chip.append(remove, value, label); bind(chip); fail('');
+      } catch {
+        chip.remove(); fail(box.dataset.errFail ?? '');
+      } finally {
+        busy -= 1; if (send && busy <= 0) send.disabled = false;
+      }
+    }
+    input.addEventListener('change', async () => {
+      const files = Array.from(input.files ?? []);
+      input.value = '';
+      for (const file of files) await upload(file);
+    });
+  });
+</script>
