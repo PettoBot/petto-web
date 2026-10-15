@@ -576,6 +576,7 @@ export const dashPt: Record<string, string> = {
   "The base every other system in this server reads from.": "A base da qual todos os outros sistemas deste servidor leem.",
   "Server language": "Idioma do servidor",
   "The language Petto uses in this server: its messages, buttons and the private messages it sends. It changes within a few minutes. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "O idioma que o Petto usa neste servidor: suas mensagens, botões e as mensagens privadas que envia. Muda em poucos minutos. Também dá para usar <code>{a}language</code>. Ajude a traduzir: <a href=\"/apply?role=translator\">candidate-se como tradutor</a>.",
+  "Updates live": "Ao vivo",
   "Command prefix": "Prefixo de comandos",
   "Used for text commands, e.g. <code>{a}ban</code>. Slash commands work no matter what this is set to.": "Usado nos comandos de texto, ex.: <code>{a}ban</code>. Os comandos slash funcionam independentemente de qual seja.",
   "Mute role": "Cargo de silêncio",

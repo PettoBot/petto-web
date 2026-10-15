@@ -1,6 +1,7 @@
 ---
 import AppealLayout from './AppealLayout.astro';
 import { appealText, type AppealLang } from '../i18n/appeal';
+import { chatHtml } from '../utils/appealChat';
 import { linkPreview, timeAgo, type AppealConfig, type AppealMessage, type Submission } from '../utils/appeals';
 
 interface Props {
@@ -13,6 +14,8 @@ const preview = linkPreview(config, guild, lang, { path: (guild as any).path ?? 
 const pending = submission.status === 'pending';
 const answerText = (v: string | string[]) => (Array.isArray(v) ? v.join(', ') : v);
 const who = (m: AppealMessage) => (m.author_type === 'user' ? t('you') : m.author_type === 'staff' ? (m.anonymous ? t('staff') : m.author_name || t('staff')) : t('petto'));
+const chat = chatHtml(messages, { prefix: 'ap', who, when: (iso) => timeAgo(iso, lang), empty: t('noMessages') });
+const liveUrl = `/appeal/${(guild as any).path ?? guild.id}/status/${submission.id}/live`;
 ---
 <AppealLayout lang={lang} config={config} guild={guild} preview={preview}>
   <div>
@@ -25,17 +28,13 @@ const who = (m: AppealMessage) => (m.author_type === 'user' ? t('you') : m.autho
   {submission.resolution_reason && !pending && <div class:list={['ap-card', submission.status === 'accepted' ? 'good' : 'bad']}><p>{submission.resolution_reason}</p></div>}
 
   <section class="ap-list">
-    <h2>{t('conversation')}</h2>
-    <div class="ap-chat">
-      {messages.length === 0 && <p class="ap-muted">{t('noMessages')}</p>}
-      {messages.map((m) => (
-        <div class={`ap-msg ${m.author_type}`}><small>{who(m)} · {timeAgo(m.created_at, lang)}</small><span>{m.content}</span></div>
-      ))}
-    </div>
+    <div class="ap-row"><h2>{t('conversation')}</h2>{pending && <span class="ap-live" data-live-pill><i></i>{t('live')}</span>}</div>
+    <div class="ap-chat" id="apChat" data-live-url={liveUrl} data-status={submission.status} data-pending={pending ? '1' : '0'} data-failed={t('err_failed')} data-rate={t('err_rate_limited')} aria-live="polite" set:html={chat}></div>
     {pending && config.allow_replies && (
-      <form method="POST" class="ap-list">
+      <form method="POST" class="ap-list" id="apReply">
         <input type="hidden" name="action" value="reply" />
         <textarea class="ap-area" name="content" maxlength="1500" placeholder={t('writeMessage')} required style="min-height:90px"></textarea>
+        <p class="ap-reply-error" role="alert" hidden></p>
         <div><button class="ap-btn" type="submit">{t('sendMessage')}</button></div>
       </form>
     )}
@@ -54,3 +53,84 @@ const who = (m: AppealMessage) => (m.author_type === 'user' ? t('you') : m.autho
     </form>
   )}
 </AppealLayout>
+
+<style is:global>
+  .ap-live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .ap-live i { width: 7px; height: 7px; border-radius: 50%; background: #5bd68a; box-shadow: 0 0 0 0 rgba(91, 214, 138, .55); animation: ap-pulse 2s ease-out infinite; }
+  .ap-live.off i { background: var(--muted); animation: none; }
+  @keyframes ap-pulse { 70% { box-shadow: 0 0 0 7px rgba(91, 214, 138, 0); } 100% { box-shadow: 0 0 0 0 rgba(91, 214, 138, 0); } }
+  .ap-msg.fresh { animation: ap-msg-in .35s cubic-bezier(.2, .8, .2, 1) both; }
+  @keyframes ap-msg-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .ap-reply-error { margin: 0; color: var(--red, #ff6b6b); font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .ap-live i, .ap-msg.fresh { animation: none; } }
+</style>
+
+<script>
+  // The conversation updates by itself: it asks for the new messages every few seconds while the page is open, and a reply is sent without reloading.
+  const chat = document.getElementById('apChat');
+  if (chat && !(window as any).__apLive) {
+    (window as any).__apLive = true;
+    const url = chat.dataset.liveUrl ?? '';
+    const pill = document.querySelector<HTMLElement>('[data-live-pill]');
+    const form = document.getElementById('apReply') as HTMLFormElement | null;
+    const status = chat.dataset.status;
+    const delay = chat.dataset.pending === '1' ? 4000 : 15000;
+    let known = chat.querySelectorAll('.ap-msg').length;
+    let busy = false;
+    let timer: number | undefined;
+
+    async function refresh() {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        const res = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        pill?.classList.remove('off');
+        // A decision or a withdrawal changes more than the chat: the page is drawn again.
+        if (data.status !== status) { location.reload(); return; }
+        if (data.count !== known || chat!.innerHTML.trim() !== data.html.trim()) {
+          const stick = window.innerHeight + window.scrollY >= document.body.scrollHeight - 140;
+          chat!.innerHTML = data.html;
+          const items = Array.from(chat!.querySelectorAll('.ap-msg'));
+          items.slice(known).forEach((el) => el.classList.add('fresh'));
+          known = items.length;
+          if (stick) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+      } catch {
+        pill?.classList.add('off');
+      } finally {
+        busy = false;
+      }
+    }
+    function start() { window.clearInterval(timer); timer = window.setInterval(refresh, delay); }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); start(); } });
+    start();
+
+    if (form) {
+      const box = form.querySelector('textarea')!;
+      const button = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const error = form.querySelector<HTMLElement>('.ap-reply-error')!;
+      async function send() {
+        const content = box.value.trim();
+        if (!content || button.disabled) return;
+        button.disabled = true;
+        error.hidden = true;
+        try {
+          const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ content }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) throw new Error(data.error ?? 'failed');
+          box.value = '';
+          await refresh();
+        } catch (err) {
+          error.textContent = String((err as Error).message) === 'rate_limited' ? (chat!.dataset.rate ?? '') : (chat!.dataset.failed ?? '');
+          error.hidden = false;
+        } finally {
+          button.disabled = false;
+        }
+      }
+      form.addEventListener('submit', (e) => { e.preventDefault(); send(); });
+      box.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send(); } });
+    }
+  }
+</script>
