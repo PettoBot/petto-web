@@ -34,7 +34,7 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     'case.id': { text: '42' }, 'case.type': { text: 'ban' }, 'case.action': { text: 'banned' }, 'case.emoji': { text: '🔨' }, 'case.reason': { text: 'Breaking rule 3' },
     'case.duration': { text: '7 days' }, 'case.expires': { text: 'in 7 days' }, 'case.expires_at': { text: 'Oct 9, 2026' }, 'case.source': { text: 'moderator' },
     'case.moderator': { text: '@Moderator', mention: true }, 'case.moderator_name': { text: 'Moderator' }, 'case.moderator_id': { text: '1498210265458675853' }, 'case.moderator_avatar': { text: '' },
-    'case.user': mention, 'case.user_name': name, 'case.user_id': id, 'case.user_avatar': { text: '' },
+    'case.user': mention, 'case.user_name': name, 'case.user_id': id, 'case.user_avatar': { text: '' }, 'case.appeal': { text: 'https://petto.sbs/appeal/…' },
     'star.count': { text: '5' }, 'star.emoji': { text: '⭐' }, 'star.channel': { text: '#general', mention: true }, 'star.channel_name': { text: 'general' },
     'star.link': { text: 'https://discord.com/channels/…' }, 'star.message_id': { text: '1498210265458675853' }, 'star.author': mention, 'star.author_name': name, 'star.author_id': id, 'star.author_avatar': { text: '' },
     'star.content': { text: 'This message got a lot of stars!' }, 'star.image': { text: '' }, 'star.attachments': { text: '[photo.png](https://…)' }, 'star.time': { text: 'Today at 12:00 PM' },

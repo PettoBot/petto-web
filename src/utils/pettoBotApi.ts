@@ -357,3 +357,22 @@ export async function callPettoAppealImage(context: AstroContext, guildId: strin
     : `/api/appeals/${encodeURIComponent(guildId)}/image/${encodeURIComponent(kind)}`;
   try { return await fetch(`${baseUrl}${path}`, { ...rest, headers, signal: AbortSignal.timeout(20_000) }); } catch { return null; }
 }
+
+/**
+ * The files members attach to the answers of an appeal form, kept by the bot. The member (public site) uploads, removes and reads their own
+ * with `/api/appeals/...`; the staff read them with `/api/dashboard/guild/.../appeals/files/...` after the dashboard checked the server.
+ */
+export async function callPettoAppealFile(
+  context: AstroContext, guildId: string, userId: string,
+  init: { method?: 'GET' | 'POST' | 'DELETE'; fileId?: string; staff?: boolean; query?: Record<string, string | number>; body?: ArrayBuffer; contentType?: string } = {},
+): Promise<Response | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  const params = new URLSearchParams({ user_id: userId });
+  for (const [key, value] of Object.entries(init.query ?? {})) params.set(key, String(value));
+  const base = init.staff ? `/api/dashboard/guild/${encodeURIComponent(guildId)}/appeals/files` : `/api/appeals/${encodeURIComponent(guildId)}/files`;
+  const path = `${base}${init.fileId ? `/${encodeURIComponent(init.fileId)}` : ''}?${params}`;
+  const headers: Record<string, string> = { 'X-Petto-Dashboard-Key': secret, Accept: '*/*' };
+  if (init.body) headers['Content-Type'] = init.contentType ?? 'application/octet-stream';
+  try { return await fetch(`${baseUrl}${path}`, { method: init.method ?? 'GET', headers, body: init.body, signal: AbortSignal.timeout(30_000) }); } catch { return null; }
+}

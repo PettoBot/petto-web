@@ -6,7 +6,7 @@ import ColorPicker from './ColorPicker.astro';
 import AppealImageField from './AppealImageField.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 import type { NameClaim } from '../utils/appealNames';
-import { pictureUrl, THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
+import { answerView, pictureUrl, THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, LIST_TYPES, FILE_ACCEPTS, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -55,7 +55,7 @@ const STARTER: Record<string, { section: string; question: string }> = {
 };
 const starter = STARTER[config.language] ?? STARTER.en;
 const messageTitles: Record<string, string> = { submitted: dt('When the appeal is sent'), accepted: dt('When it is accepted'), rejected: dt('When it is rejected'), reply: dt('When the staff writes to the member') };
-const builderText = { section: dt('Section'), question: dt('Question'), addQuestion: dt('Add a question'), addSection: dt('Add a section'), title: dt('Section title'), description: dt('Description (optional)'), label: dt('Question'), help: dt('Help text (optional)'), required: dt('Required'), options: dt('Options, one per line'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), types: { short: dt('Short answer'), paragraph: dt('Long answer'), choice: dt('Choose one'), multi: dt('Choose several'), yesno: dt('Yes or no'), number: dt('Number') }, limit: dt('Limit reached') };
+const builderText = { section: dt('Section'), question: dt('Question'), addQuestion: dt('Add a question'), addSection: dt('Add a section'), title: dt('Section title'), description: dt('Description (optional)'), label: dt('Question'), help: dt('Help text (optional)'), required: dt('Required'), options: dt('Options, one per line'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), types: { short: dt('Short answer'), paragraph: dt('Long answer'), choice: dt('Choose one'), multi: dt('Choose several'), yesno: dt('Yes or no'), number: dt('Number'), dropdown: dt('Dropdown list'), scale: dt('Rating scale'), date: dt('Date'), link: dt('Link'), file: dt('File upload'), confirm: dt('Confirmation box') }, scaleMax: dt('The scale goes up to'), accept: dt('Files it accepts'), accepts: { images: dt('Pictures'), pdf: dt('PDF'), images_pdf: dt('Pictures or PDF'), documents: dt('Pictures, PDF or text') }, maxFiles: dt('How many files'), limit: dt('Limit reached') };
 const formsBack = `/dash/guild/${guildId}/appeals?section=forms`;
 const editForm = editing === 'new' ? { id: null, name: '', icon: '', short_description: '', description: '', status: 'draft', requirement_types: [], block_on_reject: 'none', generate_invite: false, sections: [{ id: 's1', title: starter.section, description: null, questions: [{ id: 'q1', type: 'paragraph', label: starter.question, help: null, required: true, options: [] }] }], messages: {} } : editing;
 const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('Block for a day'), week: dt('Block for a week'), month: dt('Block for a month'), forever: dt('Block for good') };
@@ -166,7 +166,14 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
             <summary><span class="da-who">{s.avatar_url && <img src={s.avatar_url} alt="" width="26" height="26" />}<b>{s.username}</b></span><span class="da-hint">{s.form_name} · {when(s.created_at)}</span><span class:list={['da-chip', s.status]}>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s.status as 'pending']}</span></summary>
             <div class="da-body">
               {(s.punishments ?? []).length > 0 && <div class="da-block"><h4>{dt('Punishments')}</h4>{s.punishments.map((p: any) => <p>• {typeNames[p.type] ?? p.type}{p.reason ? ` — ${p.reason}` : ''}{p.until ? ` · ${when(p.until)}` : ''}</p>)}</div>}
-              <div class="da-block"><h4>{dt('Answers')}</h4>{(s.answers ?? []).map((a: any) => <div class="da-ans"><b>{a.label}</b><span>{Array.isArray(a.value) ? a.value.join(', ') : a.value}</span></div>)}</div>
+              <div class="da-block"><h4>{dt('Answers')}</h4>{(s.answers ?? []).map((a: any) => {
+                const view = answerView(a);
+                return <div class="da-ans"><b>{a.label}</b>{view.kind === 'text' ? <span>{view.text}</span> : (
+                  <span class="da-ans-files">{view.files.map((f) => f.mime.startsWith('image/')
+                    ? <a href={`/dash/guild/${guildId}/appeals-file?f=${f.id}`} target="_blank" rel="noopener" class="da-ans-pic" title={f.name}><img src={`/dash/guild/${guildId}/appeals-file?f=${f.id}`} alt={f.name} loading="lazy" /></a>
+                    : <a href={`/dash/guild/${guildId}/appeals-file?f=${f.id}`} target="_blank" rel="noopener" class="da-ans-doc"><Icon name="ph:file-text-bold" width="13" height="13" />{f.name}</a>)}</span>
+                )}</div>;
+              })}</div>
               <div class="da-block"><h4>{dt('Conversation')} <span class="da-live"><i></i>{dt('Updates live')}</span></h4>
                 <div class="da-chat" data-chat={s.id}>
                 {(messages[s.id] ?? []).map((m: any) => <div class:list={['da-msg', m.author_type]}><small>{m.author_type === 'user' ? s.username : m.author_type === 'staff' ? (m.author_name ?? dt('Staff')) : 'Petto'} · {when(m.created_at)}</small><span>{m.content}</span></div>)}
@@ -426,6 +433,8 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
           if (!res.ok || !data?.ok) fail(data?.error === 'not_an_image' ? field.dataset.errImage ?? '' : field.dataset.errFail ?? '');
           else {
             hidden.value = `upload:${kind}`; link.value = ''; link.disabled = true;
+            // The picture the bot kept is loaded back: if it does not show, the person is told instead of seeing a black box.
+            thumb.onerror = () => { done.hidden = true; hidden.value = ''; link.disabled = false; fail(field.dataset.errFail ?? ''); changed(); };
             thumb.src = `${field.dataset.previewUrl}?v=${data.version ?? Date.now()}`; done.hidden = false; changed();
           }
         } catch { fail(field.dataset.errFail ?? ''); }
@@ -495,14 +504,14 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
     const output = document.querySelector<HTMLInputElement>('[data-builder-output]');
     if (root && output && !root.dataset.bound) {
       root.dataset.bound = '1';
-      type Q = { id: string; type: string; label: string; help: string; required: boolean; options: string[] };
+      type Q = { id: string; type: string; label: string; help: string; required: boolean; options: string[]; max?: number; accept?: string; max_files?: number };
       type S = { id: string; title: string; description: string; questions: Q[] };
       const text = JSON.parse(root.dataset.text ?? '{}');
       const limits = JSON.parse(root.dataset.limits ?? '{}');
       const types: string[] = JSON.parse(root.dataset.types ?? '[]');
       let n = 0;
       const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${(n++).toString(36)}`.slice(0, 24);
-      const state: S[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((s) => ({ id: s.id, title: s.title ?? '', description: s.description ?? '', questions: (s.questions ?? []).map((q: any) => ({ id: q.id, type: q.type, label: q.label ?? '', help: q.help ?? '', required: q.required !== false, options: q.options ?? [] })) }));
+      const state: S[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((s) => ({ id: s.id, title: s.title ?? '', description: s.description ?? '', questions: (s.questions ?? []).map((q: any) => ({ id: q.id, type: q.type, label: q.label ?? '', help: q.help ?? '', required: q.required !== false, options: q.options ?? [], ...(q.max ? { max: q.max } : {}), ...(q.accept ? { accept: q.accept } : {}), ...(q.max_files ? { max_files: q.max_files } : {}) })) }));
       const save = () => { output.value = JSON.stringify(state.map((s) => ({ ...s, description: s.description || null, questions: s.questions.map((q) => ({ ...q, help: q.help || null })) }))); };
       const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, any> = {}, ...kids: (Node | string)[]) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k === 'on') for (const [ev, fn] of Object.entries(v as Record<string, EventListener>)) e.addEventListener(ev, fn); else if (v !== undefined && v !== null) (e as any)[k] = v; } for (const kid of kids) e.append(kid); return e; };
       const field = (label: string, input: HTMLElement, wide = false) => el('label', { class: `da-field${wide ? ' da-wide' : ''}` }, el('span', {}, label), input);
@@ -518,7 +527,19 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
             el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { s.questions.splice(qi, 1); draw(); } } }, '×'))),
           el('div', { class: 'da-grid' }, field(text.label, label, true), field('', type), field(text.help, help, true)),
           el('label', { class: 'da-check' }, req, text.required));
-        if (q.type === 'choice' || q.type === 'multi') {
+        if (q.type === 'scale') {
+          if (!q.max) q.max = 5;
+          const max = el('select', { on: { change: (e: Event) => { q.max = Number((e.target as HTMLSelectElement).value); save(); } } }, ...[3, 4, 5, 6, 7, 8, 9, 10].map((n) => el('option', { value: String(n), selected: q.max === n }, `1 – ${n}`)));
+          box.append(field(text.scaleMax, max));
+        }
+        if (q.type === 'file') {
+          if (!q.accept) q.accept = 'images';
+          if (!q.max_files) q.max_files = 3;
+          const accept = el('select', { on: { change: (e: Event) => { q.accept = (e.target as HTMLSelectElement).value; save(); } } }, ...['images', 'pdf', 'images_pdf', 'documents'].map((k) => el('option', { value: k, selected: q.accept === k }, text.accepts[k])));
+          const many = el('select', { on: { change: (e: Event) => { q.max_files = Number((e.target as HTMLSelectElement).value); save(); } } }, ...[1, 2, 3, 4, 5].map((n) => el('option', { value: String(n), selected: q.max_files === n }, String(n))));
+          box.append(el('div', { class: 'da-grid' }, field(text.accept, accept), field(text.maxFiles, many)));
+        }
+        if (q.type === 'choice' || q.type === 'multi' || q.type === 'dropdown') {
           const area = el('textarea', { rows: 3, value: q.options.join('\n'), on: { input: (e: Event) => { q.options = (e.target as HTMLTextAreaElement).value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, limits.options); save(); } } });
           box.append(field(text.options, area, true));
         }
@@ -585,6 +606,10 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   .da-claim-sent { display: flex; align-items: center; gap: 8px; color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: var(--green-soft); animation: da-pop .45s cubic-bezier(.2, .9, .3, 1.2) both; }
   .da-claim-open { animation: da-pop .45s cubic-bezier(.2, .9, .3, 1.2) both; }
   @keyframes da-pop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+  .da-ans-files { display: flex; flex-wrap: wrap; gap: 8px; }
+  .da-ans-pic img { display: block; width: 96px; height: 68px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raise); transition: transform .2s ease; }
+  .da-ans-pic:hover img { transform: scale(1.05); }
+  .da-ans-doc { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-raise); font-size: 12px; text-decoration: none; color: inherit; }
   .da-live { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); vertical-align: middle; }
   .da-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: da-pulse 2s ease-out infinite; }
   .da-live.off i { background: var(--text-dim); animation: none; }
