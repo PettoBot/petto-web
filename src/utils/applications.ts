@@ -103,7 +103,8 @@ export const applicationRoles: Record<ApplicationRole, { color: number; fields: 
     fields: [
       f('about', 'discord', 'text', true, 64, 2),
       f('about', 'timezone', 'text', true, 40, 2),
-      f('about', 'language', 'select', true, 8, 0, ['tlEs', 'tlPt', 'tlBoth']),
+      f('about', 'language', 'select', true, 8, 0, ['tlEs', 'tlPt', 'tlBoth', 'tlOther']),
+      f('about', 'otherLanguage', 'text', false, 80, 2),
       f('about', 'level', 'select', true, 8, 0, ['nv0', 'nv1', 'nv2']),
       f('about', 'hours', 'select', true, 8, 0, hours),
       f('about', 'experience', 'textarea', false, 600, 20),
@@ -163,6 +164,8 @@ export function readAnswers(role: ApplicationRole, form: FormData): { answers: R
     if (problem) errors[field.key] = problem;
     else if (raw) answers[field.key] = raw;
   }
+  // Another language needs its name.
+  if (role === 'translator' && answers.language === 'tlOther' && !answers.otherLanguage && !errors.otherLanguage) errors.otherLanguage = 'missing';
   return Object.keys(errors).length > 0 ? { errors } : { answers };
 }
 
