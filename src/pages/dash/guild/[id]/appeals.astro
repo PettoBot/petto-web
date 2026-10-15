@@ -7,7 +7,7 @@ import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoAppeals } from '../../../../utils/pettoBotApi';
-import { CONFIG_DEFAULTS, LIMITS, THEMES, PUNISHMENT_TYPES, hexColor, safeUrl, normalizeForm, type AppealConfig } from '../../../../utils/appeals';
+import { linkProblem, uploadMark, CONFIG_DEFAULTS, LIMITS, THEMES, PUNISHMENT_TYPES, hexColor, safeUrl, normalizeForm, type AppealConfig } from '../../../../utils/appeals';
 import { cleanSlug, slugProblem } from '../../../../utils/appealSlug';
 import { isStaff } from '../../../../utils/feedback';
 import { cancelClaim, createClaim, dropReservation, lastDecidedClaim, openClaim, reservationOf, reserveName } from '../../../../utils/appealNames';
@@ -108,10 +108,26 @@ if (Astro.request.method === 'POST') {
     else ok(saveResult);
   } else if (action === 'save_brand') {
     const theme = String(form.get('theme') ?? 'peach');
-    ok(await saveConfig({
-      brand: { name: text(form.get('brand_name'), 60), tagline: text(form.get('tagline'), 120), theme: theme in THEMES ? theme : 'peach', accent: hexColor(form.get('accent')) ?? '', banner_url: safeUrl(form.get('banner_url')) ?? '', icon_url: safeUrl(form.get('icon_url')) ?? '' },
-      embed: { title: text(form.get('embed_title'), 90), description: text(form.get('embed_description'), 240), image_url: safeUrl(form.get('embed_image')) ?? '', color: hexColor(form.get('embed_color')) ?? '' },
-    }));
+    // A picture is a link of a public site (https), or the one uploaded from the device. A link that cannot be used is reported, not dropped.
+    const rejected: string[] = [];
+    const picture = (field: string, kind: 'banner' | 'icon' | 'embed', label: string) => {
+      const raw = text(form.get(field), 500);
+      if (!raw) return '';
+      if (raw === uploadMark(kind)) return raw;
+      if (linkProblem(raw)) { rejected.push(label); return ''; }
+      return safeUrl(raw) ?? '';
+    };
+    const bannerUrl = picture('banner_url', 'banner', dt('Banner image'));
+    const iconUrl = picture('icon_url', 'icon', dt('Icon'));
+    const embedImage = picture('embed_image', 'embed', dt('Image'));
+    if (rejected.length) {
+      message = { kind: 'err', text: dt('These links cannot be used: {a}. Use a link that starts with https:// from a public site, or upload the picture.', { a: rejected.join(', ') }) };
+    } else {
+      ok(await saveConfig({
+        brand: { name: text(form.get('brand_name'), 60), tagline: text(form.get('tagline'), 120), theme: theme in THEMES ? theme : 'peach', accent: hexColor(form.get('accent')) ?? '', banner_url: bannerUrl, icon_url: iconUrl },
+        embed: { title: text(form.get('embed_title'), 90), description: text(form.get('embed_description'), 240), image_url: embedImage, color: hexColor(form.get('embed_color')) ?? '' },
+      }));
+    }
   } else if (action === 'save_messages') {
     const messages: Record<string, string> = {};
     for (const key of ['submitted', 'accepted', 'rejected', 'reply']) { const v = text(form.get(`msg_${key}`), 1000); if (v) messages[key] = v; }
@@ -174,7 +190,7 @@ if (Astro.request.method === 'POST') {
     ok(await cancelClaim(Astro, id).then((done) => ({ ok: done }) as Response), dt('The request was cancelled.'));
   } else if (action === 'delete_all') {
     if (form.get('confirm') === 'DELETE') {
-      await Promise.all(['appeal_submissions', 'appeal_forms', 'appeal_blocks', 'appeal_config'].map((table) => rest(`${table}?guild_id=eq.${id}`, { method: 'DELETE' })));
+      await Promise.all(['appeal_submissions', 'appeal_forms', 'appeal_blocks', 'appeal_images', 'appeal_config'].map((table) => rest(`${table}?guild_id=eq.${id}`, { method: 'DELETE' })));
       message = { kind: 'ok', text: dt('All appeal data was deleted.') };
     } else message = { kind: 'err', text: dt('Type DELETE to confirm.') };
   }

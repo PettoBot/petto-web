@@ -3,9 +3,10 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import ColorPicker from './ColorPicker.astro';
+import AppealImageField from './AppealImageField.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 import type { NameClaim } from '../utils/appealNames';
-import { THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
+import { pictureUrl, THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -17,6 +18,10 @@ interface Props {
 }
 const { claim = null, lastClaim = null, claimSlug = null, claimSent = false, user, guildId, guildName, guildIcon, origin, section, config, forms, counts, submissions, messages, statusFilter, roles, channels, editing, message } = Astro.props;
 const link = `${origin.replace(/^http:\/\/localhost[^/]*/, 'https://petto.sbs')}/appeal/${config.slug || guildId}`;
+const addressOf = config.slug || guildId;
+const uploadAction = (kind: string) => `/dash/guild/${guildId}/appeals-image?kind=${kind}`;
+const picturePath = (kind: string) => `/appeal/${addressOf}/img/${kind}`;
+const embedPreview = pictureUrl(config.embed?.image_url, 'embed', { path: addressOf, origin: '' });
 const titles: Record<string, string> = { overview: dt('Appeals'), forms: dt('Appeal forms'), submissions: dt('Appeal submissions'), settings: dt('Appeal settings'), brand: dt('Appeal brand'), messages: dt('Appeal messages') };
 const subs: Record<string, string> = {
   overview: dt('Let banned or muted members appeal on a page of their own, and answer them from Discord or from here.'),
@@ -35,11 +40,24 @@ const warnsAge = monthsOrDays(config.warns_max_age_days);
 const storeAge = monthsOrDays(config.store_days);
 const variableChips = ['{username}', '{server}', '{reason}', '{form}', '{link}'];
 const sampleVars = { username: 'Liam', server: guildName, reason: dt('You can come back, please read the rules.'), form: dt('Ban appeal'), link: 'petto.sbs/appeal/…' };
-const defaults: Record<string, string> = { submitted: 'Your appeal was sent. The staff of {server} will look at it.', accepted: 'Your appeal was accepted. {reason}', rejected: 'Your appeal was rejected. {reason}', reply: 'The staff of {server} wrote to you about your appeal.' };
+// What the members read when nothing is written: in the language the server chose for its appeal page, not the one of the dashboard (the bot has the same texts).
+const DEFAULT_MESSAGES: Record<string, Record<string, string>> = {
+  en: { submitted: 'Your appeal was sent. The staff of {server} will look at it.', accepted: 'Your appeal was accepted. {reason}', rejected: 'Your appeal was rejected. {reason}', reply: 'The staff of {server} wrote to you about your appeal.' },
+  es: { submitted: 'Tu apelación fue enviada. El staff de {server} la revisará.', accepted: 'Tu apelación fue aceptada. {reason}', rejected: 'Tu apelación fue rechazada. {reason}', reply: 'El staff de {server} te escribió sobre tu apelación.' },
+  'pt-BR': { submitted: 'Sua apelação foi enviada. A equipe de {server} vai analisá-la.', accepted: 'Sua apelação foi aceita. {reason}', rejected: 'Sua apelação foi recusada. {reason}', reply: 'A equipe de {server} escreveu para você sobre a sua apelação.' },
+};
+const defaults = DEFAULT_MESSAGES[config.language] ?? DEFAULT_MESSAGES.en;
+// The first form of a server is written in the language of its page too.
+const STARTER: Record<string, { section: string; question: string }> = {
+  en: { section: 'About your punishment', question: 'Why do you think your punishment should be lifted?' },
+  es: { section: 'Sobre tu sanción', question: '¿Por qué crees que se debería levantar tu sanción?' },
+  'pt-BR': { section: 'Sobre a sua punição', question: 'Por que você acha que a sua punição deveria ser retirada?' },
+};
+const starter = STARTER[config.language] ?? STARTER.en;
 const messageTitles: Record<string, string> = { submitted: dt('When the appeal is sent'), accepted: dt('When it is accepted'), rejected: dt('When it is rejected'), reply: dt('When the staff writes to the member') };
 const builderText = { section: dt('Section'), question: dt('Question'), addQuestion: dt('Add a question'), addSection: dt('Add a section'), title: dt('Section title'), description: dt('Description (optional)'), label: dt('Question'), help: dt('Help text (optional)'), required: dt('Required'), options: dt('Options, one per line'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), types: { short: dt('Short answer'), paragraph: dt('Long answer'), choice: dt('Choose one'), multi: dt('Choose several'), yesno: dt('Yes or no'), number: dt('Number') }, limit: dt('Limit reached') };
 const formsBack = `/dash/guild/${guildId}/appeals?section=forms`;
-const editForm = editing === 'new' ? { id: null, name: '', icon: '', short_description: '', description: '', status: 'draft', requirement_types: [], block_on_reject: 'none', generate_invite: false, sections: [{ id: 's1', title: dt('About your punishment'), description: null, questions: [{ id: 'q1', type: 'paragraph', label: dt('Why do you think your punishment should be lifted?'), help: null, required: true, options: [] }] }], messages: {} } : editing;
+const editForm = editing === 'new' ? { id: null, name: '', icon: '', short_description: '', description: '', status: 'draft', requirement_types: [], block_on_reject: 'none', generate_invite: false, sections: [{ id: 's1', title: starter.section, description: null, questions: [{ id: 'q1', type: 'paragraph', label: starter.question, help: null, required: true, options: [] }] }], messages: {} } : editing;
 const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('Block for a day'), week: dt('Block for a week'), month: dt('Block for a month'), forever: dt('Block for good') };
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={`appeals-${section}`} pageTitle={titles[section]}>
@@ -163,6 +181,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
                 </form>
               )}
               {s.status !== 'pending' && s.resolution_reason && <p class="da-hint">{dt('Reason')}: {s.resolution_reason}</p>}
+              {s.status === 'accepted' && s.invite_note && <p class="da-hint">{dt('Invite')}: {s.invite_url ? <code>{s.invite_url}</code> : null} <span>({s.invite_note})</span></p>}
             </div>
           </details>
         ))}
@@ -245,6 +264,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
         <div class="da-grid">
           <label class="da-field"><span>{dt('Invite code to rejoin')}</span><input type="text" name="rejoin_invite_code" value={config.rejoin_invite_code ?? ''} maxlength="40" placeholder="discord.gg/…" /></label>
           <label class="da-check da-wide"><input type="checkbox" name="auto_invite" checked={config.auto_invite} />{dt('Make a new single-use invite for each accepted appeal')}</label>
+          <p class="da-hint da-wide">{dt('The invite that was made is shown on the appeal card in Discord, in the log and here in the appeal. It works once and lasts 7 days. If Petto cannot make one, it says why (it needs Create Invite in a text channel) and uses the invite code below if there is one.')}</p>
           <div class="da-field"><span>{dt('Keep answered appeals for')}</span><div class="da-pair"><input type="number" name="store_age" min="1" max="365" value={storeAge.n} /><select name="store_unit"><option value="days" selected={storeAge.unit === 'days'}>{dt('days')}</option><option value="months" selected={storeAge.unit === 'months'}>{dt('months')}</option></select></div><em>{dt('After that they are deleted for good.')}</em></div>
         </div>
       </div>
@@ -266,11 +286,13 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
       <input type="hidden" name="action" value="save_brand" />
       <div class="da-card">
         <h2>{dt('The page')}</h2>
+        <p class="da-hint">{dt('Pictures: upload one from your device (PNG, JPG, WEBP or GIF, up to 5 MB; a GIF is saved as a still picture) or paste a link.')}</p>
+        <p class="da-hint">{dt('Allowed links: direct links to a picture that start with https:// and belong to a public site, like i.imgur.com. Not allowed: http:// links, addresses of numbers, localhost or private networks, and pages that are not a picture (an Imgur album, a Google Drive page). Links to Discord attachments stop working after a while, so upload the picture instead.')}</p>
         <div class="da-grid">
           <label class="da-field"><span>{dt('Name on the page')}</span><input type="text" name="brand_name" value={config.brand?.name ?? ''} maxlength="60" placeholder={guildName} data-bind="name" /></label>
           <label class="da-field"><span>{dt('Tagline')}</span><input type="text" name="tagline" value={config.brand?.tagline ?? ''} maxlength="120" /></label>
-          <label class="da-field"><span>{dt('Banner image link')}</span><input type="url" name="banner_url" value={config.brand?.banner_url ?? ''} placeholder="https://…" /><em>{dt('A wide image, shown above the page. HTTPS only.')}</em></label>
-          <label class="da-field"><span>{dt('Icon link')}</span><input type="url" name="icon_url" value={config.brand?.icon_url ?? ''} placeholder="https://…" /><em>{dt('Empty uses the icon of the server.')}</em></label>
+          <AppealImageField label={dt('Banner image')} name="banner_url" kind="banner" value={config.brand?.banner_url ?? ''} hint={dt('A wide image, shown above the page.')} uploadUrl={uploadAction('banner')} previewUrl={picturePath('banner')} />
+          <AppealImageField label={dt('Icon')} name="icon_url" kind="icon" value={config.brand?.icon_url ?? ''} hint={dt('Empty uses the icon of the server.')} uploadUrl={uploadAction('icon')} previewUrl={picturePath('icon')} />
         </div>
         <div class="da-field"><span>{dt('Accent color')}</span>
           <div class="da-themes">{Object.entries(THEMES).map(([key, t]) => <label class="da-theme" title={t.label}><input type="radio" name="theme" value={key} checked={(config.brand?.theme ?? 'peach') === key} data-accent={t.accent} /><i style={`--c:${t.accent}`}></i><span>{t.label}</span></label>)}</div>
@@ -283,14 +305,14 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
         <div class="da-grid">
           <label class="da-field da-wide"><span>{dt('Title')}</span><input type="text" name="embed_title" value={config.embed?.title ?? ''} maxlength="90" placeholder={dt('Appeal your punishment in {a}', { a: guildName })} data-bind="etitle" /></label>
           <label class="da-field da-wide"><span>{dt('Description')}</span><textarea name="embed_description" maxlength="240" rows="2" placeholder={dt('Sign in with Discord and send an appeal to the staff of {a}.', { a: guildName })} data-bind="edesc">{config.embed?.description ?? ''}</textarea></label>
-          <label class="da-field da-wide"><span>{dt('Image link')}</span><input type="url" name="embed_image" value={config.embed?.image_url ?? ''} placeholder="https://…" data-bind="eimage" /><em>{dt('Empty uses the banner, then the icon of the server.')}</em></label>
+          <AppealImageField wide label={dt('Image')} name="embed_image" kind="embed" value={config.embed?.image_url ?? ''} bind="eimage" hint={dt('Empty uses the banner, then the icon of the server.')} uploadUrl={uploadAction('embed')} previewUrl={picturePath('embed')} />
           <div class="da-field"><span>{dt('Side color')}</span><ColorPicker name="embed_color" value={hexColor(config.embed?.color) ?? ''} label={dt('Side color')} allowNone /></div>
         </div>
-        <div class="da-embed" data-embed style={`--bar:${hexColor(config.embed?.color) ?? theme.accent}`}>
+        <div class="da-embed" data-embed data-upload-embed={picturePath('embed')} style={`--bar:${hexColor(config.embed?.color) ?? theme.accent}`}>
           <small data-prev="site">{config.brand?.name || guildName}</small>
           <b data-prev="title" data-default={dt('Appeal your punishment in {a}', { a: guildName })}>{config.embed?.title || dt('Appeal your punishment in {a}', { a: guildName })}</b>
           <span data-prev="desc" data-default={dt('Sign in with Discord and send an appeal to the staff of {a}.', { a: guildName })}>{config.embed?.description || dt('Sign in with Discord and send an appeal to the staff of {a}.', { a: guildName })}</span>
-          <div class="da-embed-img" data-prev="image" style={config.embed?.image_url ? `background-image:url(${JSON.stringify(config.embed.image_url)})` : ''}></div>
+          <div class="da-embed-img" data-prev="image" style={embedPreview ? `background-image:url(${JSON.stringify(embedPreview)})` : ''}></div>
         </div>
       </div>
       <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save brand')}</button><a class="btn btn-ghost" href={link} target="_blank" rel="noopener">{dt('Open the page')}</a></div>
@@ -317,6 +339,40 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   function initAppeals() {
     document.querySelectorAll<HTMLElement>('[data-copy]').forEach((b) => { if (b.dataset.bound) return; b.dataset.bound = '1'; b.addEventListener('click', () => { navigator.clipboard?.writeText(b.dataset.copy ?? '').catch(() => {}); }); });
 
+    // The pictures of the page: a link typed in the box, or a file from the device that the bot keeps.
+    document.querySelectorAll<HTMLElement>('[data-img-field]').forEach((field) => {
+      if (field.dataset.bound) return; field.dataset.bound = '1';
+      const q = <T extends HTMLElement>(sel: string) => field.querySelector<T>(sel)!;
+      const hidden = q<HTMLInputElement>('[data-img-value]'), link = q<HTMLInputElement>('[data-img-link]'), file = q<HTMLInputElement>('[data-img-file]');
+      const done = q<HTMLElement>('[data-img-done]'), thumb = q<HTMLImageElement>('[data-img-thumb]'), error = q<HTMLElement>('[data-img-error]');
+      const kind = field.dataset.kind ?? '';
+      const changed = () => hidden.dispatchEvent(new Event('input', { bubbles: true }));
+      const fail = (text: string) => { error.textContent = text; error.hidden = !text; };
+      link.addEventListener('input', () => { fail(''); hidden.value = link.value.trim(); changed(); });
+      file.addEventListener('change', async () => {
+        const picked = file.files?.[0];
+        if (!picked) return;
+        fail('');
+        if (picked.size > 5 * 1024 * 1024) { fail(field.dataset.errBig ?? ''); file.value = ''; return; }
+        if (!/^image\/(png|jpeg|webp|gif)$/.test(picked.type)) { fail(field.dataset.errType ?? ''); file.value = ''; return; }
+        field.classList.add('busy');
+        try {
+          const res = await fetch(field.dataset.uploadUrl ?? '', { method: 'POST', body: picked, headers: { 'Content-Type': picked.type } });
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data?.ok) fail(data?.error === 'not_an_image' ? field.dataset.errImage ?? '' : field.dataset.errFail ?? '');
+          else {
+            hidden.value = `upload:${kind}`; link.value = ''; link.disabled = true;
+            thumb.src = `${field.dataset.previewUrl}?v=${data.version ?? Date.now()}`; done.hidden = false; changed();
+          }
+        } catch { fail(field.dataset.errFail ?? ''); }
+        field.classList.remove('busy'); file.value = '';
+      });
+      q<HTMLElement>('[data-img-remove]').addEventListener('click', async () => {
+        await fetch(field.dataset.uploadUrl ?? '', { method: 'DELETE' }).catch(() => {});
+        hidden.value = ''; link.disabled = false; link.value = ''; done.hidden = true; fail(''); changed();
+      });
+    });
+
     // "Pick another name": closes the request and puts the cursor in the name field.
     document.querySelectorAll<HTMLElement>('[data-claim-other]').forEach((b) => {
       if (b.dataset.bound) return; b.dataset.bound = '1';
@@ -337,7 +393,8 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
         set('site', val('name'), prev('site')?.textContent ?? '');
         set('title', val('etitle')); set('desc', val('edesc'));
         const img = prev('image'); const url = val('eimage');
-        if (img) img.style.backgroundImage = /^https:\/\//.test(url) ? `url(${JSON.stringify(url)})` : '';
+        const uploaded = brand.querySelector<HTMLElement>('[data-embed]')?.dataset.uploadEmbed;
+        if (img) img.style.backgroundImage = /^https:\/\//.test(url) ? `url(${JSON.stringify(url)})` : url === 'upload:embed' && uploaded ? `url(${JSON.stringify(`${uploaded}?v=${Date.now()}`)})` : '';
       };
       brand.addEventListener('input', sync);
       brand.addEventListener('change', (e) => {
