@@ -5,7 +5,7 @@ export type Ctx = { locals?: any };
 export const SNOWFLAKE = /^\d{15,25}$/;
 
 export interface AppealConfig {
-  guild_id: string; enabled: boolean; greeting: string | null; language: 'en' | 'es' | 'pt-BR';
+  guild_id: string; slug: string | null; enabled: boolean; greeting: string | null; language: 'en' | 'es' | 'pt-BR';
   rejoin_invite_code: string | null; auto_invite: boolean; allow_server_id: boolean;
   punishment_types: string[]; punishment_details: string[]; punishment_source: 'petto' | 'discord' | 'both'; warns_max_age_days: number;
   anonymous_messages: boolean; allow_replies: boolean; store_days: number;
@@ -30,7 +30,7 @@ export interface AppealMessage { id: number; submission_id: string; author_type:
 export interface PunishmentView { source: string; type: string; reason?: string | null; until?: string | null; moderator?: string | null; at?: string | null; }
 
 export const CONFIG_DEFAULTS: Omit<AppealConfig, 'guild_id'> = {
-  enabled: false, greeting: null, language: 'en', rejoin_invite_code: null, auto_invite: false, allow_server_id: true,
+  slug: null, enabled: false, greeting: null, language: 'en', rejoin_invite_code: null, auto_invite: false, allow_server_id: true,
   punishment_types: ['ban', 'mute'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30,
   anonymous_messages: false, allow_replies: true, store_days: 7, submission_channel_id: null, log_channel_id: null, auto_thread: false,
   thread_name: 'Appeal by {username}', ping_role_ids: [], messages: {}, brand: {}, embed: {},
@@ -72,6 +72,19 @@ async function select<T>(ctx: Ctx, table: string, query: string): Promise<T[] | 
     const res = await fetch(`${conn.apiUrl}/rest/v1/${table}?${query}`, { headers: conn.headers, signal: AbortSignal.timeout(8000) });
     return res.ok ? ((await res.json()) as T[]) : null;
   } catch { return null; }
+}
+
+/** The server an appeal link names: its id, the short name it holds, or a name it changed away from (reserved for it, so the old link leads to the new address). */
+export async function resolveAddress(ctx: Ctx, param: string): Promise<{ id: string; reserved: boolean } | null> {
+  if (SNOWFLAKE.test(param)) return { id: param, reserved: false };
+  if (!/^[a-z0-9-]{3,32}$/.test(param)) return null;
+  const rows = await select<{ guild_id: string }>(ctx, 'appeal_config', `slug=eq.${encodeURIComponent(param)}&select=guild_id&limit=1`);
+  if (rows?.[0]) return { id: rows[0].guild_id, reserved: false };
+  const kept = await select<{ guild_id: string }>(ctx, 'appeal_name_reservations', `slug=eq.${encodeURIComponent(param)}&reserved_until=gt.${encodeURIComponent(new Date().toISOString())}&select=guild_id&limit=1`);
+  return kept?.[0] ? { id: kept[0].guild_id, reserved: true } : null;
+}
+export async function resolveGuildId(ctx: Ctx, param: string): Promise<string | null> {
+  return (await resolveAddress(ctx, param))?.id ?? null;
 }
 
 export async function loadConfig(ctx: Ctx, guildId: string): Promise<AppealConfig | null> {

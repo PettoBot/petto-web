@@ -82,7 +82,7 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals, request })
     const afterLogin = cookies.get('petto_after_login')?.value;
     cookies.delete('petto_after_login', { path: '/' });
     // Only places of this site that need a signed-in member: the dashboard, the appeal site, the feedback board, and the checkout that opens from the Premium page.
-    const returnTo = afterLogin && /^\/(?:appeal\/\d{15,25}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
+    const returnTo = afterLogin && /^\/(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
     // The destination is checked above, so it is safe to put in the page. Only the plain list of servers gets the animation.
     if (returnTo === '/dash/manage') return loadingPage(returnTo, makeT(getDashLang({ locals, cookies, request } as any)));
     return redirect(returnTo);

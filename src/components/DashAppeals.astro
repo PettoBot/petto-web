@@ -4,6 +4,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import ColorPicker from './ColorPicker.astro';
 import { getDashLang, makeT } from '../i18n/dash';
+import type { NameClaim } from '../utils/appealNames';
 import { THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
 
 const dashLang = getDashLang(Astro);
@@ -11,10 +12,11 @@ const dt = makeT(dashLang);
 interface Props {
   user: { username: string; avatar: string | null }; guildId: string; guildName: string; guildIcon: string; origin: string;
   section: string; config: AppealConfig; forms: any[]; counts: Record<string, number>; submissions: any[]; messages: Record<string, any[]>; statusFilter: string;
+  claim?: NameClaim | null; lastClaim?: NameClaim | null; claimSlug?: string | null; claimSent?: boolean;
   roles: { id: string; name: string }[]; channels: { id: string; name: string }[]; editing: any; saved: boolean; message: { kind: 'ok' | 'err'; text: string } | null;
 }
-const { user, guildId, guildName, guildIcon, origin, section, config, forms, counts, submissions, messages, statusFilter, roles, channels, editing, message } = Astro.props;
-const link = `${origin.replace(/^http:\/\/localhost[^/]*/, 'https://petto.sbs')}/appeal/${guildId}`;
+const { claim = null, lastClaim = null, claimSlug = null, claimSent = false, user, guildId, guildName, guildIcon, origin, section, config, forms, counts, submissions, messages, statusFilter, roles, channels, editing, message } = Astro.props;
+const link = `${origin.replace(/^http:\/\/localhost[^/]*/, 'https://petto.sbs')}/appeal/${config.slug || guildId}`;
 const titles: Record<string, string> = { overview: dt('Appeals'), forms: dt('Appeal forms'), submissions: dt('Appeal submissions'), settings: dt('Appeal settings'), brand: dt('Appeal brand'), messages: dt('Appeal messages') };
 const subs: Record<string, string> = {
   overview: dt('Let banned or muted members appeal on a page of their own, and answer them from Discord or from here.'),
@@ -169,8 +171,44 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   )}
 
   {section === 'settings' && (
+    <Fragment>
+    {claim && (
+      <div class="da-card da-claim">
+        <h2>{dt('Name request')}: <code>{claim.slug}</code></h2>
+        <p class="da-claim-text">{dt('The team is reviewing it. A review takes from 1 hour up to 72 hours.')}</p>
+        <p class="da-claim-text">{dt('Until then your page uses the link with the server id:')} <code>{`petto.sbs/appeal/${guildId}`}</code></p>
+        <form method="POST"><input type="hidden" name="action" value="claim_cancel" /><button type="submit" class="btn btn-ghost btn-sm">{dt('Cancel the request')}</button></form>
+      </div>
+    )}
+    {!claim && claimSent && <div class="da-claim-ok">{dt('Request sent. The team will answer in 1 to 72 hours.')}</div>}
+    {!claim && !claimSlug && lastClaim && (
+      <div class="da-claim-ok">
+        {lastClaim.status === 'approved' ? dt('Your request for this name was accepted:') : dt('Your last name request was denied:')} <code>{lastClaim.slug}</code>{lastClaim.note ? ` · ${lastClaim.note}` : ''}
+      </div>
+    )}
+    {!claim && claimSlug && (
+      <form method="POST" class="da-card da-claim" data-claim>
+        <input type="hidden" name="action" value="claim_send" />
+        <input type="hidden" name="slug" value={claimSlug} />
+        <h2>{dt('Ask for this name')}: <code>{claimSlug}</code></h2>
+        <p class="da-claim-text">{dt('Another server has this name. If it should be yours, tell the team why. A review takes from 1 hour up to 72 hours.')}</p>
+        <p class="da-claim-text">{dt('While you wait, your page uses the link with the server id. You can also pick another name or cancel.')}</p>
+        <label class="da-field"><span>{dt('Why should it be yours?')}</span><textarea name="reason" rows="4" minlength="20" maxlength="1000" required placeholder={dt('For example: it is the name of our community, we use it in our other platforms…')}></textarea></label>
+        <label class="da-field"><span>{dt('Link to see your server')}</span><input type="url" name="server_url" maxlength="300" required placeholder="https://discord.gg/…" /><em>{dt('An invite, so the team can look at the server.')}</em></label>
+        <label class="da-field"><span>{dt('Extra proof (optional)')}</span><input type="url" name="extra_url" maxlength="300" placeholder="https://…" /><em>{dt('Your website, social profile or anything that shows the name is yours.')}</em></label>
+        <div class="da-actions">
+          <button type="submit" class="btn btn-accent">{dt('Send request')}</button>
+          <button type="button" class="btn btn-ghost" data-claim-other>{dt('Pick another name')}</button>
+          <a class="btn btn-ghost" href="?section=settings">{dt('Cancel')}</a>
+        </div>
+      </form>
+    )}
     <form method="POST" class="da-editor">
       <input type="hidden" name="action" value="save_settings" />
+      <div class="da-card">
+        <h2>{dt('Link name')}</h2>
+        <label class="da-field da-wide"><span>petto.sbs/appeal/</span><input type="text" name="slug" value={config.slug ?? ''} maxlength="32" placeholder={dt('your-server')} autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9\-]{3,32}" /><em>{dt('Letters, numbers and dashes, 3 to 32. The link with the server id keeps working.')}</em></label>
+      </div>
       <div class="da-card">
         <h2>{dt('Where appeals arrive')}</h2>
         <div class="da-grid">
@@ -212,6 +250,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
       </div>
       <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save settings')}</button></div>
     </form>
+    </Fragment>
   )}
   {section === 'settings' && (
     <form method="POST" class="da-danger" data-no-dirty onsubmit={`return confirm(${JSON.stringify(dt('This deletes every form and appeal of this server. It cannot be undone.'))})`}>
@@ -277,6 +316,16 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   // Copy buttons, the live preview of the link and of the messages, and the builder of the questions of a form.
   function initAppeals() {
     document.querySelectorAll<HTMLElement>('[data-copy]').forEach((b) => { if (b.dataset.bound) return; b.dataset.bound = '1'; b.addEventListener('click', () => { navigator.clipboard?.writeText(b.dataset.copy ?? '').catch(() => {}); }); });
+
+    // "Pick another name": closes the request and puts the cursor in the name field.
+    document.querySelectorAll<HTMLElement>('[data-claim-other]').forEach((b) => {
+      if (b.dataset.bound) return; b.dataset.bound = '1';
+      b.addEventListener('click', () => {
+        b.closest<HTMLElement>('[data-claim]')?.remove();
+        const field = document.querySelector<HTMLInputElement>('input[name="slug"]:not([type="hidden"])');
+        field?.focus(); field?.select(); field?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
 
     const brand = document.querySelector<HTMLElement>('[data-brand]');
     if (brand && !brand.dataset.bound) {
@@ -407,6 +456,11 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   .da-hint, .da-field em { font-size: 12px; color: var(--text-dim); font-style: normal; }
   .da-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .da-toggle { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .da-claim { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); margin-bottom: 14px; }
+  .da-claim-text { margin: 0 0 10px; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+  .da-claim code { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
+  .da-claim-ok { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text-muted); background: var(--card); }
+  .da-claim-ok code { font-family: var(--mono); color: var(--accent); }
   .da-icons { display: flex; flex-wrap: wrap; gap: 6px; }
   .da-iconpick { position: relative; display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; }
   .da-iconpick input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
