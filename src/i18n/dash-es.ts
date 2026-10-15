@@ -575,7 +575,7 @@ export const dashEs: Record<string, string> = {
   "Basic settings": "Ajustes básicos",
   "The base every other system in this server reads from.": "La base de la que leen todos los demás sistemas de este servidor.",
   "Server language": "Idioma del servidor",
-  "The language Petto uses in this server: its messages, buttons and the private messages it sends. It changes within a few minutes. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "El idioma que Petto usa en este servidor: sus mensajes, botones y los mensajes privados que envía. Cambia en unos minutos. También se puede usar <code>{a}language</code>. Ayúdanos a traducir: <a href=\"/apply?role=translator\">postúlate como traductor</a>.",
+  "The language Petto uses in this server: its messages, buttons and the private messages it sends. It applies right away. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "El idioma que Petto usa en este servidor: sus mensajes, botones y los mensajes privados que envía. Se aplica enseguida. También se puede usar <code>{a}language</code>. Ayúdanos a traducir: <a href=\"/apply?role=translator\">postúlate como traductor</a>.",
   "Updates live": "En vivo",
   "Command prefix": "Prefijo de comandos",
   "Used for text commands, e.g. <code>{a}ban</code>. Slash commands work no matter what this is set to.": "Se usa para los comandos de texto, p. ej. <code>{a}ban</code>. Los comandos slash funcionan sin importar cuál sea.",

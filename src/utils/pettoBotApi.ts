@@ -26,6 +26,21 @@ export async function syncPettoPrefix(context: AstroContext, guildId: string, pr
   return { ok: response.ok && payload?.ok !== false, error: payload?.error ?? null, payload };
 }
 
+/** Tells the bot a server changed its language, so it is used at once and not when the bot's own 5 minutes run out. The database already has it. */
+export async function syncPettoLanguage(context: AstroContext, guildId: string, language: string) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, error: 'not_configured' as const, payload: null };
+  const response = await fetch(`${baseUrl}/internal/guild-language`, {
+    method: 'POST',
+    headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guildId, language }),
+    signal: AbortSignal.timeout(5000),
+  });
+  let payload: any = null;
+  try { payload = await response.json(); } catch { /* Keep the original HTTP status. */ }
+  return { ok: response.ok && payload?.ok !== false, error: payload?.error ?? null, payload };
+}
+
 /** The routes of commands written in code: the pieces of the editor, check, test, save and trigger. */
 export async function callPettoCode(context: AstroContext, guildId: string, userId: string, route: 'meta' | 'check' | 'test' | 'save' | 'trigger', body?: Record<string, unknown>) {
   const { baseUrl, secret } = apiConfig(context);
