@@ -1,4 +1,4 @@
-export type ApplicationRole = 'developer' | 'manager' | 'partner' | 'staff';
+export type ApplicationRole = 'developer' | 'manager' | 'partner' | 'staff' | 'translator';
 
 export type FieldKind = 'text' | 'textarea' | 'select' | 'url' | 'number' | 'checkbox';
 
@@ -95,6 +95,21 @@ export const applicationRoles: Record<ApplicationRole, { color: number; fields: 
       f('about', 'hours', 'select', true, 8, 0, hours),
       f('about', 'experience', 'textarea', true, 800, 60),
       f('about', 'why', 'textarea', true, 600, 40),
+      f('confirm', 'confirm', 'checkbox', true, 3),
+    ],
+  },
+  translator: {
+    color: 0xffb86c,
+    fields: [
+      f('about', 'discord', 'text', true, 64, 2),
+      f('about', 'timezone', 'text', true, 40, 2),
+      f('about', 'language', 'select', true, 8, 0, ['tlEs', 'tlPt', 'tlBoth']),
+      f('about', 'level', 'select', true, 8, 0, ['nv0', 'nv1', 'nv2']),
+      f('about', 'hours', 'select', true, 8, 0, hours),
+      f('about', 'experience', 'textarea', false, 600, 20),
+      f('work', 'sample1', 'textarea', true, 600, 30),
+      f('work', 'sample2', 'textarea', true, 600, 30),
+      f('work', 'why', 'textarea', true, 600, 40),
       f('confirm', 'confirm', 'checkbox', true, 3),
     ],
   },
