@@ -167,11 +167,13 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
             <div class="da-body">
               {(s.punishments ?? []).length > 0 && <div class="da-block"><h4>{dt('Punishments')}</h4>{s.punishments.map((p: any) => <p>• {typeNames[p.type] ?? p.type}{p.reason ? ` — ${p.reason}` : ''}{p.until ? ` · ${when(p.until)}` : ''}</p>)}</div>}
               <div class="da-block"><h4>{dt('Answers')}</h4>{(s.answers ?? []).map((a: any) => <div class="da-ans"><b>{a.label}</b><span>{Array.isArray(a.value) ? a.value.join(', ') : a.value}</span></div>)}</div>
-              <div class="da-block"><h4>{dt('Conversation')}</h4>
+              <div class="da-block"><h4>{dt('Conversation')} <span class="da-live"><i></i>{dt('Updates live')}</span></h4>
+                <div class="da-chat" data-chat={s.id}>
                 {(messages[s.id] ?? []).map((m: any) => <div class:list={['da-msg', m.author_type]}><small>{m.author_type === 'user' ? s.username : m.author_type === 'staff' ? (m.author_name ?? dt('Staff')) : 'Petto'} · {when(m.created_at)}</small><span>{m.content}</span></div>)}
-                {(messages[s.id] ?? []).length === 0 && <p class="da-hint">{dt('No messages yet.')}</p>}
+                {(messages[s.id] ?? []).length === 0 && <p class="da-hint" data-chat-empty>{dt('No messages yet.')}</p>}
+                </div>
               </div>
-              <form method="POST" class="da-inline" data-no-dirty><input type="hidden" name="action" value="reply" /><input type="hidden" name="submission_id" value={s.id} /><textarea name="content" rows="2" maxlength="1500" placeholder={dt('Write to the member')} required></textarea><button type="submit" class="btn btn-ghost btn-sm">{dt('Send')}</button></form>
+              <form method="POST" class="da-inline" data-no-dirty data-chat-reply data-sid={s.id} data-failed={dt('It could not be saved, try again.')}><input type="hidden" name="action" value="reply" /><input type="hidden" name="submission_id" value={s.id} /><textarea name="content" rows="2" maxlength="1500" placeholder={dt('Write to the member')} required></textarea><button type="submit" class="btn btn-ghost btn-sm">{dt('Send')}</button></form>
               {s.status === 'pending' && (
                 <form method="POST" class="da-resolve" data-no-dirty>
                   <input type="hidden" name="action" value="resolve" /><input type="hidden" name="submission_id" value={s.id} />
@@ -192,21 +194,21 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   {section === 'settings' && (
     <Fragment>
     {claim && (
-      <div class="da-card da-claim">
+      <div class="da-card da-claim da-claim-open">
         <h2>{dt('Name request')}: <code>{claim.slug}</code></h2>
         <p class="da-claim-text">{dt('The team is reviewing it. A review takes from 1 hour up to 72 hours.')}</p>
         <p class="da-claim-text">{dt('Until then your page uses the link with the server id:')} <code>{`petto.sbs/appeal/${guildId}`}</code></p>
-        <form method="POST"><input type="hidden" name="action" value="claim_cancel" /><button type="submit" class="btn btn-ghost btn-sm">{dt('Cancel the request')}</button></form>
+        <form method="POST" data-no-dirty><input type="hidden" name="action" value="claim_cancel" /><button type="submit" class="btn btn-ghost btn-sm">{dt('Cancel the request')}</button></form>
       </div>
     )}
-    {!claim && claimSent && <div class="da-claim-ok">{dt('Request sent. The team will answer in 1 to 72 hours.')}</div>}
+    {!claim && claimSent && <div class="da-claim-ok da-claim-sent" role="status"><Icon name="ph:check-circle-fill" width="16" height="16" />{dt('Request sent. The team will answer in 1 to 72 hours.')}</div>}
     {!claim && !claimSlug && lastClaim && (
       <div class="da-claim-ok">
         {lastClaim.status === 'approved' ? dt('Your request for this name was accepted:') : dt('Your last name request was denied:')} <code>{lastClaim.slug}</code>{lastClaim.note ? ` · ${lastClaim.note}` : ''}
       </div>
     )}
     {!claim && claimSlug && (
-      <form method="POST" class="da-card da-claim" data-claim>
+      <form method="POST" class="da-card da-claim" data-claim data-no-dirty>
         <input type="hidden" name="action" value="claim_send" />
         <input type="hidden" name="slug" value={claimSlug} />
         <h2>{dt('Ask for this name')}: <code>{claimSlug}</code></h2>
@@ -333,6 +335,68 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
     </form>
   )}
 </DashGuildLayout>
+
+<script>
+  // The open conversations ask for new messages every few seconds, and a reply to the member is sent without redrawing the page.
+  if (!(window as any).__daLive) {
+    (window as any).__daLive = true;
+    const base = () => `${location.pathname.replace(/\/appeals\/?$/, '')}/appeals-live`;
+    let busy = false;
+    async function refresh() {
+      if (busy || document.hidden) return;
+      const open = Array.from(document.querySelectorAll<HTMLDetailsElement>('details.da-sub[open]')).map((d) => d.querySelector<HTMLElement>('[data-chat]')).filter((el): el is HTMLElement => !!el);
+      if (!open.length) return;
+      busy = true;
+      try {
+        const res = await fetch(`${base()}?ids=${open.map((el) => el.dataset.chat).join(',')}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        open.forEach((box) => {
+          box.closest('.da-block')?.querySelector('.da-live')?.classList.remove('off');
+          const item = data.items?.[box.dataset.chat ?? ''];
+          if (!item || box.innerHTML.trim() === item.html.trim()) return;
+          const before = box.querySelectorAll('.da-msg').length;
+          box.innerHTML = item.html;
+          Array.from(box.querySelectorAll('.da-msg')).slice(before).forEach((el) => el.classList.add('fresh'));
+        });
+      } catch {
+        document.querySelectorAll('.da-live').forEach((el) => el.classList.add('off'));
+      } finally {
+        busy = false;
+      }
+    }
+    window.setInterval(refresh, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+    // Captured before the dashboard binds the form, so the page is not swapped (that would close the open conversation).
+    document.addEventListener('submit', async (event) => {
+      const form = (event.target as HTMLElement | null)?.closest?.('form[data-chat-reply]') as HTMLFormElement | null;
+      if (!form) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const box = form.querySelector('textarea')!;
+      const button = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const content = box.value.trim();
+      if (!content || button.disabled) return;
+      button.disabled = true;
+      form.querySelector('.da-reply-error')?.remove();
+      try {
+        const res = await fetch(base(), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ submission_id: form.dataset.sid, content }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || '');
+        box.value = '';
+        await refresh();
+      } catch (err) {
+        const note = document.createElement('p');
+        note.className = 'da-reply-error';
+        note.setAttribute('role', 'alert');
+        note.textContent = (err as Error).message || form.dataset.failed || '';
+        form.after(note);
+      } finally {
+        button.disabled = false;
+      }
+    }, true);
+  }
+</script>
 
 <script>
   // Copy buttons, the live preview of the link and of the messages, and the builder of the questions of a form.
@@ -518,6 +582,17 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   .da-claim code { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
   .da-claim-ok { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text-muted); background: var(--card); }
   .da-claim-ok code { font-family: var(--mono); color: var(--accent); }
+  .da-claim-sent { display: flex; align-items: center; gap: 8px; color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: var(--green-soft); animation: da-pop .45s cubic-bezier(.2, .9, .3, 1.2) both; }
+  .da-claim-open { animation: da-pop .45s cubic-bezier(.2, .9, .3, 1.2) both; }
+  @keyframes da-pop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+  .da-live { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); vertical-align: middle; }
+  .da-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: da-pulse 2s ease-out infinite; }
+  .da-live.off i { background: var(--text-dim); animation: none; }
+  @keyframes da-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+  .da-msg.fresh { animation: da-msg-in .35s cubic-bezier(.2, .8, .2, 1) both; }
+  @keyframes da-msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .da-reply-error { color: var(--red); font-size: 12px; margin: 4px 0 0; }
+  @media (prefers-reduced-motion: reduce) { .da-claim-sent, .da-claim-open, .da-live i, .da-msg.fresh { animation: none; } }
   .da-icons { display: flex; flex-wrap: wrap; gap: 6px; }
   .da-iconpick { position: relative; display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-muted); cursor: pointer; font-size: 12.5px; }
   .da-iconpick input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }

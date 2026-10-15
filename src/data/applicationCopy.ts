@@ -72,12 +72,14 @@ const en: ApplicationCopy = {
     manager: { title: 'Manager', desc: 'Help run the Petto community, its events, and its staff.', intro: 'Managers look after the community and coordinate the staff team.', time: 'Takes about 25 minutes' },
     partner: { title: 'Partner', desc: 'Propose an alliance between your project and Petto.', intro: 'Tell us about your project and what you have in mind.', time: 'Takes about 5 minutes' },
     staff: { title: 'Staff', desc: 'Moderate and give support in the Petto server.', intro: 'Staff members moderate the server and help people in support.', time: 'Takes about 5 minutes' },
+    translator: { title: 'Translator', desc: 'Help translate Petto into Spanish and Brazilian Portuguese.', intro: 'Tell us which language you translate to and show us a short sample.', time: 'Takes about 10 minutes' },
   },
   sections: {
     developer: { about: 'About you', skills: 'Skills', work: 'Your work', technical: 'Technical questions', motivation: 'Motivation', confirm: 'Before you send' },
     manager: { about: 'About you', experience: 'Experience', scenarios: 'Scenarios', vision: 'Vision and plan', confirm: 'Before you send' },
     partner: { project: 'Your project', confirm: 'Before you send' },
     staff: { about: 'About you', confirm: 'Before you send' },
+    translator: { about: 'About you', work: 'Your translation', confirm: 'Before you send' },
   },
   fields: {
     developer: {
@@ -145,6 +147,18 @@ const en: ApplicationCopy = {
       why: { label: 'Why do you want to join the staff?' },
       confirm: { label: 'I confirm my answers are true, and I accept the Terms of Service and the Privacy Policy.' },
     },
+    translator: {
+      discord: { label: 'Discord username or ID', placeholder: 'username or 123456789012345678' },
+      timezone: { label: 'Time zone or country' },
+      language: { label: 'Language you translate into' },
+      level: { label: 'Your level in that language' },
+      hours: { label: 'Time you can give each week' },
+      experience: { label: 'Translation experience', hint: 'Bots, games, apps, communities or studies. Optional.' },
+      sample1: { label: 'Translate this message into your language', hint: 'Petto could not ban {user}: I am missing the Ban Members permission. Move my role above theirs and try again.' },
+      sample2: { label: 'Now translate this one, keep the same friendly tone', hint: 'Welcome to {server}, {user}! You are member number {count}. Say hi in the chat!' },
+      why: { label: 'Why do you want to translate Petto?' },
+      confirm: { label: 'I confirm my answers are true, and I accept the Terms of Service and the Privacy Policy.' },
+    },
   },
   options: {
     h1: 'Up to 5 hours',
@@ -176,6 +190,12 @@ const en: ApplicationCopy = {
     moderator: 'Moderator',
     support: 'Support',
     either: 'Either one',
+    tlEs: 'Spanish (Latin America)',
+    tlPt: 'Portuguese (Brazil)',
+    tlBoth: 'Both',
+    nv0: 'Native',
+    nv1: 'Fluent',
+    nv2: 'Advanced',
   },
 };
 
@@ -221,12 +241,14 @@ const es: ApplicationCopy = {
     manager: { title: 'Manager', desc: 'Ayuda a dirigir la comunidad de Petto, sus eventos y su staff.', intro: 'Los managers cuidan la comunidad y coordinan al equipo de staff.', time: 'Toma unos 25 minutos' },
     partner: { title: 'Partner', desc: 'Propón una alianza entre tu proyecto y Petto.', intro: 'Cuéntanos sobre tu proyecto y qué tienes en mente.', time: 'Toma unos 5 minutos' },
     staff: { title: 'Staff', desc: 'Modera y da soporte en el servidor de Petto.', intro: 'El staff modera el servidor y ayuda a las personas en soporte.', time: 'Toma unos 5 minutos' },
+    translator: { title: 'Traductor', desc: 'Ayuda a traducir Petto al español y al portugués de Brasil.', intro: 'Cuéntanos a qué idioma traduces y muéstranos una muestra corta.', time: 'Toma unos 10 minutos' },
   },
   sections: {
     developer: { about: 'Sobre ti', skills: 'Habilidades', work: 'Tu trabajo', technical: 'Preguntas técnicas', motivation: 'Motivación', confirm: 'Antes de enviar' },
     manager: { about: 'Sobre ti', experience: 'Experiencia', scenarios: 'Escenarios', vision: 'Visión y plan', confirm: 'Antes de enviar' },
     partner: { project: 'Tu proyecto', confirm: 'Antes de enviar' },
     staff: { about: 'Sobre ti', confirm: 'Antes de enviar' },
+    translator: { about: 'Sobre ti', work: 'Tu traducción', confirm: 'Antes de enviar' },
   },
   fields: {
     developer: {
@@ -294,6 +316,18 @@ const es: ApplicationCopy = {
       why: { label: '¿Por qué quieres unirte al staff?' },
       confirm: { label: 'Confirmo que mis respuestas son verdaderas y acepto los Términos de servicio y la Política de privacidad.' },
     },
+    translator: {
+      discord: { label: 'Usuario o ID de Discord', placeholder: 'usuario o 123456789012345678' },
+      timezone: { label: 'Zona horaria o país' },
+      language: { label: 'Idioma al que traduces' },
+      level: { label: 'Tu nivel en ese idioma' },
+      hours: { label: 'Tiempo que puedes dar cada semana' },
+      experience: { label: 'Experiencia traduciendo', hint: 'Bots, juegos, apps, comunidades o estudios. Opcional.' },
+      sample1: { label: 'Traduce este mensaje a tu idioma', hint: 'Petto could not ban {user}: I am missing the Ban Members permission. Move my role above theirs and try again.' },
+      sample2: { label: 'Ahora traduce este, con el mismo tono cercano', hint: 'Welcome to {server}, {user}! You are member number {count}. Say hi in the chat!' },
+      why: { label: '¿Por qué quieres traducir Petto?' },
+      confirm: { label: 'Confirmo que mis respuestas son verdaderas y acepto los Términos del servicio y la Política de privacidad.' },
+    },
   },
   options: {
     h1: 'Hasta 5 horas',
@@ -325,6 +359,12 @@ const es: ApplicationCopy = {
     moderator: 'Moderador',
     support: 'Soporte',
     either: 'Cualquiera de los dos',
+    tlEs: 'Español (Latinoamérica)',
+    tlPt: 'Portugués (Brasil)',
+    tlBoth: 'Los dos',
+    nv0: 'Nativo',
+    nv1: 'Fluido',
+    nv2: 'Avanzado',
   },
 };
 
@@ -370,12 +410,14 @@ const ptBR: ApplicationCopy = {
     manager: { title: 'Manager', desc: 'Ajude a conduzir a comunidade do Petto, seus eventos e sua staff.', intro: 'Os managers cuidam da comunidade e coordenam a equipe de staff.', time: 'Leva cerca de 25 minutos' },
     partner: { title: 'Parceiro', desc: 'Proponha uma parceria entre o seu projeto e o Petto.', intro: 'Conte sobre o seu projeto e o que você tem em mente.', time: 'Leva cerca de 5 minutos' },
     staff: { title: 'Staff', desc: 'Modere e dê suporte no servidor do Petto.', intro: 'A staff modera o servidor e ajuda as pessoas no suporte.', time: 'Leva cerca de 5 minutos' },
+    translator: { title: 'Tradutor', desc: 'Ajude a traduzir o Petto para espanhol e português do Brasil.', intro: 'Conte para qual idioma você traduz e mostre uma amostra curta.', time: 'Leva cerca de 10 minutos' },
   },
   sections: {
     developer: { about: 'Sobre você', skills: 'Habilidades', work: 'Seu trabalho', technical: 'Perguntas técnicas', motivation: 'Motivação', confirm: 'Antes de enviar' },
     manager: { about: 'Sobre você', experience: 'Experiência', scenarios: 'Cenários', vision: 'Visão e plano', confirm: 'Antes de enviar' },
     partner: { project: 'Seu projeto', confirm: 'Antes de enviar' },
     staff: { about: 'Sobre você', confirm: 'Antes de enviar' },
+    translator: { about: 'Sobre você', work: 'Sua tradução', confirm: 'Antes de enviar' },
   },
   fields: {
     developer: {
@@ -443,6 +485,18 @@ const ptBR: ApplicationCopy = {
       why: { label: 'Por que você quer entrar para a staff?' },
       confirm: { label: 'Confirmo que minhas respostas são verdadeiras e aceito os Termos de serviço e a Política de privacidade.' },
     },
+    translator: {
+      discord: { label: 'Usuário ou ID do Discord', placeholder: 'usuário ou 123456789012345678' },
+      timezone: { label: 'Fuso horário ou país' },
+      language: { label: 'Idioma para o qual você traduz' },
+      level: { label: 'Seu nível nesse idioma' },
+      hours: { label: 'Tempo que você pode dar por semana' },
+      experience: { label: 'Experiência com tradução', hint: 'Bots, jogos, apps, comunidades ou estudos. Opcional.' },
+      sample1: { label: 'Traduza esta mensagem para o seu idioma', hint: 'Petto could not ban {user}: I am missing the Ban Members permission. Move my role above theirs and try again.' },
+      sample2: { label: 'Agora traduza esta, mantendo o mesmo tom próximo', hint: 'Welcome to {server}, {user}! You are member number {count}. Say hi in the chat!' },
+      why: { label: 'Por que você quer traduzir o Petto?' },
+      confirm: { label: 'Confirmo que minhas respostas são verdadeiras e aceito os Termos de Serviço e a Política de Privacidade.' },
+    },
   },
   options: {
     h1: 'Até 5 horas',
@@ -474,6 +528,12 @@ const ptBR: ApplicationCopy = {
     moderator: 'Moderador',
     support: 'Suporte',
     either: 'Qualquer um dos dois',
+    tlEs: 'Espanhol (América Latina)',
+    tlPt: 'Português (Brasil)',
+    tlBoth: 'Os dois',
+    nv0: 'Nativo',
+    nv1: 'Fluente',
+    nv2: 'Avançado',
   },
 };
 

@@ -5,7 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { noteGuildWrite } from '../../../../utils/guildSnapshots';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
-import { syncPettoPrefix } from '../../../../utils/pettoBotApi';
+import { syncPettoLanguage, syncPettoPrefix } from '../../../../utils/pettoBotApi';
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
@@ -79,6 +79,17 @@ if (Astro.request.method === 'POST') {
       headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ guild_id: id, global_stats_hidden: form.get('global_stats_visible') !== 'on' }),
     }).catch(() => {});
+    // Also apart: the column comes with the bot update that adds languages. The bot reads it again within a few minutes.
+    const language = String(form.get('language') ?? '');
+    if (['en', 'es', 'pt-BR'].includes(language)) {
+      await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
+        method: 'POST',
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, language }),
+      }).catch(() => {});
+      // An old bot without the route keeps the old language until its own cache runs out, a few minutes at most.
+      await syncPettoLanguage(Astro, id, language).catch(() => {});
+    }
     saved = true;
   }
 }
@@ -95,6 +106,16 @@ let globalStatsVisible = true;
 try {
   const visibleRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=global_stats_hidden`, { headers: apiHeaders });
   if (visibleRes.ok) globalStatsVisible = (await visibleRes.json())?.[0]?.global_stats_hidden !== true;
+} catch {}
+
+// English until the server picks another one (and also when the column is not there yet).
+let language = 'en';
+try {
+  const languageRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=language`, { headers: apiHeaders });
+  if (languageRes.ok) {
+    const value = (await languageRes.json())?.[0]?.language;
+    if (value === 'es' || value === 'pt-BR') language = value;
+  }
 } catch {}
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
@@ -115,6 +136,7 @@ const config = { prefix: g.prefix ?? '!', mute_role_id: g.mute_role_id ?? null }
   prefix={config.prefix}
   muteRoleId={config.mute_role_id}
   globalStatsVisible={globalStatsVisible}
+  language={language}
   roles={roles}
   saved={saved}
   reset={reset}
