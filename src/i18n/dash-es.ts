@@ -1,5 +1,13 @@
 // Dashboard texts in Spanish. The key is the English text used in the code, so anything missing here shows in English.
 export const dashEs: Record<string, string> = {
+  "Link name": "Nombre del enlace",
+  "your-server": "tu-servidor",
+  "Letters, numbers and dashes, 3 to 32. The link with the server id keeps working.": "Letras, números y guiones, de 3 a 32. El enlace con el id del servidor sigue funcionando.",
+  "Use 3 to 32 letters, numbers or dashes, and do not start or end with a dash.": "Usa de 3 a 32 letras, números o guiones, y no empieces ni termines con un guion.",
+  "The name cannot be only numbers.": "El nombre no puede ser solo números.",
+  "That name is reserved.": "Ese nombre está reservado.",
+  "That name is not allowed.": "Ese nombre no está permitido.",
+  "That name is already taken, try another.": "Ese nombre ya está en uso, prueba otro.",
   "Dashboard · Petto": "Dashboard · Petto",
   "Dashboard": "Dashboard",
   "Configure Petto without touching a single slash command.": "Configura Petto sin tocar un solo comando slash.",

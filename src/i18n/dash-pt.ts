@@ -1,5 +1,13 @@
 // Dashboard texts in Brazilian Portuguese. The key is the English text used in the code, so anything missing here shows in English.
 export const dashPt: Record<string, string> = {
+  "Link name": "Nome do link",
+  "your-server": "seu-servidor",
+  "Letters, numbers and dashes, 3 to 32. The link with the server id keeps working.": "Letras, números e hifens, de 3 a 32. O link com o id do servidor continua funcionando.",
+  "Use 3 to 32 letters, numbers or dashes, and do not start or end with a dash.": "Use de 3 a 32 letras, números ou hifens, e não comece nem termine com hífen.",
+  "The name cannot be only numbers.": "O nome não pode ser só números.",
+  "That name is reserved.": "Esse nome é reservado.",
+  "That name is not allowed.": "Esse nome não é permitido.",
+  "That name is already taken, try another.": "Esse nome já está em uso, tente outro.",
   "Dashboard · Petto": "Dashboard · Petto",
   "Dashboard": "Dashboard",
   "Configure Petto without touching a single slash command.": "Configure o Petto sem tocar em nenhum comando slash.",
