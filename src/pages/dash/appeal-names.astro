@@ -1,0 +1,49 @@
+---
+export const prerender = false;
+import DashAppealNames from '../../components/DashAppealNames.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+import { canEditPartners } from '../../utils/partners';
+import { approveClaim, denyClaim, holderOf, listClaims, listNames, releaseName } from '../../utils/appealNames';
+
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!(await canEditPartners(Astro, session.userId))) return Astro.redirect('/dash/manage?error=forbidden');
+if (!getEnv(Astro, 'PETTO_BOT_API_URL')) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const tab = Astro.url.searchParams.get('tab') === 'names' ? 'names' : 'requests';
+
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) return Astro.redirect(`/dash/appeal-names?tab=${tab}&error=invalid`);
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const by = { id: session.userId, name: session.username };
+  let result = 'invalid';
+  if (action === 'approve') {
+    const done = await approveClaim(Astro, String(form.get('claim_id') ?? ''), by, String(form.get('note') ?? ''));
+    result = 'error' in done ? done.error : 'approved';
+  } else if (action === 'deny') {
+    result = (await denyClaim(Astro, String(form.get('claim_id') ?? ''), by, String(form.get('note') ?? ''))) ? 'denied' : 'gone';
+  } else if (action === 'release') {
+    const guildId = String(form.get('guild_id') ?? '');
+    result = /^\d{15,25}$/.test(guildId) && (await releaseName(Astro, guildId)) ? 'released' : 'database';
+  }
+  const ok = ['approved', 'denied', 'released'].includes(result);
+  return Astro.redirect(`/dash/appeal-names?tab=${tab}&${ok ? `done=${result}` : `error=${result}`}`);
+}
+
+const query = String(Astro.url.searchParams.get('q') ?? '').slice(0, 32);
+const [pending, decided, names] = await Promise.all([
+  listClaims(Astro, 'pending'),
+  tab === 'requests' ? listClaims(Astro, 'decided') : Promise.resolve([]),
+  tab === 'names' ? listNames(Astro, query) : Promise.resolve([]),
+]);
+// The server that holds each name today, so the team can see both sides.
+const holders: Record<string, string | null> = {};
+await Promise.all(pending.map(async (claim) => { holders[claim.slug] = await holderOf(Astro, claim.slug); }));
+const error = Astro.url.searchParams.get('error') ?? undefined;
+const done = Astro.url.searchParams.get('done') ?? undefined;
+---
+
+<DashAppealNames tab={tab} pending={pending} decided={decided} names={names} holders={holders} query={query} error={error} done={done} />

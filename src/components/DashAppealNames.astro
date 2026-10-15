@@ -1,0 +1,140 @@
+---
+import { Icon } from 'astro-icon/components';
+import Base from '../layouts/Base.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { NameClaim, NamedServer } from '../utils/appealNames';
+
+const dt = makeT(getDashLang(Astro));
+interface Props { tab: 'requests' | 'names'; pending: NameClaim[]; decided: NameClaim[]; names: NamedServer[]; holders: Record<string, string | null>; query: string; error?: string; done?: string }
+const { tab, pending, decided, names, holders, query, error, done } = Astro.props;
+
+const errors: Record<string, string> = {
+  invalid: dt('That request was not valid.'), gone: dt('That request was already answered or no longer exists.'), database: dt('The database did not accept the change. Try again.'),
+};
+const doneText: Record<string, string> = { approved: dt('The name was given to the server that asked.'), denied: dt('The request was denied.'), released: dt('The name was released.') };
+const hours = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 3_600_000);
+const waited = (iso: string) => { const h = hours(iso); return h < 1 ? dt('Less than an hour ago') : h < 48 ? dt('{n} hours ago').replace('{n}', String(h)) : dt('{n} days ago').replace('{n}', String(Math.floor(h / 24))); };
+const page = (guildId: string) => `/appeal/${guildId}`;
+---
+
+<Base title={dt('Appeal names · Petto')} active="dash" showFooter>
+  <main>
+    <section class="an-sec">
+      <div class="wrap an-wrap">
+        <div class="an-head">
+          <div>
+            <div class="eyebrow"><Icon name="ph:scales-fill" width="14" height="14" /> {dt('Team view')}</div>
+            <h1>{dt('Appeal names')}</h1>
+            <p>{dt('Requests for link names that another server holds, and the names in use. A request should be answered in 72 hours.')}</p>
+          </div>
+          <a class="btn btn-ghost btn-sm" href="/dash/manage"><Icon name="ph:arrow-left-bold" width="14" height="14" /> {dt('Back to servers')}</a>
+        </div>
+
+        {error && <div class="an-alert error"><Icon name="ph:warning-fill" width="17" height="17" /> {errors[error] ?? errors.invalid}</div>}
+        {done && !error && <div class="an-alert ok"><Icon name="ph:check-circle-fill" width="17" height="17" /> {doneText[done] ?? dt('Saved.')}</div>}
+
+        <div class="an-tabs">
+          <a class:list={['an-tab', { on: tab === 'requests' }]} href="?tab=requests">{dt('Requests')}{pending.length > 0 && <em>{pending.length}</em>}</a>
+          <a class:list={['an-tab', { on: tab === 'names' }]} href="?tab=names">{dt('Names in use')}</a>
+        </div>
+
+        {tab === 'requests' && (
+          <Fragment>
+            {pending.length === 0 && <p class="an-empty">{dt('No requests waiting.')}</p>}
+            {pending.map((claim) => (
+              <article class:list={['an-card', { late: hours(claim.created_at) >= 72 }]}>
+                <div class="an-top">
+                  <h2><code>{claim.slug}</code></h2>
+                  <span class:list={['an-when', { late: hours(claim.created_at) >= 72 }]}>{waited(claim.created_at)}</span>
+                </div>
+                <dl class="an-meta">
+                  <div><dt>{dt('Asked by')}</dt><dd>{claim.username} <code>{claim.user_id}</code></dd></div>
+                  <div><dt>{dt('Server that asks')}</dt><dd><a href={page(claim.guild_id)} target="_blank" rel="noopener">{claim.guild_id}</a> · <a href={claim.server_url} target="_blank" rel="noopener noreferrer">{dt('Look at the server')}</a></dd></div>
+                  <div><dt>{dt('Server that holds it')}</dt><dd>{holders[claim.slug] ? <a href={page(holders[claim.slug]!)} target="_blank" rel="noopener">{holders[claim.slug]}</a> : dt('Nobody now')}</dd></div>
+                  {claim.extra_url && <div><dt>{dt('Extra proof')}</dt><dd><a href={claim.extra_url} target="_blank" rel="noopener noreferrer">{claim.extra_url}</a></dd></div>}
+                </dl>
+                <p class="an-reason">{claim.reason}</p>
+                <form method="POST" class="an-decide">
+                  <input type="hidden" name="claim_id" value={claim.id} />
+                  <input type="text" name="note" maxlength="500" placeholder={dt('A note for the server (optional)')} />
+                  <button type="submit" name="action" value="approve" class="btn btn-accent btn-sm" onclick="return confirm(this.dataset.ask)" data-ask={dt('The current holder goes back to its server id link and the name goes to the server that asked. Continue?')}>{dt('Give the name')}</button>
+                  <button type="submit" name="action" value="deny" class="btn btn-ghost btn-sm">{dt('Deny')}</button>
+                </form>
+              </article>
+            ))}
+            {decided.length > 0 && (
+              <Fragment>
+                <h2 class="an-sub">{dt('Answered recently')}</h2>
+                {decided.map((claim) => (
+                  <div class="an-row">
+                    <span class:list={['an-tag', claim.status]}>{claim.status === 'approved' ? dt('Given') : dt('Denied')}</span>
+                    <code>{claim.slug}</code>
+                    <span class="an-muted">{claim.guild_id}{claim.decided_by_name ? ` · ${claim.decided_by_name}` : ''}</span>
+                  </div>
+                ))}
+              </Fragment>
+            )}
+          </Fragment>
+        )}
+
+        {tab === 'names' && (
+          <Fragment>
+            <form method="GET" class="an-search"><input type="hidden" name="tab" value="names" /><input type="search" name="q" value={query} maxlength="32" placeholder={dt('Search a name')} /><button class="btn btn-ghost btn-sm" type="submit">{dt('Search')}</button></form>
+            {names.length === 0 && <p class="an-empty">{dt('No names found.')}</p>}
+            {names.map((row) => (
+              <div class="an-row">
+                <a class="an-name" href={`/appeal/${row.slug}`} target="_blank" rel="noopener"><code>{row.slug}</code></a>
+                <span class="an-muted">{row.guild_id} · {row.enabled ? dt('Appeals on') : dt('Appeals off')}</span>
+                <form method="POST" action="?tab=names" class="an-release" onsubmit="return confirm(this.dataset.ask)" data-ask={dt('Release this name? The server keeps its link with the server id.')}>
+                  <input type="hidden" name="action" value="release" /><input type="hidden" name="guild_id" value={row.guild_id} />
+                  <button class="btn btn-ghost btn-sm" type="submit">{dt('Release')}</button>
+                </form>
+              </div>
+            ))}
+          </Fragment>
+        )}
+      </div>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .an-sec { padding: 48px 0 72px; }
+  .an-wrap { max-width: 860px; min-width: 0; }
+  .an-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .an-head h1 { font-size: 28px; margin: 10px 0 6px; }
+  .an-head p { color: var(--text-muted); font-size: 14px; max-width: 60ch; margin: 0; }
+  .an-alert { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 14px; border: 1px solid; }
+  .an-alert.error { color: var(--red, #fe6465); background: color-mix(in srgb, currentColor 10%, transparent); }
+  .an-alert.ok { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+  .an-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .an-tab { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); font-size: 13.5px; text-decoration: none; }
+  .an-tab.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .an-tab em { font-style: normal; font-size: 11px; min-width: 18px; text-align: center; padding: 1px 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink, #2b1a13); font-weight: 700; }
+  .an-empty { color: var(--text-dim); font-size: 14px; }
+  .an-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px; margin-bottom: 12px; }
+  .an-card.late { border-color: var(--red, #fe6465); }
+  .an-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .an-top h2 { margin: 0; font-size: 18px; }
+  .an-top code, .an-row code { font-family: var(--mono); color: var(--accent); }
+  .an-when { font-size: 12px; color: var(--text-dim); }
+  .an-when.late { color: var(--red, #fe6465); font-weight: 600; }
+  .an-meta { display: grid; gap: 6px; margin: 12px 0; }
+  .an-meta > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px; font-size: 13px; }
+  .an-meta dt { color: var(--text-dim); }
+  .an-meta dd { margin: 0; overflow-wrap: anywhere; color: var(--text-muted); }
+  .an-meta a { color: var(--accent); }
+  .an-meta code { font-family: var(--mono); font-size: 12px; }
+  .an-reason { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--bg-raise); color: var(--text); font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .an-decide { display: flex; gap: 8px; flex-wrap: wrap; }
+  .an-decide input { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 13.5px; padding: 8px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-raise); color: var(--text); }
+  .an-sub { font-size: 14px; margin: 26px 0 10px; color: var(--text-muted); }
+  .an-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 9px 12px; margin-bottom: 8px; font-size: 13px; }
+  .an-muted { color: var(--text-dim); flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .an-tag { font-size: 10.5px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .an-tag.denied { background: color-mix(in srgb, var(--red, #fe6465) 14%, transparent); color: var(--red, #fe6465); }
+  .an-search { display: flex; gap: 8px; margin-bottom: 12px; }
+  .an-search input { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 8px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-raise); color: var(--text); }
+  .an-release { margin: 0; }
+  @media (max-width: 560px) { .an-meta > div { grid-template-columns: 1fr; gap: 1px; } }
+</style>

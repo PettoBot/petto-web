@@ -10,6 +10,7 @@ import { callPettoAppeals } from '../../../../utils/pettoBotApi';
 import { CONFIG_DEFAULTS, LIMITS, THEMES, PUNISHMENT_TYPES, hexColor, safeUrl, normalizeForm, type AppealConfig } from '../../../../utils/appeals';
 import { cleanSlug, slugProblem } from '../../../../utils/appealSlug';
 import { isStaff } from '../../../../utils/feedback';
+import { cancelClaim, createClaim, lastDecidedClaim, openClaim } from '../../../../utils/appealNames';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -42,6 +43,8 @@ const saveConfig = (patch: Record<string, unknown>) => rest('appeal_config?on_co
 let saved = false;
 let message: { kind: 'ok' | 'err'; text: string } | null = null;
 let redirectTo: string | null = null;
+// Set when the name that was asked for belongs to another server: the page then offers to ask the team for it.
+let claimSlug: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -69,7 +72,7 @@ if (Astro.request.method === 'POST') {
         slugError = { format: dt('Use 3 to 32 letters, numbers or dashes, and do not start or end with a dash.'), numeric: dt('The name cannot be only numbers.'), reserved: dt('That name is reserved.'), offensive: dt('That name is not allowed.') }[problem];
       } else if (slug) {
         const taken = await rest(`appeal_config?slug=eq.${encodeURIComponent(slug)}&guild_id=neq.${id}&select=guild_id&limit=1`).then((r) => (r.ok ? r.json() : [])).catch(() => []);
-        if (taken?.length) slugError = dt('That name is already taken, try another.');
+        if (taken?.length) { slugError = dt('That name is already taken, try another.'); claimSlug = slug; }
       }
       if (!slugError) slugPatch = { slug: slug || null };
     }
@@ -148,6 +151,21 @@ if (Astro.request.method === 'POST') {
       : await callPettoAppeals(Astro, id, session.userId, 'reply', { id: submissionId, content: text(form.get('content'), 1500) });
     saved = Boolean(result.ok);
     message = result.ok ? { kind: 'ok', text: action === 'resolve' ? dt('Answer sent.') : dt('Message sent.') } : { kind: 'err', text: String(result.payload?.message ?? dt('It could not be saved, try again.')) };
+  } else if (action === 'claim_send') {
+    const asked = cleanSlug(form.get('slug'));
+    const result = await createClaim(Astro, { guildId: id, slug: asked, userId: session.userId, username: session.username, reason: form.get('reason'), serverUrl: form.get('server_url'), extraUrl: form.get('extra_url') });
+    if (!('error' in result)) { redirectTo = '?section=settings&claim=sent'; }
+    else {
+      const errors = {
+        slug: dt('That name cannot be requested.'), taken_gone: dt('That name is free now, you can set it as your link name.'), pending: dt('You already have a request waiting for the team.'),
+        limit: dt('You sent too many requests this month. Try again later.'), reason: dt('Tell the team why it should be yours, at least 20 characters.'),
+        url: dt('The link to your server has to start with https://.'), extra_url: dt('The extra link has to start with https://.'), database: dt('It could not be saved, try again.'), not_configured: dt('It could not be saved, try again.'),
+      };
+      message = { kind: 'err', text: errors[result.error] };
+      if (result.error !== 'taken_gone' && result.error !== 'pending' && result.error !== 'slug') claimSlug = asked;
+    }
+  } else if (action === 'claim_cancel') {
+    ok(await cancelClaim(Astro, id).then((done) => ({ ok: done }) as Response), dt('The request was cancelled.'));
   } else if (action === 'delete_all') {
     if (form.get('confirm') === 'DELETE') {
       await Promise.all(['appeal_submissions', 'appeal_forms', 'appeal_blocks', 'appeal_config'].map((table) => rest(`${table}?guild_id=eq.${id}`, { method: 'DELETE' })));
@@ -189,6 +207,7 @@ const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((x: an
 const editing = formParam === 'new' ? 'new' : formParam && /^\d+$/.test(formParam) ? forms.find((f: any) => String(f.id) === formParam) ?? null : null;
 ---
 <DashAppeals
+  claim={await openClaim(Astro, id)} lastClaim={await lastDecidedClaim(Astro, id)} claimSlug={claimSlug} claimSent={Astro.url.searchParams.get('claim') === 'sent'}
   user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} origin={Astro.url.origin}
   section={section} config={config} forms={forms} counts={counts} submissions={submissions} messages={messages} statusFilter={statusFilter}
   roles={roles} channels={channels} editing={editing} saved={saved} message={message}
