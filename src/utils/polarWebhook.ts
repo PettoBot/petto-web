@@ -257,3 +257,44 @@ export async function notifyPremiumEvent(astro: any, event: any): Promise<void> 
     });
   } catch { /* The subscription is already saved: the notice is a courtesy. */ }
 }
+
+/**
+ * Posts the Premium that is active now in the channel of the team (the owner presses a button in the dashboard). It shows what the database has,
+ * which is what Polar's webhook put there, so the team can check that the subscriptions arrived.
+ */
+export async function postActivePremium(astro: any): Promise<{ ok: true; count: number } | { ok: false; error: 'not_configured' | 'database' | 'discord' }> {
+  const hook = getEnv(astro, 'PREMIUM_LOGS_WEBHOOK_URL');
+  if (!hook || !/^https:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+/.test(hook)) return { ok: false, error: 'not_configured' };
+  const config = settings(astro);
+  if (!config) return { ok: false, error: 'database' };
+  let rows: any[] = [];
+  try {
+    const response = await fetch(`${config.url}/rest/v1/premium_entitlements?status=eq.active&select=user_id,provider,plan_key,slot_limit,current_period_end&order=created_at.asc&limit=500`, { headers: apiHeaders(config.key), signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return { ok: false, error: 'database' };
+    rows = (await response.json()) as any[];
+  } catch { return { ok: false, error: 'database' }; }
+  const active = rows.filter((row) => !row.current_period_end || Date.parse(row.current_period_end) > Date.now());
+  const lines = active.map((row) => {
+    const until = row.current_period_end ? ` · until <t:${Math.floor(Date.parse(row.current_period_end) / 1000)}:d>` : ' · no end date';
+    return `<@${row.user_id}> · ${String(row.plan_key ?? 'premium').slice(0, 40)} · ${row.slot_limit ?? 1} slot(s)${until} · ${row.provider === 'polar' ? 'Polar' : (row.provider ?? 'manual')}`;
+  });
+  const parts: string[][] = [];
+  let current: string[] = [];
+  let size = 0;
+  for (const line of lines) {
+    if (size + line.length > 3500 && current.length) { parts.push(current); current = []; size = 0; }
+    current.push(line); size += line.length + 1;
+  }
+  if (current.length || !parts.length) parts.push(current);
+  try {
+    for (const [index, part] of parts.entries()) {
+      const head = index === 0 ? `**${active.length}** active subscription${active.length === 1 ? '' : 's'}.\n` : '';
+      const response = await fetch(hook, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(6000),
+        body: JSON.stringify({ username: 'Petto Premium', allowed_mentions: { parse: [] }, embeds: [{ title: index === 0 ? 'Premium active now' : 'Premium active now (cont.)', color: 0xf0a88f, description: `${head}${part.join('\n') || 'None right now.'}` }] }),
+      });
+      if (!response.ok) return { ok: false, error: 'discord' };
+    }
+  } catch { return { ok: false, error: 'discord' }; }
+  return { ok: true, count: active.length };
+}
