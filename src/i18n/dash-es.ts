@@ -3336,6 +3336,7 @@ export const dashEs: Record<string, string> = {
   "Appeal your punishment in {a}": "Apela tu sanción en {a}",
   "Sign in with Discord and send an appeal to the staff of {a}.": "Entra con Discord y envía una apelación al staff de {a}.",
   "Empty uses the banner, then the icon of the server.": "Vacío usa el banner y luego el icono del servidor.",
+  "Show the image small, as a thumbnail": "Mostrar la imagen pequeña, como miniatura",
   "Side color": "Color lateral",
   "Save brand": "Guardar marca",
   "Open the page": "Abrir la página",
