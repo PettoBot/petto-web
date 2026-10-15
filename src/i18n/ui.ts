@@ -152,6 +152,21 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.6',
+          display: '0.7.6',
+          name: 'Macaron',
+          date: 'October 15, 2026',
+          items: [
+            'Appeals: every server gets a page (`petto.sbs/appeal/<id or your name>`) where a member signs in with Discord, sees their punishments, fills the forms you build and follows the appeal; the staff accepts, rejects or replies from Discord or the dashboard, accepting lifts the ban and the timeout and can give a single-use invite (shown to the staff), and rejecting can block a new appeal. Three languages, a brand and link preview of its own with pictures from your device, and off until you turn it on',
+            'Appeal names: pick `petto.sbs/appeal/amor` instead of the id (reserved and offensive names are blocked), ask the team for a name another server holds (answered in 1 to 72 hours), keep a name reserved for 30 days after you change it, and unused names are freed',
+            'Moderation: anti scam against the MrBeast scam, `!lockdown` for raids, anti-nuke with limits and restore for each protection, AutoMod templates with strikes, lifting sanctions from the dashboard, and case search with proof and stats',
+            'Tickets: panels with your color, picture and footer, a limit per member, staff hours, reminders, quick replies, transcripts as a link, a file or both, and a guided dashboard',
+            'Community: Suggestions with votes, threads and staff answers, Counting with saves, records and roles, and anonymous Confessions reviewed by the staff',
+            'Verification set up from the dashboard in one press, image cards anywhere with `{imgcard:name}` (40 fonts), a Components V2 mode in the embed code generator, VoiceMaster room permissions, and new cards for `!ping` and `!userinfo`',
+            'Dashboard and website: new fonts (Fraunces and Plus Jakarta Sans), softer colors, one color picker that is easy to drag, a smaller save bar, a real status page, a Modules page with a setup guide, and a Brand page with the mascot, colors and a download kit',
+          ],
+        },
+        {
           version: '0.7.5',
           display: '0.7.5',
           name: 'Waffle',
@@ -1423,6 +1438,21 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.6',
+          display: '0.7.6',
+          name: 'Macaron',
+          date: '15 de octubre de 2026',
+          items: [
+            'Apelaciones: cada servidor tiene una página (`petto.sbs/appeal/<id o tu nombre>`) donde un miembro entra con Discord, ve sus sanciones, llena los formularios que armes y sigue su apelación; el staff acepta, rechaza o responde desde Discord o el dashboard, aceptar levanta el ban y el timeout y puede dar una invitación de un solo uso (que el staff ve), y rechazar puede bloquear una nueva apelación. Tres idiomas, marca y vista previa del enlace propias con imágenes desde tu dispositivo, y apagadas hasta que las actives',
+            'Nombres de apelación: elige `petto.sbs/appeal/amor` en vez del id (los nombres reservados y ofensivos están bloqueados), pide al equipo un nombre que tiene otro servidor (responden en 1 a 72 horas), conserva un nombre reservado 30 días después de cambiarlo, y los nombres sin uso se liberan',
+            'Moderación: anti scam contra la estafa de MrBeast, `!lockdown` para raids, anti-nuke con límites y restauración por protección, plantillas de AutoMod con strikes, levantar sanciones desde el dashboard y búsqueda de casos con pruebas y estadísticas',
+            'Tickets: paneles con tu color, imagen y pie, un límite por miembro, horario del staff, recordatorios, respuestas rápidas, transcripciones como enlace, archivo o ambos, y un dashboard guiado',
+            'Comunidad: Sugerencias con votos, hilos y respuestas del staff, Conteo con salvaciones, récords y roles, y Confesiones anónimas revisadas por el staff',
+            'Verificación configurada desde el dashboard con un clic, tarjetas de imagen en cualquier lugar con `{imgcard:name}` (40 fuentes), un modo Components V2 en el generador de códigos de embed, permisos de salas de VoiceMaster y tarjetas nuevas para `!ping` y `!userinfo`',
+            'Dashboard y sitio: fuentes nuevas (Fraunces y Plus Jakarta Sans), colores más suaves, un selector de color fácil de arrastrar, una barra de guardar más pequeña, una página de estado real, una página de Módulos con guía y una página de Marca con la mascota, los colores y un kit de descarga',
+          ],
+        },
         {
           version: '0.7.5',
           display: '0.7.5',
@@ -2696,6 +2726,21 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.6',
+          display: '0.7.6',
+          name: 'Macaron',
+          date: '15 de outubro de 2026',
+          items: [
+            'Apelações: cada servidor tem uma página (`petto.sbs/appeal/<id ou seu nome>`) onde o membro entra com o Discord, vê as punições, preenche os formulários que você montar e acompanha a apelação; a equipe aceita, recusa ou responde pelo Discord ou pelo painel, aceitar retira o ban e o timeout e pode dar um convite de uso único (que a equipe vê), e recusar pode bloquear uma nova apelação. Três idiomas, marca e prévia do link próprias com imagens do seu dispositivo, e desligadas até você ativar',
+            'Nomes de apelação: escolha `petto.sbs/appeal/amor` em vez do id (nomes reservados e ofensivos são bloqueados), peça à equipe um nome que outro servidor tem (resposta em 1 a 72 horas), mantenha um nome reservado por 30 dias depois de trocar, e nomes sem uso são liberados',
+            'Moderação: anti scam contra o golpe do MrBeast, `!lockdown` para raids, anti-nuke com limites e restauração por proteção, modelos de AutoMod com strikes, retirar punições pelo painel e busca de casos com provas e estatísticas',
+            'Tickets: painéis com sua cor, imagem e rodapé, um limite por membro, horário da equipe, lembretes, respostas rápidas, transcrições como link, arquivo ou ambos, e um painel guiado',
+            'Comunidade: Sugestões com votos, tópicos e respostas da equipe, Contagem com salvamentos, recordes e cargos, e Confissões anônimas revisadas pela equipe',
+            'Verificação configurada pelo painel com um clique, cartões de imagem em qualquer lugar com `{imgcard:name}` (40 fontes), um modo Components V2 no gerador de códigos de embed, permissões das salas do VoiceMaster e cartões novos para `!ping` e `!userinfo`',
+            'Painel e site: fontes novas (Fraunces e Plus Jakarta Sans), cores mais suaves, um seletor de cor fácil de arrastar, uma barra de salvar menor, uma página de status real, uma página de Módulos com guia e uma página de Marca com o mascote, as cores e um kit de download',
+          ],
+        },
         {
           version: '0.7.5',
           display: '0.7.5',
