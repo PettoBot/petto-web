@@ -110,7 +110,7 @@ function bindColorPickers(root) {
       hueThumb.style.left = (state.h / 360 * 100) + '%';
     }
 
-    function syncFields(hex, rgb) {
+    function syncFields(hex, rgb, silent) {
       wrap.classList.remove('is-none');
       hexLabel.textContent = hex;
       swatch.style.setProperty('--sw', hex);
@@ -120,26 +120,26 @@ function bindColorPickers(root) {
       if (document.activeElement !== gInput) gInput.value = Math.round(rgb.g);
       if (document.activeElement !== bInput) bInput.value = Math.round(rgb.b);
       // Listeners of the page (live previews, the unsaved bar) run once per frame while dragging, not on every pointer event.
-      if (!inputQueued) {
+      if (!silent && !inputQueued) {
         inputQueued = true;
         requestAnimationFrame(function () { inputQueued = false; valueInput.dispatchEvent(new Event('input', { bubbles: true })); });
       }
       }
 
-      function applyState(redrawHue) {
+      function applyState(redrawHue, silent) {
       var rgb = hsvToRgb(state.h, state.s, state.v);
       var hex = rgbToHex(rgb.r, rgb.g, rgb.b);
       if (redrawHue) drawSV();
       positionThumbs();
-      syncFields(hex, rgb);
+      syncFields(hex, rgb, silent);
     }
 
-    function setFromHex(hex) {
+    function setFromHex(hex, silent) {
       var rgb = hexToRgb(hex);
       if (!rgb) return;
       var hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
       state.h = hsv.h; state.s = hsv.s; state.v = hsv.v;
-      applyState(true);
+      applyState(true, silent);
     }
 
     function setFromRgbInputs() {
@@ -236,11 +236,11 @@ function bindColorPickers(root) {
     // "No color": the field sends an empty value, which the server reads as no color at all.
     var allowNone = wrap.hasAttribute('data-cp-allownone');
     var noneBtn = wrap.querySelector('[data-cp-none]');
-    function setNone() {
+    function setNone(silent) {
       wrap.classList.add('is-none');
       hexLabel.textContent = wrap.getAttribute('data-cp-nonelabel') || '';
       valueInput.value = '';
-      valueInput.dispatchEvent(new Event('input', { bubbles: true }));
+      if (!silent) valueInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
     if (noneBtn) noneBtn.addEventListener('click', function () { setNone(); closePanel(); });
     // Other scripts set the color through this event; an empty value means no color when the field allows it.
@@ -255,8 +255,8 @@ function bindColorPickers(root) {
       });
     }
 
-    setFromHex(valueInput.value || wrap.getAttribute('data-cp-default') || '#8399ff');
-    if (allowNone && !wrap.getAttribute('data-cp-default')) setNone();
+    setFromHex(valueInput.value || wrap.getAttribute('data-cp-default') || '#8399ff', true);
+    if (allowNone && !wrap.getAttribute('data-cp-default')) setNone(true);
   });
 }
 
