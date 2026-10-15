@@ -223,3 +223,37 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
   }
   return true;
 }
+
+// A line in the Discord channel of the team for each change of a Premium subscription (PREMIUM_LOGS_WEBHOOK_URL, a Discord webhook).
+// Nothing breaks without it, and it never carries an email: only the Discord user, the plan, the slots and the dates.
+const PREMIUM_NOTICES: Record<string, { title: string; color: number }> = {
+  'subscription.active': { title: 'Premium active', color: 0xa5ea7a },
+  'subscription.uncanceled': { title: 'Premium kept', color: 0xa5ea7a },
+  'subscription.canceled': { title: 'Premium cancelled', color: 0xfed53c },
+  'subscription.past_due': { title: 'Premium payment failed', color: 0xfe6465 },
+  'subscription.revoked': { title: 'Premium ended', color: 0xfe6465 },
+};
+
+export async function notifyPremiumEvent(astro: any, event: any): Promise<void> {
+  const notice = PREMIUM_NOTICES[String(event?.type ?? '')];
+  const hook = getEnv(astro, 'PREMIUM_LOGS_WEBHOOK_URL');
+  if (!notice || !hook || !/^https:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+/.test(hook)) return;
+  const subscription = event.data ?? {};
+  const metadata = { ...(subscription.product?.metadata ?? {}), ...(subscription.metadata ?? {}) };
+  const userId = userIdFrom(subscription, metadata);
+  const slotValue = Number(metadata.slot_limit ?? metadata.slotLimit ?? PRODUCT_SLOT_LIMITS[String(subscription.product_id ?? '')] ?? 1);
+  const periodEnd = iso(subscription.current_period_end ?? subscription.ends_at);
+  const stamp = (value: string | null) => (value ? `<t:${Math.floor(Date.parse(value) / 1000)}:f>` : 'not set');
+  const lines = [
+    `**User:** ${userId ? `<@${userId}> (\`${userId}\`)` : 'unknown'}`,
+    `**Plan:** ${String(metadata.plan_key ?? metadata.planKey ?? subscription.product?.name ?? 'Premium').slice(0, 80)} · ${Number.isInteger(slotValue) && slotValue > 0 ? slotValue : 1} server slot(s)`,
+    `**${event.type === 'subscription.canceled' ? 'Access until' : 'Renews or ends'}:** ${stamp(periodEnd)}`,
+    ...(subscription.id ? [`-# Subscription ${String(subscription.id).slice(0, 36)}`] : []),
+  ];
+  try {
+    await fetch(hook, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({ username: 'Petto Premium', allowed_mentions: { parse: [] }, embeds: [{ title: notice.title, color: notice.color, description: lines.join('\n'), timestamp: new Date().toISOString() }] }),
+    });
+  } catch { /* The subscription is already saved: the notice is a courtesy. */ }
+}
