@@ -406,6 +406,74 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
 </script>
 
 <script>
+  // The builder of the questions of a form: drawn by script on `[data-builder]`.
+  function initBuilder() {
+    const root = document.querySelector<HTMLElement>('[data-builder]');
+    const output = document.querySelector<HTMLInputElement>('[data-builder-output]');
+    if (root && output && !root.dataset.bound) {
+      root.dataset.bound = '1';
+      type Q = { id: string; type: string; label: string; help: string; required: boolean; options: string[]; max?: number; accept?: string; max_files?: number };
+      type S = { id: string; title: string; description: string; questions: Q[] };
+      const text = JSON.parse(root.dataset.text ?? '{}');
+      const limits = JSON.parse(root.dataset.limits ?? '{}');
+      const types: string[] = JSON.parse(root.dataset.types ?? '[]');
+      let n = 0;
+      const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${(n++).toString(36)}`.slice(0, 24);
+      const state: S[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((s) => ({ id: s.id, title: s.title ?? '', description: s.description ?? '', questions: (s.questions ?? []).map((q: any) => ({ id: q.id, type: q.type, label: q.label ?? '', help: q.help ?? '', required: q.required !== false, options: q.options ?? [], ...(q.max ? { max: q.max } : {}), ...(q.accept ? { accept: q.accept } : {}), ...(q.max_files ? { max_files: q.max_files } : {}) })) }));
+      const save = () => { output.value = JSON.stringify(state.map((s) => ({ ...s, description: s.description || null, questions: s.questions.map((q) => ({ ...q, help: q.help || null })) }))); };
+      const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, any> = {}, ...kids: (Node | string)[]) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k === 'on') for (const [ev, fn] of Object.entries(v as Record<string, EventListener>)) e.addEventListener(ev, fn); else if (v !== undefined && v !== null) (e as any)[k] = v; } for (const kid of kids) e.append(kid); return e; };
+      const field = (label: string, input: HTMLElement, wide = false) => el('label', { class: `da-field${wide ? ' da-wide' : ''}` }, el('span', {}, label), input);
+      const move = <T,>(arr: T[], i: number, d: number) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; draw(); };
+      function drawQuestion(s: S, q: Q, qi: number): HTMLElement {
+        const type = el('select', { on: { change: (e: Event) => { q.type = (e.target as HTMLSelectElement).value; draw(); } } }, ...types.map((t) => el('option', { value: t, selected: q.type === t }, text.types[t])));
+        const label = el('input', { type: 'text', value: q.label, maxLength: limits.label, on: { input: (e: Event) => { q.label = (e.target as HTMLInputElement).value; save(); } } });
+        const help = el('input', { type: 'text', value: q.help, maxLength: limits.help, on: { input: (e: Event) => { q.help = (e.target as HTMLInputElement).value; save(); } } });
+        const req = el('input', { type: 'checkbox', checked: q.required, on: { change: (e: Event) => { q.required = (e.target as HTMLInputElement).checked; save(); } } });
+        const box = el('div', { class: 'da-q' },
+          el('div', { class: 'da-q-head' }, el('b', {}, `${text.question} ${qi + 1}`), el('span', { class: 'da-q-tools' },
+            el('button', { type: 'button', title: text.up, on: { click: () => move(s.questions, qi, -1) } }, '↑'), el('button', { type: 'button', title: text.down, on: { click: () => move(s.questions, qi, 1) } }, '↓'),
+            el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { s.questions.splice(qi, 1); draw(); } } }, '×'))),
+          el('div', { class: 'da-grid' }, field(text.label, label, true), field('', type), field(text.help, help, true)),
+          el('label', { class: 'da-check' }, req, text.required));
+        if (q.type === 'scale') {
+          if (!q.max) q.max = 5;
+          const max = el('select', { on: { change: (e: Event) => { q.max = Number((e.target as HTMLSelectElement).value); save(); } } }, ...[3, 4, 5, 6, 7, 8, 9, 10].map((n) => el('option', { value: String(n), selected: q.max === n }, `1 – ${n}`)));
+          box.append(field(text.scaleMax, max));
+        }
+        if (q.type === 'file') {
+          if (!q.accept) q.accept = 'images';
+          if (!q.max_files) q.max_files = 3;
+          const accept = el('select', { on: { change: (e: Event) => { q.accept = (e.target as HTMLSelectElement).value; save(); } } }, ...['images', 'pdf', 'images_pdf', 'documents'].map((k) => el('option', { value: k, selected: q.accept === k }, text.accepts[k])));
+          const many = el('select', { on: { change: (e: Event) => { q.max_files = Number((e.target as HTMLSelectElement).value); save(); } } }, ...[1, 2, 3, 4, 5].map((n) => el('option', { value: String(n), selected: q.max_files === n }, String(n))));
+          box.append(el('div', { class: 'da-grid' }, field(text.accept, accept), field(text.maxFiles, many)));
+        }
+        if (q.type === 'choice' || q.type === 'multi' || q.type === 'dropdown') {
+          const area = el('textarea', { rows: 3, value: q.options.join('\n'), on: { input: (e: Event) => { q.options = (e.target as HTMLTextAreaElement).value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, limits.options); save(); } } });
+          box.append(field(text.options, area, true));
+        }
+        return box;
+      }
+      function draw() {
+        root!.textContent = '';
+        state.forEach((s, si) => {
+          const title = el('input', { type: 'text', value: s.title, maxLength: 100, on: { input: (e: Event) => { s.title = (e.target as HTMLInputElement).value; save(); } } });
+          const desc = el('input', { type: 'text', value: s.description, maxLength: 500, on: { input: (e: Event) => { s.description = (e.target as HTMLInputElement).value; save(); } } });
+          const sec = el('div', { class: 'da-section' },
+            el('div', { class: 'da-q-head' }, el('h3', {}, `${text.section} ${si + 1}`), el('span', { class: 'da-q-tools' },
+              el('button', { type: 'button', title: text.up, on: { click: () => move(state, si, -1) } }, '↑'), el('button', { type: 'button', title: text.down, on: { click: () => move(state, si, 1) } }, '↓'),
+              el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { state.splice(si, 1); draw(); } } }, '×'))),
+            el('div', { class: 'da-grid' }, field(text.title, title), field(text.description, desc)),
+            ...s.questions.map((q, qi) => drawQuestion(s, q, qi)),
+            el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: s.questions.length >= limits.questions, on: { click: () => { s.questions.push({ id: nextId('q'), type: 'short', label: '', help: '', required: true, options: [] }); draw(); } } }, `+ ${text.addQuestion}`));
+          root!.append(sec);
+        });
+        root!.append(el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: state.length >= limits.sections, on: { click: () => { state.push({ id: nextId('s'), title: '', description: '', questions: [] }); draw(); } } }, `+ ${text.addSection}`));
+        save();
+      }
+      draw();
+    }
+  }
+
   // Copy buttons, the live preview of the link and of the messages, and the builder of the questions of a form.
   function initAppeals() {
     document.querySelectorAll<HTMLElement>('[data-copy]').forEach((b) => { if (b.dataset.bound) return; b.dataset.bound = '1'; b.addEventListener('click', () => { navigator.clipboard?.writeText(b.dataset.copy ?? '').catch(() => {}); }); });
@@ -500,74 +568,17 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
       paint();
     }
 
-    const root = document.querySelector<HTMLElement>('[data-builder]');
-    const output = document.querySelector<HTMLInputElement>('[data-builder-output]');
-    if (root && output && !root.dataset.bound) {
-      root.dataset.bound = '1';
-      type Q = { id: string; type: string; label: string; help: string; required: boolean; options: string[]; max?: number; accept?: string; max_files?: number };
-      type S = { id: string; title: string; description: string; questions: Q[] };
-      const text = JSON.parse(root.dataset.text ?? '{}');
-      const limits = JSON.parse(root.dataset.limits ?? '{}');
-      const types: string[] = JSON.parse(root.dataset.types ?? '[]');
-      let n = 0;
-      const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${(n++).toString(36)}`.slice(0, 24);
-      const state: S[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((s) => ({ id: s.id, title: s.title ?? '', description: s.description ?? '', questions: (s.questions ?? []).map((q: any) => ({ id: q.id, type: q.type, label: q.label ?? '', help: q.help ?? '', required: q.required !== false, options: q.options ?? [], ...(q.max ? { max: q.max } : {}), ...(q.accept ? { accept: q.accept } : {}), ...(q.max_files ? { max_files: q.max_files } : {}) })) }));
-      const save = () => { output.value = JSON.stringify(state.map((s) => ({ ...s, description: s.description || null, questions: s.questions.map((q) => ({ ...q, help: q.help || null })) }))); };
-      const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, any> = {}, ...kids: (Node | string)[]) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') e.className = v; else if (k === 'on') for (const [ev, fn] of Object.entries(v as Record<string, EventListener>)) e.addEventListener(ev, fn); else if (v !== undefined && v !== null) (e as any)[k] = v; } for (const kid of kids) e.append(kid); return e; };
-      const field = (label: string, input: HTMLElement, wide = false) => el('label', { class: `da-field${wide ? ' da-wide' : ''}` }, el('span', {}, label), input);
-      const move = <T,>(arr: T[], i: number, d: number) => { const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; draw(); };
-      function drawQuestion(s: S, q: Q, qi: number): HTMLElement {
-        const type = el('select', { on: { change: (e: Event) => { q.type = (e.target as HTMLSelectElement).value; draw(); } } }, ...types.map((t) => el('option', { value: t, selected: q.type === t }, text.types[t])));
-        const label = el('input', { type: 'text', value: q.label, maxLength: limits.label, on: { input: (e: Event) => { q.label = (e.target as HTMLInputElement).value; save(); } } });
-        const help = el('input', { type: 'text', value: q.help, maxLength: limits.help, on: { input: (e: Event) => { q.help = (e.target as HTMLInputElement).value; save(); } } });
-        const req = el('input', { type: 'checkbox', checked: q.required, on: { change: (e: Event) => { q.required = (e.target as HTMLInputElement).checked; save(); } } });
-        const box = el('div', { class: 'da-q' },
-          el('div', { class: 'da-q-head' }, el('b', {}, `${text.question} ${qi + 1}`), el('span', { class: 'da-q-tools' },
-            el('button', { type: 'button', title: text.up, on: { click: () => move(s.questions, qi, -1) } }, '↑'), el('button', { type: 'button', title: text.down, on: { click: () => move(s.questions, qi, 1) } }, '↓'),
-            el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { s.questions.splice(qi, 1); draw(); } } }, '×'))),
-          el('div', { class: 'da-grid' }, field(text.label, label, true), field('', type), field(text.help, help, true)),
-          el('label', { class: 'da-check' }, req, text.required));
-        if (q.type === 'scale') {
-          if (!q.max) q.max = 5;
-          const max = el('select', { on: { change: (e: Event) => { q.max = Number((e.target as HTMLSelectElement).value); save(); } } }, ...[3, 4, 5, 6, 7, 8, 9, 10].map((n) => el('option', { value: String(n), selected: q.max === n }, `1 – ${n}`)));
-          box.append(field(text.scaleMax, max));
-        }
-        if (q.type === 'file') {
-          if (!q.accept) q.accept = 'images';
-          if (!q.max_files) q.max_files = 3;
-          const accept = el('select', { on: { change: (e: Event) => { q.accept = (e.target as HTMLSelectElement).value; save(); } } }, ...['images', 'pdf', 'images_pdf', 'documents'].map((k) => el('option', { value: k, selected: q.accept === k }, text.accepts[k])));
-          const many = el('select', { on: { change: (e: Event) => { q.max_files = Number((e.target as HTMLSelectElement).value); save(); } } }, ...[1, 2, 3, 4, 5].map((n) => el('option', { value: String(n), selected: q.max_files === n }, String(n))));
-          box.append(el('div', { class: 'da-grid' }, field(text.accept, accept), field(text.maxFiles, many)));
-        }
-        if (q.type === 'choice' || q.type === 'multi' || q.type === 'dropdown') {
-          const area = el('textarea', { rows: 3, value: q.options.join('\n'), on: { input: (e: Event) => { q.options = (e.target as HTMLTextAreaElement).value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, limits.options); save(); } } });
-          box.append(field(text.options, area, true));
-        }
-        return box;
-      }
-      function draw() {
-        root!.textContent = '';
-        state.forEach((s, si) => {
-          const title = el('input', { type: 'text', value: s.title, maxLength: 100, on: { input: (e: Event) => { s.title = (e.target as HTMLInputElement).value; save(); } } });
-          const desc = el('input', { type: 'text', value: s.description, maxLength: 500, on: { input: (e: Event) => { s.description = (e.target as HTMLInputElement).value; save(); } } });
-          const sec = el('div', { class: 'da-section' },
-            el('div', { class: 'da-q-head' }, el('h3', {}, `${text.section} ${si + 1}`), el('span', { class: 'da-q-tools' },
-              el('button', { type: 'button', title: text.up, on: { click: () => move(state, si, -1) } }, '↑'), el('button', { type: 'button', title: text.down, on: { click: () => move(state, si, 1) } }, '↓'),
-              el('button', { type: 'button', class: 'del', title: text.remove, on: { click: () => { state.splice(si, 1); draw(); } } }, '×'))),
-            el('div', { class: 'da-grid' }, field(text.title, title), field(text.description, desc)),
-            ...s.questions.map((q, qi) => drawQuestion(s, q, qi)),
-            el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: s.questions.length >= limits.questions, on: { click: () => { s.questions.push({ id: nextId('q'), type: 'short', label: '', help: '', required: true, options: [] }); draw(); } } }, `+ ${text.addQuestion}`));
-          root!.append(sec);
-        });
-        root!.append(el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: state.length >= limits.sections, on: { click: () => { state.push({ id: nextId('s'), title: '', description: '', questions: [] }); draw(); } } }, `+ ${text.addSection}`));
-        save();
-      }
-      draw();
-    }
+    // The builder of the questions is set up apart: it must come up whatever happens to the parts above (a page swapped in after a duplicate, say).
+    try { initBuilder(); } catch (error) { console.error(error); }
   }
   // The dashboard swaps pages in place: it calls this after every swap, and the first run is right here.
   (window as any).dashAppealsInit = initAppeals;
   initAppeals();
+  // Whatever way a page with a builder gets in (a swap after a save, a duplicate, the back button), the builder is drawn when it appears.
+  if (!(window as any).__daBuilderWatch) {
+    (window as any).__daBuilderWatch = true;
+    new MutationObserver(() => { if (document.querySelector('[data-builder]:not([data-bound])')) { try { initBuilder(); } catch (error) { console.error(error); } } }).observe(document.body, { childList: true, subtree: true });
+  }
 </script>
 
 <style is:global>
