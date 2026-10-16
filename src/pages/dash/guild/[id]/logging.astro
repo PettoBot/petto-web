@@ -6,6 +6,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { noteGuildWrite } from '../../../../utils/guildSnapshots';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getMemberProfiles } from '../../../../utils/memberNames';
 
 const EVENTS = ['sanctions', 'automod', 'verification', 'members', 'messages', 'voice', 'roles', 'channels', 'invites', 'emojis', 'webhooks', 'threads', 'integrations', 'commands', 'tickets', 'server'];
 
@@ -39,8 +40,9 @@ if (Astro.request.method === 'POST') {
   const action = String(form.get('action') ?? 'routing');
 
   if (action === 'add_ignored') {
-    // Ids, user mentions (<@123>) and channel mentions (<#123>), as many as are pasted.
-    const targetIds = [...new Set([...String(form.get('target_id') ?? '').matchAll(/\d{15,25}/g)].map((match) => match[0]))].slice(0, 50);
+    // The channels, roles and people picked in the boxes, and (as before) any ids or mentions pasted: <@123>, <#123>, <@&123>.
+    const picked = [...form.getAll('channel_id'), ...form.getAll('role_id'), ...form.getAll('user_id'), form.get('target_id') ?? ''].map(String).join(' ');
+    const targetIds = [...new Set([...picked.matchAll(/\d{15,25}/g)].map((match) => match[0]))].slice(0, 50);
     if (targetIds.length) {
       const ignoredRes = await fetch(`${apiUrl}/rest/v1/log_ignored?on_conflict=guild_id,target_id`, {
         method: 'POST',
@@ -49,7 +51,7 @@ if (Astro.request.method === 'POST') {
       });
       if (ignoredRes.ok) saved = true; else problems.push(dt('The ignored list could not be saved. Try again.'));
     } else {
-      problems.push(dt('Paste at least one user or channel ID, or a mention.'));
+      problems.push(dt('Pick at least one channel, role or person.'));
     }
   } else if (action === 'delete_ignored') {
     const targetId = encodeURIComponent(String(form.get('target_id') ?? ''));
@@ -161,11 +163,12 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, entriesRes, ignoredRes, channelsRes] = await Promise.all([
+const [guildInfo, entriesRes, ignoredRes, channelsRes, rolesRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event,channel_id`, { headers: apiHeaders }),
   fetch(`${apiUrl}/rest/v1/log_ignored?guild_id=eq.${id}&select=target_id`, { headers: apiHeaders }),
   getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const entries: { event: string; channel_id: string }[] = entriesRes.ok ? await entriesRes.json() : [];
@@ -181,11 +184,24 @@ const channels = allChannels
   .sort((a: any, b: any) => (categoryOrder.get(String(a.parent_id)) ?? -1) - (categoryOrder.get(String(b.parent_id)) ?? -1) || a.position - b.position)
   .map((c: any) => ({ id: c.id, name: c.name, category: categoryNames.get(String(c.parent_id)) ?? '' }));
 
-function channelName(channelId: string) {
-  return channels.find((c: any) => c.id === channelId)?.name ?? null;
-}
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles
+  .filter((r: any) => r.name !== '@everyone' && !r.managed)
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((r: any) => ({ id: String(r.id), name: String(r.name) }));
+// Everything ignored, with a name: a channel, a role, or a person (anything else is shown as its id).
 const rawIgnored = ignoredRes.ok ? await ignoredRes.json() : [];
-const ignoredIds = rawIgnored.map((r: any) => ({ targetId: r.target_id, channelName: channelName(r.target_id) }));
+const channelById = new Map<string, any>(allChannels.map((c: any) => [String(c.id), c]));
+const roleById = new Map<string, any>(allRoles.map((r: any) => [String(r.id), r]));
+const peopleIds = rawIgnored.map((r: any) => String(r.target_id)).filter((targetId: string) => !channelById.has(targetId) && !roleById.has(targetId));
+const people = peopleIds.length ? await getMemberProfiles(Astro, id, peopleIds, botToken).catch(() => new Map()) : new Map();
+const ignoredIds = rawIgnored.map((r: any) => {
+  const targetId = String(r.target_id);
+  if (channelById.has(targetId)) return { targetId, kind: 'channel', label: `#${channelById.get(targetId).name}` };
+  if (roleById.has(targetId)) return { targetId, kind: 'role', label: `@${roleById.get(targetId).name}` };
+  const person = people.get(targetId);
+  return { targetId, kind: 'user', label: person ? person.displayName || person.username : targetId };
+});
 ---
 <DashLogging
   user={session}
@@ -193,6 +209,7 @@ const ignoredIds = rawIgnored.map((r: any) => ({ targetId: r.target_id, channelN
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   channels={channels}
+  roles={roles}
   routing={routing}
   ignoredIds={ignoredIds}
   saved={saved}

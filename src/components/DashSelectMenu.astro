@@ -1,0 +1,118 @@
+---
+// The long lists of the dashboard (roles, channels, members) open as a small menu under the field instead of the browser's own list, which
+// fills the whole screen on a phone. The real <select> stays in the page and keeps the value, so every form and script that reads it works as before.
+// A select that should keep the browser's own list carries `data-native`.
+---
+<script is:inline>
+  (function () {
+    if (window.__dglSelectMenu) return;
+    window.__dglSelectMenu = true;
+    var MIN_OPTIONS = 6;
+    var SEARCH_FROM = 12;
+    var menu = null;
+    var current = null;
+
+    function eligible(select) {
+      return select && select.tagName === 'SELECT' && !select.multiple && !select.disabled && !select.hasAttribute('data-native') && select.options.length >= MIN_OPTIONS && !select.closest('[data-native]');
+    }
+    function close() {
+      if (menu) { menu.remove(); menu = null; }
+      if (current) current.removeAttribute('data-menu-open');
+      current = null;
+    }
+    function choose(select, option) {
+      if (option.disabled) return;
+      select.value = option.value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    function open(select) {
+      close();
+      current = select;
+      select.setAttribute('data-menu-open', '');
+      var rect = select.getBoundingClientRect();
+      menu = document.createElement('div');
+      menu.className = 'dgl-selmenu';
+      menu.setAttribute('role', 'listbox');
+      var search = null;
+      if (select.options.length >= SEARCH_FROM) {
+        search = document.createElement('input');
+        search.type = 'text';
+        search.className = 'dgl-selmenu-search';
+        search.autocomplete = 'off';
+        search.placeholder = (window.cdt ? window.cdt('Search...') : 'Search...');
+        menu.appendChild(search);
+      }
+      var list = document.createElement('div');
+      list.className = 'dgl-selmenu-list';
+      menu.appendChild(list);
+      var items = [];
+      var lastGroup = null;
+      Array.prototype.forEach.call(select.options, function (option) {
+        var group = option.parentNode && option.parentNode.tagName === 'OPTGROUP' ? option.parentNode.label : '';
+        if (group && group !== lastGroup) {
+          var head = document.createElement('div');
+          head.className = 'dgl-selmenu-group';
+          head.textContent = group;
+          list.appendChild(head);
+          items.push({ el: head, text: '', group: true });
+        }
+        lastGroup = group;
+        var row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'dgl-selmenu-opt';
+        row.setAttribute('role', 'option');
+        row.textContent = option.textContent;
+        if (option.disabled) row.disabled = true;
+        if (option.selected) { row.classList.add('on'); row.setAttribute('aria-selected', 'true'); }
+        row.addEventListener('click', function () { choose(select, option); close(); select.focus({ preventScroll: true }); });
+        list.appendChild(row);
+        items.push({ el: row, text: option.textContent.toLowerCase(), group: false });
+      });
+      if (search) {
+        search.addEventListener('input', function () {
+          var q = search.value.trim().toLowerCase();
+          items.forEach(function (item) { item.el.hidden = item.group ? !!q : !!q && item.text.indexOf(q) === -1; });
+        });
+      }
+      document.body.appendChild(menu);
+      var width = Math.max(rect.width, 220);
+      var left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+      var below = window.innerHeight - rect.bottom - 12;
+      var above = rect.top - 12;
+      var up = below < 200 && above > below;
+      var maxHeight = Math.max(140, Math.min(320, up ? above : below));
+      menu.style.cssText = 'left:' + left + 'px;width:' + width + 'px;max-height:' + maxHeight + 'px;' + (up ? 'bottom:' + (window.innerHeight - rect.top + 4) + 'px;' : 'top:' + (rect.bottom + 4) + 'px;');
+      var on = list.querySelector('.on');
+      if (on) on.scrollIntoView({ block: 'center' });
+      if (search && window.matchMedia && window.matchMedia('(pointer: fine)').matches) search.focus({ preventScroll: true });
+    }
+
+    document.addEventListener('mousedown', function (event) {
+      var select = event.target && event.target.closest ? event.target.closest('select') : null;
+      if (menu && !(event.target.closest && event.target.closest('.dgl-selmenu')) && select !== current) close();
+      if (!eligible(select)) return;
+      event.preventDefault();
+      if (current === select) { close(); return; }
+      open(select);
+    }, true);
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && menu) { close(); return; }
+      var select = event.target && event.target.tagName === 'SELECT' ? event.target : null;
+      if (!eligible(select)) return;
+      if (event.key === 'Enter' || event.key === ' ' || (event.altKey && event.key === 'ArrowDown')) { event.preventDefault(); open(select); }
+    }, true);
+    window.addEventListener('resize', close);
+    document.addEventListener('scroll', function (event) { if (menu && !(event.target && event.target.closest && event.target.closest('.dgl-selmenu'))) close(); }, true);
+  })();
+</script>
+<style is:global>
+  .dgl-selmenu { position: fixed; z-index: 1000; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; border: 1px solid var(--border); background: var(--card, #1f2128); box-shadow: 0 12px 32px rgba(0, 0, 0, .35); }
+  .dgl-selmenu-search { flex: none; margin: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: .88rem; }
+  .dgl-selmenu-list { overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+  .dgl-selmenu-group { padding: 8px 10px 4px; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; opacity: .6; }
+  .dgl-selmenu-opt { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: .88rem; text-align: left; cursor: pointer; }
+  .dgl-selmenu-opt:hover, .dgl-selmenu-opt:focus-visible { background: var(--card-hover, rgba(255, 255, 255, .07)); outline: none; }
+  .dgl-selmenu-opt.on { color: var(--accent); font-weight: 600; }
+  .dgl-selmenu-opt:disabled { opacity: .45; cursor: not-allowed; }
+</style>

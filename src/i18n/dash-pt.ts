@@ -3455,4 +3455,12 @@ export const dashPt: Record<string, string> = {
   "Could not sync. Try again.": "Não foi possível sincronizar. Tente de novo.",
   "Reload the roles, channels and server data from Discord": "Recarrega os cargos, canais e dados do servidor do Discord",
   "Petto only takes away roles it gave itself, and gives the role back, and thanks the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "O Petto só tira os cargos que ele mesmo deu, e devolve o cargo e agradece de novo ao membro, quando está online com um status que coincide. Um membro de quem ele simplesmente não tem presença nunca é alterado. Se outra regra do mesmo cargo (de nome ou de Server Tag) ainda coincidir, o cargo fica.",
+  "Petto only takes away roles it gave itself, and gives the role back, without thanking the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "O Petto só tira os cargos que ele mesmo deu, e devolve o cargo, sem agradecer de novo ao membro, quando está online com um status que coincide. Um membro de quem ele simplesmente não tem presença nunca é alterado. Se outra regra do mesmo cargo (de nome ou de Server Tag) ainda coincidir, o cargo fica.",
+  "Pick channels": "Escolha canais",
+  "Pick roles": "Escolha cargos",
+  "Nobody found": "Ninguém encontrado",
+  "Type a name to search": "Digite um nome para buscar",
+  "Pick at least one channel, role or person.": "Escolha pelo menos um canal, cargo ou pessoa.",
+  "These channels, roles or people are skipped entirely, across every event.": "Estes canais, cargos ou pessoas são ignorados por completo, em todos os eventos.",
+  "Search...": "Buscar...",
 };
