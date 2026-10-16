@@ -6,6 +6,7 @@ import { getGuildInfo } from '../../../../utils/discord';
 import { getEnv } from '../../../../utils/env';
 import { callPettoVault } from '../../../../utils/pettoBotApi';
 import { getDashLang, makeT } from '../../../../i18n/dash';
+import { backupsUnderMaintenance } from '../../../../utils/maintenance';
 const dt = makeT(getDashLang(Astro));
 
 const { id } = Astro.params as { id: string };
@@ -17,9 +18,11 @@ if (!botToken) return Astro.redirect('/dash/manage?error=server_not_configured')
 const guildInfo = await getGuildInfo(id, botToken);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
+// Backups are paused: nothing is saved or read here, the page only says so.
+const maintenance = backupsUnderMaintenance(Astro);
 let message: string | null = null;
 let error: string | null = null;
-if (Astro.request.method === 'POST') {
+if (!maintenance && Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
   const body: Record<string, unknown> = { user_id: session.userId, action };
@@ -31,9 +34,9 @@ if (Astro.request.method === 'POST') {
   else error = result.error === 'not_configured' ? dt('Vault is not connected to the dashboard yet.') : result.error === 'administrator_required' ? dt('Only server administrators can restore backups.') : result.error === 'restore_confirmation_required' ? dt('Restore confirmation is required.') : dt('Petto could not complete that Vault action.');
 }
 
-const result = await callPettoVault(Astro, id, session.userId);
-const vault = result.ok ? result.payload : null;
-if (!result.ok && !error) error = result.error === 'not_configured' ? dt('Vault is not connected to the dashboard yet.') : null;
+const result = maintenance ? null : await callPettoVault(Astro, id, session.userId);
+const vault = result?.ok ? result.payload : null;
+if (result && !result.ok && !error) error = result.error === 'not_configured' ? dt('Vault is not connected to the dashboard yet.') : null;
 ---
 <DashBackups
   user={session}
@@ -44,6 +47,7 @@ if (!result.ok && !error) error = result.error === 'not_configured' ? dt('Vault 
   audit={vault?.audit ?? []}
   schedule={vault?.schedule ?? null}
   connected={Boolean(vault)}
+  maintenance={maintenance}
   message={message}
   error={error}
  />
