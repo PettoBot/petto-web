@@ -15,6 +15,7 @@ import { isPettoOwner } from '../utils/premiumAdmin';
 import { canUseQuests } from '../utils/questAccess';
 import { canUseRollouts } from '../utils/rolloutAccess';
 import { canUseCodeCommands } from '../utils/codeAccess';
+import { getRoleAccess, pageDecision, pageOf } from '../utils/dashAccess';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -65,6 +66,12 @@ const premiumGuildIds = user.userId ? await getPremiumGuildIds(Astro, user.userI
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId);
+// Someone who does not manage the server can still be let in by a role: they see only the parts their role opens.
+const guildEntry = discordGuilds?.find((g: any) => g.id === guildId);
+const isManager = Boolean(guildEntry && canManageGuild(guildEntry));
+const roleAccess = guildEntry && !isManager && user.userId ? await getRoleAccess(Astro, guildId, user.userId) : null;
+const pageAccess = roleAccess ? pageDecision(roleAccess, pageOf(Astro.url.pathname, guildId)) : null;
+const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('This is a read-only view of the server.') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
 const roleBlockData = JSON.stringify({ blocks: roleBlocks, labels: { everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') } });
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
@@ -105,7 +112,7 @@ const catLabel: Record<string, string> = { setup: dt('General'), onboarding: dt(
 interface NavItem { id: string; href: string; icon: string; label: string; premium?: boolean; full?: boolean; isNew?: boolean; soon?: boolean; }
 
 // The sections of the menu, each one in the group it belongs to.
-const groups: { label: string; items: NavItem[] }[] = [
+const allGroups: { label: string; items: NavItem[] }[] = [
   {
     label: dt('Dashboard'),
     items: [
@@ -162,6 +169,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { id: 'security', href: `/dash/guild/${guildId}/security`, icon: 'ph:shield-warning-fill', label: dt('Security') },
       { id: 'security-unrestricted', href: `/dash/guild/${guildId}/security?section=unrestricted`, icon: 'ph:keyhole-fill', label: dt('Command Coverage') },
       { id: 'permissions', href: `/dash/guild/${guildId}/permissions`, icon: 'ph:key-fill', label: dt('Permissions') },
+      ...(isManager ? [{ id: 'access', href: `/dash/guild/${guildId}/access`, icon: 'ph:user-gear-fill', label: dt('Dashboard access'), isNew: true }] : []),
       { id: 'audit', href: `/dash/guild/${guildId}/audit`, icon: 'ph:clock-counter-clockwise-fill', label: dt('Audit Log') },
       { id: 'logging', href: `/dash/guild/${guildId}/logging`, icon: catIcon.logging, label: dt('Logging') },
     ],
@@ -260,6 +268,13 @@ const groups: { label: string; items: NavItem[] }[] = [
     ],
   },
 ];
+
+// A role only sees the parts of the menu it opens.
+const groups = roleAccess
+  ? allGroups
+      .map((group) => ({ ...group, items: group.items.filter((item) => pageDecision(roleAccess, pageOf(item.href.split('?')[0], guildId)).allowed) }))
+      .filter((group) => group.items.length > 0)
+  : allGroups;
 
 const stableInlineItems = new Set([
   'customize',
@@ -437,6 +452,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
           <div class="dgl-content reveal" id="dgl-content" style={`--dgl-guild:${cssString(guildName)}`}>
             {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
+            {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
+            {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
+              <div class="dgl-dev-banner" data-view-only>
+                <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('View only')}</strong><span>{dt('Your role can look at this part of the dashboard but not change it.')}</span></div></div>
+              </div>
+            )}
             {devView && (
               <div class="dgl-dev-banner" data-dev-view>
                 <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('Developer view')}</strong><span>{dt('Read only. You are not a manager of this server, so nothing can be changed here.')}</span></div></div>

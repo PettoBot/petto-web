@@ -1,0 +1,92 @@
+---
+export const prerender = false;
+import { makeT, getDashLang } from '../../../../i18n/dash';
+import DashAccess from '../../../../components/DashAccess.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { ACCESS_SECTIONS, forgetRules, loadRules } from '../../../../utils/dashAccess';
+
+const MAX_RULES = 50;
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+// Only whoever manages the server sets this up: a role that was let in can never open this page (the access check refuses it).
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const dt = makeT(getDashLang(Astro));
+const problems: string[] = [];
+let saved = false;
+
+const [guildInfo, rolesRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'roles')]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const allRoles: any[] = rolesRes.ok ? await rolesRes.json() : [];
+// @everyone is every member: giving it access would open the dashboard to the whole server.
+const roles = allRoles
+  .filter((role) => String(role.id) !== id)
+  .sort((a, b) => Number(b.position ?? 0) - Number(a.position ?? 0))
+  .map((role) => ({ id: String(role.id), name: String(role.name) }));
+const known = new Set(roles.map((role) => role.id));
+const sectionIds = new Set(ACCESS_SECTIONS.map((section) => section.id));
+
+const upsert = (rows: any[]) => fetch(`${apiUrl}/rest/v1/dash_access?on_conflict=guild_id,role_id`, {
+  method: 'POST',
+  headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+  body: JSON.stringify(rows),
+});
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const current = await loadRules(Astro, id);
+  let ok = true;
+  if (action === 'save_full') {
+    const wanted = [...new Set(form.getAll('full_role_ids').map(String))].filter((role) => known.has(role));
+    const currentFull = current.filter((rule) => rule.sections.includes('*')).map((rule) => rule.role_id);
+    const removed = currentFull.filter((role) => !wanted.includes(role));
+    if (current.length - removed.length + wanted.filter((role) => !current.some((rule) => rule.role_id === role)).length > MAX_RULES) {
+      problems.push(dt('There can be at most {a} rules.', { a: MAX_RULES }));
+    } else {
+      if (removed.length) {
+        const del = await fetch(`${apiUrl}/rest/v1/dash_access?guild_id=eq.${id}&role_id=in.(${removed.map(encodeURIComponent).join(',')})`, { method: 'DELETE', headers });
+        ok = ok && del.ok;
+      }
+      if (wanted.length) {
+        const put = await upsert(wanted.map((role) => ({ guild_id: id, role_id: role, sections: ['*'], can_edit: true })));
+        ok = ok && put.ok;
+      }
+    }
+  } else if (action === 'add_rule') {
+    const role = String(form.get('role_id') ?? '');
+    const sections = [...new Set(form.getAll('sections').map(String))].filter((section) => sectionIds.has(section));
+    if (!known.has(role)) problems.push(dt('Pick a role from the list.'));
+    else if (!sections.length) problems.push(dt('Pick at least one part.'));
+    else if (!current.some((rule) => rule.role_id === role) && current.length >= MAX_RULES) problems.push(dt('There can be at most {a} rules.', { a: MAX_RULES }));
+    else ok = (await upsert([{ guild_id: id, role_id: role, sections, can_edit: form.get('can_edit') === 'on' }])).ok;
+  } else if (action === 'delete_rule') {
+    const role = String(form.get('role_id') ?? '');
+    if (/^\d{15,25}$/.test(role)) ok = (await fetch(`${apiUrl}/rest/v1/dash_access?guild_id=eq.${id}&role_id=eq.${role}`, { method: 'DELETE', headers })).ok;
+  }
+  forgetRules(id);
+  if (!ok) problems.push(dt('Something went wrong, try again.'));
+  saved = problems.length === 0;
+}
+
+const rules = await loadRules(Astro, id);
+---
+<DashAccess
+  user={session}
+  guildId={id}
+  guildName={guildInfo.name}
+  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  roles={roles}
+  rules={rules}
+  saved={saved}
+  problems={problems}
+/>

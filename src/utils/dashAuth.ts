@@ -7,8 +7,9 @@ import { getPremiumSnapshot } from './premium';
 import { getCachedBotGuildIds } from './discordCache';
 import { isPettoOwner } from './premiumAdmin';
 import { markTiming } from './serverTiming';
+import { getRoleAccess, pageDecision, pageOf, type RoleAccess } from './dashAccess';
 
-export type GuildAuth = { session: Session; devView?: boolean } | { redirect: string };
+export type GuildAuth = { session: Session; devView?: boolean; access?: RoleAccess } | { redirect: string };
 
 async function refreshSession(session: Session, clientId: string, clientSecret: string): Promise<Session | null> {
   if (!session.refreshToken) return null;
@@ -108,6 +109,17 @@ async function checkGuildSession(astro: any, guildId: string): Promise<GuildAuth
     return { redirect: '/dash?error=discord_unavailable' };
   }
   const target = discordGuilds.find((g: any) => g.id === guildId);
+  if (target && !canManageGuild(target)) {
+    // Not a manager, but the server may let the members of one of their roles into some parts of the dashboard.
+    const access = await getRoleAccess(astro, guildId, session.userId);
+    if (access) {
+      const decision = pageDecision(access, pageOf(String(astro.url?.pathname ?? ''), guildId));
+      if (!decision.allowed) return { redirect: `/dash/guild/${guildId}/overview?error=no_section` };
+      const method = String(request?.method ?? 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD' && !decision.canEdit) return { redirect: `/dash/guild/${guildId}/overview?error=view_only` };
+      return { session, access };
+    }
+  }
   if (!target || !canManageGuild(target)) {
     // The Petto owner can open any server the bot is in, but only to look. Every write
     // (any non-GET request) is refused here, so no dashboard page can change a foreign server.
