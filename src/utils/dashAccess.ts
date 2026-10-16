@@ -23,7 +23,7 @@ export const ACCESS_SECTIONS: { id: string; label: string; pages: string[] }[] =
 ];
 const SECTION_IDS = new Set(ACCESS_SECTIONS.map((section) => section.id));
 /** Open for anyone who has any rule: the overview and the live updates the pages ask for. */
-const OPEN_PAGES = new Set(['overview', 'live']);
+const OPEN_PAGES = new Set(['overview', 'live', 'role-blocks']);
 
 /** What a member's roles allow: the parts they can open, and for each one whether they can change it. */
 export interface RoleAccess { all: boolean; sections: Record<string, boolean>; canEditAll: boolean }

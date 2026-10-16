@@ -6,7 +6,7 @@ import InlineIcon from './InlineIcon.astro';
 import DashClientI18n from './DashClientI18n.astro';
 import DashPreviews from './DashPreviews.astro';
 import { useTranslations } from '../i18n/ui';
-import { canManageGuild, guildIconUrl, getBotIdentity, getGuildList } from '../utils/discord';
+import { canManageGuild, guildIconUrl, getBotIdentity } from '../utils/discord';
 import { getCachedUserGuilds, getCachedBotGuildIds } from '../utils/discordCache';
 import { getEnv } from '../utils/env';
 import { vanityConfig } from '../utils/vanityBot';
@@ -34,32 +34,13 @@ const { guildId, guildName, guildIcon, user, active, pageTitle: rawPageTitle, pr
 // The server name as a CSS string (short, quotes and backslashes escaped) for the italic part of the page titles.
 const cssString = (value: string) => `"${(value.length > 26 ? `${value.slice(0, 25).trimEnd()}…` : value).replace(/[\\"]/g, '\\$&').replace(/[\r\n]/g, ' ')}"`;
 const pageTitle = dt(rawPageTitle);
-// The roles Petto cannot give: @everyone, the ones an integration owns (bots, boosters) and the ones above its highest role. The pickers of
-// roles that Petto hands out show them greyed out. Where the bot has not marked its own roles yet, nothing is claimed about the position.
-async function loadRoleBlocks(serverId: string, token: string): Promise<Record<string, string>> {
-  try {
-    const res = await getGuildList(Astro, serverId, token, 'roles');
-    if (!res.ok) return {};
-    const roles: any[] = await res.json();
-    const botTop = Math.max(-1, ...roles.filter((role) => role.mine === true).map((role) => Number(role.position)));
-    const blocks: Record<string, string> = {};
-    for (const role of roles) {
-      const id = String(role.id);
-      if (id === serverId) blocks[id] = 'everyone';
-      else if (role.managed) blocks[id] = 'managed';
-      else if (botTop >= 0 && Number(role.position) >= botTop) blocks[id] = 'above_bot';
-    }
-    return blocks;
-  } catch { return {}; }
-}
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 // The premium snapshot, the visitor's servers, and the servers Petto is in do not depend on each
 // other, so they load together instead of one after the other.
-const [discordGuilds, activeBotGuildIds, botIdentity, roleBlocks] = await Promise.all([
+const [discordGuilds, activeBotGuildIds, botIdentity] = await Promise.all([
   user.accessToken ? getCachedUserGuilds(user.accessToken, Astro.request) : Promise.resolve(null),
   user.accessToken && botToken ? getCachedBotGuildIds(botToken, Astro.request) : Promise.resolve(null),
   botToken ? getBotIdentity(guildId, botToken, Astro.request).catch(() => null) : Promise.resolve(null),
-  botToken ? loadRoleBlocks(guildId, botToken) : Promise.resolve({} as Record<string, string>),
 ]);
 // Premium belongs to the server, not to who bought it: every admin sees this server (and the ones in the switcher) as Premium.
 const switchable = discordGuilds && activeBotGuildIds ? discordGuilds.filter(canManageGuild).filter((g: any) => activeBotGuildIds.has(g.id)).map((g: any) => g.id as string) : [];
@@ -73,7 +54,7 @@ const isManager = Boolean(guildEntry && canManageGuild(guildEntry));
 const roleAccess = guildEntry && !isManager && user.userId ? await getRoleAccess(Astro, guildId, user.userId) : null;
 const pageAccess = roleAccess ? pageDecision(roleAccess, pageOf(Astro.url.pathname, guildId)) : null;
 const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('This is a read-only view of the server.') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
-const roleBlockData = JSON.stringify({ blocks: roleBlocks, labels: { everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') } });
+const roleBlockLabels = JSON.stringify({ everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') });
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
 // different server doesn't need a round trip through /dash/manage every time.
@@ -314,7 +295,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
             </button>
             <span class="dgl-menu-label" id="dgl-menu-label">{activeNavItem?.label ?? pageTitle}</span>
           </div>
-          <script type="application/json" id="dgl-role-blocks" set:html={roleBlockData}></script>
+          <script type="application/json" id="dgl-role-labels" set:html={roleBlockLabels}></script>
           <div class="dgl-backdrop" id="dgl-backdrop" hidden></div>
           <aside class="dgl-side reveal" id="dgl-side">
             <button type="button" class="dgl-side-close" id="dgl-side-close" aria-label={dt('Close the menu')}><Icon name="ph:x" width="16" height="16" /></button>
@@ -454,14 +435,19 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                 restore();
                 // The menu only has its final height once the page is laid out (before that it is as tall as its list and cannot scroll), so
                 // the position is put back again while the page settles, until the person scrolls the menu themselves.
+                // It stops as soon as the menu is where it was left (a few frames at most), and is not needed on a phone, where the menu is a
+                // drawer that is closed while the page loads (the position is put back when the page has loaded).
                 var tries = 0;
+                var settled = 0;
                 var settle = function () {
-                  if (touched || tries++ > 40) return;
+                  if (touched || tries++ > 12) return;
                   var saved = read();
-                  if (saved !== null && !isNaN(saved) && Math.abs(nav.scrollTop - Math.min(saved, nav.scrollHeight - nav.clientHeight)) > 1) restore();
+                  if (saved === null || isNaN(saved)) return;
+                  if (Math.abs(nav.scrollTop - Math.min(saved, nav.scrollHeight - nav.clientHeight)) > 1) { settled = 0; restore(); }
+                  else if (++settled >= 2) return;
                   requestAnimationFrame(settle);
                 };
-                requestAnimationFrame(settle);
+                if (window.matchMedia && window.matchMedia('(min-width: 881px)').matches) requestAnimationFrame(settle);
                 window.addEventListener('load', restore);
                 ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(function (name) { nav.addEventListener(name, function () { touched = true; }, { passive: true }); });
                 var timer = null;
@@ -1041,11 +1027,6 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         // The sticky top bar covers the first 80px of the page, so the new section is placed below it (scroll-margin-top in
         // Base.astro). Moving to another section starts at its top; a save keeps the place the person was at.
         fresh.scrollIntoView({ block: pushUrl ? 'start' : 'nearest' });
-        // Moving to another section: its blocks rise in one after the other. A save keeps the page as it is.
-        if (pushUrl && !reduceMotion) {
-          fresh.classList.add('dgl-enter');
-          setTimeout(function () { fresh.classList.remove('dgl-enter'); }, 700);
-        }
         return true;
       });
     }
@@ -1735,12 +1716,10 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // Roles that Petto hands out (a select or a multi-select marked data-give-role) cannot offer the ones it is unable to give: they stay in the
     // list, greyed out and with the reason, and one that is already chosen is left alone so a saved setting does not break.
     var roleBlockInfo = null;
-    window.dglApplyRoleBlocks = function (root) {
-      if (roleBlockInfo === null) {
-        try { roleBlockInfo = JSON.parse((document.getElementById('dgl-role-blocks') || {}).textContent || '{}'); } catch (e) { roleBlockInfo = {}; }
-      }
-      var blocks = roleBlockInfo.blocks || {};
-      var labels = roleBlockInfo.labels || {};
+    var roleBlockAsked = false;
+    function applyRoleBlocks(root, info) {
+      var blocks = info.blocks || {};
+      var labels = info.labels || {};
       if (!Object.keys(blocks).length) return;
       (root || document).querySelectorAll('select[data-give-role] option').forEach(function (option) {
         var why = blocks[option.value];
@@ -1759,6 +1738,21 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         var text = label.querySelector('span');
         if (text) text.textContent = text.textContent + ' (' + (labels[why] || why) + ')';
       });
+    }
+    // Which roles Petto cannot give is only asked (one small request) by a page that has such a picker; the other pages never pay for it.
+    window.dglApplyRoleBlocks = function (root) {
+      var scope = root || document;
+      if (roleBlockInfo) { applyRoleBlocks(scope, roleBlockInfo); return; }
+      if (roleBlockAsked || !scope.querySelector('[data-give-role]')) return;
+      roleBlockAsked = true;
+      var match = window.location.pathname.match(/^\/dash\/guild\/(\d+)\//);
+      if (!match) return;
+      var labels = {};
+      try { labels = JSON.parse((document.getElementById('dgl-role-labels') || {}).textContent || '{}'); } catch (e) { labels = {}; }
+      fetch('/dash/guild/' + match[1] + '/role-blocks', { headers: { accept: 'application/json' } })
+        .then(function (res) { return res.ok ? res.json() : { blocks: {} }; })
+        .then(function (data) { roleBlockInfo = { blocks: data.blocks || {}, labels: labels }; roleBlockAsked = false; applyRoleBlocks(document, roleBlockInfo); })
+        .catch(function () { roleBlockAsked = false; });
     };
 
     // A fold (<details>) opens and closes by sliding its height instead of jumping. Anything else that opens one from a script still gets the
@@ -1802,21 +1796,36 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // Small controls (an icon, a Delete, a filter chip) are hard to hit with a finger: on a touch screen they get an invisible area around them
     // that is up to 36px wide and tall, without changing how they look.
     var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    var tapQueue = [];
+    var tapScheduled = false;
+    function flushTapTargets() {
+      tapScheduled = false;
+      var batch = tapQueue; tapQueue = [];
+      // All the reads first and the writes after, so the page is laid out once and not once for each control.
+      var reads = [];
+      for (var i = 0; i < batch.length; i++) {
+        var rect = batch[i].getBoundingClientRect();
+        if (rect.width >= 4 && rect.height >= 4 && (rect.width < 36 || rect.height < 36)) reads.push([batch[i], rect, window.getComputedStyle(batch[i]).position === 'static']);
+      }
+      for (var j = 0; j < reads.length; j++) {
+        var el = reads[j][0], box = reads[j][1];
+        el.style.setProperty('--tap-y', Math.min(10, Math.max(0, 36 - box.height) / 2) + 'px');
+        el.style.setProperty('--tap-x', Math.min(10, Math.max(0, 36 - box.width) / 2) + 'px');
+        el.classList.add('dgl-tap');
+        if (reads[j][2]) el.classList.add('dgl-tap-rel');
+      }
+    }
     function bindTapTargets(root) {
       if (!coarse) return;
-      root.querySelectorAll('button, a.btn, [role="button"], summary').forEach(function (el) {
+      root.querySelectorAll('button, a.btn, [role="button"]').forEach(function (el) {
         if (el.dataset.tapChecked) return;
         el.dataset.tapChecked = '1';
-        var rect = el.getBoundingClientRect();
-        if (!rect.width || !rect.height || rect.width < 4 || rect.height < 4) return;
-        var short = Math.max(0, 36 - rect.height) / 2;
-        var narrow = Math.max(0, 36 - rect.width) / 2;
-        if (!short && !narrow) return;
-        el.style.setProperty('--tap-y', Math.min(10, short) + 'px');
-        el.style.setProperty('--tap-x', Math.min(10, narrow) + 'px');
-        el.classList.add('dgl-tap');
-        if (getComputedStyle(el).position === 'static') el.classList.add('dgl-tap-rel');
+        tapQueue.push(el);
       });
+      if (tapQueue.length && !tapScheduled) {
+        tapScheduled = true;
+        (window.requestIdleCallback || function (fn) { return setTimeout(fn, 600); })(flushTapTargets, { timeout: 1500 });
+      }
     }
 
     function initContent(root) {
@@ -2121,19 +2130,10 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   .dgl-tap::after { content: ''; position: absolute; top: calc(var(--tap-y, 0px) * -1); bottom: calc(var(--tap-y, 0px) * -1); left: calc(var(--tap-x, 0px) * -1); right: calc(var(--tap-x, 0px) * -1); }
   /* A fold: while it slides, its content stays inside; the content fades in after it opens (also when a script opens it). */
   .dgl-content details > summary { cursor: pointer; transition: background-color .18s ease, color .18s ease; }
-  .dgl-content details[open] > *:not(summary) { animation: dgl-open .3s cubic-bezier(.2, .8, .2, 1) both; }
   .dgl-content details.is-closing > *:not(summary) { animation: dgl-close .22s ease both; }
   .dgl-content details > summary > svg, .dgl-content details > summary .caret, .dgl-content details > summary .chevron { transition: transform .28s cubic-bezier(.3, 1, .4, 1); }
   @keyframes dgl-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
   @keyframes dgl-close { from { opacity: 1; } to { opacity: 0; } }
-  /* Moving to another section: its blocks rise in one after the other. */
-  .dgl-content.dgl-enter > * { animation: dgl-rise .42s cubic-bezier(.2, .8, .2, 1) both; }
-  .dgl-content.dgl-enter > *:nth-child(2) { animation-delay: .04s; }
-  .dgl-content.dgl-enter > *:nth-child(3) { animation-delay: .08s; }
-  .dgl-content.dgl-enter > *:nth-child(4) { animation-delay: .12s; }
-  .dgl-content.dgl-enter > *:nth-child(5) { animation-delay: .16s; }
-  .dgl-content.dgl-enter > *:nth-child(n+6) { animation-delay: .2s; }
-  @keyframes dgl-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   /* Pickers, tabs and the lists that open under a control. */
   .dgl-ms-dropdown:not([hidden]) { animation: dgl-pop .18s cubic-bezier(.2, .8, .2, 1) both; transform-origin: top center; }
   [data-panel]:not([hidden]) { animation: dgl-open .26s cubic-bezier(.2, .8, .2, 1) both; }
@@ -2141,7 +2141,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   .dgl-tab { transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .14s ease; }
   .dgl-tab:active { transform: scale(.97); }
   @media (prefers-reduced-motion: reduce) {
-    .dgl-content details[open] > *:not(summary), .dgl-content details.is-closing > *:not(summary), .dgl-content.dgl-enter > *, .dgl-ms-dropdown:not([hidden]), [data-panel]:not([hidden]) { animation: none; }
+    .dgl-content details.is-closing > *:not(summary), .dgl-ms-dropdown:not([hidden]), [data-panel]:not([hidden]) { animation: none; }
     .dgl-content .btn { transition: none; }
   }
   @media (max-width: 880px) {
