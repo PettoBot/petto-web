@@ -3447,7 +3447,7 @@ export const dashEs: Record<string, string> = {
   "When a member goes offline": "Cuando un miembro se desconecta",
   "Discord hides the Custom Status of a member who is offline or invisible. Choose what Petto does with the role of a rule that reads the Custom Status when that happens.": "Discord oculta el estado personalizado de un miembro que está desconectado o invisible. Elige qué hace Petto en ese caso con el rol de una regla que lee el estado personalizado.",
   "Role of a member who goes offline": "Rol de un miembro que se desconecta",
-  "Keep the role (default)": "Conservar el rol (por defecto)",
-  "Take the role away": "Quitar el rol",
-  "Petto only takes away roles it gave itself, and gives the role back when the member is online with a matching status. A member it simply has no presence for is never changed. With several rules for one role, the role stays while one of them matches.": "Petto solo quita los roles que él mismo dio, y devuelve el rol cuando el miembro está en línea con un estado que coincide. A un miembro del que simplemente no tiene presencia nunca lo cambia. Con varias reglas para un mismo rol, el rol se queda mientras una de ellas coincida.",
+  "Take the role away (default)": "Quitar el rol (lo normal)",
+  "Keep the role": "Conservar el rol",
+  "Petto only takes away roles it gave itself, and gives the role back, without thanking the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "Petto solo quita los roles que él mismo dio, y devuelve el rol, sin volver a darle las gracias al miembro, cuando está en línea con un estado que coincide. A un miembro del que simplemente no tiene presencia nunca lo cambia. Si otra regla del mismo rol (de nombre o de Server Tag) sigue coincidiendo, el rol se queda.",
 };

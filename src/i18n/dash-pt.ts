@@ -3447,7 +3447,7 @@ export const dashPt: Record<string, string> = {
   "When a member goes offline": "Quando um membro fica offline",
   "Discord hides the Custom Status of a member who is offline or invisible. Choose what Petto does with the role of a rule that reads the Custom Status when that happens.": "O Discord esconde o status personalizado de um membro que está offline ou invisível. Escolha o que o Petto faz nesse caso com o cargo de uma regra que lê o status personalizado.",
   "Role of a member who goes offline": "Cargo de um membro que fica offline",
-  "Keep the role (default)": "Manter o cargo (padrão)",
-  "Take the role away": "Tirar o cargo",
-  "Petto only takes away roles it gave itself, and gives the role back when the member is online with a matching status. A member it simply has no presence for is never changed. With several rules for one role, the role stays while one of them matches.": "O Petto só tira os cargos que ele mesmo deu, e devolve o cargo quando o membro está online com um status que coincide. Um membro de quem ele simplesmente não tem presença nunca é alterado. Com várias regras para um mesmo cargo, o cargo fica enquanto uma delas coincidir.",
+  "Take the role away (default)": "Tirar o cargo (o padrão)",
+  "Keep the role": "Manter o cargo",
+  "Petto only takes away roles it gave itself, and gives the role back, without thanking the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "O Petto só tira os cargos que ele mesmo deu, e devolve o cargo, sem agradecer de novo ao membro, quando está online com um status que coincide. Um membro de quem ele simplesmente não tem presença nunca é alterado. Se outra regra do mesmo cargo (de nome ou de Server Tag) ainda coincidir, o cargo fica.",
 };

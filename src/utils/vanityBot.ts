@@ -16,7 +16,7 @@ export interface VanityOverview {
   guild: { id: string; name: string; icon: string | null };
   rules: { vanity: VanityRule[]; guildtag: VanityRule[] };
   notifications: { vanity: VanityNotification; guildtag: VanityNotification };
-  /** What to do with a role when its member goes offline: `keep` (the default) or `remove`. */
+  /** What to do with a role when its member goes offline: `remove` (the default, also without a saved choice) or `keep`. */
   settings: { offline_mode: 'keep' | 'remove' };
   logs: { channel_id: string; events: string[]; embeds: Record<string, string> };
   embeds: string[];
@@ -88,7 +88,7 @@ export async function getVanityOverview(astro: { locals?: any }, guildId: string
       table(`identity_notifications?${where}&select=source_type,channel_id,embed_name,ping`),
       table(`identity_logs?${where}&select=channel_id,events,embeds`),
       table(`embed_templates?${where}&select=name&order=name.asc`),
-      // A bot that has not got the table yet (its schema is applied later) just means the default.
+      // A bot that has not got the table yet (its schema is applied later) just means the default (take the role away).
       table(`identity_settings?${where}&select=offline_mode`).catch(() => [] as any[]),
     ]);
     if (!rolesRes.ok || !channelsRes.ok) return { ok: false, status: 503, code: 'unavailable', message: 'Discord did not answer.' };
@@ -123,7 +123,7 @@ export async function getVanityOverview(astro: { locals?: any }, guildId: string
         guild: { id: guildId, name: guild.name, icon: iconHash(guild.icon) },
         rules: { vanity: vanity as VanityRule[], guildtag: guildtag as VanityRule[] },
         notifications: { vanity: notification('vanity'), guildtag: notification('guildtag') },
-        settings: { offline_mode: settings[0]?.offline_mode === 'remove' ? 'remove' : 'keep' },
+        settings: { offline_mode: settings[0]?.offline_mode === 'keep' ? 'keep' : 'remove' },
         logs: { channel_id: log?.channel_id ?? '', events: LOG_EVENTS.filter((event) => log?.events?.[event]), embeds: log?.embeds ?? {} },
         embeds: embeds.map((row) => String(row.name)),
         roles,
