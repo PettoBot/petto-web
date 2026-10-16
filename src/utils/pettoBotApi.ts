@@ -397,3 +397,21 @@ export async function callPettoAppealFile(
   if (init.body) headers['Content-Type'] = init.contentType ?? 'application/octet-stream';
   try { return await fetch(`${baseUrl}${path}`, { method: init.method ?? 'GET', headers, body: init.body, signal: AbortSignal.timeout(30_000) }); } catch { return null; }
 }
+
+/** Makes the bot save its copy of the server (roles, channels) now, so the lists in the dashboard show what was just made in Discord. */
+export async function callPettoResync(context: AstroContext, guildId: string, userId: string): Promise<{ ok: boolean; message?: string }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/resync`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(20_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : undefined };
+  } catch {
+    return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}
