@@ -22,13 +22,41 @@ interface Props {
   error: string | null;
   maintenance?: boolean;
   teamNotice?: boolean;
+  restoreJob?: { status: string } | null;
 }
-const { user, guildId, guildName, guildIcon, backups, audit, schedule, connected, message, error, maintenance = false, teamNotice = false } = Astro.props;
+const { user, guildId, guildName, guildIcon, backups, audit, schedule, connected, message, error, maintenance = false, teamNotice = false, restoreJob = null } = Astro.props;
 function date(value: string) { return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
 function sourceLabel(source: string) { return source === 'scheduled' ? dt('Automatic') : dt('Manual'); }
 function actionLabel(action: string) {
   return ({ backup_created: dt('Backup created'), backup_exported: dt('Backup exported'), backup_restored: dt('Backup restored'), schedule_updated: dt('Schedule updated'), schedule_disabled: dt('Schedule disabled') } as Record<string, string>)[action] ?? action;
 }
+
+// Every text of the restore dialog, in the language of the dashboard (the dialog is drawn by its script).
+const restoreText = {
+  title: dt('Restore a backup'), close: dt('Close'), cancel: dt('Cancel'), back: dt('Back'), loading: dt('Loading...'),
+  mergeTitle: dt('Merge (safe)'), mergeBody: dt('Creates what is missing and updates what exists. Deletes nothing.'),
+  replaceTitle: dt('Replace'), replaceBody: dt('Makes the server match the backup: it also deletes the channels and roles that are not in it.'),
+  review: dt('Review what will change'), continue: dt('Continue'),
+  roles: dt('Roles'), channels: dt('Channels'), emojis: dt('Emojis'), plan: dt('{a} to create · {b} to update'),
+  deleting: dt('It will delete {a} channels and {b} roles that are not in this backup:'), deletingNothing: dt('Nothing will be deleted.'),
+  safety: dt('A safety backup of the server as it is now is saved first, so you can go back.'),
+  checkTitle: dt('Prove you are a person'), letters: dt('Type the letters of the picture.'), serverName: dt('Type the exact name of this server: {a}'),
+  placeholder: dt('Your answer'), newPicture: dt('New picture'), start: dt('Start restore'),
+  progress: dt('Restoring backup #{a}'), step: dt('Step {a} of {b}'), stop: dt('Stop restore'), stopping: dt('Stopping after the current step...'),
+  hint: dt('You can stop it. What was already restored stays, and nothing else is deleted.'),
+  phases: { safety: dt('Saving a safety backup...'), roles: dt('Restoring roles...'), channels: dt('Restoring channels...'), settings: dt('Restoring server settings...'), emojis: dt('Restoring emojis...'), cleanup: dt('Deleting what is not in the backup...') },
+  done: dt('Restore finished.'), stopped: dt('Restore stopped. What was already restored stays, and nothing more was deleted.'),
+  failed: dt('The restore failed: {a}'), safetyKept: dt('Safety backup #{a} has the server as it was before.'),
+  skipped: dt('Some roles or channels could not be created, so nothing was deleted.'),
+  summary: dt('Created {a} · updated {b} · deleted {c}'), warnings: dt('Finished with warnings:'),
+  errors: {
+    generic: dt('Something went wrong. Try again.'), bot_unavailable: dt('Petto could not be reached. Try again in a moment.'),
+    administrator_required: dt('Only server administrators can restore backups.'), restore_running: dt('A restore is already running in this server.'),
+    captcha_expired: dt('That check expired. Get a new picture.'), captcha_wrong: dt('That is not right. Get a new picture and try again.'),
+    captcha_locked: dt('Too many wrong answers. Try again in 10 minutes.'), backup_not_found: dt('That backup no longer exists.'), maintenance: dt('Backups are under maintenance'),
+  },
+};
+const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJob.status);
 ---
 
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="backups" pageTitle="Backups">
@@ -77,13 +105,168 @@ function actionLabel(action: string) {
 
       <section class="vb-card vb-section-card">
         <div class="vb-section-head"><div><h2><Icon name="ph:stack-fill" width="16" height="16" />{dt('Saved backups')}</h2><p>{dt('Recent snapshots for this server. Manual backups are kept until you remove them.')}</p></div><span class="vb-count">{backups.length} recent</span></div>
-        {backups.length ? <div class="vb-list">{backups.map((backup) => <div class="vb-row"><span class="vb-row-icon"><Icon name={backup.source === 'scheduled' ? 'ph:clock-fill' : 'ph:archive-fill'} width="15" height="15" /></span><div class="vb-row-main"><strong>{backup.label || 'Manual backup'}</strong><span>#{backup.backup_number} · {sourceLabel(backup.source)} · {date(backup.created_at)}</span></div><a class="btn btn-ghost btn-sm" href={`/dash/guild/${guildId}/backups-export?id=${encodeURIComponent(String(backup.backup_number))}`}><Icon name="ph:download-simple-bold" width="14" height="14" />{dt('Export')}</a><form method="POST" class="vb-inline-form"><input type="hidden" name="action" value="restore" /><input type="hidden" name="backup_id" value={String(backup.backup_number)} /><input type="hidden" name="mode" value="merge" /><input type="hidden" name="confirm" value="true" /><button class="btn btn-ghost btn-sm" type="submit"><Icon name="ph:archive-fill" width="14" height="14" />{dt('Restore')}</button></form><form method="POST" class="vb-inline-form" onsubmit="return confirm('Replace mode deletes channels and roles that are not in this backup. Continue?')"><input type="hidden" name="action" value="restore" /><input type="hidden" name="backup_id" value={String(backup.backup_number)} /><input type="hidden" name="mode" value="replace" /><input type="hidden" name="confirm" value="true" /><button class="btn btn-danger btn-sm" type="submit">{dt('Replace')}</button></form></div>)}</div> : <p class="vb-empty-inline">{dt('No backups yet. Create your first snapshot above.')}</p>}
+        {backups.length ? <div class="vb-list">{backups.map((backup) => <div class="vb-row"><span class="vb-row-icon"><Icon name={backup.source === 'scheduled' ? 'ph:clock-fill' : 'ph:archive-fill'} width="15" height="15" /></span><div class="vb-row-main"><strong>{backup.label || 'Manual backup'}</strong><span>#{backup.backup_number} · {sourceLabel(backup.source)} · {date(backup.created_at)}</span></div><a class="btn btn-ghost btn-sm" href={`/dash/guild/${guildId}/backups-export?id=${encodeURIComponent(String(backup.backup_number))}`}><Icon name="ph:download-simple-bold" width="14" height="14" />{dt('Export')}</a><button class="btn btn-ghost btn-sm" type="button" data-vb-restore={String(backup.backup_number)} data-vb-label={backup.label || 'Manual backup'}><Icon name="ph:archive-fill" width="14" height="14" />{dt('Restore')}</button></div>)}</div> : <p class="vb-empty-inline">{dt('No backups yet. Create your first snapshot above.')}</p>}
       </section>
 
       <section class="vb-card vb-section-card">
         <div class="vb-section-head"><div><h2><Icon name="ph:list-dashes-fill" width="16" height="16" />{dt('Activity history')}</h2><p>{dt('See who created, exported, or changed a Vault schedule.')}</p></div></div>
         {audit.length ? <div class="vb-audit-list">{audit.map((entry) => <div class="vb-audit-row"><span class="vb-audit-dot"></span><div><strong>{actionLabel(entry.action)}</strong><span>{dt('User {a} {b}· {c}', { a: (entry.actor_id), b: (entry.backup_number ? `· backup #${entry.backup_number} ` : ''), c: (date(entry.created_at)) })}</span></div></div>)}</div> : <p class="vb-empty-inline">{dt('No Vault activity recorded yet.')}</p>}
       </section>
+
+      <dialog class="vb-dialog" id="vb-restore" data-guild={guildId} data-running={restoreRunning ? '1' : ''} data-text={JSON.stringify(restoreText)}>
+        <div class="vb-dlg-head"><h2 data-r="title"></h2><button type="button" class="vb-dlg-x" data-r="x" aria-label={dt('Close')}><Icon name="ph:x-bold" width="14" height="14" /></button></div>
+        <div class="vb-dlg-body" data-r="body"></div>
+        <div class="vb-dlg-foot" data-r="foot"></div>
+      </dialog>
+      <script is:inline>
+        (function () {
+          var dlg = document.getElementById('vb-restore');
+          if (!dlg) return;
+          var T = JSON.parse(dlg.dataset.text);
+          var base = '/dash/guild/' + dlg.dataset.guild + '/backups-restore';
+          var S = { number: 0, label: '', mode: 'merge', challenge: null, timer: 0, view: '', refs: null };
+          var body = dlg.querySelector('[data-r=body]'), foot = dlg.querySelector('[data-r=foot]');
+          dlg.querySelector('[data-r=title]').textContent = T.title;
+          function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+          function fill(text, map) { return String(text).replace(/\{(\w+)\}/g, function (_, k) { return map[k] != null ? map[k] : ''; }); }
+          function api(step, opts) {
+            opts = opts || {};
+            var post = Boolean(opts.post);
+            return fetch(base + '?step=' + step + (opts.query ? '&' + opts.query : ''), {
+              method: post ? 'POST' : 'GET', cache: 'no-store',
+              headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Petto-Dash': '1' },
+              body: post ? JSON.stringify(opts.body || {}) : undefined,
+            }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'generic' }; }); }).catch(function () { return { ok: false, error: 'bot_unavailable' }; });
+          }
+          function say(code) { return T.errors[code] || T.errors.generic; }
+          function button(label, cls, onClick, disabled) { var b = el('button', 'btn btn-sm ' + cls, label); b.type = 'button'; if (disabled) b.disabled = true; b.addEventListener('click', onClick); return b; }
+          function setFoot() { foot.replaceChildren.apply(foot, arguments); }
+          function note(text, kind) { return el('div', 'vb-note ' + (kind || ''), text); }
+          function stopPoll() { if (S.timer) { clearInterval(S.timer); S.timer = 0; } }
+          function close() { stopPoll(); if (dlg.open) dlg.close(); if (S.view === 'end') location.reload(); }
+          dlg.querySelector('[data-r=x]').addEventListener('click', close);
+          dlg.addEventListener('cancel', function () { stopPoll(); if (S.view === 'end') setTimeout(function () { location.reload(); }, 0); });
+
+          function showMode() {
+            S.view = 'mode'; stopPoll();
+            var wrap = el('div', 'vb-modes');
+            [['merge', T.mergeTitle, T.mergeBody], ['replace', T.replaceTitle, T.replaceBody]].forEach(function (m) {
+              var label = el('label', 'vb-mode' + (m[0] === 'replace' ? ' danger' : '') + (S.mode === m[0] ? ' on' : ''));
+              var input = el('input'); input.type = 'radio'; input.name = 'vb-mode'; input.value = m[0]; input.checked = S.mode === m[0];
+              input.addEventListener('change', function () { S.mode = m[0]; wrap.querySelectorAll('.vb-mode').forEach(function (n) { n.classList.toggle('on', n === label); }); });
+              var text = el('span'); text.append(el('strong', null, m[1]), el('small', null, m[2]));
+              label.append(input, text); wrap.append(label);
+            });
+            body.replaceChildren(el('p', 'vb-dlg-sub', '#' + S.number + ' · ' + S.label), wrap);
+            setFoot(button(T.cancel, 'btn-ghost', close), button(T.review, 'btn-accent', showPreview));
+          }
+          function row(name, plan) { var r = el('div', 'vb-plan-row'); r.append(el('strong', null, name), el('span', null, fill(T.plan, { a: plan[0], b: plan[1] }))); return r; }
+          function showPreview() {
+            S.view = 'preview';
+            body.replaceChildren(note(T.loading)); setFoot(button(T.back, 'btn-ghost', showMode));
+            api('preview', { query: 'backup_id=' + S.number + '&mode=' + S.mode }).then(function (r) {
+              if (!r.ok) { body.replaceChildren(note(say(r.error), 'bad')); return; }
+              var p = r.plan, nodes = [row(T.roles, [p.roles.create, p.roles.update]), row(T.channels, [p.channels.create, p.channels.update]), row(T.emojis, [p.emojis.create, p.emojis.update])];
+              if (S.mode === 'replace') {
+                if (p.deleteChannelCount || p.deleteRoleCount) {
+                  var box = note(fill(T.deleting, { a: p.deleteChannelCount, b: p.deleteRoleCount }), 'bad');
+                  if (p.deleteChannels.length) box.append(el('small', null, T.channels + ': ' + p.deleteChannels.join(', ')));
+                  if (p.deleteRoles.length) box.append(el('small', null, T.roles + ': ' + p.deleteRoles.join(', ')));
+                  nodes.push(box);
+                } else nodes.push(note(T.deletingNothing));
+              }
+              nodes.push(note(T.safety));
+              body.replaceChildren.apply(body, nodes);
+              setFoot(button(T.back, 'btn-ghost', showMode), button(T.continue, S.mode === 'replace' ? 'btn-danger' : 'btn-accent', showCheck, Boolean(r.running)));
+            });
+          }
+          function showCheck() {
+            S.view = 'check';
+            body.replaceChildren(note(T.loading)); setFoot(button(T.back, 'btn-ghost', showPreview));
+            api('challenge', { post: true }).then(function (r) {
+              if (!r.ok) { body.replaceChildren(note(say(r.error), 'bad')); return; }
+              S.challenge = r.challenge;
+              var nodes = [el('p', 'vb-dlg-sub', T.checkTitle)];
+              if (r.challenge.kind === 'letters') { var img = el('img', 'vb-captcha'); img.src = r.challenge.image; img.alt = ''; nodes.push(img, el('p', 'vb-dlg-sub', T.letters)); }
+              else nodes.push(el('p', 'vb-dlg-sub', fill(T.serverName, { a: r.challenge.name })));
+              var input = el('input', 'vb-answer'); input.type = 'text'; input.autocomplete = 'off'; input.autocapitalize = 'characters'; input.maxLength = 100; input.placeholder = T.placeholder;
+              var message = el('div', 'vb-msg');
+              nodes.push(input, message);
+              body.replaceChildren.apply(body, nodes);
+              var go = button(T.start, S.mode === 'replace' ? 'btn-danger' : 'btn-accent', function () {
+                go.disabled = true;
+                api('start', { post: true, body: { backup_id: S.number, mode: S.mode, challenge_id: S.challenge.id, answer: input.value } }).then(function (res) {
+                  if (res.ok && res.job) { showProgress(res.job); poll(); return; }
+                  message.textContent = say(res.error); message.className = 'vb-msg bad'; go.disabled = res.error === 'captcha_locked';
+                  if (['captcha_wrong', 'captcha_expired'].indexOf(res.error) >= 0) go.disabled = true;
+                });
+              }, true);
+              input.addEventListener('input', function () { go.disabled = !input.value.trim(); });
+              input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !go.disabled) go.click(); });
+              setFoot(button(T.back, 'btn-ghost', showPreview), button(T.newPicture, 'btn-ghost', showCheck), go);
+              input.focus();
+            });
+          }
+          function showProgress(job) {
+            if (S.view !== 'progress') {
+              S.view = 'progress';
+              var title = el('p', 'vb-dlg-sub'), track = el('div', 'vb-bar'), fillBar = el('i'), line = el('div', 'vb-bar-line'), phase = el('div', 'vb-phase'), hint = note(T.hint);
+              track.append(fillBar);
+              body.replaceChildren(title, track, line, phase, hint);
+              var stop = button(T.stop, 'btn-danger', function () { stop.disabled = true; api('cancel', { post: true }); });
+              setFoot(stop);
+              S.refs = { title: title, fill: fillBar, line: line, phase: phase, hint: hint, stop: stop };
+            }
+            var f = S.refs;
+            f.title.textContent = fill(T.progress, { a: job.number });
+            f.fill.style.width = job.percent + '%';
+            f.line.textContent = job.percent + '% · ' + fill(T.step, { a: job.done, b: job.total });
+            f.phase.textContent = T.phases[job.phase] || T.phases.roles;
+            f.hint.textContent = job.status === 'cancelling' ? T.stopping : T.hint;
+            f.stop.disabled = job.status === 'cancelling';
+          }
+          function showEnd(job) {
+            S.view = 'end'; stopPoll();
+            var r = job.result, nodes = [], bad = job.status === 'failed';
+            nodes.push(note(bad ? fill(T.failed, { a: job.error || '' }) : job.status === 'cancelled' ? T.stopped : T.done, bad ? 'bad' : job.status === 'cancelled' ? '' : 'good'));
+            if (r) {
+              var made = (r.roles.created || 0) + (r.channels.created || 0) + (r.emojis.created || 0), changed = (r.roles.updated || 0) + (r.channels.updated || 0) + (r.emojis.updated || 0);
+              nodes.push(el('p', 'vb-dlg-sub', fill(T.summary, { a: made, b: changed, c: (r.deleted.channels || 0) + (r.deleted.roles || 0) })));
+              if (r.deletionSkipped) nodes.push(note(T.skipped, 'bad'));
+              if (r.errors && r.errors.length) { var box = note(T.warnings); r.errors.forEach(function (e) { box.append(el('small', null, e)); }); nodes.push(box); }
+            }
+            if (job.safetyNumber) nodes.push(note(fill(T.safetyKept, { a: job.safetyNumber })));
+            body.replaceChildren.apply(body, nodes);
+            setFoot(button(T.close, 'btn-accent', close));
+          }
+          function poll() {
+            stopPoll();
+            S.timer = setInterval(function () {
+              if (!document.body.contains(dlg)) { stopPoll(); return; }
+              api('status').then(function (r) {
+                if (!r.ok || !r.job) return;
+                if (['done', 'cancelled', 'failed'].indexOf(r.job.status) >= 0) showEnd(r.job); else showProgress(r.job);
+              });
+            }, 2000);
+          }
+          function open(number, label) {
+            S.number = number; S.label = label; S.mode = 'merge'; S.view = '';
+            body.replaceChildren(note(T.loading)); setFoot();
+            if (!dlg.open) dlg.showModal();
+            api('status').then(function (r) {
+              if (r.ok && r.job && ['running', 'cancelling'].indexOf(r.job.status) >= 0) { showProgress(r.job); poll(); } else showMode();
+            });
+          }
+          document.querySelectorAll('[data-vb-restore]').forEach(function (b) {
+            b.addEventListener('click', function () { open(Number(b.getAttribute('data-vb-restore')), b.getAttribute('data-vb-label') || ''); });
+          });
+          if (dlg.dataset.running) {
+            api('status').then(function (r) {
+              if (r.ok && r.job && ['running', 'cancelling'].indexOf(r.job.status) >= 0) { S.number = r.job.number; if (!dlg.open) dlg.showModal(); showProgress(r.job); poll(); }
+            });
+          }
+        })();
+      </script>
     </>
   )}
   </MaintenanceGate>
@@ -122,7 +305,7 @@ function actionLabel(action: string) {
   .vb-form input, .vb-form select { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--bg-raise); color: var(--text); font: 13px var(--sans); }
   .vb-form input { width: min(250px, 100%); }
   .vb-form input:focus, .vb-form select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-  .btn-sm { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12px; }
+  .vb-dialog :global(.btn-sm), .btn-sm { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12px; }
   .vb-unschedule { margin-top: 12px; }
   .vb-unschedule button { border: 0; padding: 0; color: var(--red); background: transparent; font-size: 11px; cursor: pointer; }
   .vb-section-card + .vb-section-card { margin-top: 14px; }
@@ -137,13 +320,45 @@ function actionLabel(action: string) {
   .vb-row-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
   .vb-row-main span, .vb-audit-row span { color: var(--text-dim); font-size: 11px; }
   .vb-inline-form { display: inline-flex; margin: 0; }
-  .btn-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+  .vb-dialog :global(.btn-danger), .btn-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
   .vb-empty-inline { border: 1px dashed var(--border); border-radius: 9px; padding: 14px; }
   .vb-audit-list { display: flex; flex-direction: column; gap: 10px; }
   .vb-audit-row { display: flex; align-items: flex-start; gap: 10px; }
   .vb-audit-dot { width: 7px; height: 7px; border-radius: 50%; margin: 5px 2px 0; background: var(--accent); flex-shrink: 0; }
   .vb-audit-row div { display: flex; flex-direction: column; gap: 3px; }
   .vb-audit-row strong { color: var(--text); font-size: 12.5px; }
+
+  .vb-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(86vh, 720px); overflow: auto; border: 1px solid var(--border); border-radius: 16px; padding: 0; background: var(--card); color: var(--text); box-shadow: 0 24px 70px rgba(0, 0, 0, .55); }
+  .vb-dialog::backdrop { background: rgba(10, 8, 6, .62); backdrop-filter: blur(3px); }
+  .vb-dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px 6px; }
+  .vb-dlg-head h2 { margin: 0; font-size: 16px; }
+  .vb-dlg-x { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raise); color: var(--text-muted); cursor: pointer; }
+  .vb-dlg-body { display: flex; flex-direction: column; gap: 10px; padding: 8px 18px 4px; font-size: 13px; }
+  .vb-dlg-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 12px 18px 16px; }
+  :global(.vb-dlg-sub) { color: var(--text-muted); font-size: 12.5px; margin: 0; }
+  :global(.vb-modes) { display: flex; flex-direction: column; gap: 8px; }
+  :global(.vb-mode) { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--bg-raise); cursor: pointer; }
+  :global(.vb-mode.on) { border-color: var(--accent); background: var(--accent-soft); }
+  :global(.vb-mode.danger.on) { border-color: var(--red); background: var(--red-soft); }
+  :global(.vb-mode input) { margin-top: 3px; accent-color: var(--accent); }
+  :global(.vb-mode strong) { display: block; font-size: 13px; }
+  :global(.vb-mode small), :global(.vb-note small) { display: block; color: var(--text-dim); font-size: 11.5px; line-height: 1.5; margin-top: 3px; word-break: break-word; }
+  :global(.vb-plan-row) { display: flex; justify-content: space-between; gap: 10px; border: 1px solid var(--border-soft); border-radius: 10px; padding: 9px 12px; background: var(--bg-raise); }
+  :global(.vb-plan-row span) { color: var(--text-dim); font-size: 12px; text-align: right; }
+  :global(.vb-note) { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; color: var(--text-muted); font-size: 12.5px; line-height: 1.5; background: var(--bg-raise); }
+  :global(.vb-note.bad) { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); background: var(--red-soft); }
+  :global(.vb-note.good) { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+  :global(.vb-captcha) { width: 100%; max-width: 320px; align-self: center; border-radius: 10px; border: 1px solid var(--border); background: #fff; }
+  :global(.vb-answer) { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; background: var(--bg-raise); color: var(--text); font: 15px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+  :global(.vb-answer:focus) { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  :global(.vb-msg) { min-height: 16px; font-size: 12px; }
+  :global(.vb-msg.bad) { color: var(--red); }
+  :global(.vb-bar) { height: 10px; border-radius: 999px; background: var(--bg-raise); border: 1px solid var(--border-soft); overflow: hidden; }
+  :global(.vb-bar i) { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--yellow)); transition: width .6s ease; }
+  :global(.vb-bar-line) { font: 600 12px var(--mono); color: var(--text); }
+  :global(.vb-phase) { color: var(--text-muted); font-size: 12.5px; }
+  :global(.vb-dialog .btn:disabled) { opacity: .55; cursor: not-allowed; }
+  @media (prefers-reduced-motion: reduce) { :global(.vb-bar i) { transition: none; } }
   @media (max-width: 680px) { .vb-heading { flex-direction: column; } .vb-grid { grid-template-columns: 1fr; } }
   @media (max-width: 430px) { .vb-row { align-items: flex-start; flex-wrap: wrap; } .vb-row .btn { margin-left: 37px; } .vb-form > * { width: 100%; } .vb-form input, .vb-form select { width: 100%; } }
 </style>

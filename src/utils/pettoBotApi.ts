@@ -78,6 +78,27 @@ export async function callPettoVault(context: AstroContext, guildId: string, use
   return { ok: response.ok && payload?.ok !== false, error: payload?.error ?? null, payload };
 }
 
+/** One step of a restore (`status`, `preview`, `challenge`, `start`, `cancel`) on the bot: it answers what to show, or why not. */
+export async function callPettoVaultRestore(context: AstroContext, guildId: string, userId: string, step: string, init: { method?: 'GET' | 'POST'; query?: Record<string, string>; body?: Record<string, unknown> } = {}) {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, status: 503, payload: { ok: false, error: 'not_configured' } as any };
+  const method = init.method ?? 'GET';
+  const query = new URLSearchParams({ ...(init.query ?? {}), ...(method === 'GET' ? { user_id: userId } : {}) });
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/vault/${encodeURIComponent(guildId)}/restore/${encodeURIComponent(step)}${query.size ? `?${query}` : ''}`, {
+      method,
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}) },
+      ...(method === 'POST' ? { body: JSON.stringify({ ...(init.body ?? {}), user_id: userId }) } : {}),
+      signal: AbortSignal.timeout(20_000),
+    });
+    let payload: any = null;
+    try { payload = await response.json(); } catch { /* Keep the HTTP status. */ }
+    return { ok: response.ok && payload?.ok !== false, status: response.status, payload };
+  } catch {
+    return { ok: false, status: 502, payload: { ok: false, error: 'bot_unavailable' } as any };
+  }
+}
+
 export async function exportPettoVaultBackup(context: AstroContext, guildId: string, userId: string, backupId: string) {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return new Response('Petto Vault is not configured.', { status: 503 });
