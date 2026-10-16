@@ -1109,8 +1109,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // 80 ms, and at most two of those reads run at once (a click never waits for that limit).
     var prefetchedPages = new Map();
     var prefetchedAt = new Map();
-    // A page asked for ahead is only used for a short while: what it shows can change (a save in another tab, the bot, a command).
-    var PREFETCH_MAX_AGE_MS = 15000;
+    // A page asked for ahead is used for a minute and a half at most, and dropped sooner by any change made from this page.
+    var PREFETCH_MAX_AGE_MS = 90000;
     var HOVER_DELAY_MS = 80;
     var MAX_HOVER_PREFETCHES = 2;
     var hoverPrefetches = 0;
@@ -1150,11 +1150,17 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       var nativeFetch = window.fetch;
       window.fetch = function (input, init) {
         var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-        if (method !== 'GET' && method !== 'HEAD') { prefetchedPages.clear(); prefetchedAt.clear(); }
+        var target = String((typeof input === 'string' ? input : input && input.url) || '');
+        // Previews and searches only read; they must not throw away the pages fetched ahead.
+        if (method !== 'GET' && method !== 'HEAD' && !/preview|search|role-blocks|cards-api/.test(target)) { prefetchedPages.clear(); prefetchedAt.clear(); }
         return nativeFetch.apply(this, arguments);
       };
       // Coming back to the tab (or to the page with Back) after a while: what was fetched ahead is old.
-      document.addEventListener('visibilitychange', function () { if (!document.hidden) { prefetchedPages.clear(); prefetchedAt.clear(); } });
+      var hiddenAt = 0;
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { hiddenAt = Date.now(); return; }
+        if (hiddenAt && Date.now() - hiddenAt > 60000) { prefetchedPages.clear(); prefetchedAt.clear(); }
+      });
       window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
     })();
 
