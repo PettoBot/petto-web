@@ -2,6 +2,7 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashTabs from './DashTabs.astro';
+import ChannelOptions from './ChannelOptions.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -47,7 +48,7 @@ interface Props {
   guildId: string;
   guildName: string;
   guildIcon: string;
-  channels: { id: string; name: string }[];
+  channels: { id: string; name: string; category?: string }[];
   routing: Record<string, string>;
   ignoredIds: IgnoredId[];
   saved: boolean;
@@ -72,11 +73,14 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
     <label for="dlAll">{dt('Send everything to one channel')}</label>
     <select id="dlAll" data-dl-all>
       <option value="">{dt('Pick a channel')}</option>
-      {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
+      <ChannelOptions channels={channels} create />
     </select>
     <button type="button" class="btn btn-ghost btn-sm" data-dl-all-apply>{dt('Use it for every event')}</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-dl-all-clear>{dt('Turn every event off')}</button>
     <span class="dl-bulk-note" data-dl-note hidden><Icon name="ph:check-circle-fill" width="13" height="13" />{dt('Set on every event. Press Save changes to keep it.')}</span>
   </div>
+
+  <p class="dl-hint">{dt('"Create a new channel" makes a private channel called #petto-logs that only the staff can see, when you save.')}</p>
 
   <div data-tabs="logging">
     <div class="dgl-tabs" role="tablist" aria-label={dt('Logging')}>
@@ -89,6 +93,14 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
       <form method="POST" class="dl-routing-form">
         {GROUPS.map((g) => (
           <div class="dl-panel" data-panel={g.id} hidden>
+            <div class="dl-group-bar">
+              <label>{dt('Send this whole group to')}</label>
+              <select data-dl-group>
+                <option value="">{dt('Pick a channel')}</option>
+                <ChannelOptions channels={channels} create />
+              </select>
+              <button type="button" class="btn btn-ghost btn-sm" data-dl-group-clear>{dt('Turn this group off')}</button>
+            </div>
             {EVENTS.filter((ev) => g.events.includes(ev.id)).map((ev) => {
               const active = Boolean(routing[ev.id]);
               return (
@@ -103,9 +115,7 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
                   </div>
                   <select name={`event_${ev.id}`}>
                     <option value="">{dt('Off, don\'t log this')}</option>
-                    {channels.map((c) => (
-                      <option value={c.id} selected={c.id === routing[ev.id]}>#{c.name}</option>
-                    ))}
+                    <ChannelOptions channels={channels} selected={routing[ev.id]} create />
                   </select>
                 </div>
               );
@@ -163,12 +173,32 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
       var note = document.querySelector('[data-dl-note]');
       if (note) note.hidden = false;
     };
+    // The same for the events of one group (a tab), and the buttons that turn events off.
+    var setSelects = function (selects, value) {
+      selects.forEach(function (select) {
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
     document.addEventListener('change', function (event) {
-      if (event.target && event.target.matches && event.target.matches('[data-dl-all]')) applyAll();
+      var target = event.target;
+      if (!target || !target.matches) return;
+      if (target.matches('[data-dl-all]')) applyAll();
+      if (target.matches('[data-dl-group]') && target.value) {
+        var panel = target.closest('.dl-panel');
+        if (panel) setSelects(Array.prototype.slice.call(panel.querySelectorAll('select[name^="event_"]')), target.value);
+      }
     });
     document.addEventListener('click', function (event) {
-      var button = event.target && event.target.closest ? event.target.closest('[data-dl-all-apply]') : null;
-      if (button) applyAll();
+      var closest = function (selector) { return event.target && event.target.closest ? event.target.closest(selector) : null; };
+      if (closest('[data-dl-all-apply]')) applyAll();
+      if (closest('[data-dl-all-clear]')) setSelects(Array.prototype.slice.call(document.querySelectorAll('.dl-routing-form select[name^="event_"]')), '');
+      var groupClear = closest('[data-dl-group-clear]');
+      if (groupClear) {
+        var panel = groupClear.closest('.dl-panel');
+        if (panel) setSelects(Array.prototype.slice.call(panel.querySelectorAll('select[name^="event_"]')), '');
+      }
     });
   }
 </script>
@@ -179,6 +209,10 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
   :global(#dgl-content:has(.dgl-tab[data-tab="ignored"].on)) .dl-bulk { display: none; }
   .dl-problem { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--red); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); border-radius: 9px; padding: 10px 14px; margin-bottom: 12px; max-width: fit-content; }
   .dl-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 16px; }
+  .dl-hint { margin: -6px 0 16px; font-size: 12.5px; color: var(--text-dim); }
+  .dl-group-bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 11px; }
+  .dl-group-bar label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .dl-group-bar select { border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--bg-raise); color: var(--text); font: 12.5px var(--sans); max-width: 100%; }
   .dl-bulk-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--green); }
   .dl-bulk label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
   .dl-bulk select { border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--bg-raise); color: var(--text); font: 12.5px var(--sans); }

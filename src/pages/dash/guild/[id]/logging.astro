@@ -9,6 +9,9 @@ import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 
 const EVENTS = ['sanctions', 'automod', 'verification', 'members', 'messages', 'voice', 'roles', 'channels', 'invites', 'emojis', 'webhooks', 'threads', 'integrations', 'commands', 'tickets', 'server'];
 
+// The value of the "Create a new channel" choice in a channel picker.
+const NEW_CHANNEL = '__new__';
+
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
@@ -70,6 +73,35 @@ if (Astro.request.method === 'POST') {
       const selected = String(form.get(`event_${eventId}`) ?? '').trim();
       const previous = currentRouting[eventId];
       if (selected !== (previous ?? '')) changes.push({ eventId, selected, previous });
+    }
+
+    // "Create a new channel": one private channel for every event that asked for it, made before the webhooks.
+    if (changes.some((c) => c.selected === NEW_CHANNEL)) {
+      let botId = '';
+      try { botId = atob(botToken.split('.')[0]); } catch { botId = ''; }
+      const created = await fetch(`https://discord.com/api/guilds/${id}/channels`, {
+        method: 'POST',
+        headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'petto-logs',
+          type: 0,
+          topic: 'Server logs sent by Petto.',
+          // Only the staff (and Petto) can see it: everyone else is denied View Channel.
+          permission_overwrites: [
+            { id, type: 0, deny: '1024' },
+            ...(botId ? [{ id: botId, type: 1, allow: String(1024 + 2048 + 16384 + 536870912) }] : []),
+          ],
+        }),
+      }).catch(() => null);
+      const detail: any = created ? await created.json().catch(() => null) : null;
+      if (created?.ok && detail?.id) {
+        noteGuildWrite(id);
+        for (const c of changes) if (c.selected === NEW_CHANNEL) c.selected = String(detail.id);
+        channelNames.set(String(detail.id), 'petto-logs');
+      } else {
+        problems.push(detail?.code === 50013 || created?.status === 403 ? dt('I need the Manage Channels permission to create a channel.') : dt('The channel could not be created.'));
+        for (let i = changes.length - 1; i >= 0; i -= 1) if (changes[i].selected === NEW_CHANNEL) changes.splice(i, 1);
+      }
     }
 
     // One webhook per channel that has none yet, all at once. A channel that cannot get one is reported and its events are left as they were.
@@ -141,10 +173,13 @@ const routing: Record<string, string> = {};
 for (const e of entries) routing[e.event] = e.channel_id;
 
 const allChannels = channelsRes.ok ? await channelsRes.json() : [];
+// Channels come with the name of their category, so the pickers can group them the way Discord does.
+const categoryNames = new Map<string, string>(allChannels.filter((c: any) => c.type === 4).map((c: any) => [String(c.id), String(c.name)]));
+const categoryOrder = new Map<string, number>(allChannels.filter((c: any) => c.type === 4).map((c: any) => [String(c.id), Number(c.position ?? 0)]));
 const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
-  .sort((a: any, b: any) => a.position - b.position)
-  .map((c: any) => ({ id: c.id, name: c.name }));
+  .sort((a: any, b: any) => (categoryOrder.get(String(a.parent_id)) ?? -1) - (categoryOrder.get(String(b.parent_id)) ?? -1) || a.position - b.position)
+  .map((c: any) => ({ id: c.id, name: c.name, category: categoryNames.get(String(c.parent_id)) ?? '' }));
 
 function channelName(channelId: string) {
   return channels.find((c: any) => c.id === channelId)?.name ?? null;
