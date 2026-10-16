@@ -3,13 +3,20 @@ import { defineMiddleware } from 'astro:middleware';
 import { LANG_COOKIE } from './i18n/dash';
 import { configureSnapshots } from './utils/guildSnapshots';
 import { warmShared } from './utils/sharedCache';
-import { timed } from './utils/serverTiming';
+import { requestGuildChanges, timed } from './utils/serverTiming';
+import { bumpGuildVersion, dashEtag, guildVersion } from './utils/guildVersion';
+import { getGuildSession } from './utils/dashAuth';
+import { getDashLang } from './i18n/dash';
+import { buildInfo } from './utils/buildInfo';
+import { startLatencyKeeping } from './utils/latencyStats';
 
 // On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
 const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
 
 // Connects to Redis (when configured) as the server starts, not on the first page that needs it.
 warmShared();
+// The owner's latency figures (/dash/health) survive a restart through Redis.
+startLatencyKeeping();
 
 const PUBLIC_SHARED_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:stats|status|team|credits|partners|lb\/[^/]+)\/?$/i;
 const PUBLIC_SHARED_CACHE = 'public, s-maxage=60, stale-while-revalidate=600';
@@ -27,9 +34,108 @@ export const onRequest = defineMiddleware(async (context, next) => {
   await directDatabase;
   configureSnapshots({ locals: context.locals });
   // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
-  if (DASH_PATH.test(context.url.pathname)) return withFreshDash(await timed(context, () => handle(context, next)));
+  if (DASH_PATH.test(context.url.pathname)) return withFreshDash(await timed(context, () => handle(context, (payload?: any) => (payload ? next(payload) : guildPage(context, next)))));
   return handle(context, next);
 });
+
+// A page (or a route) of one server. The routes that only stream or report the stamp answer it themselves.
+const GUILD_ROUTE = /^\/dash\/guild\/(\d{5,25})\/([\w-]+)\/?$/;
+const STAMP_ROUTES = new Set(['version', 'events']);
+
+/**
+ * The pages of a server carry the server's change stamp (guildVersion.ts):
+ * - A read answers `X-Dash-Version` (and the page says it on #dgl-content), with an ETag built from the stamp, the minute, the address,
+ *   the visitor and the language. A browser that already has that copy is answered 304 right after the session check, without
+ *   reading or drawing anything.
+ * - A change (any other method) that saved something raises the stamp once it is done, and answers the new one, so the page that comes
+ *   back is known to be current and every other open page of the server reads itself again.
+ */
+async function guildPage(context: APIContext, next: MiddlewareNext): Promise<Response> {
+  const match = GUILD_ROUTE.exec(context.url.pathname);
+  if (!match || STAMP_ROUTES.has(match[2])) return next();
+  const guildId = match[1];
+  const locals = context.locals as Record<string, unknown>;
+  const method = context.request.method.toUpperCase();
+
+  if (method !== 'GET' && method !== 'HEAD') {
+    locals.dashVersion = await guildVersion(guildId);
+    const response = await next();
+    const type = response.headers.get('content-type') ?? '';
+    const answered = response.status < 400 && (type.includes('text/html') || (response.status >= 300 && response.status < 400));
+    const changed = new Set(requestGuildChanges());
+    if (answered) changed.add(guildId);
+    let version = '';
+    for (const id of changed) {
+      const raised = await bumpGuildVersion(id).catch(() => '');
+      if (id === guildId) version = raised;
+    }
+    if (!version) return response;
+    locals.dashVersion = version;
+    return withHeaders(response, { 'X-Dash-Version': version });
+  }
+
+  const partial = Boolean(context.request.headers.get('x-dash-partial'));
+  const ifNoneMatch = context.request.headers.get('if-none-match');
+  // Only a copy this server made (ours start with W/"dv.) is checked before the page runs; anything else is drawn as usual.
+  let etag: string | null = null;
+  let version = '';
+  const auth = await getGuildSession(context, guildId);
+  if (!('redirect' in auth)) {
+    version = await guildVersion(guildId);
+    locals.dashVersion = version;
+    etag = dashEtag({ version, path: context.url.pathname + context.url.search, userId: String(auth.session.userId), lang: getDashLang(context), partial, build: `${buildInfo.version}.${buildInfo.builtAt}` });
+    if (ifNoneMatch && ifNoneMatch.includes('W/"dv.') && ifNoneMatch.split(',').some((tag) => tag.trim() === etag)) {
+      return new Response(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'private, no-cache', Vary: 'X-Dash-Partial', 'X-Dash-Version': version } });
+    }
+  }
+  const response = await next();
+  if (!version) return response;
+  const type = response.headers.get('content-type') ?? '';
+  const extra: Record<string, string> = { 'X-Dash-Version': version };
+  if (etag && response.status === 200 && type.includes('text/html')) {
+    extra.ETag = etag;
+    extra.Vary = 'X-Dash-Partial';
+  }
+  return withHeaders(response, extra);
+}
+
+function withHeaders(response: Response, values: Record<string, string>): Response {
+  try {
+    for (const [name, value] of Object.entries(values)) response.headers.set(name, value);
+    return response;
+  } catch {
+    const headers = new Headers(response.headers);
+    for (const [name, value] of Object.entries(values)) headers.set(name, value);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  }
+}
+
+/** Puts the language prefix on the dashboard links of a page while it streams (it used to wait for the whole page first). */
+function prefixLinks(body: ReadableStream<Uint8Array>, path: string): ReadableStream<Uint8Array> {
+  const LINK = /(\s(?:href|action)=")\/dash(?!\/lang)(?=[/?#"])/g;
+  // A link split between two chunks is finished with the next one. A link starts with a space and has none after it, so everything up
+  // to the last space of a chunk can go at once and only the rest waits.
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let carry = '';
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      const text = carry + decoder.decode(chunk, { stream: true });
+      let cut = text.length;
+      for (let i = text.length - 1; i >= 0; i -= 1) {
+        if (/\s/.test(text[i])) { cut = i; break; }
+      }
+      if (cut === text.length && text.length < 65_536) cut = 0;
+      carry = text.slice(cut);
+      const ready = text.slice(0, cut).replace(LINK, `$1${path}/dash`);
+      if (ready) controller.enqueue(encoder.encode(ready));
+    },
+    flush(controller) {
+      const rest = (carry + decoder.decode()).replace(LINK, `$1${path}/dash`);
+      if (rest) controller.enqueue(encoder.encode(rest));
+    },
+  }));
+}
 
 async function handle({ url, cookies, locals, rewrite, request }: APIContext, next: MiddlewareNext): Promise<Response> {
   // Public pages rendered on each visit (stats, status, team, credits, partners) are the same for everyone, so a cache in front
@@ -69,11 +175,10 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
     return new Response(null, { status: response.status, headers });
   }
 
-  if (!(response.headers.get('content-type') ?? '').includes('text/html')) return response;
-  const html = (await response.text()).replace(/(\s(?:href|action)=")\/dash(?!\/lang)(?=[/?#"])/g, `$1${path}/dash`);
+  if (!(response.headers.get('content-type') ?? '').includes('text/html') || !response.body) return response;
   const headers = new Headers(response.headers);
   headers.delete('content-length');
-  return new Response(html, { status: response.status, statusText: response.statusText, headers });
+  return new Response(prefixLinks(response.body, path), { status: response.status, statusText: response.statusText, headers });
 }
 
 /**

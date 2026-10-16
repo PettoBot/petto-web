@@ -1,5 +1,6 @@
 import { getEnv } from './env';
 import { invalidate, onSharedMessage, sharedGetRaw, sharedMessagesLive } from './sharedCache';
+import { bumpGuildVersion } from './guildVersion';
 
 /**
  * The bot saves a copy of every server it is in (name, icon, members, channels, roles) in the `discord_guild_snapshots`
@@ -60,8 +61,16 @@ function dropGuild(guildId: string): void {
 // The bot publishes the id of a server on `petto:snap` each time it saves its copy (and keeps the row in `petto:snap:<id>`).
 onSharedMessage('petto:snap', (message) => {
   const guildId = String(message).trim();
-  if (/^\d{5,25}$/.test(guildId)) dropGuild(guildId);
+  if (!/^\d{5,25}$/.test(guildId)) return;
+  dropGuild(guildId);
+  // A new role, channel, name or icon: the open dashboards of that server read their page again (see guildVersion.ts).
+  void bumpGuildVersion(guildId).catch(() => {});
 });
+
+/** Drops the copy kept here so the next read takes the one the bot just saved (Redis `petto:snap:<id>`, or the table). */
+export function forgetGuildSnapshot(guildId: string): void {
+  dropGuild(guildId);
+}
 
 /** After a change made from the dashboard the page that follows must show it, and the bot saves its copy a few seconds later, so Discord answers until then. */
 export function noteGuildWrite(guildId: string): void {
