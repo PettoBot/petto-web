@@ -1035,7 +1035,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       });
     }
 
-    function swapContent(html, pushUrl) {
+    function swapContent(html, pushUrl, keepScroll) {
       var doc = new DOMParser().parseFromString(html, 'text/html');
       var fresh = doc.getElementById('dgl-content');
       var current = document.getElementById('dgl-content');
@@ -1059,7 +1059,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
         // The sticky top bar covers the first 80px of the page, so the new section is placed below it (scroll-margin-top in
         // Base.astro). Moving to another section starts at its top; a save keeps the place the person was at.
-        fresh.scrollIntoView({ block: pushUrl ? 'start' : 'nearest' });
+        if (!keepScroll) fresh.scrollIntoView({ block: pushUrl ? 'start' : 'nearest' });
         return true;
       });
     }
@@ -1109,11 +1109,18 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // 80 ms, and at most two of those reads run at once (a click never waits for that limit).
     var prefetchedPages = new Map();
     var prefetchedAt = new Map();
-    // A page asked for ahead is used for a minute and a half at most, and dropped sooner by any change made from this page.
-    var PREFETCH_MAX_AGE_MS = 90000;
+    // What each page looked like the last time it was read, to know whether a newer read changed anything.
+    var knownContent = new Map();
+    // A page fetched ahead is shown at once, and then read again in the background (see refreshInBackground), so it is both fast and current.
+    var PREFETCH_MAX_AGE_MS = 10 * 60000;
     var HOVER_DELAY_MS = 80;
     var MAX_HOVER_PREFETCHES = 2;
     var hoverPrefetches = 0;
+    function contentOf(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var node = doc.getElementById('dgl-content');
+      return node ? node.innerHTML : null;
+    }
     function prefetchPage(href, fromHover) {
       if (dirtyForm) return;
       if (prefetchedPages.has(href)) {
@@ -1129,7 +1136,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           if (!res.ok) throw new Error('prefetch failed');
           return res.text();
         })
-        .then(function (html) { done(); return html; }, function () {
+        .then(function (html) { done(); knownContent.set(href, contentOf(html)); return html; }, function () {
           done();
           prefetchedPages.delete(href);
           return null;
@@ -1143,25 +1150,50 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       return request || fetch(href, { method: 'GET', cache: 'no-store' }).then(function (res) { return res.text(); });
     }
 
-    // Any change sent from this page (a button that calls the dashboard, not only a form) drops the pages fetched ahead, so the next one is read again.
+    // True when nothing on the page is being edited, so it can be redrawn without losing what the person is doing.
+    function pageIsIdle() {
+      if (dirtyForm || document.hidden) return false;
+      if (document.querySelector('.dgl-selmenu, dialog[open], [data-modal-open]')) return false;
+      var active = document.activeElement;
+      var content = document.getElementById('dgl-content');
+      return !(active && content && content.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
+    }
+
+    // Reads the page again and, if it changed since what is shown, redraws it right where the person was (same scroll position).
+    // Nothing is redrawn while something is being edited, and nothing happens if the page already shows the latest.
+    var refreshing = false;
+    function refreshInBackground(href) {
+      if (refreshing) return;
+      refreshing = true;
+      var path = function (u) { try { return new URL(u, window.location.href).pathname + new URL(u, window.location.href).search; } catch (e) { return u; } };
+      fetch(href, { method: 'GET', cache: 'no-store' })
+        .then(function (res) { return res.ok ? res.text() : null; })
+        .then(function (html) {
+          if (!html) return;
+          var latest = contentOf(html);
+          var before = knownContent.get(href);
+          knownContent.set(href, latest);
+          prefetchedPages.set(href, Promise.resolve(html));
+          prefetchedAt.set(href, Date.now());
+          if (latest === null || before === undefined || latest === before) return;
+          if (path(href) !== path(window.location.href) || !pageIsIdle()) return;
+          var y = window.scrollY;
+          return swapContent(html, null, true).then(function () { window.scrollTo(0, y); });
+        })
+        .catch(function () {})
+        .then(function () { refreshing = false; });
+    }
+
+    // Coming back to the tab after a while: the page is read again in the background, and redrawn only if something changed.
     (function () {
       if (window.__dglFetchWatch) return;
       window.__dglFetchWatch = true;
-      var nativeFetch = window.fetch;
-      window.fetch = function (input, init) {
-        var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-        var target = String((typeof input === 'string' ? input : input && input.url) || '');
-        // Previews and searches only read; they must not throw away the pages fetched ahead.
-        if (method !== 'GET' && method !== 'HEAD' && !/preview|search|role-blocks|cards-api/.test(target)) { prefetchedPages.clear(); prefetchedAt.clear(); }
-        return nativeFetch.apply(this, arguments);
-      };
-      // Coming back to the tab (or to the page with Back) after a while: what was fetched ahead is old.
       var hiddenAt = 0;
       document.addEventListener('visibilitychange', function () {
         if (document.hidden) { hiddenAt = Date.now(); return; }
-        if (hiddenAt && Date.now() - hiddenAt > 60000) { prefetchedPages.clear(); prefetchedAt.clear(); }
+        if (hiddenAt && Date.now() - hiddenAt > 30000) refreshInBackground(window.location.pathname + window.location.search);
       });
-      window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
+      window.addEventListener('pageshow', function (event) { if (event.persisted) refreshInBackground(window.location.pathname + window.location.search); });
     })();
 
     function bindDglLinks(root) {
@@ -1192,7 +1224,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
               return swapContent(html, href);
             })
             .then(function (ok) {
-              if (ok) { updateActiveLink(href); finishProgress(); }
+              if (ok) {
+                updateActiveLink(href);
+                finishProgress();
+                // The copy shown may be a few seconds or minutes old: read it again and redraw only if it changed.
+                if (Date.now() - (prefetchedAt.get(href) || 0) > 2000) refreshInBackground(href);
+              }
               else window.location.href = href;
             })
             .catch(function () { window.location.href = href; });
@@ -1259,7 +1296,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                 form.classList.remove('is-dirty');
                 dirtyForms = dirtyForms.filter(function (f) { return f !== form; });
                 dirtyForm = dirtyForms.length ? dirtyForms[dirtyForms.length - 1] : null;
-                prefetchedPages.clear();
+                prefetchedPages.clear(); prefetchedAt.clear(); knownContent.clear();
                 savedAt = Date.now();
                 if (btn) { btn.disabled = false; btn.textContent = originalText; }
                 if (saveBarBtn) saveBarBtn.disabled = false;
@@ -1272,7 +1309,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
             .then(function (ok) {
               if (ok === 'soft') return;
               if (ok) {
-                prefetchedPages.clear();
+                prefetchedPages.clear(); prefetchedAt.clear(); knownContent.clear();
                 hideSaveBar();
                 savedAt = Date.now();
                 setBarState(null);
