@@ -1106,15 +1106,23 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     // A pointer that only passes over the menu does not fetch anything: the page is asked for after it rests on a link for
     // 80 ms, and at most two of those reads run at once (a click never waits for that limit).
     var prefetchedPages = new Map();
+    var prefetchedAt = new Map();
+    // A page asked for ahead is only used for a short while: what it shows can change (a save in another tab, the bot, a command).
+    var PREFETCH_MAX_AGE_MS = 15000;
     var HOVER_DELAY_MS = 80;
     var MAX_HOVER_PREFETCHES = 2;
     var hoverPrefetches = 0;
     function prefetchPage(href, fromHover) {
-      if (dirtyForm || prefetchedPages.has(href)) return;
+      if (dirtyForm) return;
+      if (prefetchedPages.has(href)) {
+        if (Date.now() - (prefetchedAt.get(href) || 0) < PREFETCH_MAX_AGE_MS) return;
+        prefetchedPages.delete(href);
+      }
       if (fromHover && hoverPrefetches >= MAX_HOVER_PREFETCHES) return;
       if (fromHover) hoverPrefetches += 1;
       var done = function () { if (fromHover) hoverPrefetches -= 1; };
-      var request = fetch(href, { method: 'GET' })
+      prefetchedAt.set(href, Date.now());
+      var request = fetch(href, { method: 'GET', cache: 'no-store' })
         .then(function (res) {
           if (!res.ok) throw new Error('prefetch failed');
           return res.text();
@@ -1127,10 +1135,26 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       prefetchedPages.set(href, request);
     }
     function getPageHtml(href) {
+      if (Date.now() - (prefetchedAt.get(href) || 0) >= PREFETCH_MAX_AGE_MS) prefetchedPages.delete(href);
       if (!prefetchedPages.has(href)) prefetchPage(href);
       var request = prefetchedPages.get(href);
-      return request || fetch(href, { method: 'GET' }).then(function (res) { return res.text(); });
+      return request || fetch(href, { method: 'GET', cache: 'no-store' }).then(function (res) { return res.text(); });
     }
+
+    // Any change sent from this page (a button that calls the dashboard, not only a form) drops the pages fetched ahead, so the next one is read again.
+    (function () {
+      if (window.__dglFetchWatch) return;
+      window.__dglFetchWatch = true;
+      var nativeFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') { prefetchedPages.clear(); prefetchedAt.clear(); }
+        return nativeFetch.apply(this, arguments);
+      };
+      // Coming back to the tab (or to the page with Back) after a while: what was fetched ahead is old.
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) { prefetchedPages.clear(); prefetchedAt.clear(); } });
+      window.addEventListener('pageshow', function (event) { if (event.persisted) window.location.reload(); });
+    })();
 
     function bindDglLinks(root) {
       root.querySelectorAll('.dgl-link').forEach(function (a) {
@@ -1180,7 +1204,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           var url = a.getAttribute('href');
           startProgress();
           showContentSkeleton();
-          fetch(url, { method: 'GET' })
+          fetch(url, { method: 'GET', cache: 'no-store' })
             .then(function (res) { return res.text(); })
             .then(function (html) {
               return swapContent(html, url);
