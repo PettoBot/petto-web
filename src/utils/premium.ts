@@ -111,6 +111,8 @@ const requestSnapshots = new WeakMap<object, Map<string, Promise<PremiumSnapshot
 
 export function forgetPremiumSnapshots(userId?: string): void {
   invalidatePrefix(userId ? `premium:${userId}` : 'premium:');
+  // Whether each server has Premium (guildPremium.ts) is not kept per visitor.
+  if (userId) invalidatePrefix('premium:guild:');
 }
 
 export function getPremiumSnapshot(astro: any, userId: string): Promise<PremiumSnapshot> {
@@ -181,7 +183,10 @@ export function getPremiumGuildIds(astro: any, userId: string, guildIds: string[
   const ids = [...new Set(guildIds.filter((id) => /^\d{15,25}$/.test(id)))].sort();
   if (!ids.length) return Promise.resolve(new Set());
   const key = `premium:${userId}:guilds:${ids.join(',')}`.slice(0, 480);
-  return cached(key, () => loadPremiumGuildIds(astro, ids), { freshMs: 30_000, keep: () => true });
+  // A page read takes the answer up to ten minutes old while a new one is read (a change made on the Premium page or by Polar's webhook
+  // forgets it at once); a write always reads one at most 30 seconds old.
+  const method = String(astro?.request?.method ?? 'GET').toUpperCase();
+  return cached(key, () => loadPremiumGuildIds(astro, ids), { freshMs: 30_000, staleMs: 10 * 60_000, allowStale: method === 'GET' || method === 'HEAD', keep: () => true });
 }
 
 async function loadPremiumGuildIds(astro: any, ids: string[]): Promise<Set<string>> {
@@ -377,6 +382,27 @@ export async function releasePremiumServer(astro: any, userId: string, guildId: 
  * Removes only the Premium server profile. Nicknames are a free identity aid,
  * so they remain in the shared config and in Discord when Premium ends.
  */
+// A server found without Premium customization is not checked again for a while (the Customize page used to read it twice, one read after
+// the other, before every visit). Polar's webhook resets it right away on a cancellation; this is only the fallback for a missed one.
+const CLEAN_CHECK_MS = 10 * 60_000;
+const checkedClean = new Map<string, number>();
+
+/** resetGuildPremiumCustomization, at most once every ten minutes per server while it stays clean. */
+export async function resetGuildPremiumCustomizationIfStale(astro: any, guildId: string): Promise<void> {
+  const until = checkedClean.get(guildId);
+  if (until && until > Date.now()) return;
+  const settings = config(astro);
+  const guildResponse = settings ? await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}&select=bot_avatar_url,bot_banner_url,bot_description,bot_name_style`, { headers: headers(settings.key) }).catch(() => null) : null;
+  const rows = guildResponse?.ok ? ((await guildResponse.json().catch(() => null)) as any[] | null) : null;
+  const row = Array.isArray(rows) ? (rows[0] ?? {}) : null;
+  if (row && !row.bot_avatar_url && !row.bot_banner_url && !row.bot_description && !row.bot_name_style) {
+    if (checkedClean.size > 5000) checkedClean.clear();
+    checkedClean.set(guildId, Date.now() + CLEAN_CHECK_MS);
+    return;
+  }
+  await resetGuildPremiumCustomization(astro, guildId);
+}
+
 export async function resetGuildPremiumCustomization(astro: any, guildId: string): Promise<boolean> {
   const settings = config(astro);
   if (!settings || !/^\d{15,22}$/.test(String(guildId))) return false;

@@ -2,9 +2,8 @@ import { decodeSession, encodeSession, type Session } from './session';
 import { canManageGuild } from './discord';
 import { getCachedUserGuilds } from './discordCache';
 import { getEnv } from './env';
-import { getBotIdentity } from './discord';
-import { getPremiumSnapshot } from './premium';
-import { getCachedBotGuildIds } from './discordCache';
+import { loadDashLayoutData } from './dashLayoutData';
+import { memoPerRequest } from './requestMemo';
 import { isPettoOwner } from './premiumAdmin';
 import { markTiming } from './serverTiming';
 import { getRoleAccess, pageDecision, pageOf, type RoleAccess } from './dashAccess';
@@ -78,7 +77,8 @@ export async function getDashboardSession(astro: any): Promise<Session | null> {
 export async function getGuildSession(astro: any, guildId: string): Promise<GuildAuth> {
   const started = performance.now();
   try {
-    return await checkGuildSession(astro, guildId);
+    // The middleware checks the session before it answers "not modified", and the page checks it again: one check per request (reads only).
+    return await memoPerRequest(astro.request, `guild-session:${guildId}`, () => checkGuildSession(astro, guildId));
   } finally {
     markTiming('auth', started);
   }
@@ -88,19 +88,13 @@ async function checkGuildSession(astro: any, guildId: string): Promise<GuildAuth
   const session = await getDashboardSession(astro);
   if (!session) return { redirect: '/dash' };
 
-  // The layout of every guild page needs the Premium state, the servers of the visitor and of the bot, and the bot's
-  // look. Starting those reads now lets them run while the page checks access and loads its own data, and the layout
-  // picks up the same answers (they are shared per request) instead of starting after the page is done.
-  const botToken = getEnv(astro, 'DISCORD_TOKEN');
+  // The layout of every guild page needs the visitor's servers, the bot's servers and look, Premium and role access. Starting those
+  // reads now lets them run while the page checks access and loads its own data; the layout picks up the same answer (one per request).
   const request = astro.request as Request | undefined;
   const isRead = ['GET', 'HEAD'].includes(String(request?.method ?? 'GET').toUpperCase());
-  if (isRead) {
-    void getPremiumSnapshot(astro, session.userId).catch(() => {});
-    if (botToken) {
-      void getCachedBotGuildIds(botToken, request).catch(() => {});
-      void getBotIdentity(guildId, botToken, request).catch(() => {});
-    }
-  }
+  // Only for a page (a JSON or event route has no menu).
+  const wantsPage = /text\/html/i.test(request?.headers.get('accept') ?? '') || Boolean(request?.headers.get('x-dash-partial'));
+  if (isRead && wantsPage) void loadDashLayoutData(astro, guildId, session).catch(() => {});
 
   let discordGuilds: any[];
   try {

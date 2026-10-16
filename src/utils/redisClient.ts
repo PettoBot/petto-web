@@ -53,13 +53,18 @@ function start(): Client | null {
   return client;
 }
 
+// A channel is subscribed once. It was subscribed twice when a page registered it while the connection had just opened (once by the
+// registration, once by the connection), and every message then ran its handlers twice.
+const listening = new Set<string>();
+
 async function listen(channel: string): Promise<void> {
-  if (!subscriber?.isOpen) return;
+  if (!subscriber?.isOpen || listening.has(channel)) return;
+  listening.add(channel);
   await subscriber.subscribe(channel, (message: string) => {
     for (const handler of listeners.get(channel) ?? []) {
       try { handler(message); } catch { /* a handler never breaks the others */ }
     }
-  });
+  }).catch((error: Error) => { listening.delete(channel); throw error; });
 }
 
 /** True when Redis is configured at all (it may still be connecting). */

@@ -15,14 +15,21 @@ const USER_GUILDS_STALE_MS = 10 * 60_000;
 // The servers of the bot: while the bot's messages arrive (`petto:guilds` on join or leave) the list is kept longer.
 const BOT_GUILDS_FRESH_MS = 20_000;
 const BOT_GUILDS_FRESH_LIVE_MS = 5 * 60_000;
+// A page read shows the switcher from a list up to this old while a new one is read (joins and leaves drop it at once, `petto:guilds`).
+const BOT_GUILDS_STALE_MS = 10 * 60_000;
 
 const isRead = (request?: Request) => ['GET', 'HEAD'].includes(String(request?.method ?? 'GET').toUpperCase());
 
-/** `forAccess`: the list decides whether the visitor may manage a server, so it is never older than a minute. */
+/**
+ * The servers of a visitor. A write (`forAccess` on a POST) always uses a list at most a minute old. A page read takes a list up to ten
+ * minutes old at once while a new one is fetched in the background, so the read after it already uses the new list: waiting for Discord
+ * (often 150-400 ms, and rate limited) on the first page after each minute was the slowest part of browsing the dashboard. A visitor who
+ * lost Manage Server can at most look at (never change) a server for that one more page.
+ */
 export function getCachedUserGuilds(accessToken: string, request?: Request, options: { forAccess?: boolean } = {}): Promise<any[]> {
   return memoPerRequest(request, options.forAccess ? 'user-guilds:access' : 'user-guilds', async () => {
     const key = `user-guilds:${await digestKey(accessToken)}`;
-    return cached(key, () => fetchUserGuilds(accessToken), { freshMs: USER_GUILDS_FRESH_MS, staleMs: USER_GUILDS_STALE_MS, allowStale: isRead(request) && !options.forAccess, shared: true });
+    return cached(key, () => fetchUserGuilds(accessToken), { freshMs: USER_GUILDS_FRESH_MS, staleMs: USER_GUILDS_STALE_MS, allowStale: isRead(request), shared: true });
   });
 }
 
@@ -51,7 +58,7 @@ export function getCachedBotGuildIds(botToken: string, request?: Request): Promi
     const key = botGuildsKey(botToken);
     botKeys.add(key);
     const live = await sharedMessagesLive().catch(() => false);
-    const ids = await cached(key, () => loadBotGuildIds(botToken), { freshMs: live ? BOT_GUILDS_FRESH_LIVE_MS : BOT_GUILDS_FRESH_MS, shared: true, keep: (list) => list !== null })
+    const ids = await cached(key, () => loadBotGuildIds(botToken), { freshMs: live ? BOT_GUILDS_FRESH_LIVE_MS : BOT_GUILDS_FRESH_MS, staleMs: BOT_GUILDS_STALE_MS, allowStale: isRead(request), shared: true, keep: (list) => list !== null })
       .catch(() => null);
     return new Set<string>(ids ?? []);
   });
