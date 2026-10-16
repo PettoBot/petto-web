@@ -27,7 +27,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   await directDatabase;
   configureSnapshots({ locals: context.locals });
   // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
-  if (DASH_PATH.test(context.url.pathname)) return timed(context, () => handle(context, next));
+  if (DASH_PATH.test(context.url.pathname)) return withFreshDash(await timed(context, () => handle(context, next)));
   return handle(context, next);
 });
 
@@ -74,4 +74,22 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   return new Response(html, { status: response.status, statusText: response.statusText, headers });
+}
+
+/**
+ * A dashboard page shows settings that change (from the bot, another tab, a save), so the browser must ask again every time instead of
+ * showing a copy it kept, including when the page is opened with Back or loaded by a script. `no-cache` still lets Back be instant.
+ */
+function withFreshDash(response: Response): Response {
+  if (response.headers.has('cache-control')) return response;
+  const type = response.headers.get('content-type') ?? '';
+  if (!type.includes('text/html') && !type.includes('json')) return response;
+  try {
+    response.headers.set('Cache-Control', 'private, no-cache');
+    return response;
+  } catch {
+    const headers = new Headers(response.headers);
+    headers.set('Cache-Control', 'private, no-cache');
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  }
 }
