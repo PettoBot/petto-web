@@ -10,7 +10,7 @@ export const GET: APIRoute = async (context) => {
   const auth = await getGuildSession(context, id);
   if ('redirect' in auth) return context.redirect(auth.redirect);
   // Backups are paused: the download is refused here too, not only hidden by the page.
-  if (backupsUnderMaintenance(context)) return new Response('Backups are under maintenance.', { status: 503 });
+  if (backupsUnderMaintenance(context, auth.session.userId)) return new Response('Backups are under maintenance.', { status: 503 });
   const backupId = context.url.searchParams.get('id');
   if (!backupId) return new Response('Backup id is required.', { status: 400 });
   return exportPettoVaultBackup(context, id, auth.session.userId, backupId);
