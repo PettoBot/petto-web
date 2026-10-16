@@ -3378,6 +3378,7 @@ export const dashPt: Record<string, string> = {
   "Backups are under maintenance": "Os backups estão em manutenção",
   "Backups are paused for now and cannot be used, here or with the commands. Your saved backups and schedules are kept as they are, and they will come back later.": "Os backups estão em pausa por enquanto e não podem ser usados, nem aqui nem pelos comandos. Seus backups salvos e programações são mantidos como estão e voltarão mais tarde.",
   "Maintenance": "Manutenção",
+  "Backups are under maintenance for everyone else. You can use them because you are part of the Petto team.": "Os backups estão em manutenção para todos os outros. Você pode usá-los porque faz parte da equipe do Petto.",
   "Side color": "Cor lateral",
   "Save brand": "Salvar marca",
   "Open the page": "Abrir a página",
