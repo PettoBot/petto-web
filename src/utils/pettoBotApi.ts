@@ -397,3 +397,21 @@ export async function callPettoAppealFile(
   if (init.body) headers['Content-Type'] = init.contentType ?? 'application/octet-stream';
   try { return await fetch(`${baseUrl}${path}`, { method: init.method ?? 'GET', headers, body: init.body, signal: AbortSignal.timeout(30_000) }); } catch { return null; }
 }
+
+/** Members of a server whose name starts with `query` (at most 10), for the dashboard's "pick a person" boxes. */
+export async function callPettoMemberSearch(context: AstroContext, guildId: string, userId: string, query: string): Promise<Array<{ id: string; username: string | null; displayName: string | null; avatar: string | null }>> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || query.trim().length < 2) return [];
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/members/search`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(12_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return response.ok && payload?.ok && Array.isArray(payload.members) ? payload.members : [];
+  } catch {
+    return [];
+  }
+}

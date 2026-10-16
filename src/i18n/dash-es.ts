@@ -3450,4 +3450,11 @@ export const dashEs: Record<string, string> = {
   "Take the role away (default)": "Quitar el rol (lo normal)",
   "Keep the role": "Conservar el rol",
   "Petto only takes away roles it gave itself, and gives the role back, without thanking the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "Petto solo quita los roles que él mismo dio, y devuelve el rol, sin volver a darle las gracias al miembro, cuando está en línea con un estado que coincide. A un miembro del que simplemente no tiene presencia nunca lo cambia. Si otra regla del mismo rol (de nombre o de Server Tag) sigue coincidiendo, el rol se queda.",
+  "Pick channels": "Elige canales",
+  "Pick roles": "Elige roles",
+  "Nobody found": "No se encontró a nadie",
+  "Type a name to search": "Escribe un nombre para buscar",
+  "Pick at least one channel, role or person.": "Elige al menos un canal, rol o persona.",
+  "These channels, roles or people are skipped entirely, across every event.": "Estos canales, roles o personas se ignoran por completo, en todos los eventos.",
+  "Search...": "Buscar...",
 };

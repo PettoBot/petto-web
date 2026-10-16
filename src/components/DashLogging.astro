@@ -3,6 +3,7 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashTabs from './DashTabs.astro';
 import ChannelOptions from './ChannelOptions.astro';
+import MultiSelect from './MultiSelect.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -41,7 +42,7 @@ const GROUPS: { id: string; label: string; icon: string; events: string[] }[] = 
   { id: 'activity', label: dt('Activity'), icon: 'ph:speaker-high-fill', events: ['voice', 'commands', 'tickets'] },
 ];
 
-interface IgnoredId { targetId: string; channelName: string | null; }
+interface IgnoredId { targetId: string; kind: 'channel' | 'role' | 'user'; label: string; }
 
 interface Props {
   user: { username: string; avatar: string | null };
@@ -49,12 +50,13 @@ interface Props {
   guildName: string;
   guildIcon: string;
   channels: { id: string; name: string; category?: string }[];
+  roles: { id: string; name: string }[];
   routing: Record<string, string>;
   ignoredIds: IgnoredId[];
   saved: boolean;
   problems?: string[];
 }
-const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, saved, problems = [] } = Astro.props;
+const { user, guildId, guildName, guildIcon, channels, roles, routing, ignoredIds, saved, problems = [] } = Astro.props;
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="logging" pageTitle="Logging">
   <h1>{dt('Logging')}</h1>
@@ -130,7 +132,7 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
       <div class="dl-card-icon" style="--row-c:#f78fb3"><Icon name="ph:eye-slash-fill" width="17" height="17" /></div>
       <div class="dl-card-text">
         <div class="dl-card-label"><Fragment set:html={dth('Ignored <span class="dl-count">{a}</span>', { a: (ignoredIds.length) })} /></div>
-        <div class="dl-card-desc">{dt('These users or channels are skipped entirely, across every event below.')}</div>
+        <div class="dl-card-desc">{dt('These channels, roles or people are skipped entirely, across every event.')}</div>
       </div>
     </div>
     {ignoredIds.length > 0 && (
@@ -139,15 +141,30 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
           <form method="POST" class="dl-list-row" data-no-dirty>
             <input type="hidden" name="action" value="delete_ignored" />
             <input type="hidden" name="target_id" value={i.targetId} />
-            <span class="dl-list-name">{i.channelName ? `#${i.channelName}` : i.targetId}</span>
+            <span class="dl-list-name">{i.label}</span>
             <button type="submit" class="dl-list-del"><Icon name="ph:trash-fill" width="13" height="13" /></button>
           </form>
         ))}
       </div>
     )}
-    <form method="POST" class="dl-add-row" data-no-dirty>
+    <form method="POST" class="dl-add-form" data-no-dirty data-ignore-add data-search-url={`/dash/guild/${guildId}/members-search`}>
       <input type="hidden" name="action" value="add_ignored" />
-      <input type="text" name="target_id" placeholder={dt('User or channel IDs or mentions')} maxlength="600" required />
+      <div class="dl-add-field">
+        <span class="dl-add-label">{dt('Channels')}</span>
+        <MultiSelect name="channel_id" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={[]} placeholder={dt('Pick channels')} />
+      </div>
+      <div class="dl-add-field">
+        <span class="dl-add-label">{dt('Roles')}</span>
+        <MultiSelect name="role_id" options={roles} selected={[]} placeholder={dt('Pick roles')} />
+      </div>
+      <div class="dl-add-field">
+        <span class="dl-add-label">{dt('People')}</span>
+        <div class="dl-people" data-people>
+          <div class="dl-people-chips" data-people-chips></div>
+          <input type="text" class="dl-people-input" data-people-input placeholder={dt('Type a name to search')} autocomplete="off" maxlength="32" />
+          <div class="dl-people-results" data-people-results hidden></div>
+        </div>
+      </div>
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
     </form>
   </div>
@@ -158,6 +175,75 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
   <DashTabs />
 </DashGuildLayout>
 
+<script is:inline>
+  if (!window.__dlPeopleBound) {
+    window.__dlPeopleBound = true;
+    var dlTimer = 0;
+    var dlSeq = 0;
+    var dlText = function (node, text) { node.textContent = text; return node; };
+    document.addEventListener('input', function (event) {
+      var input = event.target && event.target.closest ? event.target.closest('[data-people-input]') : null;
+      if (!input) return;
+      var wrap = input.closest('[data-people]');
+      var results = wrap.querySelector('[data-people-results]');
+      var form = input.closest('[data-ignore-add]');
+      clearTimeout(dlTimer);
+      var query = input.value.trim();
+      if (query.length < 2) { results.hidden = true; results.innerHTML = ''; return; }
+      dlTimer = setTimeout(function () {
+        var mine = ++dlSeq;
+        fetch(form.getAttribute('data-search-url') + '?q=' + encodeURIComponent(query), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (res) { return res.ok ? res.json() : { members: [] }; })
+          .then(function (data) {
+            if (mine !== dlSeq) return;
+            results.innerHTML = '';
+            var members = data.members || [];
+            if (!members.length) results.appendChild(dlText(Object.assign(document.createElement('div'), { className: 'dl-people-note' }), cdt('Nobody found')));
+            members.forEach(function (member) {
+              var row = document.createElement('button');
+              row.type = 'button';
+              row.className = 'dl-person';
+              row.setAttribute('data-id', member.id);
+              if (member.avatar) { var img = document.createElement('img'); img.src = member.avatar; img.alt = ''; row.appendChild(img); }
+              row.appendChild(dlText(document.createElement('span'), member.displayName || member.username || member.id));
+              results.appendChild(row);
+            });
+            results.hidden = false;
+          })
+          .catch(function () { results.hidden = true; });
+      }, 300);
+    });
+    document.addEventListener('click', function (event) {
+      var target = event.target && event.target.closest ? event.target : null;
+      if (!target) return;
+      var pick = target.closest('.dl-person');
+      if (pick) {
+        var wrap = pick.closest('[data-people]');
+        var id = pick.getAttribute('data-id');
+        var chips = wrap.querySelector('[data-people-chips]');
+        if (!chips.querySelector('[data-id="' + id + '"]')) {
+          var chip = document.createElement('span');
+          chip.className = 'dl-person-chip';
+          chip.setAttribute('data-id', id);
+          var hidden = document.createElement('input');
+          hidden.type = 'hidden'; hidden.name = 'user_id'; hidden.value = id;
+          var remove = document.createElement('button');
+          remove.type = 'button'; remove.setAttribute('data-person-remove', ''); remove.textContent = '\u00d7';
+          chip.appendChild(dlText(document.createElement('span'), pick.textContent));
+          chip.appendChild(hidden);
+          chip.appendChild(remove);
+          chips.appendChild(chip);
+        }
+        var box = wrap.querySelector('[data-people-input]');
+        box.value = '';
+        wrap.querySelector('[data-people-results]').hidden = true;
+        return;
+      }
+      var gone = target.closest('[data-person-remove]');
+      if (gone) gone.closest('.dl-person-chip').remove();
+    });
+  }
+</script>
 <script is:inline>
   if (!window.__dlAllBound) {
     window.__dlAllBound = true;
@@ -254,6 +340,22 @@ const { user, guildId, guildName, guildIcon, channels, routing, ignoredIds, save
   .dl-list-del { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 3px; border-radius: 6px; }
   .dl-list-del:hover { color: var(--red); background: var(--red-soft); }
 
+  .dl-add-form { display: grid; gap: 12px; margin-top: 8px; }
+  .dl-add-field { display: grid; gap: 6px; min-width: 0; }
+  .dl-add-label { font-size: .78rem; opacity: .7; }
+  .dl-add-form .btn { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+  .dl-people { position: relative; display: grid; gap: 6px; }
+  .dl-people-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .dl-people-chips:empty { display: none; }
+  .dl-people-input { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 12.5px; }
+  .dl-people-results { display: grid; gap: 2px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); max-height: 220px; overflow-y: auto; }
+  .dl-people-results[hidden] { display: none; }
+  :global(.dl-person) { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: .85rem; text-align: left; cursor: pointer; }
+  :global(.dl-person:hover) { background: var(--card-hover, rgba(255, 255, 255, .07)); }
+  :global(.dl-person img) { width: 22px; height: 22px; border-radius: 50%; }
+  :global(.dl-person-chip) { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: .8rem; }
+  :global(.dl-person-chip button) { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 2px; }
+  :global(.dl-people-note) { padding: 6px 8px; font-size: .8rem; opacity: .65; }
   .dl-add-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
   .dl-add-row input { flex: 1 1 160px; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 12.5px; max-width: 200px; }
   .dl-add-row .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
