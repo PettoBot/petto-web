@@ -3449,10 +3449,10 @@ export const dashEs: Record<string, string> = {
   "Role of a member who goes offline": "Rol de un miembro que se desconecta",
   "Take the role away (default)": "Quitar el rol (lo normal)",
   "Keep the role": "Conservar el rol",
-  "Petto only takes away roles it gave itself, and gives the role back, without thanking the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "Petto solo quita los roles que él mismo dio, y devuelve el rol, sin volver a darle las gracias al miembro, cuando está en línea con un estado que coincide. A un miembro del que simplemente no tiene presencia nunca lo cambia. Si otra regla del mismo rol (de nombre o de Server Tag) sigue coincidiendo, el rol se queda.",
   "Sync server data": "Sincronizar datos del servidor",
   "Syncing…": "Sincronizando…",
   "Synced": "Sincronizado",
   "Could not sync. Try again.": "No se pudo sincronizar. Inténtalo de nuevo.",
   "Reload the roles, channels and server data from Discord": "Recarga los roles, canales y datos del servidor desde Discord",
+  "Petto only takes away roles it gave itself, and gives the role back, and thanks the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "Petto solo quita los roles que él mismo dio, y devuelve el rol y vuelve a darle las gracias al miembro, cuando está en línea con un estado que coincide. A un miembro del que simplemente no tiene presencia nunca lo cambia. Si otra regla del mismo rol (de nombre o de Server Tag) sigue coincidiendo, el rol se queda.",
 };

@@ -3449,10 +3449,10 @@ export const dashPt: Record<string, string> = {
   "Role of a member who goes offline": "Cargo de um membro que fica offline",
   "Take the role away (default)": "Tirar o cargo (o padrão)",
   "Keep the role": "Manter o cargo",
-  "Petto only takes away roles it gave itself, and gives the role back, without thanking the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "O Petto só tira os cargos que ele mesmo deu, e devolve o cargo, sem agradecer de novo ao membro, quando está online com um status que coincide. Um membro de quem ele simplesmente não tem presença nunca é alterado. Se outra regra do mesmo cargo (de nome ou de Server Tag) ainda coincidir, o cargo fica.",
   "Sync server data": "Sincronizar dados do servidor",
   "Syncing…": "Sincronizando…",
   "Synced": "Sincronizado",
   "Could not sync. Try again.": "Não foi possível sincronizar. Tente de novo.",
   "Reload the roles, channels and server data from Discord": "Recarrega os cargos, canais e dados do servidor do Discord",
+  "Petto only takes away roles it gave itself, and gives the role back, and thanks the member again, when they are online with a matching status. A member it simply has no presence for is never changed. If another rule for the same role (a name or a Server Tag rule) still matches, the role stays.": "O Petto só tira os cargos que ele mesmo deu, e devolve o cargo e agradece de novo ao membro, quando está online com um status que coincide. Um membro de quem ele simplesmente não tem presença nunca é alterado. Se outra regra do mesmo cargo (de nome ou de Server Tag) ainda coincidir, o cargo fica.",
 };
