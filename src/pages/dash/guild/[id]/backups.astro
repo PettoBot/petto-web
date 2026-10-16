@@ -22,8 +22,17 @@ if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const maintenance = backupsUnderMaintenance(Astro, session.userId);
 // The owner and the developers can still use them, and are told that they are paused for everyone else.
 const teamNotice = !maintenance && backupsPaused(Astro);
-let message: string | null = null;
-let error: string | null = null;
+// A change is made with a plain form and answered with a redirect to the page itself, so the page that comes back is a fresh one
+// (the new backup, the schedule, what was deleted) and reloading it never sends the change again.
+const DONE: Record<string, string> = {
+  create: dt('Backup created.'), delete: dt('Backup deleted.'), delete_all: dt('All backups were deleted and automatic backups are off.'),
+  schedule: dt('Automatic backup schedule saved.'), unschedule: dt('Automatic backups disabled.'),
+};
+const FAILED: Record<string, string> = {
+  administrator_required: dt('Only server administrators can delete or restore backups.'), backup_not_found: dt('That backup no longer exists.'),
+  not_configured: dt('Vault is not connected to the dashboard yet.'), failed: dt('Petto could not complete that Vault action.'),
+};
+const here = `/dash/guild/${id}/backups`;
 if (!maintenance && Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
@@ -31,10 +40,14 @@ if (!maintenance && Astro.request.method === 'POST') {
   if (action === 'create') body.label = String(form.get('label') ?? '').trim();
   if (action === 'delete') body.backup_id = Number(form.get('backup_id'));
   if (action === 'schedule') { body.hours = Number(form.get('hours')); body.retention = Number(form.get('retention')); }
-  const result = await callPettoVault(Astro, id, session.userId, { method: 'POST', body: JSON.stringify(body) });
-  if (result.ok) message = action === 'create' ? dt('Backup created.') : action === 'delete' ? dt('Backup deleted.') : action === 'delete_all' ? dt('All backups were deleted and automatic backups are off.') : action === 'schedule' ? dt('Automatic backup schedule saved.') : dt('Automatic backups disabled.');
-  else error = result.error === 'administrator_required' ? dt('Only server administrators can delete or restore backups.') : result.error === 'backup_not_found' ? dt('That backup no longer exists.') : result.error === 'not_configured' ? dt('Vault is not connected to the dashboard yet.') : dt('Petto could not complete that Vault action.');
+  const done = await callPettoVault(Astro, id, session.userId, { method: 'POST', body: JSON.stringify(body) });
+  if (done.ok && DONE[action]) return Astro.redirect(`${here}?done=${encodeURIComponent(action)}`, 303);
+  return Astro.redirect(`${here}?error=${encodeURIComponent(done.error && FAILED[done.error] ? done.error : 'failed')}`, 303);
 }
+const doneKey = Astro.url.searchParams.get('done') ?? '';
+const errorKey = Astro.url.searchParams.get('error') ?? '';
+let message: string | null = DONE[doneKey] ?? null;
+let error: string | null = FAILED[errorKey] ?? null;
 
 const result = maintenance ? null : await callPettoVault(Astro, id, session.userId);
 const vault = result?.ok ? result.payload : null;
