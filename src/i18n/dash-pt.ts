@@ -162,7 +162,7 @@ export const dashPt: Record<string, string> = {
   "Move row down": "Descer fileira",
   "Duplicate button": "Duplicar botão",
   "Vanity roles": "Cargos Vanity",
-  "Give roles to members by their Custom Status, name, or Server Tag. Everything here is also available in Discord with !vanity, !guildtag and !identity.": "Dê cargos aos membros pelo status personalizado, pelo nome ou pela Server Tag. Tudo aqui também está no Discord com !vanity, !guildtag e !identity.",
+  "Give roles to members by their Custom Status, name, or Server Tag. Everything here is also available in Discord with !vanity, !guildtag and !identity, and the first two also as slash commands.": "Dê cargos aos membros pelo status personalizado, pelo nome ou pela Server Tag. Tudo aqui também está no Discord com !vanity, !guildtag e !identity, e os dois primeiros também como comandos slash.",
   "The dashboard is not connected to the bot yet.": "O painel ainda não está conectado ao bot.",
   "The bot did not answer in time. Reload the page in a few seconds.": "O bot não respondeu a tempo. Recarregue a página em alguns segundos.",
   "You need Manage Server or Administrator in this server to use Vanity roles.": "Você precisa de Gerenciar servidor ou Administrador neste servidor para usar os cargos Vanity.",

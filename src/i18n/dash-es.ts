@@ -162,7 +162,7 @@ export const dashEs: Record<string, string> = {
   "Move row down": "Bajar fila",
   "Duplicate button": "Duplicar botón",
   "Vanity roles": "Roles Vanity",
-  "Give roles to members by their Custom Status, name, or Server Tag. Everything here is also available in Discord with !vanity, !guildtag and !identity.": "Da roles a los miembros por su estado personalizado, su nombre o su Server Tag. Todo lo de aquí también está en Discord con !vanity, !guildtag y !identity.",
+  "Give roles to members by their Custom Status, name, or Server Tag. Everything here is also available in Discord with !vanity, !guildtag and !identity, and the first two also as slash commands.": "Da roles a los miembros por su estado personalizado, su nombre o su Server Tag. Todo lo de aquí también está en Discord con !vanity, !guildtag y !identity, y los dos primeros también como comandos slash.",
   "The dashboard is not connected to the bot yet.": "El panel todavía no está conectado al bot.",
   "The bot did not answer in time. Reload the page in a few seconds.": "El bot no respondió a tiempo. Recarga la página en unos segundos.",
   "You need Manage Server or Administrator in this server to use Vanity roles.": "Necesitas Gestionar servidor o Administrador en este servidor para usar los roles Vanity.",
