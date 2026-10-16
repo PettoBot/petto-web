@@ -8,6 +8,7 @@ import { getEnv } from '../../../utils/env';
 import { canEditPartners } from '../../../utils/partners';
 import { isPettoOwner } from '../../../utils/premiumAdmin';
 import { getPremiumGuildIds } from '../../../utils/premium';
+import { guildsWithRoleAccess } from '../../../utils/dashAccess';
 
 const clientId = getEnv(Astro, 'DISCORD_CLIENT_ID');
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -31,12 +32,18 @@ const memberCounts = new Map(botGuildList.map((guild) => [guild.id, guild.member
 // Premium belongs to the server, so an admin who did not buy it sees it too.
 const premiumGuildIds = await getPremiumGuildIds(Astro, session.userId, manageable.filter((g: any) => botGuildIds.has(g.id)).map((g: any) => g.id));
 
-const guilds = manageable
+// Servers where the visitor does not manage anything but a role of theirs opens part of the dashboard.
+const manageableIds = new Set(manageable.map((g: any) => g.id));
+const roleCandidates = (guildsResult.list ?? []).filter((g: any) => !manageableIds.has(g.id) && botGuildIds.has(g.id));
+const byRole = new Set(await guildsWithRoleAccess(Astro, session.userId, roleCandidates.map((g: any) => g.id)));
+const roleGuilds = roleCandidates.filter((g: any) => byRole.has(g.id));
+
+const guilds = [...manageable, ...roleGuilds]
   .map((g: any) => ({
     id: g.id,
     name: g.name,
     icon: guildIconUrl(g),
-    tag: g.owner ? 'Owner' : 'Administrator',
+    tag: byRole.has(g.id) ? 'Role access' : g.owner ? 'Owner' : 'Administrator',
     active: botGuildIds.has(g.id),
     premiumActive: premiumGuildIds.has(g.id),
     memberCount: memberCounts.get(g.id) ?? null,

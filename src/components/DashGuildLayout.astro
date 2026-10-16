@@ -6,7 +6,7 @@ import InlineIcon from './InlineIcon.astro';
 import DashClientI18n from './DashClientI18n.astro';
 import DashPreviews from './DashPreviews.astro';
 import { useTranslations } from '../i18n/ui';
-import { canManageGuild, guildIconUrl, getBotIdentity } from '../utils/discord';
+import { canManageGuild, guildIconUrl, getBotIdentity, getGuildList } from '../utils/discord';
 import { getCachedUserGuilds, getCachedBotGuildIds } from '../utils/discordCache';
 import { getEnv } from '../utils/env';
 import { vanityConfig } from '../utils/vanityBot';
@@ -15,6 +15,7 @@ import { isPettoOwner } from '../utils/premiumAdmin';
 import { canUseQuests } from '../utils/questAccess';
 import { canUseRollouts } from '../utils/rolloutAccess';
 import { canUseCodeCommands } from '../utils/codeAccess';
+import { getRoleAccess, pageDecision, pageOf } from '../utils/dashAccess';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -32,13 +33,32 @@ const { guildId, guildName, guildIcon, user, active, pageTitle: rawPageTitle, pr
 // The server name as a CSS string (short, quotes and backslashes escaped) for the italic part of the page titles.
 const cssString = (value: string) => `"${(value.length > 26 ? `${value.slice(0, 25).trimEnd()}…` : value).replace(/[\\"]/g, '\\$&').replace(/[\r\n]/g, ' ')}"`;
 const pageTitle = dt(rawPageTitle);
+// The roles Petto cannot give: @everyone, the ones an integration owns (bots, boosters) and the ones above its highest role. The pickers of
+// roles that Petto hands out show them greyed out. Where the bot has not marked its own roles yet, nothing is claimed about the position.
+async function loadRoleBlocks(serverId: string, token: string): Promise<Record<string, string>> {
+  try {
+    const res = await getGuildList(Astro, serverId, token, 'roles');
+    if (!res.ok) return {};
+    const roles: any[] = await res.json();
+    const botTop = Math.max(-1, ...roles.filter((role) => role.mine === true).map((role) => Number(role.position)));
+    const blocks: Record<string, string> = {};
+    for (const role of roles) {
+      const id = String(role.id);
+      if (id === serverId) blocks[id] = 'everyone';
+      else if (role.managed) blocks[id] = 'managed';
+      else if (botTop >= 0 && Number(role.position) >= botTop) blocks[id] = 'above_bot';
+    }
+    return blocks;
+  } catch { return {}; }
+}
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 // The premium snapshot, the visitor's servers, and the servers Petto is in do not depend on each
 // other, so they load together instead of one after the other.
-const [discordGuilds, activeBotGuildIds, botIdentity] = await Promise.all([
+const [discordGuilds, activeBotGuildIds, botIdentity, roleBlocks] = await Promise.all([
   user.accessToken ? getCachedUserGuilds(user.accessToken, Astro.request) : Promise.resolve(null),
   user.accessToken && botToken ? getCachedBotGuildIds(botToken, Astro.request) : Promise.resolve(null),
   botToken ? getBotIdentity(guildId, botToken, Astro.request).catch(() => null) : Promise.resolve(null),
+  botToken ? loadRoleBlocks(guildId, botToken) : Promise.resolve({} as Record<string, string>),
 ]);
 // Premium belongs to the server, not to who bought it: every admin sees this server (and the ones in the switcher) as Premium.
 const switchable = discordGuilds && activeBotGuildIds ? discordGuilds.filter(canManageGuild).filter((g: any) => activeBotGuildIds.has(g.id)).map((g: any) => g.id as string) : [];
@@ -46,6 +66,13 @@ const premiumGuildIds = user.userId ? await getPremiumGuildIds(Astro, user.userI
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId);
+// Someone who does not manage the server can still be let in by a role: they see only the parts their role opens.
+const guildEntry = discordGuilds?.find((g: any) => g.id === guildId);
+const isManager = Boolean(guildEntry && canManageGuild(guildEntry));
+const roleAccess = guildEntry && !isManager && user.userId ? await getRoleAccess(Astro, guildId, user.userId) : null;
+const pageAccess = roleAccess ? pageDecision(roleAccess, pageOf(Astro.url.pathname, guildId)) : null;
+const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('This is a read-only view of the server.') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
+const roleBlockData = JSON.stringify({ blocks: roleBlocks, labels: { everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') } });
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
 // different server doesn't need a round trip through /dash/manage every time.
@@ -85,7 +112,7 @@ const catLabel: Record<string, string> = { setup: dt('General'), onboarding: dt(
 interface NavItem { id: string; href: string; icon: string; label: string; premium?: boolean; full?: boolean; isNew?: boolean; soon?: boolean; }
 
 // The sections of the menu, each one in the group it belongs to.
-const groups: { label: string; items: NavItem[] }[] = [
+const allGroups: { label: string; items: NavItem[] }[] = [
   {
     label: dt('Dashboard'),
     items: [
@@ -142,6 +169,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       { id: 'security', href: `/dash/guild/${guildId}/security`, icon: 'ph:shield-warning-fill', label: dt('Security') },
       { id: 'security-unrestricted', href: `/dash/guild/${guildId}/security?section=unrestricted`, icon: 'ph:keyhole-fill', label: dt('Command Coverage') },
       { id: 'permissions', href: `/dash/guild/${guildId}/permissions`, icon: 'ph:key-fill', label: dt('Permissions') },
+      ...(isManager ? [{ id: 'access', href: `/dash/guild/${guildId}/access`, icon: 'ph:user-gear-fill', label: dt('Dashboard access'), isNew: true }] : []),
       { id: 'audit', href: `/dash/guild/${guildId}/audit`, icon: 'ph:clock-counter-clockwise-fill', label: dt('Audit Log') },
       { id: 'logging', href: `/dash/guild/${guildId}/logging`, icon: catIcon.logging, label: dt('Logging') },
     ],
@@ -241,6 +269,13 @@ const groups: { label: string; items: NavItem[] }[] = [
   },
 ];
 
+// A role only sees the parts of the menu it opens.
+const groups = roleAccess
+  ? allGroups
+      .map((group) => ({ ...group, items: group.items.filter((item) => pageDecision(roleAccess, pageOf(item.href.split('?')[0], guildId)).allowed) }))
+      .filter((group) => group.items.length > 0)
+  : allGroups;
+
 const stableInlineItems = new Set([
   'customize',
   'community-boosters',
@@ -260,10 +295,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     <section class="dgl-sec">
       <div class="wrap dgl-wrap">
         <div class="dgl-layout">
-          <button type="button" class="dgl-menu-btn" id="dgl-menu-btn" aria-controls="dgl-side" aria-expanded="false">
-            <Icon name="ph:list-dashes-fill" width="17" height="17" />
-            <span id="dgl-menu-label">{activeNavItem?.label ?? pageTitle}</span>
-          </button>
+          <div class="dgl-menu-bar">
+            <button type="button" class="dgl-menu-btn" id="dgl-menu-btn" aria-controls="dgl-side" aria-expanded="false" aria-label={dt('Open the menu')}>
+              <Icon name="ph:list" width="20" height="20" />
+            </button>
+            <span class="dgl-menu-label" id="dgl-menu-label">{activeNavItem?.label ?? pageTitle}</span>
+          </div>
+          <script type="application/json" id="dgl-role-blocks" set:html={roleBlockData}></script>
           <div class="dgl-backdrop" id="dgl-backdrop" hidden></div>
           <aside class="dgl-side reveal" id="dgl-side">
             <button type="button" class="dgl-side-close" id="dgl-side-close" aria-label={dt('Close the menu')}><Icon name="ph:x" width="16" height="16" /></button>
@@ -306,8 +344,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
             <nav class="dgl-nav" id="dgl-sidenav">
               {groups.map((group) => (
-                <div class="dgl-group">
-                  <div class="dgl-label">{group.label}</div>
+                <div class:list={['dgl-group', { 'has-active': group.items.some((item) => item.id === active) }]} data-group={group.label}>
+                  <button type="button" class="dgl-label" aria-expanded="true">
+                    <span>{group.label}</span>
+                    <Icon name="ph:caret-down" width="12" height="12" class="dgl-label-caret" />
+                  </button>
+                  <div class="dgl-items">
                   {group.items.map((item) => (
                     <a href={item.href} data-full={item.full ? '' : undefined} class:list={['dgl-link', { active: active === item.id }]} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
                       {stableInlineItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
@@ -317,9 +359,50 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
                 {item.premium && <InlineIcon name="ph:crown-fill" width="12" height="12" class="dgl-premium-crown" />}
                     </a>
                   ))}
+                  </div>
                 </div>
               ))}
             </nav>
+            <script is:inline>
+              // Every part of the menu folds: all of it open is a very long list. What was folded is remembered, the first time only the open
+              // section's part is open, and the part with the open section is always shown. This runs before the first paint, so nothing jumps.
+              (function () {
+                var nav = document.getElementById('dgl-sidenav');
+                if (!nav) return;
+                var KEY = 'dgl-nav-open';
+                var groups = Array.prototype.slice.call(nav.querySelectorAll('.dgl-group'));
+                var saved = null;
+                try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
+                var apply = function (group, open) {
+                  group.classList.toggle('closed', !open);
+                  var head = group.querySelector('.dgl-label');
+                  if (head) head.setAttribute('aria-expanded', String(open));
+                };
+                groups.forEach(function (group) {
+                  var name = group.getAttribute('data-group');
+                  var open = Array.isArray(saved) ? saved.indexOf(name) !== -1 : false;
+                  apply(group, open || group.classList.contains('has-active'));
+                });
+                var store = function () {
+                  var open = groups.filter(function (g) { return !g.classList.contains('closed'); }).map(function (g) { return g.getAttribute('data-group'); });
+                  try { localStorage.setItem(KEY, JSON.stringify(open)); } catch (e) {}
+                };
+                nav.addEventListener('click', function (event) {
+                  var head = event.target.closest && event.target.closest('.dgl-label');
+                  if (!head) return;
+                  var group = head.closest('.dgl-group');
+                  apply(group, group.classList.contains('closed'));
+                  store();
+                });
+                // Moving to a section by the menu (the page is not reloaded) opens the part it lives in.
+                window.dglOpenGroupOf = function (link) {
+                  var group = link && link.closest('.dgl-group');
+                  if (!group) return;
+                  groups.forEach(function (g) { g.classList.toggle('has-active', g === group); });
+                  if (group.classList.contains('closed')) { apply(group, true); store(); }
+                };
+              })();
+            </script>
             <script is:inline>
               // The side menu keeps where it was scrolled: a reload, a tab that wakes up after a while or the back button must not throw it to the
               // top (the section would then be out of sight). With nothing saved, the open section is brought into view.
@@ -369,6 +452,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
           <div class="dgl-content reveal" id="dgl-content" style={`--dgl-guild:${cssString(guildName)}`}>
             {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
+            {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
+            {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
+              <div class="dgl-dev-banner" data-view-only>
+                <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('View only')}</strong><span>{dt('Your role can look at this part of the dashboard but not change it.')}</span></div></div>
+              </div>
+            )}
             {devView && (
               <div class="dgl-dev-banner" data-dev-view>
                 <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('Developer view')}</strong><span>{dt('Read only. You are not a manager of this server, so nothing can be changed here.')}</span></div></div>
@@ -922,6 +1011,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       var chosen = exact.length ? exact : links.filter(function (a) { var u = new URL(a.getAttribute('href'), window.location.href); return same(a) && !u.search; });
       if (!chosen.length) return;
       links.forEach(function (a) { a.classList.toggle('active', chosen.indexOf(a) !== -1); });
+      if (window.dglOpenGroupOf) window.dglOpenGroupOf(chosen[0]);
       href = chosen[0].getAttribute('href');
       // The mobile toggle button lives outside #dgl-content, so it never gets
       // re-rendered by the AJAX swap, copy the now-active link's icon/label into it.
@@ -1260,6 +1350,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
             fragment.appendChild(label);
           });
           dropdown.insertBefore(fragment, dropdown.firstChild);
+          if (window.dglApplyRoleBlocks) window.dglApplyRoleBlocks(wrap);
           render();
         }
 
@@ -1592,7 +1683,37 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       });
     }
 
+    // Roles that Petto hands out (a select or a multi-select marked data-give-role) cannot offer the ones it is unable to give: they stay in the
+    // list, greyed out and with the reason, and one that is already chosen is left alone so a saved setting does not break.
+    var roleBlockInfo = null;
+    window.dglApplyRoleBlocks = function (root) {
+      if (roleBlockInfo === null) {
+        try { roleBlockInfo = JSON.parse((document.getElementById('dgl-role-blocks') || {}).textContent || '{}'); } catch (e) { roleBlockInfo = {}; }
+      }
+      var blocks = roleBlockInfo.blocks || {};
+      var labels = roleBlockInfo.labels || {};
+      if (!Object.keys(blocks).length) return;
+      (root || document).querySelectorAll('select[data-give-role] option').forEach(function (option) {
+        var why = blocks[option.value];
+        if (!why || option.selected || option.dataset.blocked) return;
+        option.dataset.blocked = '1';
+        option.disabled = true;
+        option.textContent = option.textContent + ' (' + (labels[why] || why) + ')';
+      });
+      (root || document).querySelectorAll('[data-multiselect][data-give-role] [data-ms-option]').forEach(function (label) {
+        var input = label.querySelector('input[type="checkbox"]');
+        var why = input && blocks[input.value];
+        if (!why || input.checked || label.dataset.blocked) return;
+        label.dataset.blocked = '1';
+        label.classList.add('blocked');
+        input.disabled = true;
+        var text = label.querySelector('span');
+        if (text) text.textContent = text.textContent + ' (' + (labels[why] || why) + ')';
+      });
+    };
+
     function initContent(root) {
+      window.dglApplyRoleBlocks(root);
       bindForms(root);
       bindUploadLabels(root);
       bindFocusButtons(root);
@@ -1695,7 +1816,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
   }
   .dgl-switcher-all:hover { color: var(--text); }
 
-  .dgl-menu-btn, .dgl-backdrop, .dgl-side-close { display: none; }
+  .dgl-menu-bar, .dgl-menu-btn, .dgl-backdrop, .dgl-side-close { display: none; }
   .dgl-mobile-toggle {
     display: none; align-items: center; justify-content: space-between; width: 100%; padding: 12px 14px;
     background: none; border: none; border-bottom: 1px solid var(--border-soft); color: var(--text); font-family: var(--sans);
@@ -1708,8 +1829,17 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
   .dgl-nav { padding: 12px 10px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
   .dgl-nav::-webkit-scrollbar { display: none; }
-  .dgl-group + .dgl-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
-  .dgl-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); padding: 0 10px; margin-bottom: 6px; }
+  .dgl-group + .dgl-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+  :global(.dgl-ms-option.blocked) { opacity: .45; cursor: not-allowed; }
+  .dgl-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: none; border-radius: 7px; cursor: pointer; text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); padding: 8px 10px; margin-bottom: 4px; touch-action: manipulation; }
+  .dgl-label:hover { color: var(--text-muted); background: var(--card-hover); }
+  .dgl-label :global(.dgl-label-caret) { flex-shrink: 0; transition: transform .18s ease; }
+  .dgl-group.closed .dgl-label :global(.dgl-label-caret) { transform: rotate(-90deg); }
+  .dgl-group.closed .dgl-label { margin-bottom: 0; }
+  .dgl-group.closed .dgl-items { display: none; }
+  .dgl-items { display: flex; flex-direction: column; animation: dgl-fold .18s ease both; }
+  @keyframes dgl-fold { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .dgl-items { animation: none; } }
   .dgl-link { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text-muted); text-decoration: none; padding: 7px 10px; border-radius: 8px; }
   .dgl-soon { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
   .dgl-new { font-family: var(--mono); font-style: normal; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 5px; margin-left: auto; }
@@ -1757,9 +1887,10 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); }
     .dgl-backdrop[hidden] { display: none; }
     .dgl-side-close { display: flex; align-items: center; justify-content: center; position: absolute; top: 8px; right: 8px; z-index: 2; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); cursor: pointer; }
-    .dgl-menu-btn { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 12px; padding: 9px 14px; border-radius: 11px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
-    .dgl-menu-btn :global(svg) { color: var(--accent); flex-shrink: 0; }
-    .dgl-menu-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dgl-menu-bar { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; min-width: 0; }
+    .dgl-menu-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; padding: 0; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--accent); cursor: pointer; touch-action: manipulation; transition: transform .12s ease, background .15s ease; }
+    .dgl-menu-btn:active { transform: scale(.94); background: var(--card-hover); }
+    .dgl-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 700; color: var(--text); }
     .dgl-switcher-wrap { display: block; }
     .dgl-content { position: relative; z-index: 0; display: block; clear: both; width: 100%; box-sizing: border-box; height: auto; overflow-y: visible; border-radius: 14px; padding: 22px 18px 104px; margin: 0; }
     .dgl-switcher-panel { position: static; width: auto; margin: 6px 10px 10px; box-shadow: none; }
