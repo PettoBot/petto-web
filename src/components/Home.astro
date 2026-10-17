@@ -34,7 +34,7 @@ const stats = [
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <div class="hero-eyebrow"><span class="dot"></span><span class="eyebrow">{t.hero.eyebrow}</span></div>
+          <div class="hero-eyebrow"><span class="dot" data-bot-dot></span><span class="eyebrow">{t.hero.eyebrow}</span></div>
           <div class="headline-row">
             <img src="/assets/mascot-icon.webp" alt="" />
             <h1 class="headline">{t.hero.headline}</h1>
@@ -384,7 +384,10 @@ const stats = [
   .hero { padding: 80px 0 72px; }
   .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
   .hero-eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-  .hero-eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .hero-eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); transition: background .3s ease, box-shadow .3s ease; }
+  /* The dot says whether the bot is online right now (see syncHomeServerStat): green online, yellow reconnecting, red offline. */
+  .hero-eyebrow .dot[data-state='reconnecting'] { background: var(--yellow, #e5b546); box-shadow: 0 0 0 3px rgba(229, 181, 70, .22); }
+  .hero-eyebrow .dot[data-state='offline'] { background: var(--red, #e5484d); box-shadow: 0 0 0 3px rgba(229, 72, 77, .2); }
   .headline-row { display: flex; align-items: center; gap: 18px; margin-bottom: 20px; }
   .headline-row img { width: 76px; height: 76px; flex-shrink: 0; }
   h1.headline { font-size: 43px; line-height: 1.14; }
@@ -670,6 +673,10 @@ const stats = [
 
 <script>
   const homeServerStat = document.querySelector<HTMLElement>('[data-home-stat-value="servers"]');
+  const botDot = document.querySelector<HTMLElement>('[data-bot-dot]');
+  // The last count seen, so the page shows it at once on the next visit and keeps it while the bot restarts (instead of "—" or 0).
+  const LAST_KEY = 'petto-home-servers';
+  try { const last = localStorage.getItem(LAST_KEY); if (homeServerStat && last && /^\d+$/.test(last)) homeServerStat.textContent = last; } catch {}
 
   async function syncHomeServerStat() {
     if (!homeServerStat) return;
@@ -681,13 +688,21 @@ const stats = [
 
       // Only the shards that are running now, as the status page counts them: an old shard row would add servers twice.
       const staleMs = 5 * 60 * 1000;
+      let live = 0;
+      let reconnecting = 0;
       const serverCount = payload.shards.reduce((total: number, shard: { guild_count?: number; status?: string; updated_at?: string }) => {
         const fresh = shard.updated_at ? Date.now() - new Date(shard.updated_at).getTime() <= staleMs : false;
         if (!fresh || shard.status === 'Disconnected') return total;
+        if (shard.status === 'Ready') live += 1; else reconnecting += 1;
         const count = Number(shard.guild_count);
         return total + (Number.isFinite(count) ? count : 0);
       }, 0);
-      homeServerStat.textContent = String(serverCount);
+      if (botDot) botDot.dataset.state = live ? 'online' : reconnecting ? 'reconnecting' : 'offline';
+      // While the bot restarts no shard is fresh: the last count stays on screen.
+      if (serverCount > 0) {
+        homeServerStat.textContent = String(serverCount);
+        try { localStorage.setItem(LAST_KEY, String(serverCount)); } catch {}
+      }
     } catch {}
   }
 
