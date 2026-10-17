@@ -39,6 +39,8 @@ for (const cmd of client.commands.values()) {
     name: json.name,
     category: cmd.category ?? 'misc',
     contextMenu: json.type === 3 || json.type === 2,
+    // Registered with Discord as a slash command (the same rule as the bot's collectCommandData); the rest are prefix commands only.
+    slash: (json.type ?? 1) !== 1 || Boolean(cmd.slashOnly || cmd.registerSlash) || cmd.category === 'roleplay',
     aliases: cmd.aliases ?? [],
     description: json.description ?? '',
     subcommands: (json.options ?? []).filter((o) => optionTypes[o.type]).map((o) => o.name),

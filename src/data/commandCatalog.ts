@@ -8,6 +8,7 @@ interface GeneratedCommand {
   name: string;
   category: string;
   contextMenu: boolean;
+  slash?: boolean;
   aliases: string[];
   description: string;
   subcommands: string[];
@@ -15,16 +16,16 @@ interface GeneratedCommand {
 }
 
 const categoryOf: Record<string, string[]> = {
-  moderation: ['sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge'],
-  tickets: ['ticket'],
+  moderation: ['sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
+  tickets: ['ticket', 'quickreply'],
   leveling: ['level', 'rank', 'top', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
   automation: ['automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'monkeyboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity'],
-  community: ['remind', 'invites', 'afk', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes'],
+  community: ['remind', 'invites', 'afk', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts'],
   onboarding: ['welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
   info: ['activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll'],
-  setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix'],
+  setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed'],
   roleplay: ['airkiss', 'angry', 'angrystare', 'bite', 'bleh', 'blush', 'boop', 'brofist', 'bye', 'cry', 'cuddle', 'dance', 'glomp', 'handhold', 'happy', 'hi', 'highfive', 'hug', 'kill', 'kiss', 'laugh', 'lick', 'no', 'nom', 'pat', 'poke', 'punch', 'sad', 'slap', 'smile', 'smug', 'tickle', 'wave', 'wink', 'yeet', 'yes', '8ball', 'rps', 'ship'],
 };
 
@@ -41,14 +42,16 @@ const byName = new Map(commands.map((c) => [c.name, c]));
 const localeIndex: Record<CatalogLocale, 0 | 1 | 2> = { en: 0, es: 1, 'pt-BR': 2 };
 const MAX_SUBCOMMANDS_SHOWN = 6;
 
+// Most commands are prefix commands (shown with the default prefix !); only the ones registered with Discord are shown with /.
 function syntaxOf(cmd: GeneratedCommand): string {
+  const mark = cmd.slash ? '/' : '!';
   if (cmd.subcommands.length > 0) {
     const shown = cmd.subcommands.slice(0, MAX_SUBCOMMANDS_SHOWN).join('|');
     const more = cmd.subcommands.length > MAX_SUBCOMMANDS_SHOWN ? '|...' : '';
-    return `/${cmd.name} <${shown}${more}>`;
+    return `${mark}${cmd.name} <${shown}${more}>`;
   }
   const args = cmd.args.map((a) => (a.required ? `<${a.name}>` : `[${a.name}]`)).join(' ');
-  return args ? `/${cmd.name} ${args}` : `/${cmd.name}`;
+  return args ? `${mark}${cmd.name} ${args}` : `${mark}${cmd.name}`;
 }
 
 export function commandRows(categoryId: string, lang: CatalogLocale): CommandRow[] {
