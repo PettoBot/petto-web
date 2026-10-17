@@ -52,6 +52,11 @@ export function snapshotEpoch(guildId: string): number {
   return epochs.get(guildId) ?? 0;
 }
 
+/** The key under which the bot's look in a server (read from Discord) is kept; see getGuildMemberSelf in discord.ts. */
+export function botLookKey(guildId: string): string {
+  return `bot-look:${guildId}`;
+}
+
 function dropGuild(guildId: string): void {
   guildCache.delete(guildId);
   epochs.set(guildId, snapshotEpoch(guildId) + 1);

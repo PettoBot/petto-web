@@ -1,6 +1,7 @@
 import { memoPerRequest } from './requestMemo';
 import { nameStyleBody, nameStyleClearBodies, type NameStyle } from './nameStyle';
-import { readGuildSnapshot, iconUrl, recentlyWritten, noteGuildWrite, snapshotEpoch } from './guildSnapshots';
+import { readGuildSnapshot, iconUrl, recentlyWritten, noteGuildWrite, snapshotEpoch, botLookKey } from './guildSnapshots';
+import { cached, invalidate } from './sharedCache';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
 
@@ -232,6 +233,7 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
   });
   // The bot's look in this server changed in Discord: its saved copy is behind until the bot saves it again.
   noteGuildWrite(guildId);
+  forgetMemberSelf(guildId);
   return res.ok;
 }
 
@@ -249,6 +251,7 @@ export async function setBotNameStyle(guildId: string, botToken: string, style: 
       body: JSON.stringify(body),
     });
     noteGuildWrite(guildId);
+    forgetMemberSelf(guildId);
     return res.ok;
   };
   if (style) return send(nameStyleBody(style));
@@ -264,25 +267,47 @@ export async function setBotNameStyle(guildId: string, botToken: string, style: 
  * confirmed live that Discord accepts and applies it via PATCH but never returns it from GET, so
  * there's no live source for it, our own database has to be the read-back for that one field.
  */
-// How the bot looks in a server, from Discord: kept a minute (the Customize page asked Discord on every visit), and forgotten the moment
-// the dashboard changes it.
-const MEMBER_SELF_TTL_MS = 60_000;
-const memberSelfCache = new Map<string, { value: Awaited<ReturnType<typeof readGuildMemberSelf>>; expiresAt: number }>();
+// How the bot looks in a server, from Discord. It changes only when someone changes it, so it is kept ten minutes and, after that, shown
+// at once for up to a day while it is read again in the background (the Customize page asked Discord once a minute). It is read again:
+// - the moment the dashboard changes the bot's look (setBotGuildProfile, setBotNameStyle: forgotten here and in Redis, and read straight
+//   from Discord for the few seconds after the change);
+// - when the bot's own copy of the server (petto:snap) shows another nickname or avatar than the one it showed when this was read, which
+//   is how a change made in Discord or by the bot reaches the page.
+const MEMBER_SELF_FRESH_MS = 10 * 60_000;
+const MEMBER_SELF_STALE_MS = 24 * 3600_000;
+const lookChangedAt = new Map<string, number>();
+type MemberSelf = { nick: string | null; avatarUrl: string | null; bannerUrl: string | null };
+type KeptMemberSelf = MemberSelf & { botUserId: string; snap: string };
 
-export async function getGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<{ nick: string | null; avatarUrl: string | null; bannerUrl: string | null } | null> {
-  const key = `${guildId}:${botUserId}`;
-  const hit = memberSelfCache.get(key);
-  if (hit && hit.expiresAt > Date.now()) return hit.value;
-  const value = await readGuildMemberSelf(guildId, botToken, botUserId);
-  if (value) {
-    if (memberSelfCache.size > 2000) memberSelfCache.clear();
-    memberSelfCache.set(key, { value, expiresAt: Date.now() + MEMBER_SELF_TTL_MS });
+export async function getGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<MemberSelf | null> {
+  if (recentlyWritten(guildId)) return readGuildMemberSelf(guildId, botToken, botUserId);
+  const saved = await readGuildSnapshot(guildId).catch(() => null);
+  const snap = saved ? `${saved.botNick ?? ''}|${saved.botAvatar ?? ''}` : '';
+  const load = () => {
+    let started = 0;
+    return cached<KeptMemberSelf | null>(
+      botLookKey(guildId),
+      async () => {
+        started = Date.now();
+        const read = await readGuildMemberSelf(guildId, botToken, botUserId);
+        return read ? { ...read, botUserId, snap } : null;
+      },
+      // A read that began before the last change may answer the old look: it is shown but not kept.
+      { freshMs: MEMBER_SELF_FRESH_MS, staleMs: MEMBER_SELF_STALE_MS, allowStale: true, shared: true, keep: (read) => read !== null && started >= (lookChangedAt.get(guildId) ?? 0) },
+    ).catch(() => null);
+  };
+  let value = await load();
+  if (value && (value.botUserId !== botUserId || (snap && value.snap !== snap))) {
+    await invalidate(botLookKey(guildId)).catch(() => {});
+    value = await load();
   }
-  return value;
+  return value ? { nick: value.nick, avatarUrl: value.avatarUrl, bannerUrl: value.bannerUrl } : null;
 }
 
 function forgetMemberSelf(guildId: string): void {
-  for (const key of memberSelfCache.keys()) if (key.startsWith(`${guildId}:`)) memberSelfCache.delete(key);
+  if (lookChangedAt.size > 5000) lookChangedAt.clear();
+  lookChangedAt.set(guildId, Date.now());
+  void invalidate(botLookKey(guildId)).catch(() => {});
 }
 
 async function readGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<{ nick: string | null; avatarUrl: string | null; bannerUrl: string | null } | null> {
