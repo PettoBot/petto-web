@@ -89,6 +89,7 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     'poll.image': { text: 'https://petto.sbs/assets/mascot-icon.png' }, 'poll.host': mention, 'poll.winner': { text: 'A new command' },
     'partner.server_day': { text: '2' }, 'partner.server_week': { text: '9' }, 'partner.server_total': { text: '87' },
     'request.number': { text: '12' }, 'request.text': { text: 'A banner for my server' }, 'request.link': { text: 'https://discord.com/channels/…' }, 'request.channel': { text: '#requests', mention: true }, 'request.status': { text: 'Open' },
+    'form.name': { text: 'staff' }, 'form.title': { text: 'Staff application' }, 'form.number': { text: '12' }, 'form.status': { text: 'Accepted' }, 'form.reason': { text: 'Great answers' },
     'honeypot.action': { text: 'a softban' }, 'honeypot.count': { text: '17' }, 'honeypot.channel': { text: '#do-not-write', mention: true },
     'channel.name': { text: 'general' }, channel: { text: '#general' },
     date: { text: 'Today' }, time: { text: '12:00 PM' },
