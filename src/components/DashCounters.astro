@@ -10,6 +10,7 @@ interface Counter {
   id: number; channelId: string; type: string; kind: string; template: string; format: string; goal: number | null; timezone: string | null; roleId: string | null;
   prefix: string; suffix: string; parentId: string | null; enabled: boolean; problem: string | null; currentName: string | null; exists: boolean; nextRenameAt: number | null; renamesLeft: number | null;
   target: 'name' | 'topic'; channelName: string | null;
+  lastUpdatedAt: number | null; nextCheckAt: number | null; queued: boolean; badges: string[];
 }
 interface Props {
   user: { username: string; avatar: string | null };
@@ -28,8 +29,9 @@ interface Props {
   textChannels: { id: string; name: string }[];
   embedNames: string[];
   defaultAnnounce: string;
+  memberDays: { day: string; members: number }[];
 }
-const { user, guildId, guildName, guildIcon, counters, categories, roles, freeChannels, values, roleCounts, presences, limits, approxMembers, message, announce, textChannels, embedNames, defaultAnnounce } = Astro.props;
+const { user, guildId, guildName, guildIcon, counters, categories, roles, freeChannels, values, roleCounts, presences, limits, approxMembers, message, announce, textChannels, embedNames, defaultAnnounce, memberDays } = Astro.props;
 
 const labels: Record<string, string> = {
   members: dt('Members'), users_only: dt('Humans'), bots_only: dt('Bots'), online: dt('Online (any status)'), status_online: dt('Online'), status_idle: dt('Idle'), status_dnd: dt('Do not disturb'),
@@ -81,8 +83,31 @@ const problems: Record<string, string> = {
 };
 const announceDefault = defaultAnnounce || dt('🎉 **{server}** just reached **{goal}** members! Thank you all.');
 const sampleMilestone = announce?.next ?? (announce?.every ? (Math.floor(membersNow / announce.every) + 1) * announce.every : nextGoal(membersNow));
-const config = { values: sample, roleCounts, roles: Object.fromEntries(roleName), labels, defaults, lang: dashLang, server: guildName, announceDefault, milestone: sampleMilestone };
+const config = {
+  values: sample, roleCounts, roles: Object.fromEntries(roleName), labels, defaults, lang: dashLang, server: guildName, announceDefault, milestone: sampleMilestone,
+  text: {
+    ago: dt('Updated {a} ago'), justNow: dt('Updated just now'), nextIn: dt('Next update in {a}'), checkIn: dt('Next check in {a}'), soon: dt('Next update: now'),
+    saving: dt('Saving the order...'), saved: dt('Order saved.'), failed: dt('It could not be saved, try again.'), nameSaved: dt('Counter saved. Its name changes as soon as Discord allows.'),
+  },
+};
 const waitingText = dt('Next rename in {a}');
+// The small line of members per day (the bot saves one number per server and day).
+const spark = (() => {
+  if (memberDays.length < 2) return null;
+  const W = 300; const H = 56; const pad = 4;
+  const nums = memberDays.map((d) => d.members);
+  const min = Math.min(...nums); const max = Math.max(...nums);
+  const span = max - min || 1;
+  const points = memberDays.map((d, i) => ({ x: pad + (i * (W - 2 * pad)) / (memberDays.length - 1), y: pad + (H - 2 * pad) * (1 - (d.members - min) / span), ...d }));
+  const line = points.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
+  const area = `${pad},${H - pad} ${line} ${W - pad},${H - pad}`;
+  const change = nums[nums.length - 1] - nums[0];
+  return { W, H, points, line, area, change, min, max, first: memberDays[0], last: memberDays[memberDays.length - 1] };
+})();
+const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString(dashLang, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const badgeText: Record<string, string> = {
+  no_presences: dt('No presences: online counts show 0'), members_partial: dt('Too many members to count them all'), rate_limited: dt('Discord asked to wait'),
+};
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="counters" pageTitle={dt('Counters')}>
   <div class="cn" data-counters data-config={JSON.stringify(config)} data-waiting={waitingText}>
@@ -106,6 +131,27 @@ const waitingText = dt('Next rename in {a}');
       <div class="cn-stat"><b>{counters.filter((c) => c.enabled && !c.problem).length}</b><span>{dt('Working')}</span></div>
       <div class="cn-stat"><b>{values ? Number(values.members ?? 0).toLocaleString(dashLang) : approxMembers ? `~${approxMembers.toLocaleString(dashLang)}` : '—'}</b><span>{dt('Members now')}</span></div>
       <div class="cn-stat"><b>{values && presences ? Number(values.online ?? 0).toLocaleString(dashLang) : '—'}</b><span>{dt('Online now')}</span></div>
+      <figure class="cn-stat cn-spark" data-spark aria-label={dt('Members, last 30 days')}>
+        <figcaption><span>{dt('Members, last 30 days')}</span>{spark && <b class:list={['cn-spark-change', { up: spark.change > 0, down: spark.change < 0 }]}>{spark.change > 0 ? '+' : ''}{spark.change.toLocaleString(dashLang)}</b>}</figcaption>
+        {spark ? (
+          <div class="cn-spark-plot">
+            <svg viewBox={`0 0 ${spark.W} ${spark.H}`} preserveAspectRatio="none" role="img" aria-label={dt('From {a} on {b} to {c} on {d}', { a: spark.first.members.toLocaleString(dashLang), b: dayLabel(spark.first.day), c: spark.last.members.toLocaleString(dashLang), d: dayLabel(spark.last.day) })}>
+              <polygon points={spark.area} class="cn-spark-area" />
+              <polyline points={spark.line} class="cn-spark-line" vector-effect="non-scaling-stroke" />
+              <line class="cn-spark-cross" x1="0" x2="0" y1="0" y2={spark.H} vector-effect="non-scaling-stroke" data-spark-cross style="visibility: hidden" />
+            </svg>
+            <span class="cn-spark-dot" data-spark-dot hidden></span>
+            <span class="cn-spark-tip" data-spark-tip hidden></span>
+            <script type="application/json" data-spark-points set:html={JSON.stringify(spark.points.map((pt) => ({ x: pt.x / spark.W, y: pt.y / spark.H, label: `${dayLabel(pt.day)}: ${pt.members.toLocaleString(dashLang)}` })))} />
+          </div>
+        ) : <p class="cn-hint">{dt('Petto saves the members once a day; the line shows up after the second day.')}</p>}
+        {spark && (
+          <table class="cn-sr">
+            <caption>{dt('Members, last 30 days')}</caption>
+            <tbody>{memberDays.map((d) => <tr><th scope="row">{dayLabel(d.day)}</th><td>{d.members.toLocaleString(dashLang)}</td></tr>)}</tbody>
+          </table>
+        )}
+      </figure>
     </div>
 
     {counters.length === 0 && (
@@ -142,19 +188,34 @@ const waitingText = dt('Next rename in {a}');
     </section>
 
     {counters.length > 0 && (
-      <div class="cn-list" aria-label={dt('Counters')}>
+      <p class="cn-hint cn-list-hint" id="cn-order-hint"><Icon name="ph:dots-six-vertical-bold" width="12" height="12" />{dt('Drag the handle (or use the arrows) to change the order; Petto moves the channels in Discord to match. Click a name to edit it in place.')}</p>
+      <div class="cn-order-status" role="status" aria-live="polite" data-order-status></div>
+      <div class="cn-list" aria-label={dt('Counters')} data-counter-list>
         {counters.map((c, index) => {
           const name = nameOf(c);
           const kind = shownKind(c);
           const status = c.problem ? 'problem' : !c.enabled ? 'off' : c.currentName !== null && shownName(name, kind) !== c.currentName ? 'waiting' : 'ok';
           return (
-            <article class:list={['cn-card', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={kind} data-base-kind={c.kind}>
+            <article class:list={['cn-card', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={kind} data-base-kind={c.kind} data-channel={c.channelId}
+              data-template-now={c.template} data-type-now={c.type} data-format-now={c.format} data-goal-now={c.goal ?? ''} data-zone-now={c.timezone ?? ''} data-role-now={c.roleId ?? ''} data-target={c.target}>
               <div class="cn-card-top">
+                <div class="cn-order">
+                  <button type="button" class="cn-handle" data-drag-handle aria-label={dt('Drag to reorder')} aria-describedby="cn-order-hint"><Icon name="ph:dots-six-vertical-bold" width="14" height="14" /></button>
+                  <span class="cn-arrows">
+                    <button type="button" data-move="-1" aria-label={dt('Move up')} disabled={index === 0}><Icon name="ph:caret-up-bold" width="11" height="11" /></button>
+                    <button type="button" data-move="1" aria-label={dt('Move down')} disabled={index === counters.length - 1}><Icon name="ph:caret-down-bold" width="11" height="11" /></button>
+                  </span>
+                </div>
                 <div class="cn-channel">
                   <Icon name={kindIcon[kind] ?? kindIcon.voice} width="15" height="15" />
                   <span class="cn-name-wrap">
                     {c.target === 'topic' && c.channelName && <small class="cn-topic-of"># {c.channelName}</small>}
-                    <span class="cn-name" data-preview-out>{shownName(name, kind)}</span>
+                    <button type="button" class="cn-name" data-preview-out data-inline-edit title={dt('Click to edit the name')}>{shownName(name, kind)}</button>
+                    <span class="cn-inline" data-inline-box hidden>
+                      <input type="text" maxlength={c.target === 'topic' ? 500 : 100} value={c.template} aria-label={c.target === 'topic' ? dt('Topic') : dt('Name')} data-inline-input />
+                      <small data-inline-preview></small>
+                      <small class="cn-inline-help">{dt('Enter saves, Esc cancels')}</small>
+                    </span>
                   </span>
                 </div>
                 <span class="cn-type">{labels[c.type] ?? c.type}</span>
@@ -165,6 +226,13 @@ const waitingText = dt('Next rename in {a}');
                 {status === 'off' && <span class="cn-pill"><Icon name="ph:pause-fill" width="12" height="12" />{dt('Off')}</span>}
                 {status === 'problem' && <span class="cn-pill cn-pill-err"><Icon name="ph:warning-fill" width="12" height="12" />{problems[c.problem ?? ''] ?? dt('The last rename failed.')}</span>}
                 {c.currentName && status === 'waiting' && <span class="cn-now">{dt('Now: {a}', { a: c.currentName })}</span>}
+              </div>
+              <div class="cn-times">
+                <span><Icon name="ph:clock-counter-clockwise-fill" width="12" height="12" />{c.lastUpdatedAt ? <span data-ago={c.lastUpdatedAt}>{dt('Updated')}</span> : dt('Not renamed yet')}</span>
+                {c.enabled && !c.problem && (
+                  <span><Icon name="ph:clock-countdown-fill" width="12" height="12" />{c.queued ? dt('Next update: now') : c.nextRenameAt ? <span data-next={c.nextRenameAt}>{dt('Next update')}</span> : c.nextCheckAt ? <span data-next={c.nextCheckAt} data-next-check>{dt('Next check')}</span> : dt('Updates when the number changes')}</span>
+                )}
+                {c.badges.filter((b) => badgeText[b]).map((b) => <span class:list={['cn-pill', b === 'rate_limited' ? 'cn-pill-wait' : 'cn-pill-warn']}><Icon name="ph:warning-fill" width="12" height="12" />{badgeText[b]}</span>)}
                 {c.renamesLeft !== null && c.enabled && <span class="cn-budget" title={dt('Renames left in the current 10 minutes')}>{[0, 1].map((n) => <i class:list={{ used: n >= (c.renamesLeft ?? 2) }} />)}</span>}
               </div>
               <details class="cn-edit">
@@ -393,6 +461,154 @@ const waitingText = dt('Next rename in {a}');
       }));
       draw();
     }
+    const words = config.text ?? {};
+    const span = (ms: number) => {
+      const sec = Math.max(0, Math.round(ms / 1000));
+      if (sec < 60) return `${sec}s`;
+      const min = Math.round(sec / 60);
+      if (min < 60) return `${min}m`;
+      const h = Math.floor(min / 60);
+      return h < 48 ? `${h}h ${String(min % 60).padStart(2, '0')}m` : `${Math.floor(h / 24)}d`;
+    };
+    // The order of the list: dragged by the handle (mouse, pen or finger) or moved with the arrows, then sent to Petto.
+    const list = root.querySelector<HTMLElement>('[data-counter-list]');
+    const orderStatus = root.querySelector<HTMLElement>('[data-order-status]');
+    const cards = () => [...(list?.querySelectorAll<HTMLElement>('[data-counter-card]') ?? [])];
+    const orderOf = () => cards().map((card) => card.dataset.channel ?? '');
+    const say = (text: string, bad = false) => { if (orderStatus) { orderStatus.textContent = text; orderStatus.classList.toggle('bad', bad); } };
+    const post = async (fields: Record<string, string>) => {
+      const body = new FormData();
+      for (const [key, value] of Object.entries(fields)) body.set(key, value);
+      const res = await fetch(location.pathname, { method: 'POST', body, headers: { Accept: 'application/json' } });
+      const data = await res.json().catch(() => null);
+      return { ok: Boolean(res.ok && data?.ok), message: String(data?.message ?? '') };
+    };
+    const syncArrows = () => {
+      const all = cards();
+      all.forEach((card, i) => {
+        card.querySelector<HTMLButtonElement>('[data-move="-1"]')!.disabled = i === 0;
+        card.querySelector<HTMLButtonElement>('[data-move="1"]')!.disabled = i === all.length - 1;
+      });
+    };
+    let lastSent = orderOf().join(',');
+    const sendOrder = async () => {
+      const order = orderOf();
+      if (order.join(',') === lastSent) return;
+      say(words.saving ?? '');
+      const result = await post({ action: 'reorder', order: JSON.stringify(order) }).catch(() => ({ ok: false, message: '' }));
+      if (result.ok) lastSent = order.join(',');
+      say(result.message || (result.ok ? words.saved : words.failed) || '', !result.ok);
+    };
+    list?.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-move]');
+      if (!button) return;
+      const card = button.closest<HTMLElement>('[data-counter-card]');
+      if (!card || !list) return;
+      const all = cards();
+      const index = all.indexOf(card) + Number(button.dataset.move);
+      if (index < 0 || index >= all.length) return;
+      if (Number(button.dataset.move) < 0) list.insertBefore(card, all[index]); else list.insertBefore(card, all[index].nextSibling);
+      syncArrows();
+      button.focus();
+      sendOrder();
+    });
+    list?.addEventListener('pointerdown', (event) => {
+      const handle = (event.target as HTMLElement).closest<HTMLElement>('[data-drag-handle]');
+      const card = handle?.closest<HTMLElement>('[data-counter-card]');
+      if (!handle || !card || !list || event.button > 0) return;
+      event.preventDefault();
+      handle.setPointerCapture?.(event.pointerId);
+      card.classList.add('cn-dragging');
+      list.classList.add('cn-sorting');
+      const move = (e: PointerEvent) => {
+        // The card under the pointer takes the dragged one before or after it, by which half the pointer is on.
+        const over = cards().find((other) => {
+          if (other === card) return false;
+          const box = other.getBoundingClientRect();
+          return e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+        });
+        if (!over) return;
+        const box = over.getBoundingClientRect();
+        const after = list.clientWidth > box.width * 1.5 ? e.clientX > box.left + box.width / 2 || e.clientY > box.top + box.height * 0.75 : e.clientY > box.top + box.height / 2;
+        list.insertBefore(card, after ? over.nextSibling : over);
+      };
+      const end = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', end);
+        handle.removeEventListener('pointercancel', end);
+        card.classList.remove('cn-dragging');
+        list.classList.remove('cn-sorting');
+        syncArrows();
+        sendOrder();
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+    });
+    // A name edited in place: the template in a box, the name it gives under it while typing; Enter saves, Esc puts it back.
+    root.querySelectorAll<HTMLElement>('[data-counter-card]').forEach((card) => {
+      const nameButton = card.querySelector<HTMLButtonElement>('[data-inline-edit]');
+      const box = card.querySelector<HTMLElement>('[data-inline-box]');
+      const input = card.querySelector<HTMLInputElement>('[data-inline-input]');
+      const preview = card.querySelector<HTMLElement>('[data-inline-preview]');
+      if (!nameButton || !box || !input) return;
+      const kind = card.dataset.kind ?? 'voice';
+      const draw = () => {
+        const type = card.dataset.typeNow ?? 'members';
+        const roleId = card.dataset.roleNow ?? '';
+        const zone = card.dataset.zoneNow ?? '';
+        const name = renderCounterName({ type, template: input.value, format: card.dataset.formatNow ?? 'plain', goal: Number(card.dataset.goalNow) || null, timezone: zone || null, role: config.roles?.[roleId] ?? '', target: card.dataset.target }, valueOf(type, roleId, zone), config.lang);
+        if (preview) preview.textContent = shownName(name, kind);
+        return shownName(name, kind);
+      };
+      const close = () => { box.hidden = true; nameButton.hidden = false; nameButton.focus(); };
+      nameButton.addEventListener('click', () => { input.value = card.dataset.templateNow ?? input.value; nameButton.hidden = true; box.hidden = false; draw(); input.focus(); input.select(); });
+      input.addEventListener('input', draw);
+      input.addEventListener('keydown', async (event) => {
+        if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        const value = input.value.trim();
+        if (!value) return;
+        input.disabled = true;
+        const result = await post({ action: 'template', channel_id: card.dataset.channel ?? '', template: value, target: card.dataset.target ?? 'name' }).catch(() => ({ ok: false, message: '' }));
+        input.disabled = false;
+        if (result.ok) {
+          card.dataset.templateNow = value;
+          nameButton.textContent = draw();
+          const editTemplate = card.querySelector<HTMLInputElement>('[data-counter-form] [data-template]');
+          if (editTemplate) editTemplate.value = value;
+          close();
+        }
+        say(result.message || (result.ok ? words.nameSaved : words.failed) || '', !result.ok);
+      });
+      input.addEventListener('blur', () => { setTimeout(() => { if (!box.hidden && document.activeElement !== input) close(); }, 150); });
+    });
+    // The line of members: the day under the pointer.
+    root.querySelectorAll<HTMLElement>('[data-spark]').forEach((fig) => {
+      const plot = fig.querySelector<HTMLElement>('.cn-spark-plot');
+      const pts = JSON.parse(fig.querySelector('[data-spark-points]')?.textContent ?? '[]') as { x: number; y: number; label: string }[];
+      const tip = fig.querySelector<HTMLElement>('[data-spark-tip]');
+      const dot = fig.querySelector<HTMLElement>('[data-spark-dot]');
+      const cross = fig.querySelector<SVGLineElement>('[data-spark-cross]');
+      if (!plot || !pts.length || !tip || !dot || !cross) return;
+      const show = (clientX: number) => {
+        const box = plot.getBoundingClientRect();
+        const rel = (clientX - box.left) / box.width;
+        const pt = pts.reduce((best, p) => (Math.abs(p.x - rel) < Math.abs(best.x - rel) ? p : best), pts[0]);
+        tip.textContent = pt.label;
+        tip.hidden = false; dot.hidden = false; cross.style.visibility = 'visible';
+        const left = pt.x * box.width;
+        tip.style.left = `${Math.min(Math.max(left, 50), box.width - 50)}px`;
+        dot.style.left = `${left}px`; dot.style.top = `${pt.y * box.height}px`;
+        const vx = String(pt.x * 300);
+        cross.setAttribute('x1', vx); cross.setAttribute('x2', vx);
+      };
+      const hide = () => { tip.hidden = true; dot.hidden = true; cross.style.visibility = 'hidden'; };
+      plot.addEventListener('pointermove', (e) => show(e.clientX));
+      plot.addEventListener('pointerdown', (e) => show(e.clientX));
+      plot.addEventListener('pointerleave', hide);
+    });
     // "Waiting for Discord" turns into how long is left.
     const label = root.dataset.waiting ?? '{a}';
     const tick = () => {
@@ -400,6 +616,17 @@ const waitingText = dt('Next rename in {a}');
       root.querySelectorAll<HTMLElement>('[data-countdown]').forEach((el) => {
         const left = Math.max(0, Math.round((Number(el.dataset.countdown) - Date.now()) / 1000));
         el.textContent = label.replace('{a}', left >= 60 ? `${Math.floor(left / 60)}m ${String(left % 60).padStart(2, '0')}s` : `${left}s`);
+      });
+      // "Updated 3m ago", "Next update in 4m" (a check comes every minute; a counter changes when its number does).
+      root.querySelectorAll<HTMLElement>('[data-ago]').forEach((el) => {
+        const ago = Date.now() - Number(el.dataset.ago);
+        el.textContent = ago < 30_000 ? words.justNow ?? '' : String(words.ago ?? '{a}').replace('{a}', span(ago));
+      });
+      root.querySelectorAll<HTMLElement>('[data-next]').forEach((el) => {
+        let at = Number(el.dataset.next);
+        if (el.dataset.nextCheck !== undefined) while (at < Date.now()) at += 60_000;
+        const left = at - Date.now();
+        el.textContent = left <= 1000 ? words.soon ?? '' : String((el.dataset.nextCheck !== undefined ? words.checkIn : words.nextIn) ?? '{a}').replace('{a}', span(left));
       });
       setTimeout(tick, 1000);
     };
@@ -452,6 +679,42 @@ const waitingText = dt('Next rename in {a}');
   .cn-card:has(details[open]) { grid-column: 1 / -1; }
   .cn-problem { border-color: color-mix(in srgb, var(--red, #f87171) 45%, var(--border)); }
   .cn-off { opacity: .78; }
+  .cn-order { display: flex; align-items: center; gap: 2px; flex: none; }
+  .cn-handle { display: inline-grid; place-items: center; width: 26px; height: 34px; border: 0; border-radius: 7px; background: transparent; color: var(--text-dim); cursor: grab; touch-action: none; }
+  .cn-handle:hover, .cn-handle:focus-visible { background: var(--card-hover); color: var(--text); outline: none; }
+  .cn-sorting .cn-handle { cursor: grabbing; }
+  .cn-arrows { display: flex; flex-direction: column; }
+  .cn-arrows button { display: inline-grid; place-items: center; width: 20px; height: 17px; border: 0; border-radius: 5px; background: transparent; color: var(--text-dim); cursor: pointer; padding: 0; }
+  .cn-arrows button:hover:not(:disabled), .cn-arrows button:focus-visible { background: var(--card-hover); color: var(--text); outline: none; }
+  .cn-arrows button:disabled { opacity: .3; cursor: default; }
+  .cn-dragging { opacity: .85; border-color: var(--accent) !important; box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--accent) 70%, transparent); transform: scale(1.01); z-index: 2; position: relative; }
+  .cn-sorting { user-select: none; }
+  .cn-list-hint { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .cn-order-status { font-size: 12.5px; color: var(--green); min-height: 1em; margin-bottom: 6px; }
+  .cn-order-status.bad { color: var(--red, #f87171); }
+  .cn-inline { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .cn-inline input { border: 1px solid var(--accent); border-radius: 7px; padding: 5px 8px; background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; min-width: 0; width: 100%; box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+  .cn-inline small { font-size: 11.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+  .cn-inline small.cn-inline-help { color: var(--text-dim); }
+  .cn-times { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-dim); }
+  .cn-times > span { display: inline-flex; align-items: center; gap: 5px; }
+  .cn-pill-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
+  .cn-spark { grid-column: 1 / -1; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .cn-spark figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .cn-spark figcaption span { font-size: 12px; color: var(--text-dim); }
+  .cn-spark-change { font-size: 13px !important; font-weight: 600; color: var(--text-muted); }
+  .cn-spark-change.up { color: var(--green); }
+  .cn-spark-change.down { color: var(--red, #f87171); }
+  .cn-spark-plot { position: relative; height: 56px; cursor: crosshair; touch-action: pan-y; }
+  .cn-spark-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .cn-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .cn-spark-area { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: none; }
+  .cn-spark-cross { stroke: var(--border); stroke-width: 1; }
+  .cn-spark-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card); pointer-events: none; }
+  .cn-spark-tip { position: absolute; top: -30px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--card); border: 1px solid var(--border); color: var(--text); pointer-events: none; box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .5); }
+  .cn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  button.cn-name { border: 0; background: transparent; padding: 0; text-align: left; cursor: text; font-family: inherit; max-width: 100%; border-bottom: 1px dashed transparent; }
+  button.cn-name:hover, button.cn-name:focus-visible { border-bottom-color: var(--text-dim); outline: none; }
   .cn-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
   .cn-channel { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-radius: 9px; background: var(--bg-soft, var(--card-hover)); color: var(--text-muted); flex: 1; }
   .cn-name-wrap { display: flex; flex-direction: column; min-width: 0; }

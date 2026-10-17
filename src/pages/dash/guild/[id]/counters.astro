@@ -31,6 +31,24 @@ let message: { kind: 'ok' | 'err'; text: string } | null = null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
+  // Drag to reorder and editing a name in place answer in JSON, without reloading the page.
+  if (action === 'reorder' || action === 'template') {
+    const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    if (action === 'reorder') {
+      let order: string[] = [];
+      try { order = (JSON.parse(String(form.get('order') ?? '[]')) as unknown[]).map(String).filter((v) => SNOWFLAKE.test(v)).slice(0, 100); } catch { order = []; }
+      if (!order.length) return json({ ok: false, message: dt('Nothing to reorder.') }, 400);
+      const result = await callPettoCounters(Astro, id, session.userId, 'reorder', { channel_ids: order }, dashLang);
+      return json({ ok: result.ok, message: result.message || dt('Petto did not answer. Try again in a moment.') }, result.ok ? 200 : 502);
+    }
+    const channelId = snowflake(form.get('channel_id'));
+    const template = text(form.get('template'), form.get('target') === 'topic' ? 500 : 100);
+    if (!channelId || !template) return json({ ok: false, message: dt('Write a name.') }, 400);
+    const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ name_template: template }) }).catch(() => null);
+    if (!res?.ok) return json({ ok: false, message: dt('It could not be saved, try again.') }, 502);
+    await callPettoCounters(Astro, id, session.userId, 'refresh', { channel_id: channelId }, dashLang);
+    return json({ ok: true, message: dt('Counter saved. Its name changes as soon as Discord allows.') });
+  }
   await ensureGuildRow(apiUrl, apiHeaders, id);
   const botFailed = () => dt('Petto did not answer. Try again in a moment.');
   const goalOf = (value: FormDataEntryValue | null) => { const n = Math.trunc(Number(String(value ?? '').replace(/[.,\s]/g, ''))); return Number.isFinite(n) && n > 0 ? Math.min(2_000_000_000, n) : null; };
@@ -112,7 +130,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, rowsRes, channelsRes, rolesRes, preview, embedsRes, announceRes] = await Promise.all([
+const [guildInfo, rowsRes, channelsRes, rolesRes, preview, embedsRes, announceRes, daysRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }).catch(() => null),
   getGuildList(Astro, id, botToken, 'channels'),
@@ -120,6 +138,7 @@ const [guildInfo, rowsRes, channelsRes, rolesRes, preview, embedsRes, announceRe
   callPettoCounters(Astro, id, session.userId, 'preview', {}, dashLang),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
   fetch(`${apiUrl}/rest/v1/counter_announce_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null),
+  fetch(`${apiUrl}/rest/v1/guild_member_days?guild_id=eq.${id}&select=day,members&order=day.desc&limit=30`, { headers: apiHeaders }).catch(() => null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -127,7 +146,10 @@ const allChannels: any[] = channelsRes?.ok ? await channelsRes.json() : [];
 const channelName = new Map(allChannels.map((c: any) => [String(c.id), String(c.name)]));
 const kindOf: Record<number, string> = { 0: 'text', 2: 'voice', 4: 'category', 5: 'announce', 13: 'stage' };
 const categories = allChannels.filter((c: any) => c.type === 4).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
-const rawRows: any[] = rowsRes?.ok ? await rowsRes.json() : [];
+// The order the list was dragged into, then the oldest first (the bot keeps the same order).
+const rawRows: any[] = (rowsRes?.ok ? ((await rowsRes.json()) as any[]) : []).sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9) || Number(a.id) - Number(b.id));
+// The members of each day of the last 30, oldest first.
+const memberDays: { day: string; members: number }[] = daysRes?.ok ? ((await daysRes.json().catch(() => [])) as any[]).map((row) => ({ day: String(row.day).slice(0, 10), members: Number(row.members) || 0 })).reverse() : [];
 const counterChannels = new Set(rawRows.map((r) => String(r.channel_id)));
 const freeChannels = allChannels.filter((c: any) => kindOf[c.type] && c.type !== 4 && !counterChannels.has(String(c.id))).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: String(c.id), name: String(c.name), kind: kindOf[c.type] }));
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: String(r.id), name: String(r.name), color: Number(r.color) || 0 }));
@@ -142,6 +164,8 @@ const counters = rawRows.map((r) => {
     target: (r.target === 'topic' ? 'topic' : 'name') as 'topic' | 'name', channelName: state?.channel_name ?? channelName.get(String(r.channel_id)) ?? null,
     problem: r.problem ?? null, currentName: state?.current_name ?? (r.target === 'topic' ? null : channelName.get(String(r.channel_id))) ?? null, exists: state ? Boolean(state.exists) : channelName.has(String(r.channel_id)),
     nextRenameAt: state?.next_rename_at ?? null, renamesLeft: state?.renames_left ?? null,
+    lastUpdatedAt: state?.last_updated_at ?? (r.last_updated_at ? Date.parse(r.last_updated_at) || null : null), nextCheckAt: state?.next_check_at ?? null,
+    queued: Boolean(state?.queued), badges: Array.isArray(state?.badges) ? (state.badges as unknown[]).map(String) : [],
   };
 });
 const limits = live?.limits ?? null;
@@ -160,4 +184,4 @@ const announce = announceRow ? {
   counters={counters} categories={categories} roles={roles} freeChannels={freeChannels}
   values={live?.values ?? null} roleCounts={live?.roles ?? {}} presences={Boolean(live?.presences)} limits={limits}
   approxMembers={Number((guildInfo as any).approximate_member_count ?? 0)} message={message}
-  announce={announce} textChannels={textChannels} embedNames={embedNames} defaultAnnounce={String(live?.default_announce ?? '')} />
+  announce={announce} textChannels={textChannels} embedNames={embedNames} defaultAnnounce={String(live?.default_announce ?? '')} memberDays={memberDays} />
