@@ -402,7 +402,7 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
                 try {
                   var entry = performance.getEntriesByType('navigation')[0];
                   var kept = entry && (entry.type === 'reload' || entry.type === 'back_forward');
-                  inside = kept || (document.referrer && new URL(document.referrer).origin === location.origin && /^\/dash\/guild\//.test(new URL(document.referrer).pathname));
+                  inside = kept || (document.referrer && new URL(document.referrer).origin === location.origin && /^\/(?:(?:es|pt-br)\/)?dash\/guild\//.test(new URL(document.referrer).pathname));
                 } catch (e) { inside = false; }
                 var saved = null;
                 try {
@@ -445,14 +445,30 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
               })();
             </script>
             <script is:inline>
-              // The side menu keeps where it was scrolled: a reload, a tab that wakes up after a while or the back button must not throw it to the
-              // top (the section would then be out of sight). With nothing saved, the open section is brought into view.
+              // The side menu keeps where it was scrolled while the person stays in the same server: a reload, a tab that wakes up after a
+              // while or the back button must not throw it to the top. Coming into a server (from the list of servers, another server, a link
+              // from outside) starts it at the top. The position is kept per server, so one server's never moves another's menu.
               (function () {
                 var nav = document.getElementById('dgl-sidenav');
                 if (!nav) return;
                 var KEY = 'dgl-sidenav-scroll';
-                var read = function () { try { var v = sessionStorage.getItem(KEY); return v === null ? null : Number(v); } catch (e) { return null; } };
-                var save = function () { try { sessionStorage.setItem(KEY, String(nav.scrollTop)); } catch (e) {} };
+                var guildOf = function (path) { var m = /^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)(?:\/|$)/.exec(path || ''); return m ? m[1] : ''; };
+                var guild = guildOf(location.pathname);
+                var fresh = true;
+                try {
+                  var entry = performance.getEntriesByType('navigation')[0];
+                  var again = entry && (entry.type === 'reload' || entry.type === 'back_forward');
+                  var from = document.referrer ? new URL(document.referrer) : null;
+                  fresh = !again && !(from && from.origin === location.origin && guild && guildOf(from.pathname) === guild);
+                } catch (e) { fresh = true; }
+                var read = function () {
+                  try {
+                    var v = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+                    return v && v.g === guild && typeof v.y === 'number' ? v.y : null;
+                  } catch (e) { return null; }
+                };
+                var save = function () { try { sessionStorage.setItem(KEY, JSON.stringify({ g: guild, y: nav.scrollTop })); } catch (e) {} };
+                if (fresh) { try { sessionStorage.removeItem(KEY); } catch (e) {} }
                 var showActive = function () {
                   var link = nav.querySelector('.dgl-link.active');
                   if (!link) return;
@@ -461,7 +477,8 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
                   if (rect.top < box.top || rect.bottom > box.bottom) nav.scrollTop += (rect.top - box.top) - (box.height - rect.height) / 2;
                 };
                 var touched = false;
-                var restore = function () { var saved = read(); if (saved !== null && !isNaN(saved)) nav.scrollTop = saved; else showActive(); };
+                // Nothing saved: a server just entered starts at the top; otherwise (the memory of the tab was lost) the open section is shown.
+                var restore = function () { var saved = read(); if (saved !== null && !isNaN(saved)) nav.scrollTop = saved; else if (fresh) nav.scrollTop = 0; else showActive(); };
                 restore();
                 // The menu only has its final height once the page is laid out (before that it is as tall as its list and cannot scroll), so
                 // the position is put back again while the page settles, until the person scrolls the menu themselves.
@@ -652,7 +669,83 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
       repositioners.forEach(function (r) { if (!r.isOpen || r.isOpen()) r.place(); });
     }
     window.addEventListener('resize', reposition);
-    document.addEventListener('scroll', reposition, true);
+    // A list that scrolls inside itself does not move its field.
+    document.addEventListener('scroll', function (e) { if (!(e.target && e.target.classList && e.target.classList.contains('dgl-float'))) reposition(); }, true);
+    // The phone's keyboard shrinks what is visible (the visual viewport) without a window resize in most browsers.
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', reposition); window.visualViewport.addEventListener('scroll', reposition); }
+
+    // A list that opens from a field (the MultiSelect, the variables menu) floats over the page: it is "fixed" to the screen and placed from
+    // where its field is, under it, or above it when there is no room below (the keyboard of a phone, the save bar), with its own scroll.
+    // So no card that clips its content and no field that comes after it can cut it or paint over it. It stays where it is in the page (its
+    // checkboxes still belong to the form). Two things around it could still move it: the zoom of the page on a phone and a transform left on a
+    // box around it by an animation that ended (which would make that box the frame of "fixed" and clip the list), so the animation is
+    // dropped and the place is measured and corrected.
+    function releaseFrames(panel) {
+      var stop = document.getElementById('dgl-content');
+      for (var node = panel.parentElement; node && node !== document.body; node = node.parentElement) {
+        if (getComputedStyle(node).transform !== 'none' && node.getAnimations) {
+          node.getAnimations().forEach(function (animation) { if (animation.playState === 'finished') animation.cancel(); });
+        }
+        if (node === stop) break;
+      }
+    }
+    function floatPanel(panel, anchor, opts) {
+      opts = opts || {};
+      var vv = window.visualViewport;
+      var viewTop = vv ? vv.offsetTop : 0;
+      var viewLeft = vv ? vv.offsetLeft : 0;
+      var viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      var viewRight = vv ? vv.offsetLeft + vv.width : window.innerWidth;
+      var screenBottom = viewBottom;
+      viewBottom = saveBarTop(viewTop, viewBottom);
+      var a = anchor.getBoundingClientRect();
+      panel.classList.add('dgl-float');
+      // The field left the screen: the list waits, hidden, instead of hanging in the air.
+      if (a.bottom < viewTop || a.top > screenBottom) { panel.style.visibility = 'hidden'; return false; }
+      panel.style.visibility = '';
+      // Measured at 0,0 with a known width: where it lands is the origin of "fixed" here, and the width says the zoom.
+      panel.style.left = '0px'; panel.style.top = '0px'; panel.style.width = '200px'; panel.style.maxHeight = 'none';
+      var probe = panel.getBoundingClientRect();
+      var zoom = probe.width > 0 ? probe.width / 200 : 1;
+      var margin = 8;
+      var gap = opts.gap || 4;
+      var width = Math.min(opts.width || a.width, viewRight - viewLeft - margin * 2);
+      var left = Math.min(Math.max(viewLeft + margin, a.left), viewRight - width - margin);
+      var natural = Math.min(opts.maxHeight || 280, panel.scrollHeight * zoom);
+      var below = viewBottom - a.bottom - gap - margin;
+      var above = a.top - viewTop - gap - margin;
+      var down = below >= Math.min(natural, 180) || below >= above;
+      var height = Math.max(Math.min(natural, down ? below : above), Math.min(natural, 96));
+      var top = down ? a.bottom + gap : a.top - gap - height;
+      panel.classList.toggle('dgl-float-up', !down);
+      panel.style.width = (width / zoom) + 'px';
+      panel.style.maxHeight = (height / zoom) + 'px';
+      panel.style.left = ((left - probe.left) / zoom) + 'px';
+      panel.style.top = ((top - probe.top) / zoom) + 'px';
+      return true;
+    }
+    // The top of the save bar when it shows at the bottom of the screen (nothing may open under it), or `bottom`.
+    function saveBarTop(top, bottom) {
+      var bar = document.getElementById('dgl-savebar');
+      if (!bar || !bar.getClientRects().length || getComputedStyle(bar).visibility === 'hidden') return bottom;
+      var rect = bar.getBoundingClientRect();
+      return rect.height && rect.top > top + 120 && rect.top < bottom ? rect.top : bottom;
+    }
+    // A field that opens a list under the save bar (or under the bottom of the screen) is first scrolled up into sight.
+    function bringAboveBar(el) {
+      var vv = window.visualViewport;
+      var top = vv ? vv.offsetTop : 0;
+      var limit = saveBarTop(top, vv ? vv.offsetTop + vv.height : window.innerHeight) - 8;
+      var over = el.getBoundingClientRect().bottom - limit;
+      if (over <= 0) return;
+      var content = document.getElementById('dgl-content');
+      var inner = content && content.scrollHeight > content.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(content).overflowY);
+      if (inner) content.scrollTop += over; else window.scrollBy(0, over);
+    }
+    function unfloatPanel(panel) {
+      panel.classList.remove('dgl-float', 'dgl-float-up');
+      ['left', 'top', 'width', 'maxHeight', 'visibility'].forEach(function (name) { panel.style[name] = ''; });
+    }
     // `extra` is a part of the widget that lives elsewhere in the page (a panel moved to the body), so clicks inside it do not count as outside.
     function closeOnOutside(wrap, close, extra) { outsideClosers.push({ wrap: wrap, close: close, extra: extra || null }); }
     function placeWhileOpen(wrap, isOpen, place) { repositioners.push({ wrap: wrap, isOpen: isOpen, place: place }); }
@@ -1222,7 +1315,7 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
     // Live updates. The server pushes the change stamp of this server (/events, Server-Sent Events); when it is newer than what is on
     // screen, the page is read again and redrawn right where the person was (same scroll), but only while nothing is being edited:
     // otherwise it waits until the edit is saved or dropped. Nothing is read when nothing changed. Without the stream (a proxy that
-    // closes it, an old browser) the stamp is asked every 15 seconds; a hidden tab asks nothing and checks once when it comes back.
+    // closes it or holds it back, an old browser) the stamp is asked every 12 seconds; a hidden tab asks nothing and checks once when it comes back.
     var refreshing = false;
     var refreshQueued = false;
     // `onlyIfChanged` (the checks of a live page, below): the copy that comes back is drawn only when it differs from the one on screen.
@@ -1304,50 +1397,85 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
       if (!match || window.__dglLive) return;
       window.__dglLive = true;
       var base = '/dash/guild/' + match[1];
+      // The stream says `hello` as soon as it opens and beats every 25 s. A proxy can keep it open but hold its data back, and then the
+      // browser never reports an error: so a stream that says nothing within a few seconds of opening, or goes quiet for 40 s, is
+      // closed and the page asks /version every 12 s instead (only while it is visible), trying the stream again every 5 minutes.
+      var POLL_MS = 12000;
+      var HELLO_MS = 5000;
+      var CONNECT_MS = 10000;
+      var SILENCE_MS = 40000;
+      var RETRY_STREAM_MS = 300000;
+      var ERROR_RETRY_MS = 120000;
+      var clientId = Math.random().toString(36).slice(2, 12);
       var source = null;
       var pollTimer = 0;
+      var watchdog = 0;
       var failures = 0;
       var streamBlockedUntil = 0;
-      var POLL_MS = 15000;
-      function poll() {
-        fetch(base + '/version', { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      var mode = 'connecting';
+      var reason = '';
+      window.dglLiveMode = function () { return { mode: mode, reason: reason }; };
+      function poll(counted) {
+        var url = base + '/version' + (counted ? '?m=poll&c=' + clientId + (reason ? '&r=' + reason : '') : '');
+        fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } })
           .then(function (res) { return res.ok ? res.json() : null; })
           .then(function (data) { if (data && data.v) heard(String(data.v)); })
           .catch(function () {});
       }
       function startPolling() {
         if (pollTimer || document.hidden) return;
+        mode = 'poll';
         pollTimer = setInterval(function () {
-          poll();
-          // Now and then the stream is tried again.
-          if (Date.now() > streamBlockedUntil) openStream();
+          if (document.hidden) return;
+          poll(true);
+          // Now and then the stream is tried again; the polling goes on until it really speaks.
+          if (!source && Date.now() > streamBlockedUntil) openStream();
         }, POLL_MS);
       }
       function stopPolling() { clearInterval(pollTimer); pollTimer = 0; }
-      function closeStream() { if (source) { source.close(); source = null; } }
+      function closeStream() { clearTimeout(watchdog); watchdog = 0; if (source) { source.close(); source = null; } }
+      function arm(ms, why) { clearTimeout(watchdog); watchdog = setTimeout(function () { fallBack(why); }, ms); }
+      function fallBack(why) {
+        closeStream();
+        reason = why;
+        streamBlockedUntil = Date.now() + (why === 'error' ? ERROR_RETRY_MS : RETRY_STREAM_MS);
+        poll(true);
+        startPolling();
+      }
+      // Anything the stream says proves it reaches the page.
+      function alive() {
+        failures = 0;
+        if (mode !== 'sse') { mode = 'sse'; reason = ''; stopPolling(); }
+        arm(SILENCE_MS, 'silent');
+      }
       function openStream() {
         if (source || document.hidden) return;
-        if (!window.EventSource || Date.now() < streamBlockedUntil) { startPolling(); return; }
-        var opened = false;
-        source = new EventSource(base + '/events');
-        source.addEventListener('v', function (event) { failures = 0; heard(String(event.data || '')); });
-        source.onopen = function () { opened = true; failures = 0; stopPolling(); };
-        source.onerror = function () {
-          // The browser reconnects by itself; a stream that keeps failing (or is refused) gives way to polling for two minutes.
+        if (!window.EventSource) { reason = 'unsupported'; poll(true); startPolling(); return; }
+        if (Date.now() < streamBlockedUntil) { startPolling(); return; }
+        var stream = new EventSource(base + '/events?c=' + clientId);
+        source = stream;
+        var spoke = false;
+        var said = function (event) { if (source !== stream) return; spoke = true; alive(); if (event && event.data && event.type !== 'hb') heard(String(event.data)); };
+        stream.addEventListener('hello', said);
+        stream.addEventListener('v', said);
+        stream.addEventListener('hb', said);
+        // Opened but silent: held back somewhere on the way.
+        stream.onopen = function () { if (source === stream && !spoke) arm(HELLO_MS, 'silent'); };
+        stream.onerror = function () {
+          if (source !== stream) return;
+          // The browser reconnects by itself (the stream ends every 10 minutes); one that keeps failing, never spoke, or was refused
+          // gives way to polling for two minutes.
           failures += 1;
-          if (!opened || failures >= 3 || (source && source.readyState === 2)) {
-            closeStream();
-            streamBlockedUntil = Date.now() + 120000;
-            startPolling();
-          }
+          if (!spoke || failures >= 3 || stream.readyState === 2) fallBack('error');
         };
+        arm(CONNECT_MS, 'silent');
       }
       document.addEventListener('visibilitychange', function () {
         if (document.hidden) { closeStream(); stopPolling(); return; }
-        poll();
+        poll(false);
         openStream();
       });
-      window.addEventListener('pageshow', function (event) { if (event.persisted) { poll(); openStream(); } });
+      window.addEventListener('pageshow', function (event) { if (event.persisted) { poll(false); openStream(); } });
       window.addEventListener('pagehide', function () { closeStream(); stopPolling(); });
       // Something edited was saved or dropped: a change heard meanwhile is shown now.
       document.addEventListener('dgl:dirty', function () { setTimeout(function () { refreshCurrent(false); }, 50); });
@@ -1522,18 +1650,8 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
     function placeVarMenu() {
       var menu = openVarMenu;
       if (!menu || menu.panel.hidden) return;
-      var r = menu.btn.getBoundingClientRect();
-      // The button left the screen: the menu goes with it instead of hanging in the air.
-      if (r.bottom < 0 || r.top > window.innerHeight) { menu.panel.hidden = true; menu.btn.classList.remove('open'); openVarMenu = null; return; }
-      var below = window.innerHeight - r.bottom - 16;
-      var above = r.top - 16;
-      var up = below < 240 && above > below;
-      var room = Math.max(160, Math.min(420, up ? above : below));
-      menu.panel.style.position = 'fixed';
-      menu.panel.style.maxHeight = room + 'px';
-      menu.panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.panel.offsetWidth - 8)) + 'px';
-      if (up) { menu.panel.style.top = 'auto'; menu.panel.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
-      else { menu.panel.style.bottom = 'auto'; menu.panel.style.top = (r.bottom + 6) + 'px'; }
+      // Placed like the lists of the MultiSelect (floatPanel). The button left the screen: the menu goes with it instead of hanging in the air.
+      if (!floatPanel(menu.panel, menu.btn, { width: 340, maxHeight: 420, gap: 6 })) { menu.panel.hidden = true; menu.btn.classList.remove('open'); unfloatPanel(menu.panel); openVarMenu = null; }
     }
     function queueVarMenu(e) {
       if (!openVarMenu || (e && e.target && e.target.nodeType === 1 && openVarMenu.panel.contains(e.target))) return;
@@ -1564,6 +1682,8 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
             openVarMenu = { btn: btn, panel: panel };
             panel.hidden = false;
             btn.classList.add('open');
+            releaseFrames(panel);
+            bringAboveBar(btn);
             placeVarMenu();
           }
         });
@@ -1675,15 +1795,21 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
           render();
         }
 
+        function placeDropdown() { floatPanel(dropdown, control, { maxHeight: 280 }); }
         function openDropdown() {
           fill();
+          var wasHidden = dropdown.hidden;
           dropdown.hidden = false;
           wrap.classList.add('open');
+          if (wasHidden) { releaseFrames(dropdown); bringAboveBar(control); }
+          placeDropdown();
         }
         function closeDropdown() {
           dropdown.hidden = true;
           wrap.classList.remove('open');
+          unfloatPanel(dropdown);
         }
+        placeWhileOpen(wrap, function () { return !dropdown.hidden; }, placeDropdown);
 
         function render() {
           chips.innerHTML = '';
@@ -1732,12 +1858,14 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
           } else if (empty) {
             empty.remove();
           }
+          // A chip added or removed moves the field: the open list follows it.
+          if (!dropdown.hidden && dropdown.classList.contains('dgl-float')) placeDropdown();
         }
 
         checkboxes().forEach(function (cb) {
           cb.addEventListener('change', render);
         });
-        input.addEventListener('input', function () { fill(); render(); });
+        input.addEventListener('input', function () { fill(); render(); if (!dropdown.hidden) placeDropdown(); });
         input.addEventListener('focus', openDropdown);
         control.addEventListener('click', function () {
           input.focus();
