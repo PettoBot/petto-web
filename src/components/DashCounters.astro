@@ -9,6 +9,7 @@ const dt = makeT(dashLang);
 interface Counter {
   id: number; channelId: string; type: string; kind: string; template: string; format: string; goal: number | null; timezone: string | null; roleId: string | null;
   prefix: string; suffix: string; parentId: string | null; enabled: boolean; problem: string | null; currentName: string | null; exists: boolean; nextRenameAt: number | null; renamesLeft: number | null;
+  target: 'name' | 'topic'; channelName: string | null;
 }
 interface Props {
   user: { username: string; avatar: string | null };
@@ -62,18 +63,21 @@ const packs: { id: string; title: string; icon: string; types: string[] }[] = [
   { id: 'clock', title: dt('Clock'), icon: 'ph:clock-fill', types: ['clock', 'date'] },
 ];
 const formatLabels: Record<string, string> = { plain: '1234', grouped: dashLang === 'en' ? '1,234' : '1.234', compact: dashLang === 'en' ? '1.2k' : '1,2k' };
-const kindLabels: Record<string, string> = { voice: dt('Voice channel (locked)'), text: dt('Text channel'), category: dt('Category'), stage: dt('Stage channel'), announce: dt('Announcement channel') };
-const kindIcon: Record<string, string> = { voice: 'ph:speaker-high-fill', text: 'ph:hash-bold', category: 'ph:folder-simple-fill', stage: 'ph:broadcast-fill', announce: 'ph:megaphone-fill' };
+const kindLabels: Record<string, string> = { voice: dt('Voice channel (locked)'), text: dt('Text channel name'), topic: dt('Text channel topic'), category: dt('Category name'), stage: dt('Stage channel'), announce: dt('Announcement channel') };
+const kindIcon: Record<string, string> = { voice: 'ph:speaker-high-fill', text: 'ph:hash-bold', category: 'ph:folder-simple-fill', stage: 'ph:broadcast-fill', announce: 'ph:megaphone-fill', topic: 'ph:text-align-left-bold' };
+// Where the value shows: a topic keeps what is written, a text channel's name is lower case with hyphens.
+const shownKind = (c: { kind: string; target: string }) => (c.target === 'topic' ? 'topic' : c.kind);
 const roleName = new Map(roles.map((r) => [r.id, r.name]));
 // Without the bot's numbers the previews use what Discord tells the website: the member count, and examples for the rest.
 const sample: Record<string, number | string> = values ?? { members: approxMembers || 1234, goal: approxMembers || 1234 };
 const valueOf = (type: string, roleId: string | null) => (type === 'role_members' ? (roleId ? roleCounts[roleId] ?? 0 : 0) : type === 'clock' || type === 'date' ? timeValue(type, 'UTC', dashLang) : sample[type] ?? 0);
-const nameOf = (c: { type: string; template: string; format: string; goal: number | null; timezone: string | null; roleId: string | null; prefix?: string; suffix?: string }) =>
+const nameOf = (c: { type: string; template: string; format: string; goal: number | null; timezone: string | null; roleId: string | null; prefix?: string; suffix?: string; target?: string }) =>
   renderCounterName({ ...c, role: c.roleId ? roleName.get(c.roleId) ?? '' : '' }, c.type === 'clock' || c.type === 'date' ? timeValue(c.type, c.timezone ?? 'UTC', dashLang) : valueOf(c.type, c.roleId), dashLang);
 const full = limits ? counters.length >= limits.max : false;
 const problems: Record<string, string> = {
   missing_channel: dt('The channel was deleted, so the counter is off.'),
   missing_permission: dt('Petto cannot rename this channel. Give it Manage Channels and View Channel there.'),
+  bad_target: dt('This channel has no topic. Show the value in its name.'),
 };
 const announceDefault = defaultAnnounce || dt('🎉 **{server}** just reached **{goal}** members! Thank you all.');
 const sampleMilestone = announce?.next ?? (announce?.every ? (Math.floor(membersNow / announce.every) + 1) * announce.every : nextGoal(membersNow));
@@ -141,13 +145,17 @@ const waitingText = dt('Next rename in {a}');
       <div class="cn-list" aria-label={dt('Counters')}>
         {counters.map((c, index) => {
           const name = nameOf(c);
-          const status = c.problem ? 'problem' : !c.enabled ? 'off' : c.currentName && shownName(name, c.kind) !== c.currentName ? 'waiting' : 'ok';
+          const kind = shownKind(c);
+          const status = c.problem ? 'problem' : !c.enabled ? 'off' : c.currentName !== null && shownName(name, kind) !== c.currentName ? 'waiting' : 'ok';
           return (
-            <article class:list={['cn-card', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={c.kind}>
+            <article class:list={['cn-card', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={kind} data-base-kind={c.kind}>
               <div class="cn-card-top">
                 <div class="cn-channel">
-                  <Icon name={kindIcon[c.kind] ?? kindIcon.voice} width="15" height="15" />
-                  <span class="cn-name" data-preview-out>{shownName(name, c.kind)}</span>
+                  <Icon name={kindIcon[kind] ?? kindIcon.voice} width="15" height="15" />
+                  <span class="cn-name-wrap">
+                    {c.target === 'topic' && c.channelName && <small class="cn-topic-of"># {c.channelName}</small>}
+                    <span class="cn-name" data-preview-out>{shownName(name, kind)}</span>
+                  </span>
                 </div>
                 <span class="cn-type">{labels[c.type] ?? c.type}</span>
               </div>
@@ -168,9 +176,14 @@ const waitingText = dt('Next rename in {a}');
                     <label class="cn-field"><span>{dt('Shows')}</span>
                       <select name="type" data-type>{groups.map((g) => <optgroup label={g.label}>{g.types.map((type) => <option value={type} selected={type === c.type}>{labels[type]}</option>)}</optgroup>)}</select>
                     </label>
-                    <label class="cn-field cn-span"><span>{dt('Name')}</span>
-                      <input type="text" name="template" value={c.template} maxlength="100" data-template data-default={defaults[c.type]} />
+                    <label class="cn-field cn-span"><span>{c.target === 'topic' ? dt('Topic') : dt('Name')}</span>
+                      <input type="text" name="template" value={c.template} maxlength={c.target === 'topic' ? 500 : 100} data-template data-default={defaults[c.type]} />
                     </label>
+                    {(c.kind === 'text' || c.kind === 'announce') && (
+                      <label class="cn-field"><span>{dt('Shows the value in')}</span>
+                        <select name="target" data-target><option value="name" selected={c.target !== 'topic'}>{dt('The channel name')}</option><option value="topic" selected={c.target === 'topic'}>{dt('The channel topic')}</option></select>
+                      </label>
+                    )}
                     <div class="cn-chips cn-span" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
                     <fieldset class="cn-field cn-seg"><legend>{dt('Number format')}</legend>
                       {COUNTER_FORMATS.map((f) => <label><input type="radio" name="format" value={f} checked={c.format === f} /><span>{formatLabels[f]}</span></label>)}
@@ -185,7 +198,7 @@ const waitingText = dt('Next rename in {a}');
                     </label>
                     <label class="cn-switch cn-span"><input type="checkbox" name="enabled" checked={c.enabled} /><span>{dt('Keep it updated')}</span></label>
                   </div>
-                  <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(name, c.kind)}</b></div>
+                  <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(name, kind)}</b></div>
                   <div class="cn-actions"><button class="btn btn-accent btn-sm" type="submit"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save counter')}</button></div>
                 </form>
               </details>
@@ -262,6 +275,7 @@ const waitingText = dt('Next rename in {a}');
           <label class="cn-field" data-use-when="new"><span>{dt('Kind')}</span><select name="kind" data-kind>{Object.entries(kindLabels).map(([k, label]) => <option value={k}>{label}</option>)}</select></label>
           <label class="cn-field" data-use-when="new"><span>{dt('Category')}</span><select name="category_id"><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id}>{cat.name}</option>)}</select></label>
           <label class="cn-field cn-span" data-use-when="existing" hidden><span>{dt('Channel')}</span><select name="channel_id" data-existing>{freeChannels.map((ch) => <option value={ch.id} data-kind={ch.kind}>{ch.kind === 'voice' || ch.kind === 'stage' ? '🔊 ' : '# '}{ch.name}</option>)}</select></label>
+          <label class="cn-switch cn-span" data-use-when="existing" data-topic-switch hidden><input type="checkbox" name="target" value="topic" /><span>{dt('Show the value in the topic (the name stays as it is)')}</span></label>
         </div>
         <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(nameOf({ type: 'members', template: defaults.members, format: 'grouped', goal: null, timezone: null, roleId: null }), 'voice')}</b></div>
         {!presences && values && <p class="cn-hint">{dt('The online counts need the Presence intent of Petto; until Discord sends presences they show 0.')}</p>}
@@ -297,8 +311,16 @@ const waitingText = dt('Next rename in {a}');
       const card = form.closest('[data-counter-card]');
       const cardOut = card?.querySelector<HTMLElement>('[data-preview-out]');
       const kindOf = () => {
-        if (form.querySelector<HTMLInputElement>('[data-use]:checked')?.value === 'existing') return form.querySelector<HTMLSelectElement>('[data-existing]')?.selectedOptions[0]?.dataset.kind ?? 'voice';
+        if (form.querySelector<HTMLInputElement>('[data-use]:checked')?.value === 'existing') {
+          const kind = form.querySelector<HTMLSelectElement>('[data-existing]')?.selectedOptions[0]?.dataset.kind ?? 'voice';
+          return (kind === 'text' || kind === 'announce') && form.querySelector<HTMLInputElement>('[data-topic-switch] input')?.checked ? 'topic' : kind;
+        }
         return form.querySelector<HTMLSelectElement>('[data-kind]')?.value ?? 'voice';
+      };
+      const cardKind = () => {
+        const target = form.querySelector<HTMLSelectElement>('[data-target]');
+        if (target) return target.value === 'topic' ? 'topic' : (card as HTMLElement).dataset.baseKind ?? 'text';
+        return (card as HTMLElement).dataset.kind ?? 'voice';
       };
       const update = () => {
         const type = typeOf();
@@ -306,10 +328,15 @@ const waitingText = dt('Next rename in {a}');
         form.querySelectorAll<HTMLElement>('[data-when]').forEach((el) => { el.hidden = !String(el.dataset.when).split(' ').includes(type); });
         const use = String(data.get('use') ?? 'new');
         form.querySelectorAll<HTMLElement>('[data-use-when]').forEach((el) => { el.hidden = el.dataset.useWhen !== use; });
+        // Only a text or announcement channel has a topic.
+        const existingKind = form.querySelector<HTMLSelectElement>('[data-existing]')?.selectedOptions[0]?.dataset.kind ?? '';
+        form.querySelectorAll<HTMLElement>('[data-topic-switch]').forEach((el) => { el.hidden = use !== 'existing' || !['text', 'announce'].includes(existingKind); });
+        const topicNow = kindOf() === 'topic' || (card ? cardKind() === 'topic' : false);
+        if (template) template.maxLength = topicNow ? 500 : 100;
         const roleId = String(data.get('role_id') ?? '');
         const zone = String(data.get('timezone') ?? '');
-        const name = renderCounterName({ type, template: template?.value ?? '', format: String(data.get('format') ?? 'plain'), goal: Number(data.get('goal')) || null, timezone: zone || null, role: config.roles?.[roleId] ?? '' }, valueOf(type, roleId, zone), config.lang);
-        const shown = shownName(name, card ? (card as HTMLElement).dataset.kind ?? 'voice' : kindOf());
+        const name = renderCounterName({ type, template: template?.value ?? '', format: String(data.get('format') ?? 'plain'), goal: Number(data.get('goal')) || null, timezone: zone || null, role: config.roles?.[roleId] ?? '', target: topicNow ? 'topic' : 'name' }, valueOf(type, roleId, zone), config.lang);
+        const shown = shownName(name, card ? cardKind() : kindOf());
         if (out) out.textContent = shown;
         if (out) { out.classList.remove('cn-pop'); void out.offsetWidth; out.classList.add('cn-pop'); }
         if (cardOut && card?.querySelector('details[open]')) cardOut.textContent = shown;
@@ -427,6 +454,8 @@ const waitingText = dt('Next rename in {a}');
   .cn-off { opacity: .78; }
   .cn-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
   .cn-channel { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-radius: 9px; background: var(--bg-soft, var(--card-hover)); color: var(--text-muted); flex: 1; }
+  .cn-name-wrap { display: flex; flex-direction: column; min-width: 0; }
+  .cn-topic-of { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cn-name { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
   .cn-type { font-size: 11.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
   .cn-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }

@@ -3845,4 +3845,12 @@ export const dashPt: Record<string, string> = {
   "Save announcements": "Salvar anúncios",
   "Save and send a test": "Salvar e enviar um teste",
   "Last announced: {a} · next: {b}": "Último anunciado: {a} · próximo: {b}",
+  "Text channel name": "Nome de um canal de texto",
+  "Text channel topic": "Tópico de um canal de texto",
+  "Category name": "Nome de uma categoria",
+  "Shows the value in": "Mostra o valor em",
+  "The channel name": "O nome do canal",
+  "The channel topic": "O tópico do canal",
+  "Show the value in the topic (the name stays as it is)": "Mostrar o valor no tópico (o nome fica como está)",
+  "This channel has no topic. Show the value in its name.": "Este canal não tem tópico. Mostre o valor no nome.",
 };

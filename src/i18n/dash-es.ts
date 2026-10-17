@@ -3845,4 +3845,12 @@ export const dashEs: Record<string, string> = {
   "Save announcements": "Guardar anuncios",
   "Save and send a test": "Guardar y enviar una prueba",
   "Last announced: {a} · next: {b}": "Último anunciado: {a} · siguiente: {b}",
+  "Text channel name": "Nombre de un canal de texto",
+  "Text channel topic": "Tema de un canal de texto",
+  "Category name": "Nombre de una categoría",
+  "Shows the value in": "Muestra el valor en",
+  "The channel name": "El nombre del canal",
+  "The channel topic": "El tema del canal",
+  "Show the value in the topic (the name stays as it is)": "Mostrar el valor en el tema (el nombre se queda como está)",
+  "This channel has no topic. Show the value in its name.": "Este canal no tiene tema. Muestra el valor en su nombre.",
 };
