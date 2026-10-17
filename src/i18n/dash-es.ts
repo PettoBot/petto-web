@@ -3791,4 +3791,10 @@ export const dashEs: Record<string, string> = {
   "Write a number from {min} to {max}.": "Escribe un número de {min} a {max}.",
   "Write a number.": "Escribe un número.",
   "Write at least {count} characters.": "Escribe al menos {count} caracteres.",
+  "New link made. The old one no longer works.": "Enlace nuevo creado. El anterior ya no funciona.",
+  "Copied": "Copiado",
+  "New link": "Nuevo enlace",
+  "Anyone in the server with this link can open the form. A new link stops the old one at once; panels already posted keep the old one.": "Cualquiera del servidor con este enlace puede abrir el formulario. Un enlace nuevo desactiva el anterior al instante; los paneles ya publicados conservan el anterior.",
+  "Make a new link? The old link stops working at once, and panels already posted keep the old one.": "¿Crear un enlace nuevo? El anterior deja de funcionar al instante, y los paneles ya publicados conservan el anterior.",
+  "Go to Petto": "Ir a Petto",
 };

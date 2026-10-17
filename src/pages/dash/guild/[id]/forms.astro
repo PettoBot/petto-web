@@ -7,7 +7,7 @@ import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoForms } from '../../../../utils/pettoBotApi';
-import { normalizeForm, normalizeQuestions, slugName, NAME, FORM_PLAN, STATUSES } from '../../../../utils/forms';
+import { normalizeForm, normalizeQuestions, slugName, newPublicId, NAME, FORM_PLAN, STATUSES } from '../../../../utils/forms';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -99,6 +99,10 @@ if (Astro.request.method === 'POST') {
       const done = await rest(`forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: row.status === 'open' ? 'closed' : 'open', updated_at: new Date().toISOString() }) });
       message = done.ok ? { kind: 'ok', text: row.status === 'open' ? dt('Form closed.') : dt('Form opened.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
     }
+  } else if (action === 'relink_form' && formId) {
+    // A new web address: the old link stops working at once (panels already posted keep the old one).
+    const res = await rest(`forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ public_id: newPublicId(), updated_at: new Date().toISOString() }) });
+    if (res.ok) redirectTo = `?section=forms&form=${formId}&relinked=1`; else failed();
   } else if (action === 'delete_form' && formId) {
     const res = await rest(`forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'DELETE' });
     if (res.ok) redirectTo = '?section=forms&deleted=1'; else failed();
@@ -111,7 +115,7 @@ if (Astro.request.method === 'POST') {
     else {
       let name = slugName(`${String(original.name).slice(0, 27)}-copy`);
       for (let n = 2; names.has(name); n += 1) name = slugName(`${String(original.name).slice(0, 26)}-copy${n}`);
-      const { id: _drop, created_at: _c, updated_at: _u, guild_id: _g, ...copy } = original;
+      const { id: _drop, public_id: _p, created_at: _c, updated_at: _u, guild_id: _g, ...copy } = original;
       const res = await rest('forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...copy, name, status: 'closed' }) });
       const row = res.ok ? (await res.json())[0] : null;
       if (row) redirectTo = `?section=forms&form=${row.id}`; else failed();
@@ -138,6 +142,7 @@ if (redirectTo) return Astro.redirect(`/dash/guild/${id}/forms${redirectTo}`);
 const savedParam = Astro.url.searchParams.get('saved');
 if (savedParam === '1') message = { kind: 'ok', text: dt('Saved.') };
 if (savedParam === 'warn') message = { kind: 'warn', text: text(Astro.url.searchParams.get('w'), 300) || dt('Saved.') };
+if (Astro.url.searchParams.get('relinked') === '1') message = { kind: 'ok', text: dt('New link made. The old one no longer works.') };
 if (Astro.url.searchParams.get('deleted') === '1') message = { kind: 'ok', text: dt('Form deleted. What members already sent is kept.') };
 
 const editing = section === 'forms' && formParam ? formParam : null;

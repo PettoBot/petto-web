@@ -6,7 +6,7 @@ import { getEnv } from '../../utils/env';
 export const GET: APIRoute = async ({ url, redirect, cookies, locals }) => {
   const clientId = getEnv({ locals }, 'DISCORD_CLIENT_ID');
   const next = url.searchParams.get('next') ?? '';
-  const safe = /^\/f\/\d{1,15}$/.test(next) ? next : '/';
+  const safe = /^\/f\/[0-9A-Za-z]{12}$/.test(next) ? next : '/';
   if (!clientId) return redirect(safe);
   cookies.set('petto_after_login', safe, { httpOnly: true, secure: url.protocol === 'https:', sameSite: 'lax', path: '/', maxAge: 600 });
   const redirectUri = `${url.origin}/dash/callback`;
