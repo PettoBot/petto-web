@@ -83,7 +83,10 @@ async function guildPage(context: APIContext, next: MiddlewareNext): Promise<Res
   if (!('redirect' in auth)) {
     version = await guildVersion(guildId);
     locals.dashVersion = version;
-    etag = dashEtag({ version, path: context.url.pathname + context.url.search, userId: String(auth.session.userId), lang: getDashLang(context), partial, build: `${buildInfo.version}.${buildInfo.builtAt}` });
+    const etagParts = { version, path: context.url.pathname + context.url.search, userId: String(auth.session.userId), lang: getDashLang(context), build: `${buildInfo.version}.${buildInfo.builtAt}` };
+    etag = dashEtag({ ...etagParts, partial });
+    // The page says which copy the dashboard's own reads of it would get, for the pages that check themselves (data-dash-live).
+    locals.dashPartialEtag = partial ? etag : dashEtag({ ...etagParts, partial: true });
     if (ifNoneMatch && ifNoneMatch.includes('W/"dv.') && ifNoneMatch.split(',').some((tag) => tag.trim() === etag)) {
       return new Response(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'private, no-cache', Vary: 'X-Dash-Partial', 'X-Dash-Version': version } });
     }

@@ -9,6 +9,9 @@
 // <MultiSelectOptions name={source}> block and fills the dropdown the first time it opens. A page with dozens of these
 // (one per autoresponder) would otherwise repeat every channel and role in each one. The form sends the same data:
 // only checked boxes are sent, and those are always in the page.
+// With `lazy`, the same is done without naming a list: the first select of the answer with these options writes them (once), and every
+// other one with the same options points at it.
+import { firstInRequest } from '../utils/oncePerRequest';
 interface Option { id: string; name: string; }
 interface Props {
   name: string;
@@ -18,8 +21,21 @@ interface Props {
   source?: string;
   /** The options are roles Petto hands out: the ones it cannot give are greyed out. */
   giveRole?: boolean;
+  lazy?: boolean;
 }
-const { name, options, selected, placeholder = 'Search...', source, giveRole = false } = Astro.props;
+const { name, options, selected, placeholder = 'Search...', giveRole = false, lazy = false } = Astro.props;
+let source = Astro.props.source;
+let sharedJson = '';
+if (!source && lazy) {
+  // A short name for this list of options (FNV-1a of the ids and names).
+  let hash = 0x811c9dc5;
+  for (const o of options) {
+    const text = o.id + '\u0001' + o.name + '\u0002';
+    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  }
+  source = `ms-${(hash >>> 0).toString(36)}-${options.length}`;
+  if (firstInRequest(Astro.request, source)) sharedJson = JSON.stringify(options.map((o) => ({ id: o.id, name: o.name }))).replace(/</g, '\\u003c');
+}
 const rendered = source ? options.filter((o) => selected.includes(o.id)) : options;
 ---
 <div class="dgl-ms" data-multiselect data-give-role={giveRole ? '' : undefined} data-ms-source={source} data-ms-name={source ? name : undefined}>
@@ -36,4 +52,5 @@ const rendered = source ? options.filter((o) => selected.includes(o.id)) : optio
       </label>
     ))}
   </div>
+  {sharedJson && <script type="application/json" data-ms-options={source} set:html={sharedJson}></script>}
 </div>

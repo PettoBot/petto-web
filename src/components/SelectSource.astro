@@ -1,0 +1,50 @@
+---
+// The long lists of a page's selects (channels, roles), written once. A select marked data-fill={name} is sent with only its fixed
+// choices and the chosen entry (SelectChosen); the script below, which runs as soon as the browser reaches it, puts the whole list back
+// in each of them, in the order and groups the page used to write. It sits after the selects it fills, at the end of the page's content,
+// so the selects are complete before any script of the page or any person touches them, and the form sends the same thing as before.
+// A page with twenty channel pickers used to repeat the 150 channels twenty times.
+interface Item { id: string; name: string; category?: string }
+interface Props { name: string; items: Item[]; prefix?: string }
+const { name, items, prefix = '' } = Astro.props;
+const groups: [string, [string, string][]][] = [];
+const byCategory = new Map<string, [string, string][]>();
+for (const item of items) {
+  const key = item.category ?? '';
+  let list = byCategory.get(key);
+  if (!list) {
+    list = [];
+    byCategory.set(key, list);
+    groups.push([key, list]);
+  }
+  list.push([item.id, prefix + item.name]);
+}
+const json = JSON.stringify(groups).replace(/</g, '\\u003c');
+---
+<script type="application/json" data-fill-src={name} set:html={json}></script>
+<script is:inline define:vars={{ name }}>
+  (function () {
+    var holder = document.querySelector('script[data-fill-src="' + name + '"]');
+    var groups;
+    try { groups = JSON.parse(holder.textContent || '[]'); } catch (e) { return; }
+    document.querySelectorAll('select[data-fill="' + name + '"]').forEach(function (select) {
+      var chosen = select.value;
+      Array.prototype.slice.call(select.querySelectorAll('[data-fill-item]')).forEach(function (o) { o.remove(); });
+      var fragment = document.createDocumentFragment();
+      groups.forEach(function (group) {
+        var parent = fragment;
+        if (group[0]) { parent = document.createElement('optgroup'); parent.label = group[0]; fragment.appendChild(parent); }
+        group[1].forEach(function (item) {
+          var option = document.createElement('option');
+          option.value = item[0];
+          option.textContent = item[1];
+          if (item[0] === chosen && chosen) option.defaultSelected = true;
+          parent.appendChild(option);
+        });
+      });
+      select.appendChild(fragment);
+      if (chosen) select.value = chosen;
+      select.removeAttribute('data-fill');
+    });
+  })();
+</script>

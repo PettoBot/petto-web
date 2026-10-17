@@ -274,12 +274,15 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 const partial = Boolean(Astro.request.headers.get('x-dash-partial'));
 // The change stamp of the server when this page was read (guildVersion.ts): the page reads itself again when a newer one arrives.
 const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion ?? '');
+// The ETag of this content as the dashboard's own reads get it (X-Dash-Partial), so a page that checks itself now and then (data-dash-live)
+// knows when the server has a newer copy; see middleware.ts.
+const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEtag ?? '');
 ---
 {partial ? (
   <html lang={dashLang}>
     <head><meta charset="utf-8" /><title>{`${pageTitle} · ${guildName} · Petto`}</title></head>
     <body>
-    <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} style={`--dgl-guild:${cssString(guildName)}`}>
+    <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} style={`--dgl-guild:${cssString(guildName)}`}>
       {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
       {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
       {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
@@ -493,7 +496,7 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
             <div class="dgl-side-version" title={buildTitle()}>{buildLabel()}</div>
           </aside>
 
-          <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} style={`--dgl-guild:${cssString(guildName)}`}>
+          <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} style={`--dgl-guild:${cssString(guildName)}`}>
             {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
             {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
             {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
@@ -1143,7 +1146,7 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
       var options = init || {};
       var headers = Object.assign({ 'X-Dash-Partial': '1', Accept: 'text/html' }, options.headers || {});
       return fetch(url, Object.assign({}, options, { headers: headers, credentials: 'same-origin' })).then(function (res) {
-        return res.text().then(function (html) { return { ok: res.ok, status: res.status, html: html, version: res.headers.get('X-Dash-Version') || '' }; });
+        return res.text().then(function (html) { return { ok: res.ok, status: res.status, html: html, version: res.headers.get('X-Dash-Version') || '', etag: res.headers.get('ETag') || '' }; });
       });
     }
 
@@ -1222,16 +1225,22 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
     // closes it, an old browser) the stamp is asked every 15 seconds; a hidden tab asks nothing and checks once when it comes back.
     var refreshing = false;
     var refreshQueued = false;
-    function refreshCurrent(force) {
-      if (refreshing) { refreshQueued = true; return; }
+    // `onlyIfChanged` (the checks of a live page, below): the copy that comes back is drawn only when it differs from the one on screen.
+    function refreshCurrent(force, onlyIfChanged) {
+      if (refreshing) { if (!onlyIfChanged) refreshQueued = true; return; }
       if (!force && !isNewer(latestVersion, shownVersion())) return;
-      if (!pageIsIdle()) { waitForIdle(); return; }
+      if (!pageIsIdle()) { if (!onlyIfChanged) waitForIdle(); return; }
       refreshing = true;
       var href = window.location.pathname + window.location.search;
       var wanted = latestVersion;
       readPage(href)
         .then(function (answer) {
-          if (!answer.ok || href !== window.location.pathname + window.location.search || !pageIsIdle()) { if (answer.ok) waitForIdle(); return; }
+          if (!answer.ok || href !== window.location.pathname + window.location.search || !pageIsIdle()) { if (answer.ok && !onlyIfChanged) waitForIdle(); return; }
+          var shown = document.getElementById('dgl-content');
+          if (onlyIfChanged && shown && answer.etag && answer.etag === shown.getAttribute('data-dash-etag')) return;
+          var body = answer.html.replace(/ data-dash-etag="[^"]*"/, '');
+          if (onlyIfChanged && liveHtml.href === href && liveHtml.body === body) { if (shown && answer.etag) shown.setAttribute('data-dash-etag', answer.etag); return; }
+          liveHtml = { href: href, body: body };
           // On a wide screen the content scrolls inside its own panel, on a phone the window does: both places are kept.
           var y = window.scrollY;
           var before = document.getElementById('dgl-content');
@@ -1268,6 +1277,27 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
       heardTimer = setTimeout(function () { refreshCurrent(false); }, 400);
     }
     window.dglRefreshPage = function (force) { refreshCurrent(Boolean(force)); };
+
+    // Some pages show what changes without a stamp: statistics, leaderboards, open tickets, Discord's audit log. Such a page carries
+    // data-dash-live="<seconds>" and reads itself every that many seconds while it is on screen and nothing is being edited. The read
+    // goes through the browser's cache, so the server answers 304 at once until it has a newer copy (its ETag follows the minute), and
+    // the page is redrawn (keeping the scroll) only when what came back differs from what is shown. A hidden tab reads nothing.
+    var liveHtml = { href: '', body: '' };
+    var liveCheckedAt = Date.now();
+    setInterval(function () {
+      if (document.hidden) return;
+      var content = document.getElementById('dgl-content');
+      var marker = content && content.querySelector('[data-dash-live]');
+      if (!marker) { liveCheckedAt = Date.now(); return; }
+      var every = Math.max(10, Number(marker.getAttribute('data-dash-live')) || 30) * 1000;
+      if (Date.now() - liveCheckedAt < every) return;
+      liveCheckedAt = Date.now();
+      refreshCurrent(true, true);
+    }, 2000);
+    document.addEventListener('visibilitychange', function () {
+      // Back on a live page after a while: it checks at once.
+      if (!document.hidden && document.querySelector('#dgl-content [data-dash-live]')) liveCheckedAt = 0;
+    });
 
     (function () {
       var match = window.location.pathname.match(/^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//);
@@ -1523,6 +1553,7 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
 
         btn.addEventListener('click', function (e) {
           e.stopPropagation();
+          if (panel.hasAttribute('data-varmenu-lazy')) buildVarMenu(panel);
           var isOpen = !panel.hidden;
           document.querySelectorAll('[data-varmenu-panel]').forEach((p) => { p.hidden = true; });
           document.querySelectorAll('.dgl-varbtn.open').forEach((b) => b.classList.remove('open'));
@@ -1537,16 +1568,47 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
           }
         });
 
-        panel.querySelectorAll('[data-var-token]').forEach((row) => {
-          row.addEventListener('click', function () {
-            var tok = row.dataset.varToken;
-            var reset = function () { row.classList.remove('copied'); };
-            (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(tok) : Promise.reject())
-              .then(function () { row.classList.add('copied'); setTimeout(reset, 1200); })
-              .catch(function () {});
-          });
+        panel.addEventListener('click', function (e) {
+          var row = e.target && e.target.closest ? e.target.closest('[data-var-token]') : null;
+          if (!row) return;
+          var tok = row.dataset.varToken;
+          var reset = function () { row.classList.remove('copied'); };
+          (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(tok) : Promise.reject())
+            .then(function () { row.classList.add('copied'); setTimeout(reset, 1200); })
+            .catch(function () {});
         });
       });
+    }
+    // The rows of a variables menu come from the one list the page carries (VariableHelp.astro), the first time the menu opens.
+    function buildVarMenu(panel) {
+      var holder = document.querySelector('script[data-var-groups]');
+      if (!holder) return;
+      var groups;
+      try { groups = JSON.parse(holder.textContent || '[]'); } catch (err) { return; }
+      panel.removeAttribute('data-varmenu-lazy');
+      var fragment = document.createDocumentFragment();
+      groups.forEach(function (group) {
+        var box = document.createElement('div');
+        var label = document.createElement('div');
+        label.className = 'dgl-varmenu-group-label';
+        label.textContent = group.l;
+        box.appendChild(label);
+        group.v.forEach(function (variable) {
+          var row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'dgl-varmenu-row';
+          row.setAttribute('data-var-token', variable[0]);
+          var code = document.createElement('code');
+          code.textContent = variable[0];
+          var text = document.createElement('span');
+          text.textContent = variable[1];
+          row.appendChild(code);
+          row.appendChild(text);
+          box.appendChild(row);
+        });
+        fragment.appendChild(box);
+      });
+      panel.appendChild(fragment);
     }
 
     document.addEventListener('click', function (e) {
@@ -1694,10 +1756,35 @@ const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion
       });
     }
 
+    // Draws the panel of a picker the first time it is bound, from the data the page left on it (see ColorPicker.astro). The markup is
+    // the one the component used to write, with its scoped style attribute copied from the panel so it looks the same.
+    function buildColorPanel(panel) {
+      var esc = function (text) { return String(text == null ? '' : text).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+      var scope = '';
+      for (var i = 0; i < panel.attributes.length; i++) if (panel.attributes[i].name.indexOf('data-astro-cid-') === 0) scope += ' ' + panel.attributes[i].name;
+      var tag = function (name, attrs, inner) { return '<' + name + ' ' + attrs + scope + '>' + (inner || '') + '</' + name + '>'; };
+      var input = function (attrs) { return '<input ' + attrs + scope + ' />'; };
+      var field = function (cls, attrs, label) { return tag('div', 'class="dgl-cp-field' + cls + '"', input(attrs) + tag('label', '', esc(label))); };
+      var presets = (panel.getAttribute('data-cp-presets') || '').split(',').filter(Boolean);
+      var none = panel.getAttribute('data-cp-l-none');
+      panel.innerHTML =
+        tag('div', 'class="dgl-cp-sv-wrap"', tag('canvas', 'class="dgl-cp-sv" data-cp-sv width="260" height="150"') + tag('div', 'class="dgl-cp-sv-thumb" data-cp-sv-thumb')) +
+        tag('div', 'class="dgl-cp-hue-wrap"', tag('canvas', 'class="dgl-cp-hue" data-cp-hue width="260" height="12"') + tag('div', 'class="dgl-cp-hue-thumb" data-cp-hue-thumb')) +
+        tag('div', 'class="dgl-cp-fields"',
+          field(' dgl-cp-field-hex', 'type="text" data-cp-hex maxlength="7"', panel.getAttribute('data-cp-l-hex') || 'Hex') +
+          field('', 'type="number" data-cp-r min="0" max="255"', 'R') +
+          field('', 'type="number" data-cp-g min="0" max="255"', 'G') +
+          field('', 'type="number" data-cp-b min="0" max="255"', 'B')) +
+        tag('div', 'class="dgl-cp-presets"', presets.map(function (p) { return tag('button', 'type="button" class="dgl-cp-preset" style="--sw:' + esc(p) + '" data-cp-preset="' + esc(p) + '" aria-label="' + esc(p) + '"'); }).join('')) +
+        tag('div', 'class="dgl-cp-actions"', (none !== null ? tag('button', 'type="button" class="dgl-cp-none" data-cp-none', esc(none)) : '') + tag('button', 'type="button" class="dgl-cp-reset" data-cp-reset', esc(panel.getAttribute('data-cp-l-reset') || 'Reset')));
+      panel.removeAttribute('data-cp-build');
+    }
     function bindColorPickers(root) {
       root.querySelectorAll('[data-colorpicker]').forEach(function (wrap) {
         if (wrap.dataset.cpBound) return;
         wrap.dataset.cpBound = '1';
+        var lazyPanel = wrap.querySelector('[data-cp-build]');
+        if (lazyPanel) buildColorPanel(lazyPanel);
 
         var trigger = wrap.querySelector('[data-cp-trigger]');
         var valueInput = wrap.querySelector('[data-cp-value]');
