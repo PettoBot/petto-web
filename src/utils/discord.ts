@@ -100,28 +100,17 @@ export async function getGuildList(astro: { request?: Request }, guildId: string
 const BOT_IDENTITY_TTL_MS = 10 * 60_000;
 // The bot's own name and avatar (the same in every server) change rarely; they are asked from Discord once in a while, not on every page.
 const BOT_PROFILE_TTL_MS = 10 * 60_000;
-let botProfileCache: { key: string; value: Awaited<ReturnType<typeof getBotProfile>>; expiresAt: number } | null = null;
 // After that time an old answer is still shown at once while a new one is read in the background (a page never waits for Discord for it).
 const BOT_LOOK_STALE_MS = 24 * 3600_000;
-let botProfileLoading: Promise<Awaited<ReturnType<typeof getBotProfile>>> | null = null;
-function loadBotProfile(botToken: string) {
-  botProfileLoading ??= getBotProfile(botToken)
-    .then((value) => {
-      if (value) botProfileCache = { key: botToken, value, expiresAt: Date.now() + BOT_PROFILE_TTL_MS };
-      return value;
-    })
-    .finally(() => { botProfileLoading = null; });
-  return botProfileLoading;
+// Kept in Redis too, so the first pages after a restart do not wait for Discord either.
+const botProfileKey = (botToken: string) => `bot-profile:${botToken.split('.')[0]}`;
+function getBotProfileCached(botToken: string) {
+  return cached(botProfileKey(botToken), () => getBotProfile(botToken), { freshMs: BOT_PROFILE_TTL_MS, staleMs: BOT_LOOK_STALE_MS, allowStale: true, shared: true, keep: (value) => value !== null });
 }
-async function getBotProfileCached(botToken: string) {
-  if (botProfileCache && botProfileCache.key === botToken) {
-    if (botProfileCache.expiresAt > Date.now()) return botProfileCache.value;
-    if (botProfileCache.expiresAt + BOT_LOOK_STALE_MS > Date.now()) {
-      void loadBotProfile(botToken).catch(() => null);
-      return botProfileCache.value;
-    }
-  }
-  return loadBotProfile(botToken);
+
+/** Reads the bot's profile ahead (the server does it as it starts), so the first page of a server does not wait for Discord for it. */
+export function warmBotProfile(botToken: string): Promise<void> {
+  return getBotProfileCached(botToken).then(() => undefined, () => undefined);
 }
 const botIdentityCache = new Map<string, { value: { name: string; icon: string | null }; expiresAt: number }>();
 
@@ -225,7 +214,7 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
 
   botIdentityCache.delete(`${botToken}:${guildId}`);
   forgetMemberSelf(guildId);
-  botProfileCache = null;
+  // The bot's global profile (getBotProfileCached) does not change with its look in one server.
   const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
     method: 'PATCH',
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },

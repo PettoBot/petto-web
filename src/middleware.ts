@@ -95,7 +95,8 @@ async function guildPage(context: APIContext, next: MiddlewareNext): Promise<Res
   if (!version) return response;
   const type = response.headers.get('content-type') ?? '';
   const extra: Record<string, string> = { 'X-Dash-Version': version };
-  if (etag && response.status === 200 && type.includes('text/html')) {
+  // A page drawn while it still waited for something (liveCall.ts) is never answered "not modified" later: it gets no ETag.
+  if (etag && response.status === 200 && type.includes('text/html') && !locals.dashPending) {
     extra.ETag = etag;
     extra.Vary = 'X-Dash-Partial';
   }

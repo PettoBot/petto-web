@@ -285,13 +285,15 @@ const partial = Boolean(Astro.request.headers.get('x-dash-partial'));
 const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion ?? '');
 // The ETag of this content as the dashboard's own reads get it (X-Dash-Partial), so a page that checks itself now and then (data-dash-live)
 // knows when the server has a newer copy; see middleware.ts.
-const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEtag ?? '');
+// A page drawn before something it shows arrived (liveCall.ts) has no ETag and asks to be read again in a moment (data-dash-fill).
+const dashPending = Boolean((Astro.locals as Record<string, unknown>).dashPending);
+const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unknown>).dashPartialEtag ?? '');
 ---
 {partial ? (
   <html lang={dashLang}>
     <head><meta charset="utf-8" /><title>{`${pageTitle} · ${guildName} · Petto`}</title></head>
     <body>
-    <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} style={`--dgl-guild:${cssString(guildName)}`}>
+    <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} data-dash-fill={dashPending ? '' : undefined} style={`--dgl-guild:${cssString(guildName)}`}>
       {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
       {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
       {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
@@ -528,7 +530,7 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
             <div class="dgl-side-version" title={buildTitle()}>{buildLabel()}</div>
           </aside>
 
-          <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} style={`--dgl-guild:${cssString(guildName)}`}>
+          <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} data-dash-fill={dashPending ? '' : undefined} style={`--dgl-guild:${cssString(guildName)}`}>
             {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
             {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
             {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
@@ -1402,6 +1404,22 @@ const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEta
       liveCheckedAt = Date.now();
       refreshCurrent(true, true);
     }, 2000);
+    // A page drawn before something it shows arrived (the live numbers of the counters, asked from the bot) carries data-dash-fill: it is
+    // read again a moment after it is on screen, and again a little later while the answer is still missing (a few times at most).
+    var fillHref = '';
+    var fillTries = 0;
+    var fillAt = 0;
+    setInterval(function () {
+      if (document.hidden || refreshing) return;
+      var content = document.getElementById('dgl-content');
+      if (!content || !content.hasAttribute('data-dash-fill')) { fillHref = ''; return; }
+      var href = window.location.pathname + window.location.search;
+      if (fillHref !== href) { fillHref = href; fillTries = 0; fillAt = Date.now() + 600; }
+      if (fillTries >= 6 || Date.now() < fillAt) return;
+      fillTries += 1;
+      fillAt = Date.now() + 700 * fillTries;
+      refreshCurrent(true, true);
+    }, 200);
     document.addEventListener('visibilitychange', function () {
       // Back on a live page after a while: it checks at once.
       if (!document.hidden && document.querySelector('#dgl-content [data-dash-live]')) liveCheckedAt = 0;

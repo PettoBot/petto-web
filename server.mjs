@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import { spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
@@ -173,9 +173,12 @@ const latencyPath = (url) => {
   const section = /(?:^|&)section=([\w-]{1,40})/.exec(query)?.[1];
   return section ? `${path}?section=${section}` : path;
 };
+// The server's own warm-up reads (below) are not visits: they used to be counted, and the first one after each deploy, which loads the
+// code of the dashboard, made /dash look slow.
+const WARMUP_AGENT = 'petto-warmup';
 const withLatency = (listener) => (req, res) => {
   const url = req.url ?? '/';
-  if (!DASH_REQUEST.test(url) || NOT_A_PAGE.test(url.split('?')[0])) return listener(req, res);
+  if (!DASH_REQUEST.test(url) || NOT_A_PAGE.test(url.split('?')[0]) || req.headers['user-agent'] === WARMUP_AGENT) return listener(req, res);
   const started = performance.now();
   res.once('finish', () => {
     const entry = { p: latencyPath(url), m: req.method, s: res.statusCode, t: Math.round(performance.now() - started), st: String(res.getHeader('server-timing') ?? ''), at: Date.now() };
@@ -205,11 +208,23 @@ await import(entry.href);
 // here, right after start, means no visitor waits for that. Then the pages and the lists a first visitor would wait for are
 // asked once (each one loads its code the first time it is used), and the cheap warm-up is repeated so the caches do not go cold.
 const origin = () => `http://127.0.0.1:${process.env.PORT}`;
-const touch = (path) => fetch(`${origin()}${path}`, { headers: { 'user-agent': 'petto-warmup' } }).then((res) => res.arrayBuffer()).catch(() => {});
+const touch = (path) => fetch(`${origin()}${path}`, { headers: { 'user-agent': WARMUP_AGENT }, redirect: 'manual' }).then((res) => res.arrayBuffer()).catch(() => {});
+// The pages of a server, by the files of the build: each one loads its code (and the menu's) the first time it is asked for. Asked for
+// a server id that is not one, a page stops at the session check, so this only loads code and reads nothing.
+const GUILD_PAGES = new URL('./build/dist/server/pages/dash/guild/_id_/', import.meta.url);
+const NOT_A_GUILD_PAGE = /-(?:api|file|image|live|export|restore|status|search|preview)$|^(?:events|version|live|role-blocks)$/;
+const guildPages = () => {
+  try {
+    return readdirSync(GUILD_PAGES).filter((file) => file.endsWith('.astro.mjs')).map((file) => file.slice(0, -'.astro.mjs'.length)).filter((name) => !NOT_A_GUILD_PAGE.test(name));
+  } catch {
+    return [];
+  }
+};
 setTimeout(async () => {
   await touch('/version.json');
   await touch('/api/warm');
   // The server-rendered pages load their code on the first visit; the dashboard entry and the status page are the usual first ones.
-  for (const path of ['/dash', '/status', '/']) await touch(path);
+  for (const path of ['/dash', '/dash/manage', '/status', '/']) await touch(path);
+  for (const name of guildPages()) await touch(`/dash/guild/0/${name}`);
 }, 300).unref?.();
 setInterval(() => { touch('/api/warm'); }, 4 * 60_000).unref?.();

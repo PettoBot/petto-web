@@ -7,11 +7,13 @@ import { memoPerRequest } from './requestMemo';
 import { forgetGuildSnapshots, iconUrl, readBotGuildSnapshots } from './guildSnapshots';
 import { cached, digestKey, invalidate, onSharedMessage, sharedMessagesLive } from './sharedCache';
 
-const TTL_MS = 20_000;
-// The servers of a visitor: fresh for a minute. A page (a read) may show a list up to ten minutes old while a new one is
-// fetched in the background; a save (a write, which also checks access) always uses one at most a minute old.
+// The servers of a visitor: fresh for a minute. A page (a read) may show a list up to six hours old while a new one is
+// fetched in the background; a save (a write, which also checks access) always uses one at most a minute old. The list is kept in
+// Redis too, so it survives a restart: someone who comes back after a while, or right after a deploy, does not wait for Discord.
 const USER_GUILDS_FRESH_MS = 60_000;
-const USER_GUILDS_STALE_MS = 10 * 60_000;
+const USER_GUILDS_STALE_MS = 6 * 3600_000;
+// Discord sometimes takes seconds (or holds a rate-limited call): a page never waits longer than this for the list.
+const USER_GUILDS_TIMEOUT_MS = 6_000;
 // The servers of the bot: while the bot's messages arrive (`petto:guilds` on join or leave) the list is kept longer.
 const BOT_GUILDS_FRESH_MS = 20_000;
 const BOT_GUILDS_FRESH_LIVE_MS = 5 * 60_000;
@@ -21,10 +23,10 @@ const BOT_GUILDS_STALE_MS = 10 * 60_000;
 const isRead = (request?: Request) => ['GET', 'HEAD'].includes(String(request?.method ?? 'GET').toUpperCase());
 
 /**
- * The servers of a visitor. A write (`forAccess` on a POST) always uses a list at most a minute old. A page read takes a list up to ten
- * minutes old at once while a new one is fetched in the background, so the read after it already uses the new list: waiting for Discord
- * (often 150-400 ms, and rate limited) on the first page after each minute was the slowest part of browsing the dashboard. A visitor who
- * lost Manage Server can at most look at (never change) a server for that one more page.
+ * The servers of a visitor. A write (`forAccess` on a POST) always uses a list at most a minute old. A page read takes a list up to six
+ * hours old at once while a new one is fetched in the background, so the read after it already uses the new list: waiting for Discord
+ * (often 150-400 ms, sometimes seconds, and rate limited) on the first page of a visit was the slowest part of opening the dashboard. A
+ * visitor who lost Manage Server can at most look at (never change) a server for that one more page.
  */
 export function getCachedUserGuilds(accessToken: string, request?: Request, options: { forAccess?: boolean } = {}): Promise<any[]> {
   return memoPerRequest(request, options.forAccess ? 'user-guilds:access' : 'user-guilds', async () => {
@@ -36,6 +38,7 @@ export function getCachedUserGuilds(accessToken: string, request?: Request, opti
 async function fetchUserGuilds(accessToken: string): Promise<any[]> {
   const res = await fetch('https://discord.com/api/users/@me/guilds', {
     headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(USER_GUILDS_TIMEOUT_MS),
   });
   // A transient Discord/API failure must never look like a real empty server list. A recent list answers it when there is
   // one (see the shared cache); otherwise the caller renders a retryable error instead of sending the user to a wrong page.
@@ -87,19 +90,22 @@ async function logDiscordFailure(what: string, res: Response): Promise<void> {
 
 export interface BotGuild { id: string; name: string; icon: string | null; memberCount: number | null }
 
-const botGuildListCache = new Map<string, { guilds: BotGuild[]; expiresAt: number }>();
+const botGuildListKey = (botToken: string) => `bot-guild-list:${botToken.split('.')[0]}`;
+// The servers of the bot with their member counts (the order of the server list): fresh for a minute, shown up to ten minutes old while a
+// new copy is read, and kept in Redis so a restart does not make the first visitor wait for it. Joins and leaves drop it at once.
+const BOT_GUILD_LIST_FRESH_MS = 60_000;
+const BOT_GUILD_LIST_STALE_MS = 10 * 60_000;
 
-/** Every server the bot is in, with name, icon and approximate member count, straight from Discord (paginated, 200 per page). */
+/** Every server the bot is in, with name, icon and approximate member count: the bot's saved copies, or Discord (200 per page) without them. */
 export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
-  const hit = botGuildListCache.get(botToken);
-  if (hit && hit.expiresAt > Date.now()) return hit.guilds;
+  const key = botGuildListKey(botToken);
+  botKeys.add(key);
+  return cached(key, () => loadBotGuildList(botToken), { freshMs: BOT_GUILD_LIST_FRESH_MS, staleMs: BOT_GUILD_LIST_STALE_MS, allowStale: true, shared: true });
+}
 
+async function loadBotGuildList(botToken: string): Promise<BotGuild[]> {
   const saved = await readBotGuildSnapshots();
-  if (saved) {
-    const fromTable = saved.map((guild) => ({ id: guild.id, name: guild.name, icon: iconUrl(guild.id, guild.icon), memberCount: guild.memberCount }));
-    botGuildListCache.set(botToken, { guilds: fromTable, expiresAt: Date.now() + TTL_MS });
-    return fromTable;
-  }
+  if (saved) return saved.map((guild) => ({ id: guild.id, name: guild.name, icon: iconUrl(guild.id, guild.icon), memberCount: guild.memberCount }));
 
   const guilds: BotGuild[] = [];
   let after = '';
@@ -124,12 +130,10 @@ export async function getBotGuildList(botToken: string): Promise<BotGuild[]> {
     if (data.length < 200) break;
     after = String(data[data.length - 1].id);
   }
-  botGuildListCache.set(botToken, { guilds, expiresAt: Date.now() + TTL_MS });
   return guilds;
 }
 
 function forgetBotGuilds(): void {
-  botGuildListCache.clear();
   forgetGuildSnapshots();
   for (const key of botKeys) void invalidate(key).catch(() => {});
 }
@@ -140,5 +144,6 @@ onSharedMessage('petto:guilds', () => forgetBotGuilds());
 /** Forget cached bot guild lists, used right after the bot joins or leaves a server. */
 export function invalidateBotGuildCaches(botToken: string): void {
   botKeys.add(botGuildsKey(botToken));
+  botKeys.add(botGuildListKey(botToken));
   forgetBotGuilds();
 }
