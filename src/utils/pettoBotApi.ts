@@ -1,4 +1,24 @@
 import { getEnv } from './env';
+import { getGuildSession } from './dashAuth';
+import { pageDecision } from './dashAccess';
+
+/**
+ * Members who reach a page through "Dashboard access" by role (not Manage Server) can use the bot-backed actions of that page: the site
+ * says so with `X-Petto-Dashboard-Grant: <page>:<view|edit>`, only after its own check of their roles allowed the page. The bot does
+ * not take the site's word alone: it reads the same rules (dash_access) and the member's roles itself (petto-bot
+ * src/web/dashboardRoleAccess.js). Managers send nothing, so nothing changes for them.
+ */
+async function roleGrant(context: AstroContext, guildId: string, page: string, write: boolean): Promise<Record<string, string>> {
+  try {
+    const auth: any = await getGuildSession(context, guildId);
+    if (!auth || !('access' in auth) || !auth.access) return {};
+    const decision = pageDecision(auth.access, page);
+    if (!decision.allowed || (write && !decision.canEdit)) return {};
+    return { 'X-Petto-Dashboard-Grant': `${page}:${write ? 'edit' : 'view'}` };
+  } catch {
+    return {};
+  }
+}
 
 type AstroContext = { locals?: any };
 
@@ -442,9 +462,10 @@ export async function callPettoForms(context: AstroContext, guildId: string, use
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: '' };
   try {
+    const grant = await roleGrant(context, guildId, 'forms', route !== 'submissions');
     const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/forms/${route}`, {
       method: 'POST', signal: AbortSignal.timeout(25_000),
-      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, user_id: userId }),
     });
     const payload: any = await response.json().catch(() => null);
@@ -460,9 +481,10 @@ export async function callPettoCounters(context: AstroContext, guildId: string, 
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: '' };
   try {
+    const grant = await roleGrant(context, guildId, 'counters', route !== 'preview');
     const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/counters/${route}`, {
       method: 'POST', signal: AbortSignal.timeout(route === 'preview' ? 6_000 : 25_000),
-      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, user_id: userId }),
     });
     const payload: any = await response.json().catch(() => null);
@@ -472,7 +494,7 @@ export async function callPettoCounters(context: AstroContext, guildId: string, 
   }
 }
 
-// A form filled on the website (petto.sbs/f/<public id>, never the number of the form): the bot says whether the signed-in member may send it, and takes the answers through
+// A form filled on the website (petto.sbs/form#<public id>, never the number of the form): the bot says whether the signed-in member may send it, and takes the answers through
 // the same pipeline as a Discord submission.
 export async function callPettoWebForm(context: AstroContext, formId: string, userId: string, route: 'public' | 'submit', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; data: any }> {
   const { baseUrl, secret } = apiConfig(context);

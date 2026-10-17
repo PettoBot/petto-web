@@ -1,0 +1,339 @@
+---
+// A form of a server, filled on the website: /form#<public id> (and /es/form#…, /pt-br/form#…). The page is the same static page for every
+// form; its script reads the id from the hash and asks /api/form/<id>, which asks the bot. The member logs in with Discord (only their
+// identity), the bot says whether they may send it (member of the server, roles, ages, pending, cooldown, limits, dates) and takes the
+// answers through the same pipeline as Discord.
+import { Icon } from 'astro-icon/components';
+import Base from '../layouts/Base.astro';
+import { makeT } from '../i18n/dash';
+import type { Locale } from '../i18n/ui';
+
+interface Props { lang: Locale }
+const { lang } = Astro.props;
+const dt = makeT(lang);
+const texts = {
+  required: dt('Answer this question.'), number: dt('Write a number.'), range: dt('Write a number from {min} to {max}.'), short: dt('Write at least {count} characters.'), many: dt('Pick up to {count}.'),
+  yes: dt('Yes'), no: dt('No'), optional: dt('optional'), requiredLabel: dt('Required'), pickUpTo: dt('Pick up to {a}.'), pickAll: dt('Pick all that apply.'),
+  answeringAs: dt('Answering as {a}'), staffReads: dt('The staff of {a} reads your answers in Discord.'), sent: dt('Sent (#{a})'),
+  fix: dt('Some answers need a fix.'), failed: dt('It could not be sent. Try again in a moment.'),
+  notFound: dt('This form does not exist'), notFoundHelp: dt('It may have been deleted, or the link is wrong.'), noLoad: dt('The form could not be loaded'), noLoadHelp: dt('Petto did not answer. Try again in a moment.'),
+  noId: dt('This link has no form'), noIdHelp: dt('Open the link of the form again, it ends with # and its id.'), form: dt('Form'),
+};
+const langParam = lang === 'pt-BR' ? 'pt-BR' : lang;
+---
+<Base title={`${dt('Form')} · Petto`} lang={lang} description={dt('Fill in this form with your Discord account.')}>
+  <main class="wf" data-no-loader>
+    <div class="wf-shell" data-wf-shell>
+      <div class="wf-loading" data-wf-state="loading" role="status" aria-label="…"><span class="wf-spin"></span></div>
+
+      <div class="wf-card wf-center" data-wf-state="login" hidden>
+        <img src="/assets/mascot-icon.webp" alt="" width="64" height="64" class="wf-mascot" />
+        <h1>{dt('Log in to fill in this form')}</h1>
+        <p class="wf-muted">{dt('Petto only asks Discord who you are, to send your answers as you and check that you are in the server.')}</p>
+        <a class="btn btn-accent" href="/f/login" data-wf-login><Icon name="simple-icons:discord" width="16" height="16" />{dt('Log in with Discord')}</a>
+      </div>
+
+      <div class="wf-card wf-center" data-wf-state="error" hidden>
+        <Icon name="ph:warning-fill" width="30" height="30" class="wf-warn-icon" />
+        <h1 data-wf-error-title></h1>
+        <p class="wf-muted" data-wf-error-help></p>
+        <a class="btn btn-ghost" href="/" data-wf-home hidden>{dt('Go to Petto')}</a>
+        <button class="btn btn-ghost" type="button" data-wf-retry hidden>{dt('Try again')}</button>
+      </div>
+
+      <header class="wf-head" data-wf-state="form" hidden>
+        <div class="wf-server">
+          <img data-wf-icon alt="" width="40" height="40" hidden /><span class="wf-server-letter" data-wf-letter></span>
+          <span data-wf-server></span>
+          <span class="wf-id" title={dt('Link of the form:')} translate="no"><span class="wf-id-p">~/form#</span><span data-wf-id></span><i class="wf-caret" aria-hidden="true"></i></span>
+        </div>
+        <h1 data-wf-title></h1>
+        <p class="wf-desc" data-wf-desc hidden></p>
+        <p class="wf-who"><Icon name="ph:user-circle-fill" width="15" height="15" /><span data-wf-who></span> · <a href="/dash/logout">{dt('Not you?')}</a></p>
+      </header>
+
+      <div class="wf-card wf-done" role="status" data-wf-state="sent" hidden>
+        <span class="wf-done-icon"><Icon name="ph:check-circle-fill" width="34" height="34" /></span>
+        <h2 data-wf-sent-title></h2>
+        <p data-wf-sent-text></p>
+      </div>
+
+      <div class="wf-card wf-refused" role="status" data-wf-state="refused" hidden><Icon name="ph:lock-fill" width="18" height="18" /><p data-wf-reason></p></div>
+
+      <form class="wf-card wf-form" novalidate data-wf-form data-wf-state="fill" hidden>
+        <div class="wf-alert" role="alert" data-wf-alert hidden><Icon name="ph:warning-fill" width="15" height="15" /><span></span></div>
+        <div class="wf-qs" data-wf-questions></div>
+        <div class="wf-foot">
+          <button class="btn btn-accent" type="submit" data-wf-send><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" />{dt('Send')}</button>
+          <span class="wf-muted" data-wf-staff></span>
+        </div>
+      </form>
+    </div>
+  </main>
+</Base>
+
+<script is:inline define:vars={{ texts, lang: langParam }}>
+  (function () {
+    var shell = document.querySelector('[data-wf-shell]');
+    if (!shell) return;
+    var $ = function (sel) { return shell.querySelector(sel); };
+    var fill = function (text, vars) { return text.replace(/\{(\w+)\}/g, function (w, k) { return k in vars ? vars[k] : w; }); };
+    var KEY = 'petto-form-id';
+    var id = (location.hash || '').slice(1);
+    // Coming back from the Discord login without the hash: the id kept in this tab before leaving brings it back.
+    if (!/^[0-9A-Za-z]{12}$/.test(id)) {
+      try { id = sessionStorage.getItem(KEY) || ''; } catch (e) { id = ''; }
+      if (/^[0-9A-Za-z]{12}$/.test(id)) history.replaceState(null, '', location.pathname + location.search + '#' + id);
+    }
+    // The language links of the header keep the form.
+    document.querySelectorAll('a[href$="/form"], a[href$="/form/"]').forEach(function (a) { if (/^[0-9A-Za-z]{12}$/.test(id)) a.setAttribute('href', a.getAttribute('href') + '#' + id); });
+    var show = function (names) {
+      shell.querySelectorAll('[data-wf-state]').forEach(function (el) { el.hidden = names.indexOf(el.getAttribute('data-wf-state')) === -1; });
+    };
+    var error = function (title, help, retry) {
+      $('[data-wf-error-title]').textContent = title;
+      $('[data-wf-error-help]').textContent = help;
+      $('[data-wf-retry]').hidden = !retry;
+      $('[data-wf-home]').hidden = Boolean(retry);
+      show(['error']);
+    };
+    if (!/^[0-9A-Za-z]{12}$/.test(id)) { error(texts.noId, texts.noIdHelp, false); return; }
+    try { sessionStorage.setItem(KEY, id); } catch (e) { /* private window */ }
+    var api = '/api/form/' + id + '?lang=' + encodeURIComponent(lang);
+    var form = $('[data-wf-form]');
+    var list = $('[data-wf-questions]');
+    var color = '';
+
+    var el = function (tag, attrs, text) {
+      var node = document.createElement(tag);
+      if (attrs) Object.keys(attrs).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) node.setAttribute(k, attrs[k] === true ? '' : attrs[k]); });
+      if (text !== undefined && text !== null) node.textContent = text;
+      return node;
+    };
+    var choice = function (type, name, value, label) {
+      var wrap = el('label', { class: 'wf-choice' + (type === 'checkbox' ? ' wf-check' : '') });
+      wrap.appendChild(el('input', { type: type, name: name, value: value }));
+      wrap.appendChild(el('span', null, label));
+      return wrap;
+    };
+    var question = function (q, index) {
+      var box = el('fieldset', { class: 'wf-q', style: '--i:' + index, 'data-q': q.id, 'data-type': q.type, 'data-required': q.required ? '1' : '0', 'data-min': q.min_length == null ? '' : q.min_length, 'data-minv': q.min_value == null ? '' : q.min_value, 'data-maxv': q.max_value == null ? '' : q.max_value, 'data-maxc': q.max_choices == null ? '' : q.max_choices });
+      if (q.image) box.appendChild(el('img', { class: 'wf-img', src: q.image, alt: q.label, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }));
+      var legend = el('legend');
+      legend.appendChild(el('span', { class: 'wf-n' }, String(index + 1)));
+      legend.appendChild(document.createTextNode(q.label));
+      legend.appendChild(q.required ? el('em', { class: 'wf-req', 'aria-label': texts.requiredLabel }, '*') : el('span', { class: 'wf-opt' }, texts.optional));
+      box.appendChild(legend);
+      if (q.help) box.appendChild(el('p', { class: 'wf-help' }, q.help));
+      // Made safe by the site (utils/forms.ts descriptionHtml): everything is escaped, then only bold, italics, code and links are made.
+      if (q.description_html) { var d = el('div', { class: 'wf-qdesc' }); d.innerHTML = q.description_html; box.appendChild(d); }
+      var name = 'q_' + q.id;
+      if (q.type === 'short') box.appendChild(el('input', { type: 'text', name: name, maxlength: q.max_length || 1000, placeholder: q.placeholder || '', required: q.required }));
+      else if (q.type === 'paragraph') box.appendChild(el('textarea', { name: name, maxlength: q.max_length || 4000, placeholder: q.placeholder || '', required: q.required, rows: '5' }));
+      else if (q.type === 'number') box.appendChild(el('input', { type: 'text', inputmode: 'decimal', name: name, maxlength: '30', placeholder: q.placeholder || (q.min_value != null && q.max_value != null ? q.min_value + ' – ' + q.max_value : ''), required: q.required }));
+      else if (q.type === 'yesno') { var row = el('div', { class: 'wf-choices wf-row' }); row.appendChild(choice('radio', name, 'yes', texts.yes)); row.appendChild(choice('radio', name, 'no', texts.no)); box.appendChild(row); }
+      else if (q.type === 'choice' || q.type === 'multi') {
+        var grid = el('div', { class: 'wf-choices' });
+        (q.options || []).forEach(function (option, i) { grid.appendChild(choice(q.type === 'multi' ? 'checkbox' : 'radio', name, 'o' + i, option)); });
+        box.appendChild(grid);
+        if (q.type === 'multi') box.appendChild(el('p', { class: 'wf-help' }, q.max_choices ? fill(texts.pickUpTo, { a: q.max_choices }) : texts.pickAll));
+      }
+      box.appendChild(el('p', { class: 'wf-err', 'data-err': true, 'aria-live': 'polite' }));
+      return box;
+    };
+    var alertBox = function (text) {
+      var box = $('[data-wf-alert]');
+      box.hidden = !text;
+      box.querySelector('span').textContent = text || '';
+    };
+
+    // The same checks as the bot, before sending, so a mistake is shown at once. The bot checks everything again.
+    var check = function (box) {
+      var type = box.dataset.type;
+      var required = box.dataset.required === '1';
+      var msg = '';
+      if (type === 'short' || type === 'paragraph' || type === 'number') {
+        var input = box.querySelector('input[name^="q_"], textarea');
+        var text = (input.value || '').trim();
+        if (!text) { if (required) msg = texts.required; }
+        else if (type === 'number') {
+          var normal = text.replace(/\s/g, '').replace(',', '.');
+          if (!/^-?\d{1,15}(\.\d{1,6})?$/.test(normal)) msg = texts.number;
+          else {
+            var n = Number(normal), min = box.dataset.minv, max = box.dataset.maxv;
+            if ((min !== '' && n < Number(min)) || (max !== '' && n > Number(max))) msg = fill(texts.range, { min: min || '…', max: max || '…' });
+          }
+        } else if (box.dataset.min && text.length < Number(box.dataset.min)) msg = fill(texts.short, { count: box.dataset.min });
+      } else {
+        var picked = box.querySelectorAll('input[name^="q_"]:checked').length;
+        if (!picked && required) msg = texts.required;
+        else if (type === 'multi' && box.dataset.maxc && picked > Number(box.dataset.maxc)) msg = fill(texts.many, { count: box.dataset.maxc });
+      }
+      mark(box, msg);
+      return !msg;
+    };
+    var mark = function (box, msg) { box.classList.toggle('wf-q-bad', Boolean(msg)); box.querySelector('[data-err]').textContent = msg || ''; };
+    form.addEventListener('change', function (event) { var box = event.target.closest('[data-q]'); if (box && box.classList.contains('wf-q-bad')) check(box); });
+    form.addEventListener('focusout', function (event) { var box = event.target.closest('[data-q]'); if (box && event.target.matches('input[type=text], textarea') && event.target.value) check(box); });
+    var collect = function () {
+      var values = {};
+      list.querySelectorAll('[data-q]').forEach(function (box) {
+        var qid = box.dataset.q, type = box.dataset.type;
+        if (type === 'multi') values[qid] = Array.prototype.map.call(box.querySelectorAll('input:checked'), function (i) { return i.value; });
+        else if (type === 'choice' || type === 'yesno') { var c = box.querySelector('input:checked'); if (c) values[qid] = c.value; }
+        else values[qid] = box.querySelector('input, textarea').value;
+      });
+      return values;
+    };
+    var focusFirst = function (boxes) {
+      if (!boxes.length) return;
+      boxes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var first = boxes[0].querySelector('input, textarea'); if (first) first.focus({ preventScroll: true });
+    };
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var boxes = Array.prototype.slice.call(list.querySelectorAll('[data-q]'));
+      var bad = boxes.filter(function (box) { return !check(box); });
+      if (bad.length) { focusFirst(bad); return; }
+      var button = $('[data-wf-send]');
+      button.disabled = true; button.classList.add('is-sending');
+      alertBox('');
+      fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ values: collect() }) })
+        .then(function (res) { return res.json().catch(function () { return null; }).then(function (data) { return { status: res.status, data: data }; }); })
+        .then(function (r) {
+          var data = r.data || {};
+          if (r.status === 401) { show(['login']); return; }
+          if (data.ok) {
+            $('[data-wf-sent-title]').textContent = fill(texts.sent, { a: data.number });
+            $('[data-wf-sent-text]').textContent = data.message || '';
+            show(['form', 'sent']);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+          }
+          if (Array.isArray(data.errors) && data.errors.length) {
+            var marked = [];
+            data.errors.forEach(function (e) { var box = list.querySelector('[data-q="' + (window.CSS && CSS.escape ? CSS.escape(e.id) : e.id) + '"]'); if (box) { mark(box, e.message); marked.push(box); } });
+            alertBox(texts.fix);
+            focusFirst(marked);
+            return;
+          }
+          alertBox(data.message || texts.failed);
+        })
+        .catch(function () { alertBox(texts.failed); })
+        .then(function () { button.disabled = false; button.classList.remove('is-sending'); });
+    });
+
+    var load = function () {
+      show(['loading']);
+      fetch(api, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (res) { return res.json().catch(function () { return null; }).then(function (data) { return { status: res.status, data: data }; }); })
+        .then(function (r) {
+          var data = r.data || {};
+          if (r.status === 401 || data.logged === false) {
+            $('[data-wf-login]').setAttribute('href', '/f/login?form=' + id + '&lang=' + encodeURIComponent(lang));
+            show(['login']);
+            return;
+          }
+          if (!data.ok) { if (r.status === 404) error(texts.notFound, texts.notFoundHelp, false); else error(texts.noLoad, texts.noLoadHelp, true); return; }
+          try { sessionStorage.removeItem(KEY); } catch (e) { /* nothing kept */ }
+          var f = data.form, server = data.server || {};
+          color = typeof f.color === 'number' ? '#' + f.color.toString(16).padStart(6, '0') : 'var(--accent)';
+          shell.style.setProperty('--wf', color);
+          document.title = (f.title || texts.form) + ' · Petto';
+          var icon = $('[data-wf-icon]');
+          if (server.icon) { icon.src = server.icon; icon.hidden = false; $('[data-wf-letter]').hidden = true; }
+          else $('[data-wf-letter]').textContent = String(server.name || '?').slice(0, 1);
+          $('[data-wf-server]').textContent = server.name || '';
+          $('[data-wf-id]').textContent = id;
+          $('[data-wf-title]').textContent = f.title || texts.form;
+          var desc = $('[data-wf-desc]'); desc.textContent = f.description || ''; desc.hidden = !f.description;
+          $('[data-wf-who]').textContent = fill(texts.answeringAs, { a: (data.user && data.user.username) || '' });
+          $('[data-wf-staff]').textContent = fill(texts.staffReads, { a: server.name || '' });
+          if (!data.can) { $('[data-wf-reason]').textContent = data.reason || ''; show(['form', 'refused']); return; }
+          list.textContent = '';
+          (f.questions || []).forEach(function (q, i) { list.appendChild(question(q, i)); });
+          show(['form', 'fill']);
+        })
+        .catch(function () { error(texts.noLoad, texts.noLoadHelp, true); });
+    };
+    $('[data-wf-retry]').addEventListener('click', load);
+    window.addEventListener('hashchange', function () { if (location.hash.slice(1) !== id) location.reload(); });
+    load();
+  })();
+</script>
+
+<style is:global>
+  .wf { padding: 48px 16px 80px; }
+  .wf-shell { --wf: var(--accent); max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .wf-card { border: 1px solid var(--border); border-radius: 18px; background: var(--card); padding: 22px; animation: wfIn .5s cubic-bezier(.16, 1, .3, 1) both; }
+  .wf-center { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 22px; }
+  .wf-center h1 { font-size: 24px; margin: 0; }
+  .wf-mascot { animation: wfFloat 5s ease-in-out infinite; }
+  .wf-muted { color: var(--text-muted); font-size: 14px; margin: 0; max-width: 52ch; }
+  .wf-warn-icon { color: var(--yellow); }
+  .wf-head { position: relative; border-radius: 20px; padding: 26px 24px 22px; background: linear-gradient(135deg, color-mix(in srgb, var(--wf) 22%, var(--card)), var(--card) 70%); border: 1px solid color-mix(in srgb, var(--wf) 35%, var(--border)); overflow: hidden; animation: wfIn .5s cubic-bezier(.16, 1, .3, 1) both; }
+  .wf-head::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--wf); }
+  .wf-server { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 14px; }
+  .wf-server img, .wf-server-letter { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; }
+  .wf-server-letter { display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .wf-id { margin-left: auto; display: inline-flex; align-items: center; font-family: var(--mono); font-size: 12px; letter-spacing: .03em; padding: 4px 9px; border-radius: 8px; font-weight: 500; color: color-mix(in srgb, var(--wf) 70%, var(--text)); background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px solid color-mix(in srgb, var(--wf) 30%, var(--border)); user-select: all; }
+  .wf-id-p { color: var(--text-dim); user-select: none; }
+  .wf-caret { width: 7px; height: 13px; margin-left: 3px; background: currentColor; opacity: .75; animation: wfBlink 1.1s steps(1) infinite; }
+  .wf-head h1 { font-size: clamp(24px, 5vw, 32px); margin: 0 0 8px; line-height: 1.15; }
+  .wf-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; margin: 0 0 12px; white-space: pre-line; }
+  .wf-who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--text-dim); margin: 0; }
+  .wf-who a { color: var(--accent); }
+  .wf-form { display: flex; flex-direction: column; gap: 14px; }
+  .wf-alert { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 13px; font-size: 13.5px; color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); }
+  .wf-qs { display: flex; flex-direction: column; gap: 14px; }
+  .wf-q { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 9px; transition: border-color .2s ease, box-shadow .2s ease; animation: wfIn .45s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(min(var(--i), 8) * 40ms); }
+  .wf-q:focus-within { border-color: color-mix(in srgb, var(--wf) 55%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf) 14%, transparent); }
+  .wf-q-bad { border-color: color-mix(in srgb, var(--red) 60%, var(--border)); }
+  .wf-q legend { display: flex; align-items: baseline; gap: 8px; font-weight: 600; font-size: 15px; padding: 0; float: left; width: 100%; }
+  .wf-q legend + * { clear: both; }
+  .wf-n { flex: none; font-size: 12px; font-family: var(--mono); color: var(--wf); }
+  .wf-req { color: var(--red); font-style: normal; }
+  .wf-opt { font-size: 11.5px; font-weight: 500; color: var(--text-dim); }
+  .wf-help { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .wf-img { display: block; width: 100%; height: auto; max-height: 420px; object-fit: contain; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); }
+  .wf-qdesc { font-size: 14px; line-height: 1.6; color: var(--text-muted); margin: 0; overflow-wrap: anywhere; }
+  .wf-qdesc a { color: var(--wf); text-decoration: underline; text-underline-offset: 2px; }
+  .wf-qdesc strong { color: var(--text); }
+  .wf-qdesc code { font-family: var(--mono); font-size: .9em; padding: 1px 5px; border-radius: 5px; background: var(--bg); border: 1px solid var(--border); }
+  .wf-q input[type=text], .wf-q textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; background: var(--bg); color: var(--text); font: inherit; font-size: 15px; transition: border-color .15s ease, box-shadow .15s ease; }
+  .wf-q textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+  .wf-q input[type=text]:focus, .wf-q textarea:focus { outline: none; border-color: var(--wf); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf) 18%, transparent); }
+  .wf-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+  .wf-row { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 360px; }
+  .wf-choice { position: relative; display: block; cursor: pointer; }
+  .wf-choice input { position: absolute; opacity: 0; pointer-events: none; }
+  .wf-choice span { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; font-size: 14.5px; transition: border-color .15s ease, background .15s ease, transform .12s ease; min-height: 22px; }
+  .wf-choice span::before { content: ''; flex: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--text-dim); box-sizing: border-box; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .wf-check span::before { border-radius: 5px; }
+  .wf-choice:hover span { border-color: color-mix(in srgb, var(--wf) 45%, var(--border)); }
+  .wf-choice:active span { transform: scale(.985); }
+  .wf-choice input:checked + span { border-color: var(--wf); background: color-mix(in srgb, var(--wf) 12%, transparent); font-weight: 600; }
+  .wf-choice input:checked + span::before { border-color: var(--wf); background: var(--wf); box-shadow: inset 0 0 0 3px var(--card); }
+  .wf-choice input:focus-visible + span { box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf) 25%, transparent); }
+  .wf-err { margin: 0; font-size: 13px; color: var(--red); min-height: 0; }
+  .wf-err:empty { display: none; }
+  .wf [hidden] { display: none !important; }
+  .wf-loading { display: flex; justify-content: center; padding: 60px 0; }
+  .wf-spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: wfSpin .8s linear infinite; }
+  @keyframes wfSpin { to { transform: rotate(360deg); } }
+  .wf-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 4px; }
+  .wf-foot .btn.is-sending { opacity: .7; pointer-events: none; }
+  .wf-done { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 22px; }
+  .wf-done h2 { margin: 0; font-size: 22px; }
+  .wf-done p { margin: 0; color: var(--text-muted); white-space: pre-line; max-width: 56ch; }
+  .wf-done-icon { color: var(--green); animation: wfPop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
+  .wf-refused { display: flex; align-items: flex-start; gap: 12px; color: var(--text-muted); }
+  .wf-refused p { margin: 0; font-size: 15px; line-height: 1.55; }
+  .wf-refused svg { color: var(--yellow); flex: none; margin-top: 3px; }
+  @keyframes wfIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes wfPop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+  @keyframes wfBlink { 50% { opacity: 0; } }
+  @keyframes wfFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @media (prefers-reduced-motion: reduce) { .wf-card, .wf-head, .wf-q, .wf-done-icon, .wf-mascot, .wf-caret { animation: none; } }
+  @media (max-width: 520px) { .wf { padding-top: 24px; } .wf-card, .wf-head { padding: 18px 16px; } .wf-q { padding: 14px; } .wf-choices { grid-template-columns: 1fr; } }
+</style>

@@ -26,9 +26,9 @@ async function handle(context: Parameters<APIRoute>[0], method: 'GET' | 'POST') 
     try { body = await context.request.json(); } catch { body = {}; }
   }
   const query: Record<string, string> = {};
-  for (const key of ['backup_id', 'mode']) { const value = context.url.searchParams.get(key); if (value) query[key] = value; }
+  for (const key of ['backup_id', 'mode', 'parts']) { const value = context.url.searchParams.get(key); if (value) query[key] = value; }
   const allowed = step === 'start'
-    ? { backup_id: Number(body.backup_id), mode: String(body.mode ?? 'merge'), challenge_id: String(body.challenge_id ?? ''), answer: String(body.answer ?? '') }
+    ? { backup_id: Number(body.backup_id), mode: String(body.mode ?? 'merge'), parts: String(body.parts ?? '').slice(0, 100), challenge_id: String(body.challenge_id ?? ''), answer: String(body.answer ?? '') }
     : {};
   const result = await callPettoVaultRestore(context, id, auth.session.userId, step, { method, query, body: allowed });
   return json(result.payload ?? { ok: false, error: 'bot_unavailable' }, result.ok ? 200 : (result.status >= 400 ? result.status : 502));

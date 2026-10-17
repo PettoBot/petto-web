@@ -79,10 +79,13 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals, request })
       maxAge: 60 * 60 * 24 * 7,
     });
 
-    const afterLogin = cookies.get('petto_after_login')?.value;
+    // A form filled on the web says which form in the OAuth state (form.<public id>.<lang>), so the visitor comes back to it even
+    // without the cookie.
+    const fromState = /^form\.([0-9A-Za-z]{12})\.(en|es|pt)$/.exec(url.searchParams.get('state') ?? '');
+    const afterLogin = cookies.get('petto_after_login')?.value || (fromState ? `${fromState[2] === 'es' ? '/es' : fromState[2] === 'pt' ? '/pt-br' : ''}/form#${fromState[1]}` : undefined);
     cookies.delete('petto_after_login', { path: '/' });
     // Only places of this site that need a signed-in member: the dashboard, the appeal site, the feedback board, the forms filled on the web, and the checkout that opens from the Premium page.
-    const returnTo = afterLogin && /^\/(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|f\/[0-9A-Za-z]{12}$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
+    const returnTo = afterLogin && /^\/(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|f\/[0-9A-Za-z]{12}$|(?:(?:es|pt-br)\/)?form#[0-9A-Za-z]{12}$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
     // The destination is checked above, so it is safe to put in the page. Only the plain list of servers gets the animation.
     if (returnTo === '/dash/manage') return loadingPage(returnTo, makeT(getDashLang({ locals, cookies, request } as any)));
     return redirect(returnTo);
