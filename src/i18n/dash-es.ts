@@ -3875,4 +3875,12 @@ export const dashEs: Record<string, string> = {
   "Next check in {a}": "Próxima revisión en {a}",
   "Saving the order...": "Guardando el orden...",
   "Order saved.": "Orden guardado.",
+  "Online in a role": "Conectados de un rol",
+  "Wearing the server tag": "Con la etiqueta del servidor",
+  "Vanity supporters": "Apoyos por Vanity",
+  "Messages today": "Mensajes de hoy",
+  "🟢 {role} online: {count}": "🟢 {role} conectados: {count}",
+  "🏷️ Tag wearers: {count}": "🏷️ Con la etiqueta: {count}",
+  "💜 Supporters: {count}": "💜 Apoyos: {count}",
+  "💬 Messages today: {count}": "💬 Mensajes hoy: {count}",
 };

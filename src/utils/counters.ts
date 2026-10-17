@@ -5,11 +5,14 @@ export const COUNTER_TYPES = [
   'members', 'users_only', 'bots_only', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice', 'pending_members',
   'boosts', 'booster_count', 'boost_level', 'role_members', 'goal', 'roles', 'all_channels', 'text_channels', 'voice_channels',
   'categories', 'announcement_channels', 'staging_channels', 'emojis', 'stickers', 'clock', 'date',
+  'role_online', 'tag_users', 'vanity_users', 'messages_today',
 ] as const;
+/** The types that count the members of a role. */
+export const ROLE_TYPES = ['role_members', 'role_online'];
 export type CounterType = typeof COUNTER_TYPES[number];
 export const COUNTER_FORMATS = ['plain', 'grouped', 'compact'] as const;
 export const COUNTER_KINDS = ['voice', 'text', 'category', 'topic', 'stage', 'announce'] as const;
-export const PRESENCE_TYPES = ['online', 'status_online', 'status_idle', 'status_dnd'];
+export const PRESENCE_TYPES = ['online', 'status_online', 'status_idle', 'status_dnd', 'role_online'];
 /** Discord: two renames per channel every ten minutes. */
 export const RENAMES_PER_WINDOW = 2;
 

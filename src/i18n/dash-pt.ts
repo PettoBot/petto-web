@@ -3875,4 +3875,12 @@ export const dashPt: Record<string, string> = {
   "Next check in {a}": "Próxima verificação em {a}",
   "Saving the order...": "Salvando a ordem...",
   "Order saved.": "Ordem salva.",
+  "Online in a role": "Online de um cargo",
+  "Wearing the server tag": "Usando a tag do servidor",
+  "Vanity supporters": "Apoios por Vanity",
+  "Messages today": "Mensagens de hoje",
+  "🟢 {role} online: {count}": "🟢 {role} online: {count}",
+  "🏷️ Tag wearers: {count}": "🏷️ Com a tag: {count}",
+  "💜 Supporters: {count}": "💜 Apoios: {count}",
+  "💬 Messages today: {count}": "💬 Mensagens hoje: {count}",
 };
