@@ -3,13 +3,13 @@ export const prerender = false;
 import DashAntiNuke from '../../../../components/DashAntiNuke.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { RULES, ACTIONS, SNOWFLAKE, resolveRule, type RuleRow, type NukeConfig } from '../../../../utils/antinukeRules';
+import { RULES, ACTIONS, SNOWFLAKE, resolveRule, guardSettings, mayChangeAntinuke, type RuleRow, type NukeConfig } from '../../../../utils/antinukeRules';
 
 const { id } = Astro.params as { id: string };
-const section = ['rules', 'lockdown', 'shared', 'log'].includes(Astro.url.searchParams.get('section') ?? '') ? Astro.url.searchParams.get('section')! : 'rules';
+const section = ['rules', 'lockdown', 'shared', 'guard', 'log'].includes(Astro.url.searchParams.get('section') ?? '') ? Astro.url.searchParams.get('section')! : 'rules';
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
 const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
@@ -34,10 +34,42 @@ const post = (table: string, conflict: string, body: Record<string, unknown>) =>
 
 let saved = false;
 let failed = false;
+let blocked = false;
+const userId = String((session as any).userId ?? '');
+// The owner of the server, only asked for when "owner only" or the trusted admins need it.
+const ownerOf = async () => String((await getGuildDetails(id, botToken).catch(() => null))?.owner_id ?? '') || null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const action = String(form.get('action') ?? '');
+  let action = String(form.get('action') ?? '');
   await ensureGuildRow(apiUrl, apiHeaders, id);
+
+  // "Owner only" (set from Discord or here): the protections, the shared settings and panic mode are changed by the owner and
+  // the trusted admins only. Anti Raid and the lockdown settings stay with the administrators, as in Discord.
+  if (['save_rule', 'save_shared', 'save_guard'].includes(action)) {
+    const currentRes = await fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=owner_only,admin_ids`, { headers: apiHeaders });
+    const current: NukeConfig = (currentRes.ok ? (await currentRes.json())[0] : null) ?? {};
+    const ownerId = current.owner_only || action === 'save_guard' ? await ownerOf() : null;
+    if (!mayChangeAntinuke(current, userId, ownerId)) {
+      blocked = true;
+      action = '';
+    } else if (action === 'save_guard') {
+      const isOwner = Boolean(ownerId) && userId === ownerId;
+      const res = await post('antinuke_config', 'guild_id', {
+        guild_id: id,
+        panic_enabled: form.get('panic_enabled') === 'on',
+        panic_threshold: whole(form.get('panic_threshold'), 1, 20, 2),
+        panic_window_minutes: whole(form.get('panic_window_minutes'), 1, 120, 10),
+        panic_lockdown_minutes: whole(form.get('panic_lockdown_minutes'), 1, 1440, 30),
+        panic_on_raid: form.get('panic_on_raid') === 'on',
+        dm_owner: form.get('dm_owner') === 'on',
+        // Only the owner chooses the trusted admins and turns "owner only" on or off.
+        ...(isOwner ? { owner_only: form.get('owner_only') === 'on', admin_ids: idList(String(form.get('admin_ids') ?? '')).slice(0, 25) } : {}),
+        updated_at: new Date().toISOString(),
+      });
+      saved = res.ok;
+      failed = !res.ok;
+    }
+  }
 
   if (action === 'save_rule') {
     const rule = RULES.find((r) => r.id === String(form.get('rule')));
@@ -64,7 +96,7 @@ if (Astro.request.method === 'POST') {
       anti_raid_enabled: form.get('anti_raid_enabled') === 'on',
       raid_join_threshold: whole(form.get('raid_join_threshold'), 2, 50, 6),
       raid_window_seconds: whole(form.get('raid_window_seconds'), 5, 120, 10),
-      raid_action: form.get('raid_action') === 'kick' ? 'kick' : 'alert',
+      raid_action: ['kick', 'lockdown'].includes(String(form.get('raid_action'))) ? String(form.get('raid_action')) : 'alert',
       anti_alt_enabled: form.get('anti_alt_enabled') === 'on',
       anti_alt_min_age_days: whole(form.get('anti_alt_min_age_days'), 1, 365, 7),
       anti_alt_action: form.get('anti_alt_action') === 'flag' ? 'flag' : 'kick',
@@ -116,6 +148,8 @@ const [guildInfo, configRes, rulesRes, eventsRes, automodRes, rolesRes, channels
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const config: NukeConfig = (configRes?.ok ? (await configRes.json())[0] : null) ?? {};
+const guard = guardSettings(config);
+const viewerIsOwner = section === 'guard' ? userId === (await ownerOf()) : false;
 const rows: RuleRow[] = rulesRes?.ok ? await rulesRes.json() : [];
 const protections = RULES.map((meta) => resolveRule(config, rows, meta));
 const events = eventsRes?.ok ? await eventsRes.json() : [];
@@ -138,6 +172,9 @@ const lockdownActive = la ? { startedBy: la.started_by, reason: la.reason ?? '',
     raidEnabled: Boolean(join.anti_raid_enabled), raidThreshold: join.raid_join_threshold ?? 6, raidWindow: join.raid_window_seconds ?? 10, raidAction: join.raid_action ?? 'alert',
     altEnabled: Boolean(join.anti_alt_enabled), altDays: join.anti_alt_min_age_days ?? 7, altAction: join.anti_alt_action ?? 'kick',
   }}
+  guard={guard}
+  viewerIsOwner={viewerIsOwner}
+  blocked={blocked}
   shared={{ whitelistIds: (config.whitelist_ids ?? []).join(', '), whitelistRoleIds: config.whitelist_role_ids ?? [], alertChannelId: config.alert_channel_id ?? '', oldSwitch: Boolean(config.enabled) }}
   events={events}
   lockdownConfig={lockdownConfig}
