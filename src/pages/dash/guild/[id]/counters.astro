@@ -64,6 +64,25 @@ if (Astro.request.method === 'POST') {
       const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: apiHeaders });
       message = res.ok ? { kind: 'ok', text: dt('Counter stopped. The channel was kept.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
     } else message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed() };
+  } else if (action === 'announce' || action === 'announce_test') {
+    const every = text(form.get('every'), 12).replace(/[.,\s]/g, '');
+    const body = {
+      enabled: form.get('enabled') === 'on', channel_id: snowflake(form.get('channel_id')), message: text(form.get('message'), 2000),
+      embed_name: text(form.get('embed_name'), 100) || null, every: every || null, use_goals: form.get('use_goals') === 'on',
+    };
+    if (body.enabled && !body.channel_id) message = { kind: 'err', text: dt('Pick the channel for the announcements.') };
+    else if (every && !(Number(every) >= 1 && Number(every) <= 100_000_000 && Number.isInteger(Number(every)))) message = { kind: 'err', text: dt('Every N members takes a whole number, like 100.') };
+    else {
+      const saved = await callPettoCounters(Astro, id, session.userId, 'announce', body, dashLang);
+      if (!saved.ok && !saved.message) {
+        // The bot is away: the settings are saved here and it reads them on its next look (starting from the members of then).
+        const res = await fetch(`${apiUrl}/rest/v1/counter_announce_config?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, ...body, every: body.every ? Number(body.every) : null, last_announced: null, updated_at: new Date().toISOString() }) });
+        message = res.ok ? { kind: 'ok', text: dt('Announcements saved.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
+      } else if (saved.ok && action === 'announce_test') {
+        const test = await callPettoCounters(Astro, id, session.userId, 'announce', { test: true }, dashLang);
+        message = { kind: test.ok ? 'ok' : 'err', text: test.message || botFailed() };
+      } else message = saved.ok ? { kind: 'ok', text: saved.message || dt('Announcements saved.') } : { kind: 'err', text: saved.message };
+    }
   } else if (action === 'save') {
     const channelId = snowflake(form.get('channel_id'));
     const type = String(form.get('type') ?? '');
@@ -91,12 +110,14 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, rowsRes, channelsRes, rolesRes, preview] = await Promise.all([
+const [guildInfo, rowsRes, channelsRes, rolesRes, preview, embedsRes, announceRes] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }).catch(() => null),
   getGuildList(Astro, id, botToken, 'channels'),
   getGuildList(Astro, id, botToken, 'roles'),
   callPettoCounters(Astro, id, session.userId, 'preview', {}, dashLang),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
+  fetch(`${apiUrl}/rest/v1/counter_announce_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -121,8 +142,19 @@ const counters = rawRows.map((r) => {
   };
 });
 const limits = live?.limits ?? null;
+const embedNames: string[] = embedsRes?.ok ? ((await embedsRes.json().catch(() => [])) as any[]).map((row) => String(row.name)) : [];
+const textChannels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+// The bot says the next number too; without it the saved row is shown as it is.
+const savedAnnounce: any = announceRes?.ok ? ((await announceRes.json().catch(() => [])) as any[])[0] ?? null : null;
+const announceRow: any = live?.announce ?? savedAnnounce;
+const announce = announceRow ? {
+  enabled: announceRow.enabled !== false, channelId: announceRow.channel_id ?? null, message: String(announceRow.message ?? ''), embedName: announceRow.embed_name ?? null,
+  every: announceRow.every == null ? null : Number(announceRow.every), useGoals: announceRow.use_goals !== false,
+  lastAnnounced: announceRow.last_announced == null ? null : Number(announceRow.last_announced), next: live?.announce?.next ?? null,
+} : null;
 ---
 <DashCounters user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   counters={counters} categories={categories} roles={roles} freeChannels={freeChannels}
   values={live?.values ?? null} roleCounts={live?.roles ?? {}} presences={Boolean(live?.presences)} limits={limits}
-  approxMembers={Number((guildInfo as any).approximate_member_count ?? 0)} message={message} />
+  approxMembers={Number((guildInfo as any).approximate_member_count ?? 0)} message={message}
+  announce={announce} textChannels={textChannels} embedNames={embedNames} defaultAnnounce={String(live?.default_announce ?? '')} />

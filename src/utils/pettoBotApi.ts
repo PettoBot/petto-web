@@ -477,7 +477,7 @@ export async function callPettoForms(context: AstroContext, guildId: string, use
 
 // Live counters from the dashboard: the values for the previews, create, quick setup, refresh now and delete. The saved settings
 // of a counter are changed by the dashboard straight in the database; these need the bot (Discord channels and the rename budget).
-export async function callPettoCounters(context: AstroContext, guildId: string, userId: string, route: 'preview' | 'create' | 'setup' | 'refresh' | 'delete', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; data?: any }> {
+export async function callPettoCounters(context: AstroContext, guildId: string, userId: string, route: 'preview' | 'create' | 'setup' | 'refresh' | 'delete' | 'announce', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; data?: any }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: '' };
   try {

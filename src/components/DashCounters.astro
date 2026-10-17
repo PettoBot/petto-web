@@ -23,8 +23,12 @@ interface Props {
   limits: { max: number; premium: boolean; premiumMax: number } | null;
   approxMembers: number;
   message: { kind: 'ok' | 'err'; text: string } | null;
+  announce: { enabled: boolean; channelId: string | null; message: string; embedName: string | null; every: number | null; useGoals: boolean; lastAnnounced: number | null; next: number | null } | null;
+  textChannels: { id: string; name: string }[];
+  embedNames: string[];
+  defaultAnnounce: string;
 }
-const { user, guildId, guildName, guildIcon, counters, categories, roles, freeChannels, values, roleCounts, presences, limits, approxMembers, message } = Astro.props;
+const { user, guildId, guildName, guildIcon, counters, categories, roles, freeChannels, values, roleCounts, presences, limits, approxMembers, message, announce, textChannels, embedNames, defaultAnnounce } = Astro.props;
 
 const labels: Record<string, string> = {
   members: dt('Members'), users_only: dt('Humans'), bots_only: dt('Bots'), online: dt('Online (any status)'), status_online: dt('Online'), status_idle: dt('Idle'), status_dnd: dt('Do not disturb'),
@@ -71,7 +75,9 @@ const problems: Record<string, string> = {
   missing_channel: dt('The channel was deleted, so the counter is off.'),
   missing_permission: dt('Petto cannot rename this channel. Give it Manage Channels and View Channel there.'),
 };
-const config = { values: sample, roleCounts, roles: Object.fromEntries(roleName), labels, defaults, lang: dashLang };
+const announceDefault = defaultAnnounce || dt('🎉 **{server}** just reached **{goal}** members! Thank you all.');
+const sampleMilestone = announce?.next ?? (announce?.every ? (Math.floor(membersNow / announce.every) + 1) * announce.every : nextGoal(membersNow));
+const config = { values: sample, roleCounts, roles: Object.fromEntries(roleName), labels, defaults, lang: dashLang, server: guildName, announceDefault, milestone: sampleMilestone };
 const waitingText = dt('Next rename in {a}');
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="counters" pageTitle={dt('Counters')}>
@@ -196,6 +202,36 @@ const waitingText = dt('Next rename in {a}');
       </div>
     )}
 
+    <section class="cn-create cn-announce" id="announce" aria-labelledby="cn-announce-title">
+      <h2 id="cn-announce-title"><Icon name="ph:megaphone-fill" width="17" height="17" />{dt('Milestone announcements')}</h2>
+      <p class="cn-hint cn-announce-sub">{dt('A message when the server reaches the goal of a goal counter, and if you want every N members. The same number is never announced twice.')}</p>
+      <form method="POST" class="cn-form" data-announce-form>
+        <input type="hidden" name="action" value="announce" />
+        <div class="cn-grid">
+          <label class="cn-switch cn-span"><input type="checkbox" name="enabled" checked={announce ? announce.enabled : true} /><span>{dt('Announce milestones')}</span></label>
+          <label class="cn-field"><span>{dt('Channel')}</span>
+            <select name="channel_id"><option value="">{dt('Pick a channel')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === announce?.channelId}># {ch.name}</option>)}</select>
+          </label>
+          <label class="cn-field"><span>{dt('Every N members (empty: only goals)')}</span><input type="number" name="every" min="1" step="1" value={announce?.every ?? ''} placeholder="100" data-every /></label>
+          <label class="cn-switch cn-span"><input type="checkbox" name="use_goals" checked={announce ? announce.useGoals : true} /><span>{dt('When a goal counter reaches its goal')}</span></label>
+          <label class="cn-field cn-span"><span>{dt('Saved embed (optional)')}</span>
+            <select name="embed_name" data-embed><option value="">{dt('No embed: send the text')}</option>{embedNames.map((name) => <option value={name} selected={name === announce?.embedName}>{name}</option>)}</select>
+          </label>
+          <label class="cn-field cn-span" data-text-only><span>{dt('Message')}</span>
+            <textarea name="message" rows="3" maxlength="2000" placeholder={announceDefault} data-announce-text>{announce?.message ?? ''}</textarea>
+          </label>
+          <div class="cn-chips cn-span" data-text-only>{['{count}', '{goal}', '{server}'].map((v) => <button type="button" class="cn-chip" data-insert-announce={v}>{v}</button>)}</div>
+          <p class="cn-hint cn-span" data-embed-only hidden>{dt('The saved embed can use {counter.count}, {counter.goal} and {counter.server}.')}</p>
+        </div>
+        <div class="cn-preview cn-announce-preview" aria-live="polite" data-text-only><span>{dt('Preview')}</span><b data-announce-preview></b></div>
+        <div class="cn-actions">
+          <button class="btn btn-accent btn-sm" type="submit" data-no-dirty><Icon name="ph:check-bold" width="13" height="13" />{dt('Save announcements')}</button>
+          <button class="btn btn-ghost btn-sm" type="submit" name="action" value="announce_test" data-no-dirty disabled={!values}><Icon name="ph:megaphone-fill" width="13" height="13" />{dt('Save and send a test')}</button>
+          {announce && <span class="cn-hint">{dt('Last announced: {a} · next: {b}', { a: announce.lastAnnounced == null ? '—' : announce.lastAnnounced.toLocaleString(dashLang), b: announce.next == null ? '—' : announce.next.toLocaleString(dashLang) })}</span>}
+        </div>
+      </form>
+    </section>
+
     <div class="cn-create" id="new">
       <h2><Icon name="ph:plus-circle-fill" width="17" height="17" />{dt('New counter')}</h2>
       {full && limits && <p class="cn-hint cn-limit">{limits.premium ? dt('This server has the most counters it can have ({a}).', { a: limits.max }) : dt('Free servers have {a} counters; Premium has {b}.', { a: limits.max, b: limits.premiumMax })}</p>}
@@ -299,6 +335,37 @@ const waitingText = dt('Next rename in {a}');
       }));
       update();
     });
+    // The milestone announcement: its text with sample numbers, and the text box hidden while a saved embed is chosen.
+    const announceForm = root.querySelector<HTMLFormElement>('[data-announce-form]');
+    if (announceForm) {
+      const area = announceForm.querySelector<HTMLTextAreaElement>('[data-announce-text]');
+      const out = announceForm.querySelector<HTMLElement>('[data-announce-preview]');
+      const grouped = (n: number) => n.toLocaleString(config.lang === 'en' ? 'en-US' : config.lang);
+      const draw = () => {
+        const embed = Boolean(announceForm.querySelector<HTMLSelectElement>('[data-embed]')?.value);
+        announceForm.querySelectorAll<HTMLElement>('[data-text-only]').forEach((el) => { el.hidden = embed; });
+        announceForm.querySelectorAll<HTMLElement>('[data-embed-only]').forEach((el) => { el.hidden = !embed; });
+        if (!out) return;
+        const milestone = Number(config.milestone) || 100;
+        const vars: Record<string, string> = { '{count}': grouped(milestone), '{goal}': grouped(milestone), '{milestone}': grouped(milestone), '{server}': String(config.server ?? '') };
+        const text = (area?.value.trim() || config.announceDefault || '').replace(/\{(?:counter\.)?(count|goal|milestone|server)\}/g, (_: string, key: string) => vars[`{${key}}`] ?? '');
+        // **bold** as Discord shows it, the rest as plain text.
+        out.replaceChildren(...text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part) => {
+          if (/^\*\*[^*]+\*\*$/.test(part)) { const b = document.createElement('strong'); b.textContent = part.slice(2, -2); return b; }
+          return document.createTextNode(part);
+        }));
+      };
+      announceForm.addEventListener('input', draw);
+      announceForm.addEventListener('change', draw);
+      announceForm.querySelectorAll<HTMLButtonElement>('[data-insert-announce]').forEach((chip) => chip.addEventListener('click', () => {
+        if (!area) return;
+        const at = area.selectionStart ?? area.value.length;
+        area.value = `${area.value.slice(0, at)}${chip.dataset.insertAnnounce}${area.value.slice(area.selectionEnd ?? at)}`.slice(0, 2000);
+        area.focus();
+        draw();
+      }));
+      draw();
+    }
     // "Waiting for Discord" turns into how long is left.
     const label = root.dataset.waiting ?? '{a}';
     const tick = () => {
@@ -411,6 +478,13 @@ const waitingText = dt('Next rename in {a}');
   .cn-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
   .cn-limit { margin-bottom: 10px; color: var(--yellow); }
   .cn-create { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px; }
+  .cn-announce { margin-bottom: 18px; }
+  .cn-announce h2 { margin-bottom: 4px; }
+  .cn-announce-sub { margin-bottom: 14px; max-width: 70ch; line-height: 1.5; }
+  .cn-field textarea { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 14px; min-width: 0; width: 100%; resize: vertical; transition: border-color .15s ease, box-shadow .15s ease; }
+  .cn-field textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cn-announce-preview b { white-space: normal; font-weight: 400; overflow-wrap: anywhere; }
+  .cn-announce-preview strong { font-weight: 700; }
   .cn-types { display: flex; flex-direction: column; gap: 12px; }
   .cn-type-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 6px; }
   .cn-type-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
