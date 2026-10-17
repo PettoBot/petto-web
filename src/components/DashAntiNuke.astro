@@ -2,7 +2,7 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
-import { RULES, ACTIONS, type Effective } from '../utils/antinukeRules';
+import { RULES, ACTIONS, type Effective, type GuardSettings } from '../utils/antinukeRules';
 import { getDashLang, makeT } from '../i18n/dash';
 
 const dashLang = getDashLang(Astro);
@@ -16,6 +16,9 @@ interface Props {
   protections: Effective[];
   join: { raidEnabled: boolean; raidThreshold: number; raidWindow: number; raidAction: string; altEnabled: boolean; altDays: number; altAction: string };
   shared: { whitelistIds: string; whitelistRoleIds: string[]; alertChannelId: string; oldSwitch: boolean };
+  guard: GuardSettings;
+  viewerIsOwner: boolean;
+  blocked: boolean;
   lockdownConfig: { channelIds: string[]; pauseInvites: boolean; raiseVerification: boolean; autoEndMinutes: number; announceChannelId: string; message: string };
   lockdownActive: { startedBy: string; reason: string; startedAt: string; endsAt: string; channels: number } | null;
   events: { id: number; rule: string; executor_id: string; executor_name: string | null; action_count: number; action: string; detail: string | null; restorable: unknown[]; previous_roles: string[]; restored_at: string | null; created_at: string }[];
@@ -24,7 +27,7 @@ interface Props {
   saved: boolean;
   failed: boolean;
 }
-const { user, guildId, guildName, guildIcon, section, protections, join, shared, events, lockdownConfig, lockdownActive, roles, channels, saved, failed } = Astro.props;
+const { user, guildId, guildName, guildIcon, section, protections, join, shared, guard, viewerIsOwner, blocked, events, lockdownConfig, lockdownActive, roles, channels, saved, failed } = Astro.props;
 
 const names: Record<string, { label: string; text: string }> = {
   ban: { label: dt('Anti Ban'), text: dt('Punishes mass bans in a row.') },
@@ -39,7 +42,12 @@ const names: Record<string, { label: string; text: string }> = {
   unban: { label: dt('Anti Unban'), text: dt('Detects mass unbans, and can ban them again.') },
   emoji_delete: { label: dt('Anti Delete Emojis'), text: dt('Detects the mass deletion of emojis.') },
   emoji_create: { label: dt('Anti Create Emojis'), text: dt('Detects the mass creation of emojis.') },
-  guild_update: { label: dt('Anti Server Changes'), text: dt('Watches who changes the name, the icon or the vanity again and again.') },
+  guild_update: { label: dt('Anti Server Changes'), text: dt('Watches who changes the name, the icon or the vanity again and again, and puts the name and the icon back.') },
+  role_update: { label: dt('Anti Role Changes'), text: dt('Roles edited in a row. A role given Administrator or another dangerous permission answers at once, and the roles go back to how they were.') },
+  channel_update: { label: dt('Anti Channel Changes'), text: dt('Channels renamed or their permissions changed in a row. A channel opened to @everyone with a dangerous permission answers at once, and the channels go back to how they were.') },
+  mention_everyone: { label: dt('Anti Mass Mention'), text: dt('Pinging @everyone or @here again and again. The pings are deleted; bots are left alone.') },
+  webhook_spam: { label: dt('Anti Webhook Spam'), text: dt('A webhook made by a person flooding messages: the webhook is deleted. Webhooks of bots and apps are left alone.') },
+  prune: { label: dt('Anti Prune'), text: dt('Pruning members, a mass kick in one go.') },
 };
 const actionNames: Record<string, string> = {
   alert: dt('Only alert'),
@@ -52,6 +60,7 @@ const tabs = [
   { id: 'rules', label: dt('Protections') },
   { id: 'lockdown', label: dt('Lockdown') },
   { id: 'shared', label: dt('Shared settings') },
+  { id: 'guard', label: dt('Panic & owner') },
   { id: 'log', label: dt('Log') },
 ];
 const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
@@ -62,6 +71,7 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
 
   {saved && <div class="an-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
   {failed && <div class="an-flash an-bad">{dt('It could not be saved, try again.')}</div>}
+  {blocked && <div class="an-flash an-bad">{dt('Owner only is on: only the server owner and the trusted admins can change the anti-nuke.')}</div>}
 
   <nav class="an-tabs">
     {tabs.map((t) => <a href={`?section=${t.id}`} class:list={['an-tab', { on: section === t.id }]} data-an-tab={t.id}>{t.label}</a>)}
@@ -202,6 +212,33 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   )}
   </div>
 
+  <div class="an-panel" data-an-panel="guard" data-lazy={section !== 'guard' ? '' : undefined} hidden={section !== 'guard'}>
+  {section === 'guard' && (
+  <Fragment>
+  <form method="POST" class="an-card">
+    <input type="hidden" name="action" value="save_guard" />
+    <h2><Icon name="ph:siren-fill" width="16" height="16" /> {dt('Panic mode')}</h2>
+    <p class="an-hint">{dt('When several protections act in a few minutes, or Anti Raid sees a raid, the server is locked down at once: the channels close and the invites are deleted and paused. It ends by itself after the minutes below, or earlier from the Lockdown tab.')}</p>
+    <label class="an-check"><input type="checkbox" name="panic_enabled" checked={guard.panicEnabled} />{dt('Turn panic mode on')}</label>
+    <div class="an-grid">
+      <label class="an-field"><span>{dt('Protections acting that start it')}</span><input type="number" name="panic_threshold" value={guard.panicThreshold} min="1" max="20" /></label>
+      <label class="an-field"><span>{dt('Within how many minutes')}</span><input type="number" name="panic_window_minutes" value={guard.panicWindow} min="1" max="120" /></label>
+      <label class="an-field"><span>{dt('Lockdown ends by itself after (minutes)')}</span><input type="number" name="panic_lockdown_minutes" value={guard.panicMinutes} min="1" max="1440" /></label>
+    </div>
+    <label class="an-check"><input type="checkbox" name="panic_on_raid" checked={guard.panicOnRaid} />{dt('Also when Anti Raid sees a raid')}</label>
+    <div class="an-sep"></div>
+    <h2><Icon name="ph:crown-fill" width="16" height="16" /> {dt('Owner')}</h2>
+    <label class="an-check"><input type="checkbox" name="dm_owner" checked={guard.dmOwner} />{dt('Send the owner a DM when a protection acts')}</label>
+    <label class="an-check"><input type="checkbox" name="owner_only" checked={guard.ownerOnly} disabled={!viewerIsOwner} />{dt('Owner only: only the owner and the trusted admins can change the anti-nuke and restore')}</label>
+    <label class="an-field an-wide"><span>{dt('Trusted admins (IDs): they can change the anti-nuke and the protections never touch them')}</span><textarea name="admin_ids" rows="2" disabled={!viewerIsOwner} placeholder={dt('Paste user IDs, separated by commas')}>{guard.adminIds.join(', ')}</textarea></label>
+    {!viewerIsOwner && <p class="an-hint">{dt('Only the server owner can change owner only and the trusted admins.')}</p>}
+    <p class="an-hint">{dt('The protections never act on the owner, on Petto or on an account whose role is at or above Petto\'s.')}</p>
+    <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
+  </form>
+  </Fragment>
+  )}
+  </div>
+
   <div class="an-panel" data-an-panel="log" data-lazy={section !== 'log' ? '' : undefined} hidden={section !== 'log'}>
   {section === 'log' && (
   <Fragment>
@@ -223,7 +260,7 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
         ))}
       </div>
     )}
-    <p class="an-hint">{dt('Restore rebuilds deleted channels and roles (not their messages), lifts mass bans and gives the roles back. Only the owner and the administrators can do it.')}</p>
+    <p class="an-hint">{dt('Restore rebuilds deleted channels and roles (not their messages), lifts mass bans and gives the roles back. The owner, the trusted admins and (unless owner only is on) the administrators can do it.')}</p>
   </div>
   </Fragment>
   )}
@@ -353,7 +390,7 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   .an-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
   .an-foot { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px dashed var(--border); padding-top: 12px; }
   .an-card { max-width: none; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-  .an-card h2 { margin: 0; font-size: 16px; }
+  .an-card h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
   .an-old { border: 1px dashed var(--yellow); border-radius: 10px; padding: 10px 12px; }
   .an-on { border-color: var(--red, #ff6b6b); color: var(--text); }
   .an-on p { margin: 0; color: var(--text); }

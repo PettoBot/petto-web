@@ -7,16 +7,14 @@ import DashClientI18n from './DashClientI18n.astro';
 import DashPreviews from './DashPreviews.astro';
 import DashSelectMenu from './DashSelectMenu.astro';
 import { useTranslations } from '../i18n/ui';
-import { canManageGuild, guildIconUrl, getBotIdentity } from '../utils/discord';
-import { getCachedUserGuilds, getCachedBotGuildIds } from '../utils/discordCache';
-import { getEnv } from '../utils/env';
+import { canManageGuild, guildIconUrl } from '../utils/discord';
+import { loadDashLayoutData } from '../utils/dashLayoutData';
 import { vanityConfig } from '../utils/vanityBot';
-import { getPremiumGuildIds } from '../utils/premium';
 import { isPettoOwner } from '../utils/premiumAdmin';
 import { canUseQuests } from '../utils/questAccess';
 import { canUseRollouts } from '../utils/rolloutAccess';
 import { canUseCodeCommands } from '../utils/codeAccess';
-import { getRoleAccess, pageDecision, pageOf } from '../utils/dashAccess';
+import { pageDecision, pageOf } from '../utils/dashAccess';
 import { backupsUnderMaintenance } from '../utils/maintenance';
 
 import { getDashLang, makeT } from '../i18n/dash';
@@ -35,24 +33,11 @@ const { guildId, guildName, guildIcon, user, active, pageTitle: rawPageTitle, pr
 // The server name as a CSS string (short, quotes and backslashes escaped) for the italic part of the page titles.
 const cssString = (value: string) => `"${(value.length > 26 ? `${value.slice(0, 25).trimEnd()}…` : value).replace(/[\\"]/g, '\\$&').replace(/[\r\n]/g, ' ')}"`;
 const pageTitle = dt(rawPageTitle);
-const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-// The premium snapshot, the visitor's servers, and the servers Petto is in do not depend on each
-// other, so they load together instead of one after the other.
-const [discordGuilds, activeBotGuildIds, botIdentity] = await Promise.all([
-  user.accessToken ? getCachedUserGuilds(user.accessToken, Astro.request) : Promise.resolve(null),
-  user.accessToken && botToken ? getCachedBotGuildIds(botToken, Astro.request) : Promise.resolve(null),
-  botToken ? getBotIdentity(guildId, botToken, Astro.request).catch(() => null) : Promise.resolve(null),
-]);
-// Premium belongs to the server, not to who bought it: every admin sees this server (and the ones in the switcher) as Premium.
-const switchable = discordGuilds && activeBotGuildIds ? discordGuilds.filter(canManageGuild).filter((g: any) => activeBotGuildIds.has(g.id)).map((g: any) => g.id as string) : [];
-const premiumGuildIds = user.userId ? await getPremiumGuildIds(Astro, user.userId, [guildId, ...switchable]) : new Set<string>();
+// The visitor's servers, the bot's servers and look, Premium and role access: read together, and started by the session check.
+const { discordGuilds, botGuildIds: activeBotGuildIds, botIdentity, premiumGuildIds, isManager, roleAccess } = await loadDashLayoutData(Astro, guildId, user);
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId);
-// Someone who does not manage the server can still be let in by a role: they see only the parts their role opens.
-const guildEntry = discordGuilds?.find((g: any) => g.id === guildId);
-const isManager = Boolean(guildEntry && canManageGuild(guildEntry));
-const roleAccess = guildEntry && !isManager && user.userId ? await getRoleAccess(Astro, guildId, user.userId) : null;
 const pageAccess = roleAccess ? pageDecision(roleAccess, pageOf(Astro.url.pathname, guildId)) : null;
 const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('This is a read-only view of the server.') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
 const roleBlockLabels = JSON.stringify({ everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') });
@@ -284,7 +269,46 @@ const stableInlineItems = new Set([
   'vanity-logs',
 ]);
 const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === active);
+// A page read by the dashboard's own navigation (X-Dash-Partial) only needs its content and its styles: the menu, the header and the
+// scripts are already on screen, so they are not drawn or sent again (about half of every answer).
+const partial = Boolean(Astro.request.headers.get('x-dash-partial'));
+// The change stamp of the server when this page was read (guildVersion.ts): the page reads itself again when a newer one arrives.
+const dashVersion = String((Astro.locals as Record<string, unknown>).dashVersion ?? '');
+// The ETag of this content as the dashboard's own reads get it (X-Dash-Partial), so a page that checks itself now and then (data-dash-live)
+// knows when the server has a newer copy; see middleware.ts.
+const dashEtag = String((Astro.locals as Record<string, unknown>).dashPartialEtag ?? '');
 ---
+{partial ? (
+  <html lang={dashLang}>
+    <head><meta charset="utf-8" /><title>{`${pageTitle} · ${guildName} · Petto`}</title></head>
+    <body>
+    <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} style={`--dgl-guild:${cssString(guildName)}`}>
+      {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
+      {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
+      {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
+        <div class="dgl-dev-banner" data-view-only>
+          <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('View only')}</strong><span>{dt('Your role can look at this part of the dashboard but not change it.')}</span></div></div>
+        </div>
+      )}
+      {devView && (
+        <div class="dgl-dev-banner" data-dev-view>
+          <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('Developer view')}</strong><span>{dt('Read only. You are not a manager of this server, so nothing can be changed here.')}</span></div></div>
+          <div class="dgl-dev-actions">
+            <a class="btn btn-ghost btn-sm" href="/dash/admin/servers"><Icon name="ph:hard-drives-fill" width="13" height="13" /> {dt('All servers')}</a>
+            <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName}>
+              <input type="hidden" name="action" value="leave" />
+              <input type="hidden" name="guild_id" value={guildId} />
+              <button class="btn btn-danger btn-sm" type="submit"><Icon name="ph:sign-out-fill" width="13" height="13" /> {dt('Remove Petto')}</button>
+            </form>
+          </div>
+        </div>
+      )}
+      <slot />
+    </div>
+    </body>
+  </html>
+) : (
+<Fragment>
 <Base title={`${pageTitle} · ${guildName} · Petto`} active="dash" appShell>
   <main>
     <section class="dgl-sec">
@@ -472,7 +496,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
             <div class="dgl-side-version" title={buildTitle()}>{buildLabel()}</div>
           </aside>
 
-          <div class="dgl-content reveal" id="dgl-content" style={`--dgl-guild:${cssString(guildName)}`}>
+          <div class="dgl-content reveal" id="dgl-content" data-dash-v={dashVersion} data-dash-etag={dashEtag || undefined} style={`--dgl-guild:${cssString(guildName)}`}>
             {botIdentity && <span hidden data-dp-bot data-name={botIdentity.name} data-icon={botIdentity.icon ?? ''}></span>}
             {accessNotice && <div class="dgl-dev-banner"><div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{accessNotice}</strong></div></div></div>}
             {roleAccess && pageAccess && pageAccess.allowed && !pageAccess.canEdit && (
@@ -520,7 +544,13 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 <DashClientI18n />
 <DashPreviews />
 <DashSelectMenu />
-<script is:inline>
+</Fragment>
+)}
+<script>
+  // @ts-nocheck: plain browser JavaScript, written before this was a bundled script.
+  // The dashboard's own behaviour (navigation without reloading, saving, live updates, menus...). A bundled script, so the browser
+  // keeps it (it used to be sent inline, about 80 KB, with every page). It runs once per full page load, after the page is parsed.
+
   // "Sync server data": the bot saves its copy of the server now, then the page is read again so new roles and channels show up in the lists.
   document.addEventListener('click', function (event) {
     var button = event.target && event.target.closest ? event.target.closest('#dgl-resync') : null;
@@ -536,7 +566,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       .then(function () {
         button.classList.remove('busy');
         say(button.getAttribute('data-done') || '');
-        setTimeout(function () { window.location.reload(); }, 400);
+        // The page is read again in place (the lists now have the new roles and channels), without reloading it.
+        setTimeout(function () {
+          if (window.dglRefreshPage) window.dglRefreshPage(true); else window.location.reload();
+          button.disabled = false;
+          setTimeout(function () { say(original); }, 2500);
+        }, 300);
       })
       .catch(function () {
         button.classList.remove('busy');
@@ -545,8 +580,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         setTimeout(function () { say(original); }, 3500);
       });
   });
-</script>
-<script is:inline>
+
+
   // Developer view: block every form except the banner's own remove button, and confirm removal.
   document.addEventListener('submit', function (event) {
     if (!document.querySelector('[data-dev-view]')) return;
@@ -559,8 +594,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     event.stopImmediatePropagation();
     window.alert(cdt('Developer view is read only. Changes are disabled on servers you do not manage.'));
   }, true);
-</script>
-<script is:inline>
+
+
   (function () {
     function bindUploadLabels(root) {
       root.querySelectorAll('input[type="file"]').forEach((input) => {
@@ -758,7 +793,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           var fd = new FormData(forms[j]);
           var named = primarySave(forms[j]);
           if (named && named.name) fd.append(named.name, named.value);
-          var res = await fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd });
+          var res = await fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd, headers: { 'X-Dash-Partial': '1' } });
+          if (res.ok && res.headers.get('X-Dash-Version')) setShownVersion(res.headers.get('X-Dash-Version'));
           if (!res.ok) failed += 1;
           else { commitDefaults(forms[j]); forms[j].classList.remove('is-dirty'); dirtyForms = dirtyForms.filter(function (f) { return f !== forms[j]; }); }
         } catch (err) { failed += 1; }
@@ -1102,52 +1138,76 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       }
     }
 
+    // Reading a page of the dashboard from a script. Only the content and its styles are asked for (X-Dash-Partial: the menu and the
+    // scripts are already here), and the browser's own cache is used: the server answers 304 at once when the copy the browser has is
+    // still current (same change stamp, see guildVersion.ts), so asking again costs almost nothing. The stamp of the answer comes back in
+    // X-Dash-Version.
+    function readPage(url, init) {
+      var options = init || {};
+      var headers = Object.assign({ 'X-Dash-Partial': '1', Accept: 'text/html' }, options.headers || {});
+      return fetch(url, Object.assign({}, options, { headers: headers, credentials: 'same-origin' })).then(function (res) {
+        return res.text().then(function (html) { return { ok: res.ok, status: res.status, html: html, version: res.headers.get('X-Dash-Version') || '', etag: res.headers.get('ETag') || '' }; });
+      });
+    }
+
+    // The change stamp of what is on screen (#dgl-content data-dash-v), and the newest one heard from the server.
+    function shownVersion() {
+      var content = document.getElementById('dgl-content');
+      return content ? (content.getAttribute('data-dash-v') || '') : '';
+    }
+    function setShownVersion(version) {
+      var content = document.getElementById('dgl-content');
+      if (content && version) content.setAttribute('data-dash-v', version);
+      if (version && isNewer(version, latestVersion)) latestVersion = version;
+    }
+    var latestVersion = shownVersion();
+    // Stamps from Redis are numbers (r12) and only go up; a message that arrives late never counts as newer.
+    function isNewer(candidate, than) {
+      if (!candidate) return false;
+      if (!than) return true;
+      var a = /^r(\d+)$/.exec(candidate), b = /^r(\d+)$/.exec(than);
+      return a && b ? Number(a[1]) > Number(b[1]) : candidate !== than;
+    }
+
     // Keep the next dashboard section ready while the user is deciding where to go.
-    // The cache is memory-only and is cleared after a save, so it never persists stale
-    // configuration across a meaningful write.
     // A pointer that only passes over the menu does not fetch anything: the page is asked for after it rests on a link for
     // 80 ms, and at most two of those reads run at once (a click never waits for that limit).
+    // A page read ahead is used while the server's stamp is still the one it was read with (and for a minute at most: a few parts,
+    // like statistics, change without a stamp). Otherwise it is read again, which is a cheap 304 when nothing changed.
     var prefetchedPages = new Map();
-    var prefetchedAt = new Map();
-    // What each page looked like the last time it was read, to know whether a newer read changed anything.
-    var knownContent = new Map();
-    // A page fetched ahead is shown at once, and then read again in the background (see refreshInBackground), so it is both fast and current.
-    var PREFETCH_MAX_AGE_MS = 10 * 60000;
+    var PREFETCH_MAX_AGE_MS = 60000;
     var HOVER_DELAY_MS = 80;
     var MAX_HOVER_PREFETCHES = 2;
     var hoverPrefetches = 0;
-    function contentOf(html) {
-      var doc = new DOMParser().parseFromString(html, 'text/html');
-      var node = doc.getElementById('dgl-content');
-      return node ? node.innerHTML : null;
+    function prefetchUsable(entry) {
+      return entry && Date.now() - entry.at < PREFETCH_MAX_AGE_MS && (!entry.version || !isNewer(latestVersion, entry.version));
     }
     function prefetchPage(href, fromHover) {
       if (dirtyForm) return;
-      if (prefetchedPages.has(href)) {
-        if (Date.now() - (prefetchedAt.get(href) || 0) < PREFETCH_MAX_AGE_MS) return;
-        prefetchedPages.delete(href);
-      }
+      var entry = prefetchedPages.get(href);
+      if (entry && (entry.pending || prefetchUsable(entry))) return;
       if (fromHover && hoverPrefetches >= MAX_HOVER_PREFETCHES) return;
       if (fromHover) hoverPrefetches += 1;
       var done = function () { if (fromHover) hoverPrefetches -= 1; };
-      prefetchedAt.set(href, Date.now());
-      var request = fetch(href, { method: 'GET', cache: 'no-store' })
-        .then(function (res) {
-          if (!res.ok) throw new Error('prefetch failed');
-          return res.text();
-        })
-        .then(function (html) { done(); knownContent.set(href, contentOf(html)); return html; }, function () {
+      var fresh = { at: Date.now(), version: '', pending: true, request: null };
+      fresh.request = readPage(href)
+        .then(function (answer) {
           done();
-          prefetchedPages.delete(href);
+          fresh.pending = false;
+          if (!answer.ok) throw new Error('prefetch failed');
+          fresh.version = answer.version;
+          return answer;
+        }, function () { done(); throw new Error('prefetch failed'); })
+        .catch(function () {
+          if (prefetchedPages.get(href) === fresh) prefetchedPages.delete(href);
           return null;
         });
-      prefetchedPages.set(href, request);
+      prefetchedPages.set(href, fresh);
     }
-    function getPageHtml(href) {
-      if (Date.now() - (prefetchedAt.get(href) || 0) >= PREFETCH_MAX_AGE_MS) prefetchedPages.delete(href);
-      if (!prefetchedPages.has(href)) prefetchPage(href);
-      var request = prefetchedPages.get(href);
-      return request || fetch(href, { method: 'GET', cache: 'no-store' }).then(function (res) { return res.text(); });
+    function getPage(href) {
+      var entry = prefetchedPages.get(href);
+      if (!entry || !(entry.pending || prefetchUsable(entry))) { prefetchedPages.delete(href); prefetchPage(href); entry = prefetchedPages.get(href); }
+      return entry ? entry.request : readPage(href);
     }
 
     // True when nothing on the page is being edited, so it can be redrawn without losing what the person is doing.
@@ -1159,41 +1219,140 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       return !(active && content && content.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
     }
 
-    // Reads the page again and, if it changed since what is shown, redraws it right where the person was (same scroll position).
-    // Nothing is redrawn while something is being edited, and nothing happens if the page already shows the latest.
+    // Live updates. The server pushes the change stamp of this server (/events, Server-Sent Events); when it is newer than what is on
+    // screen, the page is read again and redrawn right where the person was (same scroll), but only while nothing is being edited:
+    // otherwise it waits until the edit is saved or dropped. Nothing is read when nothing changed. Without the stream (a proxy that
+    // closes it, an old browser) the stamp is asked every 15 seconds; a hidden tab asks nothing and checks once when it comes back.
     var refreshing = false;
-    function refreshInBackground(href) {
-      if (refreshing) return;
+    var refreshQueued = false;
+    // `onlyIfChanged` (the checks of a live page, below): the copy that comes back is drawn only when it differs from the one on screen.
+    function refreshCurrent(force, onlyIfChanged) {
+      if (refreshing) { if (!onlyIfChanged) refreshQueued = true; return; }
+      if (!force && !isNewer(latestVersion, shownVersion())) return;
+      if (!pageIsIdle()) { if (!onlyIfChanged) waitForIdle(); return; }
       refreshing = true;
-      var path = function (u) { try { return new URL(u, window.location.href).pathname + new URL(u, window.location.href).search; } catch (e) { return u; } };
-      fetch(href, { method: 'GET', cache: 'no-store' })
-        .then(function (res) { return res.ok ? res.text() : null; })
-        .then(function (html) {
-          if (!html) return;
-          var latest = contentOf(html);
-          var before = knownContent.get(href);
-          knownContent.set(href, latest);
-          prefetchedPages.set(href, Promise.resolve(html));
-          prefetchedAt.set(href, Date.now());
-          if (latest === null || before === undefined || latest === before) return;
-          if (path(href) !== path(window.location.href) || !pageIsIdle()) return;
+      var href = window.location.pathname + window.location.search;
+      var wanted = latestVersion;
+      readPage(href)
+        .then(function (answer) {
+          if (!answer.ok || href !== window.location.pathname + window.location.search || !pageIsIdle()) { if (answer.ok && !onlyIfChanged) waitForIdle(); return; }
+          var shown = document.getElementById('dgl-content');
+          if (onlyIfChanged && shown && answer.etag && answer.etag === shown.getAttribute('data-dash-etag')) return;
+          var body = answer.html.replace(/ data-dash-etag="[^"]*"/, '');
+          if (onlyIfChanged && liveHtml.href === href && liveHtml.body === body) { if (shown && answer.etag) shown.setAttribute('data-dash-etag', answer.etag); return; }
+          liveHtml = { href: href, body: body };
+          // On a wide screen the content scrolls inside its own panel, on a phone the window does: both places are kept.
           var y = window.scrollY;
-          return swapContent(html, null, true).then(function () { window.scrollTo(0, y); });
+          var before = document.getElementById('dgl-content');
+          var inner = before ? before.scrollTop : 0;
+          return swapContent(answer.html, null, true).then(function (ok) {
+            if (!ok) return;
+            window.scrollTo(0, y);
+            var after = document.getElementById('dgl-content');
+            if (after && inner) after.scrollTop = inner;
+            setShownVersion(answer.version || wanted);
+            prefetchedPages.set(href, { at: Date.now(), version: answer.version, pending: false, request: Promise.resolve(answer) });
+          });
         })
         .catch(function () {})
-        .then(function () { refreshing = false; });
+        .then(function () {
+          refreshing = false;
+          if (refreshQueued) { refreshQueued = false; refreshCurrent(false); }
+        });
     }
+    var idleTimer = 0;
+    function waitForIdle() {
+      if (idleTimer) return;
+      idleTimer = setInterval(function () {
+        if (!isNewer(latestVersion, shownVersion())) { clearInterval(idleTimer); idleTimer = 0; return; }
+        if (pageIsIdle()) { clearInterval(idleTimer); idleTimer = 0; refreshCurrent(false); }
+      }, 1000);
+    }
+    var heardTimer = 0;
+    function heard(version) {
+      if (!isNewer(version, latestVersion)) return;
+      latestVersion = version;
+      // A burst of changes (a save that touches several tables, the bot's copy right after) becomes one read.
+      clearTimeout(heardTimer);
+      heardTimer = setTimeout(function () { refreshCurrent(false); }, 400);
+    }
+    window.dglRefreshPage = function (force) { refreshCurrent(Boolean(force)); };
 
-    // Coming back to the tab after a while: the page is read again in the background, and redrawn only if something changed.
+    // Some pages show what changes without a stamp: statistics, leaderboards, open tickets, Discord's audit log. Such a page carries
+    // data-dash-live="<seconds>" and reads itself every that many seconds while it is on screen and nothing is being edited. The read
+    // goes through the browser's cache, so the server answers 304 at once until it has a newer copy (its ETag follows the minute), and
+    // the page is redrawn (keeping the scroll) only when what came back differs from what is shown. A hidden tab reads nothing.
+    var liveHtml = { href: '', body: '' };
+    var liveCheckedAt = Date.now();
+    setInterval(function () {
+      if (document.hidden) return;
+      var content = document.getElementById('dgl-content');
+      var marker = content && content.querySelector('[data-dash-live]');
+      if (!marker) { liveCheckedAt = Date.now(); return; }
+      var every = Math.max(10, Number(marker.getAttribute('data-dash-live')) || 30) * 1000;
+      if (Date.now() - liveCheckedAt < every) return;
+      liveCheckedAt = Date.now();
+      refreshCurrent(true, true);
+    }, 2000);
+    document.addEventListener('visibilitychange', function () {
+      // Back on a live page after a while: it checks at once.
+      if (!document.hidden && document.querySelector('#dgl-content [data-dash-live]')) liveCheckedAt = 0;
+    });
+
     (function () {
-      if (window.__dglFetchWatch) return;
-      window.__dglFetchWatch = true;
-      var hiddenAt = 0;
+      var match = window.location.pathname.match(/^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//);
+      if (!match || window.__dglLive) return;
+      window.__dglLive = true;
+      var base = '/dash/guild/' + match[1];
+      var source = null;
+      var pollTimer = 0;
+      var failures = 0;
+      var streamBlockedUntil = 0;
+      var POLL_MS = 15000;
+      function poll() {
+        fetch(base + '/version', { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .then(function (data) { if (data && data.v) heard(String(data.v)); })
+          .catch(function () {});
+      }
+      function startPolling() {
+        if (pollTimer || document.hidden) return;
+        pollTimer = setInterval(function () {
+          poll();
+          // Now and then the stream is tried again.
+          if (Date.now() > streamBlockedUntil) openStream();
+        }, POLL_MS);
+      }
+      function stopPolling() { clearInterval(pollTimer); pollTimer = 0; }
+      function closeStream() { if (source) { source.close(); source = null; } }
+      function openStream() {
+        if (source || document.hidden) return;
+        if (!window.EventSource || Date.now() < streamBlockedUntil) { startPolling(); return; }
+        var opened = false;
+        source = new EventSource(base + '/events');
+        source.addEventListener('v', function (event) { failures = 0; heard(String(event.data || '')); });
+        source.onopen = function () { opened = true; failures = 0; stopPolling(); };
+        source.onerror = function () {
+          // The browser reconnects by itself; a stream that keeps failing (or is refused) gives way to polling for two minutes.
+          failures += 1;
+          if (!opened || failures >= 3 || (source && source.readyState === 2)) {
+            closeStream();
+            streamBlockedUntil = Date.now() + 120000;
+            startPolling();
+          }
+        };
+      }
       document.addEventListener('visibilitychange', function () {
-        if (document.hidden) { hiddenAt = Date.now(); return; }
-        if (hiddenAt && Date.now() - hiddenAt > 30000) refreshInBackground(window.location.pathname + window.location.search);
+        if (document.hidden) { closeStream(); stopPolling(); return; }
+        poll();
+        openStream();
       });
-      window.addEventListener('pageshow', function (event) { if (event.persisted) refreshInBackground(window.location.pathname + window.location.search); });
+      window.addEventListener('pageshow', function (event) { if (event.persisted) { poll(); openStream(); } });
+      window.addEventListener('pagehide', function () { closeStream(); stopPolling(); });
+      // Something edited was saved or dropped: a change heard meanwhile is shown now.
+      document.addEventListener('dgl:dirty', function () { setTimeout(function () { refreshCurrent(false); }, 50); });
+      document.addEventListener('focusout', function () { setTimeout(function () { if (isNewer(latestVersion, shownVersion())) refreshCurrent(false); }, 300); });
+      openStream();
     })();
 
     function bindDglLinks(root) {
@@ -1218,17 +1377,17 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           e.preventDefault();
           startProgress();
           showContentSkeleton();
-          getPageHtml(href)
-            .then(function (html) {
-              if (!html) throw new Error('navigation failed');
-              return swapContent(html, href);
+          getPage(href)
+            .then(function (answer) {
+              if (!answer || !answer.ok) throw new Error('navigation failed');
+              return swapContent(answer.html, href).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
             })
             .then(function (ok) {
               if (ok) {
                 updateActiveLink(href);
                 finishProgress();
-                // The copy shown may be a few seconds or minutes old: read it again and redraw only if it changed.
-                if (Date.now() - (prefetchedAt.get(href) || 0) > 2000) refreshInBackground(href);
+                // A change heard while this copy was on its way is read now (it is a no-op when the copy is current).
+                refreshCurrent(false);
               }
               else window.location.href = href;
             })
@@ -1249,13 +1408,12 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           var url = a.getAttribute('href');
           startProgress();
           showContentSkeleton();
-          fetch(url, { method: 'GET', cache: 'no-store' })
-            .then(function (res) { return res.text(); })
-            .then(function (html) {
-              return swapContent(html, url);
+          readPage(url)
+            .then(function (answer) {
+              return swapContent(answer.html, url).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
             })
             .then(function (ok) {
-              if (ok) { updateActiveLink(url); finishProgress(); }
+              if (ok) { updateActiveLink(url); finishProgress(); refreshCurrent(false); }
               else window.location.href = url;
             })
             .catch(function () { window.location.href = url; });
@@ -1288,15 +1446,16 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           // out of the form data, so the action was lost and the page did nothing.
           var fd = new FormData(form);
           if (submitter && submitter.name) fd.append(submitter.name, submitter.value);
-          fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd })
-            .then(function (res) { return res.text().then(function (html) { return { ok: res.ok, html: html }; }); })
+          // The answer is the page as it is after the save (and its new stamp): it is shown as it is, never read again.
+          readPage(window.location.pathname + window.location.search, { method: 'POST', body: fd })
             .then(function (answer) {
+              if (answer.ok && answer.version) setShownVersion(answer.version);
               if (fromBar && answer.ok && !answerHasProblem(answer.html)) {
                 commitDefaults(form);
                 form.classList.remove('is-dirty');
                 dirtyForms = dirtyForms.filter(function (f) { return f !== form; });
                 dirtyForm = dirtyForms.length ? dirtyForms[dirtyForms.length - 1] : null;
-                prefetchedPages.clear(); prefetchedAt.clear(); knownContent.clear();
+                prefetchedPages.clear();
                 savedAt = Date.now();
                 if (btn) { btn.disabled = false; btn.textContent = originalText; }
                 if (saveBarBtn) saveBarBtn.disabled = false;
@@ -1309,7 +1468,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
             .then(function (ok) {
               if (ok === 'soft') return;
               if (ok) {
-                prefetchedPages.clear(); prefetchedAt.clear(); knownContent.clear();
+                prefetchedPages.clear();
                 hideSaveBar();
                 savedAt = Date.now();
                 setBarState(null);
@@ -1394,6 +1553,7 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
 
         btn.addEventListener('click', function (e) {
           e.stopPropagation();
+          if (panel.hasAttribute('data-varmenu-lazy')) buildVarMenu(panel);
           var isOpen = !panel.hidden;
           document.querySelectorAll('[data-varmenu-panel]').forEach((p) => { p.hidden = true; });
           document.querySelectorAll('.dgl-varbtn.open').forEach((b) => b.classList.remove('open'));
@@ -1408,16 +1568,47 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
           }
         });
 
-        panel.querySelectorAll('[data-var-token]').forEach((row) => {
-          row.addEventListener('click', function () {
-            var tok = row.dataset.varToken;
-            var reset = function () { row.classList.remove('copied'); };
-            (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(tok) : Promise.reject())
-              .then(function () { row.classList.add('copied'); setTimeout(reset, 1200); })
-              .catch(function () {});
-          });
+        panel.addEventListener('click', function (e) {
+          var row = e.target && e.target.closest ? e.target.closest('[data-var-token]') : null;
+          if (!row) return;
+          var tok = row.dataset.varToken;
+          var reset = function () { row.classList.remove('copied'); };
+          (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(tok) : Promise.reject())
+            .then(function () { row.classList.add('copied'); setTimeout(reset, 1200); })
+            .catch(function () {});
         });
       });
+    }
+    // The rows of a variables menu come from the one list the page carries (VariableHelp.astro), the first time the menu opens.
+    function buildVarMenu(panel) {
+      var holder = document.querySelector('script[data-var-groups]');
+      if (!holder) return;
+      var groups;
+      try { groups = JSON.parse(holder.textContent || '[]'); } catch (err) { return; }
+      panel.removeAttribute('data-varmenu-lazy');
+      var fragment = document.createDocumentFragment();
+      groups.forEach(function (group) {
+        var box = document.createElement('div');
+        var label = document.createElement('div');
+        label.className = 'dgl-varmenu-group-label';
+        label.textContent = group.l;
+        box.appendChild(label);
+        group.v.forEach(function (variable) {
+          var row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'dgl-varmenu-row';
+          row.setAttribute('data-var-token', variable[0]);
+          var code = document.createElement('code');
+          code.textContent = variable[0];
+          var text = document.createElement('span');
+          text.textContent = variable[1];
+          row.appendChild(code);
+          row.appendChild(text);
+          box.appendChild(row);
+        });
+        fragment.appendChild(box);
+      });
+      panel.appendChild(fragment);
     }
 
     document.addEventListener('click', function (e) {
@@ -1565,10 +1756,35 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
       });
     }
 
+    // Draws the panel of a picker the first time it is bound, from the data the page left on it (see ColorPicker.astro). The markup is
+    // the one the component used to write, with its scoped style attribute copied from the panel so it looks the same.
+    function buildColorPanel(panel) {
+      var esc = function (text) { return String(text == null ? '' : text).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+      var scope = '';
+      for (var i = 0; i < panel.attributes.length; i++) if (panel.attributes[i].name.indexOf('data-astro-cid-') === 0) scope += ' ' + panel.attributes[i].name;
+      var tag = function (name, attrs, inner) { return '<' + name + ' ' + attrs + scope + '>' + (inner || '') + '</' + name + '>'; };
+      var input = function (attrs) { return '<input ' + attrs + scope + ' />'; };
+      var field = function (cls, attrs, label) { return tag('div', 'class="dgl-cp-field' + cls + '"', input(attrs) + tag('label', '', esc(label))); };
+      var presets = (panel.getAttribute('data-cp-presets') || '').split(',').filter(Boolean);
+      var none = panel.getAttribute('data-cp-l-none');
+      panel.innerHTML =
+        tag('div', 'class="dgl-cp-sv-wrap"', tag('canvas', 'class="dgl-cp-sv" data-cp-sv width="260" height="150"') + tag('div', 'class="dgl-cp-sv-thumb" data-cp-sv-thumb')) +
+        tag('div', 'class="dgl-cp-hue-wrap"', tag('canvas', 'class="dgl-cp-hue" data-cp-hue width="260" height="12"') + tag('div', 'class="dgl-cp-hue-thumb" data-cp-hue-thumb')) +
+        tag('div', 'class="dgl-cp-fields"',
+          field(' dgl-cp-field-hex', 'type="text" data-cp-hex maxlength="7"', panel.getAttribute('data-cp-l-hex') || 'Hex') +
+          field('', 'type="number" data-cp-r min="0" max="255"', 'R') +
+          field('', 'type="number" data-cp-g min="0" max="255"', 'G') +
+          field('', 'type="number" data-cp-b min="0" max="255"', 'B')) +
+        tag('div', 'class="dgl-cp-presets"', presets.map(function (p) { return tag('button', 'type="button" class="dgl-cp-preset" style="--sw:' + esc(p) + '" data-cp-preset="' + esc(p) + '" aria-label="' + esc(p) + '"'); }).join('')) +
+        tag('div', 'class="dgl-cp-actions"', (none !== null ? tag('button', 'type="button" class="dgl-cp-none" data-cp-none', esc(none)) : '') + tag('button', 'type="button" class="dgl-cp-reset" data-cp-reset', esc(panel.getAttribute('data-cp-l-reset') || 'Reset')));
+      panel.removeAttribute('data-cp-build');
+    }
     function bindColorPickers(root) {
       root.querySelectorAll('[data-colorpicker]').forEach(function (wrap) {
         if (wrap.dataset.cpBound) return;
         wrap.dataset.cpBound = '1';
+        var lazyPanel = wrap.querySelector('[data-cp-build]');
+        if (lazyPanel) buildColorPanel(lazyPanel);
 
         var trigger = wrap.querySelector('[data-cp-trigger]');
         var valueInput = wrap.querySelector('[data-cp-value]');
@@ -1957,10 +2173,9 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
         return;
       }
       startProgress();
-      fetch(window.location.pathname + window.location.search, { method: 'GET' })
-        .then(function (res) { return res.text(); })
-        .then(function (html) {
-          return swapContent(html, null);
+      readPage(window.location.pathname + window.location.search)
+        .then(function (answer) {
+          return swapContent(answer.html, null).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
         })
         .then(function (ok) {
           if (ok) { updateActiveLink(window.location.pathname + window.location.search); finishProgress(); }
@@ -1983,8 +2198,8 @@ const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === 
     syncHeaderHeight();
     window.addEventListener('resize', syncHeaderHeight);
   })();
-</script>
 
+</script>
 <style>
   .dgl-sec { padding: 28px 0; }
   .dgl-wrap { max-width: none; padding-left: 40px; padding-right: 40px; }

@@ -207,13 +207,17 @@ export async function queryDirect<T = Record<string, unknown>>(text: string, val
   }
 }
 
-// After a dashboard write, the bot drops its own short-lived copy of that table's settings for the server (petto:invalidate).
+// After a dashboard write, the bot drops its own short-lived copy of that table's settings for the server (petto:invalidate), and the
+// server's change stamp is raised (petto:ver:<id>, see guildVersion.ts).
 async function announceWrite(table: string, body: unknown, target: URL): Promise<void> {
   const fromBody = (Array.isArray(body) ? body[0] : body) as Record<string, unknown> | undefined;
   const fromFilter = /^eq\.(\d{5,25})$/.exec(target.searchParams.get('guild_id') ?? '')?.[1];
   const guildId = String(fromBody?.guild_id ?? fromFilter ?? '');
   if (!/^\d{5,25}$/.test(guildId)) return;
   const { sharedPublish } = await import('./sharedCache');
+  // The open dashboards of the server learn that it changed (petto:ver). Inside a dashboard request the stamp is raised once, when it is answered.
+  const { deferGuildChange } = await import('./serverTiming');
+  if (!deferGuildChange(guildId)) void import('./guildVersion').then((module) => module.bumpGuildVersion(guildId)).catch(() => {});
   await sharedPublish('petto:invalidate', JSON.stringify({ table, guildId }));
 }
 

@@ -5,7 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, imageUrlToDataUri, fileToDataUri, setBotGuildProfile, setBotNameStyle, getGuildMemberSelf, getBotProfile, getBotDescription } from '../../../../utils/discord';
 import { parseNameStyleForm, readNameStyle, sameNameStyle } from '../../../../utils/nameStyle';
-import { hasPremiumForGuild, resetGuildPremiumCustomization } from '../../../../utils/premium';
+import { hasPremiumForGuild, resetGuildPremiumCustomizationIfStale } from '../../../../utils/premium';
 import { cached } from '../../../../utils/sharedCache';
 
 const { id } = Astro.params as { id: string };
@@ -25,7 +25,7 @@ const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 // fallback covers missed webhooks and guarantees that an inactive slot can
 // never leave a Premium-only profile override applied in Discord. Nicknames
 // intentionally remain because they are available on the Free plan.
-if (!premiumActive) await resetGuildPremiumCustomization(Astro, id);
+if (!premiumActive) await resetGuildPremiumCustomizationIfStale(Astro, id);
 
 const apiHeaders = {
   apikey: apiKey,
@@ -210,14 +210,16 @@ if (Astro.request.method === 'POST' && Astro.request.headers.get('x-petto-ajax')
   return new Response(JSON.stringify({ saved, warning: discordWarning, error }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }
 
-// The bot's global name, avatar and description are the same in every server and change rarely, so they are kept ten minutes.
-// Its look in this server is always read live. The bot's id is the first part of its token, so that read starts with the rest.
+// The bot's global name, avatar and description are the same in every server and change rarely, so they are kept ten minutes and then
+// shown at once for up to a day while they are read again. Its look in this server is kept the same way and read again as soon as it
+// changes (getGuildMemberSelf). The bot's id is the first part of its token, so that read starts with the rest.
 const BOT_GLOBAL_TTL_MS = 10 * 60_000;
+const BOT_GLOBAL_STALE_MS = 24 * 3600_000;
 const botIdFromToken = (() => { try { const value = atob(botToken.split('.')[0]); return /^\d{15,22}$/.test(value) ? value : null; } catch { return null; } })();
 const [guildInfo, botProfile, globalDescription, config, nameStyle, memberSelfEarly] = await Promise.all([
   getGuildInfo(id, botToken),
-  cached(`bot-profile:${botToken.split('.')[0]}`, () => getBotProfile(botToken), { freshMs: BOT_GLOBAL_TTL_MS, shared: true, keep: (value) => value !== null }),
-  cached(`bot-description:${botToken.split('.')[0]}`, () => getBotDescription(botToken), { freshMs: BOT_GLOBAL_TTL_MS, shared: true }),
+  cached(`bot-profile:${botToken.split('.')[0]}`, () => getBotProfile(botToken), { freshMs: BOT_GLOBAL_TTL_MS, staleMs: BOT_GLOBAL_STALE_MS, allowStale: true, shared: true, keep: (value) => value !== null }),
+  cached(`bot-description:${botToken.split('.')[0]}`, () => getBotDescription(botToken), { freshMs: BOT_GLOBAL_TTL_MS, staleMs: BOT_GLOBAL_STALE_MS, allowStale: true, shared: true }),
   loadConfig(),
   loadNameStyle(),
   botIdFromToken ? getGuildMemberSelf(id, botToken, botIdFromToken) : Promise.resolve(null),

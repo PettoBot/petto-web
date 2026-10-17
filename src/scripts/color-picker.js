@@ -12,10 +12,35 @@ document.addEventListener('scroll', reposition, true);
 function closeOnOutside(wrap, close, extra) { outsideClosers.push({ wrap, close, extra: extra || null }); }
 function placeWhileOpen(wrap, isOpen, place) { repositioners.push({ wrap, isOpen, place }); }
 
+// Draws the panel of a picker the first time it is bound, from the data the page left on it (see ColorPicker.astro). The markup is
+// the one the component used to write, with its scoped style attribute copied from the panel so it looks the same.
+function buildColorPanel(panel) {
+  var esc = function (text) { return String(text == null ? '' : text).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var scope = '';
+  for (var i = 0; i < panel.attributes.length; i++) if (panel.attributes[i].name.indexOf('data-astro-cid-') === 0) scope += ' ' + panel.attributes[i].name;
+  var tag = function (name, attrs, inner) { return '<' + name + ' ' + attrs + scope + '>' + (inner || '') + '</' + name + '>'; };
+  var input = function (attrs) { return '<input ' + attrs + scope + ' />'; };
+  var field = function (cls, attrs, label) { return tag('div', 'class="dgl-cp-field' + cls + '"', input(attrs) + tag('label', '', esc(label))); };
+  var presets = (panel.getAttribute('data-cp-presets') || '').split(',').filter(Boolean);
+  var none = panel.getAttribute('data-cp-l-none');
+  panel.innerHTML =
+    tag('div', 'class="dgl-cp-sv-wrap"', tag('canvas', 'class="dgl-cp-sv" data-cp-sv width="260" height="150"') + tag('div', 'class="dgl-cp-sv-thumb" data-cp-sv-thumb')) +
+    tag('div', 'class="dgl-cp-hue-wrap"', tag('canvas', 'class="dgl-cp-hue" data-cp-hue width="260" height="12"') + tag('div', 'class="dgl-cp-hue-thumb" data-cp-hue-thumb')) +
+    tag('div', 'class="dgl-cp-fields"',
+      field(' dgl-cp-field-hex', 'type="text" data-cp-hex maxlength="7"', panel.getAttribute('data-cp-l-hex') || 'Hex') +
+      field('', 'type="number" data-cp-r min="0" max="255"', 'R') +
+      field('', 'type="number" data-cp-g min="0" max="255"', 'G') +
+      field('', 'type="number" data-cp-b min="0" max="255"', 'B')) +
+    tag('div', 'class="dgl-cp-presets"', presets.map(function (p) { return tag('button', 'type="button" class="dgl-cp-preset" style="--sw:' + esc(p) + '" data-cp-preset="' + esc(p) + '" aria-label="' + esc(p) + '"'); }).join('')) +
+    tag('div', 'class="dgl-cp-actions"', (none !== null ? tag('button', 'type="button" class="dgl-cp-none" data-cp-none', esc(none)) : '') + tag('button', 'type="button" class="dgl-cp-reset" data-cp-reset', esc(panel.getAttribute('data-cp-l-reset') || 'Reset')));
+  panel.removeAttribute('data-cp-build');
+}
 function bindColorPickers(root) {
   root.querySelectorAll('[data-colorpicker]').forEach(function (wrap) {
     if (wrap.dataset.cpBound) return;
     wrap.dataset.cpBound = '1';
+    var lazyPanel = wrap.querySelector('[data-cp-build]');
+    if (lazyPanel) buildColorPanel(lazyPanel);
 
     var trigger = wrap.querySelector('[data-cp-trigger]');
     var valueInput = wrap.querySelector('[data-cp-value]');

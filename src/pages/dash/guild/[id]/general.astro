@@ -94,29 +94,26 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, rolesRes, guildsRes] = await Promise.all([
+// Every read at once. The visibility and the language are read apart from the rest, because a database without those columns yet refuses
+// the whole read; they used to wait for each other and for the rest, one after the other.
+const optional = (column: string) => fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=${column}`, { headers: apiHeaders })
+  .then(async (res) => (res.ok ? (await res.json())?.[0] : undefined))
+  .catch(() => undefined);
+const [guildInfo, rolesRes, guildsRes, visibleRow, languageRow] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'roles'),
   fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id`, { headers: apiHeaders }),
+  optional('global_stats_hidden'),
+  optional('language'),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 // In the public ranking unless the server hid itself (and also when the column is not there yet).
-let globalStatsVisible = true;
-try {
-  const visibleRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=global_stats_hidden`, { headers: apiHeaders });
-  if (visibleRes.ok) globalStatsVisible = (await visibleRes.json())?.[0]?.global_stats_hidden !== true;
-} catch {}
+const globalStatsVisible = visibleRow?.global_stats_hidden !== true;
 
 // English until the server picks another one (and also when the column is not there yet).
-let language = 'en';
-try {
-  const languageRes = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=language`, { headers: apiHeaders });
-  if (languageRes.ok) {
-    const value = (await languageRes.json())?.[0]?.language;
-    if (value === 'es' || value === 'pt-BR') language = value;
-  }
-} catch {}
+const languageValue = languageRow?.language;
+const language = languageValue === 'es' || languageValue === 'pt-BR' ? languageValue : 'en';
 
 const allRoles = rolesRes.ok ? await rolesRes.json() : [];
 const roles = allRoles

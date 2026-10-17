@@ -1,6 +1,7 @@
 import { memoPerRequest } from './requestMemo';
 import { nameStyleBody, nameStyleClearBodies, type NameStyle } from './nameStyle';
-import { readGuildSnapshot, iconUrl, recentlyWritten, noteGuildWrite, snapshotEpoch } from './guildSnapshots';
+import { readGuildSnapshot, iconUrl, recentlyWritten, noteGuildWrite, snapshotEpoch, botLookKey } from './guildSnapshots';
+import { cached, invalidate } from './sharedCache';
 const MANAGE_GUILD = 0x20n;
 const ADMINISTRATOR = 0x8n;
 
@@ -100,11 +101,27 @@ const BOT_IDENTITY_TTL_MS = 10 * 60_000;
 // The bot's own name and avatar (the same in every server) change rarely; they are asked from Discord once in a while, not on every page.
 const BOT_PROFILE_TTL_MS = 10 * 60_000;
 let botProfileCache: { key: string; value: Awaited<ReturnType<typeof getBotProfile>>; expiresAt: number } | null = null;
+// After that time an old answer is still shown at once while a new one is read in the background (a page never waits for Discord for it).
+const BOT_LOOK_STALE_MS = 24 * 3600_000;
+let botProfileLoading: Promise<Awaited<ReturnType<typeof getBotProfile>>> | null = null;
+function loadBotProfile(botToken: string) {
+  botProfileLoading ??= getBotProfile(botToken)
+    .then((value) => {
+      if (value) botProfileCache = { key: botToken, value, expiresAt: Date.now() + BOT_PROFILE_TTL_MS };
+      return value;
+    })
+    .finally(() => { botProfileLoading = null; });
+  return botProfileLoading;
+}
 async function getBotProfileCached(botToken: string) {
-  if (botProfileCache && botProfileCache.key === botToken && botProfileCache.expiresAt > Date.now()) return botProfileCache.value;
-  const value = await getBotProfile(botToken);
-  if (value) botProfileCache = { key: botToken, value, expiresAt: Date.now() + BOT_PROFILE_TTL_MS };
-  return value;
+  if (botProfileCache && botProfileCache.key === botToken) {
+    if (botProfileCache.expiresAt > Date.now()) return botProfileCache.value;
+    if (botProfileCache.expiresAt + BOT_LOOK_STALE_MS > Date.now()) {
+      void loadBotProfile(botToken).catch(() => null);
+      return botProfileCache.value;
+    }
+  }
+  return loadBotProfile(botToken);
 }
 const botIdentityCache = new Map<string, { value: { name: string; icon: string | null }; expiresAt: number }>();
 
@@ -117,10 +134,27 @@ export function getBotIdentity(guildId: string, botToken: string, request?: Requ
   return memoPerRequest(request, `bot-identity:${guildId}`, () => loadBotIdentity(guildId, botToken));
 }
 
+const botIdentityLoading = new Map<string, Promise<{ name: string; icon: string | null } | null>>();
+
 async function loadBotIdentity(guildId: string, botToken: string): Promise<{ name: string; icon: string | null } | null> {
   const key = `${botToken}:${guildId}`;
   const hit = botIdentityCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
+  let loading = botIdentityLoading.get(key);
+  if (!loading) {
+    loading = readBotIdentity(guildId, botToken).finally(() => botIdentityLoading.delete(key));
+    botIdentityLoading.set(key, loading);
+  }
+  // An older answer is shown at once while the new one is read (every page of the server waited for Discord every ten minutes).
+  if (hit && hit.expiresAt + BOT_LOOK_STALE_MS > Date.now()) {
+    void loading.catch(() => null);
+    return hit.value;
+  }
+  return loading;
+}
+
+async function readBotIdentity(guildId: string, botToken: string): Promise<{ name: string; icon: string | null } | null> {
+  const key = `${botToken}:${guildId}`;
 
   let botId = '';
   try { botId = atob(botToken.split('.')[0]); } catch { return null; }
@@ -190,6 +224,7 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
   if (patch.bio !== undefined) body.bio = patch.bio;
 
   botIdentityCache.delete(`${botToken}:${guildId}`);
+  forgetMemberSelf(guildId);
   botProfileCache = null;
   const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
     method: 'PATCH',
@@ -198,6 +233,7 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
   });
   // The bot's look in this server changed in Discord: its saved copy is behind until the bot saves it again.
   noteGuildWrite(guildId);
+  forgetMemberSelf(guildId);
   return res.ok;
 }
 
@@ -207,6 +243,7 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
  */
 export async function setBotNameStyle(guildId: string, botToken: string, style: NameStyle | null): Promise<boolean> {
   botIdentityCache.delete(`${botToken}:${guildId}`);
+  forgetMemberSelf(guildId);
   const send = async (body: Record<string, unknown>) => {
     const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
       method: 'PATCH',
@@ -214,6 +251,7 @@ export async function setBotNameStyle(guildId: string, botToken: string, style: 
       body: JSON.stringify(body),
     });
     noteGuildWrite(guildId);
+    forgetMemberSelf(guildId);
     return res.ok;
   };
   if (style) return send(nameStyleBody(style));
@@ -229,7 +267,50 @@ export async function setBotNameStyle(guildId: string, botToken: string, style: 
  * confirmed live that Discord accepts and applies it via PATCH but never returns it from GET, so
  * there's no live source for it, our own database has to be the read-back for that one field.
  */
-export async function getGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<{ nick: string | null; avatarUrl: string | null; bannerUrl: string | null } | null> {
+// How the bot looks in a server, from Discord. It changes only when someone changes it, so it is kept ten minutes and, after that, shown
+// at once for up to a day while it is read again in the background (the Customize page asked Discord once a minute). It is read again:
+// - the moment the dashboard changes the bot's look (setBotGuildProfile, setBotNameStyle: forgotten here and in Redis, and read straight
+//   from Discord for the few seconds after the change);
+// - when the bot's own copy of the server (petto:snap) shows another nickname or avatar than the one it showed when this was read, which
+//   is how a change made in Discord or by the bot reaches the page.
+const MEMBER_SELF_FRESH_MS = 10 * 60_000;
+const MEMBER_SELF_STALE_MS = 24 * 3600_000;
+const lookChangedAt = new Map<string, number>();
+type MemberSelf = { nick: string | null; avatarUrl: string | null; bannerUrl: string | null };
+type KeptMemberSelf = MemberSelf & { botUserId: string; snap: string };
+
+export async function getGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<MemberSelf | null> {
+  if (recentlyWritten(guildId)) return readGuildMemberSelf(guildId, botToken, botUserId);
+  const saved = await readGuildSnapshot(guildId).catch(() => null);
+  const snap = saved ? `${saved.botNick ?? ''}|${saved.botAvatar ?? ''}` : '';
+  const load = () => {
+    let started = 0;
+    return cached<KeptMemberSelf | null>(
+      botLookKey(guildId),
+      async () => {
+        started = Date.now();
+        const read = await readGuildMemberSelf(guildId, botToken, botUserId);
+        return read ? { ...read, botUserId, snap } : null;
+      },
+      // A read that began before the last change may answer the old look: it is shown but not kept.
+      { freshMs: MEMBER_SELF_FRESH_MS, staleMs: MEMBER_SELF_STALE_MS, allowStale: true, shared: true, keep: (read) => read !== null && started >= (lookChangedAt.get(guildId) ?? 0) },
+    ).catch(() => null);
+  };
+  let value = await load();
+  if (value && (value.botUserId !== botUserId || (snap && value.snap !== snap))) {
+    await invalidate(botLookKey(guildId)).catch(() => {});
+    value = await load();
+  }
+  return value ? { nick: value.nick, avatarUrl: value.avatarUrl, bannerUrl: value.bannerUrl } : null;
+}
+
+function forgetMemberSelf(guildId: string): void {
+  if (lookChangedAt.size > 5000) lookChangedAt.clear();
+  lookChangedAt.set(guildId, Date.now());
+  void invalidate(botLookKey(guildId)).catch(() => {});
+}
+
+async function readGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<{ nick: string | null; avatarUrl: string | null; bannerUrl: string | null } | null> {
   const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/${botUserId}`, { headers: { Authorization: `Bot ${botToken}` } });
   if (!res.ok) return null;
   const member = await res.json();

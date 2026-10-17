@@ -80,7 +80,8 @@ const withCompression = (listener) => (req, res) => {
     decided = true;
     if (res.headersSent) return;
     const type = String(res.getHeader('content-type') ?? '');
-    if (!COMPRESSIBLE.test(type)) return;
+    // A stream of events (the dashboard's live stamp) must reach the browser line by line, so it is never compressed.
+    if (!COMPRESSIBLE.test(type) || /event-stream/i.test(type)) return;
     // A cache in front keeps one copy per encoding.
     const vary = String(res.getHeader('vary') ?? '');
     if (!/accept-encoding|\*/i.test(vary)) res.setHeader('Vary', vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding');
@@ -156,13 +157,39 @@ const withCompression = (listener) => (req, res) => {
   return listener(req, res);
 };
 
+// How long each dashboard request takes here, from its first byte in to its last byte out, with its Server-Timing parts: the owner's
+// /dash/health page shows the last 500 (src/utils/latencyStats.ts keeps them in Redis too, so a restart does not wipe them). Kept in
+// memory only, nothing is written per request. The live stream, the stamp a page asks for and the health page itself are left out.
+const LATENCY_KEEP = 500;
+const latency = (globalThis.__pettoLatency ??= { entries: [], max: LATENCY_KEEP, total: 0 });
+const DASH_REQUEST = /^\/(?:(?:es|pt-br)\/)?dash(?:\/|$)/i;
+const NOT_A_PAGE = /\/(?:events|version|health)\/?$/;
+const latencyPath = (url) => {
+  const [rawPath, query = ''] = url.split('?');
+  const path = rawPath.replace(/^\/(?:es|pt-br)(?=\/dash)/i, '').replace(/\/\d{5,25}(?=\/|$)/g, '/:id').replace(/\/+$/, '') || '/';
+  const section = /(?:^|&)section=([\w-]{1,40})/.exec(query)?.[1];
+  return section ? `${path}?section=${section}` : path;
+};
+const withLatency = (listener) => (req, res) => {
+  const url = req.url ?? '/';
+  if (!DASH_REQUEST.test(url) || NOT_A_PAGE.test(url.split('?')[0])) return listener(req, res);
+  const started = performance.now();
+  res.once('finish', () => {
+    const entry = { p: latencyPath(url), m: req.method, s: res.statusCode, t: Math.round(performance.now() - started), st: String(res.getHeader('server-timing') ?? ''), at: Date.now() };
+    latency.entries.push(entry);
+    latency.total += 1;
+    if (latency.entries.length > latency.max) latency.entries.splice(0, latency.entries.length - latency.max);
+  });
+  return listener(req, res);
+};
+
 // The proxy in front of the site (Caddy, behind Cloudflare) keeps connections open and reuses them. Node closes an idle connection after 5 seconds
 // by default, so a request sent on a connection that was just closed can hang until something gives up. Keeping the connections open longer than
 // the proxy does avoids that. This is set on the server that Astro creates, which is not reachable from here, so the creation is wrapped.
 const createServer = http.createServer.bind(http);
 http.createServer = (...args) => {
   const index = args.findIndex((arg) => typeof arg === 'function');
-  if (index !== -1) args[index] = withCompression(withStaticCache(args[index]));
+  if (index !== -1) args[index] = withLatency(withCompression(withStaticCache(args[index])));
   const server = createServer(...args);
   server.keepAliveTimeout = 75_000;
   server.headersTimeout = 80_000;
