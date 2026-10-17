@@ -6,9 +6,8 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { guildHasPremium } from '../../../../utils/guildPremium';
 import { callPettoForms } from '../../../../utils/pettoBotApi';
-import { normalizeForm, normalizeQuestions, slugName, NAME, PLAN, STATUSES } from '../../../../utils/forms';
+import { normalizeForm, normalizeQuestions, slugName, NAME, FORM_PLAN, STATUSES } from '../../../../utils/forms';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -35,8 +34,7 @@ const search = String(Astro.url.searchParams.get('q') ?? '').trim().slice(0, 60)
 
 const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/${path}`, { ...init, headers: { ...apiHeaders, ...(init.headers as Record<string, string> | undefined) } });
 const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
-const premium = await guildHasPremium(apiUrl, apiHeaders, id);
-const plan = premium ? PLAN.premium : PLAN.free;
+const plan = FORM_PLAN;
 
 let message: { kind: 'ok' | 'err' | 'warn'; text: string } | null = null;
 let redirectTo: string | null = null;
@@ -83,7 +81,7 @@ if (Astro.request.method === 'POST') {
     } else {
       const countRes = await rest(`forms?guild_id=eq.${id}&select=id`);
       const count = countRes.ok ? (await countRes.json()).length : 0;
-      if (count >= plan.forms) message = { kind: 'err', text: premium ? dt('You reached the limit of forms ({a}).', { a: plan.forms }) : dt('You reached the limit of forms of the free plan ({a}). Premium allows {b}.', { a: plan.forms, b: PLAN.premium.forms }) };
+      if (count >= plan.forms) message = { kind: 'err', text: dt('You reached the limit of forms ({a}).', { a: plan.forms }) };
       else {
         const res = await rest('forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...clean }) });
         const row = res.ok ? (await res.json())[0] : null;
@@ -160,7 +158,7 @@ const forms: any[] = ready ? await formsRes!.json() : [];
 const subsData = subsResult?.ok ? subsResult.data : null;
 const pending: Record<string, number> = subsData?.pending ?? {};
 const submissions: any[] = section === 'submissions' ? subsData?.submissions ?? [] : [];
-const storage = { stored: Number(subsData?.stored ?? 0), cap: Number(subsData?.cap ?? (premium ? PLAN.premium.submissions : PLAN.free.submissions)), retention: Number(subsData?.retention_days ?? 30), known: Boolean(subsData) };
+const storage = { stored: Number(subsData?.stored ?? 0), cap: Number(subsData?.cap ?? plan.submissions), retention: Number(subsData?.retention_days ?? 30), known: Boolean(subsData) };
 const panels: any[] = panelsRes?.ok ? await panelsRes.json() : [];
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
@@ -170,5 +168,5 @@ const editForm = editing === 'new' ? 'new' : editing ? forms.find((f) => String(
 <DashForms
   user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   section={section} forms={forms} pending={pending} submissions={submissions} panels={panels} roles={roles} channels={channels} templates={templates}
-  editing={editForm} storage={storage} statusFilter={statusFilter} formFilter={formFilter} search={search} plan={plan} premium={premium} ready={ready} message={message}
+  editing={editForm} storage={storage} statusFilter={statusFilter} formFilter={formFilter} search={search} plan={plan} ready={ready} message={message}
 />

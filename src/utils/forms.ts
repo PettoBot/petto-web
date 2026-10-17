@@ -12,8 +12,8 @@ export const LIMITS = {
   title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000,
   short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
 };
-// Free and Premium, the same numbers as the bot (petto-bot src/db/premium.js).
-export const PLAN = { free: { forms: 5, questions: 10, submissions: 500 }, premium: { forms: 25, questions: 25, submissions: 5000 } };
+// One limit for every server, the same numbers as the bot (petto-bot src/utils/forms.js FORM_LIMITS). Forms are not a Premium module.
+export const FORM_PLAN = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX: Record<string, number> = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 export const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
