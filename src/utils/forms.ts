@@ -6,6 +6,10 @@ export type QuestionType = (typeof QUESTION_TYPES)[number];
 export const CHOICE_TYPES: readonly string[] = ['choice', 'multi'];
 export const STATUSES = ['pending', 'accepted', 'denied', 'cancelled'] as const;
 export const BUTTON_STYLES = ['primary', 'secondary', 'success', 'danger'] as const;
+// The background of the web page of a form: Petto's own, or a solid tint or a gradient made from the color of the form (the same as
+// the bot's PAGE_BACKGROUNDS).
+export const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient'] as const;
+export type PageBackground = (typeof PAGE_BACKGROUNDS)[number];
 // Discord's limits: 45 characters for a form title and a field label, 100 for a description and a placeholder, 25 options of 100
 // characters, 4000 characters in a text field, and five fields in a form.
 export const LIMITS = {
@@ -40,6 +44,11 @@ export const formPagePath = (lang = 'en') => `${FORM_LANG_PATH[lang] ?? ''}/form
 
 /** The path of a form on the website in a language (/form#<id>, /es/form#<id>, /pt-br/form#<id>), or null when it has no public id yet. */
 export const formWebPath = (form: { public_id?: string | null }, lang = 'en') => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `${formPagePath(lang)}#${form.public_id}` : null);
+/**
+ * The link of a form to share in a chat (/f/<id>, /es/f/<id>, /pt-br/f/<id>), the same as the bot's shareUrl: the site answers it on
+ * the server, so Discord and other apps show the preview of this form, and a browser goes on to the page of the form.
+ */
+export const formSharePath = (form: { public_id?: string | null }, lang = 'en') => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `${FORM_LANG_PATH[lang] ?? ''}/f/${form.public_id}` : null);
 
 export interface Question {
   id: string; type: QuestionType; label: string; help: string | null; description: string | null; image: string | null; placeholder: string | null; required: boolean;
@@ -55,7 +64,10 @@ export interface FormRow {
   dm_results: boolean; messages: { submitted?: MessageSetting; accepted?: MessageSetting; denied?: MessageSetting };
   button_label: string | null; button_emoji: string | null; button_style: (typeof BUTTON_STYLES)[number];
   web_enabled: boolean;
+  page_banner: string | null; page_background: PageBackground; page_show_icon: boolean; page_show_name: boolean;
 }
+/** How the web page of a form looks: what the bot sends as `form.page`. */
+export interface PageLook { banner: string | null; background: PageBackground; show_icon: boolean; show_name: boolean }
 
 const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const whole = (value: unknown, min: number, max: number, fallback: number) => {
@@ -85,7 +97,8 @@ export function imageUrl(value: unknown): string | null {
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) return null;
   const host = url.hostname.toLowerCase();
   if (!host.includes('.') || host.startsWith('[') || /^[\d.]+$/.test(host) || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return null;
-  return /\.(?:png|jpe?g|gif|webp)$/i.test(url.pathname) ? url.toString() : null;
+  // The link as stored (a space becomes %20) still fits in the 500 characters of the database.
+  return /\.(?:png|jpe?g|gif|webp)$/i.test(url.pathname) && url.toString().length <= LIMITS.image ? url.toString() : null;
 }
 
 /** A description as plain text, on one line: without the marks of bold, italics and links. */
@@ -211,6 +224,24 @@ export function normalizeForm(input: any, { maxQuestions = LIMITS.questions } = 
     button_emoji: clip(input?.button_emoji, 64) || null,
     button_style: (BUTTON_STYLES as readonly string[]).includes(input?.button_style) ? input.button_style : 'primary',
     web_enabled: input?.web_enabled !== false,
+    page_banner: imageUrl(input?.page_banner),
+    page_background: (PAGE_BACKGROUNDS as readonly string[]).includes(input?.page_background) ? input.page_background : 'default',
+    page_show_icon: input?.page_show_icon !== false,
+    page_show_name: input?.page_show_name !== false,
+  };
+}
+
+/**
+ * The look of the web page of a form, checked again: from a stored form (`page_banner`...) or from what the bot sent (`banner`...).
+ * A form saved before these settings gets the defaults: no banner, Petto's background, the icon and the name of the server.
+ */
+export function pageLook(input: any): PageLook {
+  const background = input?.background ?? input?.page_background;
+  return {
+    banner: imageUrl(input?.banner ?? input?.page_banner),
+    background: (PAGE_BACKGROUNDS as readonly string[]).includes(background) ? background : 'default',
+    show_icon: (input?.show_icon ?? input?.page_show_icon) !== false,
+    show_name: (input?.show_name ?? input?.page_show_name) !== false,
   };
 }
 
