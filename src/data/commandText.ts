@@ -174,6 +174,7 @@ export const commandText: Record<string, CommandText> = {
   uploads: ["Uploads: the numbers of a member and the ranking.", "Subidas: los números de un miembro y el ranking.", "Uploads: os números de um membro e o ranking."],
   uploadconfig: ["Set up uploads: channels, uploader role and welcome.", "Configura las subidas: canales, rol de uploader y bienvenida.", "Configura os uploads: canais, cargo de uploader e boas-vindas."],
   request: ["Ask the staff for something, or see the open requests.", "Pide algo al staff, o mira las solicitudes abiertas.", "Peça algo à equipe, ou veja os pedidos abertos."],
+  form: ["Forms and applications: make them, post a panel and review what members send.", "Formularios y postulaciones: créalos, publica un panel y revisa lo que envían los miembros.", "Formulários e candidaturas: crie, publique um painel e analise o que os membros enviam."],
   requestconfig: ["Set up requests: channel, staff, limits and the reply.", "Configura las solicitudes: canal, staff, límites y la respuesta.", "Configura os pedidos: canal, equipe, limites e a resposta."],
   review: ["Rate a member from 1 to 5 stars and see their reviews.", "Valora a un miembro de 1 a 5 estrellas y mira sus reseñas.", "Avalie um membro de 1 a 5 estrelas e veja as avaliações dele."],
   profile: ["The profile of a member: rating, uploads, requests and partnerships.", "El perfil de un miembro: valoración, subidas, solicitudes y partnerships.", "O perfil de um membro: avaliação, uploads, pedidos e parcerias."],

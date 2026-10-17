@@ -1,0 +1,522 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import ColorPicker from './ColorPicker.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { LIMITS, QUESTION_TYPES, BUTTON_STYLES, PLAN, normalizeQuestions, answerText, hexColor } from '../utils/forms';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null }; guildId: string; guildName: string; guildIcon: string;
+  section: string; forms: any[]; pending: Record<string, number>; submissions: any[]; panels: any[];
+  roles: { id: string; name: string }[]; channels: { id: string; name: string }[]; templates: string[];
+  editing: any; storage: { stored: number; cap: number; retention: number; known: boolean };
+  statusFilter: string; formFilter: string; search: string; plan: { forms: number; questions: number }; premium: boolean; ready: boolean;
+  message: { kind: 'ok' | 'err' | 'warn'; text: string } | null;
+}
+const { user, guildId, guildName, guildIcon, section, forms, pending, submissions, panels, roles, channels, templates, editing, storage, statusFilter, formFilter, search, plan, premium, ready, message } = Astro.props;
+const base = `/dash/guild/${guildId}/forms`;
+const titles: Record<string, string> = { forms: dt('Forms'), submissions: dt('Form submissions'), panels: dt('Form panels') };
+const subs: Record<string, string> = {
+  forms: dt('Staff applications, partner requests, event sign-ups. Members answer in Discord, in pages of five questions, and the staff accepts or denies from a card.'),
+  submissions: dt('Everything members sent. Read the answers and accept or deny them; the member gets a DM and the roles of the form.'),
+  panels: dt('A message with buttons (or a menu) that opens your forms. Post it in any channel.'),
+};
+const statusNames: Record<string, string> = { pending: dt('Pending'), accepted: dt('Accepted'), denied: dt('Denied'), cancelled: dt('Cancelled'), all: dt('All') };
+const typeNames: Record<string, string> = { short: dt('Short text'), paragraph: dt('Paragraph'), number: dt('Number'), yesno: dt('Yes or no'), choice: dt('One choice'), multi: dt('Several choices') };
+const styleNames: Record<string, string> = { primary: dt('Blurple'), secondary: dt('Grey'), success: dt('Green'), danger: dt('Red') };
+const when = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
+const atLimit = forms.length >= plan.forms;
+const isNew = editing === 'new';
+const f = isNew ? { name: '', title: '', description: '', color: null, status: 'closed', questions: [], review_channel_id: '', reviewer_role_ids: [], ping_role_ids: [], auto_thread: false, required_role_ids: [], blocked_role_ids: [], min_account_days: 0, min_member_days: 0, one_pending: true, deny_cooldown_hours: 0, max_per_user: 0, max_total: 0, closes_at: null, accept_add_role_ids: [], accept_remove_role_ids: [], deny_add_role_ids: [], deny_remove_role_ids: [], dm_results: true, messages: {}, button_label: '', button_emoji: '', button_style: 'primary' } : editing;
+const closesLocal = f?.closes_at ? new Date(f.closes_at).toISOString().slice(0, 16) : '';
+const builderText = {
+  question: dt('Question'), add: dt('Add a question'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), drag: dt('Drag to reorder'),
+  label: dt('Question (45 characters)'), help: dt('Help line (optional)'), placeholder: dt('Placeholder (optional)'), required: dt('Required'),
+  minLength: dt('Least characters'), maxLength: dt('Most characters'), minValue: dt('Lowest number'), maxValue: dt('Highest number'),
+  options: dt('Options, one per line (2 to 25)'), maxChoices: dt('How many can be picked'), empty: dt('No questions yet. Add the first one.'),
+  limit: dt('Limit reached'), types: typeNames, page: dt('Page'), yes: dt('Yes'), no: dt('No'), pick: dt('Pick one'), pickMany: dt('Pick one or more'), number: dt('A number'),
+  next: dt('Next'), submit: dt('Submit'), apply: dt('Apply'), pages: dt('{a} questions in {b} pages'),
+};
+const variableChips = ['{user}', '{form}', '{reason}', '{number}', '{server}'];
+const defaultMessages = {
+  submitted: dt('Your answers to {form} were sent (#{number}). The staff will look at them and you will get a DM with the result.'),
+  accepted: dt('Your answers to {form} in {server} were accepted.'),
+  denied: dt('Your answers to {form} in {server} were denied.'),
+};
+const formOptions = forms.map((x) => ({ id: String(x.id), name: x.title }));
+const formName = (id: unknown) => forms.find((x) => String(x.id) === String(id))?.title;
+const yesWord = dt('Yes');
+const noWord = dt('No');
+const filterHref = (over: Record<string, string>) => {
+  const params = new URLSearchParams({ section: 'submissions', status: statusFilter, ...(formFilter ? { f: formFilter } : {}), ...(search ? { q: search } : {}), ...over });
+  for (const [key, value] of [...params]) if (!value) params.delete(key);
+  return `${base}?${params}`;
+};
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={section === 'forms' ? 'forms' : `forms-${section}`} pageTitle={titles[section]}>
+  <h1>{titles[section]}{premium && <span class="fm-badge">Premium</span>}</h1>
+  <p class="fm-lead">{subs[section]}</p>
+  {message && <div class:list={['fm-flash', message.kind]} role={message.kind === 'err' ? 'alert' : 'status'}><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
+  {!ready && <div class="fm-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+
+  {section === 'forms' && !f && (
+    <>
+      <div class="fm-row">
+        <span class="fm-hint">{dt('{a} of {b} forms', { a: forms.length, b: plan.forms })}{!premium && ` · ${dt('Premium: {a} forms of {b} questions', { a: PLAN.premium.forms, b: PLAN.premium.questions })}`}</span>
+        {atLimit ? <span class="btn btn-ghost btn-sm" aria-disabled="true">{dt('Limit reached')}</span> : <a class="btn btn-accent btn-sm" href={`${base}?section=forms&form=new`}><Icon name="ph:plus-bold" width="12" height="12" />{dt('New form')}</a>}
+      </div>
+      {forms.length === 0 && (
+        <div class="fm-card fm-empty">
+          <Icon name="ph:clipboard-text-fill" width="28" height="28" />
+          <p>{dt('No forms yet. Make one for staff applications, partner requests or sign-ups.')}</p>
+          <p class="fm-hint">{dt('In Discord: !form create staff Staff application')}</p>
+        </div>
+      )}
+      <div class="fm-grid-cards">
+        {forms.map((x) => {
+          const count = normalizeQuestions(x.questions).length;
+          const waiting = pending[String(x.id)] ?? 0;
+          return (
+            <div class="fm-card fm-formcard">
+              <div class="fm-row"><h3 style={x.color !== null && x.color !== undefined ? `--fc:${hexColor(x.color)}` : ''}><i class="fm-dot"></i>{x.title}</h3><span class:list={['fm-chip', x.status]}>{x.status === 'open' ? dt('Open') : dt('Closed')}</span></div>
+              <p class="fm-hint"><code>{x.name}</code> · {dt('{a} questions', { a: count })} · <a href={`${base}?section=submissions&f=${x.id}`}>{dt('{a} pending', { a: waiting })}</a></p>
+              {x.description && <p class="fm-desc">{x.description}</p>}
+              <div class="fm-actions">
+                <a class="btn btn-ghost btn-sm" href={`${base}?section=forms&form=${x.id}`}><Icon name="ph:pencil-simple-bold" width="12" height="12" />{dt('Edit')}</a>
+                <form method="POST" data-no-dirty><input type="hidden" name="action" value="toggle_form" /><input type="hidden" name="form_id" value={x.id} /><button type="submit" class="btn btn-ghost btn-sm">{x.status === 'open' ? dt('Close') : dt('Open')}</button></form>
+                {!atLimit && <form method="POST" data-no-dirty><input type="hidden" name="action" value="duplicate_form" /><input type="hidden" name="form_id" value={x.id} /><button type="submit" class="btn btn-ghost btn-sm">{dt('Duplicate')}</button></form>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  )}
+
+  {section === 'forms' && f && (
+    <>
+    <a class="fm-back" href={`${base}?section=forms`}>← {dt('All forms')}</a>
+    <div class="fm-editor-wrap">
+      <form method="POST" class="fm-editor" data-forms-editor>
+        <input type="hidden" name="action" value="save_form" />
+        {!isNew && <input type="hidden" name="form_id" value={f.id} />}
+        <div class="fm-card">
+          <h2>{dt('Basics')}</h2>
+          <div class="fm-grid">
+            <label class="fm-field"><span>{dt('Title')}</span><input type="text" name="title" value={f.title} maxlength={LIMITS.title} required data-preview-title /><em>{dt('Shown on top of the Discord form (45 characters).')}</em></label>
+            <label class="fm-field"><span>{dt('Short name')}</span><input type="text" name="name" value={f.name} maxlength="32" required pattern={'[A-Za-z0-9][A-Za-z0-9_\\-]{0,31}'} autocomplete="off" spellcheck="false" /><em>{dt('For commands, like !form info staff.')}</em></label>
+            <label class="fm-field fm-wide"><span>{dt('Description')}</span><textarea name="description" maxlength={LIMITS.description} rows="2" data-preview-desc>{f.description ?? ''}</textarea><em>{dt('Shown on the panel.')}</em></label>
+            <label class="fm-field"><span>{dt('Status')}</span><select name="status"><option value="closed" selected={f.status !== 'open'}>{dt('Closed: nobody can send it')}</option><option value="open" selected={f.status === 'open'}>{dt('Open: members can send it')}</option></select></label>
+            <div class="fm-field"><span>{dt('Color')}</span><ColorPicker name="color" value={hexColor(f.color)} label={dt('Color')} allowNone /></div>
+          </div>
+        </div>
+
+        <div class="fm-card">
+          <div class="fm-row"><h2>{dt('Questions')}</h2><span class="fm-hint" data-q-count></span></div>
+          <p class="fm-hint">{dt('Members see them in Discord forms of 5 questions, with a Next button between pages. Drag a question to change its place.')}</p>
+          <div data-q-builder data-initial={JSON.stringify(normalizeQuestions(f.questions))} data-text={JSON.stringify(builderText)} data-limit={plan.questions} data-limits={JSON.stringify(LIMITS)} data-types={JSON.stringify(QUESTION_TYPES)}></div>
+          <input type="hidden" name="questions_json" data-q-output />
+          {!premium && <p class="fm-hint">{dt('Free servers have {a} questions per form; Premium has {b}.', { a: PLAN.free.questions, b: PLAN.premium.questions })}</p>}
+        </div>
+
+        <div class="fm-card">
+          <h2>{dt('Review')}</h2>
+          <div class="fm-grid">
+            <label class="fm-field"><span>{dt('Review channel')}</span><select name="review_channel_id"><option value="">{dt('Pick a channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === f.review_channel_id}>#{c.name}</option>)}</select><em>{dt('Where the cards with the answers arrive.')}</em></label>
+            <label class="fm-check fm-center"><input type="checkbox" name="auto_thread" checked={f.auto_thread} />{dt('Open a thread under each card')}</label>
+            <div class="fm-field fm-wide"><span>{dt('Reviewer roles')}</span><MultiSelect lazy name="reviewer_role_ids" options={roles} selected={f.reviewer_role_ids ?? []} placeholder={dt('Only who manages the server')} /><em>{dt('Who can accept and deny. Who manages the server always can.')}</em></div>
+            <div class="fm-field fm-wide"><span>{dt('Roles to ping')}</span><MultiSelect lazy name="ping_role_ids" options={roles} selected={f.ping_role_ids ?? []} placeholder={dt('No roles')} /></div>
+          </div>
+        </div>
+
+        <div class="fm-card">
+          <h2>{dt('Who can send it')}</h2>
+          <div class="fm-grid">
+            <div class="fm-field fm-wide"><span>{dt('Needs one of these roles')}</span><MultiSelect lazy name="required_role_ids" options={roles} selected={f.required_role_ids ?? []} placeholder={dt('Anyone')} /></div>
+            <div class="fm-field fm-wide"><span>{dt('Blocked roles')}</span><MultiSelect lazy name="blocked_role_ids" options={roles} selected={f.blocked_role_ids ?? []} placeholder={dt('No roles')} /></div>
+            <label class="fm-field"><span>{dt('Account age (days)')}</span><input type="number" name="min_account_days" min="0" max="3650" value={f.min_account_days} /></label>
+            <label class="fm-field"><span>{dt('Time in the server (days)')}</span><input type="number" name="min_member_days" min="0" max="3650" value={f.min_member_days} /></label>
+            <label class="fm-field"><span>{dt('Wait after a denial (hours)')}</span><input type="number" name="deny_cooldown_hours" min="0" max="8760" value={f.deny_cooldown_hours} /></label>
+            <label class="fm-field"><span>{dt('Times each member can send it')}</span><input type="number" name="max_per_user" min="0" max="1000" value={f.max_per_user} /><em>{dt('0 is no limit.')}</em></label>
+            <label class="fm-field"><span>{dt('Answers in all')}</span><input type="number" name="max_total" min="0" max="100000" value={f.max_total} /><em>{dt('0 is no limit.')}</em></label>
+            <label class="fm-field"><span>{dt('Closes on (UTC)')}</span><input type="datetime-local" name="closes_at" value={closesLocal} /></label>
+            <label class="fm-check fm-wide"><input type="checkbox" name="one_pending" checked={f.one_pending} />{dt('One pending answer per member')}</label>
+          </div>
+        </div>
+
+        <div class="fm-card">
+          <h2>{dt('After the review')}</h2>
+          <div class="fm-grid">
+            <div class="fm-field"><span>{dt('Accepted: give roles')}</span><MultiSelect lazy giveRole name="accept_add_role_ids" options={roles} selected={f.accept_add_role_ids ?? []} placeholder={dt('No roles')} /></div>
+            <div class="fm-field"><span>{dt('Accepted: take roles')}</span><MultiSelect lazy name="accept_remove_role_ids" options={roles} selected={f.accept_remove_role_ids ?? []} placeholder={dt('No roles')} /></div>
+            <div class="fm-field"><span>{dt('Denied: give roles')}</span><MultiSelect lazy giveRole name="deny_add_role_ids" options={roles} selected={f.deny_add_role_ids ?? []} placeholder={dt('No roles')} /></div>
+            <div class="fm-field"><span>{dt('Denied: take roles')}</span><MultiSelect lazy name="deny_remove_role_ids" options={roles} selected={f.deny_remove_role_ids ?? []} placeholder={dt('No roles')} /></div>
+            <label class="fm-check fm-wide"><input type="checkbox" name="dm_results" checked={f.dm_results} />{dt('Send the member a DM with the result')}</label>
+          </div>
+          <p class="fm-hint">{dt('Variables:')} {variableChips.map((v) => <code class="fm-var">{v}</code>)} {dt('and the usual ones.')}</p>
+          <div class="fm-grid">
+            <label class="fm-field fm-wide"><span>{dt('When it is sent')}</span><textarea name="msg_submitted" rows="2" maxlength={LIMITS.message} placeholder={defaultMessages.submitted}>{f.messages?.submitted?.text ?? ''}</textarea></label>
+            <label class="fm-field"><span>{dt('When it is accepted')}</span><textarea name="msg_accepted" rows="3" maxlength={LIMITS.message} placeholder={defaultMessages.accepted}>{f.messages?.accepted?.text ?? ''}</textarea></label>
+            <label class="fm-field"><span>{dt('When it is denied')}</span><textarea name="msg_denied" rows="3" maxlength={LIMITS.message} placeholder={defaultMessages.denied}>{f.messages?.denied?.text ?? ''}</textarea></label>
+            <label class="fm-field"><span>{dt('Saved embed when accepted')}</span><select name="tpl_accepted"><option value="">{dt('None: use the text')}</option>{templates.map((n) => <option value={n} selected={n === f.messages?.accepted?.template}>{n}</option>)}</select></label>
+            <label class="fm-field"><span>{dt('Saved embed when denied')}</span><select name="tpl_denied"><option value="">{dt('None: use the text')}</option>{templates.map((n) => <option value={n} selected={n === f.messages?.denied?.template}>{n}</option>)}</select></label>
+          </div>
+        </div>
+
+        <div class="fm-card">
+          <h2>{dt('Panel button')}</h2>
+          <div class="fm-grid">
+            <label class="fm-field"><span>{dt('Button text')}</span><input type="text" name="button_label" value={f.button_label ?? ''} maxlength={LIMITS.buttonLabel} placeholder={f.title || dt('The title')} data-preview-button /></label>
+            <label class="fm-field"><span>{dt('Button emoji')}</span><input type="text" name="button_emoji" value={f.button_emoji ?? ''} maxlength="64" placeholder="📝" /></label>
+            <label class="fm-field"><span>{dt('Button color')}</span><select name="button_style" data-preview-style>{BUTTON_STYLES.map((s) => <option value={s} selected={s === f.button_style}>{styleNames[s]}</option>)}</select></label>
+          </div>
+        </div>
+        <div class="fm-actions"><button type="submit" class="btn btn-accent">{dt('Save form')}</button></div>
+      </form>
+
+      <aside class="fm-preview" aria-label={dt('Preview')}>
+        <h3>{dt('Preview')}</h3>
+        <div class="fm-dpanel"><b data-pv-title>{f.title || dt('The title')}</b><span data-pv-desc>{f.description || ''}</span><span class:list={['fm-dbtn', f.button_style]} data-pv-button>{f.button_label || f.title || dt('Apply')}</span></div>
+        <div data-pv-pages></div>
+      </aside>
+    </div>
+    {!isNew && (
+      <form method="POST" class="fm-danger" data-no-dirty onsubmit={`return confirm(${JSON.stringify(dt('Delete this form? What members already sent is kept.'))})`}>
+        <input type="hidden" name="action" value="delete_form" /><input type="hidden" name="form_id" value={f.id} />
+        <button type="submit" class="fm-del"><Icon name="ph:trash-bold" width="13" height="13" />{dt('Delete form')}</button>
+      </form>
+    )}
+    </>
+  )}
+
+  {section === 'submissions' && (
+    <>
+      <div class="fm-tabs" role="tablist">
+        {['pending', 'accepted', 'denied', 'cancelled', 'all'].map((s) => <a role="tab" aria-selected={statusFilter === s ? 'true' : 'false'} href={filterHref({ status: s })} class:list={['fm-tab', { on: statusFilter === s }]}>{statusNames[s]}</a>)}
+      </div>
+      <form method="GET" class="fm-filters" data-no-dirty>
+        <input type="hidden" name="section" value="submissions" /><input type="hidden" name="status" value={statusFilter} />
+        <select name="f" aria-label={dt('Form')}><option value="">{dt('All forms')}</option>{forms.map((x) => <option value={x.id} selected={String(x.id) === formFilter}>{x.title}</option>)}</select>
+        <input type="search" name="q" value={search} placeholder={dt('Name, user ID or #number')} aria-label={dt('Search')} />
+        <button type="submit" class="btn btn-ghost btn-sm">{dt('Filter')}</button>
+      </form>
+      {submissions.length === 0 && <div class="fm-card"><p class="fm-hint">{dt('Nothing here.')}</p></div>}
+      <div class="fm-list">
+        {submissions.map((s) => (
+          <details class="fm-card fm-sub" open={submissions.length === 1}>
+            <summary>
+              <span class="fm-who">{s.avatar_url && <img src={s.avatar_url} alt="" width="26" height="26" loading="lazy" />}<b>#{s.number} · {s.username}</b></span>
+              <span class="fm-hint">{s.form_title || formName(s.form_id) || s.form_name} · {when(s.created_at)}</span>
+              <span class:list={['fm-chip', s.status]}>{statusNames[s.status] ?? s.status}</span>
+            </summary>
+            <div class="fm-body">
+              <p class="fm-hint"><code>{s.user_id}</code>{s.channel_id && s.message_id && <> · <a href={`https://discord.com/channels/${guildId}/${s.channel_id}/${s.message_id}`} target="_blank" rel="noopener">{dt('Card in Discord')}</a></>}{s.thread_id && <> · <a href={`https://discord.com/channels/${guildId}/${s.thread_id}`} target="_blank" rel="noopener">{dt('Thread')}</a></>}</p>
+              {s.compacted ? <p class="fm-hint">{dt('The answers were removed after the retention time.')}</p> : (
+                <dl class="fm-answers">{(s.answers ?? []).map((a: any) => <><dt>{a.label}</dt><dd>{answerText(a, yesWord, noWord) || <em>{dt('No answer')}</em>}</dd></>)}</dl>
+              )}
+              {s.status !== 'pending' && s.reviewer_id && <p class="fm-hint">{s.status === 'accepted' ? dt('Accepted by {a}', { a: s.reviewer_name || s.reviewer_id }) : s.status === 'denied' ? dt('Denied by {a}', { a: s.reviewer_name || s.reviewer_id }) : ''}{s.reviewed_at ? ` · ${when(s.reviewed_at)}` : ''}{s.reason ? ` · ${s.reason}` : ''}</p>}
+              {s.status === 'pending' && (
+                <form method="POST" class="fm-review" data-no-dirty>
+                  <input type="hidden" name="action" value="review" /><input type="hidden" name="number" value={s.number} />
+                  <input type="text" name="reason" maxlength="1000" placeholder={dt('Reason (the member reads it)')} aria-label={dt('Reason')} />
+                  <button type="submit" name="status" value="accepted" class="btn btn-accent btn-sm">{dt('Accept')}</button>
+                  <button type="submit" name="status" value="denied" class="fm-deny">{dt('Deny')}</button>
+                </form>
+              )}
+            </div>
+          </details>
+        ))}
+      </div>
+      <form method="POST" class="fm-card fm-retention" data-no-dirty>
+        <input type="hidden" name="action" value="save_retention" />
+        <h2>{dt('Storage')}</h2>
+        {storage.known && <p class="fm-hint">{dt('{a} of {b} submissions stored. When it is full, the oldest reviewed ones make room; pending ones are never deleted.', { a: storage.stored, b: storage.cap })}</p>}
+        <div class="fm-inline">
+          <label class="fm-field"><span>{dt('Keep the answers of reviewed submissions for (days)')}</span><input type="number" name="retention_days" min="1" max="365" value={storage.retention} /></label>
+          <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+        </div>
+        <p class="fm-hint">{dt('After that only a small record stays: form, member, state, reviewer, dates and the link to the card.')}</p>
+      </form>
+    </>
+  )}
+
+  {section === 'panels' && (
+    <>
+      <form method="POST" class="fm-card fm-editor" data-no-dirty>
+        <input type="hidden" name="action" value="post_panel" />
+        <h2>{dt('Post a panel')}</h2>
+        {forms.length === 0 ? <p class="fm-hint">{dt('Make a form first.')} <a href={`${base}?section=forms&form=new`}>{dt('New form')}</a></p> : (
+          <div class="fm-grid">
+            <label class="fm-field"><span>{dt('Channel')}</span><select name="channel_id" required><option value="">{dt('Pick a channel')}</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select></label>
+            <label class="fm-field"><span>{dt('Style')}</span><select name="style"><option value="buttons">{dt('Buttons')}</option><option value="select">{dt('A menu')}</option></select></label>
+            <div class="fm-field fm-wide"><span>{dt('Forms it opens')}</span><MultiSelect name="form_ids" options={formOptions} selected={formOptions.length === 1 ? [formOptions[0].id] : []} placeholder={dt('Pick forms')} /></div>
+            <label class="fm-field"><span>{dt('Saved embed (optional)')}</span><select name="template"><option value="">{dt('None: Petto makes the card')}</option>{templates.map((n) => <option value={n}>{n}</option>)}</select></label>
+            <div class="fm-field"><span>{dt('Color')}</span><ColorPicker name="panel_color" value="" label={dt('Color')} allowNone /></div>
+            <label class="fm-field fm-wide"><span>{dt('Title (optional)')}</span><input type="text" name="panel_title" maxlength="200" placeholder={dt('Applications')} /></label>
+            <label class="fm-field fm-wide"><span>{dt('Text (optional)')}</span><textarea name="panel_description" rows="3" maxlength="2000"></textarea></label>
+          </div>
+        )}
+        {forms.length > 0 && <div class="fm-actions"><button type="submit" class="btn btn-accent btn-sm">{dt('Post panel')}</button><span class="fm-hint">{dt('Closed forms answer that they are closed when pressed.')}</span></div>}
+      </form>
+      <div class="fm-card">
+        <h2>{dt('Posted panels')}</h2>
+        {panels.length === 0 && <p class="fm-hint">{dt('No panels yet.')}</p>}
+        <ul class="fm-panels">
+          {panels.map((p) => (
+            <li><span>#{channels.find((c) => c.id === p.channel_id)?.name ?? p.channel_id}</span><span class="fm-hint">{(p.form_ids ?? []).map((id: unknown) => formName(id) ?? `#${id}`).join(', ')} · {p.style === 'select' ? dt('A menu') : dt('Buttons')} · {when(p.created_at)}</span>{p.message_id && <a href={`https://discord.com/channels/${guildId}/${p.channel_id}/${p.message_id}`} target="_blank" rel="noopener">{dt('Open in Discord')}</a>}</li>
+          ))}
+        </ul>
+      </div>
+    </>
+  )}
+</DashGuildLayout>
+
+<script>
+  // The questions of a form: drawn on `[data-q-builder]`, saved as JSON in `[data-q-output]`, reordered by dragging or with the arrows,
+  // and shown on the right as the pages of five questions a member sees in Discord.
+  function initFormsBuilder() {
+    const root = document.querySelector<HTMLElement>('[data-q-builder]');
+    const output = document.querySelector<HTMLInputElement>('[data-q-output]');
+    if (!root || !output || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    type Q = { id: string; type: string; label: string; help: string; placeholder: string; required: boolean; min_length?: number | null; max_length?: number | null; min_value?: number | null; max_value?: number | null; options?: string[]; max_choices?: number | null };
+    const text = JSON.parse(root.dataset.text ?? '{}');
+    const limits = JSON.parse(root.dataset.limits ?? '{}');
+    const types: string[] = JSON.parse(root.dataset.types ?? '[]');
+    const limit = Number(root.dataset.limit) || 10;
+    const state: Q[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((q) => ({ ...q, help: q.help ?? '', placeholder: q.placeholder ?? '', options: q.options ?? [] }));
+    let n = 0;
+    const newId = () => `q${Date.now().toString(36)}${(n++).toString(36)}`.slice(0, 20);
+    const counter = document.querySelector<HTMLElement>('[data-q-count]');
+    const pages = document.querySelector<HTMLElement>('[data-pv-pages]');
+    const form = root.closest('form');
+    const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, any> = {}, ...kids: (Node | string | null)[]) => {
+      const e = document.createElement(tag);
+      for (const [k, v] of Object.entries(props)) {
+        if (k === 'class') e.className = v;
+        else if (k === 'on') for (const [ev, fn] of Object.entries(v as Record<string, EventListener>)) e.addEventListener(ev, fn);
+        else if (k.includes('-')) { if (v !== undefined && v !== null && v !== false) e.setAttribute(k, String(v)); }
+        else if (v !== undefined && v !== null && v !== false) (e as any)[k] = v;
+      }
+      for (const kid of kids) if (kid !== null) e.append(kid);
+      return e;
+    };
+    const field = (label: string, input: HTMLElement, wide = false) => el('label', { class: `fm-field${wide ? ' fm-wide' : ''}` }, el('span', {}, label), input);
+    let quiet = true;
+    const save = () => {
+      output.value = JSON.stringify(state.map((q) => ({ ...q, help: q.help || null, placeholder: q.placeholder || null })));
+      if (counter) counter.textContent = `${state.length}/${limit}`;
+      drawPreview();
+      if (!quiet) output.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const num = (value: string) => (value.trim() === '' ? null : Number(value));
+    let dragFrom = -1;
+    function drawQuestion(q: Q, i: number): HTMLElement {
+      const typeSelect = el('select', { 'aria-label': text.question, on: { change: (e: Event) => { q.type = (e.target as HTMLSelectElement).value; draw(); } } }, ...types.map((t) => el('option', { value: t, selected: q.type === t }, text.types[t])));
+      const label = el('input', { type: 'text', value: q.label, maxLength: limits.label, placeholder: text.label, required: true, on: { input: (e: Event) => { q.label = (e.target as HTMLInputElement).value; save(); } } });
+      const help = el('input', { type: 'text', value: q.help, maxLength: limits.help, on: { input: (e: Event) => { q.help = (e.target as HTMLInputElement).value; save(); } } });
+      const placeholder = el('input', { type: 'text', value: q.placeholder, maxLength: limits.placeholder, on: { input: (e: Event) => { q.placeholder = (e.target as HTMLInputElement).value; save(); } } });
+      const required = el('input', { type: 'checkbox', checked: q.required, on: { change: (e: Event) => { q.required = (e.target as HTMLInputElement).checked; save(); } } });
+      const move = (d: number) => { const j = i + d; if (j < 0 || j >= state.length) return; [state[i], state[j]] = [state[j], state[i]]; draw(); };
+      const handle = el('span', { class: 'fm-handle', title: text.drag, 'aria-hidden': 'true' }, '⋮⋮');
+      const card = el('div', { class: 'fm-q', draggable: true },
+        el('div', { class: 'fm-q-head' }, handle, el('b', {}, `${text.question} ${i + 1}`), typeSelect, el('span', { class: 'fm-q-tools' },
+          el('button', { type: 'button', title: text.up, 'aria-label': text.up, disabled: i === 0, on: { click: () => move(-1) } }, '↑'),
+          el('button', { type: 'button', title: text.down, 'aria-label': text.down, disabled: i === state.length - 1, on: { click: () => move(1) } }, '↓'),
+          el('button', { type: 'button', class: 'del', title: text.remove, 'aria-label': text.remove, on: { click: () => { state.splice(i, 1); draw(); } } }, '×'))),
+        el('div', { class: 'fm-grid' }, field(text.label, label, true), field(text.help, help), field(text.placeholder, placeholder)),
+        el('label', { class: 'fm-check' }, required, text.required));
+      const extra = el('div', { class: 'fm-grid' });
+      if (q.type === 'short' || q.type === 'paragraph') {
+        const cap = limits[q.type];
+        extra.append(
+          field(text.minLength, el('input', { type: 'number', min: 0, max: cap, value: q.min_length ?? '', on: { input: (e: Event) => { q.min_length = num((e.target as HTMLInputElement).value); save(); } } })),
+          field(text.maxLength, el('input', { type: 'number', min: 1, max: cap, value: q.max_length ?? '', on: { input: (e: Event) => { q.max_length = num((e.target as HTMLInputElement).value); save(); } } })));
+      } else if (q.type === 'number') {
+        extra.append(
+          field(text.minValue, el('input', { type: 'number', step: 'any', value: q.min_value ?? '', on: { input: (e: Event) => { q.min_value = num((e.target as HTMLInputElement).value); save(); } } })),
+          field(text.maxValue, el('input', { type: 'number', step: 'any', value: q.max_value ?? '', on: { input: (e: Event) => { q.max_value = num((e.target as HTMLInputElement).value); save(); } } })));
+      } else if (q.type === 'choice' || q.type === 'multi') {
+        extra.append(field(text.options, el('textarea', { rows: 3, value: (q.options ?? []).join('\n'), on: { input: (e: Event) => { q.options = (e.target as HTMLTextAreaElement).value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, limits.options); save(); } } }), true));
+        if (q.type === 'multi') extra.append(field(text.maxChoices, el('input', { type: 'number', min: 1, max: 25, value: q.max_choices ?? '', on: { input: (e: Event) => { q.max_choices = num((e.target as HTMLInputElement).value); save(); } } })));
+      }
+      if (extra.childElementCount) card.append(extra);
+      card.addEventListener('dragstart', (e) => { dragFrom = i; card.classList.add('dragging'); e.dataTransfer?.setData('text/plain', String(i)); });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('over'); });
+      card.addEventListener('dragleave', () => card.classList.remove('over'));
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('over');
+        if (dragFrom < 0 || dragFrom === i) return;
+        const [moved] = state.splice(dragFrom, 1);
+        state.splice(i, 0, moved);
+        dragFrom = -1;
+        draw();
+      });
+      // Typing in a field must not start a drag.
+      card.querySelectorAll('input, textarea, select').forEach((input) => {
+        input.addEventListener('focus', () => { card.draggable = false; });
+        input.addEventListener('blur', () => { card.draggable = true; });
+      });
+      return card;
+    }
+    function drawPreview() {
+      if (!pages) return;
+      pages.textContent = '';
+      const titleInput = form?.querySelector<HTMLInputElement>('[data-preview-title]');
+      const title = (titleInput?.value || '').trim() || text.apply;
+      const valid = state.filter((q) => q.label.trim());
+      const count = Math.ceil(valid.length / 5);
+      for (let p = 0; p < count; p += 1) {
+        const box = el('div', { class: 'fm-dmodal' }, el('b', {}, `${title.slice(0, 45 - (count > 1 ? 6 : 0))}${count > 1 ? ` (${p + 1}/${count})` : ''}`));
+        for (const q of valid.slice(p * 5, p * 5 + 5)) {
+          const isMenu = q.type === 'yesno' || q.type === 'choice' || q.type === 'multi';
+          const hint = q.placeholder || (isMenu ? (q.type === 'multi' ? text.pickMany : text.pick) : q.type === 'number' ? text.number : '');
+          box.append(el('div', { class: 'fm-dfield' },
+            el('span', {}, q.label, q.required ? el('i', {}, ' *') : null),
+            q.help ? el('small', {}, q.help) : null,
+            el('div', { class: `fm-dinput${q.type === 'paragraph' ? ' tall' : ''}${isMenu ? ' menu' : ''}` }, hint)));
+        }
+        box.append(el('div', { class: 'fm-dfoot' }, el('span', { class: 'fm-dbtn primary' }, p < count - 1 ? text.next : text.submit)));
+        pages.append(box);
+      }
+    }
+    function draw() {
+      root!.textContent = '';
+      if (!state.length) root!.append(el('p', { class: 'fm-hint' }, text.empty));
+      state.forEach((q, i) => root!.append(drawQuestion(q, i)));
+      root!.append(el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: state.length >= limit, on: { click: () => { state.push({ id: newId(), type: 'short', label: '', help: '', placeholder: '', required: true, options: [] }); draw(); root!.querySelector<HTMLInputElement>('.fm-q:last-of-type input[type="text"]')?.focus(); } } }, state.length >= limit ? text.limit : `+ ${text.add}`));
+      save();
+    }
+    draw();
+    quiet = false;
+
+    // The panel on the right follows the title, text and button as they are typed.
+    const bind = (selector: string, target: string, fallback: () => string) => {
+      const input = form?.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
+      const out = document.querySelector<HTMLElement>(target);
+      if (!input || !out) return;
+      const update = () => { out.textContent = input.value.trim() || fallback(); };
+      input.addEventListener('input', () => { update(); drawPreview(); });
+    };
+    const titleOf = () => form?.querySelector<HTMLInputElement>('[data-preview-title]')?.value.trim() || text.apply;
+    bind('[data-preview-title]', '[data-pv-title]', () => text.apply);
+    bind('[data-preview-desc]', '[data-pv-desc]', () => '');
+    bind('[data-preview-button]', '[data-pv-button]', titleOf);
+    const style = form?.querySelector<HTMLSelectElement>('[data-preview-style]');
+    const button = document.querySelector<HTMLElement>('[data-pv-button]');
+    style?.addEventListener('change', () => { if (button) button.className = `fm-dbtn ${style.value}`; });
+  }
+  try { initFormsBuilder(); } catch (error) { console.error(error); }
+  if (!(window as any).__fmBuilderWatch) {
+    (window as any).__fmBuilderWatch = true;
+    // The dashboard swaps pages without reloading: a builder that arrives later is drawn when it appears.
+    new MutationObserver(() => { if (document.querySelector('[data-q-builder]:not([data-bound])')) { try { initFormsBuilder(); } catch (error) { console.error(error); } } }).observe(document.body, { childList: true, subtree: true });
+  }
+</script>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  h2 { font-size: 16px; margin: 0; }
+  h3 { font-size: 14.5px; margin: 0; }
+</style>
+
+<style is:global>
+  /* Global: the builder and the preview are drawn by script, outside of the scoped styles. Every class starts with fm-. */
+  .fm-lead { font-size: 13.5px; color: var(--text-muted); margin: 0 0 18px; max-width: 72ch; }
+  .fm-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); }
+  .fm-flash { display: flex; align-items: center; gap: 8px; font-size: 13px; border-radius: 9px; padding: 9px 13px; margin-bottom: 16px; max-width: fit-content; }
+  .fm-flash.ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
+  .fm-flash.err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
+  .fm-flash.warn { color: var(--yellow); background: var(--yellow-soft, color-mix(in srgb, var(--yellow) 12%, transparent)); border: 1px solid var(--yellow); }
+  .fm-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; min-width: 0; }
+  .fm-card p { margin: 0; }
+  .fm-hint, .fm-field em { font-size: 12px; color: var(--text-dim); font-style: normal; }
+  .fm-hint a { color: var(--accent); }
+  .fm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .fm-card .fm-row { margin-bottom: 0; }
+  .fm-empty { align-items: center; text-align: center; color: var(--text-muted); padding: 28px; }
+  .fm-grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; max-width: 1100px; }
+  .fm-formcard { margin: 0; }
+  .fm-formcard h3 { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+  .fm-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fc, var(--accent)); flex: none; }
+  .fm-desc { font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .fm-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .fm-actions form { display: contents; }
+  .fm-chip { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); text-transform: uppercase; white-space: nowrap; }
+  .fm-chip.open, .fm-chip.accepted { color: var(--green); border-color: transparent; background: var(--green-soft); }
+  .fm-chip.pending { color: var(--yellow); border-color: transparent; background: var(--yellow-soft, color-mix(in srgb, var(--yellow) 14%, transparent)); }
+  .fm-chip.denied { color: var(--red); border-color: transparent; background: var(--red-soft); }
+  .fm-back { font-size: 13px; color: var(--text-muted); text-decoration: none; margin-bottom: 10px; display: inline-block; }
+  .fm-editor-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; max-width: 1240px; }
+  .fm-editor { display: flex; flex-direction: column; min-width: 0; }
+  .fm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .fm-wide { grid-column: 1 / -1; }
+  .fm-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .fm-field > span:first-child { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .fm-field input[type="text"], .fm-field input[type="number"], .fm-field input[type="datetime-local"], .fm-field select, .fm-field textarea, .fm-filters select, .fm-filters input, .fm-review input {
+    width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; }
+  .fm-field textarea { resize: vertical; }
+  .fm-check { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+  .fm-check input { accent-color: var(--accent); }
+  .fm-center { align-self: end; padding-bottom: 8px; }
+  .fm-var { font-family: var(--mono); font-size: 11.5px; padding: 1px 6px; border-radius: 6px; background: var(--bg-raise); border: 1px solid var(--border); margin-right: 4px; }
+  .fm-q { border: 1px solid var(--border); border-radius: 11px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: color-mix(in srgb, var(--bg-raise) 55%, transparent); margin-bottom: 10px; transition: border-color .15s, opacity .15s; }
+  .fm-q.dragging { opacity: .45; }
+  .fm-q.over { border-color: var(--accent); }
+  .fm-q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .fm-q-head select { border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: var(--card); color: var(--text); font: inherit; font-size: 12.5px; }
+  .fm-handle { cursor: grab; color: var(--text-dim); letter-spacing: -2px; user-select: none; }
+  .fm-q-tools { display: flex; gap: 4px; margin-left: auto; }
+  .fm-q-tools button { border: 1px solid var(--border); background: var(--card); color: var(--text-muted); border-radius: 7px; width: 30px; height: 28px; cursor: pointer; }
+  .fm-q-tools button:disabled { opacity: .4; cursor: default; }
+  .fm-q-tools .del:hover { color: var(--red); border-color: var(--red); }
+  .fm-preview { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 10px; }
+  .fm-preview h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+  .fm-dpanel, .fm-dmodal { background: #2b2d31; color: #dbdee1; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; border-left: 4px solid var(--accent); }
+  .fm-dmodal { background: #313338; border-left: 0; }
+  .fm-dpanel b, .fm-dmodal > b { color: #f2f3f5; font-size: 14px; overflow-wrap: anywhere; }
+  .fm-dpanel span { overflow-wrap: anywhere; white-space: pre-wrap; }
+  .fm-dbtn { align-self: flex-start; padding: 6px 14px; border-radius: 6px; font-weight: 600; font-size: 13px; color: #fff; background: #5865f2; white-space: normal; overflow-wrap: anywhere; }
+  .fm-dbtn.secondary { background: #4e5058; } .fm-dbtn.success { background: #248046; } .fm-dbtn.danger { background: #da373c; }
+  .fm-dfield { display: flex; flex-direction: column; gap: 4px; }
+  .fm-dfield > span { font-size: 12px; font-weight: 700; color: #f2f3f5; overflow-wrap: anywhere; }
+  .fm-dfield i { color: #f23f43; font-style: normal; }
+  .fm-dfield small { font-size: 11.5px; color: #b5bac1; }
+  .fm-dinput { background: #1e1f22; border-radius: 6px; padding: 8px 10px; color: #87898c; font-size: 12.5px; min-height: 34px; overflow-wrap: anywhere; }
+  .fm-dinput.tall { min-height: 64px; }
+  .fm-dinput.menu::after { content: '▾'; float: right; }
+  .fm-dfoot { display: flex; justify-content: flex-end; }
+  .fm-danger { margin-top: 6px; }
+  .fm-del, .fm-deny { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--red); color: var(--red); background: transparent; border-radius: 9px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .fm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .fm-tab { font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); text-decoration: none; }
+  .fm-tab.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+  .fm-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; max-width: 880px; }
+  .fm-filters select { width: auto; max-width: 220px; } .fm-filters input { flex: 1 1 200px; width: auto; }
+  .fm-list { display: flex; flex-direction: column; max-width: 880px; }
+  .fm-sub summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; }
+  .fm-sub summary::-webkit-details-marker { display: none; }
+  .fm-sub summary .fm-chip { margin-left: auto; }
+  .fm-who { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+  .fm-who img { border-radius: 50%; }
+  .fm-body { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .fm-answers { margin: 0; display: grid; gap: 4px 0; }
+  .fm-answers dt { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-top: 6px; }
+  .fm-answers dd { margin: 0; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fm-review { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .fm-review input { flex: 1 1 220px; width: auto; }
+  .fm-retention { max-width: 880px; }
+  .fm-inline { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .fm-inline .fm-field { flex: 1 1 260px; } .fm-inline input { max-width: 140px; }
+  .fm-panels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .fm-panels li { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; overflow-wrap: anywhere; }
+  .fm-panels li:first-child { border-top: 0; padding-top: 0; }
+  .fm-panels a { color: var(--accent); margin-left: auto; }
+  @media (max-width: 1100px) { .fm-editor-wrap { grid-template-columns: minmax(0, 1fr); } .fm-preview { position: static; } }
+  @media (max-width: 720px) { .fm-grid { grid-template-columns: minmax(0, 1fr); } .fm-card { padding: 14px; } .fm-sub summary .fm-chip { margin-left: 0; } }
+</style>

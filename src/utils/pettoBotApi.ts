@@ -433,3 +433,23 @@ export async function callPettoMemberSearch(context: AstroContext, guildId: stri
     return [];
   }
 }
+
+/**
+ * Forms, from the dashboard: accept or deny a submission (`review`), post a panel (`panel`), or list submissions (`submissions`, with
+ * the pending count per form, how many the server keeps and its retention). The bot answers in `lang`.
+ */
+export async function callPettoForms(context: AstroContext, guildId: string, userId: string, route: 'review' | 'panel' | 'submissions', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; url?: string | null; data?: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/forms/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', url: payload?.url ?? null, data: payload };
+  } catch {
+    return { ok: false, message: '' };
+  }
+}
