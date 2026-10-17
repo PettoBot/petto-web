@@ -30,9 +30,10 @@ if (!existsSync(entry) || !existsSync(marker)) {
 // whose page and images take more than 10 seconds, so the previews failed on some links. Letting Cloudflare keep those files avoids the trip.
 // Only that exact default is replaced, so the dashboard and the other server-rendered pages keep their own headers.
 // The files hashed by the build already get a one-year header from Astro.
-// A copy kept by Cloudflare may be served for at most a few minutes after it expires (it used to be a whole day, so a quiet page kept
-// showing the previous version long after a deploy). Each page also checks /version.json and reloads itself once when it is old.
-const STATIC_PAGE_CACHE = 'public, max-age=60, s-maxage=120, stale-while-revalidate=300, stale-if-error=86400';
+// Cloudflare answers static pages from its copy at once and refreshes it in the background (stale-while-revalidate), so a visitor
+// never waits for the trip from Cloudflare to this server, which is sometimes slow (seconds). A copy from an older deploy is not a
+// problem: each page checks /version.json and reloads itself once when it is old (Base.astro).
+const STATIC_PAGE_CACHE = 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400, stale-if-error=86400';
 const STATIC_FILE_CACHE = 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800';
 // Images, videos and fonts change rarely and are kept longer. Pages, version.json, the sitemap and the rest follow the pages.
 const MEDIA_FILE = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|mp4|webm|woff2?|ttf|otf)$/i;
