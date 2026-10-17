@@ -7,6 +7,7 @@ import { buildInfo } from '../../utils/buildInfo';
 import { readGuildSnapshot } from '../../utils/guildSnapshots';
 import { latencyReport, type LatencyGroup, type LatencyReport } from '../../utils/latencyStats';
 import { liveListenerCount } from '../../utils/guildVersion';
+import { liveClientStats, type LiveClient } from '../../utils/liveClients';
 import { getDashLang } from '../../i18n/dash';
 
 /**
@@ -80,13 +81,22 @@ export const GET: APIRoute = async (astro) => {
 
   const latency = latencyReport();
   report.latency = { ...latency, liveDashboards: liveListenerCount() };
+  // How the open pages hear about changes: a live stream, or asking every few seconds (and why). The owner's own pages are listed, so
+  // opening this page on the phone says which way that phone is using.
+  const live = liveClientStats();
+  const mine = live.clients.filter((client) => client.userId === String(session.userId));
+  report.live = { streams: live.sse, polling: live.polling, pollingReasons: live.reasons, yours: mine.map(({ userId: _user, id: _id, ...rest }) => rest) };
   const wantsJson = new URL(astro.request.url).searchParams.get('format') === 'json' || !/text\/html/i.test(astro.request.headers.get('accept') ?? '');
   if (wantsJson) return new Response(JSON.stringify(report, null, 2), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-  return new Response(healthPage(report, latency, getDashLang(astro)), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  return new Response(healthPage(report, latency, getDashLang(astro), mine), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 };
 
 const WORDS: Record<string, Record<string, string>> = {
   es: {
+    'Live updates': 'Cambios en vivo', 'Live stream (SSE)': 'Conexión en vivo (SSE)', 'Polling': 'Consultando cada pocos segundos', 'Your open pages': 'Tus páginas abiertas',
+    'None of your pages is open on a server right now.': 'Ahora no tienes ninguna página de un servidor abierta.', 'Mode': 'Modo', 'Why': 'Por qué', 'Browser': 'Navegador', 'Server': 'Servidor', 'Last seen': 'Visto hace',
+    'stream': 'en vivo', 'polling': 'consultando', 'silent': 'el proxy retiene la conexión', 'error': 'la conexión falló', 'unsupported': 'el navegador no la admite',
+    'Open pages hear about changes through a live stream, or ask every 12 seconds when it is held back (a proxy that buffers it) or fails.': 'Las páginas abiertas se enteran de los cambios por una conexión en vivo, o preguntan cada 12 segundos cuando esta se retiene (un proxy que la acumula) o falla.',
     'Dashboard health': 'Estado del panel', 'Latency': 'Latencia', 'Last {n} dashboard requests, measured on this server from the first byte in to the last byte out.': 'Últimas {n} peticiones del panel, medidas en este servidor desde el primer byte que entra hasta el último que sale.',
     'Requests': 'Peticiones', 'Average': 'Media', 'Slowest': 'Máximo', 'Not modified (304)': 'Sin cambios (304)', 'Open live pages': 'Páginas abiertas en vivo',
     'Average of each part (ms)': 'Media de cada parte (ms)', 'The 10 slowest paths': 'Las 10 rutas más lentas', 'Every page': 'Todas las páginas', 'Path': 'Ruta',
@@ -94,6 +104,10 @@ const WORDS: Record<string, Record<string, string>> = {
     'Checks': 'Comprobaciones', 'Everything as JSON': 'Todo en JSON', 'auth: session and access check · db: tables · discord: Discord API · bot: bot API · layout: menu data · render: until the page starts': 'auth: sesión y acceso · db: tablas · discord: API de Discord · bot: API del bot · layout: datos del menú · render: hasta que empieza la página',
   },
   'pt-BR': {
+    'Live updates': 'Mudanças ao vivo', 'Live stream (SSE)': 'Conexão ao vivo (SSE)', 'Polling': 'Consultando a cada poucos segundos', 'Your open pages': 'Suas páginas abertas',
+    'None of your pages is open on a server right now.': 'Nenhuma página sua de um servidor está aberta agora.', 'Mode': 'Modo', 'Why': 'Por quê', 'Browser': 'Navegador', 'Server': 'Servidor', 'Last seen': 'Visto há',
+    'stream': 'ao vivo', 'polling': 'consultando', 'silent': 'o proxy segura a conexão', 'error': 'a conexão falhou', 'unsupported': 'o navegador não suporta',
+    'Open pages hear about changes through a live stream, or ask every 12 seconds when it is held back (a proxy that buffers it) or fails.': 'As páginas abertas ficam sabendo das mudanças por uma conexão ao vivo, ou perguntam a cada 12 segundos quando ela é segurada (um proxy que a acumula) ou falha.',
     'Dashboard health': 'Saúde do painel', 'Latency': 'Latência', 'Last {n} dashboard requests, measured on this server from the first byte in to the last byte out.': 'Últimas {n} requisições do painel, medidas neste servidor do primeiro byte que entra ao último que sai.',
     'Requests': 'Requisições', 'Average': 'Média', 'Slowest': 'Máximo', 'Not modified (304)': 'Sem mudanças (304)', 'Open live pages': 'Páginas abertas ao vivo',
     'Average of each part (ms)': 'Média de cada parte (ms)', 'The 10 slowest paths': 'As 10 rotas mais lentas', 'Every page': 'Todas as páginas', 'Path': 'Rota',
@@ -104,7 +118,7 @@ const WORDS: Record<string, Record<string, string>> = {
 
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
-function healthPage(report: Record<string, unknown>, latency: LatencyReport, lang: string): string {
+function healthPage(report: Record<string, unknown>, latency: LatencyReport, lang: string, mine: LiveClient[]): string {
   const t = (text: string, values: Record<string, unknown> = {}) => (WORDS[lang]?.[text] ?? text).replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
   const ms = (value: number) => `${value} ms`;
   const row = (entry: LatencyGroup) => `<tr><td class="path">${escape(entry.path)}</td><td>${entry.count}</td><td>${entry.avg}</td><td>${entry.p50}</td><td>${entry.p95}</td><td>${entry.max}</td>${latency.partNames.map((name) => `<td class="part">${entry.parts[name] ?? 0}</td>`).join('')}</tr>`;
@@ -122,7 +136,6 @@ function healthPage(report: Record<string, unknown>, latency: LatencyReport, lan
   <div class="card"><span>p95</span><b>${ms(overall.p95)}</b></div>
   <div class="card"><span>${t('Slowest')}</span><b>${ms(overall.max)}</b></div>
   <div class="card"><span>${t('Not modified (304)')}</span><b>${overall.notModified}</b></div>
-  <div class="card"><span>${t('Open live pages')}</span><b>${escape((report.latency as any)?.liveDashboards ?? 0)}</b></div>
 </div>
 <h3>${t('Average of each part (ms)')}</h3>
 <div class="cards">${latency.partNames.map((name) => `<div class="card"><span>${name}</span><b>${overall.parts[name] ?? 0}</b></div>`).join('')}</div>
@@ -131,8 +144,21 @@ function healthPage(report: Record<string, unknown>, latency: LatencyReport, lan
 <div class="scroll"><table>${head}${latency.slowest.map(row).join('')}</table></div>
 <h3>${t('Every page')}</h3>
 <div class="scroll"><table>${head}${latency.pages.map(row).join('')}</table></div>`;
+  const live = report.live as { streams: number; polling: number; pollingReasons: Record<string, number> };
+  const reasons = Object.entries(live.pollingReasons).map(([reason, count]) => `${escape(t(reason))}: ${count}`).join(' · ');
+  const ago = (at: number) => `${Math.max(0, Math.round((Date.now() - at) / 1000))} s`;
+  const liveBody = `<p class="muted small">${t('Open pages hear about changes through a live stream, or ask every 12 seconds when it is held back (a proxy that buffers it) or fails.')}</p>
+<div class="cards">
+  <div class="card"><span>${t('Live stream (SSE)')}</span><b data-live-sse>${live.streams}</b></div>
+  <div class="card"><span>${t('Polling')}</span><b data-live-poll>${live.polling}</b>${reasons ? `<span>${reasons}</span>` : ''}</div>
+</div>
+<h3>${t('Your open pages')}</h3>
+${mine.length
+    ? `<div class="scroll"><table><tr><th>${t('Mode')}</th><th>${t('Why')}</th><th>${t('Browser')}</th><th>${t('Server')}</th><th>${t('Last seen')}</th></tr>${mine.map((client) => `<tr data-live-mine="${client.mode}"><td class="path">${t(client.mode === 'sse' ? 'stream' : 'polling')}</td><td>${escape(client.reason ? t(client.reason) : '')}</td><td>${escape(client.agent)}</td><td>${escape(client.guildId)}</td><td>${ago(client.mode === 'sse' ? Date.now() : client.at)}</td></tr>`).join('')}</table></div>`
+    : `<p class="muted">${t('None of your pages is open on a server right now.')}</p>`}`;
   const checks = { ...report };
   delete checks.latency;
+  delete checks.live;
   return `<!doctype html><html lang="${escape(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${t('Dashboard health')} · Petto</title>
 <style>
 :root{color-scheme:light dark;--bg:#f6f6f8;--fg:#17171c;--muted:#6b6b76;--card:#fff;--line:#e3e3ea}
@@ -150,6 +176,8 @@ a{color:inherit}
 </style></head><body>
 <h1>${t('Dashboard health')}</h1>
 <p class="muted small">${escape((report.build as any)?.version ? `v${(report.build as any).version}` : '')} · <a href="?format=json">${t('Everything as JSON')}</a></p>
+<h2>${t('Live updates')}</h2>
+${liveBody}
 <h2>${t('Latency')}</h2>
 ${body}
 <h2>${t('Checks')}</h2>
