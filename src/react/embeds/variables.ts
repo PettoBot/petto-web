@@ -174,6 +174,14 @@ export const VARIABLE_GROUPS: VarGroup[] = [
     ],
   },
   {
+    label: 'Counter milestones',
+    vars: [
+      { tok: '{counter.count}', desc: 'Only in milestone announcements: members of the server now' },
+      { tok: '{counter.goal}', desc: 'Only in milestone announcements: the member number reached' },
+      { tok: '{counter.server}', desc: 'Only in milestone announcements: name of the server' },
+    ],
+  },
+  {
     label: 'Date',
     vars: [
       { tok: '{date}', desc: "Today's date" },

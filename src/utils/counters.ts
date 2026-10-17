@@ -5,11 +5,14 @@ export const COUNTER_TYPES = [
   'members', 'users_only', 'bots_only', 'online', 'status_online', 'status_idle', 'status_dnd', 'in_voice', 'pending_members',
   'boosts', 'booster_count', 'boost_level', 'role_members', 'goal', 'roles', 'all_channels', 'text_channels', 'voice_channels',
   'categories', 'announcement_channels', 'staging_channels', 'emojis', 'stickers', 'clock', 'date',
+  'role_online', 'tag_users', 'vanity_users', 'messages_today',
 ] as const;
+/** The types that count the members of a role. */
+export const ROLE_TYPES = ['role_members', 'role_online'];
 export type CounterType = typeof COUNTER_TYPES[number];
 export const COUNTER_FORMATS = ['plain', 'grouped', 'compact'] as const;
-export const COUNTER_KINDS = ['voice', 'text', 'category', 'stage', 'announce'] as const;
-export const PRESENCE_TYPES = ['online', 'status_online', 'status_idle', 'status_dnd'];
+export const COUNTER_KINDS = ['voice', 'text', 'category', 'topic', 'stage', 'announce'] as const;
+export const PRESENCE_TYPES = ['online', 'status_online', 'status_idle', 'status_dnd', 'role_online'];
 /** Discord: two renames per channel every ten minutes. */
 export const RENAMES_PER_WINDOW = 2;
 
@@ -62,7 +65,7 @@ export function zoneLabel(timeZone: string | null, now = Date.now()): string {
   return new Intl.DateTimeFormat('en', { timeZone: zone, timeZoneName: 'short' }).formatToParts(new Date(now)).find((p) => p.type === 'timeZoneName')?.value ?? zone;
 }
 
-export interface CounterLike { type: string; template: string; format: string; goal: number | null; timezone: string | null; prefix?: string; suffix?: string; role?: string; optionWord?: string }
+export interface CounterLike { type: string; template: string; format: string; goal: number | null; timezone: string | null; prefix?: string; suffix?: string; role?: string; optionWord?: string; target?: string }
 
 /** The channel name of a counter for a value, like the bot draws it. */
 export function renderCounterName(c: CounterLike, value: number | string, lang = 'en', now = Date.now()): string {
@@ -78,7 +81,9 @@ export function renderCounterName(c: CounterLike, value: number | string, lang =
   };
   const text = (c.template || '{option}: {value}').replace(/\{(count|value|remaining|option|goal|left|percent|role|tz)\}/g, (whole) => vars[whole]);
   const name = `${c.prefix ?? ''}${text}${c.suffix ?? ''}`.replace(/\s+/g, ' ').trim();
-  return Array.from(name).reduce((out, ch) => (out.length + ch.length <= 100 ? out + ch : out), '') || count;
+  // 100 characters in a name, 1024 in a topic, never half an emoji.
+  const max = c.target === 'topic' ? 1024 : 100;
+  return Array.from(name).reduce((out, ch) => (out.length + ch.length <= max ? out + ch : out), '') || count;
 }
 
 /** How Discord shows the name on a text or announcement channel: lower case, spaces as hyphens. */
