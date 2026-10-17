@@ -7,11 +7,11 @@ import { memoPerRequest } from './requestMemo';
 import { forgetGuildSnapshots, iconUrl, readBotGuildSnapshots } from './guildSnapshots';
 import { cached, digestKey, invalidate, onSharedMessage, sharedMessagesLive } from './sharedCache';
 
-// The servers of a visitor: fresh for a minute. A page (a read) may show a list up to six hours old while a new one is
+// The servers of a visitor: fresh for a minute. A page (a read) may show a list up to an hour old (so someone who lost access can still read a page for that hour at most, never save) while a new one is
 // fetched in the background; a save (a write, which also checks access) always uses one at most a minute old. The list is kept in
 // Redis too, so it survives a restart: someone who comes back after a while, or right after a deploy, does not wait for Discord.
 const USER_GUILDS_FRESH_MS = 60_000;
-const USER_GUILDS_STALE_MS = 6 * 3600_000;
+const USER_GUILDS_STALE_MS = 3600_000;
 // Discord sometimes takes seconds (or holds a rate-limited call): a page never waits longer than this for the list.
 const USER_GUILDS_TIMEOUT_MS = 6_000;
 // The servers of the bot: while the bot's messages arrive (`petto:guilds` on join or leave) the list is kept longer.
