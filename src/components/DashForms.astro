@@ -35,7 +35,10 @@ const webPath = !isNew && f ? formWebPath(f) : null;
 const closesLocal = f?.closes_at ? new Date(f.closes_at).toISOString().slice(0, 16) : '';
 const builderText = {
   question: dt('Question'), add: dt('Add a question'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), drag: dt('Drag to reorder'),
-  label: dt('Question (45 characters)'), help: dt('Help line (optional)'), placeholder: dt('Placeholder (optional)'), required: dt('Required'),
+  label: dt('Question (45 characters)'), help: dt('Help line (optional)'),
+  description: dt('Description (optional)'), descriptionHint: dt('Shown under the question on the web: up to 1000 characters, with line breaks, **bold**, *italics* and [links](https://petto.sbs). Discord shows the help line, or the start of the description.'),
+  image: dt('Image URL (optional)'), imageHint: dt('Shown over the question on the web, not in Discord. An https link to a .png, .jpg, .gif or .webp picture.'), imageBad: dt('That link cannot be used: it must start with https:// and end in .png, .jpg, .gif or .webp.'),
+  web: dt('On the web'), placeholder: dt('Placeholder (optional)'), required: dt('Required'),
   minLength: dt('Least characters'), maxLength: dt('Most characters'), minValue: dt('Lowest number'), maxValue: dt('Highest number'),
   options: dt('Options, one per line (2 to 25)'), maxChoices: dt('How many can be picked'), empty: dt('No questions yet. Add the first one.'),
   limit: dt('Limit reached'), types: typeNames, page: dt('Page'), yes: dt('Yes'), no: dt('No'), pick: dt('Pick one'), pickMany: dt('Pick one or more'), number: dt('A number'),
@@ -295,17 +298,18 @@ const filterHref = (over: Record<string, string>) => {
 <script>
   // The questions of a form: drawn on `[data-q-builder]`, saved as JSON in `[data-q-output]`, reordered by dragging or with the arrows,
   // and shown on the right as the pages of five questions a member sees in Discord.
+  import { descriptionHtml, imageUrl, labelDescription } from '../utils/forms';
   function initFormsBuilder() {
     const root = document.querySelector<HTMLElement>('[data-q-builder]');
     const output = document.querySelector<HTMLInputElement>('[data-q-output]');
     if (!root || !output || root.dataset.bound) return;
     root.dataset.bound = '1';
-    type Q = { id: string; type: string; label: string; help: string; placeholder: string; required: boolean; min_length?: number | null; max_length?: number | null; min_value?: number | null; max_value?: number | null; options?: string[]; max_choices?: number | null };
+    type Q = { id: string; type: string; label: string; help: string; description: string; image: string; placeholder: string; required: boolean; min_length?: number | null; max_length?: number | null; min_value?: number | null; max_value?: number | null; options?: string[]; max_choices?: number | null };
     const text = JSON.parse(root.dataset.text ?? '{}');
     const limits = JSON.parse(root.dataset.limits ?? '{}');
     const types: string[] = JSON.parse(root.dataset.types ?? '[]');
     const limit = Number(root.dataset.limit) || 10;
-    const state: Q[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((q) => ({ ...q, help: q.help ?? '', placeholder: q.placeholder ?? '', options: q.options ?? [] }));
+    const state: Q[] = (JSON.parse(root.dataset.initial ?? '[]') as any[]).map((q) => ({ ...q, help: q.help ?? '', description: q.description ?? '', image: q.image ?? '', placeholder: q.placeholder ?? '', options: q.options ?? [] }));
     let n = 0;
     const newId = () => `q${Date.now().toString(36)}${(n++).toString(36)}`.slice(0, 20);
     const counter = document.querySelector<HTMLElement>('[data-q-count]');
@@ -325,7 +329,7 @@ const filterHref = (over: Record<string, string>) => {
     const field = (label: string, input: HTMLElement, wide = false) => el('label', { class: `fm-field${wide ? ' fm-wide' : ''}` }, el('span', {}, label), input);
     let quiet = true;
     const save = () => {
-      output.value = JSON.stringify(state.map((q) => ({ ...q, help: q.help || null, placeholder: q.placeholder || null })));
+      output.value = JSON.stringify(state.map((q) => ({ ...q, help: q.help || null, description: q.description || null, image: q.image.trim() || null, placeholder: q.placeholder || null })));
       if (counter) counter.textContent = `${state.length}/${limit}`;
       drawPreview();
       if (!quiet) output.dispatchEvent(new Event('input', { bubbles: true }));
@@ -337,6 +341,16 @@ const filterHref = (over: Record<string, string>) => {
       const label = el('input', { type: 'text', value: q.label, maxLength: limits.label, placeholder: text.label, required: true, on: { input: (e: Event) => { q.label = (e.target as HTMLInputElement).value; save(); } } });
       const help = el('input', { type: 'text', value: q.help, maxLength: limits.help, on: { input: (e: Event) => { q.help = (e.target as HTMLInputElement).value; save(); } } });
       const placeholder = el('input', { type: 'text', value: q.placeholder, maxLength: limits.placeholder, on: { input: (e: Event) => { q.placeholder = (e.target as HTMLInputElement).value; save(); } } });
+      const description = el('textarea', { rows: 3, value: q.description, maxLength: limits.questionDescription, on: { input: (e: Event) => { q.description = (e.target as HTMLTextAreaElement).value; save(); } } });
+      const imageNote = el('em', {}, text.imageHint);
+      const imageCheck = () => {
+        const bad = Boolean(q.image.trim()) && !imageUrl(q.image);
+        imageNote.textContent = bad ? text.imageBad : text.imageHint;
+        imageNote.classList.toggle('fm-bad', bad);
+        image.setAttribute('aria-invalid', bad ? 'true' : 'false');
+      };
+      const image = el('input', { type: 'url', value: q.image, maxLength: limits.image, placeholder: 'https://i.imgur.com/…png', inputMode: 'url', on: { input: (e: Event) => { q.image = (e.target as HTMLInputElement).value; imageCheck(); save(); } } });
+      imageCheck();
       const required = el('input', { type: 'checkbox', checked: q.required, on: { change: (e: Event) => { q.required = (e.target as HTMLInputElement).checked; save(); } } });
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= state.length) return; [state[i], state[j]] = [state[j], state[i]]; draw(); };
       const handle = el('span', { class: 'fm-handle', title: text.drag, 'aria-hidden': 'true' }, '⋮⋮');
@@ -345,7 +359,9 @@ const filterHref = (over: Record<string, string>) => {
           el('button', { type: 'button', title: text.up, 'aria-label': text.up, disabled: i === 0, on: { click: () => move(-1) } }, '↑'),
           el('button', { type: 'button', title: text.down, 'aria-label': text.down, disabled: i === state.length - 1, on: { click: () => move(1) } }, '↓'),
           el('button', { type: 'button', class: 'del', title: text.remove, 'aria-label': text.remove, on: { click: () => { state.splice(i, 1); draw(); } } }, '×'))),
-        el('div', { class: 'fm-grid' }, field(text.label, label, true), field(text.help, help), field(text.placeholder, placeholder)),
+        el('div', { class: 'fm-grid' }, field(text.label, label, true), field(text.help, help), field(text.placeholder, placeholder),
+          el('label', { class: 'fm-field fm-wide' }, el('span', {}, text.description), description, el('em', {}, text.descriptionHint)),
+          el('label', { class: 'fm-field fm-wide' }, el('span', {}, text.image), image, imageNote)),
         el('label', { class: 'fm-check' }, required, text.required));
       const extra = el('div', { class: 'fm-grid' });
       if (q.type === 'short' || q.type === 'paragraph') {
@@ -396,18 +412,32 @@ const filterHref = (over: Record<string, string>) => {
           const hint = q.placeholder || (isMenu ? (q.type === 'multi' ? text.pickMany : text.pick) : q.type === 'number' ? text.number : '');
           box.append(el('div', { class: 'fm-dfield' },
             el('span', {}, q.label, q.required ? el('i', {}, ' *') : null),
-            q.help ? el('small', {}, q.help) : null,
+            labelDescription(q) ? el('small', {}, labelDescription(q)) : null,
             el('div', { class: `fm-dinput${q.type === 'paragraph' ? ' tall' : ''}${isMenu ? ' menu' : ''}` }, hint)));
         }
         box.append(el('div', { class: 'fm-dfoot' }, el('span', { class: 'fm-dbtn primary' }, p < count - 1 ? text.next : text.submit)));
         pages.append(box);
       }
+      // The same questions as the web page shows them: the image over the question and the description under it.
+      const extras = valid.filter((q) => q.description.trim() || imageUrl(q.image));
+      if (!extras.length) return;
+      const web = el('div', { class: 'fm-wpreview' }, el('b', {}, text.web));
+      for (const q of extras) {
+        const src = imageUrl(q.image);
+        const desc = el('div', { class: 'fm-wdesc' });
+        desc.innerHTML = descriptionHtml(q.description); // escaped by descriptionHtml: only its own few tags
+        web.append(el('div', { class: 'fm-wq' },
+          src ? el('img', { src, alt: q.label, loading: 'lazy', decoding: 'async', referrerPolicy: 'no-referrer' }) : null,
+          el('span', {}, q.label, q.required ? el('i', {}, ' *') : null),
+          q.description.trim() ? desc : null));
+      }
+      pages.append(web);
     }
     function draw() {
       root!.textContent = '';
       if (!state.length) root!.append(el('p', { class: 'fm-hint' }, text.empty));
       state.forEach((q, i) => root!.append(drawQuestion(q, i)));
-      root!.append(el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: state.length >= limit, on: { click: () => { state.push({ id: newId(), type: 'short', label: '', help: '', placeholder: '', required: true, options: [] }); draw(); root!.querySelector<HTMLInputElement>('.fm-q:last-of-type input[type="text"]')?.focus(); } } }, state.length >= limit ? text.limit : `+ ${text.add}`));
+      root!.append(el('button', { type: 'button', class: 'btn btn-ghost btn-sm', disabled: state.length >= limit, on: { click: () => { state.push({ id: newId(), type: 'short', label: '', help: '', description: '', image: '', placeholder: '', required: true, options: [] }); draw(); root!.querySelector<HTMLInputElement>('.fm-q:last-of-type input[type="text"]')?.focus(); } } }, state.length >= limit ? text.limit : `+ ${text.add}`));
       save();
     }
     draw();
@@ -527,7 +557,17 @@ const filterHref = (over: Record<string, string>) => {
   .fm-dfield { display: flex; flex-direction: column; gap: 4px; }
   .fm-dfield > span { font-size: 12px; font-weight: 700; color: #f2f3f5; overflow-wrap: anywhere; }
   .fm-dfield i { color: #f23f43; font-style: normal; }
-  .fm-dfield small { font-size: 11.5px; color: #b5bac1; }
+  .fm-dfield small { font-size: 11.5px; color: #b5bac1; overflow-wrap: anywhere; }
+  .fm-bad { color: var(--red) !important; }
+  .fm-wpreview { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .fm-wpreview > b { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+  .fm-wq { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .fm-wq img { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; background: var(--card); }
+  .fm-wq > span { font-weight: 600; overflow-wrap: anywhere; }
+  .fm-wq i { color: var(--red); font-style: normal; }
+  .fm-wdesc { color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+  .fm-wdesc a { color: var(--accent); }
+  .fm-wdesc code { font-family: var(--mono); font-size: .92em; padding: 1px 5px; border-radius: 5px; background: var(--card); }
   .fm-dinput { background: #1e1f22; border-radius: 6px; padding: 8px 10px; color: #87898c; font-size: 12.5px; min-height: 34px; overflow-wrap: anywhere; }
   .fm-dinput.tall { min-height: 64px; }
   .fm-dinput.menu::after { content: '▾'; float: right; }
