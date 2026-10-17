@@ -472,7 +472,7 @@ export async function callPettoCounters(context: AstroContext, guildId: string, 
   }
 }
 
-// A form filled on the website (petto.sbs/f/<id>): the bot says whether the signed-in member may send it, and takes the answers through
+// A form filled on the website (petto.sbs/f/<public id>, never the number of the form): the bot says whether the signed-in member may send it, and takes the answers through
 // the same pipeline as a Discord submission.
 export async function callPettoWebForm(context: AstroContext, formId: string, userId: string, route: 'public' | 'submit', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; data: any }> {
   const { baseUrl, secret } = apiConfig(context);

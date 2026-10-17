@@ -17,6 +17,24 @@ export const FORM_PLAN = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX: Record<string, number> = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 export const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+// The id in the web address of a form (petto.sbs/f/<public id>): 12 random letters and digits, the same as the bot's
+// (petto-bot src/utils/forms.js). Numbers never open a form on the web, so the forms cannot be walked through one by one.
+export const PUBLIC_ID = /^[0-9A-Za-z]{12}$/;
+const PUBLIC_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+/** A new random id for the web address of a form, like `x7Kp9QzA2mVt` (unbiased: bytes of 248 or more are drawn again). */
+export function newPublicId(): string {
+  let id = '';
+  while (id.length < 12) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(16))) {
+      if (byte < 248 && id.length < 12) id += PUBLIC_ID_ALPHABET[byte % 62];
+    }
+  }
+  return id;
+}
+
+/** The path of a form on the website, or null when it has no public id yet. */
+export const formWebPath = (form: { public_id?: string | null }) => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `/f/${form.public_id}` : null);
 
 export interface Question {
   id: string; type: QuestionType; label: string; help: string | null; placeholder: string | null; required: boolean;
@@ -24,7 +42,7 @@ export interface Question {
 }
 export interface MessageSetting { text?: string; template?: string }
 export interface FormRow {
-  id?: number | string; name: string; title: string; description: string | null; color: number | null; status: 'open' | 'closed'; questions: Question[];
+  id?: number | string; public_id?: string; name: string; title: string; description: string | null; color: number | null; status: 'open' | 'closed'; questions: Question[];
   review_channel_id: string | null; reviewer_role_ids: string[]; ping_role_ids: string[]; auto_thread: boolean;
   required_role_ids: string[]; blocked_role_ids: string[]; min_account_days: number; min_member_days: number; one_pending: boolean;
   deny_cooldown_hours: number; max_per_user: number; max_total: number; closes_at: string | null;

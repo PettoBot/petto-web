@@ -3791,4 +3791,10 @@ export const dashPt: Record<string, string> = {
   "Write a number from {min} to {max}.": "Escreva um número de {min} a {max}.",
   "Write a number.": "Escreva um número.",
   "Write at least {count} characters.": "Escreva pelo menos {count} caracteres.",
+  "New link made. The old one no longer works.": "Novo link criado. O antigo não funciona mais.",
+  "Copied": "Copiado",
+  "New link": "Novo link",
+  "Anyone in the server with this link can open the form. A new link stops the old one at once; panels already posted keep the old one.": "Qualquer pessoa do servidor com este link pode abrir o formulário. Um novo link desativa o antigo na hora; painéis já publicados mantêm o antigo.",
+  "Make a new link? The old link stops working at once, and panels already posted keep the old one.": "Criar um novo link? O antigo deixa de funcionar na hora, e painéis já publicados mantêm o antigo.",
+  "Go to Petto": "Ir para o Petto",
 };

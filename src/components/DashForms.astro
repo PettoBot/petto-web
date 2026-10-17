@@ -4,7 +4,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import ColorPicker from './ColorPicker.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { LIMITS, QUESTION_TYPES, BUTTON_STYLES, normalizeQuestions, answerText, hexColor } from '../utils/forms';
+import { LIMITS, QUESTION_TYPES, BUTTON_STYLES, normalizeQuestions, answerText, hexColor, formWebPath } from '../utils/forms';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -31,6 +31,7 @@ const when = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle
 const atLimit = forms.length >= plan.forms;
 const isNew = editing === 'new';
 const f = isNew ? { name: '', title: '', description: '', color: null, status: 'closed', questions: [], review_channel_id: '', reviewer_role_ids: [], ping_role_ids: [], auto_thread: false, required_role_ids: [], blocked_role_ids: [], min_account_days: 0, min_member_days: 0, one_pending: true, deny_cooldown_hours: 0, max_per_user: 0, max_total: 0, closes_at: null, accept_add_role_ids: [], accept_remove_role_ids: [], deny_add_role_ids: [], deny_remove_role_ids: [], dm_results: true, messages: {}, button_label: '', button_emoji: '', button_style: 'primary', web_enabled: true } : editing;
+const webPath = !isNew && f ? formWebPath(f) : null;
 const closesLocal = f?.closes_at ? new Date(f.closes_at).toISOString().slice(0, 16) : '';
 const builderText = {
   question: dt('Question'), add: dt('Add a question'), remove: dt('Remove'), up: dt('Move up'), down: dt('Move down'), drag: dt('Drag to reorder'),
@@ -82,7 +83,7 @@ const filterHref = (over: Record<string, string>) => {
           return (
             <div class="fm-card fm-formcard">
               <div class="fm-row"><h3 style={x.color !== null && x.color !== undefined ? `--fc:${hexColor(x.color)}` : ''}><i class="fm-dot"></i>{x.title}</h3><span class:list={['fm-chip', x.status]}>{x.status === 'open' ? dt('Open') : dt('Closed')}</span></div>
-              <p class="fm-hint"><code>{x.name}</code> · {dt('{a} questions', { a: count })} · <a href={`${base}?section=submissions&f=${x.id}`}>{dt('{a} pending', { a: waiting })}</a>{x.web_enabled !== false && <> · <a href={`/f/${x.id}`} target="_blank" rel="noopener">{dt('Open on the web')}</a></>}</p>
+              <p class="fm-hint"><code>{x.name}</code> · {dt('{a} questions', { a: count })} · <a href={`${base}?section=submissions&f=${x.id}`}>{dt('{a} pending', { a: waiting })}</a>{x.web_enabled !== false && formWebPath(x) && <> · <a href={formWebPath(x)} target="_blank" rel="noopener">{dt('Open on the web')}</a></>}</p>
               {x.description && <p class="fm-desc">{x.description}</p>}
               <div class="fm-actions">
                 <a class="btn btn-ghost btn-sm" href={`${base}?section=forms&form=${x.id}`}><Icon name="ph:pencil-simple-bold" width="12" height="12" />{dt('Edit')}</a>
@@ -155,7 +156,17 @@ const filterHref = (over: Record<string, string>) => {
             <div class="fm-field"><span>{dt('Denied: take roles')}</span><MultiSelect lazy name="deny_remove_role_ids" options={roles} selected={f.deny_remove_role_ids ?? []} placeholder={dt('No roles')} /></div>
             <label class="fm-check fm-wide"><input type="checkbox" name="dm_results" checked={f.dm_results} />{dt('Send the member a DM with the result')}</label>
             <label class="fm-check fm-wide"><input type="checkbox" name="web_enabled" checked={f.web_enabled !== false} />{dt('Allow filling on the web')}</label>
-            {!isNew && f.web_enabled !== false && <p class="fm-hint fm-wide">{dt('Link of the form:')} <a href={`/f/${(editing as any)?.id}`} target="_blank" rel="noopener"><code>petto.sbs/f/{(editing as any)?.id}</code></a></p>}
+            {!isNew && f.web_enabled !== false && webPath && (
+              <div class="fm-weblink fm-wide">
+                <span class="fm-weblink-label">{dt('Link of the form:')}</span>
+                <div class="fm-weblink-row">
+                  <a class="fm-weblink-url" href={webPath} target="_blank" rel="noopener"><span class="fm-weblink-host">petto.sbs/f/</span><b>{f.public_id}</b></a>
+                  <button type="button" class="btn btn-ghost btn-sm" data-fm-copy={`https://petto.sbs${webPath}`} data-done={dt('Copied')}><Icon name="ph:copy-simple-bold" width="13" height="13" /><span>{dt('Copy')}</span></button>
+                  <button type="submit" class="btn btn-ghost btn-sm" form="fm-relink" formnovalidate><Icon name="ph:arrows-clockwise-bold" width="13" height="13" />{dt('New link')}</button>
+                </div>
+                <em class="fm-hint">{dt('Anyone in the server with this link can open the form. A new link stops the old one at once; panels already posted keep the old one.')}</em>
+              </div>
+            )}
           </div>
           <p class="fm-hint">{dt('Variables:')} {variableChips.map((v) => <code class="fm-var">{v}</code>)} {dt('and the usual ones.')}</p>
           <div class="fm-grid">
@@ -184,6 +195,11 @@ const filterHref = (over: Record<string, string>) => {
         <div data-pv-pages></div>
       </aside>
     </div>
+    {!isNew && webPath && (
+      <form method="POST" id="fm-relink" hidden data-no-dirty onsubmit={`return confirm(${JSON.stringify(dt('Make a new link? The old link stops working at once, and panels already posted keep the old one.'))})`}>
+        <input type="hidden" name="action" value="relink_form" /><input type="hidden" name="form_id" value={f.id} />
+      </form>
+    )}
     {!isNew && (
       <form method="POST" class="fm-danger" data-no-dirty onsubmit={`return confirm(${JSON.stringify(dt('Delete this form? What members already sent is kept.'))})`}>
         <input type="hidden" name="action" value="delete_form" /><input type="hidden" name="form_id" value={f.id} />
@@ -414,6 +430,21 @@ const filterHref = (over: Record<string, string>) => {
     style?.addEventListener('change', () => { if (button) button.className = `fm-dbtn ${style.value}`; });
   }
   try { initFormsBuilder(); } catch (error) { console.error(error); }
+  // The copy button of the web link of a form (one listener on the document, so it also works after the dashboard swaps pages).
+  if (!(window as any).__fmCopy) {
+    (window as any).__fmCopy = true;
+    document.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-fm-copy]');
+      if (!button) return;
+      const label = button.querySelector('span');
+      const before = label?.textContent ?? '';
+      navigator.clipboard?.writeText(button.dataset.fmCopy ?? '').then(() => {
+        if (!label) return;
+        label.textContent = button.dataset.done ?? before; button.classList.add('is-copied');
+        setTimeout(() => { label.textContent = before; button.classList.remove('is-copied'); }, 1600);
+      }).catch(() => {});
+    });
+  }
   if (!(window as any).__fmBuilderWatch) {
     (window as any).__fmBuilderWatch = true;
     // The dashboard swaps pages without reloading: a builder that arrives later is drawn when it appears.
@@ -458,6 +489,14 @@ const filterHref = (over: Record<string, string>) => {
   .fm-editor { display: flex; flex-direction: column; min-width: 0; }
   .fm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
   .fm-wide { grid-column: 1 / -1; }
+  .fm-weblink { display: flex; flex-direction: column; gap: 6px; }
+  .fm-weblink-label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+  .fm-weblink-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .fm-weblink-url { display: inline-flex; align-items: baseline; min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-family: var(--mono); font-size: 13.5px; padding: 7px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--text); text-decoration: none; }
+  .fm-weblink-url:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+  .fm-weblink-host { color: var(--text-dim); }
+  .fm-weblink-url b { color: var(--accent); font-weight: 600; letter-spacing: .02em; }
+  .fm-weblink .is-copied { color: var(--green); }
   .fm-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
   .fm-field > span:first-child { font-size: 12.5px; font-weight: 600; color: var(--text); }
   .fm-field input[type="text"], .fm-field input[type="number"], .fm-field input[type="datetime-local"], .fm-field select, .fm-field textarea, .fm-filters select, .fm-filters input, .fm-review input {
