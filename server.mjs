@@ -30,7 +30,9 @@ if (!existsSync(entry) || !existsSync(marker)) {
 // whose page and images take more than 10 seconds, so the previews failed on some links. Letting Cloudflare keep those files avoids the trip.
 // Only that exact default is replaced, so the dashboard and the other server-rendered pages keep their own headers.
 // The files hashed by the build already get a one-year header from Astro.
-const STATIC_PAGE_CACHE = 'public, max-age=300, s-maxage=600, stale-while-revalidate=86400, stale-if-error=86400';
+// A copy kept by Cloudflare may be served for at most a few minutes after it expires (it used to be a whole day, so a quiet page kept
+// showing the previous version long after a deploy). Each page also checks /version.json and reloads itself once when it is old.
+const STATIC_PAGE_CACHE = 'public, max-age=60, s-maxage=120, stale-while-revalidate=300, stale-if-error=86400';
 const STATIC_FILE_CACHE = 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800, stale-if-error=604800';
 // Images, videos and fonts change rarely and are kept longer. Pages, version.json, the sitemap and the rest follow the pages.
 const MEDIA_FILE = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|mp4|webm|woff2?|ttf|otf)$/i;
@@ -41,7 +43,7 @@ const withStaticCache = (listener) => (req, res) => {
   res.setHeader = (name, value) => {
     if (String(name).toLowerCase() === 'cache-control' && value === 'public, max-age=0') {
       const path = (req.url ?? '/').split('?')[0];
-      value = path.startsWith('/_astro/') ? HASHED_FILE_CACHE : MEDIA_FILE.test(path) ? STATIC_FILE_CACHE : STATIC_PAGE_CACHE;
+      value = path === '/version.json' ? 'no-store' : path.startsWith('/_astro/') ? HASHED_FILE_CACHE : MEDIA_FILE.test(path) ? STATIC_FILE_CACHE : STATIC_PAGE_CACHE;
     }
     return setHeader(name, value);
   };
