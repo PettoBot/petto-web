@@ -6,9 +6,8 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { guildHasPremium } from '../../../../utils/guildPremium';
 import { callPettoForms } from '../../../../utils/pettoBotApi';
-import { normalizeForm, normalizeQuestions, slugName, NAME, PLAN, STATUSES } from '../../../../utils/forms';
+import { normalizeForm, normalizeQuestions, slugName, NAME, FORM_PLAN, STATUSES } from '../../../../utils/forms';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -35,8 +34,7 @@ const search = String(Astro.url.searchParams.get('q') ?? '').trim().slice(0, 60)
 
 const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/${path}`, { ...init, headers: { ...apiHeaders, ...(init.headers as Record<string, string> | undefined) } });
 const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
-const premium = await guildHasPremium(apiUrl, apiHeaders, id);
-const plan = premium ? PLAN.premium : PLAN.free;
+const plan = FORM_PLAN;
 
 let message: { kind: 'ok' | 'err' | 'warn'; text: string } | null = null;
 let redirectTo: string | null = null;
@@ -61,7 +59,7 @@ if (Astro.request.method === 'POST') {
       deny_cooldown_hours: form.get('deny_cooldown_hours'), max_per_user: form.get('max_per_user'), max_total: form.get('max_total'),
       closes_at: closes ? `${closes}${closes.length === 16 ? ':00' : ''}Z` : null,
       accept_add_role_ids: form.getAll('accept_add_role_ids'), accept_remove_role_ids: form.getAll('accept_remove_role_ids'),
-      deny_add_role_ids: form.getAll('deny_add_role_ids'), deny_remove_role_ids: form.getAll('deny_remove_role_ids'), dm_results: form.get('dm_results') === 'on',
+      deny_add_role_ids: form.getAll('deny_add_role_ids'), deny_remove_role_ids: form.getAll('deny_remove_role_ids'), dm_results: form.get('dm_results') === 'on', web_enabled: form.get('web_enabled') === 'on',
       messages: {
         submitted: { text: form.get('msg_submitted') },
         accepted: { text: form.get('msg_accepted'), template: form.get('tpl_accepted') },
@@ -83,7 +81,7 @@ if (Astro.request.method === 'POST') {
     } else {
       const countRes = await rest(`forms?guild_id=eq.${id}&select=id`);
       const count = countRes.ok ? (await countRes.json()).length : 0;
-      if (count >= plan.forms) message = { kind: 'err', text: premium ? dt('You reached the limit of forms ({a}).', { a: plan.forms }) : dt('You reached the limit of forms of the free plan ({a}). Premium allows {b}.', { a: plan.forms, b: PLAN.premium.forms }) };
+      if (count >= plan.forms) message = { kind: 'err', text: dt('You reached the limit of forms ({a}).', { a: plan.forms }) };
       else {
         const res = await rest('forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...clean }) });
         const row = res.ok ? (await res.json())[0] : null;
@@ -131,6 +129,7 @@ if (Astro.request.method === 'POST') {
     const result = await callPettoForms(Astro, id, session.userId, 'panel', {
       channel_id: text(form.get('channel_id'), 30), form_ids: form.getAll('form_ids').map(String).slice(0, 25), style: form.get('style') === 'select' ? 'select' : 'buttons',
       template: text(form.get('template'), 100) || null, title: text(form.get('panel_title'), 200) || null, description: text(form.get('panel_description'), 2000) || null, color: /^#[0-9a-f]{6}$/i.test(color) ? color : null,
+      web: form.get('panel_web') === 'on',
     }, dashLang);
     message = result.ok ? { kind: 'ok', text: result.message || dt('Panel posted.') } : { kind: 'err', text: result.message || dt('The bot could not do it. Try again in a moment.') };
   }
@@ -160,7 +159,7 @@ const forms: any[] = ready ? await formsRes!.json() : [];
 const subsData = subsResult?.ok ? subsResult.data : null;
 const pending: Record<string, number> = subsData?.pending ?? {};
 const submissions: any[] = section === 'submissions' ? subsData?.submissions ?? [] : [];
-const storage = { stored: Number(subsData?.stored ?? 0), cap: Number(subsData?.cap ?? (premium ? PLAN.premium.submissions : PLAN.free.submissions)), retention: Number(subsData?.retention_days ?? 30), known: Boolean(subsData) };
+const storage = { stored: Number(subsData?.stored ?? 0), cap: Number(subsData?.cap ?? plan.submissions), retention: Number(subsData?.retention_days ?? 30), known: Boolean(subsData) };
 const panels: any[] = panelsRes?.ok ? await panelsRes.json() : [];
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
@@ -170,5 +169,5 @@ const editForm = editing === 'new' ? 'new' : editing ? forms.find((f) => String(
 <DashForms
   user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   section={section} forms={forms} pending={pending} submissions={submissions} panels={panels} roles={roles} channels={channels} templates={templates}
-  editing={editForm} storage={storage} statusFilter={statusFilter} formFilter={formFilter} search={search} plan={plan} premium={premium} ready={ready} message={message}
+  editing={editForm} storage={storage} statusFilter={statusFilter} formFilter={formFilter} search={search} plan={plan} ready={ready} message={message}
 />

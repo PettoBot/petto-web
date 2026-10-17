@@ -12,8 +12,8 @@ export const LIMITS = {
   title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000,
   short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
 };
-// Free and Premium, the same numbers as the bot (petto-bot src/db/premium.js).
-export const PLAN = { free: { forms: 5, questions: 10, submissions: 500 }, premium: { forms: 25, questions: 25, submissions: 5000 } };
+// One limit for every server, the same numbers as the bot (petto-bot src/utils/forms.js FORM_LIMITS). Forms are not a Premium module.
+export const FORM_PLAN = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX: Record<string, number> = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 export const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -31,6 +31,7 @@ export interface FormRow {
   accept_add_role_ids: string[]; accept_remove_role_ids: string[]; deny_add_role_ids: string[]; deny_remove_role_ids: string[];
   dm_results: boolean; messages: { submitted?: MessageSetting; accepted?: MessageSetting; denied?: MessageSetting };
   button_label: string | null; button_emoji: string | null; button_style: (typeof BUTTON_STYLES)[number];
+  web_enabled: boolean;
 }
 
 const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -128,6 +129,7 @@ export function normalizeForm(input: any, { maxQuestions = LIMITS.questions } = 
     button_label: clip(input?.button_label, LIMITS.buttonLabel) || null,
     button_emoji: clip(input?.button_emoji, 64) || null,
     button_style: (BUTTON_STYLES as readonly string[]).includes(input?.button_style) ? input.button_style : 'primary',
+    web_enabled: input?.web_enabled !== false,
   };
 }
 

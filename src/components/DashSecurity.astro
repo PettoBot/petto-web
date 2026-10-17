@@ -7,7 +7,7 @@ const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const dth = makeT(dashLang, true);
 interface RoleFinding { id: string; name: string; isEveryone: boolean; isAdmin: boolean; matched: string[]; severity: 'critical' | 'high' | 'medium'; }
-interface CommandInfo { name: string; category: string; categoryTitle: string; desc: string; }
+import type { AccessCommand } from '../utils/commandAccess';
 interface Protection { antinuke: boolean; antiSpam: boolean; antiRaid: boolean; verification: boolean; logs: boolean; }
 
 interface Props {
@@ -16,15 +16,27 @@ interface Props {
   guildName: string;
   guildIcon: string;
   roleFindings: RoleFinding[];
-  unrestrictedCommands: CommandInfo[];
+  coverage: AccessCommand[];
+  roleNames: Record<string, string>;
   securityScore: number;
   protection: Protection;
   recommendations: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, roleFindings, unrestrictedCommands, securityScore, protection, recommendations, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, roleFindings, coverage, roleNames, securityScore, protection, recommendations, section } = Astro.props;
 
-const sectionMeta: Record<string, string> = { score: dt('Security overview'), elevated: dt('Elevated roles'), unrestricted: dt('Unrestricted commands') };
+const sectionMeta: Record<string, string> = { score: dt('Security overview'), elevated: dt('Elevated roles'), unrestricted: dt('Command coverage') };
+const gateOf = (c: AccessCommand) => (c.disabledServer ? 'disabled' : c.restrictRoles.length ? 'roles' : c.level > 0 ? 'level' : c.permissionNames.length ? 'discord' : 'open');
+const gateCount = (g: string) => coverage.filter((c) => gateOf(c) === g).length;
+const gates = [
+  { id: 'roles', label: dt('Restricted to roles'), hint: dt('!restrictcommand: only the roles you chose.') },
+  { id: 'level', label: dt('Petto level'), hint: dt('A level set on the Permissions page.') },
+  { id: 'discord', label: dt('Discord permission only'), hint: dt('Anyone with the Discord permission of the action can use it.') },
+  { id: 'open', label: dt('No gate'), hint: dt('Nothing extra: any member can use it.') },
+  { id: 'disabled', label: dt('Disabled'), hint: dt('Turned off in the server.') },
+];
+const covered = coverage.length ? Math.round(((gateCount('roles') + gateCount('level') + gateCount('disabled')) / coverage.length) * 100) : 100;
+const coverageCats = [...new Map(coverage.map((c) => [c.category, c.categoryTitle])).entries()];
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'score';
 const selectedTitle = sectionMeta[selectedSection];
 
@@ -73,24 +85,84 @@ const SEVERITY_LABEL: Record<string, string> = { critical: dt('Critical'), high:
     )}
   </div>
 
-  <div class:list={['sc-section', { 'sc-section-hidden': selectedSection !== 'unrestricted' }]}>
-    <h2><Icon name="ph:key-fill" width="15" height="15" /><Fragment set:html={dth('Commands without a custom permission level <span class="sc-count">{a}</span>', { a: (unrestrictedCommands.length) })} /></h2>
-    <p class="sc-section-note">
-      {dt('These still respect Discord\'s own per-command permissions, they just don\'t have an extra level set on the')} <a href={`/dash/guild/${guildId}/permissions`}>{dt('Permissions')}</a> {dt('page yet.')}
-    </p>
-    {unrestrictedCommands.length === 0 ? (
-      <p class="sc-empty-note"><Icon name="ph:check-circle-fill" width="14" height="14" />{dt('Every moderation/setup command has a custom level configured.')}</p>
-    ) : (
-      <div class="sc-cmd-grid">
-        {unrestrictedCommands.map((c) => (
-          <a href={`/dash/guild/${guildId}/permissions`} class="sc-cmd-chip" title={c.desc}>
-            <span class="sc-cmd-name">{c.name}</span>
-            <span class="sc-cmd-cat">{c.categoryTitle}</span>
-          </a>
+  <div class:list={['sc-section', { 'sc-section-hidden': selectedSection !== 'unrestricted' }]} data-coverage>
+    <div class="cv-head">
+      <div class="cv-score">
+        <span class="sc-eyebrow">{dt('Extra protection')}</span>
+        <strong>{covered}<small>%</small></strong>
+        <p>{dt('{a} of {b} staff commands have a Petto level, a role restriction or are disabled. The rest rely on the Discord permission of the action.', { a: gateCount('roles') + gateCount('level') + gateCount('disabled'), b: coverage.length })}</p>
+      </div>
+      <div class="cv-bar" role="img" aria-label={dt('How the staff commands are protected')}>
+        {gates.map((g) => gateCount(g.id) > 0 && <i class={`cv-${g.id}`} style={`flex:${gateCount(g.id)}`} title={`${g.label}: ${gateCount(g.id)}`} />)}
+      </div>
+      <div class="cv-legend">
+        {gates.map((g) => (
+          <button type="button" class={`cv-key cv-${g.id}`} data-gate={g.id} aria-pressed="false" title={g.hint}><i />{g.label}<b>{gateCount(g.id)}</b></button>
         ))}
       </div>
-    )}
+    </div>
+    <div class="cv-tools">
+      <label class="cv-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" placeholder={dt('Search a command')} data-cv-search /></label>
+      <a class="btn btn-ghost btn-sm" href={`/dash/guild/${guildId}/permissions`}><Icon name="ph:key-fill" width="13" height="13" />{dt('Set levels and roles')}</a>
+    </div>
+    {coverageCats.map(([cat, title]) => (
+      <details class="cv-cat" data-cv-cat open>
+        <summary><h3>{title}</h3><span class="cv-cat-n">{coverage.filter((c) => c.category === cat).length}</span></summary>
+        <ul class="cv-list">
+          {coverage.filter((c) => c.category === cat).map((c) => {
+            const gate = gateOf(c);
+            return (
+              <li class={`cv-row cv-${gate}`} data-gate={gate} data-name={`${c.name} ${c.aliases.join(' ')}`}>
+                <div class="cv-main"><code>{c.slash ? '/' : '!'}{c.name}</code><span>{c.desc}</span></div>
+                <div class="cv-tags">
+                  {c.disabledServer && <span class="cv-tag cv-t-off">{dt('Disabled')}</span>}
+                  {c.restrictRoles.map((id) => <span class="cv-tag cv-t-role">@{roleNames[id] ?? id}</span>)}
+                  {c.level > 0 && <span class="cv-tag cv-t-level">{dt('Level {a}', { a: c.level })}</span>}
+                  {c.permissionNames.map((p) => <span class="cv-tag cv-t-perm">{dt(p)}</span>)}
+                  {gate === 'open' && <span class="cv-tag cv-t-open">{dt('No gate')}</span>}
+                  {!c.disabledServer && c.disabledChannels.length > 0 && <span class="cv-tag cv-t-off">{dt('Off in {a} channels', { a: c.disabledChannels.length })}</span>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </details>
+    ))}
+    <p class="sc-empty-note cv-none" hidden><Icon name="ph:check-circle-fill" width="14" height="14" />{dt('No command matches.')}</p>
   </div>
+  <script is:inline>
+    // Command coverage: search and the legend as filters. Works again when the dashboard swaps the page in.
+    (function bind() {
+      var root = document.querySelector('[data-coverage]:not([data-bound])');
+      if (!root) return;
+      root.setAttribute('data-bound', '1');
+      var input = root.querySelector('[data-cv-search]');
+      var keys = Array.prototype.slice.call(root.querySelectorAll('.cv-key'));
+      var active = '';
+      var apply = function () {
+        var q = (input && input.value || '').trim().toLowerCase().replace(/^[!\/]/, '');
+        var any = false;
+        root.querySelectorAll('[data-cv-cat]').forEach(function (cat) {
+          var shown = 0;
+          cat.querySelectorAll('.cv-row').forEach(function (row) {
+            var ok = (!active || row.getAttribute('data-gate') === active) && (!q || row.getAttribute('data-name').indexOf(q) !== -1 || row.textContent.toLowerCase().indexOf(q) !== -1);
+            row.hidden = !ok; if (ok) shown++;
+          });
+          cat.hidden = shown === 0; if (shown) any = true;
+        });
+        var none = root.querySelector('.cv-none'); if (none) none.hidden = any;
+      };
+      if (input) input.addEventListener('input', apply);
+      keys.forEach(function (key) {
+        key.addEventListener('click', function () {
+          var gate = key.getAttribute('data-gate');
+          active = active === gate ? '' : gate;
+          keys.forEach(function (k) { k.setAttribute('aria-pressed', String(k.getAttribute('data-gate') === active)); });
+          apply();
+        });
+      });
+    })();
+  </script>
 </DashGuildLayout>
 
 <style>
@@ -144,6 +216,43 @@ const SEVERITY_LABEL: Record<string, string> = { critical: dt('Critical'), high:
   .sc-cmd-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
   .sc-cmd-cat { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
 
+
+  .cv-head { border: 1px solid var(--border); border-radius: 16px; background: var(--bg-raise); padding: 18px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 14px; animation: cv-rise .4s cubic-bezier(.2, .8, .2, 1) both; }
+  .cv-score strong { display: block; font-size: 40px; line-height: 1; }
+  .cv-score strong small { font-size: 16px; color: var(--text-dim); }
+  .cv-score p { margin: 8px 0 0; font-size: 12.5px; color: var(--text-muted); max-width: 70ch; }
+  .cv-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: var(--border); gap: 2px; }
+  .cv-bar i { display: block; height: 100%; animation: cv-grow .7s cubic-bezier(.2, .8, .2, 1) both; transform-origin: left; }
+  .cv-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cv-key { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+  .cv-key i { width: 9px; height: 9px; border-radius: 50%; }
+  .cv-key b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .cv-key[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .cv-roles { --g: var(--green); } .cv-level { --g: var(--accent); } .cv-discord { --g: #fb923c; } .cv-open { --g: var(--red); } .cv-disabled { --g: var(--text-dim); }
+  .cv-bar i, .cv-key i { background: var(--g); }
+  .cv-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .cv-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 9px; padding: 0 10px; color: var(--text-dim); background: var(--card); }
+  .cv-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cv-search input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13.5px; padding: 8px 0; min-width: 0; }
+  .cv-cat > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; margin: 16px 0 8px; }
+  .cv-cat > summary::-webkit-details-marker { display: none; }
+  .cv-cat h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 0; }
+  .cv-cat-n { font-size: 11px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
+  .cv-cat > summary::after { content: ''; width: 7px; height: 7px; border-right: 1.5px solid var(--text-dim); border-bottom: 1.5px solid var(--text-dim); transform: rotate(45deg); margin-left: auto; transition: transform .2s ease; }
+  .cv-cat:not([open]) > summary::after { transform: rotate(-45deg); }
+  .cv-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .cv-row { border: 1px solid var(--border); border-left: 3px solid var(--g); border-radius: 11px; background: var(--card); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; min-width: 0; transition: background .15s ease, transform .15s ease; }
+  .cv-row:hover { background: var(--card-hover); }
+  .cv-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .cv-main code { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+  .cv-main span { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+  .cv-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cv-tag { font-size: 11px; border-radius: 6px; padding: 1px 7px; border: 1px solid var(--border); color: var(--text-muted); }
+  .cv-t-role { color: var(--green); } .cv-t-level { color: var(--accent); } .cv-t-perm { color: #fb923c; } .cv-t-open, .cv-t-off { color: var(--red); }
+  @keyframes cv-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes cv-grow { from { transform: scaleX(0); } to { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .cv-head, .cv-bar i { animation: none; } }
+  @media (max-width: 700px) { .cv-list { grid-template-columns: 1fr; } }
   @media (max-width: 560px) {
     .sc-protection-grid { grid-template-columns: 1fr; }
     .sc-score-card { padding: 16px; }

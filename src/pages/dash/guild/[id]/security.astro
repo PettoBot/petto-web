@@ -5,9 +5,10 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
-import { getAllCommands } from '../../../../utils/commandList';
+import { accessCommands, isSensitive } from '../../../../utils/commandAccess';
 import { getDashLang, makeT } from '../../../../i18n/dash';
-const dt = makeT(getDashLang(Astro));
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'score';
@@ -23,7 +24,7 @@ if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=s
 
 const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
 
-const [guildInfo, rolesRes, levelsRes, automodRes, antinukeRes, verificationRes, logsRes] = await runBatched([
+const [guildInfo, rolesRes, levelsRes, automodRes, antinukeRes, verificationRes, logsRes, restrictRes, disabledRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => getGuildList(Astro, id, botToken, 'roles'),
   () => fetch(`${apiUrl}/rest/v1/command_permission_levels?guild_id=eq.${id}&select=command_name,required_level`, { headers: apiHeaders }),
@@ -31,7 +32,9 @@ const [guildInfo, rolesRes, levelsRes, automodRes, antinukeRes, verificationRes,
   () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/verification_config?guild_id=eq.${id}&select=enabled`, { headers: apiHeaders }),
   () => fetch(`${apiUrl}/rest/v1/log_entries?guild_id=eq.${id}&select=event&limit=1`, { headers: apiHeaders }),
-], 7);
+  () => fetch(`${apiUrl}/rest/v1/command_restrictions?guild_id=eq.${id}&select=command,role_id`, { headers: apiHeaders }),
+  () => fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=command,channel_id`, { headers: apiHeaders }),
+], 9);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const DANGEROUS_PERMS: { flag: bigint; label: string }[] = [
@@ -65,12 +68,10 @@ const roleFindings = allRoles
   .sort((a: any, b: any) => (b.severity === 'critical' ? 1 : 0) - (a.severity === 'critical' ? 1 : 0) || b.position - a.position);
 
 const levelRows = levelsRes.ok ? await levelsRes.json() : [];
-const commandLevels: Record<string, number> = {};
-for (const row of levelRows) commandLevels[row.command_name] = row.required_level;
-
-const commands = getAllCommands();
-const RISK_CATEGORIES = ['moderation', 'setup', 'automation'];
-const unrestrictedCommands = commands.filter((c) => RISK_CATEGORIES.includes(c.category) && !commandLevels[c.name]);
+const rowsOf = async (res: Response) => (res.ok ? res.json().catch(() => []) : []);
+// Commands that change the server or punish people, with every gate the bot checks (see utils/commandAccess.ts).
+const coverage = accessCommands(dashLang, { levels: levelRows, restrictions: await rowsOf(restrictRes), disabled: await rowsOf(disabledRes) }).filter(isSensitive);
+const roleNames = Object.fromEntries(allRoles.map((r: any) => [String(r.id), String(r.name)]));
 
 const automodRows = automodRes.ok ? await automodRes.json() : [];
 const antinukeRows = antinukeRes.ok ? await antinukeRes.json() : [];
@@ -103,7 +104,8 @@ securityScore = Math.max(0, securityScore);
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   roleFindings={roleFindings}
-  unrestrictedCommands={unrestrictedCommands}
+  coverage={coverage}
+  roleNames={roleNames}
   securityScore={securityScore}
   protection={protection}
   recommendations={recommendations}

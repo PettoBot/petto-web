@@ -1,0 +1,394 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import { COUNTER_FORMATS, PRESENCE_TYPES, renderCounterName, shownName, timeValue } from '../utils/counters';
+import { getDashLang, makeT } from '../i18n/dash';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Counter {
+  id: number; channelId: string; type: string; kind: string; template: string; format: string; goal: number | null; timezone: string | null; roleId: string | null;
+  prefix: string; suffix: string; parentId: string | null; enabled: boolean; problem: string | null; currentName: string | null; exists: boolean; nextRenameAt: number | null; renamesLeft: number | null;
+}
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string; guildName: string; guildIcon: string;
+  counters: Counter[];
+  categories: { id: string; name: string }[];
+  roles: { id: string; name: string; color: number }[];
+  freeChannels: { id: string; name: string; kind: string }[];
+  values: Record<string, number | string> | null;
+  roleCounts: Record<string, number>;
+  presences: boolean;
+  limits: { max: number; premium: boolean; premiumMax: number } | null;
+  approxMembers: number;
+  message: { kind: 'ok' | 'err'; text: string } | null;
+}
+const { user, guildId, guildName, guildIcon, counters, categories, roles, freeChannels, values, roleCounts, presences, limits, approxMembers, message } = Astro.props;
+
+const labels: Record<string, string> = {
+  members: dt('Members'), users_only: dt('Humans'), bots_only: dt('Bots'), online: dt('Online (any status)'), status_online: dt('Online'), status_idle: dt('Idle'), status_dnd: dt('Do not disturb'),
+  in_voice: dt('In voice'), pending_members: dt('Pending members'), boosts: dt('Boosts'), booster_count: dt('Boosters'), boost_level: dt('Boost level'), role_members: dt('Members in a role'),
+  goal: dt('Member goal'), roles: dt('Roles'), all_channels: dt('Channels'), text_channels: dt('Text channels'), voice_channels: dt('Voice channels'), categories: dt('Categories'),
+  announcement_channels: dt('Announcement channels'), staging_channels: dt('Stage channels'), emojis: dt('Emojis'), stickers: dt('Stickers'), clock: dt('Clock'), date: dt('Date'),
+};
+const defaults: Record<string, string> = {
+  members: dt('👥 Members: {count}'), users_only: dt('👤 Humans: {count}'), bots_only: dt('🤖 Bots: {count}'), online: dt('🟢 Online: {count}'), status_online: dt('🟢 Online: {count}'),
+  status_idle: dt('🌙 Idle: {count}'), status_dnd: dt('⛔ Do not disturb: {count}'), in_voice: dt('🎧 In voice: {count}'), pending_members: dt('⏳ Pending: {count}'), boosts: dt('💎 Boosts: {count}'),
+  booster_count: dt('🚀 Boosters: {count}'), boost_level: dt('💎 Boost level: {count}'), role_members: '🏷️ {role}: {count}', goal: dt('🎯 Goal: {count}/{goal}'), roles: dt('🏷️ Roles: {count}'),
+  all_channels: dt('📁 Channels: {count}'), text_channels: dt('💬 Text channels: {count}'), voice_channels: dt('🔊 Voice channels: {count}'), categories: dt('🗂️ Categories: {count}'),
+  announcement_channels: dt('📢 Announcements: {count}'), staging_channels: dt('🎙️ Stages: {count}'), emojis: dt('😀 Emojis: {count}'), stickers: dt('🖼️ Stickers: {count}'), clock: '🕒 {count} {tz}', date: '📅 {count}',
+};
+const groups: { label: string; types: string[] }[] = [
+  { label: dt('Members'), types: ['members', 'users_only', 'bots_only', 'pending_members', 'role_members', 'goal'] },
+  { label: dt('Activity'), types: ['online', 'status_online', 'status_idle', 'status_dnd', 'in_voice'] },
+  { label: dt('Boosts'), types: ['boosts', 'booster_count', 'boost_level'] },
+  { label: dt('Server'), types: ['roles', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'emojis', 'stickers'] },
+  { label: dt('Time'), types: ['clock', 'date'] },
+];
+const formatLabels: Record<string, string> = { plain: '1234', grouped: dashLang === 'en' ? '1,234' : '1.234', compact: dashLang === 'en' ? '1.2k' : '1,2k' };
+const kindLabels: Record<string, string> = { voice: dt('Voice channel (locked)'), text: dt('Text channel'), category: dt('Category'), stage: dt('Stage channel'), announce: dt('Announcement channel') };
+const kindIcon: Record<string, string> = { voice: 'ph:speaker-high-fill', text: 'ph:hash-bold', category: 'ph:folder-simple-fill', stage: 'ph:broadcast-fill', announce: 'ph:megaphone-fill' };
+const roleName = new Map(roles.map((r) => [r.id, r.name]));
+// Without the bot's numbers the previews use what Discord tells the website: the member count, and examples for the rest.
+const sample: Record<string, number | string> = values ?? { members: approxMembers || 1234, goal: approxMembers || 1234 };
+const valueOf = (type: string, roleId: string | null) => (type === 'role_members' ? (roleId ? roleCounts[roleId] ?? 0 : 0) : type === 'clock' || type === 'date' ? timeValue(type, 'UTC', dashLang) : sample[type] ?? 0);
+const nameOf = (c: { type: string; template: string; format: string; goal: number | null; timezone: string | null; roleId: string | null; prefix?: string; suffix?: string }) =>
+  renderCounterName({ ...c, role: c.roleId ? roleName.get(c.roleId) ?? '' : '' }, c.type === 'clock' || c.type === 'date' ? timeValue(c.type, c.timezone ?? 'UTC', dashLang) : valueOf(c.type, c.roleId), dashLang);
+const full = limits ? counters.length >= limits.max : false;
+const problems: Record<string, string> = {
+  missing_channel: dt('The channel was deleted, so the counter is off.'),
+  missing_permission: dt('Petto cannot rename this channel. Give it Manage Channels and View Channel there.'),
+};
+const config = { values: sample, roleCounts, roles: Object.fromEntries(roleName), labels, defaults, lang: dashLang };
+const waitingText = dt('Next rename in {a}');
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="counters" pageTitle={dt('Counters')}>
+  <div class="cn" data-counters data-config={JSON.stringify(config)} data-waiting={waitingText}>
+    <header class="cn-head">
+      <div>
+        <h1>{dt('Counters')}</h1>
+        <p class="cn-sub">{dt('Channels whose name shows a live number: members, humans, bots, online, boosts, a role, a goal or a clock. Petto renames them when the number changes, never more than Discord allows (two renames per channel every 10 minutes).')}</p>
+      </div>
+      <div class="cn-head-actions">
+        {counters.length > 0 && (
+          <form method="POST"><input type="hidden" name="action" value="refresh" /><button class="btn btn-ghost btn-sm" type="submit" data-no-dirty><Icon name="ph:arrows-clockwise-bold" width="13" height="13" />{dt('Refresh all now')}</button></form>
+        )}
+      </div>
+    </header>
+
+    {message && <div class:list={['cn-flash', { 'cn-flash-err': message.kind === 'err' }]} role="status"><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
+    {!values && <div class="cn-flash cn-flash-warn"><Icon name="ph:plug-fill" width="15" height="15" />{dt('Petto did not answer, so the previews use sample numbers. Creating counters needs Petto online.')}</div>}
+
+    <div class="cn-stats">
+      <div class="cn-stat"><b>{counters.length}{limits && <small>/{limits.max}</small>}</b><span>{dt('Counters')}</span></div>
+      <div class="cn-stat"><b>{counters.filter((c) => c.enabled && !c.problem).length}</b><span>{dt('Working')}</span></div>
+      <div class="cn-stat"><b>{values ? Number(values.members ?? 0).toLocaleString(dashLang) : approxMembers ? `~${approxMembers.toLocaleString(dashLang)}` : '—'}</b><span>{dt('Members now')}</span></div>
+      <div class="cn-stat"><b>{values && presences ? Number(values.online ?? 0).toLocaleString(dashLang) : '—'}</b><span>{dt('Online now')}</span></div>
+    </div>
+
+    {counters.length === 0 && (
+      <div class="cn-empty">
+        <div class="cn-empty-art" aria-hidden="true">
+          <div class="cn-fake"><Icon name="ph:folder-simple-fill" width="13" height="13" /><span>{dt('📊 Server stats')}</span></div>
+          {['members', 'users_only', 'bots_only'].map((type, i) => (
+            <div class="cn-fake cn-fake-ch" style={`--i:${i}`}><Icon name="ph:speaker-high-fill" width="13" height="13" /><span>{nameOf({ type, template: defaults[type], format: 'grouped', goal: null, timezone: null, roleId: null })}</span></div>
+          ))}
+        </div>
+        <div>
+          <h2>{dt('Start with the server stats')}</h2>
+          <p>{dt('One click makes a "Server stats" category with Members, Humans and Bots, in voice channels everyone can see and nobody can join.')}</p>
+          <form method="POST"><input type="hidden" name="action" value="setup" /><button class="btn btn-accent btn-sm" type="submit" data-no-dirty disabled={!values}><Icon name="ph:lightning-fill" width="13" height="13" />{dt('Quick setup')}</button></form>
+        </div>
+      </div>
+    )}
+
+    {counters.length > 0 && (
+      <div class="cn-list" aria-label={dt('Counters')}>
+        {counters.map((c, index) => {
+          const name = nameOf(c);
+          const status = c.problem ? 'problem' : !c.enabled ? 'off' : c.currentName && shownName(name, c.kind) !== c.currentName ? 'waiting' : 'ok';
+          return (
+            <article class:list={['cn-card', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={c.kind}>
+              <div class="cn-card-top">
+                <div class="cn-channel">
+                  <Icon name={kindIcon[c.kind] ?? kindIcon.voice} width="15" height="15" />
+                  <span class="cn-name" data-preview-out>{shownName(name, c.kind)}</span>
+                </div>
+                <span class="cn-type">{labels[c.type] ?? c.type}</span>
+              </div>
+              <div class="cn-meta">
+                {status === 'ok' && <span class="cn-pill cn-pill-ok"><Icon name="ph:check-circle-fill" width="12" height="12" />{dt('Up to date')}</span>}
+                {status === 'waiting' && <span class="cn-pill cn-pill-wait"><Icon name="ph:hourglass-medium-fill" width="12" height="12" />{c.nextRenameAt ? <span data-countdown={c.nextRenameAt}>{dt('Waiting for Discord')}</span> : dt('Updating')}</span>}
+                {status === 'off' && <span class="cn-pill"><Icon name="ph:pause-fill" width="12" height="12" />{dt('Off')}</span>}
+                {status === 'problem' && <span class="cn-pill cn-pill-err"><Icon name="ph:warning-fill" width="12" height="12" />{problems[c.problem ?? ''] ?? dt('The last rename failed.')}</span>}
+                {c.currentName && status === 'waiting' && <span class="cn-now">{dt('Now: {a}', { a: c.currentName })}</span>}
+                {c.renamesLeft !== null && c.enabled && <span class="cn-budget" title={dt('Renames left in the current 10 minutes')}>{[0, 1].map((n) => <i class:list={{ used: n >= (c.renamesLeft ?? 2) }} />)}</span>}
+              </div>
+              <details class="cn-edit">
+                <summary class="btn btn-ghost btn-sm"><Icon name="ph:pencil-simple-bold" width="13" height="13" />{dt('Edit')}</summary>
+                <form method="POST" class="cn-form" data-counter-form>
+                  <input type="hidden" name="action" value="save" /><input type="hidden" name="channel_id" value={c.channelId} />
+                  <input type="hidden" name="category_changed" value="0" data-category-changed />
+                  <div class="cn-grid">
+                    <label class="cn-field"><span>{dt('Shows')}</span>
+                      <select name="type" data-type>{groups.map((g) => <optgroup label={g.label}>{g.types.map((type) => <option value={type} selected={type === c.type}>{labels[type]}</option>)}</optgroup>)}</select>
+                    </label>
+                    <label class="cn-field cn-span"><span>{dt('Name')}</span>
+                      <input type="text" name="template" value={c.template} maxlength="100" data-template data-default={defaults[c.type]} />
+                    </label>
+                    <div class="cn-chips cn-span" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
+                    <fieldset class="cn-field cn-seg"><legend>{dt('Number format')}</legend>
+                      {COUNTER_FORMATS.map((f) => <label><input type="radio" name="format" value={f} checked={c.format === f} /><span>{formatLabels[f]}</span></label>)}
+                    </fieldset>
+                    <label class="cn-field" data-when="role_members"><span>{dt('Role')}</span>
+                      <select name="role_id"><option value="">{dt('Pick a role')}</option>{roles.map((r) => <option value={r.id} selected={r.id === c.roleId}>{r.name}</option>)}</select>
+                    </label>
+                    <label class="cn-field" data-when="goal"><span>{dt('Goal (empty: the next round number)')}</span><input type="number" name="goal" min="1" value={c.goal ?? ''} placeholder="500" /></label>
+                    <label class="cn-field" data-when="clock date"><span>{dt('Time zone')}</span><input type="text" name="timezone" value={c.timezone ?? ''} placeholder="Europe/Madrid" list="cn-zones" /></label>
+                    <label class="cn-field"><span>{dt('Category')}</span>
+                      <select name="category_id" data-category><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id} selected={cat.id === c.parentId}>{cat.name}</option>)}</select>
+                    </label>
+                    <label class="cn-switch cn-span"><input type="checkbox" name="enabled" checked={c.enabled} /><span>{dt('Keep it updated')}</span></label>
+                  </div>
+                  <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(name, c.kind)}</b></div>
+                  <div class="cn-actions"><button class="btn btn-accent btn-sm" type="submit"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save counter')}</button></div>
+                </form>
+              </details>
+              <div class="cn-card-actions">
+                <form method="POST"><input type="hidden" name="action" value="refresh" /><input type="hidden" name="channel_id" value={c.channelId} /><button class="btn btn-ghost btn-sm" type="submit" data-no-dirty disabled={!c.exists}><Icon name="ph:arrows-clockwise-bold" width="13" height="13" />{dt('Refresh now')}</button></form>
+                <form method="POST" class="cn-delete"><input type="hidden" name="action" value="delete" /><input type="hidden" name="channel_id" value={c.channelId} />
+                  <label class="cn-check"><input type="checkbox" name="delete_channel" checked={c.exists} disabled={!c.exists} />{dt('Also delete the channel')}</label>
+                  <button class="cn-del" type="submit" data-no-dirty data-confirm={dt('Delete this counter?')}><Icon name="ph:trash-fill" width="13" height="13" />{dt('Delete')}</button>
+                </form>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    )}
+
+    <div class="cn-create" id="new">
+      <h2><Icon name="ph:plus-circle-fill" width="17" height="17" />{dt('New counter')}</h2>
+      {full && limits && <p class="cn-hint cn-limit">{limits.premium ? dt('This server has the most counters it can have ({a}).', { a: limits.max }) : dt('Free servers have {a} counters; Premium has {b}.', { a: limits.max, b: limits.premiumMax })}</p>}
+      <form method="POST" class="cn-form" data-counter-form data-create>
+        <input type="hidden" name="action" value="create" />
+        <div class="cn-types" role="radiogroup" aria-label={dt('Shows')}>
+          {groups.map((g) => (
+            <div class="cn-type-group"><span class="cn-type-label">{g.label}</span>
+              <div class="cn-type-row">{g.types.map((type) => (
+                <label class="cn-type-pick"><input type="radio" name="type" value={type} checked={type === 'members'} data-type /><span><b>{labels[type]}</b><em>{type === 'role_members' ? '' : type === 'clock' || type === 'date' ? timeValue(type, 'UTC', dashLang) : PRESENCE_TYPES.includes(type) && !presences ? '—' : typeof sample[type] === 'number' ? Number(sample[type]).toLocaleString(dashLang) : sample[type] ?? ''}</em></span></label>
+              ))}</div>
+            </div>
+          ))}
+        </div>
+        <div class="cn-grid">
+          <label class="cn-field cn-span"><span>{dt('Name')}</span><input type="text" name="template" value={defaults.members} maxlength="100" data-template data-default={defaults.members} /></label>
+          <div class="cn-chips cn-span" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
+          <fieldset class="cn-field cn-seg"><legend>{dt('Number format')}</legend>
+            {COUNTER_FORMATS.map((f) => <label><input type="radio" name="format" value={f} checked={f === 'grouped'} /><span>{formatLabels[f]}</span></label>)}
+          </fieldset>
+          <label class="cn-field" data-when="role_members"><span>{dt('Role')}</span><select name="role_id"><option value="">{dt('Pick a role')}</option>{roles.map((r) => <option value={r.id}>{r.name}</option>)}</select></label>
+          <label class="cn-field" data-when="goal"><span>{dt('Goal (empty: the next round number)')}</span><input type="number" name="goal" min="1" placeholder="500" /></label>
+          <label class="cn-field" data-when="clock date"><span>{dt('Time zone')}</span><input type="text" name="timezone" placeholder="Europe/Madrid" list="cn-zones" /></label>
+          <fieldset class="cn-field cn-seg cn-span"><legend>{dt('Channel')}</legend>
+            <label><input type="radio" name="use" value="new" checked data-use /><span>{dt('Make a new one')}</span></label>
+            <label><input type="radio" name="use" value="existing" data-use disabled={freeChannels.length === 0} /><span>{dt('Use one I have')}</span></label>
+          </fieldset>
+          <label class="cn-field" data-use-when="new"><span>{dt('Kind')}</span><select name="kind" data-kind>{Object.entries(kindLabels).map(([k, label]) => <option value={k}>{label}</option>)}</select></label>
+          <label class="cn-field" data-use-when="new"><span>{dt('Category')}</span><select name="category_id"><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id}>{cat.name}</option>)}</select></label>
+          <label class="cn-field cn-span" data-use-when="existing" hidden><span>{dt('Channel')}</span><select name="channel_id" data-existing>{freeChannels.map((ch) => <option value={ch.id} data-kind={ch.kind}>{ch.kind === 'voice' || ch.kind === 'stage' ? '🔊 ' : '# '}{ch.name}</option>)}</select></label>
+        </div>
+        <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(nameOf({ type: 'members', template: defaults.members, format: 'grouped', goal: null, timezone: null, roleId: null }), 'voice')}</b></div>
+        {!presences && values && <p class="cn-hint">{dt('The online counts need the Presence intent of Petto; until Discord sends presences they show 0.')}</p>}
+        <div class="cn-actions">
+          <button class="btn btn-accent btn-sm" type="submit" disabled={full || !values}><Icon name="ph:plus-bold" width="13" height="13" />{dt('Create counter')}</button>
+          <span class="cn-hint">{dt('Prefix: !counter create members, !counter setup, !counter list.')}</span>
+        </div>
+      </form>
+      <datalist id="cn-zones">{['UTC', 'Europe/London', 'Europe/Madrid', 'Europe/Lisbon', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'America/Mexico_City', 'America/Bogota', 'America/Lima', 'America/Argentina/Buenos_Aires', 'America/Santiago', 'America/Sao_Paulo', 'Asia/Tokyo', 'Asia/Kolkata', 'Australia/Sydney'].map((z) => <option value={z} />)}</datalist>
+    </div>
+  </div>
+</DashGuildLayout>
+
+<script>
+  import { renderCounterName, shownName, timeValue } from '../utils/counters';
+
+  // Every form of the page shows, under it, the name the channel will have, while the person types.
+  function initCounters() {
+    const root = document.querySelector<HTMLElement>('[data-counters]');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    const config = JSON.parse(root.dataset.config ?? '{}');
+    const valueOf = (type: string, roleId: string, zone: string) => {
+      if (type === 'clock' || type === 'date') return timeValue(type, zone || 'UTC', config.lang);
+      if (type === 'role_members') return roleId ? Number(config.roleCounts?.[roleId] ?? 0) : 0;
+      const v = config.values?.[type];
+      return typeof v === 'number' ? v : Number(v ?? 0) || 0;
+    };
+    root.querySelectorAll<HTMLFormElement>('[data-counter-form]').forEach((form) => {
+      const typeOf = () => (form.querySelector<HTMLInputElement>('[data-type]:checked') ?? form.querySelector<HTMLSelectElement>('select[data-type]'))?.value ?? 'members';
+      const template = form.querySelector<HTMLInputElement>('[data-template]');
+      const out = form.querySelector<HTMLElement>('[data-preview]');
+      const card = form.closest('[data-counter-card]');
+      const cardOut = card?.querySelector<HTMLElement>('[data-preview-out]');
+      const kindOf = () => {
+        if (form.querySelector<HTMLInputElement>('[data-use]:checked')?.value === 'existing') return form.querySelector<HTMLSelectElement>('[data-existing]')?.selectedOptions[0]?.dataset.kind ?? 'voice';
+        return form.querySelector<HTMLSelectElement>('[data-kind]')?.value ?? 'voice';
+      };
+      const update = () => {
+        const type = typeOf();
+        const data = new FormData(form);
+        form.querySelectorAll<HTMLElement>('[data-when]').forEach((el) => { el.hidden = !String(el.dataset.when).split(' ').includes(type); });
+        const use = String(data.get('use') ?? 'new');
+        form.querySelectorAll<HTMLElement>('[data-use-when]').forEach((el) => { el.hidden = el.dataset.useWhen !== use; });
+        const roleId = String(data.get('role_id') ?? '');
+        const zone = String(data.get('timezone') ?? '');
+        const name = renderCounterName({ type, template: template?.value ?? '', format: String(data.get('format') ?? 'plain'), goal: Number(data.get('goal')) || null, timezone: zone || null, role: config.roles?.[roleId] ?? '' }, valueOf(type, roleId, zone), config.lang);
+        const shown = shownName(name, card ? (card as HTMLElement).dataset.kind ?? 'voice' : kindOf());
+        if (out) out.textContent = shown;
+        if (out) { out.classList.remove('cn-pop'); void out.offsetWidth; out.classList.add('cn-pop'); }
+        if (cardOut && card?.querySelector('details[open]')) cardOut.textContent = shown;
+      };
+      form.addEventListener('input', update);
+      form.addEventListener('change', (event) => {
+        const target = event.target as HTMLElement;
+        if (target.matches('[data-type]') && template) {
+          // A name nobody wrote follows the type; one the person wrote is kept.
+          const next = config.defaults?.[typeOf()] ?? '{count}';
+          if (!template.value.trim() || template.value === template.dataset.default) template.value = next;
+          template.dataset.default = next;
+        }
+        if (target.matches('[data-category]')) { const flag = form.querySelector<HTMLInputElement>('[data-category-changed]'); if (flag) flag.value = '1'; }
+        update();
+      });
+      form.querySelectorAll<HTMLButtonElement>('[data-insert]').forEach((chip) => chip.addEventListener('click', () => {
+        if (!template) return;
+        const at = template.selectionStart ?? template.value.length;
+        template.value = `${template.value.slice(0, at)}${chip.dataset.insert}${template.value.slice(template.selectionEnd ?? at)}`.slice(0, 100);
+        template.focus();
+        template.dispatchEvent(new Event('input', { bubbles: true }));
+      }));
+      update();
+    });
+    // "Waiting for Discord" turns into how long is left.
+    const label = root.dataset.waiting ?? '{a}';
+    const tick = () => {
+      if (!document.body.contains(root)) return;
+      root.querySelectorAll<HTMLElement>('[data-countdown]').forEach((el) => {
+        const left = Math.max(0, Math.round((Number(el.dataset.countdown) - Date.now()) / 1000));
+        el.textContent = label.replace('{a}', left >= 60 ? `${Math.floor(left / 60)}m ${String(left % 60).padStart(2, '0')}s` : `${left}s`);
+      });
+      setTimeout(tick, 1000);
+    };
+    tick();
+  }
+  try { initCounters(); } catch (error) { console.error(error); }
+  if (!(window as any).__cnWatch) {
+    (window as any).__cnWatch = true;
+    new MutationObserver(() => { if (document.querySelector('[data-counters]:not([data-bound])')) { try { initCounters(); } catch (error) { console.error(error); } } }).observe(document.body, { childList: true, subtree: true });
+  }
+</script>
+
+<style>
+  .cn { max-width: 1040px; }
+  .cn-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 15.5px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .cn-sub { font-size: 14px; color: var(--text-muted); margin: 0; max-width: 72ch; line-height: 1.55; }
+  .cn-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid color-mix(in srgb, var(--green) 55%, transparent); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; animation: cn-rise .35s cubic-bezier(.2, .8, .2, 1) both; }
+  .cn-flash-err { color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border-color: color-mix(in srgb, var(--red, #f87171) 50%, transparent); }
+  .cn-flash-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 10%, transparent); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
+  .cn-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .cn-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; min-width: 0; }
+  .cn-stat b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .cn-stat small { font-size: 13px; color: var(--text-dim); font-weight: 500; }
+  .cn-stat span { font-size: 12px; color: var(--text-dim); }
+  .cn-empty { display: grid; grid-template-columns: minmax(0, 300px) 1fr; gap: 22px; align-items: center; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; margin-bottom: 18px; }
+  .cn-empty p { font-size: 13.5px; color: var(--text-muted); margin: 0 0 14px; line-height: 1.55; }
+  .cn-empty-art { border-radius: 12px; background: var(--bg-soft, var(--card-hover)); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .cn-fake { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; padding: 4px 6px; }
+  .cn-fake-ch { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13.5px; color: var(--text-muted); border-radius: 6px; padding: 6px 8px 6px 14px; animation: cn-rise .45s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i) * 90ms + 120ms); }
+  .cn-fake-ch:hover { background: var(--card-hover); color: var(--text); }
+  .cn-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .cn-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease; animation: cn-rise .4s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i) * 45ms); }
+  .cn-card:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 6px 22px -14px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .cn-card:has(details[open]) { grid-column: 1 / -1; }
+  .cn-problem { border-color: color-mix(in srgb, var(--red, #f87171) 45%, var(--border)); }
+  .cn-off { opacity: .78; }
+  .cn-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+  .cn-channel { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-radius: 9px; background: var(--bg-soft, var(--card-hover)); color: var(--text-muted); flex: 1; }
+  .cn-name { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .cn-type { font-size: 11.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+  .cn-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+  .cn-pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; background: var(--card-hover); color: var(--text-muted); }
+  .cn-pill-ok { color: var(--green); background: var(--green-soft); }
+  .cn-pill-wait { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
+  .cn-pill-err { color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); }
+  .cn-now { color: var(--text-dim); overflow-wrap: anywhere; }
+  .cn-budget { display: inline-flex; gap: 3px; margin-left: auto; }
+  .cn-budget i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .cn-budget i.used { background: var(--border); }
+  .cn-edit > summary { list-style: none; width: max-content; }
+  .cn-edit > summary::-webkit-details-marker { display: none; }
+  .cn-edit[open] > summary { margin-bottom: 10px; }
+  .cn-edit[open] .cn-form { animation: cn-rise .3s cubic-bezier(.2, .8, .2, 1) both; }
+  .cn-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 10px; }
+  .cn-delete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cn-del { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; background: transparent; color: var(--red, #f87171); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 8px; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .1s ease; }
+  .cn-del:hover { background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border-color: color-mix(in srgb, var(--red, #f87171) 35%, transparent); }
+  .cn-del:active { transform: scale(.97); }
+  .cn-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); }
+  .cn-form { display: flex; flex-direction: column; gap: 14px; }
+  .cn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .cn-span { grid-column: 1 / -1; }
+  .cn-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; }
+  .cn-field > span, .cn-field legend { font-size: 12.5px; font-weight: 600; color: var(--text-muted); padding: 0; margin-bottom: 6px; }
+  .cn-field > span { margin-bottom: 0; }
+  .cn-field input[type=text], .cn-field input[type=number], .cn-field select { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 14px; min-width: 0; width: 100%; transition: border-color .15s ease, box-shadow .15s ease; }
+  .cn-field input:focus-visible, .cn-field select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  [hidden] { display: none !important; }
+  .cn-seg { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .cn-seg legend { width: 100%; }
+  .cn-seg label { position: relative; }
+  .cn-seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .cn-seg label span { display: inline-block; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 13px; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; font-variant-numeric: tabular-nums; }
+  .cn-seg input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .cn-seg input:focus-visible + span { box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cn-seg input:disabled + span { opacity: .5; cursor: not-allowed; }
+  .cn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+  .cn-chip { font-family: var(--mono); font-size: 11.5px; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); border-radius: 7px; padding: 3px 8px; cursor: pointer; transition: border-color .15s ease, color .15s ease, transform .1s ease; }
+  .cn-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .cn-chip:active { transform: scale(.96); }
+  .cn-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; }
+  .cn-preview { display: flex; align-items: center; gap: 10px; border-radius: 10px; padding: 10px 12px; background: var(--bg-soft, var(--card-hover)); border: 1px solid var(--border); min-width: 0; }
+  .cn-preview span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); flex: none; }
+  .cn-preview b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cn-pop { animation: cn-pop .25s ease; }
+  .cn-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .cn-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
+  .cn-limit { margin-bottom: 10px; color: var(--yellow); }
+  .cn-create { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px; }
+  .cn-types { display: flex; flex-direction: column; gap: 12px; }
+  .cn-type-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 6px; }
+  .cn-type-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .cn-type-pick { position: relative; }
+  .cn-type-pick input { position: absolute; opacity: 0; pointer-events: none; }
+  .cn-type-pick span { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; cursor: pointer; height: 100%; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+  .cn-type-pick span:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); transform: translateY(-1px); }
+  .cn-type-pick b { font-size: 13px; font-weight: 600; }
+  .cn-type-pick em { font-style: normal; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; min-height: 1em; }
+  .cn-type-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
+  .cn-type-pick input:checked + span b { color: var(--accent); }
+  .cn-type-pick input:focus-visible + span { box-shadow: 0 0 0 3px var(--accent-soft); }
+  @keyframes cn-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes cn-pop { 0% { transform: scale(.985); opacity: .6; } 100% { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .cn *, .cn *::before { animation: none !important; transition: none !important; } }
+  @media (max-width: 760px) {
+    .cn-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cn-list, .cn-grid { grid-template-columns: 1fr; }
+    .cn-empty { grid-template-columns: 1fr; }
+    .cn-type-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cn-create { padding: 14px; }
+  }
+</style>

@@ -1,0 +1,127 @@
+---
+export const prerender = false;
+import DashCounters from '../../../../components/DashCounters.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { callPettoCounters } from '../../../../utils/pettoBotApi';
+import { COUNTER_FORMATS, COUNTER_TYPES, validTimeZone } from '../../../../utils/counters';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
+const snowflake = (value: FormDataEntryValue | null) => (SNOWFLAKE.test(String(value ?? '')) ? String(value) : null);
+
+let message: { kind: 'ok' | 'err'; text: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  await ensureGuildRow(apiUrl, apiHeaders, id);
+  const botFailed = () => dt('Petto did not answer. Try again in a moment.');
+  const goalOf = (value: FormDataEntryValue | null) => { const n = Math.trunc(Number(String(value ?? '').replace(/[.,\s]/g, ''))); return Number.isFinite(n) && n > 0 ? Math.min(2_000_000_000, n) : null; };
+
+  if (action === 'create') {
+    const type = String(form.get('type') ?? '');
+    const zone = text(form.get('timezone'), 64);
+    if (!(COUNTER_TYPES as readonly string[]).includes(type)) message = { kind: 'err', text: dt('Pick what the counter shows.') };
+    else if (type === 'role_members' && !snowflake(form.get('role_id'))) message = { kind: 'err', text: dt('Pick the role to count.') };
+    else if (zone && !validTimeZone(zone)) message = { kind: 'err', text: dt('That time zone is not known. Use a name like Europe/Madrid.') };
+    else {
+      const result = await callPettoCounters(Astro, id, session.userId, 'create', {
+        type, template: text(form.get('template'), 100), format: String(form.get('format') ?? 'plain'), kind: String(form.get('kind') ?? 'voice'),
+        category_id: snowflake(form.get('category_id')), channel_id: form.get('use') === 'existing' ? snowflake(form.get('channel_id')) : null,
+        role_id: snowflake(form.get('role_id')), goal: goalOf(form.get('goal')), timezone: zone || null,
+      }, dashLang);
+      message = result.ok ? { kind: 'ok', text: result.message || dt('Counter created.') } : { kind: 'err', text: result.message || botFailed() };
+    }
+  } else if (action === 'setup') {
+    const result = await callPettoCounters(Astro, id, session.userId, 'setup', {}, dashLang);
+    message = result.ok ? { kind: 'ok', text: result.message || dt('Server stats are ready.') } : { kind: 'err', text: result.message || botFailed() };
+  } else if (action === 'refresh') {
+    const result = await callPettoCounters(Astro, id, session.userId, 'refresh', { channel_id: snowflake(form.get('channel_id')) }, dashLang);
+    message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed() };
+  } else if (action === 'delete') {
+    const channelId = snowflake(form.get('channel_id'));
+    const result = channelId ? await callPettoCounters(Astro, id, session.userId, 'delete', { channel_id: channelId, delete_channel: form.get('delete_channel') === 'on' }, dashLang) : { ok: false, message: '' };
+    if (!result.ok && channelId && !result.message) {
+      // The bot is away: the counter is still stopped, the channel stays.
+      const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: apiHeaders });
+      message = res.ok ? { kind: 'ok', text: dt('Counter stopped. The channel was kept.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
+    } else message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed() };
+  } else if (action === 'save') {
+    const channelId = snowflake(form.get('channel_id'));
+    const type = String(form.get('type') ?? '');
+    const zone = text(form.get('timezone'), 64);
+    const format = String(form.get('format') ?? 'plain');
+    const parentId = snowflake(form.get('category_id'));
+    if (!channelId || !(COUNTER_TYPES as readonly string[]).includes(type)) message = { kind: 'err', text: dt('Pick what the counter shows.') };
+    else if (type === 'role_members' && !snowflake(form.get('role_id'))) message = { kind: 'err', text: dt('Pick the role to count.') };
+    else if (zone && !validTimeZone(zone)) message = { kind: 'err', text: dt('That time zone is not known. Use a name like Europe/Madrid.') };
+    else {
+      const enabled = form.get('enabled') === 'on';
+      const patch: Record<string, unknown> = {
+        counter_option: type, name_template: text(form.get('template'), 100) || '{count}',
+        number_format: (COUNTER_FORMATS as readonly string[]).includes(format) ? format : 'plain',
+        target_id: type === 'role_members' ? snowflake(form.get('role_id')) : null, goal: goalOf(form.get('goal')), timezone: zone || null,
+        parent_id: parentId, enabled, ...(enabled ? { problem: null, problem_at: null } : {}),
+      };
+      const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+      if (res.ok && form.get('category_changed') === '1') {
+        await fetch(`https://discord.com/api/v10/channels/${channelId}`, { method: 'PATCH', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_id: parentId }) }).catch(() => null);
+      }
+      if (res.ok) await callPettoCounters(Astro, id, session.userId, 'refresh', { channel_id: channelId }, dashLang);
+      message = res.ok ? { kind: 'ok', text: dt('Counter saved. Its name changes as soon as Discord allows.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
+    }
+  }
+}
+
+const [guildInfo, rowsRes, channelsRes, rolesRes, preview] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders }).catch(() => null),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
+  callPettoCounters(Astro, id, session.userId, 'preview', {}, dashLang),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const allChannels: any[] = channelsRes?.ok ? await channelsRes.json() : [];
+const channelName = new Map(allChannels.map((c: any) => [String(c.id), String(c.name)]));
+const kindOf: Record<number, string> = { 0: 'text', 2: 'voice', 4: 'category', 5: 'announce', 13: 'stage' };
+const categories = allChannels.filter((c: any) => c.type === 4).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+const rawRows: any[] = rowsRes?.ok ? await rowsRes.json() : [];
+const counterChannels = new Set(rawRows.map((r) => String(r.channel_id)));
+const freeChannels = allChannels.filter((c: any) => kindOf[c.type] && c.type !== 4 && !counterChannels.has(String(c.id))).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: String(c.id), name: String(c.name), kind: kindOf[c.type] }));
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: String(r.id), name: String(r.name), color: Number(r.color) || 0 }));
+const live = preview.ok ? preview.data : null;
+const liveByChannel = new Map<string, any>((live?.counters ?? []).map((c: any) => [String(c.channel_id), c]));
+const counters = rawRows.map((r) => {
+  const state = liveByChannel.get(String(r.channel_id));
+  return {
+    id: Number(r.id), channelId: String(r.channel_id), type: String(r.counter_option), kind: String(r.channel_type ?? 'voice'),
+    template: String(r.name_template ?? ''), format: String(r.number_format ?? 'plain'), goal: r.goal == null ? null : Number(r.goal), timezone: r.timezone ?? null,
+    roleId: r.target_id ?? null, prefix: String(r.prefix ?? ''), suffix: String(r.suffix ?? ''), parentId: r.parent_id ?? null, enabled: r.enabled !== false,
+    problem: r.problem ?? null, currentName: state?.current_name ?? channelName.get(String(r.channel_id)) ?? null, exists: state ? Boolean(state.exists) : channelName.has(String(r.channel_id)),
+    nextRenameAt: state?.next_rename_at ?? null, renamesLeft: state?.renames_left ?? null,
+  };
+});
+const limits = live?.limits ?? null;
+---
+<DashCounters user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  counters={counters} categories={categories} roles={roles} freeChannels={freeChannels}
+  values={live?.values ?? null} roleCounts={live?.roles ?? {}} presences={Boolean(live?.presences)} limits={limits}
+  approxMembers={Number((guildInfo as any).approximate_member_count ?? 0)} message={message} />

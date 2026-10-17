@@ -1,65 +1,90 @@
 ---
 import DashGuildLayout from './DashGuildLayout.astro';
 import { Icon } from 'astro-icon/components';
-import PermissionGraphApp from '../react/permissions/PermissionGraphApp';
-
+import PermissionsApp from '../react/permissions/PermissionsApp';
+import SkeletonBlocks from './SkeletonBlocks.astro';
+import { PERMISSION_NAMES, type AccessCommand } from '../utils/commandAccess';
 import { getDashLang, makeT } from '../i18n/dash';
+
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const dth = makeT(dashLang, true);
 interface Member { subjectType: 'user' | 'role'; subjectId: string; }
 interface Group { id: number; name: string; level: number; isBase: boolean; members: Member[]; }
-interface CommandInfo { name: string; category: string; categoryTitle: string; desc: string; }
-
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string;
   guildName: string;
   guildIcon: string;
-  roles: { id: string; name: string; isAdmin: boolean; isManageGuild: boolean }[];
+  roles: { id: string; name: string; isAdmin: boolean; isManageGuild: boolean; color: number; permissions: string }[];
+  everyonePermissions: string;
   groups: Group[];
-  commandLevels: Record<string, number>;
-  commands: CommandInfo[];
-  currentUser: { id: string; name: string; avatarUrl: string };
+  commands: AccessCommand[];
 }
-const { user, guildId, guildName, guildIcon, roles, groups, commandLevels, commands, currentUser } = Astro.props;
-import SkeletonBlocks from './SkeletonBlocks.astro';
+const { user, guildId, guildName, guildIcon, roles, everyonePermissions, groups, commands } = Astro.props;
+
+// Every text of the island, translated here (the island itself has no catalog).
+const keys = [
+  'How Petto decides', 'Not disabled', '!disablecommand turns a command off in the server or in some channels. Nobody skips it.',
+  'Discord permission', 'Commands that change the server ask for the Discord permission of the action, like Ban Members.',
+  'Petto level', 'A command can need a level from 0 to 100. Members get the level of their groups; everyone has the @everyone level.',
+  'Role restriction', '!restrictcommand lets only some roles use a command.', 'The owner and Administrators skip steps 2 to 4.',
+  'Level groups', 'Each group gives its level to its roles and members. The highest one counts.', 'Level', 'Delete group', 'Delete this group?', 'Group deleted.',
+  'Everybody in the server has this level.', 'No roles or members yet.', 'Member', 'Remove', 'Add a role', '+ Add a role', 'A member by ID…', 'The ID of the member',
+  'New group, like Moderators', 'Create group', 'Group created.', 'Saved.', 'It could not be saved, try again.',
+  'Who can use what', 'Pick a role to see, command by command, whether its members can use it and why.', 'Preview a role', 'No preview', 'commands', 'Administrator', 'Level {a}',
+  'Commands', '{a} shown', 'Search a command or alias', 'Filter', 'All commands', 'With a level', 'Restricted to roles', 'Disabled', 'Open to everyone',
+  'The role can use', 'The role cannot use', 'All', 'No command matches.', 'Off in {a} channels', '0 · anyone',
+  'Disabled in the server', 'Yes, except in {a} channels', 'Administrator: always', 'Needs {a} in Discord', 'Needs level {a} (has {b})', 'Only for {a}', 'Can use it',
+];
+const text = Object.fromEntries(keys.map((k) => [k, dt(k)]));
+// The literal list keeps the keys visible to the translation check.
+void [dt('How Petto decides'), dt('Not disabled'), dt('!disablecommand turns a command off in the server or in some channels. Nobody skips it.'), dt('Discord permission'), dt('Commands that change the server ask for the Discord permission of the action, like Ban Members.'), dt('Petto level'), dt('A command can need a level from 0 to 100. Members get the level of their groups; everyone has the @everyone level.'), dt('Role restriction'), dt('!restrictcommand lets only some roles use a command.'), dt('The owner and Administrators skip steps 2 to 4.'), dt('Level groups'), dt('Each group gives its level to its roles and members. The highest one counts.'), dt('Level'), dt('Delete group'), dt('Delete this group?'), dt('Group deleted.'), dt('Everybody in the server has this level.'), dt('No roles or members yet.'), dt('Member'), dt('Remove'), dt('Add a role'), dt('+ Add a role'), dt('A member by ID…'), dt('The ID of the member'), dt('New group, like Moderators'), dt('Create group'), dt('Group created.'), dt('Saved.'), dt('It could not be saved, try again.'), dt('Who can use what'), dt('Pick a role to see, command by command, whether its members can use it and why.'), dt('Preview a role'), dt('No preview'), dt('commands'), dt('Administrator'), dt('Level {a}'), dt('Commands'), dt('{a} shown'), dt('Search a command or alias'), dt('Filter'), dt('All commands'), dt('With a level'), dt('Restricted to roles'), dt('Disabled'), dt('Open to everyone'), dt('The role can use'), dt('The role cannot use'), dt('All'), dt('No command matches.'), dt('Off in {a} channels'), dt('0 · anyone'), dt('Disabled in the server'), dt('Yes, except in {a} channels'), dt('Administrator: always'), dt('Needs {a} in Discord'), dt('Needs level {a} (has {b})'), dt('Only for {a}'), dt('Can use it')];
+const permissionText = Object.fromEntries(PERMISSION_NAMES.map(([, name]) => [name, dt(name)]));
+void [dt('Administrator'), dt('Manage Server'), dt('Manage Roles'), dt('Manage Channels'), dt('Ban Members'), dt('Kick Members'), dt('Timeout Members'), dt('Manage Messages'), dt('Manage Nicknames'), dt('Manage Webhooks'), dt('Manage Expressions'), dt('Manage Events'), dt('Manage Threads'), dt('View Audit Log'), dt('Mute Members'), dt('Move Members'), dt('Deafen Members'), dt('Mention Everyone'), dt('Create Invite')];
+const restricted = commands.filter((c) => c.restrictRoles.length).length;
+const disabled = commands.filter((c) => c.disabledServer || c.disabledChannels.length).length;
+const leveled = commands.filter((c) => c.level > 0).length;
 ---
-<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="permissions" pageTitle="Permissions">
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="permissions" pageTitle={dt('Permissions')}>
   <h1>{dt('Permissions')}</h1>
-  <p class="pg-sub"><Fragment set:html={dth('A custom 0-100 authorization level, layered on top of Discord\'s own permissions, for every command in <b>{a}</b>. Click any ring segment to edit it, bars reach further out the higher the required level. The server owner and anyone with Administrator always bypass this.', { a: (guildName) })} /></p>
+  <p class="pg-sub"><Fragment set:html={dth('Who can use each command in <b>{a}</b>, exactly as Petto checks it: disabled commands, the Discord permission of the command, Petto levels and role restrictions.', { a: guildName })} /></p>
+
+  <div class="pg-stats">
+    <div><b>{groups.length}</b><span>{dt('Level groups')}</span></div>
+    <div><b>{leveled}</b><span>{dt('Commands with a level')}</span></div>
+    <div><b>{restricted}</b><span>{dt('Restricted to roles')}</span></div>
+    <div><b>{disabled}</b><span>{dt('Disabled commands')}</span></div>
+  </div>
 
   <div class="pg-prefix-card">
     <div class="pg-prefix-copy">
       <span class="pg-prefix-icon"><Icon name="ph:terminal-window-fill" width="15" height="15" /></span>
-      <div><strong>{dt('Prefix-only access')}</strong><span>{dt('These same groups and command levels also work from Discord. The server prefix is configurable;')} <code>!</code> {dt('is only the default.')}</span></div>
+      <div><strong>{dt('Also from Discord')}</strong><span>{dt('Levels with !permission, role restrictions with !restrictcommand and disabled commands with !disablecommand (or Disabled Commands in Automation).')}</span></div>
     </div>
-    <div class="pg-prefix-examples"><code>{dt('!permission group list')}</code><code>{dt('!permission command list')}</code><code>{dt('!permission mylevel')}</code></div>
+    <div class="pg-prefix-examples"><code>!permission mylevel</code><code>!rc list</code><code>!disablecommand list</code></div>
   </div>
 
-  <PermissionGraphApp
-    client:only="react"
-    guildId={guildId}
-    roles={roles}
-    initialGroups={groups}
-    initialCommandLevels={commandLevels}
-    commands={commands}
-    currentUser={currentUser}
-  ><SkeletonBlocks slot="fallback" variant="page" /></PermissionGraphApp>
+  <PermissionsApp client:only="react" guildId={guildId} roles={roles} everyonePermissions={everyonePermissions} initialGroups={groups} commands={commands} text={text} permissionText={permissionText} canEdit={true}>
+    <SkeletonBlocks slot="fallback" variant="page" />
+  </PermissionsApp>
 </DashGuildLayout>
 
 <style>
   h1 { font-size: 24px; margin: 0 0 6px; }
-  .pg-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 20px; max-width: 74ch; }
-  .pg-sub :global(b){ color: var(--text); }
-  .pg-prefix-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 15px; margin: 0 0 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise); }
+  .pg-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 16px; max-width: 74ch; line-height: 1.55; }
+  .pg-sub :global(b) { color: var(--text); }
+  .pg-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 14px; max-width: 1040px; }
+  .pg-stats div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 11px 14px; min-width: 0; }
+  .pg-stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .pg-stats span { font-size: 12px; color: var(--text-dim); }
+  .pg-prefix-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 15px; margin: 0 0 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise); max-width: 1040px; box-sizing: border-box; }
   .pg-prefix-copy { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
   .pg-prefix-icon { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 8px; }
   .pg-prefix-copy div { display: grid; gap: 3px; }
   .pg-prefix-copy strong { color: var(--text); font-size: 13px; }
   .pg-prefix-copy span { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
-  .pg-prefix-copy code, .pg-prefix-examples code { font-family: var(--mono); color: var(--accent); }
   .pg-prefix-examples { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-  .pg-prefix-examples code { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); font-size: 11px; white-space: nowrap; }
-  @media (max-width: 780px) { .pg-prefix-card { align-items: flex-start; flex-direction: column; } .pg-prefix-examples { justify-content: flex-start; } }
+  .pg-prefix-examples code { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); font-size: 11px; white-space: nowrap; font-family: var(--mono); color: var(--accent); }
+  @media (max-width: 780px) { .pg-prefix-card { align-items: flex-start; flex-direction: column; } .pg-prefix-examples { justify-content: flex-start; } .pg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

@@ -73,3 +73,14 @@ export function catalogProblems(): string[] {
   for (const name of listed) if (!byName.has(name)) problems.push(`"${name}" is listed but no longer exists in the bot`);
   return problems;
 }
+
+export interface CatalogCommand { name: string; category: string; desc: string; aliases: string[]; slash: boolean; permissions: string | null }
+
+/** Every public command with its category, its description in `lang`, its aliases and the Discord permission it asks for. */
+export function catalogCommands(lang: CatalogLocale): CatalogCommand[] {
+  return Object.entries(categoryOf).flatMap(([category, names]) => names.flatMap((name) => {
+    const cmd = byName.get(name) as (GeneratedCommand & { permissions?: string | null }) | undefined;
+    if (!cmd) return [];
+    return [{ name, category, desc: commandText[name]?.[localeIndex[lang]] ?? cmd.description, aliases: cmd.aliases ?? [], slash: Boolean(cmd.slash), permissions: cmd.permissions ?? null }];
+  }));
+}

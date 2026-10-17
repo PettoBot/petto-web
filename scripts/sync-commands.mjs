@@ -45,6 +45,8 @@ for (const cmd of client.commands.values()) {
     description: json.description ?? '',
     subcommands: (json.options ?? []).filter((o) => optionTypes[o.type]).map((o) => o.name),
     args: (json.options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) })),
+    // The Discord permission the bot asks for before the command runs (its default_member_permissions), for the Permissions page.
+    permissions: json.default_member_permissions ?? null,
   });
 }
 commands.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));

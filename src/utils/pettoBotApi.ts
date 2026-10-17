@@ -453,3 +453,39 @@ export async function callPettoForms(context: AstroContext, guildId: string, use
     return { ok: false, message: '' };
   }
 }
+
+// Live counters from the dashboard: the values for the previews, create, quick setup, refresh now and delete. The saved settings
+// of a counter are changed by the dashboard straight in the database; these need the bot (Discord channels and the rename budget).
+export async function callPettoCounters(context: AstroContext, guildId: string, userId: string, route: 'preview' | 'create' | 'setup' | 'refresh' | 'delete', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; data?: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/counters/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(route === 'preview' ? 6_000 : 25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', data: payload };
+  } catch {
+    return { ok: false, message: '' };
+  }
+}
+
+// A form filled on the website (petto.sbs/f/<id>): the bot says whether the signed-in member may send it, and takes the answers through
+// the same pipeline as a Discord submission.
+export async function callPettoWebForm(context: AstroContext, formId: string, userId: string, route: 'public' | 'submit', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; data: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, status: 503, data: null };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/form/${encodeURIComponent(formId)}/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(route === 'submit' ? 25_000 : 8_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const data: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && data?.ok), status: response.status, data };
+  } catch {
+    return { ok: false, status: 502, data: null };
+  }
+}
