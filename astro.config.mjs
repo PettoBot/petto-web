@@ -69,7 +69,7 @@ export default defineConfig({
     react(),
     // /dash/** is the authenticated dashboard, private and per-user, it has no business in a
     // public sitemap or search results.
-    sitemap({ filter: (page) => !page.includes('/dash') }),
+    sitemap({ filter: (page) => !page.includes('/dash') && !/\/form\/?$/.test(page) }),
   ],
   i18n: {
     locales: ['en', 'es', 'pt-BR'],

@@ -17,7 +17,7 @@ export const FORM_PLAN = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX: Record<string, number> = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 export const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-// The id in the web address of a form (petto.sbs/f/<public id>): 12 random letters and digits, the same as the bot's
+// The id in the web address of a form (petto.sbs/form#<public id>): 12 random letters and digits, the same as the bot's
 // (petto-bot src/utils/forms.js). Numbers never open a form on the web, so the forms cannot be walked through one by one.
 export const PUBLIC_ID = /^[0-9A-Za-z]{12}$/;
 const PUBLIC_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -33,8 +33,13 @@ export function newPublicId(): string {
   return id;
 }
 
-/** The path of a form on the website, or null when it has no public id yet. */
-export const formWebPath = (form: { public_id?: string | null }) => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `/f/${form.public_id}` : null);
+// The language is in the path and the id in the hash (petto.sbs/es/form#x7Kp9QzA2mVt), the same as the bot's webUrl: the page is the
+// same static page for every form, and it loads the form itself, so the id never reaches a server log.
+const FORM_LANG_PATH: Record<string, string> = { es: '/es', 'pt-BR': '/pt-br', pt: '/pt-br' };
+export const formPagePath = (lang = 'en') => `${FORM_LANG_PATH[lang] ?? ''}/form`;
+
+/** The path of a form on the website in a language (/form#<id>, /es/form#<id>, /pt-br/form#<id>), or null when it has no public id yet. */
+export const formWebPath = (form: { public_id?: string | null }, lang = 'en') => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `${formPagePath(lang)}#${form.public_id}` : null);
 
 export interface Question {
   id: string; type: QuestionType; label: string; help: string | null; description: string | null; image: string | null; placeholder: string | null; required: boolean;

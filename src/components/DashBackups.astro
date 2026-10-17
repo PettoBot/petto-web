@@ -39,6 +39,10 @@ const restoreText = {
   mergeTitle: dt('Merge (safe)'), mergeBody: dt('Creates what is missing and updates what exists. Deletes nothing.'),
   replaceTitle: dt('Replace'), replaceBody: dt('Makes the server match the backup: it also deletes the channels and roles that are not in it.'),
   review: dt('Review what will change'), continue: dt('Continue'),
+  partsTitle: dt('What to bring back'), partsHint: dt('Untick what should stay as it is now. Replace only deletes in the parts you bring back.'), partsNone: dt('Pick at least one part.'),
+  parts: { roles: dt('Roles'), channels: dt('Channels, categories and permissions'), settings: dt('Server settings'), emojis: dt('Emojis'), stickers: dt('Stickers'), automod: dt('AutoMod rules') },
+  contents: dt('This backup holds {a} roles, {b} categories, {c} channels with {d} permission overwrites, {e} emojis, {f} stickers and {g} AutoMod rules.'),
+  partsOnly: dt('Only: {a}'),
   roles: dt('Roles'), channels: dt('Channels'), emojis: dt('Emojis'), plan: dt('{a} to create · {b} to update'),
   deleting: dt('It will delete {a} channels and {b} roles that are not in this backup:'), deletingNothing: dt('Nothing will be deleted.'),
   safety: dt('A safety backup of the server as it is now is saved first, so you can go back.'),
@@ -139,7 +143,8 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
           if (!dlg) return;
           var T = JSON.parse(dlg.dataset.text);
           var base = '/dash/guild/' + dlg.dataset.guild + '/backups-restore';
-          var S = { number: 0, label: '', mode: 'merge', challenge: null, timer: 0, view: '', refs: null };
+          var ALL_PARTS = ['roles', 'channels', 'settings', 'emojis', 'stickers', 'automod'];
+          var S = { number: 0, label: '', mode: 'merge', parts: ALL_PARTS.slice(), challenge: null, timer: 0, view: '', refs: null };
           var body = dlg.querySelector('[data-r=body]'), foot = dlg.querySelector('[data-r=foot]');
           dlg.querySelector('[data-r=title]').textContent = T.title;
           function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
@@ -172,16 +177,38 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
               var text = el('span'); text.append(el('strong', null, m[1]), el('small', null, m[2]));
               label.append(input, text); wrap.append(label);
             });
-            body.replaceChildren(el('p', 'vb-dlg-sub', '#' + S.number + ' · ' + S.label), wrap);
-            setFoot(button(T.cancel, 'btn-ghost', close), button(T.review, 'btn-accent', showPreview));
+            // Selective restore: only some parts of the backup (the bot leaves the rest, and Replace only deletes in the parts chosen).
+            var parts = el('fieldset', 'vb-parts');
+            parts.append(el('legend', null, T.partsTitle));
+            var review = button(T.review, 'btn-accent', showPreview, !S.parts.length);
+            ALL_PARTS.forEach(function (part) {
+              var label = el('label', 'vb-part');
+              var box = el('input'); box.type = 'checkbox'; box.value = part; box.checked = S.parts.indexOf(part) !== -1;
+              box.addEventListener('change', function () {
+                S.parts = ALL_PARTS.filter(function (p) { var b = parts.querySelector('input[value="' + p + '"]'); return b && b.checked; });
+                review.disabled = !S.parts.length; hint.textContent = S.parts.length ? T.partsHint : T.partsNone;
+              });
+              label.append(box, el('span', null, T.parts[part]));
+              parts.append(label);
+            });
+            var hint = el('small', 'vb-parts-hint', S.parts.length ? T.partsHint : T.partsNone);
+            parts.append(hint);
+            body.replaceChildren(el('p', 'vb-dlg-sub', '#' + S.number + ' · ' + S.label), wrap, parts);
+            setFoot(button(T.cancel, 'btn-ghost', close), review);
           }
           function row(name, plan) { var r = el('div', 'vb-plan-row'); r.append(el('strong', null, name), el('span', null, fill(T.plan, { a: plan[0], b: plan[1] }))); return r; }
           function showPreview() {
             S.view = 'preview';
             body.replaceChildren(note(T.loading)); setFoot(button(T.back, 'btn-ghost', showMode));
-            api('preview', { query: 'backup_id=' + S.number + '&mode=' + S.mode }).then(function (r) {
+            api('preview', { query: 'backup_id=' + S.number + '&mode=' + S.mode + '&parts=' + encodeURIComponent(S.parts.join(',')) }).then(function (r) {
               if (!r.ok) { body.replaceChildren(note(say(r.error), 'bad')); return; }
-              var p = r.plan, nodes = [row(T.roles, [p.roles.create, p.roles.update]), row(T.channels, [p.channels.create, p.channels.update]), row(T.emojis, [p.emojis.create, p.emojis.update])];
+              var p = r.plan, nodes = [];
+              var c = r.contents;
+              if (c) nodes.push(el('p', 'vb-contents', fill(T.contents, { a: c.roles, b: c.categories, c: c.channels, d: c.overwrites, e: c.emojis, f: c.stickers, g: c.automod })));
+              if (S.parts.length < ALL_PARTS.length) nodes.push(note(fill(T.partsOnly, { a: S.parts.map(function (part) { return T.parts[part]; }).join(', ') })));
+              if (S.parts.indexOf('roles') !== -1) nodes.push(row(T.roles, [p.roles.create, p.roles.update]));
+              if (S.parts.indexOf('channels') !== -1) nodes.push(row(T.channels, [p.channels.create, p.channels.update]));
+              if (S.parts.indexOf('emojis') !== -1) nodes.push(row(T.emojis, [p.emojis.create, p.emojis.update]));
               if (S.mode === 'replace') {
                 if (p.deleteChannelCount || p.deleteRoleCount) {
                   var box = note(fill(T.deleting, { a: p.deleteChannelCount, b: p.deleteRoleCount }), 'bad');
@@ -210,7 +237,7 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
               body.replaceChildren.apply(body, nodes);
               var go = button(T.start, S.mode === 'replace' ? 'btn-danger' : 'btn-accent', function () {
                 go.disabled = true;
-                api('start', { post: true, body: { backup_id: S.number, mode: S.mode, challenge_id: S.challenge.id, answer: input.value } }).then(function (res) {
+                api('start', { post: true, body: { backup_id: S.number, mode: S.mode, parts: S.parts.join(','), challenge_id: S.challenge.id, answer: input.value } }).then(function (res) {
                   if (res.ok && res.job) { showProgress(res.job); poll(); return; }
                   message.textContent = say(res.error); message.className = 'vb-msg bad'; go.disabled = res.error === 'captcha_locked';
                   if (['captcha_wrong', 'captcha_expired'].indexOf(res.error) >= 0) go.disabled = true;
@@ -265,7 +292,7 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
             }, 2000);
           }
           function open(number, label) {
-            S.number = number; S.label = label; S.mode = 'merge'; S.view = '';
+            S.number = number; S.label = label; S.mode = 'merge'; S.parts = ALL_PARTS.slice(); S.view = '';
             dlg.querySelector('[data-r=title]').textContent = T.title;
             body.replaceChildren(note(T.loading)); setFoot();
             if (!dlg.open) dlg.showModal();
@@ -375,6 +402,12 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
   .vb-data-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 12.5px; }
   .vb-del { color: var(--red); }
   :global(.vb-dlg-sub) { color: var(--text-muted); font-size: 12.5px; margin: 0; }
+  :global(.vb-parts) { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 12px; margin: 12px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 12px; }
+  :global(.vb-parts legend) { font-size: 12.5px; font-weight: 600; padding: 0 4px; }
+  :global(.vb-part) { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  :global(.vb-part input) { accent-color: var(--accent); }
+  :global(.vb-parts-hint) { grid-column: 1 / -1; color: var(--text-dim); font-size: 11.5px; line-height: 1.5; }
+  :global(.vb-contents) { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); line-height: 1.55; }
   :global(.vb-modes) { display: flex; flex-direction: column; gap: 8px; }
   :global(.vb-mode) { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--bg-raise); cursor: pointer; }
   :global(.vb-mode.on) { border-color: var(--accent); background: var(--accent-soft); }

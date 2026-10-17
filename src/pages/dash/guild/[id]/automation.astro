@@ -18,8 +18,8 @@ const dt = makeT(getDashLang(Astro));
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'overview';
-// Counters have their own page now; old links still land there.
-if (section === 'counters' && Astro.request.method === 'GET') return Astro.redirect(`/dash/guild/${id}/counters`);
+// Counters have their own page (/counters, right above Webhooks in the menu); old links and old forms land there.
+if (section === 'counters') return Astro.redirect(`/dash/guild/${id}/counters`, Astro.request.method === 'GET' ? 302 : 303);
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
 const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
@@ -42,7 +42,6 @@ const apiHeaders = {
 let saved = false;
 let reactionRoleError: string | null = null;
 let error: string | null = null;
-const COUNTER_OPTIONS = ['members', 'users_only', 'bots_only', 'pending_members', 'all_channels', 'text_channels', 'voice_channels', 'categories', 'announcement_channels', 'staging_channels', 'boosts', 'booster_count'];
 
 async function deleteDiscordMessage(channelId: string | null, messageId: string | null) {
   if (!channelId || !messageId) return true;
@@ -478,33 +477,6 @@ if (Astro.request.method === 'POST') {
     if (row) await fetch(`https://discord.com/api/v10/webhooks/${row.webhook_id}/${row.webhook_token}`, { method: 'DELETE' }).catch(() => {});
     const dbRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = dbRes.ok;
-  } else if (action === 'create_counter') {
-    const option = String(form.get('option') ?? '').trim().toLowerCase();
-    const type = String(form.get('type') ?? 'voice').trim();
-    const parentId = String(form.get('parent_id') ?? '').trim() || null;
-    const nameTemplate = String(form.get('name_template') ?? '{option}: {value}').trim().slice(0, 100) || '{option}: {value}';
-    const prefix = String(form.get('prefix') ?? '').slice(0, 30);
-    const suffix = String(form.get('suffix') ?? '').slice(0, 30);
-    const intervalSeconds = Math.max(60, Math.min(86400, Number(form.get('interval_seconds') ?? 60) || 60));
-    const typeCode: Record<string, number> = { voice: 2, text: 0, category: 4, announce: 5, stage: 13 };
-    if (COUNTER_OPTIONS.includes(option) && typeCode[type] != null) {
-      const channelRes = await fetch(`https://discord.com/api/v10/guilds/${id}/channels`, { method: 'POST', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `${prefix}${option}${suffix}`.slice(0, 100), type: typeCode[type], parent_id: parentId }) });
-      if (channelRes.ok) {
-        const channel = await channelRes.json();
-        const dbRes = await fetch(`${apiUrl}/rest/v1/server_counters`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channel.id, counter_option: option, channel_type: type, created_by: session.userId, parent_id: parentId, name_template: nameTemplate, prefix, suffix, interval_seconds: intervalSeconds }) });
-        saved = dbRes.ok;
-      } else error = dt('Could not create the counter channel. Check Manage Channels.');
-    }
-  } else if (action === 'delete_counter') {
-    const channelId = String(form.get('channel_id') ?? '').trim();
-    const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: apiHeaders });
-    saved = res.ok;
-  } else if (action === 'edit_counter') {
-    const channelId = String(form.get('channel_id') ?? '').trim();
-    const patch = { name_template: String(form.get('name_template') ?? '{option}: {value}').trim().slice(0, 100) || '{option}: {value}', prefix: String(form.get('prefix') ?? '').slice(0, 30), suffix: String(form.get('suffix') ?? '').slice(0, 30), interval_seconds: Math.max(60, Math.min(86400, Number(form.get('interval_seconds') ?? 60) || 60)), parent_id: String(form.get('parent_id') ?? '').trim() || null, enabled: form.get('enabled') === 'on' };
-    const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${encodeURIComponent(channelId)}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
-    if (res.ok) await fetch(`https://discord.com/api/v10/channels/${channelId}`, { method: 'PATCH', headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ parent_id: patch.parent_id }) }).catch(() => {});
-    saved = res.ok;
   } else if (action === 'add_disabled') {
     const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
     const channelId = String(form.get('channel_id') ?? '').trim() || null;
