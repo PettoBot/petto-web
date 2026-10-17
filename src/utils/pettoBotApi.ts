@@ -471,3 +471,21 @@ export async function callPettoCounters(context: AstroContext, guildId: string, 
     return { ok: false, message: '' };
   }
 }
+
+// A form filled on the website (petto.sbs/f/<id>): the bot says whether the signed-in member may send it, and takes the answers through
+// the same pipeline as a Discord submission.
+export async function callPettoWebForm(context: AstroContext, formId: string, userId: string, route: 'public' | 'submit', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; data: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, status: 503, data: null };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/form/${encodeURIComponent(formId)}/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(route === 'submit' ? 25_000 : 8_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const data: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && data?.ok), status: response.status, data };
+  } catch {
+    return { ok: false, status: 502, data: null };
+  }
+}

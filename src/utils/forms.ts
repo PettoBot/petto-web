@@ -31,6 +31,7 @@ export interface FormRow {
   accept_add_role_ids: string[]; accept_remove_role_ids: string[]; deny_add_role_ids: string[]; deny_remove_role_ids: string[];
   dm_results: boolean; messages: { submitted?: MessageSetting; accepted?: MessageSetting; denied?: MessageSetting };
   button_label: string | null; button_emoji: string | null; button_style: (typeof BUTTON_STYLES)[number];
+  web_enabled: boolean;
 }
 
 const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -128,6 +129,7 @@ export function normalizeForm(input: any, { maxQuestions = LIMITS.questions } = 
     button_label: clip(input?.button_label, LIMITS.buttonLabel) || null,
     button_emoji: clip(input?.button_emoji, 64) || null,
     button_style: (BUTTON_STYLES as readonly string[]).includes(input?.button_style) ? input.button_style : 'primary',
+    web_enabled: input?.web_enabled !== false,
   };
 }
 
