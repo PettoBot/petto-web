@@ -13,7 +13,7 @@ import path from 'node:path';
 // to be set as Cloudflare Pages environment variables (Workers don't read .env files).
 loadEnv({ path: path.resolve('../petto bot 1/.env') });
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 // What the footer, the dashboard and /version.json say about this build, so it is easy to tell which one is running.
@@ -22,6 +22,14 @@ let buildCommit = '';
 try { buildCommit = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no git folder in this build */ }
 
 const discloudTarget = process.env.ASTRO_TARGET === 'discloud';
+
+// The routes that also exist in Spanish (and so in every language), for the hreflang links of Base.astro: '/', '/commands', '/form/[id]'...
+// Read here from the folder instead of with import.meta.glob in Base.astro: a glob there links every Spanish page (and the scripts of
+// their components) to every page of the site, so the embed builder's script ran in the dashboard, failed, and stopped the dashboard's own.
+const esRoutes = readdirSync(new URL('./src/pages/es', import.meta.url), { recursive: true })
+  .map((file) => String(file).split(path.sep).join('/'))
+  .filter((file) => file.endsWith('.astro'))
+  .map((file) => `/${file}`.replace(/\.astro$/, '').replace(/\/index$/, '') || '/');
 
 export default defineConfig({
   site: 'https://petto.sbs',
@@ -97,6 +105,7 @@ export default defineConfig({
       // The Node build (Discloud) may use Node-only modules: Redis and the shared cache's single flight.
       __NODE_TARGET__: JSON.stringify(discloudTarget),
       __APP_VERSION__: JSON.stringify(appVersion),
+      __ES_ROUTES__: JSON.stringify(esRoutes),
       __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
       __BUILD_COMMIT__: JSON.stringify(buildCommit),
       __BUILD_TARGET__: JSON.stringify(discloudTarget ? 'discloud' : 'cloudflare'),
