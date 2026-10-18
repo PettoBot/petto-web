@@ -8,7 +8,8 @@ import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoForms } from '../../../../utils/pettoBotApi';
 import { lastAnswer, markPending, rememberAnswer, sharedCall, withinBudget } from '../../../../utils/liveCall';
-import { normalizeForm, normalizeQuestions, slugName, newPublicId, NAME, FORM_PLAN, STATUSES, EMBED_COLUMNS } from '../../../../utils/forms';
+import { normalizeForm, normalizeQuestions, slugName, newPublicId, NAME, FORM_PLAN, STATUSES, EMBED_COLUMNS, NEWER_PAGE_COLUMNS, usesPremiumLook } from '../../../../utils/forms';
+import { hasPremiumForGuild } from '../../../../utils/premium';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -37,8 +38,11 @@ const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/
 const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const plan = FORM_PLAN;
 // Whether the database refused the columns of the link preview (a bot that has not added them yet), and the form without them.
-const missingEmbedColumns = async (res: Response) => /embed_(?:title|description|image|color|thumbnail)/.test(await res.clone().text().catch(() => ''));
-const withoutEmbed = (row: object) => Object.fromEntries(Object.entries(row).filter(([key]) => !(EMBED_COLUMNS as readonly string[]).includes(key)));
+const missingEmbedColumns = async (res: Response) => /embed_(?:title|description|image|color|thumbnail)|page_hide_branding/.test(await res.clone().text().catch(() => ''));
+const LATER_COLUMNS: readonly string[] = [...EMBED_COLUMNS, ...NEWER_PAGE_COLUMNS];
+const withoutEmbed = (row: object) => Object.fromEntries(Object.entries(row).filter(([key]) => !LATER_COLUMNS.includes(key)));
+// The Premium touches of the page (the animated backgrounds, hiding the "Forms by Petto" line); everything else of forms is free.
+const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 
 let message: { kind: 'ok' | 'err' | 'warn'; text: string } | null = null;
 let redirectTo: string | null = null;
@@ -74,10 +78,22 @@ if (Astro.request.method === 'POST') {
       },
       button_label: form.get('button_label'), button_emoji: form.get('button_emoji'), button_style: form.get('button_style'),
     }, { maxQuestions: plan.questions });
+    // A free server keeps the rest of its changes. A Premium look it already had (saved while it had Premium) is kept as it is, so it
+    // comes back with Premium; a new one is saved as the plain gradient and the line stays.
+    let premiumWarn = '';
+    if (!premiumActive && usesPremiumLook(clean)) {
+      const storedRes = formId ? await rest(`forms?guild_id=eq.${id}&id=eq.${formId}&select=page_background,page_hide_branding`) : null;
+      const stored = storedRes?.ok ? ((await storedRes.json().catch(() => []))[0] ?? {}) : {};
+      let changed = false;
+      if ((clean.page_background === 'aurora' || clean.page_background === 'waves') && stored.page_background !== clean.page_background) { clean.page_background = 'gradient'; changed = true; }
+      if (clean.page_hide_branding && stored.page_hide_branding !== true) { clean.page_hide_branding = false; changed = true; }
+      if (changed) premiumWarn = dt('Saved, but the animated backgrounds and hiding the "Forms by Petto" line are Premium touches, so the plain gradient and the line were kept.');
+    }
     const asked = Array.isArray(questions) ? questions.length : 0;
     // A form opens only when members can send it somewhere: with questions and a review channel. Otherwise it is kept closed and the page says why.
     let warn = '';
     if (clean.status === 'open' && (!clean.questions.length || !clean.review_channel_id)) { clean.status = 'closed'; warn = dt('Saved, but kept closed: it needs at least one question and a review channel.'); }
+    else if (premiumWarn) warn = premiumWarn;
     else if (asked > clean.questions.length) warn = dt('Saved. Questions without a text, choices with fewer than 2 options and the ones over the limit were left out.');
     else if (text(form.get('page_banner'), 600) && !clean.page_banner) warn = dt('Saved, but the banner was left out: use an https link to a .png, .jpg, .gif or .webp picture.');
     else if (text(form.get('embed_image'), 600) && !clean.embed_image) warn = dt('Saved, but the image of the link preview was left out: use an https link to a .png, .jpg, .gif or .webp picture.');
@@ -204,5 +220,5 @@ const editForm = editing === 'new' ? 'new' : editing ? forms.find((f) => String(
 <DashForms
   user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   section={section} forms={forms} pending={pending} submissions={submissions} panels={panels} roles={roles} channels={channels} templates={templates}
-  editing={editForm} storage={storage} statusFilter={statusFilter} formFilter={formFilter} search={search} plan={plan} ready={ready} message={message}
+  editing={editForm} storage={storage} statusFilter={statusFilter} formFilter={formFilter} search={search} plan={plan} ready={ready} message={message} premiumActive={premiumActive}
 />

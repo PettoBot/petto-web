@@ -957,7 +957,7 @@ export const ui = {
       comingSoon: { pill: 'Coming soon', backHome: 'Back to home' },
       nelu: { title: 'Nelu', desc: 'An anime-only bot, focused on character search, quotes, and waifu-style commands. The route is live, the bot is not, yet.' },
       am: { title: 'AM', desc: 'An AI-powered automoderation bot: context-aware spam and toxicity detection instead of a static word list. The route is live, the bot is not, yet.' },
-      premium: { title: 'Premium', desc: 'Petto Premium adds extra giveaway slots, more automation capacity, and priority support. Embeds stay available to every server.' },
+      premium: { title: 'Premium', desc: 'Petto is free for almost everything. Premium gives about twice the room and a few small touches; moderation, security, logging, tickets and the rest stay free.' },
       status: {
         title: 'Status',
         pill: 'petto · status',
@@ -2245,7 +2245,7 @@ export const ui = {
       comingSoon: { pill: 'Próximamente', backHome: 'Volver al inicio' },
       nelu: { title: 'Nelu', desc: 'Un bot solo de anime, enfocado en búsqueda de personajes, frases y comandos estilo waifu. La ruta ya existe, el bot todavía no.' },
       am: { title: 'AM', desc: 'Un bot de automoderación con IA: detección de spam y toxicidad que entiende contexto, no una lista fija de palabras. La ruta ya existe, el bot todavía no.' },
-      premium: { title: 'Premium', desc: 'Petto Premium suma espacios extra de sorteo, más capacidad de automatización y soporte prioritario. Los embeds siguen disponibles para todos los servers.' },
+      premium: { title: 'Premium', desc: 'Petto es gratis para casi todo. Premium da cerca del doble de espacio y algunos detalles; la moderación, la seguridad, los logs, los tickets y lo demás siguen gratis.' },
       status: {
         title: 'Estado',
         pill: 'petto · estado',
@@ -3533,7 +3533,7 @@ export const ui = {
       comingSoon: { pill: 'Em breve', backHome: 'Voltar ao início' },
       nelu: { title: 'Nelu', desc: 'Um bot só de anime, focado em busca de personagens, frases e comandos estilo waifu. A rota já existe, o bot ainda não.' },
       am: { title: 'AM', desc: 'Um bot de automoderação com IA: detecção de spam e toxicidade que entende contexto, não uma lista fixa de palavras. A rota já existe, o bot ainda não.' },
-      premium: { title: 'Premium', desc: 'O Petto Premium adiciona espaços extras de sorteio, mais capacidade de automação e suporte prioritário. Os embeds continuam disponíveis para todos os servers.' },
+      premium: { title: 'Premium', desc: 'O Petto é grátis para quase tudo. O Premium dá cerca do dobro de espaço e alguns detalhes; a moderação, a segurança, os logs, os tickets e o resto continuam grátis.' },
       status: {
         title: 'Status',
         pill: 'petto · status',
