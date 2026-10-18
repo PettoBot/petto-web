@@ -7,9 +7,14 @@ export const CHOICE_TYPES: readonly string[] = ['choice', 'multi'];
 export const STATUSES = ['pending', 'accepted', 'denied', 'cancelled'] as const;
 export const BUTTON_STYLES = ['primary', 'secondary', 'success', 'danger'] as const;
 // The background of the web page of a form: Petto's own, or a solid tint or a gradient made from the color of the form (the same as
-// the bot's PAGE_BACKGROUNDS).
-export const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient'] as const;
+// the bot's PAGE_BACKGROUNDS). `aurora` and `waves` move slowly behind the page: a Premium touch, and the bot sends `gradient`
+// instead while the server has no Premium.
+export const PAGE_BACKGROUNDS = ['default', 'solid', 'gradient', 'aurora', 'waves'] as const;
 export type PageBackground = (typeof PAGE_BACKGROUNDS)[number];
+export const PREMIUM_PAGE_BACKGROUNDS: readonly string[] = ['aurora', 'waves'];
+/** Whether a saved form uses a Premium look: an animated background or the "Forms by Petto" line hidden. */
+export const usesPremiumLook = (form: { page_background?: string | null; page_hide_branding?: boolean | null }) =>
+  PREMIUM_PAGE_BACKGROUNDS.includes(String(form?.page_background ?? '')) || form?.page_hide_branding === true;
 // Discord's limits: 45 characters for a form title and a field label, 100 for a description and a placeholder, 25 options of 100
 // characters, 4000 characters in a text field, and five fields in a form.
 export const LIMITS = {
@@ -65,15 +70,17 @@ export interface FormRow {
   dm_results: boolean; messages: { submitted?: MessageSetting; accepted?: MessageSetting; denied?: MessageSetting };
   button_label: string | null; button_emoji: string | null; button_style: (typeof BUTTON_STYLES)[number];
   web_enabled: boolean;
-  page_banner: string | null; page_background: PageBackground; page_show_icon: boolean; page_show_name: boolean;
+  page_banner: string | null; page_background: PageBackground; page_show_icon: boolean; page_show_name: boolean; page_hide_branding: boolean;
   embed_title: string | null; embed_description: string | null; embed_image: string | null; embed_color: number | null; embed_thumbnail: boolean;
 }
 /** How the link of a form looks when it is shared (what the bot sends as `form.embed`); empty parts fall back to the form. */
 export interface LinkEmbed { title: string | null; description: string | null; image: string | null; color: number | null; thumbnail: boolean }
 /** The columns of the link preview, which the dashboard can leave out when the bot has not added them to the database yet. */
 export const EMBED_COLUMNS = ['embed_title', 'embed_description', 'embed_image', 'embed_color', 'embed_thumbnail'] as const;
+/** Columns added after the link preview (the Premium "Forms by Petto" switch), left out the same way when the bot has not added them. */
+export const NEWER_PAGE_COLUMNS = ['page_hide_branding'] as const;
 /** How the web page of a form looks: what the bot sends as `form.page`. */
-export interface PageLook { banner: string | null; background: PageBackground; show_icon: boolean; show_name: boolean }
+export interface PageLook { banner: string | null; background: PageBackground; show_icon: boolean; show_name: boolean; hide_branding: boolean }
 
 const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const whole = (value: unknown, min: number, max: number, fallback: number) => {
@@ -234,6 +241,7 @@ export function normalizeForm(input: any, { maxQuestions = LIMITS.questions } = 
     page_background: (PAGE_BACKGROUNDS as readonly string[]).includes(input?.page_background) ? input.page_background : 'default',
     page_show_icon: input?.page_show_icon !== false,
     page_show_name: input?.page_show_name !== false,
+    page_hide_branding: input?.page_hide_branding === true,
     embed_title: clip(input?.embed_title, LIMITS.embedTitle) || null,
     embed_description: clipText(input?.embed_description, LIMITS.embedDescription) || null,
     embed_image: imageUrl(input?.embed_image),
@@ -267,7 +275,8 @@ export function linkEmbed(input: any): LinkEmbed {
 
 /**
  * The look of the web page of a form, checked again: from a stored form (`page_banner`...) or from what the bot sent (`banner`...).
- * A form saved before these settings gets the defaults: no banner, Petto's background, the icon and the name of the server.
+ * A form saved before these settings gets the defaults: no banner, Petto's background, the icon and the name of the server, the
+ * "Forms by Petto" line shown.
  */
 export function pageLook(input: any): PageLook {
   const background = input?.background ?? input?.page_background;
@@ -276,6 +285,7 @@ export function pageLook(input: any): PageLook {
     background: (PAGE_BACKGROUNDS as readonly string[]).includes(background) ? background : 'default',
     show_icon: (input?.show_icon ?? input?.page_show_icon) !== false,
     show_name: (input?.show_name ?? input?.page_show_name) !== false,
+    hide_branding: (input?.hide_branding ?? input?.page_hide_branding) === true,
   };
 }
 
