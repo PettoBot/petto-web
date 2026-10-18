@@ -77,7 +77,7 @@ export const ui = {
       chan: 'petto · status',
       servers: 'active servers',
       commands: 'commands available',
-      categories: 'audit log categories',
+      logEvents: 'kinds of events to log',
       postgres: 'data in Postgres',
     },
     features: {
@@ -104,7 +104,7 @@ export const ui = {
         { title: 'AFK & autoresponder', desc: 'Auto-clearing AFK status, and triggers that reply automatically when a message matches.' },
         { title: 'Invite tracking', desc: 'See who invited whom, with a per-server leaderboard.' },
         { title: 'Turnstile verification', desc: 'A real captcha gate before new members can talk, no bot accounts sneaking in.' },
-        { title: 'Audit logging', desc: 'Nine independent event categories, each routed to its own channel and webhook.' },
+        { title: 'Server logs', desc: 'Bans, messages, voice, roles, tickets and more: each kind of event goes to the channel you choose.' },
       ],
     },
     releases: {
@@ -815,9 +815,9 @@ export const ui = {
           cmds: [] as CommandRow[],
         },
         {
-          id: 'logging', title: 'Logging', desc: 'Nine independent categories, each routed to its own channel.',
+          id: 'logging', title: 'Logging', desc: 'Every kind of server event, each routed to its own channel.',
           guide: {
-            intro: "Logging routes nine independent event categories to their own channels, so a mod-log channel isn't one unreadable firehose.",
+            intro: "Logging sends each kind of event (sanctions, messages, members, voice, roles, channels, tickets and more) to the channel you choose, so a mod-log channel isn't one unreadable firehose.",
             steps: [
               'Route a category to a channel with /logs add, remove it with /logs remove.',
               'Override the embed color per channel with /logs color if you want categories visually distinct.',
@@ -1364,7 +1364,7 @@ export const ui = {
       chan: 'petto · estado',
       servers: 'servidores activos',
       commands: 'comandos disponibles',
-      categories: 'categorías de auditoría',
+      logEvents: 'tipos de eventos para registrar',
       postgres: 'datos en Postgres',
     },
     features: {
@@ -1391,7 +1391,7 @@ export const ui = {
         { title: 'AFK y autoresponder', desc: 'Estado AFK que se limpia solo, y triggers que responden automático cuando un mensaje coincide.' },
         { title: 'Seguimiento de invites', desc: 'Ves quién invitó a quién, con un ranking por servidor.' },
         { title: 'Verificación con Turnstile', desc: 'Un captcha de verdad antes de que los nuevos puedan hablar, sin cuentas bot coladas.' },
-        { title: 'Registro de auditoría', desc: 'Nueve categorías de eventos independientes, cada una con su propio canal y webhook.' },
+        { title: 'Logs del servidor', desc: 'Baneos, mensajes, voz, roles, tickets y más: cada tipo de evento va al canal que elijas.' },
       ],
     },
     releases: {
@@ -2103,9 +2103,9 @@ export const ui = {
           cmds: [] as CommandRow[],
         },
         {
-          id: 'logging', title: 'Logging', desc: 'Nueve categorías independientes, cada una con su propio canal.',
+          id: 'logging', title: 'Logging', desc: 'Cada tipo de evento del servidor, cada uno en su propio canal.',
           guide: {
-            intro: 'Logging enruta nueve categorías de eventos independientes a sus propios canales, así un canal de mod-log no es un solo chorro ilegible.',
+            intro: 'Logging manda cada tipo de evento (sanciones, mensajes, miembros, voz, roles, canales, tickets y más) al canal que elijas, así un canal de mod-log no es un solo chorro ilegible.',
             steps: [
               'Enruta una categoría a un canal con /logs add, quítala con /logs remove.',
               'Cambia el color del embed por canal con /logs color si quieres distinguir categorías a simple vista.',
@@ -2652,7 +2652,7 @@ export const ui = {
       chan: 'petto · status',
       servers: 'servidores ativos',
       commands: 'comandos disponíveis',
-      categories: 'categorias de auditoria',
+      logEvents: 'tipos de eventos para registrar',
       postgres: 'dados no Postgres',
     },
     features: {
@@ -2679,7 +2679,7 @@ export const ui = {
         { title: 'AFK e autoresponder', desc: 'Status AFK que limpa sozinho, e gatilhos que respondem automaticamente quando uma mensagem bate com o padrão.' },
         { title: 'Rastreamento de convites', desc: 'Veja quem convidou quem, com um ranking por servidor.' },
         { title: 'Verificação com Turnstile', desc: 'Um captcha de verdade antes que novos membros possam falar, sem contas bot se infiltrando.' },
-        { title: 'Log de auditoria', desc: 'Nove categorias de eventos independentes, cada uma roteada para seu próprio canal e webhook.' },
+        { title: 'Logs do servidor', desc: 'Banimentos, mensagens, voz, cargos, tickets e mais: cada tipo de evento vai para o canal que você escolher.' },
       ],
     },
     releases: {
@@ -3391,9 +3391,9 @@ export const ui = {
           cmds: [] as CommandRow[],
         },
         {
-          id: 'logging', title: 'Logs', desc: 'Nove categorias independentes, cada uma no seu próprio canal.',
+          id: 'logging', title: 'Logs', desc: 'Cada tipo de evento do servidor, cada um no seu próprio canal.',
           guide: {
-            intro: 'Logs roteia nove categorias de eventos independentes para seus próprios canais, então um canal de mod-log não vira um único fluxo ilegível.',
+            intro: 'Logs manda cada tipo de evento (sanções, mensagens, membros, voz, cargos, canais, tickets e mais) para o canal que você escolher, então um canal de mod-log não vira um único fluxo ilegível.',
             steps: [
               'Roteie uma categoria para um canal com /logs add, remova com /logs remove.',
               'Mude a cor do embed por canal com /logs color se quiser distinguir categorias visualmente.',
