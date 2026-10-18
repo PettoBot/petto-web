@@ -29,13 +29,17 @@ const [guildsResult, botGuildIds, botGuildList] = await Promise.all([
 const discordUnavailable = guildsResult.list === null;
 const manageable = (guildsResult.list ?? []).filter(canManageGuild);
 const memberCounts = new Map(botGuildList.map((guild) => [guild.id, guild.memberCount]));
-// Premium belongs to the server, so an admin who did not buy it sees it too.
-const premiumGuildIds = await getPremiumGuildIds(Astro, session.userId, manageable.filter((g: any) => botGuildIds.has(g.id)).map((g: any) => g.id));
-
-// Servers where the visitor does not manage anything but a role of theirs opens part of the dashboard.
+// Premium belongs to the server, so an admin who did not buy it sees it too. Premium, the servers opened by a role and the partners
+// link do not depend on each other, so they are read at once.
 const manageableIds = new Set(manageable.map((g: any) => g.id));
+// Servers where the visitor does not manage anything but a role of theirs opens part of the dashboard.
 const roleCandidates = (guildsResult.list ?? []).filter((g: any) => !manageableIds.has(g.id) && botGuildIds.has(g.id));
-const byRole = new Set(await guildsWithRoleAccess(Astro, session.userId, roleCandidates.map((g: any) => g.id)));
+const [premiumGuildIds, byRoleList, canPartners] = await Promise.all([
+  getPremiumGuildIds(Astro, session.userId, manageable.filter((g: any) => botGuildIds.has(g.id)).map((g: any) => g.id)),
+  guildsWithRoleAccess(Astro, session.userId, roleCandidates.map((g: any) => g.id)),
+  canEditPartners(Astro, session.userId),
+]);
+const byRole = new Set(byRoleList);
 const roleGuilds = roleCandidates.filter((g: any) => byRole.has(g.id));
 
 const guilds = [...manageable, ...roleGuilds]
@@ -54,6 +58,5 @@ const guilds = [...manageable, ...roleGuilds]
 const inviteUrl = (guildId: string) =>
   `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=8&scope=${encodeURIComponent('bot applications.commands')}&guild_id=${guildId}&disable_guild_select=true`;
 const isOwner = isPettoOwner(Astro, session.userId);
-const canPartners = await canEditPartners(Astro, session.userId);
 ---
 <DashManage user={session} guilds={guilds} inviteUrl={inviteUrl} isOwner={isOwner} canPartners={canPartners} error={discordUnavailable ? 'discord_unavailable' : undefined} />

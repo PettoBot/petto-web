@@ -7,6 +7,7 @@ import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoForms } from '../../../../utils/pettoBotApi';
+import { lastAnswer, markPending, rememberAnswer, sharedCall, withinBudget } from '../../../../utils/liveCall';
 import { normalizeForm, normalizeQuestions, slugName, newPublicId, NAME, FORM_PLAN, STATUSES } from '../../../../utils/forms';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
@@ -149,11 +150,20 @@ if (Astro.url.searchParams.get('deleted') === '1') message = { kind: 'ok', text:
 
 const editing = section === 'forms' && formParam ? formParam : null;
 const needsLists = Boolean(editing) || section === 'panels';
+// Outside the submissions tab the bot only gives the pending counts and the storage line. Those are kept per change stamp of the server
+// (a new submission, a review or any change raises it), so the next pages reuse them; when they are not ready within a moment the page
+// is drawn with the last ones known and fills them in right after (see liveCall.ts).
+// The answer to a change (a review) carries its message, which a read of the page again would lose: it waits for them as before.
+const SUMMARY_BUDGET_MS = Astro.request.method === 'POST' ? 30_000 : 300;
+const subsArgs = { status: statusFilter, form_id: formFilter || null, q: section === 'submissions' ? search : '', limit: section === 'submissions' ? 50 : 1 };
+// A page that answers a change (a review) is drawn before the stamp is raised, so it never reuses a kept answer.
+const summaryStamp = Astro.request.method === 'POST' ? `post-${Date.now()}-${Math.random()}` : String((Astro.locals as Record<string, unknown>).dashVersion ?? '');
+const summaryCall = section === 'submissions' ? null : sharedCall(`forms-summary:${id}:${session.userId}:${summaryStamp}:${statusFilter}:${formFilter}`, () => callPettoForms(Astro, id, session.userId, 'submissions', subsArgs, dashLang), (result) => (result.ok ? 60_000 : 3_000));
 // The submissions are read through the bot (it keeps the cap and the retention); the forms and their settings straight from the database.
 const [guildInfo, formsRes, subsResult, panelsRes, rolesRes, channelsRes, templatesRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => rest(`forms?guild_id=eq.${id}&select=*&order=id.asc`),
-  () => callPettoForms(Astro, id, session.userId, 'submissions', { status: statusFilter, form_id: formFilter || null, q: section === 'submissions' ? search : '', limit: section === 'submissions' ? 50 : 1 }, dashLang),
+  () => (summaryCall ? withinBudget(summaryCall, SUMMARY_BUDGET_MS).then((ready) => ready?.value ?? null) : callPettoForms(Astro, id, session.userId, 'submissions', subsArgs, dashLang)),
   () => (section === 'panels' ? rest(`form_panels?guild_id=eq.${id}&select=*&order=id.desc&limit=20`) : Promise.resolve(null)),
   () => (needsLists || section === 'submissions' ? getGuildList(Astro, id, botToken, 'roles') : Promise.resolve(null)),
   () => (needsLists ? getGuildList(Astro, id, botToken, 'channels') : Promise.resolve(null)),
@@ -163,7 +173,10 @@ if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const ready = Boolean(formsRes?.ok);
 const forms: any[] = ready ? await formsRes!.json() : [];
-const subsData = subsResult?.ok ? subsResult.data : null;
+const summaryKey = `forms-summary:${id}:${session.userId}`;
+if (summaryCall && !subsResult) markPending(Astro);
+const subsData = subsResult?.ok ? subsResult.data : summaryCall && !subsResult ? lastAnswer<any>(summaryKey) ?? null : null;
+if (summaryCall && subsResult?.ok) rememberAnswer(summaryKey, subsResult.data);
 const pending: Record<string, number> = subsData?.pending ?? {};
 const submissions: any[] = section === 'submissions' ? subsData?.submissions ?? [] : [];
 const storage = { stored: Number(subsData?.stored ?? 0), cap: Number(subsData?.cap ?? plan.submissions), retention: Number(subsData?.retention_days ?? 30), known: Boolean(subsData) };

@@ -3734,6 +3734,7 @@ export const dashPt: Record<string, string> = {
   "Online": "Online",
   "Pending members": "Membros pendentes",
   "Petto cannot rename this channel. Give it Manage Channels and View Channel there.": "O Petto não consegue renomear este canal. Dê a ele Gerenciar canais e Ver canal lá.",
+  "Loading the live numbers from Petto...": "Carregando os números ao vivo do Petto...",
   "Petto did not answer, so the previews use sample numbers. Creating counters needs Petto online.": "O Petto não respondeu, então as prévias usam números de exemplo. Criar contadores precisa do Petto online.",
   "Petto did not answer. Try again in a moment.": "O Petto não respondeu. Tente de novo daqui a pouco.",
   "Pick a role": "Escolha um cargo",

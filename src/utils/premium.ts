@@ -183,10 +183,10 @@ export function getPremiumGuildIds(astro: any, userId: string, guildIds: string[
   const ids = [...new Set(guildIds.filter((id) => /^\d{15,25}$/.test(id)))].sort();
   if (!ids.length) return Promise.resolve(new Set());
   const key = `premium:${userId}:guilds:${ids.join(',')}`.slice(0, 480);
-  // A page read takes the answer up to ten minutes old while a new one is read (a change made on the Premium page or by Polar's webhook
-  // forgets it at once); a write always reads one at most 30 seconds old.
+  // A page read takes the answer up to an hour old while a new one is read, so the first page of a visit does not wait for it (a change
+  // made on the Premium page or by Polar's webhook forgets it at once); a write always reads one at most 30 seconds old.
   const method = String(astro?.request?.method ?? 'GET').toUpperCase();
-  return cached(key, () => loadPremiumGuildIds(astro, ids), { freshMs: 30_000, staleMs: 10 * 60_000, allowStale: method === 'GET' || method === 'HEAD', keep: () => true });
+  return cached(key, () => loadPremiumGuildIds(astro, ids), { freshMs: 30_000, staleMs: 3600_000, allowStale: method === 'GET' || method === 'HEAD', keep: () => true });
 }
 
 async function loadPremiumGuildIds(astro: any, ids: string[]): Promise<Set<string>> {

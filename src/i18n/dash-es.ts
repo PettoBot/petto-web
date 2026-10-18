@@ -3734,6 +3734,7 @@ export const dashEs: Record<string, string> = {
   "Online": "En línea",
   "Pending members": "Miembros pendientes",
   "Petto cannot rename this channel. Give it Manage Channels and View Channel there.": "Petto no puede renombrar este canal. Dale Gestionar canales y Ver canal ahí.",
+  "Loading the live numbers from Petto...": "Cargando los números en vivo de Petto...",
   "Petto did not answer, so the previews use sample numbers. Creating counters needs Petto online.": "Petto no respondió, así que las vistas previas usan números de ejemplo. Crear contadores necesita a Petto en línea.",
   "Petto did not answer. Try again in a moment.": "Petto no respondió. Inténtalo de nuevo en un momento.",
   "Pick a role": "Elige un rol",
