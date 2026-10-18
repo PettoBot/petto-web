@@ -20,10 +20,11 @@ interface Props {
   /** Only the guild dashboard's fixed two-panel app shell needs the body scroll lock, plain dash pages (login, manage) scroll normally. */
   appShell?: boolean;
 }
+// One short line about the bot, for the pages that do not have their own (search results and link previews cut longer ones).
 const DEFAULT_DESCRIPTION: Record<Locale, string> = {
-  en: 'Moderation, leveling, tickets, and giveaways with a full web dashboard, no slash-command grind required.',
-  es: 'Moderación, niveles, tickets y sorteos con un dashboard web completo, sin necesidad de memorizar slash commands.',
-  'pt-BR': 'Moderação, níveis, tickets e sorteios com um dashboard web completo, sem precisar decorar slash commands.',
+  en: 'Moderation, tickets, levels and giveaways for your Discord server, with a web dashboard.',
+  es: 'Moderación, tickets, niveles y sorteos para tu servidor de Discord, con un dashboard web.',
+  'pt-BR': 'Moderação, tickets, níveis e sorteios para o seu servidor do Discord, com um dashboard web.',
 };
 const { title, description, active = 'home', lang: langProp, showFooter = active !== 'dash', appShell = false } = Astro.props;
 // Dashboard pages have no locale in the URL, so their language comes from the saved choice.
@@ -45,8 +46,27 @@ const isExternal = (href: string) => /^https?:\/\//.test(href);
 // Links to the other public pages are fetched while the pointer rests on them (Astro prefetch), so they open at once.
 // The dashboard and outside links are left alone.
 const prefetchFor = (href: string) => (isExternal(href) || /(?:^|\/)dash(?:[/?#]|$)/.test(href) ? undefined : 'hover');
-const canonicalUrl = new URL(Astro.url.pathname, Astro.site ?? 'https://petto.sbs').toString();
-const ogImageUrl = new URL('/assets/petto-link-banner-min.png', Astro.site ?? 'https://petto.sbs').toString();
+// The address of the page as people share it and as the site links it: the path only (never ?v= of a reload or other parameters),
+// without a trailing slash, except the home of each language (/, /es/, /pt-br/), the way the menus and the language switch link it.
+const SITE = Astro.site ?? 'https://petto.sbs';
+const canonicalPath = Astro.url.pathname.replace(/\/index(?:\.html)?$/, '/').replace(/(.)\/+$/, '$1').replace(/^\/(es|pt-br)$/, '/$1/');
+const canonicalUrl = new URL(canonicalPath, SITE).toString();
+const ogImageUrl = new URL('/assets/petto-link-banner-min.png', SITE).toString();
+// The same page in the other languages, for search engines and apps (hreflang), when the page has them: the dashboard has no
+// language in the address, and a few pages exist in English only.
+const OG_LOCALE: Record<Locale, string> = { en: 'en_US', es: 'es_ES', 'pt-BR': 'pt_BR' };
+const HREFLANG: Record<Locale, string> = { en: 'en', es: 'es', 'pt-BR': 'pt-BR' };
+const localizedRoutes = Object.keys(import.meta.glob('../pages/es/**/*.astro')).map((file) => {
+  const route = file.replace(/^\.\.\/pages\/es/, '').replace(/\.astro$/, '').replace(/\/index$/, '') || '/';
+  return new RegExp(`^${route.replace(/\[\.\.\.[^\]]+\]/g, '.+').replace(/\[[^\]]+\]/g, '[^/]+')}$`);
+});
+const routeNoSlash = currentRoute.replace(/(.)\/+$/, '$1');
+const hasLanguages = active !== 'dash' && !routeNoSlash.startsWith('/dash') && localizedRoutes.some((re) => re.test(routeNoSlash));
+const alternates = hasLanguages
+  ? (Object.keys(localePath) as Locale[]).map((l) => ({ lang: l, href: new URL(`${localePath[l]}${routeNoSlash === '/' ? '/' : routeNoSlash}`, SITE).toString() }))
+  : [];
+// The title of the page in the card Discord draws: without the " · Petto" that ends most titles of tabs.
+const shortTitle = title.replace(/\s·\sPetto$/, '');
 
 const cookieCopy = {
   en: { text: 'By using this site, you agree with our use of cookies.', consent: 'I consent to cookies', decline: 'Decline all', more: 'Want to know more?', privacy: 'Privacy policy' },
@@ -68,6 +88,11 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     // which no cache has seen yet. The dashboard is never kept, so it is left alone.
     (function () {
       if (location.pathname.indexOf('/dash') !== -1) return;
+      // Loaded again for this version (?v=<version>): the address goes back to the clean one, so it is the one people copy and share.
+      try {
+        var here = new URL(location.href);
+        if (here.searchParams.get('v') === pageVersion) { here.searchParams.delete('v'); history.replaceState(history.state, '', here.pathname + here.search + here.hash); }
+      } catch (e) { /* an old browser keeps the address */ }
       fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (live) {
@@ -83,21 +108,29 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
   </script>
   <title>{title}</title>
   <meta name="description" content={metaDescription} />
+  <meta name="theme-color" content="#f0a88f" />
   <link rel="canonical" href={canonicalUrl} />
+  {alternates.map((a) => <link rel="alternate" hreflang={HREFLANG[a.lang]} href={a.href} />)}
+  {alternates.length > 0 && <link rel="alternate" hreflang="x-default" href={alternates[0].href} />}
   <link rel="icon" href="/assets/mascot-icon.png" />
 
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Petto" />
   <meta property="og:title" content={title} />
   <meta property="og:description" content={metaDescription} />
   <meta property="og:url" content={canonicalUrl} />
+  <meta property="og:locale" content={OG_LOCALE[lang]} />
+  {alternates.filter((a) => a.lang !== lang).map((a) => <meta property="og:locale:alternate" content={OG_LOCALE[a.lang]} />)}
   <meta property="og:image" content={ogImageUrl} />
-  <meta property="og:site_name" content="Petto" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="500" />
+  <meta property="og:image:alt" content="Petto" />
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={title} />
   <meta name="twitter:description" content={metaDescription} />
   <meta name="twitter:image" content={ogImageUrl} />
-  {active !== 'dash' && <script is:inline id="discord:component-embed" type="application/json" set:html={discordEmbedJson(lang)}></script>}
+  {active !== 'dash' && <script is:inline id="discord:component-embed" type="application/json" set:html={discordEmbedJson(lang, { title: shortTitle, description: metaDescription, url: canonicalUrl })}></script>}
   <style is:global>
     @font-face {
       font-family: 'Jakarta Variable';

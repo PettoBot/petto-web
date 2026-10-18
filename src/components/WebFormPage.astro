@@ -1,378 +1,566 @@
 ---
-// A form of a server, filled on the website: /form#<public id> (and /es/form#…, /pt-br/form#…). The page is the same static page for every
-// form; its script reads the id from the hash and asks /api/form/<id>, which asks the bot. The member logs in with Discord (only their
-// identity), the bot says whether they may send it (member of the server, roles, ages, pending, cooldown, limits, dates) and takes the
-// answers through the same pipeline as Discord. Each form dresses its page (the same way as the appeal site of a server): its color is the
-// accent, with a banner, a solid or gradient background, the icon and the name of the server in the header, the server's icon as the
-// icon of the tab and "form · server" as its title. That look arrives with the form, and before the login too.
+// A form of a server, filled on the website: /form/<public id> (and /es/form/…, /pt-br/form/…). The site draws the page on the server
+// with the look of the form (utils/formPreview.ts): its color is the accent, with its banner, a solid or gradient background, the icon and
+// the name of the server, the icon of the server in the tab, and the tags of the link preview the server set in the dashboard. It is
+// the same frame as the appeal site: a bar with the server and the languages, one card with the banner on top, and a small footer.
+// The member logs in with Discord (only their identity); the script asks /api/form/<id> whether they may send it (member of the
+// server, roles, ages, pending, cooldown, limits, dates), shows the questions in steps of five (the pages of Discord) and sends the
+// answers through the same pipeline as Discord. After sending, the page shows where the submission is.
+// The older address /form#<public id> is the same component without a form (a static page): its script sends the visitor on to
+// /form/<public id>.
 import { Icon } from 'astro-icon/components';
-import Base from '../layouts/Base.astro';
 import { makeT } from '../i18n/dash';
 import type { Locale } from '../i18n/ui';
+import { formPreview, type FormLook } from '../utils/formPreview';
+import { formIdPath, formPagePath } from '../utils/forms';
 
-interface Props { lang: Locale }
-const { lang } = Astro.props;
+interface Props { lang: Locale; id?: string | null; look?: FormLook | null; status?: number }
+const { lang, id = null, look = null, status = 200 } = Astro.props;
 const dt = makeT(lang);
+const SITE = 'https://petto.sbs';
+const LANGS: { code: Locale; label: string; hreflang: string; locale: string }[] = [
+  { code: 'en', label: 'EN', hreflang: 'en', locale: 'en_US' },
+  { code: 'es', label: 'ES', hreflang: 'es', locale: 'es_ES' },
+  { code: 'pt-BR', label: 'PT', hreflang: 'pt-BR', locale: 'pt_BR' },
+];
+const pathIn = (l: Locale) => (id ? formIdPath(id, l) : formPagePath(l));
+const canonical = `${SITE}${pathIn(lang)}`;
+const notFound = status === 404;
+const preview = look ? formPreview(look, lang === 'pt-BR' ? 'pt-BR' : lang === 'es' ? 'es' : 'en') : null;
+const title = preview?.title ?? (notFound ? `${dt('This form does not exist')} · Petto` : `${dt('Form')} · Petto`);
+const description = preview?.description ?? dt('Fill in this form with your Discord account.');
+const color = look?.color != null ? `#${look.color.toString(16).padStart(6, '0')}` : null;
+// The text on the buttons of the color: dark on a light color, white on a dark one.
+const ink = look?.color != null ? ((0.2126 * ((look.color >> 16) & 255) + 0.7152 * ((look.color >> 8) & 255) + 0.0722 * (look.color & 255)) / 255 > 0.6 ? '#16171a' : '#ffffff') : null;
+const page = look?.page ?? { banner: null, background: 'default', show_icon: true, show_name: true };
+const server = look?.server ?? null;
+const showIcon = page.show_icon !== false;
+const showName = page.show_name !== false && Boolean(server?.name);
+const ogImage = preview?.image ?? `${SITE}/assets/petto-link-banner-min.png`;
+const large = preview ? preview.large : true;
 const texts = {
   required: dt('Answer this question.'), number: dt('Write a number.'), range: dt('Write a number from {min} to {max}.'), short: dt('Write at least {count} characters.'), many: dt('Pick up to {count}.'),
   yes: dt('Yes'), no: dt('No'), optional: dt('optional'), requiredLabel: dt('Required'), pickUpTo: dt('Pick up to {a}.'), pickAll: dt('Pick all that apply.'),
   answeringAs: dt('Answering as {a}'), staffReads: dt('The staff of {a} reads your answers in Discord.'), sent: dt('Sent (#{a})'),
   fix: dt('Some answers need a fix.'), failed: dt('It could not be sent. Try again in a moment.'),
   notFound: dt('This form does not exist'), notFoundHelp: dt('It may have been deleted, or the link is wrong.'), noLoad: dt('The form could not be loaded'), noLoadHelp: dt('Petto did not answer. Try again in a moment.'),
-  noId: dt('This link has no form'), noIdHelp: dt('Open the link of the form again, it ends with # and its id.'), form: dt('Form'),
+  noId: dt('This link has no form'), noIdHelp: dt('Open the link of the form again, it ends with the id of the form.'), form: dt('Form'),
+  step: dt('Step {a} of {b}'), answered: dt('{a} of {b} answered'), pendingTitle: dt('You already sent this form'),
 };
-const langParam = lang === 'pt-BR' ? 'pt-BR' : lang;
+const style = [color && `--wf:${color}`, ink && `--wf-ink:${ink}`].filter(Boolean).join(';');
 ---
-<Base title={`${dt('Form')} · Petto`} lang={lang} description={dt('Fill in this form with your Discord account.')}>
-  <main class="wf" data-no-loader data-wf-root>
-    <div class="wf-shell" data-wf-shell>
-      <div class="wf-loading" data-wf-state="loading" role="status" aria-label="…"><span class="wf-spin"></span></div>
+<!doctype html>
+<html lang={lang}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script is:inline>
+    // The site's saved theme (the switch of petto.sbs), before the page paints; otherwise the one of the device.
+    try { var savedTheme = localStorage.getItem('petto-theme'); if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.setAttribute('data-theme', savedTheme); } catch (e) { /* private window */ }
+  </script>
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  <meta name="theme-color" content={preview?.color ?? '#f0a88f'} />
+  <link rel="canonical" href={canonical} />
+  {LANGS.map((l) => <link rel="alternate" hreflang={l.hreflang} href={`${SITE}${pathIn(l.code)}`} />)}
+  <link rel="alternate" hreflang="x-default" href={`${SITE}${pathIn('en')}`} />
+  <link rel="icon" href={server?.icon ?? '/assets/mascot-icon.png'} />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content={preview?.siteName ?? 'Petto'} />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={canonical} />
+  <meta property="og:locale" content={LANGS.find((l) => l.code === lang)!.locale} />
+  {LANGS.filter((l) => l.code !== lang).map((l) => <meta property="og:locale:alternate" content={l.locale} />)}
+  <meta property="og:image" content={ogImage} />
+  <meta name="twitter:card" content={large ? 'summary_large_image' : 'summary'} />
+  <meta name="twitter:title" content={title} />
+  <meta name="twitter:description" content={description} />
+  <meta name="twitter:image" content={ogImage} />
+  <meta name="robots" content="noindex" />
+  <style is:global set:html={`
+    @font-face { font-family: 'Jakarta Variable'; src: url('/fonts/dash/plus-jakarta-sans-latin-wght-normal.woff2') format('woff2-variations'); font-weight: 200 800; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122; }
+    @font-face { font-family: 'Jakarta Variable'; src: url('/fonts/dash/plus-jakarta-sans-latin-ext-wght-normal.woff2') format('woff2-variations'); font-weight: 200 800; font-display: swap; unicode-range: U+0100-02BA, U+1E00-1EFF, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: 'Fraunces Variable'; src: url('/fonts/dash/fraunces-latin-wght-normal.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122; }
+    @font-face { font-family: 'Fraunces Variable'; src: url('/fonts/dash/fraunces-latin-ext-wght-normal.woff2') format('woff2-variations'); font-weight: 100 900; font-display: swap; unicode-range: U+0100-02BA, U+1E00-1EFF, U+2C60-2C7F, U+A720-A7FF; }
+  `} />
+</head>
+<body class:list={['wf', { 'wf-bg-solid': page.background === 'solid', 'wf-bg-gradient': page.background === 'gradient' }]} style={style || undefined} data-wf-root data-wf-id={id ?? ''} data-wf-status={String(status)} data-wf-lang={lang} data-wf-base={formPagePath(lang)}>
+  <div class="wf-shell">
+    <header class="wf-top">
+      <span class="wf-brand">
+        {showIcon && (server?.icon ? <img src={server.icon} alt="" width="34" height="34" data-wf-icon /> : server ? <span class="wf-letter" data-wf-letter>{server.name.slice(0, 1) || '?'}</span> : <img src="/assets/mascot-icon.webp" alt="" width="34" height="34" data-wf-icon />)}
+        <span data-wf-server>{showName ? server!.name : server ? '' : 'Petto'}</span>
+      </span>
+      <nav class="wf-langs" aria-label="Language">
+        {LANGS.map((l) => <a href={pathIn(l.code)} class:list={['wf-lang', { on: l.code === lang }]} hreflang={l.hreflang} lang={l.hreflang} aria-current={l.code === lang ? 'page' : undefined} data-wf-lang-link={l.code}>{l.label}</a>)}
+        <button class="wf-theme" type="button" data-wf-theme aria-label={dt('Change theme')} title={dt('Change theme')}><Icon name="ph:sun-fill" width="15" height="15" /></button>
+      </nav>
+    </header>
 
-      <div class="wf-card wf-center" data-wf-state="login" hidden>
-        <img src="/assets/mascot-icon.webp" alt="" width="64" height="64" class="wf-mascot" />
-        <h1>{dt('Log in to fill in this form')}</h1>
-        <p class="wf-muted">{dt('Petto only asks Discord who you are, to send your answers as you and check that you are in the server.')}</p>
-        <a class="btn btn-accent" href="/f/login" data-wf-login><Icon name="simple-icons:discord" width="16" height="16" />{dt('Log in with Discord')}</a>
-      </div>
-
-      <div class="wf-card wf-center" data-wf-state="error" hidden>
-        <Icon name="ph:warning-fill" width="30" height="30" class="wf-warn-icon" />
-        <h1 data-wf-error-title></h1>
-        <p class="wf-muted" data-wf-error-help></p>
-        <a class="btn btn-ghost" href="/" data-wf-home hidden>{dt('Go to Petto')}</a>
-        <button class="btn btn-ghost" type="button" data-wf-retry hidden>{dt('Try again')}</button>
-      </div>
-
-      <header class="wf-head" data-wf-state="form" hidden>
-        <div class="wf-banner" data-wf-banner hidden><img alt="" decoding="async" referrerpolicy="no-referrer" data-wf-banner-img /></div>
-        <div class="wf-server">
-          <img data-wf-icon alt="" width="40" height="40" hidden /><span class="wf-server-letter" data-wf-letter hidden></span>
-          <span data-wf-server></span>
-          <span class="wf-id" title={dt('Link of the form:')} translate="no"><span class="wf-id-p">~/form#</span><span data-wf-id></span><i class="wf-caret" aria-hidden="true"></i></span>
+    <main class="wf-screen">
+      {page.banner && <div class="wf-banner" data-wf-banner><img src={page.banner} alt="" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.hidden=true" /></div>}
+      <div class="wf-inner">
+        <div class="wf-head" data-wf-head hidden={!look}>
+          <div class="wf-eyebrow">
+            <span class="wf-chip"><Icon name="ph:list-checks-fill" width="13" height="13" />{dt('Form')}</span>
+            {id && <span class="wf-id" title={dt('Link of the form:')} translate="no"><span class="wf-id-p">~/form/</span><span>{id}</span><i class="wf-caret" aria-hidden="true"></i></span>}
+          </div>
+          <h1 data-wf-title>{look?.title ?? ''}</h1>
+          {look?.description ? <p class="wf-desc" data-wf-desc>{look.description}</p> : <p class="wf-desc" data-wf-desc hidden></p>}
         </div>
-        <h1 data-wf-title></h1>
-        <p class="wf-desc" data-wf-desc hidden></p>
-        <p class="wf-who" data-wf-who-row><Icon name="ph:user-circle-fill" width="15" height="15" /><span data-wf-who></span> · <a href="/dash/logout">{dt('Not you?')}</a></p>
-      </header>
 
-      <div class="wf-card wf-done" role="status" data-wf-state="sent" hidden>
-        <span class="wf-done-icon"><Icon name="ph:check-circle-fill" width="34" height="34" /></span>
-        <h2 data-wf-sent-title></h2>
-        <p data-wf-sent-text></p>
-      </div>
+        <div class="wf-loading" data-wf-state="loading" role="status" aria-label="…" hidden={notFound}><span class="wf-spin"></span></div>
 
-      <div class="wf-card wf-refused" role="status" data-wf-state="refused" hidden><Icon name="ph:lock-fill" width="18" height="18" /><p data-wf-reason></p></div>
-
-      <form class="wf-card wf-form" novalidate data-wf-form data-wf-state="fill" hidden>
-        <div class="wf-alert" role="alert" data-wf-alert hidden><Icon name="ph:warning-fill" width="15" height="15" /><span></span></div>
-        <div class="wf-qs" data-wf-questions></div>
-        <div class="wf-foot">
-          <button class="btn btn-accent" type="submit" data-wf-send><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" />{dt('Send')}</button>
-          <span class="wf-muted" data-wf-staff></span>
+        <div class="wf-card wf-center" data-wf-state="login" hidden>
+          <span class="wf-badge"><Icon name="simple-icons:discord" width="22" height="22" /></span>
+          <h2>{dt('Log in to fill in this form')}</h2>
+          <p class="wf-muted">{dt('Petto only asks Discord who you are, to send your answers as you and check that you are in the server.')}</p>
+          <a class="wf-btn" href={id ? `/f/login?form=${id}&lang=${encodeURIComponent(lang)}` : '/f/login'} data-wf-login><Icon name="simple-icons:discord" width="16" height="16" />{dt('Log in with Discord')}</a>
         </div>
-      </form>
-    </div>
-  </main>
-</Base>
 
-<script is:inline define:vars={{ texts, lang: langParam }}>
-  (function () {
-    var shell = document.querySelector('[data-wf-shell]');
-    var root = document.querySelector('[data-wf-root]');
-    if (!shell || !root) return;
-    var $ = function (sel) { return shell.querySelector(sel); };
-    var fill = function (text, vars) { return text.replace(/\{(\w+)\}/g, function (w, k) { return k in vars ? vars[k] : w; }); };
-    var KEY = 'petto-form-id';
-    var id = (location.hash || '').slice(1);
-    // Coming back from the Discord login without the hash: the id kept in this tab before leaving brings it back.
-    if (!/^[0-9A-Za-z]{12}$/.test(id)) {
-      try { id = sessionStorage.getItem(KEY) || ''; } catch (e) { id = ''; }
-      if (/^[0-9A-Za-z]{12}$/.test(id)) history.replaceState(null, '', location.pathname + location.search + '#' + id);
-    }
-    // The language links of the header keep the form.
-    document.querySelectorAll('a[href$="/form"], a[href$="/form/"]').forEach(function (a) { if (/^[0-9A-Za-z]{12}$/.test(id)) a.setAttribute('href', a.getAttribute('href') + '#' + id); });
-    var show = function (names) {
-      shell.querySelectorAll('[data-wf-state]').forEach(function (el) { el.hidden = names.indexOf(el.getAttribute('data-wf-state')) === -1; });
-    };
-    var error = function (title, help, retry) {
-      $('[data-wf-error-title]').textContent = title;
-      $('[data-wf-error-help]').textContent = help;
-      $('[data-wf-retry]').hidden = !retry;
-      $('[data-wf-home]').hidden = Boolean(retry);
-      show(['error']);
-    };
-    if (!/^[0-9A-Za-z]{12}$/.test(id)) { error(texts.noId, texts.noIdHelp, false); return; }
-    try { sessionStorage.setItem(KEY, id); } catch (e) { /* private window */ }
-    var api = '/api/form/' + id + '?lang=' + encodeURIComponent(lang);
-    var form = $('[data-wf-form]');
-    var list = $('[data-wf-questions]');
-    var color = '';
+        <div class="wf-card wf-center" data-wf-state="error" hidden={!notFound}>
+          <span class="wf-badge warn"><Icon name="ph:warning-fill" width="22" height="22" /></span>
+          <h2 data-wf-error-title>{notFound ? texts.notFound : ''}</h2>
+          <p class="wf-muted" data-wf-error-help>{notFound ? texts.notFoundHelp : ''}</p>
+          <a class="wf-btn sec" href={lang === 'en' ? '/' : lang === 'es' ? '/es/' : '/pt-br/'} data-wf-home hidden={!notFound}>{dt('Go to Petto')}</a>
+          <button class="wf-btn sec" type="button" data-wf-retry hidden>{dt('Try again')}</button>
+        </div>
 
-    var el = function (tag, attrs, text) {
-      var node = document.createElement(tag);
-      if (attrs) Object.keys(attrs).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) node.setAttribute(k, attrs[k] === true ? '' : attrs[k]); });
-      if (text !== undefined && text !== null) node.textContent = text;
-      return node;
-    };
-    var choice = function (type, name, value, label) {
-      var wrap = el('label', { class: 'wf-choice' + (type === 'checkbox' ? ' wf-check' : '') });
-      wrap.appendChild(el('input', { type: type, name: name, value: value }));
-      wrap.appendChild(el('span', null, label));
-      return wrap;
-    };
-    var question = function (q, index) {
-      var box = el('fieldset', { class: 'wf-q', style: '--i:' + index, 'data-q': q.id, 'data-type': q.type, 'data-required': q.required ? '1' : '0', 'data-min': q.min_length == null ? '' : q.min_length, 'data-minv': q.min_value == null ? '' : q.min_value, 'data-maxv': q.max_value == null ? '' : q.max_value, 'data-maxc': q.max_choices == null ? '' : q.max_choices });
-      if (q.image) box.appendChild(el('img', { class: 'wf-img', src: q.image, alt: q.label, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }));
-      var legend = el('legend');
-      legend.appendChild(el('span', { class: 'wf-n' }, String(index + 1)));
-      legend.appendChild(document.createTextNode(q.label));
-      legend.appendChild(q.required ? el('em', { class: 'wf-req', 'aria-label': texts.requiredLabel }, '*') : el('span', { class: 'wf-opt' }, texts.optional));
-      box.appendChild(legend);
-      if (q.help) box.appendChild(el('p', { class: 'wf-help' }, q.help));
-      // Made safe by the site (utils/forms.ts descriptionHtml): everything is escaped, then only bold, italics, code and links are made.
-      if (q.description_html) { var d = el('div', { class: 'wf-qdesc' }); d.innerHTML = q.description_html; box.appendChild(d); }
-      var name = 'q_' + q.id;
-      if (q.type === 'short') box.appendChild(el('input', { type: 'text', name: name, maxlength: q.max_length || 1000, placeholder: q.placeholder || '', required: q.required }));
-      else if (q.type === 'paragraph') box.appendChild(el('textarea', { name: name, maxlength: q.max_length || 4000, placeholder: q.placeholder || '', required: q.required, rows: '5' }));
-      else if (q.type === 'number') box.appendChild(el('input', { type: 'text', inputmode: 'decimal', name: name, maxlength: '30', placeholder: q.placeholder || (q.min_value != null && q.max_value != null ? q.min_value + ' – ' + q.max_value : ''), required: q.required }));
-      else if (q.type === 'yesno') { var row = el('div', { class: 'wf-choices wf-row' }); row.appendChild(choice('radio', name, 'yes', texts.yes)); row.appendChild(choice('radio', name, 'no', texts.no)); box.appendChild(row); }
-      else if (q.type === 'choice' || q.type === 'multi') {
-        var grid = el('div', { class: 'wf-choices' });
-        (q.options || []).forEach(function (option, i) { grid.appendChild(choice(q.type === 'multi' ? 'checkbox' : 'radio', name, 'o' + i, option)); });
-        box.appendChild(grid);
-        if (q.type === 'multi') box.appendChild(el('p', { class: 'wf-help' }, q.max_choices ? fill(texts.pickUpTo, { a: q.max_choices }) : texts.pickAll));
-      }
-      box.appendChild(el('p', { class: 'wf-err', 'data-err': true, 'aria-live': 'polite' }));
-      return box;
-    };
-    var alertBox = function (text) {
-      var box = $('[data-wf-alert]');
-      box.hidden = !text;
-      box.querySelector('span').textContent = text || '';
-    };
+        <div class="wf-who" data-wf-state="who" hidden>
+          <Icon name="ph:user-circle-fill" width="16" height="16" /><span data-wf-who></span><a href="/dash/logout">{dt('Not you?')}</a>
+        </div>
 
-    // The same checks as the bot, before sending, so a mistake is shown at once. The bot checks everything again.
-    var check = function (box) {
-      var type = box.dataset.type;
-      var required = box.dataset.required === '1';
-      var msg = '';
-      if (type === 'short' || type === 'paragraph' || type === 'number') {
-        var input = box.querySelector('input[name^="q_"], textarea');
-        var text = (input.value || '').trim();
-        if (!text) { if (required) msg = texts.required; }
-        else if (type === 'number') {
-          var normal = text.replace(/\s/g, '').replace(',', '.');
-          if (!/^-?\d{1,15}(\.\d{1,6})?$/.test(normal)) msg = texts.number;
-          else {
-            var n = Number(normal), min = box.dataset.minv, max = box.dataset.maxv;
-            if ((min !== '' && n < Number(min)) || (max !== '' && n > Number(max))) msg = fill(texts.range, { min: min || '…', max: max || '…' });
-          }
-        } else if (box.dataset.min && text.length < Number(box.dataset.min)) msg = fill(texts.short, { count: box.dataset.min });
-      } else {
-        var picked = box.querySelectorAll('input[name^="q_"]:checked').length;
-        if (!picked && required) msg = texts.required;
-        else if (type === 'multi' && box.dataset.maxc && picked > Number(box.dataset.maxc)) msg = fill(texts.many, { count: box.dataset.maxc });
-      }
-      mark(box, msg);
-      return !msg;
-    };
-    var mark = function (box, msg) { box.classList.toggle('wf-q-bad', Boolean(msg)); box.querySelector('[data-err]').textContent = msg || ''; };
-    form.addEventListener('change', function (event) { var box = event.target.closest('[data-q]'); if (box && box.classList.contains('wf-q-bad')) check(box); });
-    form.addEventListener('focusout', function (event) { var box = event.target.closest('[data-q]'); if (box && event.target.matches('input[type=text], textarea') && event.target.value) check(box); });
-    var collect = function () {
-      var values = {};
-      list.querySelectorAll('[data-q]').forEach(function (box) {
-        var qid = box.dataset.q, type = box.dataset.type;
-        if (type === 'multi') values[qid] = Array.prototype.map.call(box.querySelectorAll('input:checked'), function (i) { return i.value; });
-        else if (type === 'choice' || type === 'yesno') { var c = box.querySelector('input:checked'); if (c) values[qid] = c.value; }
-        else values[qid] = box.querySelector('input, textarea').value;
+        <div class="wf-card wf-status" role="status" data-wf-state="sent" hidden>
+          <div class="wf-status-top">
+            <span class="wf-done-icon"><Icon name="ph:check-circle-fill" width="34" height="34" /></span>
+            <div><h2 data-wf-sent-title></h2><p class="wf-muted" data-wf-sent-text></p></div>
+          </div>
+          <ol class="wf-steps">
+            <li class="done"><span class="wf-dot"><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" /></span><div><b>{dt('Sent')}</b><span class="wf-muted">{dt('Your answers reached the staff.')}</span></div></li>
+            <li class="now"><span class="wf-dot"><Icon name="ph:hourglass-medium-fill" width="13" height="13" /></span><div><b>{dt('In review')}</b><span class="wf-muted" data-wf-staff></span></div></li>
+            <li><span class="wf-dot"><Icon name="ph:envelope-simple-fill" width="13" height="13" /></span><div><b>{dt('Result')}</b><span class="wf-muted">{dt('The staff accepts or denies it in Discord.')}</span></div></li>
+          </ol>
+        </div>
+
+        <div class="wf-card wf-refused" role="status" data-wf-state="refused" hidden>
+          <span class="wf-badge warn"><Icon name="ph:lock-fill" width="18" height="18" class="wf-ic-lock" /><Icon name="ph:hourglass-medium-fill" width="18" height="18" class="wf-ic-wait" /></span>
+          <div><h2 data-wf-refused-title hidden></h2><p data-wf-reason></p></div>
+        </div>
+
+        <form class="wf-form" novalidate data-wf-form data-wf-state="fill" hidden>
+          <div class="wf-progress" data-wf-progress>
+            <div class="wf-progress-row"><span data-wf-step-label></span><span data-wf-answered></span></div>
+            <div class="wf-bar"><i data-wf-bar></i></div>
+          </div>
+          <div class="wf-alert" role="alert" data-wf-alert hidden><Icon name="ph:warning-fill" width="15" height="15" /><span></span></div>
+          <div class="wf-qs" data-wf-questions></div>
+          <div class="wf-foot">
+            <button class="wf-btn sec" type="button" data-wf-back hidden><Icon name="ph:arrow-left-bold" width="14" height="14" />{dt('Back')}</button>
+            <button class="wf-btn" type="button" data-wf-next hidden>{dt('Next')}<Icon name="ph:arrow-right-bold" width="14" height="14" /></button>
+            <button class="wf-btn" type="submit" data-wf-send><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" />{dt('Send')}</button>
+          </div>
+        </form>
+      </div>
+    </main>
+    <footer class="wf-foot-site"><a href={lang === 'en' ? '/' : lang === 'es' ? '/es/' : '/pt-br/'}><img src="/assets/mascot-icon.webp" alt="" width="18" height="18" />{dt('Forms by Petto')}</a></footer>
+  </div>
+
+  <script is:inline define:vars={{ texts }}>
+    (function () {
+      var root = document.querySelector('[data-wf-root]');
+      if (!root) return;
+      var $ = function (sel) { return root.querySelector(sel); };
+      var fill = function (text, vars) { return text.replace(/\{(\w+)\}/g, function (w, k) { return k in vars ? vars[k] : w; }); };
+      var VALID = /^[0-9A-Za-z]{12}$/;
+      var lang = root.getAttribute('data-wf-lang') || 'en';
+      var base = root.getAttribute('data-wf-base') || '/form';
+      var id = root.getAttribute('data-wf-id') || '';
+
+      // The switch of the theme: the same saved choice as the rest of petto.sbs.
+      $('[data-wf-theme]').addEventListener('click', function () {
+        var html = document.documentElement;
+        var now = html.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        var next = now === 'light' ? 'dark' : 'light';
+        html.setAttribute('data-theme', next);
+        try { localStorage.setItem('petto-theme', next); } catch (e) { /* private window */ }
       });
-      return values;
-    };
-    var focusFirst = function (boxes) {
-      if (!boxes.length) return;
-      boxes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      var first = boxes[0].querySelector('input, textarea'); if (first) first.focus({ preventScroll: true });
-    };
-    form.addEventListener('submit', function (event) {
-      event.preventDefault();
-      var boxes = Array.prototype.slice.call(list.querySelectorAll('[data-q]'));
-      var bad = boxes.filter(function (box) { return !check(box); });
-      if (bad.length) { focusFirst(bad); return; }
-      var button = $('[data-wf-send]');
-      button.disabled = true; button.classList.add('is-sending');
-      alertBox('');
-      fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ values: collect() }) })
-        .then(function (res) { return res.json().catch(function () { return null; }).then(function (data) { return { status: res.status, data: data }; }); })
-        .then(function (r) {
-          var data = r.data || {};
-          if (r.status === 401) { show(['login']); return; }
-          if (data.ok) {
-            $('[data-wf-sent-title]').textContent = fill(texts.sent, { a: data.number });
-            $('[data-wf-sent-text]').textContent = data.message || '';
-            show(['form', 'sent']);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            return;
-          }
-          if (Array.isArray(data.errors) && data.errors.length) {
-            var marked = [];
-            data.errors.forEach(function (e) { var box = list.querySelector('[data-q="' + (window.CSS && CSS.escape ? CSS.escape(e.id) : e.id) + '"]'); if (box) { mark(box, e.message); marked.push(box); } });
-            alertBox(texts.fix);
-            focusFirst(marked);
-            return;
-          }
-          alertBox(data.message || texts.failed);
-        })
-        .catch(function () { alertBox(texts.failed); })
-        .then(function () { button.disabled = false; button.classList.remove('is-sending'); });
-    });
 
-    // The look of the page from the form and its server: the accent (the color of the form), the background, the banner, the icon and
-    // the name of the server (each can be hidden), the icon of the tab and its title. Only https pictures arrive here (checked by the site).
-    var dress = function (f, server) {
-      var page = f.page || {};
-      color = typeof f.color === 'number' ? '#' + f.color.toString(16).padStart(6, '0') : '';
-      if (color) {
-        // The text on the buttons of the color: dark on a light color, white on a dark one.
-        var n = f.color, light = (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255 > 0.6;
-        root.style.setProperty('--wf', color); root.style.setProperty('--wf-ink', light ? '#16171a' : '#ffffff');
-      } else { root.style.removeProperty('--wf'); root.style.removeProperty('--wf-ink'); }
-      root.classList.toggle('wf-bg-solid', page.background === 'solid');
-      root.classList.toggle('wf-bg-gradient', page.background === 'gradient');
-      var title = f.title || texts.form;
-      document.title = title + ' · ' + (server.name || 'Petto');
-      if (server.icon) document.querySelectorAll('link[rel~="icon"]').forEach(function (link) { link.setAttribute('href', server.icon); });
-      var theme = document.querySelector('meta[name="theme-color"]');
-      if (color) { if (!theme) { theme = document.createElement('meta'); theme.setAttribute('name', 'theme-color'); document.head.appendChild(theme); } theme.setAttribute('content', color); }
-      var banner = $('[data-wf-banner]'), bannerImg = $('[data-wf-banner-img]');
-      if (page.banner && /^https:\/\//.test(page.banner)) {
-        bannerImg.onerror = function () { banner.hidden = true; };
-        bannerImg.src = page.banner; banner.hidden = false;
-      } else banner.hidden = true;
-      var icon = $('[data-wf-icon]'), letter = $('[data-wf-letter]');
-      var showIcon = page.show_icon !== false;
-      icon.hidden = !(showIcon && server.icon);
-      if (showIcon && server.icon) icon.src = server.icon;
-      letter.hidden = !(showIcon && !server.icon);
-      letter.textContent = String(server.name || '?').slice(0, 1);
-      var name = $('[data-wf-server]');
-      name.textContent = server.name || ''; name.hidden = page.show_name === false || !server.name;
-      $('[data-wf-id]').textContent = id;
-      $('[data-wf-title]').textContent = title;
-      var desc = $('[data-wf-desc]'); desc.textContent = f.description || ''; desc.hidden = !f.description;
-    };
+      var show = function (names) {
+        root.querySelectorAll('[data-wf-state]').forEach(function (el) { el.hidden = names.indexOf(el.getAttribute('data-wf-state')) === -1; });
+      };
+      var error = function (title, help, retry) {
+        $('[data-wf-error-title]').textContent = title;
+        $('[data-wf-error-help]').textContent = help;
+        $('[data-wf-retry]').hidden = !retry;
+        $('[data-wf-home]').hidden = Boolean(retry);
+        show(['error']);
+      };
 
-    var load = function () {
-      show(['loading']);
-      fetch(api, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-        .then(function (res) { return res.json().catch(function () { return null; }).then(function (data) { return { status: res.status, data: data }; }); })
-        .then(function (r) {
-          var data = r.data || {};
-          if (r.status === 401 || data.logged === false) {
-            $('[data-wf-login]').setAttribute('href', '/f/login?form=' + id + '&lang=' + encodeURIComponent(lang));
-            // Before the login the page already looks like the server's: its banner, colors, icon, name and the title of the form.
-            if (data.look && data.look.form) { dress(data.look.form, data.look.server || {}); $('[data-wf-who-row]').hidden = true; show(['form', 'login']); }
-            else show(['login']);
-            return;
-          }
-          if (!data.ok) { if (r.status === 404) error(texts.notFound, texts.notFoundHelp, false); else error(texts.noLoad, texts.noLoadHelp, true); return; }
-          try { sessionStorage.removeItem(KEY); } catch (e) { /* nothing kept */ }
-          var f = data.form, server = data.server || {};
-          dress(f, server);
-          $('[data-wf-who-row]').hidden = false;
-          $('[data-wf-who]').textContent = fill(texts.answeringAs, { a: (data.user && data.user.username) || '' });
-          $('[data-wf-staff]').textContent = fill(texts.staffReads, { a: server.name || '' });
-          if (!data.can) { $('[data-wf-reason]').textContent = data.reason || ''; show(['form', 'refused']); return; }
-          list.textContent = '';
-          (f.questions || []).forEach(function (q, i) { list.appendChild(question(q, i)); });
-          show(['form', 'fill']);
-        })
-        .catch(function () { error(texts.noLoad, texts.noLoadHelp, true); });
-    };
-    $('[data-wf-retry]').addEventListener('click', load);
-    window.addEventListener('hashchange', function () { if (location.hash.slice(1) !== id) location.reload(); });
-    load();
-  })();
-</script>
+      // The older address (/form#<id>, or back from the login without it): the page of the form is /form/<id> now.
+      if (!id) {
+        var KEY = 'petto-form-id';
+        var fromHash = (location.hash || '').slice(1);
+        var kept = '';
+        try { kept = sessionStorage.getItem(KEY) || ''; sessionStorage.removeItem(KEY); } catch (e) { kept = ''; }
+        var target = VALID.test(fromHash) ? fromHash : VALID.test(kept) ? kept : '';
+        if (target) { location.replace(base + '/' + target + location.search); return; }
+        error(texts.noId, texts.noIdHelp, false);
+        return;
+      }
+      if (root.getAttribute('data-wf-status') === '404') return;
+
+      var api = '/api/form/' + id + '?lang=' + encodeURIComponent(lang);
+      var form = $('[data-wf-form]');
+      var list = $('[data-wf-questions]');
+      var PAGE = 5;
+      var step = 0;
+      var steps = 1;
+
+      var el = function (tag, attrs, text) {
+        var node = document.createElement(tag);
+        if (attrs) Object.keys(attrs).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) node.setAttribute(k, attrs[k] === true ? '' : attrs[k]); });
+        if (text !== undefined && text !== null) node.textContent = text;
+        return node;
+      };
+      var choice = function (type, name, value, label) {
+        var wrap = el('label', { class: 'wf-choice' + (type === 'checkbox' ? ' wf-check' : '') });
+        wrap.appendChild(el('input', { type: type, name: name, value: value }));
+        wrap.appendChild(el('span', null, label));
+        return wrap;
+      };
+      var question = function (q, index) {
+        var box = el('fieldset', { class: 'wf-q', style: '--i:' + (index % PAGE), 'data-q': q.id, 'data-step': String(Math.floor(index / PAGE)), 'data-type': q.type, 'data-required': q.required ? '1' : '0', 'data-min': q.min_length == null ? '' : q.min_length, 'data-minv': q.min_value == null ? '' : q.min_value, 'data-maxv': q.max_value == null ? '' : q.max_value, 'data-maxc': q.max_choices == null ? '' : q.max_choices });
+        var legend = el('legend');
+        legend.appendChild(el('span', { class: 'wf-n' }, String(index + 1)));
+        legend.appendChild(el('span', { class: 'wf-label' }, q.label));
+        legend.appendChild(q.required ? el('em', { class: 'wf-req', 'aria-label': texts.requiredLabel }, '*') : el('span', { class: 'wf-opt' }, texts.optional));
+        box.appendChild(legend);
+        if (q.image) box.appendChild(el('img', { class: 'wf-img', src: q.image, alt: q.label, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }));
+        if (q.help) box.appendChild(el('p', { class: 'wf-help' }, q.help));
+        // Made safe by the site (utils/forms.ts descriptionHtml): everything is escaped, then only bold, italics, code and links are made.
+        if (q.description_html) { var d = el('div', { class: 'wf-qdesc' }); d.innerHTML = q.description_html; box.appendChild(d); }
+        var name = 'q_' + q.id;
+        if (q.type === 'short') box.appendChild(el('input', { type: 'text', name: name, maxlength: q.max_length || 1000, placeholder: q.placeholder || '', required: q.required, 'aria-label': q.label }));
+        else if (q.type === 'paragraph') box.appendChild(el('textarea', { name: name, maxlength: q.max_length || 4000, placeholder: q.placeholder || '', required: q.required, rows: '5', 'aria-label': q.label }));
+        else if (q.type === 'number') box.appendChild(el('input', { type: 'text', inputmode: 'decimal', name: name, maxlength: '30', placeholder: q.placeholder || (q.min_value != null && q.max_value != null ? q.min_value + ' – ' + q.max_value : ''), required: q.required, 'aria-label': q.label }));
+        else if (q.type === 'yesno') { var row = el('div', { class: 'wf-choices wf-row' }); row.appendChild(choice('radio', name, 'yes', texts.yes)); row.appendChild(choice('radio', name, 'no', texts.no)); box.appendChild(row); }
+        else if (q.type === 'choice' || q.type === 'multi') {
+          var grid = el('div', { class: 'wf-choices' });
+          (q.options || []).forEach(function (option, i) { grid.appendChild(choice(q.type === 'multi' ? 'checkbox' : 'radio', name, 'o' + i, option)); });
+          box.appendChild(grid);
+          if (q.type === 'multi') box.appendChild(el('p', { class: 'wf-help' }, q.max_choices ? fill(texts.pickUpTo, { a: q.max_choices }) : texts.pickAll));
+        }
+        box.appendChild(el('p', { class: 'wf-err', 'data-err': true, 'aria-live': 'polite' }));
+        return box;
+      };
+      var alertBox = function (text) {
+        var box = $('[data-wf-alert]');
+        box.hidden = !text;
+        box.querySelector('span').textContent = text || '';
+      };
+      var boxes = function () { return Array.prototype.slice.call(list.querySelectorAll('[data-q]')); };
+      var answered = function (box) {
+        var type = box.dataset.type;
+        if (type === 'short' || type === 'paragraph' || type === 'number') return Boolean((box.querySelector('input[name^="q_"], textarea').value || '').trim());
+        return Boolean(box.querySelector('input[name^="q_"]:checked'));
+      };
+      // The bar over the questions: how many are answered, and the step when the form has more than five questions.
+      var progress = function () {
+        var all = boxes();
+        var done = all.filter(answered).length;
+        $('[data-wf-bar]').style.width = (all.length ? Math.round((done / all.length) * 100) : 0) + '%';
+        $('[data-wf-answered]').textContent = fill(texts.answered, { a: done, b: all.length });
+        $('[data-wf-step-label]').textContent = steps > 1 ? fill(texts.step, { a: step + 1, b: steps }) : '';
+      };
+      var goTo = function (n, scroll) {
+        step = Math.max(0, Math.min(steps - 1, n));
+        boxes().forEach(function (box) { box.hidden = Number(box.dataset.step) !== step; });
+        $('[data-wf-back]').hidden = step === 0;
+        $('[data-wf-next]').hidden = step >= steps - 1;
+        $('[data-wf-send]').hidden = step < steps - 1;
+        progress();
+        if (scroll) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+
+      // The same checks as the bot, before sending, so a mistake is shown at once. The bot checks everything again.
+      var check = function (box) {
+        var type = box.dataset.type;
+        var required = box.dataset.required === '1';
+        var msg = '';
+        if (type === 'short' || type === 'paragraph' || type === 'number') {
+          var input = box.querySelector('input[name^="q_"], textarea');
+          var text = (input.value || '').trim();
+          if (!text) { if (required) msg = texts.required; }
+          else if (type === 'number') {
+            var normal = text.replace(/\s/g, '').replace(',', '.');
+            if (!/^-?\d{1,15}(\.\d{1,6})?$/.test(normal)) msg = texts.number;
+            else {
+              var n = Number(normal), min = box.dataset.minv, max = box.dataset.maxv;
+              if ((min !== '' && n < Number(min)) || (max !== '' && n > Number(max))) msg = fill(texts.range, { min: min || '…', max: max || '…' });
+            }
+          } else if (box.dataset.min && text.length < Number(box.dataset.min)) msg = fill(texts.short, { count: box.dataset.min });
+        } else {
+          var picked = box.querySelectorAll('input[name^="q_"]:checked').length;
+          if (!picked && required) msg = texts.required;
+          else if (type === 'multi' && box.dataset.maxc && picked > Number(box.dataset.maxc)) msg = fill(texts.many, { count: box.dataset.maxc });
+        }
+        mark(box, msg);
+        return !msg;
+      };
+      var mark = function (box, msg) { box.classList.toggle('wf-q-bad', Boolean(msg)); box.querySelector('[data-err]').textContent = msg || ''; };
+      form.addEventListener('change', function (event) { var box = event.target.closest('[data-q]'); if (box && box.classList.contains('wf-q-bad')) check(box); progress(); });
+      form.addEventListener('input', progress);
+      form.addEventListener('focusout', function (event) { var box = event.target.closest('[data-q]'); if (box && event.target.matches('input[type=text], textarea') && event.target.value) check(box); });
+      var collect = function () {
+        var values = {};
+        boxes().forEach(function (box) {
+          var qid = box.dataset.q, type = box.dataset.type;
+          if (type === 'multi') values[qid] = Array.prototype.map.call(box.querySelectorAll('input:checked'), function (i) { return i.value; });
+          else if (type === 'choice' || type === 'yesno') { var c = box.querySelector('input:checked'); if (c) values[qid] = c.value; }
+          else values[qid] = box.querySelector('input, textarea').value;
+        });
+        return values;
+      };
+      var focusFirst = function (bad) {
+        if (!bad.length) return;
+        var target = Number(bad[0].dataset.step);
+        if (target !== step) goTo(target, false);
+        bad[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var first = bad[0].querySelector('input, textarea'); if (first) first.focus({ preventScroll: true });
+      };
+      $('[data-wf-next]').addEventListener('click', function () {
+        var bad = boxes().filter(function (box) { return Number(box.dataset.step) === step && !check(box); });
+        if (bad.length) { focusFirst(bad); return; }
+        alertBox('');
+        goTo(step + 1, true);
+      });
+      $('[data-wf-back]').addEventListener('click', function () { goTo(step - 1, true); });
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        // Enter in a field of an earlier step goes to the next step instead of sending.
+        if (step < steps - 1) { $('[data-wf-next]').click(); return; }
+        var bad = boxes().filter(function (box) { return !check(box); });
+        if (bad.length) { focusFirst(bad); return; }
+        var button = $('[data-wf-send]');
+        button.disabled = true; button.classList.add('is-sending');
+        alertBox('');
+        fetch(api, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ values: collect() }) })
+          .then(function (res) { return res.json().catch(function () { return null; }).then(function (data) { return { status: res.status, data: data }; }); })
+          .then(function (r) {
+            var data = r.data || {};
+            if (r.status === 401) { show(['login']); return; }
+            if (data.ok) {
+              $('[data-wf-sent-title]').textContent = fill(texts.sent, { a: data.number });
+              $('[data-wf-sent-text]').textContent = data.message || '';
+              show(['who', 'sent']);
+              root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              return;
+            }
+            if (Array.isArray(data.errors) && data.errors.length) {
+              var marked = [];
+              data.errors.forEach(function (e) { var box = list.querySelector('[data-q="' + (window.CSS && CSS.escape ? CSS.escape(e.id) : e.id) + '"]'); if (box) { mark(box, e.message); marked.push(box); } });
+              alertBox(texts.fix);
+              focusFirst(marked);
+              return;
+            }
+            alertBox(data.message || texts.failed);
+          })
+          .catch(function () { alertBox(texts.failed); })
+          .then(function () { button.disabled = false; button.classList.remove('is-sending'); });
+      });
+
+      // When the server could not draw the look (the bot was slow), it arrives with the answer and fills the head of the page.
+      var dress = function (f, server) {
+        if (!$('[data-wf-head]').hidden) return;
+        if (typeof f.color === 'number') root.style.setProperty('--wf', '#' + f.color.toString(16).padStart(6, '0'));
+        var page = f.page || {};
+        root.classList.toggle('wf-bg-solid', page.background === 'solid');
+        root.classList.toggle('wf-bg-gradient', page.background === 'gradient');
+        document.title = (f.title || texts.form) + (server.name ? ' · ' + server.name : '');
+        if (server.icon) document.querySelectorAll('link[rel~="icon"]').forEach(function (link) { link.setAttribute('href', server.icon); });
+        var name = $('[data-wf-server]'); if (name) name.textContent = page.show_name === false ? '' : server.name || '';
+        var icon = $('[data-wf-icon]'); if (icon && server.icon && page.show_icon !== false) icon.src = server.icon;
+        $('[data-wf-title]').textContent = f.title || texts.form;
+        var desc = $('[data-wf-desc]'); desc.textContent = f.description || ''; desc.hidden = !f.description;
+        $('[data-wf-head]').hidden = false;
+      };
+
+      var load = function () {
+        show(['loading']);
+        fetch(api, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (res) { return res.json().catch(function () { return null; }).then(function (data) { return { status: res.status, data: data }; }); })
+          .then(function (r) {
+            var data = r.data || {};
+            if (r.status === 401 || data.logged === false) {
+              if (data.look && data.look.form) dress(data.look.form, data.look.server || {});
+              show(['login']);
+              return;
+            }
+            if (!data.ok) { if (r.status === 404) error(texts.notFound, texts.notFoundHelp, false); else error(texts.noLoad, texts.noLoadHelp, true); return; }
+            var f = data.form, server = data.server || {};
+            dress(f, server);
+            $('[data-wf-who]').textContent = fill(texts.answeringAs, { a: (data.user && data.user.username) || '' });
+            $('[data-wf-staff]').textContent = fill(texts.staffReads, { a: server.name || '' });
+            if (!data.can) {
+              // One submission already waiting is shown as where it is, not as a lock.
+              var pending = data.code === 'pending';
+              $('[data-wf-refused-title]').hidden = !pending;
+              $('[data-wf-refused-title]').textContent = pending ? texts.pendingTitle : '';
+              $('[data-wf-state="refused"]').classList.toggle('is-pending', pending);
+              $('[data-wf-reason]').textContent = data.reason || '';
+              show(['who', 'refused']);
+              return;
+            }
+            list.textContent = '';
+            (f.questions || []).forEach(function (q, i) { list.appendChild(question(q, i)); });
+            steps = Math.max(1, Math.ceil((f.questions || []).length / PAGE));
+            $('[data-wf-progress]').hidden = !(f.questions || []).length;
+            show(['who', 'fill']);
+            goTo(0, false);
+          })
+          .catch(function () { error(texts.noLoad, texts.noLoadHelp, true); });
+      };
+      $('[data-wf-retry]').addEventListener('click', load);
+      load();
+    })();
+  </script>
+</body>
+</html>
 
 <style is:global>
-  .wf { --wf: var(--accent); padding: 48px 16px 80px; transition: background-color .3s ease; }
+  .wf { --bg: #18191d; --raise: #1e2024; --card: #212328; --border: #34373e; --text: #e6e3dc; --muted: #a29e96; --dim: #6e6a63; --green: #a5ea7a; --yellow: #fed53c; --red: #fe6465; --accent: #f0a88f;
+    --wf: var(--accent); --wf-ink: #2b1a13; --mono: ui-monospace, 'SFMono-Regular', 'Cascadia Code', Consolas, monospace;
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); color-scheme: dark; font-family: 'Jakarta Variable', -apple-system, system-ui, sans-serif; font-size: 14.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  :root[data-theme="light"] .wf { --bg: #f4f5f7; --raise: #fff; --card: #fff; --border: #e1e4ea; --text: #20242b; --muted: #5f6975; --dim: #8c96a3; --green: #3f8a1f; --yellow: #93720a; --red: #c23c3d; --accent: #bd5136; --wf-ink: #fff; color-scheme: light; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .wf { --bg: #f4f5f7; --raise: #fff; --card: #fff; --border: #e1e4ea; --text: #20242b; --muted: #5f6975; --dim: #8c96a3; --green: #3f8a1f; --yellow: #93720a; --red: #c23c3d; --accent: #bd5136; --wf-ink: #fff; color-scheme: light; } }
+  .wf *, .wf *::before, .wf *::after { box-sizing: border-box; }
+  .wf [hidden] { display: none !important; }
   /* The background a form picks: a tint of its color, or a glow of it from the top. */
   .wf.wf-bg-solid { background: color-mix(in srgb, var(--wf) 9%, var(--bg)); }
-  .wf.wf-bg-gradient { background: radial-gradient(130% 60% at 50% -8%, color-mix(in srgb, var(--wf) 30%, transparent), transparent 70%), linear-gradient(180deg, color-mix(in srgb, var(--wf) 13%, var(--bg)) 0%, var(--bg) 80%); }
-  .wf-shell { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-  .wf-card { border: 1px solid var(--border); border-radius: 18px; background: var(--card); padding: 22px; animation: wfIn .5s cubic-bezier(.16, 1, .3, 1) both; }
-  .wf-center { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 22px; }
-  .wf-center h1 { font-size: 24px; margin: 0; }
-  .wf-mascot { animation: wfFloat 5s ease-in-out infinite; }
-  .wf-muted { color: var(--text-muted); font-size: 14px; margin: 0; max-width: 52ch; }
-  .wf-warn-icon { color: var(--yellow); }
-  .wf-head { --hx: 24px; --ht: 26px; position: relative; border-radius: 20px; padding: var(--ht) var(--hx) 22px; background: linear-gradient(135deg, color-mix(in srgb, var(--wf) 22%, var(--card)), var(--card) 70%); border: 1px solid color-mix(in srgb, var(--wf) 35%, var(--border)); overflow: hidden; animation: wfIn .5s cubic-bezier(.16, 1, .3, 1) both; }
-  .wf-head::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--wf); z-index: 1; }
-  .wf-banner { margin: calc(var(--ht) * -1) calc(var(--hx) * -1) 18px; aspect-ratio: 3 / 1; max-height: 220px; width: calc(100% + var(--hx) * 2); background: color-mix(in srgb, var(--wf) 25%, var(--card)); border-bottom: 1px solid color-mix(in srgb, var(--wf) 35%, var(--border)); overflow: hidden; }
+  .wf.wf-bg-gradient { background: radial-gradient(130% 60% at 50% -8%, color-mix(in srgb, var(--wf) 30%, transparent), transparent 70%) no-repeat, linear-gradient(180deg, color-mix(in srgb, var(--wf) 13%, var(--bg)) 0%, var(--bg) 640px) no-repeat, var(--bg); }
+  .wf-shell { max-width: 720px; margin: 0 auto; padding: 18px 16px 40px; }
+  .wf-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .wf-brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-family: 'Fraunces Variable', Georgia, serif; font-weight: 600; font-size: 18px; min-width: 0; }
+  .wf-brand img, .wf-letter { width: 34px; height: 34px; border-radius: 10px; flex: none; object-fit: cover; }
+  .wf-letter { display: grid; place-items: center; font-family: 'Jakarta Variable', sans-serif; font-weight: 700; background: color-mix(in srgb, var(--wf) 20%, var(--card)); color: var(--wf); }
+  .wf-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wf-langs { display: flex; align-items: center; gap: 4px; flex: none; }
+  .wf-lang, .wf-theme { text-decoration: none; font: 600 12px 'Jakarta Variable', sans-serif; padding: 5px 9px; border-radius: 8px; color: var(--muted); border: 1px solid transparent; background: none; cursor: pointer; }
+  .wf-theme { display: grid; place-items: center; padding: 5px 7px; margin-left: 2px; }
+  .wf-lang:hover, .wf-theme:hover { color: var(--text); }
+  .wf-lang.on { color: var(--text); background: color-mix(in srgb, var(--wf) 14%, transparent); border-color: color-mix(in srgb, var(--wf) 40%, transparent); }
+  .wf-screen { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 12px 32px -18px rgb(0 0 0 / .35); animation: wfIn .5s cubic-bezier(.16, 1, .3, 1) both; }
+  .wf-banner { aspect-ratio: 3 / 1; max-height: 220px; width: 100%; background: color-mix(in srgb, var(--wf) 25%, var(--card)); border-bottom: 1px solid var(--border); overflow: hidden; }
   .wf-banner img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .wf-server { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 14px; }
-  .wf-server img, .wf-server-letter { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; }
-  .wf-server-letter { display: grid; place-items: center; font-weight: 700; background: color-mix(in srgb, var(--wf) 18%, transparent); color: var(--wf); }
-  .wf .btn-accent { background: var(--wf); color: var(--wf-ink, var(--accent-ink)); }
-  .wf-id { margin-left: auto; display: inline-flex; align-items: center; font-family: var(--mono); font-size: 12px; letter-spacing: .03em; padding: 4px 9px; border-radius: 8px; font-weight: 500; color: color-mix(in srgb, var(--wf) 70%, var(--text)); background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px solid color-mix(in srgb, var(--wf) 30%, var(--border)); user-select: all; }
-  .wf-id-p { color: var(--text-dim); user-select: none; }
-  .wf-caret { width: 7px; height: 13px; margin-left: 3px; background: currentColor; opacity: .75; animation: wfBlink 1.1s steps(1) infinite; }
-  .wf-head h1 { font-size: clamp(24px, 5vw, 32px); margin: 0 0 8px; line-height: 1.15; }
-  .wf-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; margin: 0 0 12px; white-space: pre-line; }
-  .wf-who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--text-dim); margin: 0; }
-  .wf-who a { color: var(--wf); }
+  .wf-inner { padding: 22px 22px 26px; display: flex; flex-direction: column; gap: 18px; border-top: 4px solid var(--wf); }
+  .wf-banner + .wf-inner { border-top: 0; }
+  .wf h1, .wf h2 { font-family: 'Fraunces Variable', Georgia, serif; font-weight: 600; letter-spacing: -0.015em; margin: 0; color: var(--text); }
+  .wf h1 { font-size: clamp(24px, 5vw, 30px); line-height: 1.15; overflow-wrap: anywhere; }
+  .wf h2 { font-size: 19px; line-height: 1.25; }
+  .wf p { margin: 0; }
+  .wf-head { display: flex; flex-direction: column; gap: 10px; }
+  .wf-eyebrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .wf-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; color: color-mix(in srgb, var(--wf) 75%, var(--text)); background: color-mix(in srgb, var(--wf) 13%, transparent); border: 1px solid color-mix(in srgb, var(--wf) 35%, transparent); }
+  .wf-id { margin-left: auto; display: inline-flex; align-items: center; font-family: var(--mono); font-size: 11.5px; letter-spacing: .03em; padding: 3px 8px; border-radius: 8px; color: color-mix(in srgb, var(--wf) 70%, var(--text)); background: var(--raise); border: 1px solid var(--border); user-select: all; }
+  .wf-id-p { color: var(--dim); user-select: none; }
+  .wf-caret { width: 6px; height: 12px; margin-left: 3px; background: currentColor; opacity: .7; animation: wfBlink 1.1s steps(1) infinite; }
+  .wf-desc { color: var(--muted); font-size: 15px; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+  .wf-muted { color: var(--muted); font-size: 13.5px; }
+  .wf-card { background: var(--raise); border: 1px solid var(--border); border-radius: 14px; padding: 18px; animation: wfIn .45s cubic-bezier(.16, 1, .3, 1) both; }
+  .wf-center { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 18px; }
+  .wf-center .wf-muted { max-width: 52ch; }
+  .wf-badge { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; flex: none; color: var(--wf); background: color-mix(in srgb, var(--wf) 14%, transparent); }
+  .wf-badge.warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 13%, transparent); }
+  .wf-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: 600 14px 'Jakarta Variable', sans-serif; text-decoration: none; cursor: pointer; padding: 10px 18px; border-radius: 11px; border: 1px solid transparent; background: var(--wf); color: var(--wf-ink); transition: filter .15s, transform .15s, opacity .15s; }
+  .wf-btn:hover { filter: brightness(1.07); } .wf-btn:active { transform: scale(.98); }
+  .wf-btn.sec { background: var(--card); color: var(--text); border-color: var(--border); }
+  .wf-btn:focus-visible, .wf-lang:focus-visible, .wf-theme:focus-visible { outline: 2px solid var(--wf); outline-offset: 2px; }
+  .wf-btn.is-sending, .wf-btn[disabled] { opacity: .6; pointer-events: none; }
+  .wf-who { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: -6px; }
+  .wf-who a { color: var(--wf); margin-left: 2px; }
   .wf-form { display: flex; flex-direction: column; gap: 14px; }
+  .wf-progress { display: flex; flex-direction: column; gap: 7px; }
+  .wf-progress-row { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .wf-progress-row span:first-child { color: var(--wf); }
+  .wf-bar { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--wf) 14%, var(--raise)); overflow: hidden; }
+  .wf-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--wf); transition: width .35s cubic-bezier(.16, 1, .3, 1); }
   .wf-alert { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 10px 13px; font-size: 13.5px; color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); }
-  .wf-qs { display: flex; flex-direction: column; gap: 14px; }
-  .wf-q { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 9px; transition: border-color .2s ease, box-shadow .2s ease; animation: wfIn .45s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(min(var(--i), 8) * 40ms); }
+  .wf-qs { display: flex; flex-direction: column; gap: 12px; }
+  .wf-q { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 9px; background: var(--raise); transition: border-color .2s ease, box-shadow .2s ease; animation: wfIn .45s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i) * 40ms); }
   .wf-q:focus-within { border-color: color-mix(in srgb, var(--wf) 55%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf) 14%, transparent); }
   .wf-q-bad { border-color: color-mix(in srgb, var(--red) 60%, var(--border)); }
   .wf-q legend { display: flex; align-items: baseline; gap: 8px; font-weight: 600; font-size: 15px; padding: 0; float: left; width: 100%; }
   .wf-q legend + * { clear: both; }
-  .wf-n { flex: none; font-size: 12px; font-family: var(--mono); color: var(--wf); }
+  .wf-label { overflow-wrap: anywhere; }
+  .wf-n { flex: none; display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 7px; font-size: 11.5px; font-family: var(--mono); color: var(--wf); background: color-mix(in srgb, var(--wf) 13%, transparent); transform: translateY(-1px); }
   .wf-req { color: var(--red); font-style: normal; }
-  .wf-opt { font-size: 11.5px; font-weight: 500; color: var(--text-dim); }
-  .wf-help { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .wf-opt { font-size: 11.5px; font-weight: 500; color: var(--dim); }
+  .wf-help { font-size: 13px; color: var(--muted); }
   .wf-img { display: block; width: 100%; height: auto; max-height: 420px; object-fit: contain; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); }
-  .wf-qdesc { font-size: 14px; line-height: 1.6; color: var(--text-muted); margin: 0; overflow-wrap: anywhere; }
+  .wf-qdesc { font-size: 14px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
   .wf-qdesc a { color: var(--wf); text-decoration: underline; text-underline-offset: 2px; }
   .wf-qdesc strong { color: var(--text); }
   .wf-qdesc code { font-family: var(--mono); font-size: .9em; padding: 1px 5px; border-radius: 5px; background: var(--bg); border: 1px solid var(--border); }
-  .wf-q input[type=text], .wf-q textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; background: var(--bg); color: var(--text); font: inherit; font-size: 15px; transition: border-color .15s ease, box-shadow .15s ease; }
+  .wf-q input[type=text], .wf-q textarea { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; background: var(--card); color: var(--text); font: inherit; font-size: 15px; transition: border-color .15s ease, box-shadow .15s ease; }
   .wf-q textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
   .wf-q input[type=text]:focus, .wf-q textarea:focus { outline: none; border-color: var(--wf); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf) 18%, transparent); }
   .wf-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
   .wf-row { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 360px; }
   .wf-choice { position: relative; display: block; cursor: pointer; }
   .wf-choice input { position: absolute; opacity: 0; pointer-events: none; }
-  .wf-choice span { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; font-size: 14.5px; transition: border-color .15s ease, background .15s ease, transform .12s ease; min-height: 22px; }
-  .wf-choice span::before { content: ''; flex: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--text-dim); box-sizing: border-box; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .wf-choice span { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; font-size: 14.5px; background: var(--card); transition: border-color .15s ease, background .15s ease, transform .12s ease; min-height: 22px; }
+  .wf-choice span::before { content: ''; flex: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--dim); transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
   .wf-check span::before { border-radius: 5px; }
   .wf-choice:hover span { border-color: color-mix(in srgb, var(--wf) 45%, var(--border)); }
   .wf-choice:active span { transform: scale(.985); }
-  .wf-choice input:checked + span { border-color: var(--wf); background: color-mix(in srgb, var(--wf) 12%, transparent); font-weight: 600; }
+  .wf-choice input:checked + span { border-color: var(--wf); background: color-mix(in srgb, var(--wf) 12%, var(--card)); font-weight: 600; }
   .wf-choice input:checked + span::before { border-color: var(--wf); background: var(--wf); box-shadow: inset 0 0 0 3px var(--card); }
   .wf-choice input:focus-visible + span { box-shadow: 0 0 0 3px color-mix(in srgb, var(--wf) 25%, transparent); }
-  .wf-err { margin: 0; font-size: 13px; color: var(--red); min-height: 0; }
+  .wf-err { font-size: 13px; color: var(--red); font-weight: 600; }
   .wf-err:empty { display: none; }
-  .wf [hidden] { display: none !important; }
-  .wf-loading { display: flex; justify-content: center; padding: 60px 0; }
-  .wf-spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--wf); animation: wfSpin .8s linear infinite; }
-  @keyframes wfSpin { to { transform: rotate(360deg); } }
-  .wf-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 4px; }
-  .wf-foot .btn.is-sending { opacity: .7; pointer-events: none; }
-  .wf-done { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 22px; }
-  .wf-done h2 { margin: 0; font-size: 22px; }
-  .wf-done p { margin: 0; color: var(--text-muted); white-space: pre-line; max-width: 56ch; }
-  .wf-done-icon { color: var(--green); animation: wfPop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
-  .wf-refused { display: flex; align-items: flex-start; gap: 12px; color: var(--text-muted); }
-  .wf-refused p { margin: 0; font-size: 15px; line-height: 1.55; }
-  .wf-refused svg { color: var(--yellow); flex: none; margin-top: 3px; }
-  @keyframes wfIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .wf-loading { display: flex; justify-content: center; padding: 34px 0; }
+  .wf-spin { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--wf); animation: wfSpin .8s linear infinite; }
+  .wf-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding-top: 2px; }
+  .wf-foot [data-wf-back] { margin-right: auto; }
+  .wf-status { display: flex; flex-direction: column; gap: 16px; border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: color-mix(in srgb, var(--green) 6%, var(--raise)); }
+  .wf-status-top { display: flex; align-items: flex-start; gap: 12px; }
+  .wf-status-top p { white-space: pre-line; margin-top: 4px; }
+  .wf-done-icon { color: var(--green); flex: none; animation: wfPop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
+  .wf-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .wf-steps li { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+  .wf-steps li:last-child { padding-bottom: 0; }
+  .wf-steps li:not(:last-child)::after { content: ''; position: absolute; left: 13px; top: 28px; bottom: 2px; width: 2px; border-radius: 2px; background: var(--border); }
+  .wf-steps li.done::after { background: var(--green); }
+  .wf-steps li div { display: flex; flex-direction: column; gap: 1px; padding-top: 3px; }
+  .wf-steps b { font-size: 14px; }
+  .wf-dot { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; flex: none; color: var(--dim); background: var(--card); border: 2px solid var(--border); }
+  .wf-steps li.done .wf-dot { color: var(--bg); background: var(--green); border-color: var(--green); }
+  .wf-steps li.now .wf-dot { color: var(--wf); border-color: var(--wf); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wf) 18%, transparent); }
+  .wf-refused { display: flex; align-items: flex-start; gap: 14px; border-color: color-mix(in srgb, var(--yellow) 40%, var(--border)); background: color-mix(in srgb, var(--yellow) 6%, var(--raise)); }
+  .wf-refused > div { display: flex; flex-direction: column; gap: 4px; padding-top: 2px; }
+  .wf-refused p { font-size: 14.5px; line-height: 1.55; color: var(--muted); }
+  .wf-refused.is-pending { border-color: color-mix(in srgb, var(--wf) 40%, var(--border)); background: color-mix(in srgb, var(--wf) 6%, var(--raise)); }
+  .wf-refused.is-pending .wf-badge { color: var(--wf); background: color-mix(in srgb, var(--wf) 14%, transparent); }
+  .wf-refused .wf-ic-wait, .wf-refused.is-pending .wf-ic-lock { display: none; }
+  .wf-refused.is-pending .wf-ic-wait { display: block; }
+  .wf-foot-site { text-align: center; }
+  .wf-foot-site a { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 12px; text-decoration: none; }
+  .wf-foot-site a:hover { color: var(--muted); }
+  @keyframes wfIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes wfPop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+  @keyframes wfSpin { to { transform: rotate(360deg); } }
   @keyframes wfBlink { 50% { opacity: 0; } }
-  @keyframes wfFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-  @media (prefers-reduced-motion: reduce) { .wf-card, .wf-head, .wf-q, .wf-done-icon, .wf-mascot, .wf-caret { animation: none; } }
-  @media (max-width: 520px) { .wf { padding-top: 24px; } .wf-card { padding: 18px 16px; } .wf-head { --hx: 16px; --ht: 18px; } .wf-banner { aspect-ratio: 5 / 2; } .wf-q { padding: 14px; } .wf-choices { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .wf-screen, .wf-card, .wf-q, .wf-done-icon, .wf-caret { animation: none; } .wf-bar i { transition: none; } }
+  @media (max-width: 560px) {
+    .wf-shell { padding: 12px 12px 32px; }
+    .wf-brand { font-size: 16px; }
+    .wf-inner { padding: 18px 14px 22px; }
+    .wf-banner { aspect-ratio: 5 / 2; }
+    .wf-q { padding: 14px; }
+    .wf-choices { grid-template-columns: 1fr; }
+    .wf-id { margin-left: 0; }
+    .wf-foot .wf-btn { flex: 1; }
+    .wf-foot [data-wf-back] { margin-right: 0; flex: 0 0 auto; }
+  }
 </style>

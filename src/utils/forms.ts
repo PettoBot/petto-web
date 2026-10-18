@@ -15,13 +15,14 @@ export type PageBackground = (typeof PAGE_BACKGROUNDS)[number];
 export const LIMITS = {
   title: 45, label: 45, help: 100, placeholder: 100, option: 100, options: 25, description: 1000, questionDescription: 1000, image: 500,
   short: 1000, paragraph: 4000, pageSize: 5, questions: 25, reason: 1000, message: 2000, buttonLabel: 80, roles: 25,
+  embedTitle: 90, embedDescription: 240,
 };
 // One limit for every server, the same numbers as the bot (petto-bot src/utils/forms.js FORM_LIMITS). Forms are not a Premium module.
 export const FORM_PLAN = { forms: 25, questions: 25, submissions: 2000 };
 const DEFAULT_MAX: Record<string, number> = { short: 200, paragraph: 1000 };
 const SNOWFLAKE = /^\d{15,25}$/;
 export const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-// The id in the web address of a form (petto.sbs/form#<public id>): 12 random letters and digits, the same as the bot's
+// The id in the web address of a form (petto.sbs/form/<public id>): 12 random letters and digits, the same as the bot's
 // (petto-bot src/utils/forms.js). Numbers never open a form on the web, so the forms cannot be walked through one by one.
 export const PUBLIC_ID = /^[0-9A-Za-z]{12}$/;
 const PUBLIC_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -37,18 +38,18 @@ export function newPublicId(): string {
   return id;
 }
 
-// The language is in the path and the id in the hash (petto.sbs/es/form#x7Kp9QzA2mVt), the same as the bot's webUrl: the page is the
-// same static page for every form, and it loads the form itself, so the id never reaches a server log.
+// The language and the id are both in the path (petto.sbs/es/form/x7Kp9QzA2mVt), the same as the bot's webUrl: the site draws the page of
+// that form on the server, so Discord and other apps that read link previews get its own title, description and image. The older
+// addresses still open it: /form#<id> (the static page sends the visitor on) and /f/<id>.
 const FORM_LANG_PATH: Record<string, string> = { es: '/es', 'pt-BR': '/pt-br', pt: '/pt-br' };
 export const formPagePath = (lang = 'en') => `${FORM_LANG_PATH[lang] ?? ''}/form`;
+/** The address of one form in a language: /form/<id>, /es/form/<id>, /pt-br/form/<id>. */
+export const formIdPath = (id: string, lang = 'en') => `${formPagePath(lang)}/${id}`;
 
-/** The path of a form on the website in a language (/form#<id>, /es/form#<id>, /pt-br/form#<id>), or null when it has no public id yet. */
-export const formWebPath = (form: { public_id?: string | null }, lang = 'en') => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `${formPagePath(lang)}#${form.public_id}` : null);
-/**
- * The link of a form to share in a chat (/f/<id>, /es/f/<id>, /pt-br/f/<id>), the same as the bot's shareUrl: the site answers it on
- * the server, so Discord and other apps show the preview of this form, and a browser goes on to the page of the form.
- */
-export const formSharePath = (form: { public_id?: string | null }, lang = 'en') => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? `${FORM_LANG_PATH[lang] ?? ''}/f/${form.public_id}` : null);
+/** The path of a form on the website in a language (/form/<id>, /es/form/<id>, /pt-br/form/<id>), or null when it has no public id yet. */
+export const formWebPath = (form: { public_id?: string | null }, lang = 'en') => (PUBLIC_ID.test(String(form?.public_id ?? '')) ? formIdPath(String(form.public_id), lang) : null);
+/** The link of a form to share in a chat: the same address, which carries the preview of the form (the bot's shareUrl). */
+export const formSharePath = formWebPath;
 
 export interface Question {
   id: string; type: QuestionType; label: string; help: string | null; description: string | null; image: string | null; placeholder: string | null; required: boolean;
@@ -65,7 +66,12 @@ export interface FormRow {
   button_label: string | null; button_emoji: string | null; button_style: (typeof BUTTON_STYLES)[number];
   web_enabled: boolean;
   page_banner: string | null; page_background: PageBackground; page_show_icon: boolean; page_show_name: boolean;
+  embed_title: string | null; embed_description: string | null; embed_image: string | null; embed_color: number | null; embed_thumbnail: boolean;
 }
+/** How the link of a form looks when it is shared (what the bot sends as `form.embed`); empty parts fall back to the form. */
+export interface LinkEmbed { title: string | null; description: string | null; image: string | null; color: number | null; thumbnail: boolean }
+/** The columns of the link preview, which the dashboard can leave out when the bot has not added them to the database yet. */
+export const EMBED_COLUMNS = ['embed_title', 'embed_description', 'embed_image', 'embed_color', 'embed_thumbnail'] as const;
 /** How the web page of a form looks: what the bot sends as `form.page`. */
 export interface PageLook { banner: string | null; background: PageBackground; show_icon: boolean; show_name: boolean }
 
@@ -228,6 +234,34 @@ export function normalizeForm(input: any, { maxQuestions = LIMITS.questions } = 
     page_background: (PAGE_BACKGROUNDS as readonly string[]).includes(input?.page_background) ? input.page_background : 'default',
     page_show_icon: input?.page_show_icon !== false,
     page_show_name: input?.page_show_name !== false,
+    embed_title: clip(input?.embed_title, LIMITS.embedTitle) || null,
+    embed_description: clipText(input?.embed_description, LIMITS.embedDescription) || null,
+    embed_image: imageUrl(input?.embed_image),
+    embed_color: embedColor(input?.embed_color),
+    embed_thumbnail: input?.embed_thumbnail === true,
+  };
+}
+
+/** A color for the side of the link preview (0x000000 to 0xffffff), or null for the color of the form. */
+function embedColor(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffff ? n : null;
+}
+
+/**
+ * The link preview of a form, checked again: from a stored form (`embed_title`...) or from what the bot sent (`title`...). A form
+ * saved before these settings, or a bot that does not send them yet, gets an empty one (the preview falls back to the form).
+ */
+export function linkEmbed(input: any): LinkEmbed {
+  const stored = input && ('embed_title' in input || 'embed_color' in input || 'embed_image' in input);
+  const pick = (key: string) => (stored ? input?.[`embed_${key}`] : input?.[key]);
+  return {
+    title: clip(pick('title'), LIMITS.embedTitle) || null,
+    description: clipText(pick('description'), LIMITS.embedDescription) || null,
+    image: imageUrl(pick('image')),
+    color: embedColor(pick('color')),
+    thumbnail: pick('thumbnail') === true,
   };
 }
 

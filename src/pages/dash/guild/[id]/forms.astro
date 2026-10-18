@@ -8,7 +8,7 @@ import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoForms } from '../../../../utils/pettoBotApi';
 import { lastAnswer, markPending, rememberAnswer, sharedCall, withinBudget } from '../../../../utils/liveCall';
-import { normalizeForm, normalizeQuestions, slugName, newPublicId, NAME, FORM_PLAN, STATUSES } from '../../../../utils/forms';
+import { normalizeForm, normalizeQuestions, slugName, newPublicId, NAME, FORM_PLAN, STATUSES, EMBED_COLUMNS } from '../../../../utils/forms';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -36,6 +36,9 @@ const search = String(Astro.url.searchParams.get('q') ?? '').trim().slice(0, 60)
 const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/${path}`, { ...init, headers: { ...apiHeaders, ...(init.headers as Record<string, string> | undefined) } });
 const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const plan = FORM_PLAN;
+// Whether the database refused the columns of the link preview (a bot that has not added them yet), and the form without them.
+const missingEmbedColumns = async (res: Response) => /embed_(?:title|description|image|color|thumbnail)/.test(await res.clone().text().catch(() => ''));
+const withoutEmbed = (row: object) => Object.fromEntries(Object.entries(row).filter(([key]) => !(EMBED_COLUMNS as readonly string[]).includes(key)));
 
 let message: { kind: 'ok' | 'err' | 'warn'; text: string } | null = null;
 let redirectTo: string | null = null;
@@ -62,6 +65,8 @@ if (Astro.request.method === 'POST') {
       accept_add_role_ids: form.getAll('accept_add_role_ids'), accept_remove_role_ids: form.getAll('accept_remove_role_ids'),
       deny_add_role_ids: form.getAll('deny_add_role_ids'), deny_remove_role_ids: form.getAll('deny_remove_role_ids'), dm_results: form.get('dm_results') === 'on', web_enabled: form.get('web_enabled') === 'on',
       page_banner: form.get('page_banner'), page_background: form.get('page_background'), page_show_icon: form.get('page_show_icon') === 'on', page_show_name: form.get('page_show_name') === 'on',
+      embed_title: form.get('embed_title'), embed_description: form.get('embed_description'), embed_image: form.get('embed_image'), embed_thumbnail: form.get('embed_thumbnail') === 'on',
+      embed_color: /^#[0-9a-f]{6}$/i.test(text(form.get('embed_color'), 7)) ? parseInt(text(form.get('embed_color'), 7).slice(1), 16) : null,
       messages: {
         submitted: { text: form.get('msg_submitted') },
         accepted: { text: form.get('msg_accepted'), template: form.get('tpl_accepted') },
@@ -75,9 +80,15 @@ if (Astro.request.method === 'POST') {
     if (clean.status === 'open' && (!clean.questions.length || !clean.review_channel_id)) { clean.status = 'closed'; warn = dt('Saved, but kept closed: it needs at least one question and a review channel.'); }
     else if (asked > clean.questions.length) warn = dt('Saved. Questions without a text, choices with fewer than 2 options and the ones over the limit were left out.');
     else if (text(form.get('page_banner'), 600) && !clean.page_banner) warn = dt('Saved, but the banner was left out: use an https link to a .png, .jpg, .gif or .webp picture.');
+    else if (text(form.get('embed_image'), 600) && !clean.embed_image) warn = dt('Saved, but the image of the link preview was left out: use an https link to a .png, .jpg, .gif or .webp picture.');
     if (!NAME.test(clean.name)) message = { kind: 'err', text: dt('Use a short name with letters, numbers, - or _.') };
     else if (formId) {
-      const res = await rest(`forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ...clean, updated_at: new Date().toISOString() }) });
+      let res = await rest(`forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ...clean, updated_at: new Date().toISOString() }) });
+      // A bot that has not added the columns of the link preview yet refuses them: the rest of the form is saved, and the page says so.
+      if (res.status === 400 && (await missingEmbedColumns(res))) {
+        res = await rest(`forms?guild_id=eq.${id}&id=eq.${formId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ...withoutEmbed(clean), updated_at: new Date().toISOString() }) });
+        if (res.ok) warn = dt('Saved, but the link preview could not be saved yet: Petto is being updated. Try again in a few minutes.');
+      }
       if (res.status === 409) message = { kind: 'err', text: dt('Another form already has that name.') };
       else if (!res.ok) failed();
       else redirectTo = `?section=forms&form=${formId}&saved=${warn ? 'warn' : '1'}${warn ? `&w=${encodeURIComponent(warn)}` : ''}`;
@@ -86,7 +97,11 @@ if (Astro.request.method === 'POST') {
       const count = countRes.ok ? (await countRes.json()).length : 0;
       if (count >= plan.forms) message = { kind: 'err', text: dt('You reached the limit of forms ({a}).', { a: plan.forms }) };
       else {
-        const res = await rest('forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...clean }) });
+        let res = await rest('forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...clean }) });
+        if (res.status === 400 && (await missingEmbedColumns(res))) {
+          res = await rest('forms', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...withoutEmbed(clean) }) });
+          if (res.ok) warn = dt('Saved, but the link preview could not be saved yet: Petto is being updated. Try again in a few minutes.');
+        }
         const row = res.ok ? (await res.json())[0] : null;
         if (res.status === 409) message = { kind: 'err', text: dt('Another form already has that name.') };
         else if (row) redirectTo = `?section=forms&form=${row.id}&saved=${warn ? 'warn' : '1'}${warn ? `&w=${encodeURIComponent(warn)}` : ''}`;

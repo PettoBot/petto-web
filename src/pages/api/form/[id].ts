@@ -4,7 +4,7 @@ import { getDashboardSession } from '../../../utils/dashAuth';
 import { callPettoWebForm } from '../../../utils/pettoBotApi';
 import { PUBLIC_ID, descriptionHtml, imageUrl, pageLook } from '../../../utils/forms';
 
-// The data of a form filled on the website (the page /form#<public id> is the same static page for every form and asks here):
+// The data of a form filled on the website (the page /form/<public id> asks here):
 // GET says who is logged in and what the bot answers for that member (the form, whether they may send it, and why not). Before the
 // login it still sends how the page looks (`look`: title, color, banner, background, the server), so the page is the server's at once;
 // POST sends the answers. Both go to the bot's public routes of a form (POST /api/dashboard/form/:publicId/public|submit).
