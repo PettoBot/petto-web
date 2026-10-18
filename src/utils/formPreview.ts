@@ -1,80 +1,93 @@
-// The link of a form to share in a chat: /f/<public id> (and /es/f/…, /pt-br/f/…). The page of a form (/form#<public id>) is one static
-// page for every form, and the id in the hash never reaches the server, so it cannot tell Discord which form it is. This address
-// can: an app that reads link previews (Discord, Telegram, WhatsApp, Slack…) gets the title and the description of the form, its
-// color, and its banner or the icon of the server, the same as the appeal site does with its own tags. A browser goes on to the page.
+// The page of one form (/form/<public id>, /es/form/…, /pt-br/form/…) is drawn on the server with the look of that form, and its
+// head carries the tags of the link preview: an app that reads link previews (Discord, Telegram, WhatsApp, Slack…) gets the title, the
+// description, the image and the color the server picked for the link (or, when it picked nothing, the title and the description of
+// the form, its banner or the icon of the server, and its color), the same as the appeal site does with its own tags.
 import { callPettoWebForm } from './pettoBotApi';
-import { PUBLIC_ID, formPagePath, pageLook } from './forms';
+import { PUBLIC_ID, formIdPath, linkEmbed, pageLook, type LinkEmbed, type PageLook } from './forms';
+import { getDashLang } from '../i18n/dash';
 
-type Lang = 'en' | 'es' | 'pt-BR';
-// The apps that read link previews say who they are; a person's browser does not say any of these words.
-const PREVIEW_AGENTS = /bot\b|bot\/|crawler|spider|preview|facebookexternalhit|embedly|whatsapp|telegram|slack|discord|skype|vkshare|pinterest|linkedin|iframely|mastodon|meta-externalagent/i;
+export type FormLang = 'en' | 'es' | 'pt-BR';
 
-const TEXT: Record<Lang, { description: (server: string) => string }> = {
+/** How one form looks before anyone logs in: what the bot sends from `look`, checked again. */
+export interface FormLook {
+  id: string; title: string; description: string | null; color: number | null; page: PageLook; embed: LinkEmbed;
+  server: { id: string; name: string; icon: string | null };
+}
+
+const TEXT: Record<FormLang, { description: (server: string) => string }> = {
   en: { description: (server) => `Fill in this form of ${server} with your Discord account.` },
   es: { description: (server) => `Llena este formulario de ${server} con tu cuenta de Discord.` },
   'pt-BR': { description: (server) => `Preencha este formulário de ${server} com sua conta do Discord.` },
 };
 
-const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const oneLine = (text: unknown, max: number) => {
   const line = String(text ?? '').replace(/\s+/g, ' ').trim();
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
 };
+const hex = (n: number | null | undefined) => (typeof n === 'number' ? `#${n.toString(16).padStart(6, '0')}` : null);
 
-/** Whether the request comes from an app that reads link previews rather than from a person's browser. */
-export const isPreviewAgent = (userAgent: string | null) => PREVIEW_AGENTS.test(String(userAgent ?? ''));
+// The look of a form is kept a minute per form and language: a link pasted in a busy chat is opened by many apps and people at once,
+// and the bot is asked once. A form that does not exist is kept a minute too.
+const KEEP_MS = 60_000;
+const kept = new Map<string, { at: number; value: Promise<{ status: number; look: FormLook | null }> }>();
 
-/** The tags of the preview of a form, or null when the bot does not know it (or it cannot be filled on the web). */
-export async function formPreview(context: any, id: string, lang: Lang) {
-  const look = await callPettoWebForm(context, id, '', 'look', {}, lang);
-  const form = look.ok ? look.data?.form : null;
+function shapeLook(data: any): FormLook | null {
+  const form = data?.form;
   if (!form) return null;
-  const server = String(look.data?.server?.name ?? '').slice(0, 100);
-  const icon = typeof look.data?.server?.icon === 'string' && look.data.server.icon.startsWith('https://') ? look.data.server.icon : null;
-  const page = pageLook(form.page);
-  const title = oneLine(form.title, 45) || 'Form';
+  const icon = typeof data?.server?.icon === 'string' && data.server.icon.startsWith('https://') ? data.server.icon : null;
   return {
-    title: server ? `${title} · ${server}` : title,
-    description: oneLine(form.description, 200) || TEXT[lang].description(server || 'Discord'),
-    image: page.banner ?? icon,
-    large: Boolean(page.banner),
-    icon,
-    color: typeof form.color === 'number' ? `#${form.color.toString(16).padStart(6, '0')}` : '#f0a88f',
-    siteName: server || 'Petto',
+    id: String(form.id ?? ''), title: String(form.title ?? '').slice(0, 100), description: form.description ? String(form.description).slice(0, 1000) : null,
+    color: typeof form.color === 'number' && form.color >= 0 && form.color <= 0xffffff ? form.color : null,
+    page: pageLook(form.page), embed: linkEmbed(form.embed),
+    server: { id: String(data?.server?.id ?? ''), name: String(data?.server?.name ?? '').slice(0, 100), icon },
   };
 }
 
 /**
- * The answer of /f/<id> in a language: a browser is sent to the page of the form (/form#<id>); an app that reads link previews gets a
- * small page with the tags of this form (and the same way on, for one that follows it).
+ * The look of a form, or null with the status of the bot (404: no such form, or it is kept in Discord; 502/503: the bot did not
+ * answer). It waits at most `budgetMs`, so a slow bot never holds the page: the page then loads the look itself.
  */
-export async function formLinkResponse(context: any, lang: Lang): Promise<Response> {
+export async function loadFormLook(context: any, id: string, lang: FormLang, budgetMs = 2500): Promise<{ status: number; look: FormLook | null }> {
+  if (!PUBLIC_ID.test(id)) return { status: 404, look: null };
+  const key = `${id}:${lang}`;
+  const now = Date.now();
+  let entry = kept.get(key);
+  if (!entry || now - entry.at > KEEP_MS) {
+    const value = callPettoWebForm(context, id, '', 'look', {}, lang).then((r) => ({ status: r.ok ? 200 : r.status, look: r.ok ? shapeLook(r.data) : null }));
+    entry = { at: now, value };
+    kept.set(key, entry);
+    // A failed answer of the bot (not a 404) is not kept: the next visitor asks again.
+    value.then((r) => { if (r.status >= 500) kept.delete(key); }).catch(() => kept.delete(key));
+    if (kept.size > 500) for (const [k, v] of kept) if (now - v.at > KEEP_MS) kept.delete(k);
+  }
+  const late = new Promise<{ status: number; look: null }>((resolve) => setTimeout(() => resolve({ status: 504, look: null }), budgetMs));
+  return Promise.race([entry.value, late]).catch(() => ({ status: 502, look: null }));
+}
+
+/** The tags of the link preview of a form: the server's own choices first, then what the form already has. */
+export function formPreview(look: FormLook, lang: FormLang) {
+  const server = look.server.name || 'Discord';
+  const title = oneLine(look.title, 60) || 'Form';
+  const embed = look.embed;
+  const image = embed.image ?? look.page.banner ?? look.server.icon;
+  return {
+    title: embed.title ? oneLine(embed.title, 90) : look.server.name ? `${title} · ${look.server.name}` : title,
+    description: embed.description ? oneLine(embed.description, 240) : oneLine(look.description, 200) || TEXT[lang].description(server),
+    image,
+    // A picture the server picked (or the banner) shows big, unless they asked for it small; the icon of the server always small.
+    large: Boolean(image) && !embed.thumbnail && Boolean(embed.image ?? look.page.banner),
+    color: hex(embed.color) ?? hex(look.color) ?? '#f0a88f',
+    siteName: look.server.name || 'Petto',
+  };
+}
+
+/**
+ * The older link of a form to share (/f/<id>, /es/f/<id>, /pt-br/f/<id>): it goes on to the page of the form, which carries the preview
+ * itself now. /f/<id> without a language uses the visitor's (saved choice or browser); an app that reads previews follows it.
+ */
+export function formLinkRedirect(context: any, lang?: FormLang): Response {
   const id = String(context.params?.id ?? '');
   if (!PUBLIC_ID.test(id)) return new Response(null, { status: 404 });
-  const target = `${formPagePath(lang)}#${id}`;
-  const away = new Response(null, { status: 302, headers: { Location: target, 'Cache-Control': 'no-store' } });
-  if (!isPreviewAgent(context.request.headers.get('user-agent'))) return away;
-  const preview = await formPreview(context, id, lang).catch(() => null);
-  if (!preview) return away;
-  const url = new URL(context.url.pathname, context.site ?? 'https://petto.sbs').toString();
-  const tags = [
-    `<title>${escape(preview.title)}</title>`,
-    `<meta name="description" content="${escape(preview.description)}">`,
-    `<meta name="theme-color" content="${escape(preview.color)}">`,
-    preview.icon ? `<link rel="icon" href="${escape(preview.icon)}">` : '',
-    '<meta property="og:type" content="website">',
-    `<meta property="og:title" content="${escape(preview.title)}">`,
-    `<meta property="og:description" content="${escape(preview.description)}">`,
-    `<meta property="og:url" content="${escape(url)}">`,
-    `<meta property="og:site_name" content="${escape(preview.siteName)}">`,
-    preview.image ? `<meta property="og:image" content="${escape(preview.image)}">` : '',
-    `<meta name="twitter:card" content="${preview.large ? 'summary_large_image' : 'summary'}">`,
-    `<meta name="twitter:title" content="${escape(preview.title)}">`,
-    `<meta name="twitter:description" content="${escape(preview.description)}">`,
-    preview.image ? `<meta name="twitter:image" content="${escape(preview.image)}">` : '',
-    '<meta name="robots" content="noindex">',
-    `<meta http-equiv="refresh" content="0;url=${escape(target)}">`,
-  ].filter(Boolean).join('\n');
-  const html = `<!doctype html>\n<html lang="${lang}">\n<head>\n<meta charset="utf-8">\n${tags}\n</head>\n<body><a href="${escape(target)}">${escape(preview.title)}</a></body>\n</html>\n`;
-  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, max-age=300', Vary: 'User-Agent' } });
+  const chosen = lang ?? (() => { const l = getDashLang(context); return l === 'es' ? 'es' : l === 'pt-BR' ? 'pt-BR' : 'en'; })();
+  return new Response(null, { status: lang ? 301 : 302, headers: { Location: formIdPath(id, chosen), 'Cache-Control': lang ? 'public, max-age=3600' : 'private, no-store' } });
 }
