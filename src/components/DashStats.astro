@@ -4,6 +4,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 import { STAT_TABS, BOT_TIME_LABEL, type StatsData } from '../utils/activityStats';
 import { FREE_STAT_DAYS, PREMIUM_STAT_DAYS } from '../utils/planLimits';
+import DashMemberPick from './DashMemberPick.astro';
 
 const dt = makeT(getDashLang(Astro));
 interface Props {
@@ -19,8 +20,13 @@ interface Props {
   inviters: { id: string; joins: number; leaves: number; net: number }[];
   hasFlow: boolean;
   premium?: boolean;
+  inviteRoles?: { id: string; name: string; color: number }[];
+  inviteSettings?: { fakeDays: number; rewards: { roleId: string; invites: number; name: string | null; color: number }[] };
+  inviteMessage?: { kind: 'ok' | 'err'; text: string } | null;
 }
-const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false } = Astro.props;
+const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, inviteMessage = null } = Astro.props;
+const roleColor = (color: number) => (color ? `#${color.toString(16).padStart(6, '0')}` : 'var(--text-dim)');
+const rewardIds = new Set(inviteSettings.rewards.map((reward) => reward.roleId));
 
 const tabs: Record<string, { label: string; icon: string; color: string }> = {
   overview: { label: 'Overview', icon: 'ph:squares-four-fill', color: '#f0a88f' },
@@ -287,6 +293,72 @@ const bestMessage = bestDayOf(stats.daily.messages);
           </article>
         )}
       </div>
+
+      {id === 'invites' && (
+        <div class="st-inv" data-invite-settings>
+          <div class="st-inv-head">
+            <h2>{dt('Invite settings')}</h2>
+            <p>{dt('Petto counts who brought each member in. Choose what an invite is worth: roles for reaching a number, which joins do not count, and corrections for one member. The same as /invites in Discord.')}</p>
+          </div>
+          {inviteMessage && <div class:list={['st-flash', { 'st-flash-err': inviteMessage.kind === 'err' }]} role={inviteMessage.kind === 'err' ? 'alert' : 'status'}>{inviteMessage.text}</div>}
+          <div class="st-inv-grid">
+            <article class="st-card st-inv-card">
+              <h3><Icon name="ph:medal-fill" width="15" height="15" />{dt('Roles for invites')} <span class="st-inv-count">{inviteSettings.rewards.length}</span></h3>
+              {inviteSettings.rewards.length ? (
+                <ul class="st-inv-list">
+                  {inviteSettings.rewards.map((reward) => (
+                    <li>
+                      <span class="st-inv-role" style={`--rc:${roleColor(reward.color)}`}><i></i>{reward.name ? `@${reward.name}` : dt('Deleted role')}</span>
+                      <em>{dt('{a} invites', { a: n(reward.invites) })}</em>
+                      <form method="POST" data-no-dirty>
+                        <input type="hidden" name="role_id" value={reward.roleId} />
+                        <button type="submit" name="action" value="invite_unreward" class="st-inv-del" aria-label={dt('Remove')} title={dt('Remove')} data-confirm={dt('Stop giving this role for invites? Members who have it keep it.')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p class="st-inv-empty">{dt('No roles for invites yet. Pick a role and how many invites earn it: Petto gives it when someone reaches the number and takes it back if they fall below.')}</p>
+              )}
+              <form method="POST" class="st-inv-form" data-no-dirty>
+                <label class="st-inv-field st-inv-grow"><span>{dt('Role')}</span>
+                  <select name="role_id" required>
+                    <option value="">{dt('Choose a role')}</option>
+                    {inviteRoles.map((role) => <option value={role.id}>{role.name}{rewardIds.has(role.id) ? ` · ${dt('change its number')}` : ''}</option>)}
+                  </select>
+                </label>
+                <label class="st-inv-field st-inv-num"><span>{dt('Invites')}</span><input type="number" name="invites" min="1" max="100000" value="5" required /></label>
+                <button type="submit" name="action" value="invite_reward" class="btn btn-accent btn-sm">{dt('Add role')}</button>
+              </form>
+              <p class="st-inv-note">{dt('The role must be below the highest role of Petto. Members who already have enough invites get it right away.')}</p>
+            </article>
+
+            <article class="st-card st-inv-card">
+              <h3><Icon name="ph:user-circle-dashed-fill" width="15" height="15" />{dt('Fake joins')}</h3>
+              <p class="st-inv-note">{dt('A join from a very new account, or from someone who had already been in the server, does not count as an invite.')}</p>
+              <form method="POST" class="st-inv-form" data-no-dirty>
+                <label class="st-inv-field st-inv-grow"><span>{dt('Accounts younger than (days)')}</span><input type="number" name="days" min="0" max="365" value={inviteSettings.fakeDays} required /></label>
+                <button type="submit" name="action" value="invite_fake_days" class="btn btn-accent btn-sm">{dt('Save')}</button>
+              </form>
+              <p class="st-inv-note">{inviteSettings.fakeDays ? dt('Now: accounts younger than {a} days are fake joins.', { a: inviteSettings.fakeDays }) : dt('Now: only members who come back are fake joins.')} {dt('With 0, a new account counts like any other.')}</p>
+            </article>
+
+            <article class="st-card st-inv-card">
+              <h3><Icon name="ph:sliders-horizontal-fill" width="15" height="15" />{dt('Adjust the invites of a member')}</h3>
+              <p class="st-inv-note">{dt('Bonus invites add to (or, negative, take from) what Petto counted, for events or invites it could not see. Reward roles follow the new number.')}</p>
+              <form method="POST" class="st-inv-form st-inv-adjust" data-no-dirty>
+                <div class="st-inv-field st-inv-grow"><span>{dt('Member')}</span><DashMemberPick guildId={guildId} name="member_id" /></div>
+                <label class="st-inv-field st-inv-num"><span>{dt('Bonus')}</span><input type="number" name="amount" min="-100000" max="100000" step="1" value="1" /></label>
+                <div class="st-inv-actions">
+                  <button type="submit" name="action" value="invite_bonus" class="btn btn-accent btn-sm">{dt('Add bonus')}</button>
+                  <button type="submit" name="action" value="invite_reset" class="btn btn-ghost btn-sm" data-confirm={dt('Put every invite of this member back to zero? Who they invited stays on record.')}>{dt('Reset to zero')}</button>
+                </div>
+              </form>
+              <p class="st-inv-note">{dt('Resetting needs Administrator, like the command.')}</p>
+            </article>
+          </div>
+        </div>
+      )}
     </section>
   ))}
   <script is:inline>
@@ -408,6 +480,34 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-bar:hover { filter: brightness(1.18); }
   @keyframes st-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
   .st-empty { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; }
+  .st-inv { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .st-inv-head h2 { font-size: 16px; margin: 0 0 4px; }
+  .st-inv-head p { font-size: 13px; color: var(--text-muted); margin: 0; max-width: 78ch; }
+  .st-flash { font-size: 13px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 10px; padding: 9px 12px; }
+  .st-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
+  .st-inv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; align-items: start; }
+  .st-inv-card { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
+  .st-inv-card h3 { display: flex; align-items: center; gap: 7px; font-size: 14px; margin: 0; }
+  .st-inv-card h3 :global(svg) { color: var(--tab); }
+  .st-inv-count { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
+  .st-inv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .st-inv-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 2px; border-top: 1px solid var(--border); font-size: 13px; }
+  .st-inv-list li:first-child { border-top: 0; }
+  .st-inv-list form { margin: 0; }
+  .st-inv-list em { font-style: normal; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .st-inv-role { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--rc); }
+  .st-inv-role i { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--rc); }
+  .st-inv-del { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; }
+  .st-inv-del:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
+  .st-inv-empty { font-size: 12.5px; color: var(--text-muted); margin: 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+  .st-inv-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0; }
+  .st-inv-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .st-inv-field > span { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; }
+  .st-inv-field select, .st-inv-field input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; }
+  .st-inv-grow { flex: 1 1 180px; }
+  .st-inv-num { flex: 0 0 96px; }
+  .st-inv-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .st-inv-note { font-size: 11.5px; line-height: 1.45; color: var(--text-dim); margin: 0; }
   .st-list ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
   .st-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 2px; border-top: 1px solid var(--border); font-size: 13px; }
   .st-list li:first-child { border-top: 0; }

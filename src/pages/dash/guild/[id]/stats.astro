@@ -10,6 +10,8 @@ import { getMemberProfiles } from '../../../../utils/memberNames';
 import { directQuery } from '../../../../utils/directQuery';
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { FREE_STAT_DAYS, PREMIUM_STAT_DAYS } from '../../../../utils/planLimits';
+import { callPettoInvites } from '../../../../utils/pettoBotApi';
+import { getDashLang, makeT } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -26,9 +28,29 @@ const premium = await hasPremiumForGuild(Astro, session.userId, id);
 const askedDays = Number(Astro.url.searchParams.get('days'));
 const days = (FREE_STAT_DAYS as readonly number[]).includes(askedDays) || (premium && (PREMIUM_STAT_DAYS as readonly number[]).includes(askedDays)) ? askedDays : 7;
 const requestedTab = Astro.url.searchParams.get('tab') ?? 'overview';
-const tab = (STAT_TABS as readonly string[]).includes(requestedTab) ? requestedTab : 'overview';
+let tab = (STAT_TABS as readonly string[]).includes(requestedTab) ? requestedTab : 'overview';
 
 const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
+
+// The settings of the Invites tab (rewards, bonus invites, resets, fake joins) go through the bot, which checks the same as `/invites`
+// and gives or takes the reward roles at once. The page is then drawn again on the Invites tab with its answer.
+let inviteMessage: { kind: 'ok' | 'err'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const dashLang = getDashLang(Astro);
+  const dt = makeT(dashLang);
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const snowflake = (name: string) => (/^\d{15,25}$/.test(String(form.get(name) ?? '')) ? String(form.get(name)) : '');
+  const whole = (name: string) => Math.trunc(Number(form.get(name) ?? NaN));
+  let result: { ok: boolean; message: string } | null = null;
+  if (action === 'invite_reward') result = await callPettoInvites(Astro, id, session.userId, 'reward', { role_id: snowflake('role_id'), invites: whole('invites') }, dashLang);
+  else if (action === 'invite_unreward') result = await callPettoInvites(Astro, id, session.userId, 'unreward', { role_id: snowflake('role_id') }, dashLang);
+  else if (action === 'invite_fake_days') result = await callPettoInvites(Astro, id, session.userId, 'fake_days', { days: whole('days') }, dashLang);
+  else if (action === 'invite_bonus') result = await callPettoInvites(Astro, id, session.userId, 'bonus', { member_id: snowflake('member_id'), amount: whole('amount') }, dashLang);
+  else if (action === 'invite_reset') result = await callPettoInvites(Astro, id, session.userId, 'reset', { member_id: snowflake('member_id') }, dashLang);
+  if (result) tab = 'invites';
+  if (result) inviteMessage = { kind: result.ok ? 'ok' : 'err', text: result.message || (result.ok ? dt('Saved.') : dt('Petto did not answer. Try again in a moment.')) };
+}
 // Days are counted in GMT-5 (Colombia), the time Petto works in.
 const since = botDay(new Date(Date.now() - (days - 1) * 86_400_000));
 const sinceInstant = new Date(`${since}T00:00:00-05:00`).toISOString();
@@ -45,7 +67,7 @@ async function rows(table: string, select: string, extra = ''): Promise<any[]> {
   }
 }
 
-const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, caseRows, inviterRows] = await Promise.all([
+const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, caseRows, inviterRows, rolesRes, inviteConfigRows, rewardRows] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'channels').catch(() => null),
   rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${since}`),
@@ -59,6 +81,9 @@ const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, ca
     : Promise.resolve(null)).then((summed) => summed ?? rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`)),
   rows('mod_actions', 'type,source,moderator_id,user_id,created_at', `&created_at=gte.${sinceInstant}&limit=20000`),
   rows('invite_uses', 'inviter_id,joins,leaves,bonus', '&order=joins.desc&limit=50'),
+  getGuildList(Astro, id, botToken, 'roles').catch(() => null),
+  rows('invite_config', 'fake_days'),
+  rows('invite_rewards', 'role_id,invites', '&order=invites.asc'),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -81,6 +106,21 @@ const memberNames: Record<string, string> = {};
 const profiles = await getMemberProfiles(Astro, id, wanted, botToken, { fallback: 'user', userId: session.userId });
 for (const [userId, profile] of profiles) if (profile) memberNames[userId] = profile.globalName || profile.username || userId;
 const hasFlow = flowRows.length > 0;
+
+// The Invites tab: the reward roles (by number of invites), the roles that can be picked for one, and the days of a fake join.
+const allRoles: any[] = rolesRes && rolesRes.ok ? await rolesRes.json().catch(() => []) : [];
+const roleById = new Map(allRoles.map((role: any) => [String(role.id), role]));
+const inviteRoles = allRoles
+  .filter((role: any) => role.name !== '@everyone' && !role.managed)
+  .sort((a: any, b: any) => b.position - a.position)
+  .map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color) || 0 }));
+const inviteSettings = {
+  fakeDays: inviteConfigRows.length ? Math.max(0, Number(inviteConfigRows[0].fake_days) || 0) : 3,
+  rewards: rewardRows.map((row) => {
+    const role: any = roleById.get(String(row.role_id));
+    return { roleId: String(row.role_id), invites: Number(row.invites) || 0, name: role ? String(role.name) : null, color: role ? Number(role.color) || 0 : 0 };
+  }),
+};
 ---
 <DashStats
   user={session}
@@ -95,4 +135,7 @@ const hasFlow = flowRows.length > 0;
   inviters={inviters}
   hasFlow={hasFlow}
   premium={premium}
+  inviteRoles={inviteRoles}
+  inviteSettings={inviteSettings}
+  inviteMessage={inviteMessage}
 />

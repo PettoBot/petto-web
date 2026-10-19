@@ -28,8 +28,13 @@ interface Props {
   ready: boolean;
   saved: boolean;
   notice: string;
+  people?: Record<string, { id: string; name: string | null; avatar: string }>;
+  reviewStats?: { total: number; average: number; members: number };
+  reviewList?: { id: number; targetId: string; reviewerId: string; stars: number; comment: string; at: string }[];
 }
-const { user, guildId, guildName, guildIcon, section, uploads, requests, reviews, openRequests, uploadStats, channels, roles, embedTemplates, uploadChannelLimit, premium, ready, saved, notice } = Astro.props;
+const { user, guildId, guildName, guildIcon, section, uploads, requests, reviews, openRequests, uploadStats, channels, roles, embedTemplates, uploadChannelLimit, premium, ready, saved, notice, people = {}, reviewStats = { total: 0, average: 0, members: 0 }, reviewList = [] } = Astro.props;
+const who = (userId: string) => people[userId] ?? { id: userId, name: null, avatar: `https://cdn.discordapp.com/embed/avatars/${Number(userId || 0) % 6}.png` };
+const stars = (count: number) => '★'.repeat(count) + '☆'.repeat(5 - count);
 const textChannels = channels.filter((ch) => ch.text);
 const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests', reviews: 'Reviews and profiles' };
 ---
@@ -38,6 +43,8 @@ const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests
   {saved && <div class="tl-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
   {notice === 'channel_limit' && <div class="tl-flash tl-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Only the first {a} channels were kept. Premium raises the limit.', { a: uploadChannelLimit })}</div>}
   {notice === 'premium_timeout' && <div class="tl-flash tl-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Sending a claimed request back to open by itself is a Premium feature.')}</div>}
+  {notice === 'review_deleted' && <div class="tl-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('The review was deleted. The profile of the member counts only the ones left.')}</div>}
+  {notice === 'review_failed' && <div class="tl-flash tl-flash-err" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{dt('The review could not be deleted. Try again in a moment.')}</div>}
   {!ready && <div class="tl-flash tl-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
   {section === 'uploads' && (
@@ -57,7 +64,7 @@ const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests
           <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
         </form>
         <aside class="tl-side"><section class="tl-card"><h2>{dt('This week')}</h2>
-          {uploadStats.board.length ? <ol>{uploadStats.board.map((entry) => <li><code>{entry.userId}</code><b>{entry.count}</b></li>)}</ol> : <p class="tl-note">{dt('Nobody has uploaded in this period.')}</p>}
+          {uploadStats.board.length ? <ol>{uploadStats.board.map((entry) => <li><span class="tl-person"><img src={who(entry.userId).avatar} alt="" width="20" height="20" loading="lazy" />{who(entry.userId).name ?? <code>{entry.userId}</code>}</span><b>{entry.count}</b></li>)}</ol> : <p class="tl-note">{dt('Nobody has uploaded in this period.')}</p>}
         </section><p class="tl-note">{dt('Commands: !uploads stats, !uploads leaderboard and !uploadconfig.')}</p></aside>
       </div>
     </>
@@ -86,7 +93,7 @@ const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests
           <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
         </form>
         <aside class="tl-side"><section class="tl-card"><h2>{dt('Open requests')}</h2>
-          {openRequests.length ? <ul>{openRequests.map((req) => <li><span><b>#{req.number}</b> <code>{req.userId}</code><small>{req.content.slice(0, 80)}</small></span><em>{req.status === 'claimed' ? dt('Claimed') : dt('Open')}</em></li>)}</ul> : <p class="tl-note">{dt('There are no open requests.')}</p>}
+          {openRequests.length ? <ul>{openRequests.map((req) => <li><span><b>#{req.number}</b> {who(req.userId).name ?? <code>{req.userId}</code>}<small>{req.content.slice(0, 80)}</small></span><em>{req.status === 'claimed' ? dt('Claimed') : dt('Open')}</em></li>)}</ul> : <p class="tl-note">{dt('There are no open requests.')}</p>}
         </section><p class="tl-note">{dt('Commands: !request make, !request list and !requestconfig.')}</p></aside>
       </div>
     </>
@@ -105,6 +112,43 @@ const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests
         </form>
         <aside class="tl-side"><p class="tl-note">{dt('Commands: !review give, !review show, !review remove, !profile and !profileconfig.')}</p></aside>
       </div>
+      <div class="tl-stats tl-stats-3">
+        <div class="tl-stat"><b>{reviewStats.total}</b><span>{dt('Reviews')}</span></div>
+        <div class="tl-stat"><b>{reviewStats.total ? reviewStats.average.toFixed(1) : '–'}</b><span>{dt('Average stars')}</span></div>
+        <div class="tl-stat"><b>{reviewStats.members}</b><span>{dt('Members rated')}</span></div>
+      </div>
+      <section class="tl-card tl-reviews">
+        <h2>{dt('Latest reviews')}</h2>
+        {reviewList.length ? (
+          <ul class="tl-review-list">
+            {reviewList.map((review) => (
+              <li class="tl-review">
+                <div class="tl-review-top">
+                  <span class="tl-person"><img src={who(review.targetId).avatar} alt="" width="22" height="22" loading="lazy" /><b>{who(review.targetId).name ?? review.targetId}</b></span>
+                  <span class="tl-stars" aria-label={dt('{a} of 5 stars', { a: review.stars })}>{stars(review.stars)}</span>
+                  <form method="POST" data-no-dirty class="tl-review-del">
+                    <input type="hidden" name="review_id" value={review.id} />
+                    <button type="submit" name="action" value="delete_review" aria-label={dt('Delete review')} title={dt('Delete review')} data-confirm={dt('Delete this review? It is taken out of the rating of the member.')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+                  </form>
+                </div>
+                {review.comment && <p class="tl-review-text">{review.comment}</p>}
+                <p class="tl-review-by">{dt('by {a}', { a: who(review.reviewerId).name ?? review.reviewerId })} · <time datetime={review.at} data-tl-time>{review.at.slice(0, 10)}</time></p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div class="tl-empty">
+            <Icon name="ph:star-fill" width="20" height="20" />
+            <div>
+              <p><b>{dt('No reviews yet.')}</b> {dt('Members rate each other in Discord: !review give @member 5 Great trade, thanks! Sending it again changes it.')}</p>
+              <p>{dt('Each new review shows up here, and you can delete the ones that break the rules. Pick a channel above to also see them as they arrive.')}</p>
+            </div>
+          </div>
+        )}
+      </section>
+      <script is:inline>
+        document.querySelectorAll('time[data-tl-time]').forEach(function (t) { var d = new Date(t.getAttribute('datetime')); if (!isNaN(d.getTime())) t.textContent = d.toLocaleDateString(); });
+      </script>
     </>
   )}
 </DashGuildLayout>
@@ -137,4 +181,25 @@ const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests
   .tl-card code { font-size: 12px; color: var(--text-muted); word-break: break-all; }
   .tl-card small { display: block; color: var(--text-dim); font-size: 11.5px; }
   .tl-card em { font-style: normal; font-size: 11.5px; color: var(--text-dim); }
+  .tl-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
+  .tl-person { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-person img { flex: none; border-radius: 50%; }
+  .tl-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 640px; margin: 24px 0 14px; }
+  .tl-reviews { max-width: 640px; }
+  .tl-review-list { gap: 0 !important; }
+  .tl-review { display: block !important; padding: 10px 0; border-top: 1px solid var(--border); }
+  .tl-review:first-child { border-top: 0; padding-top: 2px; }
+  .tl-review-top { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; }
+  .tl-stars { color: #fed53c; letter-spacing: 1px; font-size: 13px; }
+  .tl-review-del { margin: 0; }
+  .tl-review-del button { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; }
+  .tl-review-del button:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
+  .tl-review-text { margin: 6px 0 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+  .tl-review-by { margin: 4px 0 0; font-size: 11.5px; color: var(--text-dim); }
+  .tl-empty { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-dim); }
+  .tl-empty :global(svg) { flex: none; color: #fed53c; }
+  .tl-empty p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.5; color: var(--text-muted); }
+  .tl-empty p:last-child { margin: 0; }
+  .tl-empty b { color: var(--text); }
+  @media (max-width: 520px) { .tl-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .tl-stat b { font-size: 20px; } .tl-stat span { font-size: 10.5px; } }
 </style>
