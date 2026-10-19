@@ -8,6 +8,8 @@ import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { isV2Data } from '../../../../utils/embedSchema';
 import { guildHasPremium } from '../../../../utils/guildPremium';
 import { planLimits } from '../../../../utils/planLimits';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
+import { withinBudget } from '../../../../utils/liveCall';
 
 // Uploads, requests, and reviews with profiles: three small modules that share one page, chosen with ?section=.
 const { id } = Astro.params as { id: string };
@@ -58,11 +60,19 @@ if (Astro.request.method === 'POST') {
     })).ok;
   } else if (action === 'save_reviews') {
     saved = (await save('profile_config', { reviews_enabled: form.get('reviews_enabled') === 'on', review_channel_id: idOrNull(form, 'review_channel_id') })).ok;
+  } else if (action === 'delete_review') {
+    // A review the staff takes down (a joke, an insult, a fake one). The profile of the member is worked out from the reviews left.
+    const reviewId = Math.trunc(Number(form.get('review_id') ?? 0));
+    if (reviewId > 0) {
+      const res = await fetch(`${apiUrl}/rest/v1/member_reviews?guild_id=eq.${id}&id=eq.${reviewId}`, { method: 'DELETE', headers: { ...apiHeaders, Prefer: 'return=minimal' } }).catch(() => null);
+      if (res?.ok) notice = 'review_deleted';
+      else notice = 'review_failed';
+    }
   }
 }
 
 const get = (table: string, query = '') => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${query}`, { headers: apiHeaders });
-const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, channelsRes, rolesRes, templatesRes] = await Promise.all([
+const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, channelsRes, rolesRes, templatesRes, reviewsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   get('upload_config', '&select=*'),
   get('request_config', '&select=*'),
@@ -72,6 +82,8 @@ const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, chan
   getGuildList(Astro, id, botToken, 'channels'),
   getGuildList(Astro, id, botToken, 'roles'),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
+  // Every review of the server (they are small: stars, a short comment and who): the numbers count all of them, the list shows the newest.
+  section === 'reviews' ? get('member_reviews', '&select=id,target_id,reviewer_id,stars,comment,updated_at&order=updated_at.desc&limit=2000').catch(() => null) : Promise.resolve(null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -92,6 +104,25 @@ const weekStart = day - ((now.getUTCDay() + 6) % 7) * 86_400_000;
 const byUser = new Map<string, number>();
 for (const row of logRows) if (new Date(row.created_at).getTime() >= weekStart) byUser.set(row.user_id, (byUser.get(row.user_id) ?? 0) + 1);
 const uploadStats = { total: logRows.length, week: [...byUser.values()].reduce((a, b) => a + b, 0), board: [...byUser.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([userId, count]) => ({ userId, count })) };
+const reviewRows: any[] = reviewsRes?.ok ? await reviewsRes.json().catch(() => []) : [];
+const reviewStats = {
+  total: reviewRows.length,
+  average: reviewRows.length ? reviewRows.reduce((sum, row) => sum + (Number(row.stars) || 0), 0) / reviewRows.length : 0,
+  members: new Set(reviewRows.map((row) => String(row.target_id))).size,
+};
+const recentReviews = reviewRows.slice(0, 30);
+
+// Names and pictures instead of bare IDs (the uploads of the week, the open requests and the reviews). Never waits long for them.
+const named: string[] = section === 'uploads' ? uploadStats.board.map((entry) => entry.userId)
+  : section === 'requests' ? openRequests.flatMap((req: any) => [String(req.userId), String(req.claimedBy ?? '')])
+  : recentReviews.flatMap((row) => [String(row.target_id), String(row.reviewer_id)]);
+const profiles = named.length ? (await withinBudget(getMemberProfiles(Astro, id, named, botToken, { fallback: 'user', userId: session.userId }), 1500))?.value ?? new Map() : new Map();
+const person = (userId: string) => {
+  const profile = profiles.get(userId) ?? null;
+  return { id: userId, name: profile ? profile.displayName || profile.username : null, avatar: memberAvatarUrl(userId, profile, 64) };
+};
+const people: Record<string, { id: string; name: string | null; avatar: string }> = Object.fromEntries([...new Set(named.filter(Boolean))].map((userId: string) => [userId, person(userId)]));
+const reviewList = recentReviews.map((row) => ({ id: Number(row.id), targetId: String(row.target_id), reviewerId: String(row.reviewer_id), stars: Math.max(1, Math.min(5, Number(row.stars) || 1)), comment: String(row.comment ?? ''), at: String(row.updated_at) }));
 const channels = (channelsRes.ok ? await channelsRes.json() : []).filter((ch: any) => [0, 5, 11, 15].includes(ch.type)).sort((a: any, b: any) => a.position - b.position).map((ch: any) => ({ id: ch.id, name: ch.name, text: ch.type === 0 || ch.type === 5 }));
 const roles = (rolesRes.ok ? await rolesRes.json() : []).filter((role: any) => role.name !== '@everyone').sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: role.id, name: role.name }));
 const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((row: any) => ({ name: row.name as string, v2: isV2Data(row.data) }));
@@ -115,4 +146,7 @@ const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((r
   ready={ready}
   saved={saved}
   notice={notice}
+  people={people}
+  reviewStats={reviewStats}
+  reviewList={reviewList}
 />

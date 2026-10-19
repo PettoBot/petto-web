@@ -78,11 +78,12 @@ interface Props {
   sanctionTemplates: Record<string, { dm: string; reply: string; log: string }>;
   sanctionMessagesReady: boolean;
   embedTemplateNames: string[];
+  caseMessage?: { kind: 'ok' | 'err'; text: string; number: number } | null;
   section?: string;
   /** The server's prefix, for the commands named in the texts. */
   prefix?: string;
 }
-const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, section, prefix = '!' } = Astro.props;
+const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, caseMessage = null, section, prefix = '!' } = Astro.props;
 
 const typeColor: Record<string, string> = {
   ban: '#fe6465', tempban: '#fe6465', kick: '#ff9f5a', warn: '#fed53c',
@@ -393,8 +394,15 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   {selectedSection === 'cases' && (
   <div class:list={['md-section', showSection('cases')]}>
     <h2><Fragment set:html={dth('Recent cases <span class="md-count">{a}</span>', { a: (cases.length) })} /></h2>
+    {caseMessage && <div class:list={['md-case-flash', { 'md-case-flash-err': caseMessage.kind === 'err' }]} role={caseMessage.kind === 'err' ? 'alert' : 'status'}>{caseMessage.text}</div>}
     {cases.length === 0 ? (
-      <p class="md-empty-note"><Fragment set:html={dth('No cases yet. They show up here the moment a mod uses <code>{p}ban</code>, <code>{p}kick</code>, <code>{p}mute</code> or <code>{p}warn</code>.', { p: prefix })} /></p>
+      <div class="md-case-empty">
+        <Icon name="ph:clipboard-text-fill" width="22" height="22" />
+        <div>
+          <p class="md-empty-note"><Fragment set:html={dth('No cases yet. They show up here the moment a mod uses <code>{p}ban</code>, <code>{p}kick</code>, <code>{p}mute</code> or <code>{p}warn</code>.', { p: prefix })} /></p>
+          <p class="md-case-empty-more">{dt('Each case gets a number. Here you can search them, fix the reason of one or delete one that was a mistake; the change is written to the sanctions log.')}</p>
+        </div>
+      </div>
     ) : (
       <>
         <div class="md-case-tools" data-case-tools>
@@ -418,6 +426,19 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
               {c.reason && <span class="md-case-reason">{c.reason}</span>}
               {(c.evidence ?? []).length > 0 && <span class="md-case-evidence">{dt('Proof')}: {(c.evidence ?? []).map((url, i) => <a href={url} target="_blank" rel="noopener noreferrer">{i + 1}</a>)}</span>}
               {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
+              <details class="md-case-edit" open={caseMessage?.kind === 'err' && caseMessage.number === c.caseNumber}>
+                <summary><Icon name="ph:pencil-simple-fill" width="12" height="12" />{dt('Edit')}</summary>
+                <form method="POST" class="md-case-form" data-no-dirty>
+                  <input type="hidden" name="case" value={c.caseNumber} />
+                  <label><span>{dt('Reason of case #{a}', { a: c.caseNumber })}</span>
+                    <textarea name="reason" rows="2" maxlength="1000" required placeholder={dt('Why this sanction was given')}>{c.reason ?? ''}</textarea>
+                  </label>
+                  <div class="md-case-form-actions">
+                    <button type="submit" name="action" value="case_edit" class="btn btn-accent btn-sm">{dt('Save reason')}</button>
+                    <button type="submit" name="action" value="case_delete" class="btn btn-ghost btn-sm md-case-delete" formnovalidate data-confirm={dt('Delete case #{a}? It disappears from the history of the member, and a deleted warning stops counting for warn escalation. The sanction itself is not lifted.', { a: c.caseNumber })}><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete case')}</button>
+                  </div>
+                </form>
+              </details>
             </div>
           ))}
         </div>
@@ -496,6 +517,22 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   .md-case-none { color: var(--text-dim); font-size: 13px; }
   .md-case-more { margin-top: 12px; }
   .md-case-row[hidden] { display: none; }
+  .md-case-flash { font-size: 13px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 9px 13px; margin: 0 0 12px; max-width: 760px; }
+  .md-case-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
+  .md-case-empty { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; max-width: 760px; color: var(--text-dim); }
+  .md-case-empty .md-empty-note { margin: 0 0 6px; }
+  .md-case-empty-more { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+  .md-case-edit { margin-left: auto; }
+  .md-case-edit[open] { flex-basis: 100%; margin-left: 0; }
+  .md-case-edit summary { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; list-style: none; font-size: 11.5px; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+  .md-case-edit summary::-webkit-details-marker { display: none; }
+  .md-case-edit summary:hover, .md-case-edit[open] summary { color: var(--text); border-color: var(--text-dim); }
+  .md-case-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-width: 640px; }
+  .md-case-form label { display: flex; flex-direction: column; gap: 5px; }
+  .md-case-form label span { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; }
+  .md-case-form textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise, var(--card)); color: var(--text); font: 13px var(--sans); resize: vertical; width: 100%; box-sizing: border-box; }
+  .md-case-form-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .md-case-delete:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; }
   .md-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; max-width: 68ch; }

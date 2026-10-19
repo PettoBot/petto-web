@@ -533,6 +533,37 @@ export async function callPettoHoneypot(context: AstroContext, guildId: string, 
   }
 }
 
+/**
+ * Invite tracking from the Invites tab of Statistics: a role for a number of invites, bonus invites, a reset and the days under which a
+ * join is fake. The bot checks the same as `/invites` (the roles it and the member can give, Administrator for a reset) and answers in
+ * the dashboard's language.
+ */
+export async function callPettoInvites(context: AstroContext, guildId: string, userId: string, action: 'reward' | 'unreward' | 'bonus' | 'reset' | 'fake_days', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
+  return callPettoAction(context, guildId, userId, 'stats', `invites/${action}`, body, lang);
+}
+
+/** The case log of Moderation: a new reason for a case, or delete it, like `/case edit` and `/case delete` (written to the sanctions log). */
+export async function callPettoCases(context: AstroContext, guildId: string, userId: string, action: 'edit' | 'delete', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
+  return callPettoAction(context, guildId, userId, 'moderation', `cases/${action}`, body, lang);
+}
+
+async function callPettoAction(context: AstroContext, guildId: string, userId: string, page: string, route: string, body: Record<string, unknown>, lang: string): Promise<{ ok: boolean; message: string; code?: string }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '' };
+  try {
+    const grant = await roleGrant(context, guildId, page, true);
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(20_000),
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', code: typeof payload?.code === 'string' ? payload.code : payload?.error };
+  } catch {
+    return { ok: false, message: '' };
+  }
+}
+
 export interface BoosterRoleInfo {
   user_id: string; role_id: string; exists: boolean; name: string | null; color: string | null; color2: string | null; icon: string | null;
   editable: boolean; shared_with: string[]; in_server: boolean | null; boosting: boolean | null; created_at: string | null;

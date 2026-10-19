@@ -1,0 +1,100 @@
+---
+// One member picked by name: typing searches the members of the server (members-search), and the one picked goes into a hidden field of
+// the form. The script is inline and inside the page content, so it also runs when the page is reached from the menu; it binds one
+// listener for the whole document, once.
+import { getDashLang, makeT } from '../i18n/dash';
+
+interface Props { guildId: string; name: string; placeholder?: string; required?: boolean }
+const { guildId, name, placeholder, required = true } = Astro.props;
+const dt = makeT(getDashLang(Astro));
+---
+<div class="mp" data-member-pick data-mp-optional={required ? undefined : ''} data-search-url={`/dash/guild/${guildId}/members-search`} data-none={dt('Nobody with that name.')}>
+  <input type="hidden" name={name} value="" data-mp-value />
+  <div class="mp-chosen" data-mp-chosen hidden></div>
+  <input type="text" class="mp-input" data-mp-input placeholder={placeholder ?? dt('Type a name to search')} autocomplete="off" maxlength="32" aria-label={placeholder ?? dt('Type a name to search')} />
+  <div class="mp-results" data-mp-results hidden></div>
+</div>
+<script is:inline>
+  (function () {
+    if (window.__mpBound) return;
+    window.__mpBound = true;
+    var timer = null;
+    var seq = 0;
+    var esc = function (text) { return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var choose = function (wrap, id, label, avatar) {
+      wrap.querySelector('[data-mp-value]').value = id;
+      var chosen = wrap.querySelector('[data-mp-chosen]');
+      chosen.innerHTML = id ? (avatar ? '<img src="' + esc(avatar) + '" alt="" width="20" height="20" />' : '') + '<b>' + esc(label) + '</b><button type="button" data-mp-clear aria-label="×">×</button>' : '';
+      chosen.hidden = !id;
+      var input = wrap.querySelector('[data-mp-input]');
+      input.hidden = Boolean(id);
+      input.value = '';
+      wrap.querySelector('[data-mp-results]').hidden = true;
+      if (!id) input.focus();
+    };
+    document.addEventListener('input', function (event) {
+      var input = event.target && event.target.closest ? event.target.closest('[data-mp-input]') : null;
+      if (!input) return;
+      var wrap = input.closest('[data-member-pick]');
+      var results = wrap.querySelector('[data-mp-results]');
+      var query = input.value.trim();
+      clearTimeout(timer);
+      if (!query) { results.hidden = true; return; }
+      // A pasted ID is taken as it is.
+      if (/^\d{15,25}$/.test(query)) { choose(wrap, query, query, ''); return; }
+      timer = setTimeout(function () {
+        var mine = ++seq;
+        fetch(wrap.getAttribute('data-search-url') + '?q=' + encodeURIComponent(query), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (res) { return res.ok ? res.json() : { members: [] }; })
+          .then(function (data) {
+            if (mine !== seq) return;
+            var members = (data && data.members) || [];
+            results.innerHTML = members.length ? members.slice(0, 8).map(function (m) {
+              var label = m.displayName || m.username || m.id;
+              return '<button type="button" class="mp-person" data-mp-id="' + esc(m.id) + '" data-mp-label="' + esc(label) + '" data-mp-avatar="' + esc(m.avatar || '') + '">' + (m.avatar ? '<img src="' + esc(m.avatar) + '" alt="" width="22" height="22" />' : '') + '<span>' + esc(label) + (m.username && m.username !== label ? ' <small>@' + esc(m.username) + '</small>' : '') + '</span></button>';
+            }).join('') : '<p class="mp-none">' + esc(wrap.getAttribute('data-none')) + '</p>';
+            results.hidden = false;
+          })
+          .catch(function () { results.hidden = true; });
+      }, 250);
+    });
+    document.addEventListener('click', function (event) {
+      var target = event.target && event.target.closest ? event.target : null;
+      if (!target) return;
+      var pick = target.closest('[data-mp-id]');
+      if (pick) { choose(pick.closest('[data-member-pick]'), pick.getAttribute('data-mp-id'), pick.getAttribute('data-mp-label'), pick.getAttribute('data-mp-avatar')); return; }
+      var clear = target.closest('[data-mp-clear]');
+      if (clear) { choose(clear.closest('[data-member-pick]'), '', '', ''); return; }
+      document.querySelectorAll('[data-mp-results]').forEach(function (box) { if (!box.closest('[data-member-pick]').contains(target)) box.hidden = true; });
+    });
+    // A form is not sent without the member it needs: the search box asks for one instead.
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (!form || !form.querySelector) return;
+      var wrap = form.querySelector('[data-member-pick]');
+      if (wrap && !wrap.hasAttribute('data-mp-optional') && !wrap.querySelector('[data-mp-value]').value) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        wrap.querySelector('[data-mp-input]').focus();
+      }
+    }, true);
+  })();
+</script>
+
+<style>
+  .mp { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .mp-input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; }
+  .mp-input[hidden] { display: none; }
+  .mp-chosen { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; max-width: 100%; padding: 5px 6px 5px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-size: 13px; }
+  .mp-chosen[hidden] { display: none; }
+  .mp-chosen :global(img) { width: 20px; height: 20px; border-radius: 50%; }
+  .mp-chosen :global(b) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .mp-chosen :global(button) { border: 0; background: transparent; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
+  .mp-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; display: grid; gap: 2px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: 0 12px 30px rgba(0, 0, 0, .3); max-height: 240px; overflow-y: auto; }
+  .mp-results[hidden] { display: none; }
+  .mp-results :global(.mp-person) { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+  .mp-results :global(.mp-person:hover) { background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .mp-results :global(.mp-person img) { width: 22px; height: 22px; border-radius: 50%; }
+  .mp-results :global(small) { color: var(--text-dim); }
+  .mp-results :global(.mp-none) { margin: 0; padding: 6px 8px; font-size: 12.5px; color: var(--text-dim); }
+</style>

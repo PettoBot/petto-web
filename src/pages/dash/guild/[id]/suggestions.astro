@@ -6,6 +6,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { getGuildEmojis } from '../../../../utils/guildEmojis';
+import { changeBlock, loadBlocked } from '../../../../utils/memberBlocks';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -23,51 +24,56 @@ const STATUSES = ['pending', 'approved', 'denied', 'considering', 'implemented']
 const toInt = (hex: string, fallback: number) => (/^#[0-9a-f]{6}$/i.test(hex) ? parseInt(hex.slice(1), 16) : fallback);
 
 let saved = false;
+let blockResult: 'blocked' | 'unblocked' | 'failed' | null = null;
 let failed = '';
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const text = (key: string, max: number) => String(form.get(key) ?? '').trim().slice(0, max);
-  const channelId = text('channel_id', 30);
-  const roleId = text('staff_role_id', 30);
-  const design = text('embed_template', 60).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-  const up = text('up_emoji', 64) || '✅';
-  const down = text('down_emoji', 64) || '❌';
-  if (channelId && !SNOWFLAKE.test(channelId)) failed = 'channel';
-  else if (roleId && !SNOWFLAKE.test(roleId)) failed = 'role';
-  else {
-    const colors: Record<string, number> = {};
-    const defaults: Record<string, number> = { pending: 16766307, approved: 10873466, denied: 16739179, considering: 16758892, implemented: 8624639 };
-    for (const status of STATUSES) colors[`color_${status}`] = toInt(text(`color_${status}`, 7), defaults[status]);
-    await ensureGuildRow(apiUrl, apiHeaders, id);
-    const res = await fetch(`${apiUrl}/rest/v1/suggestion_config?on_conflict=guild_id`, {
-      method: 'POST',
-      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({
-        guild_id: id,
-        enabled: form.get('enabled') === 'on',
-        channel_id: channelId || null,
-        staff_role_id: roleId || null,
-        embed_template: design || null,
-        listen_channel: form.get('listen_channel') === 'on',
-        allow_command: form.get('allow_command') === 'on',
-        thread: form.get('thread') === 'on',
-        thread_name: text('thread_name', 100) || 'Thread for suggestion {suggestion.id}',
-        self_vote: form.get('self_vote') === 'on',
-        dm_author: form.get('dm_author') === 'on',
-        anonymous: form.get('anonymous') === 'on',
-        status_colors: form.get('status_colors') === 'on',
-        up_emoji: up,
-        down_emoji: down,
-        ...colors,
-        updated_at: new Date().toISOString(),
-      }),
-    });
-    saved = res.ok;
-    if (!res.ok) failed = 'save';
+  // Blocking or unblocking a member is its own small form; anything else is the settings form.
+  blockResult = await changeBlock(apiUrl, apiHeaders, 'suggestion_blocks', id, form, session.userId);
+  if (blockResult === null) {
+    const text = (key: string, max: number) => String(form.get(key) ?? '').trim().slice(0, max);
+    const channelId = text('channel_id', 30);
+    const roleId = text('staff_role_id', 30);
+    const design = text('embed_template', 60).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const up = text('up_emoji', 64) || '✅';
+    const down = text('down_emoji', 64) || '❌';
+    if (channelId && !SNOWFLAKE.test(channelId)) failed = 'channel';
+    else if (roleId && !SNOWFLAKE.test(roleId)) failed = 'role';
+    else {
+      const colors: Record<string, number> = {};
+      const defaults: Record<string, number> = { pending: 16766307, approved: 10873466, denied: 16739179, considering: 16758892, implemented: 8624639 };
+      for (const status of STATUSES) colors[`color_${status}`] = toInt(text(`color_${status}`, 7), defaults[status]);
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const res = await fetch(`${apiUrl}/rest/v1/suggestion_config?on_conflict=guild_id`, {
+        method: 'POST',
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({
+          guild_id: id,
+          enabled: form.get('enabled') === 'on',
+          channel_id: channelId || null,
+          staff_role_id: roleId || null,
+          embed_template: design || null,
+          listen_channel: form.get('listen_channel') === 'on',
+          allow_command: form.get('allow_command') === 'on',
+          thread: form.get('thread') === 'on',
+          thread_name: text('thread_name', 100) || 'Thread for suggestion {suggestion.id}',
+          self_vote: form.get('self_vote') === 'on',
+          dm_author: form.get('dm_author') === 'on',
+          anonymous: form.get('anonymous') === 'on',
+          status_colors: form.get('status_colors') === 'on',
+          up_emoji: up,
+          down_emoji: down,
+          ...colors,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      saved = res.ok;
+      if (!res.ok) failed = 'save';
+    }
   }
 }
 
-const [guildInfo, configRes, listRes, rolesRes, channelsRes, templatesRes, customEmojis] = await Promise.all([
+const [guildInfo, configRes, listRes, rolesRes, channelsRes, templatesRes, customEmojis, blocked] = await Promise.all([
   getGuildInfo(id, botToken),
   fetch(`${apiUrl}/rest/v1/suggestion_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null),
   fetch(`${apiUrl}/rest/v1/suggestions?guild_id=eq.${id}&select=id,number,author_id,content,status,created_at&order=number.desc&limit=200`, { headers: apiHeaders }).catch(() => null),
@@ -75,6 +81,7 @@ const [guildInfo, configRes, listRes, rolesRes, channelsRes, templatesRes, custo
   getGuildList(Astro, id, botToken, 'channels'),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
   getGuildEmojis(id, botToken),
+  loadBlocked(Astro, apiUrl, apiHeaders, 'suggestion_blocks', id, botToken, session.userId).catch(() => []),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -113,4 +120,4 @@ const counts: Record<string, number> = {};
 for (const s of list) counts[s.status] = (counts[s.status] ?? 0) + 1;
 const recent = list.slice(0, 15).map((s) => ({ id: s.id, number: s.number, authorId: s.author_id, content: String(s.content).slice(0, 160), status: s.status }));
 ---
-<DashSuggestions user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} config={config} channels={channels} roles={roles} templates={templates} customEmojis={customEmojis} total={list.length} counts={counts} recent={recent} ready={ready} saved={saved} failed={failed} />
+<DashSuggestions user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} config={config} channels={channels} roles={roles} templates={templates} customEmojis={customEmojis} total={list.length} counts={counts} recent={recent} ready={ready} saved={saved} failed={failed} blocked={blocked} blockResult={blockResult} />
