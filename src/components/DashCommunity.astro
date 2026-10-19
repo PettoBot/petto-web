@@ -2,6 +2,10 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import UserChip from './UserChip.astro';
+import MultiSelect from './MultiSelect.astro';
+import ColorPicker from './ColorPicker.astro';
+import MemberPick from './MemberPick.astro';
+import type { BoosterRoleInfo } from '../utils/pettoBotApi';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -9,17 +13,22 @@ const dt = makeT(dashLang);
 const dth = makeT(dashLang, true);
 interface ReportConfig { enabled: boolean; channelId: string | null; urgentRoleId: string | null; anonymousReportingEnabled: boolean; }
 interface BoosterConfig {
+  enabled: boolean;
   baseRoleId: string | null;
   roleLimit: number;
   shareMax: number;
+  allowGradient: boolean;
+  allowIcon: boolean;
+  onUnboost: 'keep' | 'remove' | 'delete';
   filteredWords: string[];
   colorCooldownHours: number;
   iconCooldownHours: number;
   renameCooldownHours: number;
 }
-interface BoosterRole { userId: string; roleId: string; color: string | null; }
-interface ReputationConfig { enabled: boolean; cooldownHours: number; }
+interface BoosterStatus { live: boolean; canManageRoles: boolean; boostCount: number; premiumTier: number; withoutRole: string[]; }
+interface ReputationConfig { enabled: boolean; cooldownHours: number; giverRoleIds: string[]; blockedRoleIds: string[]; channelIds: string[]; rewards: { points: number; roleId: string }[]; }
 interface ReputationRow { userId: string; points: number; }
+interface RepLogRow { giverId: string; receiverId: string; channelId: string | null; at: string; }
 interface Poll { id: number; channel_id: string; message_id: string; embed_template?: string | null; question: string; options: string[]; image: string | null; multi: boolean; ends_at: string | null; closed: boolean; created_at: string; voters: number; counts: number[]; }
 
 interface Props {
@@ -29,7 +38,13 @@ interface Props {
   guildIcon: string;
   report: ReportConfig;
   booster: BoosterConfig;
-  boosterRoles: BoosterRole[];
+  boosterRoles: BoosterRoleInfo[];
+  boosterStatus: BoosterStatus;
+  roleDetails: { id: string; name: string; color: number; managed: boolean }[];
+  prefix: string;
+  notice?: { ok: boolean; text: string } | null;
+  reputationTotal?: number;
+  repLog?: RepLogRow[];
   roles: { id: string; name: string }[];
   channels: { id: string; name: string }[];
   saved: boolean;
@@ -41,21 +56,26 @@ interface Props {
   pollDesigns?: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, report, booster, boosterRoles, roles, channels, saved, reputation, reputationTop, polls, pollError, people = {}, pollDesigns = [], section } = Astro.props;
+const { user, guildId, guildName, guildIcon, report, booster, boosterRoles, boosterStatus, roleDetails, prefix, notice = null, reputationTotal = 0, repLog = [], roles, channels, saved, reputation, reputationTop, polls, pollError, people = {}, pollDesigns = [], section } = Astro.props;
 
-const sectionMeta: Record<string, string> = { settings: dt('Community settings'), reputation: dt('Reputation leaderboard'), boosters: dt('Active booster roles'), polls: dt('Polls') };
+const sectionMeta: Record<string, string> = { settings: dt('Community settings'), reputation: dt('Reputation'), boosters: dt('Booster roles'), polls: dt('Polls') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
 
 function roleName(id: string) {
   return roles.find((r) => r.id === id)?.name ?? id;
 }
+// Booster roles whose owner no longer boosts (or left): what "Clean up" would delete.
+const lapsed = boosterRoles.filter((row) => row.boosting === false || row.in_server === false);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'settings' ? 'community' : `community-${selectedSection}`} pageTitle={selectedTitle}>
   <h1>{selectedTitle}</h1>
-  <p class="cm-sub"><Fragment set:html={dth('Member reports and booster color roles in <b>{a}</b>. Personal tools like <code>/remind</code> and <code>/afk</code> need no setup.', { a: (guildName) })} /></p>
+  {(selectedSection === 'settings' || selectedSection === 'polls') && <p class="cm-sub"><Fragment set:html={dth('Member reports, polls, reputation and booster roles in <b>{a}</b>. Personal tools like <code>/remind</code> and <code>/afk</code> need no setup.', { a: (guildName) })} /></p>}
 
-  {saved && <div class="cm-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {saved && !notice && <div class="cm-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {notice && (notice.ok
+    ? <div class="cm-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{notice.text}</div>
+    : <div class="cm-error" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{notice.text}</div>)}
 
   {selectedSection === 'settings' && (
   <div class:list={['cm-grid', { 'cm-section-hidden': selectedSection !== 'settings' }]}>
@@ -86,98 +106,427 @@ function roleName(id: string) {
       <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
     </form>
 
-    <form method="POST" class="cm-card">
-      <input type="hidden" name="action" value="booster" />
+    <a class="cm-card cm-card-link" href={`/dash/guild/${guildId}/community?section=boosters`}>
       <div class="cm-card-head">
         <div class="cm-card-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="16" height="16" /></div>
         <div class="cm-card-title">{dt('Booster roles')}</div>
+        <span class:list={['cm-pill', booster.enabled ? 'on' : 'off']}>{booster.enabled ? dt('On') : dt('Off')}</span>
       </div>
-      <p class="cm-card-desc"><Fragment set:html={dth('Custom colored roles boosters can create for themselves with <code>/boosterrole</code>.')} /></p>
-      <div class="cm-row">
-        <label>{dt('Anchor role (position reference)')}</label>
-        <select name="base_role_id">
-          <option value="">{dt('None')}</option>
-          {roles.map((r) => <option value={r.id} selected={r.id === booster.baseRoleId}>{r.name}</option>)}
-        </select>
-      </div>
-      <div class="cm-row-pair">
-        <div class="cm-row">
-          <label>{dt('Roles per booster')}</label>
-          <input type="number" name="role_limit" value={booster.roleLimit} min="1" max="5" />
-        </div>
-        <div class="cm-row">
-          <label>{dt('Max people to share with')}</label>
-          <input type="number" name="share_max" value={booster.shareMax} min="0" max="20" />
-        </div>
-      </div>
-      <div class="cm-row-pair">
-        <div class="cm-row">
-          <label>{dt('Color change cooldown (hours)')}</label>
-          <input type="number" name="color_cooldown_hours" value={booster.colorCooldownHours} min="0" max="720" />
-        </div>
-        <div class="cm-row">
-          <label>{dt('Rename cooldown (hours)')}</label>
-          <input type="number" name="rename_cooldown_hours" value={booster.renameCooldownHours} min="0" max="720" />
-        </div>
-      </div>
-      <div class="cm-row">
-        <label>{dt('Icon change cooldown (hours)')}</label>
-        <input type="number" name="icon_cooldown_hours" value={booster.iconCooldownHours} min="0" max="720" />
-      </div>
-      <div class="cm-row">
-        <label>{dt('Filtered words')}</label>
-        <input type="text" name="filtered_words" value={booster.filteredWords.join(', ')} placeholder={dt('comma, separated')} />
-      </div>
-      <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-    </form>
+      <p class="cm-card-desc"><Fragment set:html={dth('Custom colored roles boosters create for themselves with <code>{p}boosterrole</code>: what they may change, limits, the name filter and every booster role.', { p: prefix })} /></p>
+      <span class="cm-link">{dt('Open booster roles')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></span>
+    </a>
 
-    <form method="POST" class="cm-card">
-      <input type="hidden" name="action" value="reputation" />
+    <a class="cm-card cm-card-link" href={`/dash/guild/${guildId}/community?section=reputation`}>
       <div class="cm-card-head">
         <div class="cm-card-icon" style="--c:#fed53c"><Icon name="ph:medal-fill" width="16" height="16" /></div>
         <div class="cm-card-title">{dt('Reputation')}</div>
-        <label class="cm-switch"><input type="checkbox" name="enabled" checked={reputation.enabled} /><span></span></label>
+        <span class:list={['cm-pill', reputation.enabled ? 'on' : 'off']}>{reputation.enabled ? dt('On') : dt('Off')}</span>
       </div>
-      <p class="cm-card-desc"><Fragment set:html={dth('A simple point members give each other with <code>/rep give</code>. No setup beyond this needed.')} /></p>
-      <div class="cm-row">
-        <label>{dt('Cooldown between gives (hours)')}</label>
-        <input type="number" name="cooldown_hours" value={reputation.cooldownHours} min="0" max="720" />
-      </div>
-      <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-    </form>
+      <p class="cm-card-desc"><Fragment set:html={dth('A point members give each other with <code>{p}rep give</code>: who can give and where, reward roles, the leaderboard and the recent points.', { p: prefix })} /></p>
+      <span class="cm-link">{dt('Open reputation')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></span>
+    </a>
   </div>
   )}
 
-  {selectedSection === 'reputation' && reputationTop.length > 0 && (
-    <div class:list={['cm-section', { 'cm-section-hidden': selectedSection !== 'reputation' }]}>
-      <h2><Fragment set:html={dth('Reputation leaderboard <span class="cm-count">{a}</span>', { a: (reputationTop.length) })} /></h2>
-      <div class="cm-list">
-        {reputationTop.map((r) => (
-          <div class="cm-list-row">
-            <UserChip id={r.userId} person={people[r.userId]} />
-            <span class="cm-rep-points">{r.points} pts</span>
-            <form method="POST">
-              <input type="hidden" name="action" value="reset_reputation" />
-              <input type="hidden" name="user_id" value={r.userId} />
-              <button type="submit" class="cm-rep-reset" title={dt('Reset to 0')}><Icon name="ph:arrow-counter-clockwise-fill" width="13" height="13" /></button>
-            </form>
+  {selectedSection === 'reputation' && (
+    <div class="cm-page">
+      <p class="cm-sub"><Fragment set:html={dth('Members of <b>{a}</b> thank each other with <code>{p}rep give @member</code>: one point each time, then a wait. Choose who can give, where, and the roles points unlock.', { a: guildName, p: prefix })} /></p>
+
+      <div class="cm-stats">
+        <div class="cm-stat"><b>{reputation.enabled ? dt('On') : dt('Off')}</b><span>{dt('Reputation')}</span></div>
+        <div class="cm-stat"><b>{reputationTotal}</b><span>{dt('Members with points')}</span></div>
+        <div class="cm-stat"><b>{reputationTop[0]?.points ?? 0}</b><span>{dt('Most points')}</span></div>
+        <div class="cm-stat"><b>{reputation.cooldownHours ? dt('{a} h', { a: reputation.cooldownHours }) : dt('None')}</b><span>{dt('Wait between gives')}</span></div>
+      </div>
+
+      <form method="POST" class="cm-settings">
+        <input type="hidden" name="action" value="reputation" />
+        <div class="cm-grid">
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#fed53c"><Icon name="ph:medal-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('Reputation')}</div>
+              <label class="cm-switch" title={dt('On')}><input type="checkbox" name="enabled" checked={reputation.enabled} /><span></span></label>
+            </div>
+            <p class="cm-card-desc">{dt('When off, nobody can give points. The points and the leaderboard stay.')}</p>
+            <div class="cm-row">
+              <label>{dt('Wait between gives (hours)')}</label>
+              <input type="number" name="cooldown_hours" value={reputation.cooldownHours} min="0" max="720" />
+              <span class="cm-help">{dt('How long a member waits before giving another point. 0 = no wait.')}</span>
+            </div>
           </div>
-        ))}
+
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#5b8def"><Icon name="ph:user-check-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('Who can give')}</div>
+            </div>
+            <div class="cm-row">
+              <label>{dt('Only members with these roles')}</label>
+              <MultiSelect name="giver_role_ids" options={roles} selected={reputation.giverRoleIds} placeholder={dt('Everyone')} />
+              <span class="cm-help">{dt('Empty: everyone can give.')}</span>
+            </div>
+            <div class="cm-row">
+              <label>{dt('Blocked roles')}</label>
+              <MultiSelect name="blocked_role_ids" options={roles} selected={reputation.blockedRoleIds} placeholder={dt('None')} />
+              <span class="cm-help">{dt('Members with one of these roles can neither give nor receive points.')}</span>
+            </div>
+          </div>
+
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#2dd4a7"><Icon name="ph:hash-bold" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('Where')}</div>
+            </div>
+            <div class="cm-row">
+              <label>{dt('Only in these channels')}</label>
+              <MultiSelect name="channel_ids" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={reputation.channelIds} placeholder={dt('Every channel')} />
+              <span class="cm-help">{dt('Empty: every channel. Threads count as their channel.')}</span>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+      </form>
+
+      <div class="cm-grid">
+        <div class="cm-card">
+          <div class="cm-card-head">
+            <div class="cm-card-icon" style="--c:#f78fb3"><Icon name="ph:gift-fill" width="16" height="16" /></div>
+            <div class="cm-card-title">{dt('Reward roles')}</div>
+          </div>
+          <p class="cm-card-desc">{dt('A member gets the role when they reach the points. Roles already given stay when points are reset.')}</p>
+          {reputation.rewards.length > 0 && (
+            <div class="cm-rewards">
+              {reputation.rewards.map((reward) => (
+                <form method="POST" class="cm-reward" data-no-dirty>
+                  <input type="hidden" name="action" value="rep_reward_remove" />
+                  <input type="hidden" name="points" value={reward.points} />
+                  <b>{dt('{a} pts', { a: reward.points })}</b>
+                  <Icon name="ph:arrow-right" width="12" height="12" />
+                  <span>@{roleName(reward.roleId)}</span>
+                  <button type="submit" class="cm-rep-reset" title={dt('Remove')}><Icon name="ph:x-bold" width="12" height="12" /></button>
+                </form>
+              ))}
+            </div>
+          )}
+          <form method="POST" class="cm-reward-add" data-no-dirty>
+            <input type="hidden" name="action" value="rep_reward_add" />
+            <div class="cm-row"><label>{dt('Points')}</label><input type="number" name="points" min="1" max="1000000" placeholder="10" required /></div>
+            <div class="cm-row">
+              <label>{dt('Role')}</label>
+              <select name="role_id" required>
+                <option value="" disabled selected>{dt('Choose a role')}</option>
+                {roleDetails.filter((r) => !r.managed).map((r) => <option value={r.id}>@{r.name}</option>)}
+              </select>
+            </div>
+            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
+          </form>
+        </div>
+
+        <form method="POST" class="cm-card" data-no-dirty>
+          <input type="hidden" name="action" value="rep_set" />
+          <div class="cm-card-head">
+            <div class="cm-card-icon" style="--c:#a78bfa"><Icon name="ph:sliders-horizontal-fill" width="16" height="16" /></div>
+            <div class="cm-card-title">{dt('Change a member\'s points')}</div>
+          </div>
+          <p class="cm-card-desc">{dt('Sets the points of any member. 0 resets them.')}</p>
+          <div class="cm-row"><label>{dt('Member')}</label><MemberPick guildId={guildId} /></div>
+          <div class="cm-row"><label>{dt('Points')}</label><input type="number" name="points" min="0" max="1000000" value="0" required /></div>
+          <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+        </form>
+
+        <div class="cm-card">
+          <div class="cm-card-head">
+            <div class="cm-card-icon" style="--c:#8b8fa3"><Icon name="ph:terminal-window-fill" width="16" height="16" /></div>
+            <div class="cm-card-title">{dt('Commands')}</div>
+          </div>
+          <ul class="cm-cmds">
+            <li><code>{prefix}rep give @member</code><span>{dt('Give a point')}</span></li>
+            <li><code>{prefix}rep view @member</code><span>{dt('See the points of a member')}</span></li>
+            <li><code>{prefix}rep leaderboard</code><span>{dt('The top 10')}</span></li>
+            <li><code>{prefix}rep reset @member</code><span>{dt('Reset a member (Manage Server)')}</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="cm-two">
+        <div class="cm-section">
+          <div class="cm-section-head">
+            <h2><Fragment set:html={dth('Leaderboard <span class="cm-count">{a}</span>', { a: reputationTotal })} /></h2>
+            {reputationTop.length > 0 && (
+              <form method="POST" data-no-dirty>
+                <input type="hidden" name="action" value="reset_all_reputation" />
+                <button type="submit" class="cm-del-text" data-confirm={dt('Reset the points of every member to 0? This cannot be undone.')}><Icon name="ph:arrow-counter-clockwise-bold" width="12" height="12" />{dt('Reset everyone')}</button>
+              </form>
+            )}
+          </div>
+          {reputationTop.length === 0 ? (
+            <div class="cm-empty"><Icon name="ph:medal" width="18" height="18" /><span><Fragment set:html={dth('Nobody has points yet. They appear here after the first <code>{p}rep give</code>.', { p: prefix })} /></span></div>
+          ) : (
+            <div class="cm-list cm-lb">
+              {reputationTop.map((r, index) => (
+                <div class="cm-list-row">
+                  <span class:list={['cm-rank', { top: index < 3 }]}>{index + 1}</span>
+                  <UserChip id={r.userId} person={people[r.userId]} />
+                  <span class="cm-rep-points">{dt(r.points === 1 ? '{a} pt' : '{a} pts', { a: r.points })}</span>
+                  <form method="POST" data-no-dirty>
+                    <input type="hidden" name="action" value="reset_reputation" />
+                    <input type="hidden" name="user_id" value={r.userId} />
+                    <button type="submit" class="cm-rep-reset" title={dt('Reset to 0')} data-confirm={dt('Reset the points of {a} to 0?', { a: people[r.userId]?.name ?? r.userId })}><Icon name="ph:arrow-counter-clockwise-fill" width="13" height="13" /></button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div class="cm-section">
+          <div class="cm-section-head"><h2>{dt('Recent points')}</h2></div>
+          {repLog.length === 0 ? (
+            <div class="cm-empty"><Icon name="ph:clock-counter-clockwise" width="18" height="18" /><span>{dt('The points given from now on are listed here.')}</span></div>
+          ) : (
+            <div class="cm-list cm-log">
+              {repLog.map((row) => (
+                <div class="cm-list-row">
+                  <UserChip id={row.giverId} person={people[row.giverId]} />
+                  <Icon name="ph:arrow-right-bold" width="12" height="12" class="cm-log-arrow" />
+                  <UserChip id={row.receiverId} person={people[row.receiverId]} />
+                  <span class="cm-log-meta">{row.channelId && <span>#{channels.find((c) => c.id === row.channelId)?.name ?? row.channelId}</span>}<time datetime={row.at} data-local-time>{row.at}</time></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )}
 
-  {selectedSection === 'boosters' && boosterRoles.length > 0 && (
-    <div class:list={['cm-section', { 'cm-section-hidden': selectedSection !== 'boosters' }]}>
-      <h2><Fragment set:html={dth('Active booster roles <span class="cm-count">{a}</span>', { a: (boosterRoles.length) })} /></h2>
-      <div class="cm-list">
-        {boosterRoles.map((b) => (
-          <div class="cm-list-row">
-            <UserChip id={b.userId} person={people[b.userId]} />
-            <span>{roleName(b.roleId)}</span>
-            {b.color && <span class="cm-swatch" style={`--sw:${b.color}`} />}
+  {selectedSection === 'boosters' && (
+    <div class="cm-page">
+      <p class="cm-sub"><Fragment set:html={dth('Boosters of <b>{a}</b> make their own colored role with <code>{p}boosterrole create</code> and change it themselves. Here you choose what they may change, and you can manage every booster role.', { a: guildName, p: prefix })} /></p>
+
+      <div class="cm-stats">
+        <div class="cm-stat"><b>{boosterRoles.length}</b><span>{dt('Booster roles')}</span></div>
+        <div class="cm-stat"><b>{boosterStatus.boostCount}</b><span>{dt('Boosts')}</span></div>
+        <div class="cm-stat"><b>{dt('Level {a}', { a: boosterStatus.premiumTier })}</b><span>{dt('Server boost level')}</span></div>
+        <div class="cm-stat"><b>{lapsed.length}</b><span>{dt('No longer boosting')}</span></div>
+      </div>
+      {!boosterStatus.live && <div class="cm-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto did not answer, so the list shows the saved roles without their Discord details. Changes may not work right now.')}</div>}
+      {boosterStatus.live && !boosterStatus.canManageRoles && <div class="cm-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto needs the Manage Roles permission to create and change booster roles.')}</div>}
+
+      <form method="POST" class="cm-settings">
+        <input type="hidden" name="action" value="booster" />
+        <div class="cm-grid">
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('Booster roles')}</div>
+              <label class="cm-switch" title={dt('On')}><input type="checkbox" name="enabled" checked={booster.enabled} /><span></span></label>
+            </div>
+            <p class="cm-card-desc">{dt('When off, boosters cannot create or change a role. They can still remove theirs, and staff can still manage them here.')}</p>
+            <div class="cm-row">
+              <label>{dt('Place new roles above')}</label>
+              <select name="base_role_id">
+                <option value="">{dt('The Server Booster role (default)')}</option>
+                {roles.map((r) => <option value={r.id} selected={r.id === booster.baseRoleId}>@{r.name}</option>)}
+              </select>
+              <span class="cm-help">{dt('New booster roles go right above this role, newest on top, so their color shows. Petto\'s own role must be higher.')}</span>
+            </div>
           </div>
-        ))}
+
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#a78bfa"><Icon name="ph:palette-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('What boosters can change')}</div>
+            </div>
+            <label class="cm-check"><input type="checkbox" name="allow_gradient" checked={booster.allowGradient} />{dt('Gradients (a second color)')}</label>
+            <label class="cm-check"><input type="checkbox" name="allow_icon" checked={booster.allowIcon} />{dt('Role icons')}{boosterStatus.live && boosterStatus.premiumTier < 2 && <span class="cm-label-muted">{dt('(needs boost level 2)')}</span>}</label>
+            <div class="cm-row-trio">
+              <div class="cm-row">
+                <label>{dt('Color wait (h)')}</label>
+                <input type="number" name="color_cooldown_hours" value={booster.colorCooldownHours} min="0" max="720" />
+              </div>
+              <div class="cm-row">
+                <label>{dt('Rename wait (h)')}</label>
+                <input type="number" name="rename_cooldown_hours" value={booster.renameCooldownHours} min="0" max="720" />
+              </div>
+              <div class="cm-row">
+                <label>{dt('Icon wait (h)')}</label>
+                <input type="number" name="icon_cooldown_hours" value={booster.iconCooldownHours} min="0" max="720" />
+              </div>
+            </div>
+            <span class="cm-help">{dt('Hours a booster waits between two changes of the same kind. 0 = no wait.')}</span>
+          </div>
+
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#5b8def"><Icon name="ph:users-three-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('Limits')}</div>
+            </div>
+            <div class="cm-row-pair">
+              <div class="cm-row">
+                <label>{dt('Roles per booster')}</label>
+                <input type="number" name="role_limit" value={booster.roleLimit} min="0" max="25" />
+              </div>
+              <div class="cm-row">
+                <label>{dt('Share with up to')}</label>
+                <input type="number" name="share_max" value={booster.shareMax} min="0" max="25" />
+              </div>
+            </div>
+            <span class="cm-help"><Fragment set:html={dth('0 = no limit. Boosters share their role with friends with <code>{p}boosterrole share @member</code>.', { p: prefix })} /></span>
+          </div>
+
+          <div class="cm-card">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#fe6465"><Icon name="ph:prohibit-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('Name filter')}</div>
+            </div>
+            <div class="cm-row">
+              <textarea name="filtered_words" rows="4" maxlength="6000" placeholder={dt('One word or phrase per line')}>{booster.filteredWords.join('\n')}</textarea>
+              <span class="cm-help">{dt('A role name that contains any of these is refused. Capital letters do not matter.')}</span>
+            </div>
+          </div>
+
+          <div class="cm-card cm-card-wide">
+            <div class="cm-card-head">
+              <div class="cm-card-icon" style="--c:#f5c945"><Icon name="ph:clock-counter-clockwise-fill" width="16" height="16" /></div>
+              <div class="cm-card-title">{dt('When a member stops boosting')}</div>
+            </div>
+            <div class="cm-choices">
+              <label class="cm-choice"><input type="radio" name="on_unboost" value="keep" checked={booster.onUnboost === 'keep'} /><span><b>{dt('Keep the role')}</b><small>{dt('Nothing happens. Use Clean up below when you want to remove old roles.')}</small></span></label>
+              <label class="cm-choice"><input type="radio" name="on_unboost" value="remove" checked={booster.onUnboost === 'remove'} /><span><b>{dt('Take it off')}</b><small>{dt('The role is taken off the member and the people it is shared with, and given back if they boost again.')}</small></span></label>
+              <label class="cm-choice"><input type="radio" name="on_unboost" value="delete" checked={booster.onUnboost === 'delete'} /><span><b>{dt('Delete it')}</b><small>{dt('The role is deleted, also when the member leaves the server.')}</small></span></label>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+      </form>
+
+      <div class="cm-section">
+        <div class="cm-section-head">
+          <h2><Fragment set:html={dth('Booster roles in this server <span class="cm-count">{a}</span>', { a: boosterRoles.length })} /></h2>
+          {boosterRoles.length > 0 && (
+            <form method="POST" data-no-dirty>
+              <input type="hidden" name="action" value="br_cleanup" />
+              <button type="submit" class="btn btn-ghost btn-sm" data-confirm={dt('Delete the booster roles of every member who no longer boosts?')}><Icon name="ph:broom-fill" width="13" height="13" />{dt('Clean up ({a})', { a: lapsed.length })}</button>
+            </form>
+          )}
+        </div>
+        {boosterRoles.length === 0 ? (
+          <div class="cm-empty"><Icon name="ph:sparkle" width="18" height="18" /><span><Fragment set:html={dth('No booster roles yet. Boosters create theirs with <code>{p}boosterrole create</code>, or give one to a member below.', { p: prefix })} /></span></div>
+        ) : (
+          <div class="cm-br-list">
+            {boosterRoles.map((row) => {
+              const state = row.boosting === true ? 'on' : row.in_server === false ? 'left' : row.boosting === false ? 'off' : 'unknown';
+              const label = state === 'on' ? dt('Boosting') : state === 'left' ? dt('Left the server') : state === 'off' ? dt('Not boosting') : dt('Unknown');
+              const roleTitle = row.exists ? (row.name ?? roleName(row.role_id)) : dt('Deleted role');
+              return (
+                <article class:list={['cm-br', { gone: !row.exists }]}>
+                  <div class="cm-br-main">
+                    <span class="cm-br-swatch" style={`--a:${row.color ?? '#7c8a94'};--b:${row.color2 ?? row.color ?? '#7c8a94'}`}>{row.icon && <img src={row.icon} alt="" width="18" height="18" loading="lazy" />}</span>
+                    <div class="cm-br-name">
+                      <b style={row.color ? `color:${row.color}` : undefined}>{roleTitle}</b>
+                      <code>{row.color ?? dt('No color')}{row.color2 ? ` → ${row.color2}` : ''}</code>
+                    </div>
+                    <UserChip id={row.user_id} person={people[row.user_id]} />
+                    <span class:list={['cm-pill', state]}>{label}</span>
+                    {row.shared_with.length > 0 && (
+                      <span class="cm-br-shared" title={row.shared_with.map((userId) => people[userId]?.name ?? userId).join(', ')}>
+                        {row.shared_with.slice(0, 4).map((userId) => <img src={people[userId]?.avatar ?? `https://cdn.discordapp.com/embed/avatars/${Number(userId.slice(-3)) % 6}.png`} alt="" width="18" height="18" loading="lazy" />)}
+                        <span>{dt('+{a} shared', { a: row.shared_with.length })}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div class="cm-br-actions">
+                    {row.exists && (
+                      <details class="cm-br-edit">
+                        <summary><Icon name="ph:pencil-simple-fill" width="12" height="12" />{dt('Edit')}</summary>
+                        <form method="POST" class="cm-br-form" data-no-dirty>
+                          <input type="hidden" name="action" value="br_edit" />
+                          <input type="hidden" name="member_id" value={row.user_id} />
+                          <div class="cm-row"><label>{dt('Name')}</label><input type="text" name="name" value={roleTitle} maxlength="100" /></div>
+                          <div class="cm-br-colors">
+                            <ColorPicker name="hex" value={row.color ?? '#f78fb3'} label={dt('Color')} />
+                            <ColorPicker name="hex2" value={row.color2 ?? ''} allowNone label={dt('Second color')} />
+                          </div>
+                          <div class="cm-row"><label><Fragment set:html={dth('Icon <span class="cm-label-muted">a picture link or a custom emoji; leave empty to keep it</span>')} /></label><input type="text" name="icon" value="" maxlength="500" placeholder="https://… / <:emoji:123>" /></div>
+                          {row.icon && <label class="cm-check"><input type="checkbox" name="icon_remove" />{dt('Remove the icon')}</label>}
+                          <button type="submit" class="btn btn-ghost btn-sm">{dt('Save role')}</button>
+                        </form>
+                      </details>
+                    )}
+                    <form method="POST" data-no-dirty>
+                      <input type="hidden" name="action" value="br_remove" />
+                      <input type="hidden" name="member_id" value={row.user_id} />
+                      <button type="submit" class="cm-del-text" data-confirm={dt('Delete this booster role? The role is deleted in Discord.')}><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete')}</button>
+                    </form>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div class="cm-grid">
+        <form method="POST" class="cm-card" data-no-dirty>
+          <input type="hidden" name="action" value="br_set" />
+          <div class="cm-card-head">
+            <div class="cm-card-icon" style="--c:#2dd4a7"><Icon name="ph:gift-fill" width="16" height="16" /></div>
+            <div class="cm-card-title">{dt('Give a booster role')}</div>
+          </div>
+          <p class="cm-card-desc">{dt('Creates a role for a member, or changes the one they have. No limit or wait applies, like the staff command.')}</p>
+          <div class="cm-row"><label>{dt('Member')}</label><MemberPick guildId={guildId} /></div>
+          {boosterStatus.withoutRole.length > 0 && (
+            <div class="cm-row">
+              <label>{dt('Boosting without a role')}</label>
+              <div class="cm-pick-quick">
+                {boosterStatus.withoutRole.slice(0, 12).map((userId) => <button type="button" data-pick-quick={userId} data-pick-name={people[userId]?.name ?? userId}><img src={people[userId]?.avatar ?? ''} alt="" width="18" height="18" loading="lazy" />{people[userId]?.name ?? userId}</button>)}
+              </div>
+            </div>
+          )}
+          <div class="cm-row"><label>{dt('Role name')}</label><input type="text" name="name" maxlength="100" placeholder={dt('Leave empty to use their name')} /></div>
+          <div class="cm-br-colors">
+            <ColorPicker name="hex" value="#f78fb3" label={dt('Color')} />
+            <ColorPicker name="hex2" value="#5b8def" label={dt('Second color')} />
+          </div>
+          <label class="cm-check"><input type="checkbox" name="gradient" />{dt('Use the second color (gradient)')}</label>
+          <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Create or update')}</button>
+        </form>
+
+        <form method="POST" class="cm-card" data-no-dirty>
+          <input type="hidden" name="action" value="br_link" />
+          <div class="cm-card-head">
+            <div class="cm-card-icon" style="--c:#5b8def"><Icon name="ph:link-bold" width="16" height="16" /></div>
+            <div class="cm-card-title">{dt('Link an existing role')}</div>
+          </div>
+          <p class="cm-card-desc">{dt('Makes a role the server already has the booster role of a member, so they can change it with the commands. The member gets the role.')}</p>
+          <div class="cm-row"><label>{dt('Member')}</label><MemberPick guildId={guildId} /></div>
+          <div class="cm-row">
+            <label>{dt('Role')}</label>
+            <select name="role_id" required>
+              <option value="" disabled selected>{dt('Choose a role')}</option>
+              {roleDetails.filter((r) => !r.managed).map((r) => <option value={r.id}>@{r.name}</option>)}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:link-bold" width="12" height="12" />{dt('Link')}</button>
+        </form>
+
+        <div class="cm-card">
+          <div class="cm-card-head">
+            <div class="cm-card-icon" style="--c:#8b8fa3"><Icon name="ph:terminal-window-fill" width="16" height="16" /></div>
+            <div class="cm-card-title">{dt('Commands for boosters')}</div>
+          </div>
+          <ul class="cm-cmds">
+            <li><code>{prefix}boosterrole create {dt('name')} #hex</code><span>{dt('Create the role')}</span></li>
+            <li><code>{prefix}boosterrole color #hex #hex2</code><span>{dt('Change the color')}</span></li>
+            <li><code>{prefix}boosterrole rename {dt('name')}</code><span>{dt('Rename it')}</span></li>
+            <li><code>{prefix}boosterrole icon</code><span>{dt('Set an icon (link, emoji or attached image)')}</span></li>
+            <li><code>{prefix}boosterrole random</code><span>{dt('A random color')}</span></li>
+            <li><code>{prefix}boosterrole share @member</code><span>{dt('Share it')}</span></li>
+            <li><code>{prefix}boosterrole remove</code><span>{dt('Delete it')}</span></li>
+          </ul>
+        </div>
       </div>
     </div>
   )}
@@ -440,8 +789,86 @@ function roleName(id: string) {
   .cm-del-text { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: transparent; color: var(--red); font: 600 12px var(--sans); cursor: pointer; }
   .cm-empty { display: flex; align-items: center; gap: 8px; max-width: 700px; border: 1px dashed var(--border); border-radius: 12px; padding: 18px; color: var(--text-dim); font-size: 12.5px; }
 
+  /* Booster roles and Reputation pages */
+  .cm-page { display: flex; flex-direction: column; }
+  .cm-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 18px; max-width: 940px; }
+  .cm-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 11px 13px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .cm-stat b { font-size: 17px; color: var(--text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cm-stat span { font-size: 11px; color: var(--text-dim); }
+  .cm-warn { display: flex; align-items: center; gap: 8px; color: var(--yellow, #f5c945); background: color-mix(in srgb, var(--yellow, #f5c945) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow, #f5c945) 45%, transparent); border-radius: 9px; padding: 9px 12px; margin: 0 0 16px; font-size: 12.5px; max-width: 940px; }
+  .cm-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-bottom: 30px; }
+  .cm-settings .cm-grid { margin-bottom: 0; width: 100%; }
+  .cm-card-wide { grid-column: 1 / -1; }
+  .cm-row textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--mono); font-size: 12.5px; line-height: 1.45; }
+  .cm-row-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .cm-check .cm-label-muted { margin-left: 2px; }
+  .cm-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+  .cm-choice { display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg-raise); cursor: pointer; }
+  .cm-choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-raise)); }
+  .cm-choice input { accent-color: var(--accent); margin-top: 2px; }
+  .cm-choice span { display: flex; flex-direction: column; gap: 3px; }
+  .cm-choice b { font-size: 13px; color: var(--text); }
+  .cm-choice small { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
+  .cm-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; max-width: 940px; }
+  .cm-section-head h2 { margin: 0; }
+  .cm-section-head form { margin: 0; }
+  .cm-pill { flex-shrink: 0; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); color: var(--text-dim); white-space: nowrap; }
+  .cm-pill.on { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); }
+  .cm-pill.off, .cm-pill.left { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); background: var(--red-soft); }
+  .cm-br-list { display: grid; gap: 8px; max-width: 940px; }
+  .cm-br { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 10px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .cm-br.gone { opacity: .7; }
+  .cm-br-main { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; flex: 1 1 420px; }
+  .cm-br-swatch { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--a), var(--b)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .cm-br-swatch img { border-radius: 4px; }
+  .cm-br-name { display: flex; flex-direction: column; min-width: 120px; max-width: 220px; }
+  .cm-br-name b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-br-name code { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
+  .cm-br-shared { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: var(--text-dim); }
+  .cm-br-shared img { border-radius: 50%; border: 2px solid var(--card); margin-left: -6px; }
+  .cm-br-shared img:first-child { margin-left: 0; }
+  .cm-br-shared span { margin-left: 5px; }
+  .cm-br-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 6px; }
+  .cm-br-actions form { margin: 0; }
+  .cm-br-edit summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--sans); color: var(--accent); cursor: pointer; }
+  .cm-br-edit summary::-webkit-details-marker { display: none; }
+  .cm-br-edit[open] { flex-basis: 100%; }
+  .cm-br-form { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg-raise); min-width: min(360px, 80vw); }
+  .cm-br-colors { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cm-pick-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cm-pick-quick button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raise); color: var(--text-muted); padding: 3px 9px 3px 3px; font: 12px var(--sans); cursor: pointer; }
+  .cm-pick-quick button:hover { border-color: var(--accent); color: var(--text); }
+  .cm-pick-quick img { border-radius: 50%; }
+  .cm-cmds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; width: 100%; }
+  .cm-cmds li { display: flex; flex-direction: column; gap: 1px; }
+  .cm-cmds code { font-family: var(--mono); font-size: 12px; color: var(--accent); word-break: break-word; }
+  .cm-cmds span { font-size: 11.5px; color: var(--text-dim); }
+  .cm-rewards { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+  .cm-reward { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); border: 1px solid var(--border-soft); border-radius: 9px; padding: 5px 6px 5px 10px; background: var(--bg-raise); margin: 0; }
+  .cm-reward b { font-family: var(--mono); color: var(--accent); font-size: 12px; }
+  .cm-reward span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-reward-add { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: end; width: 100%; margin: 0; }
+  .cm-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 20px; max-width: 940px; }
+  .cm-two .cm-list { max-width: none; }
+  .cm-rank { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font: 600 11px var(--mono); color: var(--text-dim); background: var(--bg-raise); flex-shrink: 0; }
+  .cm-rank.top { color: #1a1300; background: #fed53c; }
+  .cm-lb :global(.uc){ min-width: 0; flex: 1; }
+  .cm-log .cm-log-arrow { color: var(--text-dim); flex-shrink: 0; }
+  .cm-log .cm-list-row { flex-wrap: wrap; row-gap: 4px; }
+  .cm-log .cm-list-row :global(.uc){ flex: 1 1 0; min-width: 0; }
+  .cm-log-meta { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 10px; font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
+  .cm-card-link { text-decoration: none; color: inherit; transition: border-color .15s; }
+  .cm-card-link:hover { border-color: var(--accent); }
+
+  @media (max-width: 760px) {
+    .cm-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cm-choices { grid-template-columns: 1fr; }
+  }
+
   @media (max-width: 480px) {
     .cm-row-pair { grid-template-columns: 1fr; }
+    .cm-row-trio { grid-template-columns: 1fr 1fr 1fr; }
+    .cm-reward-add { grid-template-columns: 1fr; }
   }
 
   @media (max-width: 660px) {
