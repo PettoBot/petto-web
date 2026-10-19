@@ -152,6 +152,22 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.7',
+          display: '0.7.7',
+          name: 'Tiramisu',
+          date: 'October 19, 2026',
+          items: [
+            'Forms and applications: `!form` with up to 25 questions, rules (roles, account age, cooldowns, limits, a closing date), panels and a review card with accept and deny that gives roles and DMs the result; each form has its own web page (`petto.sbs/form/<id>`) with a link nobody can guess, the color, banner and background of the form, questions with a description and a picture, and a link preview you can customize',
+            "Live counters rebuilt: many more types (online, a role, boosts, a member goal, a clock, messages today), names with `{count}`, packs with `!counter setup`, counters in a category name or a channel topic, milestone announcements with `!counter announce`, renames that respect Discord's limit, and a Counters page with previews, drag to reorder and renames in place",
+            'Languages: Petto speaks English, Spanish and Brazilian Portuguese, set for each server with `!language` or from the dashboard, panels included',
+            'Moderation: 70 new commands and shortcuts (forced nicknames, `!stripstaff`, image and reaction mutes, `!raid clean`, temporary roles, `!restrictcommand`, more `!purge` filters), five new anti-nuke protections with panic mode, trusted admins and a DM to the owner, and a Honeypot page in the dashboard',
+            'Slash commands: 21 everyday commands (`/help`, `/ping`, `/userinfo`, `/warn`, `/ban`, `/purge`, `/ticket` and more) and `/embed` also work with `/`, `/help` shows both forms, and slash commands no longer show twice',
+            'Premium stays small: Free is generous (125 custom commands, 75 autoresponders, 25 counters and more) and Premium is about twice as much; level rewards and logs have no limit, 15 card fonts are free, and the Premium page has an Always free box',
+            'Dashboard: access by role, faster Counters and Forms pages, live changes without reloading, a Sync server data button, rebuilt Permissions and Command coverage pages, and backups that ask before restoring, show their progress and can bring back only some parts',
+            'Fixes: VoiceMaster buttons no longer fail when the bot is slow, Vanity rule names with spaces work, the anti-nuke blames the right account, and the Forms page of the dashboard loads again',
+          ],
+        },
+        {
           version: '0.7.6',
           display: '0.7.6',
           name: 'Macaron',
@@ -1438,6 +1454,22 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.7',
+          display: '0.7.7',
+          name: 'Tiramisu',
+          date: '19 de octubre de 2026',
+          items: [
+            'Formularios y postulaciones: `!form` con hasta 25 preguntas, reglas (roles, edad de la cuenta, esperas, límites, una fecha de cierre), paneles y una tarjeta de revisión con aceptar y rechazar que da roles y avisa el resultado por MD; cada formulario tiene su propia página web (`petto.sbs/form/<id>`) con un enlace que nadie puede adivinar, el color, el banner y el fondo del formulario, preguntas con descripción e imagen, y una vista previa del enlace que puedes personalizar',
+            'Contadores en vivo renovados: muchos más tipos (en línea, un rol, mejoras, una meta de miembros, un reloj, mensajes de hoy), nombres con `{count}`, paquetes con `!counter setup`, contadores en el nombre de una categoría o el tema de un canal, anuncios de metas con `!counter announce`, cambios de nombre que respetan el límite de Discord y una página de Contadores con vistas previas, arrastrar para ordenar y cambiar nombres ahí mismo',
+            'Idiomas: Petto habla inglés, español y portugués de Brasil, elegido para cada servidor con `!language` o desde el dashboard, paneles incluidos',
+            'Moderación: 70 comandos y atajos nuevos (apodos forzados, `!stripstaff`, silencios de imágenes y reacciones, `!raid clean`, roles temporales, `!restrictcommand`, más filtros de `!purge`), cinco protecciones anti-nuke nuevas con modo pánico, administradores de confianza y un MD al dueño, y una página de Honeypot en el dashboard',
+            'Comandos de barra: 21 comandos del día a día (`/help`, `/ping`, `/userinfo`, `/warn`, `/ban`, `/purge`, `/ticket` y más) y `/embed` también funcionan con `/`, `/help` muestra las dos formas, y los comandos de barra ya no aparecen dos veces',
+            'Premium sigue siendo pequeño: Gratis es generoso (125 comandos personalizados, 75 respuestas automáticas, 25 contadores y más) y Premium es más o menos el doble; las recompensas de nivel y los registros no tienen límite, 15 fuentes de tarjetas son gratis, y la página de Premium tiene un recuadro de Siempre gratis',
+            'Dashboard: acceso por rol, páginas de Contadores y Formularios más rápidas, cambios en vivo sin recargar, un botón de Sincronizar datos del servidor, las páginas de Permisos y Cobertura de comandos rehechas, y copias de seguridad que preguntan antes de restaurar, muestran su progreso y pueden traer solo algunas partes',
+            'Correcciones: los botones de VoiceMaster ya no fallan cuando el bot va lento, los nombres de reglas de Vanity con espacios funcionan, el anti-nuke culpa a la cuenta correcta, y la página de Formularios del dashboard vuelve a cargar',
+          ],
+        },
         {
           version: '0.7.6',
           display: '0.7.6',
@@ -2726,6 +2758,22 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.7',
+          display: '0.7.7',
+          name: 'Tiramisu',
+          date: '19 de outubro de 2026',
+          items: [
+            'Formulários e candidaturas: `!form` com até 25 perguntas, regras (cargos, idade da conta, esperas, limites, uma data de encerramento), painéis e um cartão de revisão com aceitar e recusar que dá cargos e avisa o resultado por DM; cada formulário tem sua própria página web (`petto.sbs/form/<id>`) com um link que ninguém consegue adivinhar, a cor, o banner e o fundo do formulário, perguntas com descrição e imagem, e uma prévia do link que você pode personalizar',
+            'Contadores ao vivo renovados: muito mais tipos (online, um cargo, impulsos, uma meta de membros, um relógio, mensagens de hoje), nomes com `{count}`, pacotes com `!counter setup`, contadores no nome de uma categoria ou no tópico de um canal, anúncios de metas com `!counter announce`, renomeações que respeitam o limite do Discord e uma página de Contadores com prévias, arrastar para ordenar e renomear ali mesmo',
+            'Idiomas: o Petto fala inglês, espanhol e português do Brasil, escolhido para cada servidor com `!language` ou pelo painel, painéis incluídos',
+            'Moderação: 70 comandos e atalhos novos (apelidos forçados, `!stripstaff`, silenciamentos de imagens e reações, `!raid clean`, cargos temporários, `!restrictcommand`, mais filtros do `!purge`), cinco proteções anti-nuke novas com modo pânico, admins de confiança e uma DM ao dono, e uma página de Honeypot no painel',
+            'Comandos de barra: 21 comandos do dia a dia (`/help`, `/ping`, `/userinfo`, `/warn`, `/ban`, `/purge`, `/ticket` e mais) e o `/embed` também funcionam com `/`, o `/help` mostra as duas formas, e os comandos de barra não aparecem mais duas vezes',
+            'O Premium continua pequeno: o grátis é generoso (125 comandos personalizados, 75 respostas automáticas, 25 contadores e mais) e o Premium é mais ou menos o dobro; recompensas de nível e logs não têm limite, 15 fontes de cartões são grátis, e a página do Premium tem um quadro de Sempre grátis',
+            'Painel: acesso por cargo, páginas de Contadores e Formulários mais rápidas, mudanças ao vivo sem recarregar, um botão de Sincronizar dados do servidor, as páginas de Permissões e Cobertura de comandos refeitas, e backups que perguntam antes de restaurar, mostram o progresso e podem trazer só algumas partes',
+            'Correções: os botões do VoiceMaster não falham mais quando o bot está lento, nomes de regras do Vanity com espaços funcionam, o anti-nuke culpa a conta certa, e a página de Formulários do painel volta a carregar',
+          ],
+        },
         {
           version: '0.7.6',
           display: '0.7.6',
