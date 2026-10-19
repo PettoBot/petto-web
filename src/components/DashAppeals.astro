@@ -6,7 +6,7 @@ import ColorPicker from './ColorPicker.astro';
 import AppealImageField from './AppealImageField.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 import type { NameClaim } from '../utils/appealNames';
-import { answerView, pictureUrl, THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, LIST_TYPES, FILE_ACCEPTS, PUNISHMENT_TYPES, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
+import { answerView, pictureUrl, THEMES, LIMITS, FORM_ICONS, QUESTION_TYPES, LIST_TYPES, FILE_ACCEPTS, PUNISHMENT_TYPES, DM_LINK_TYPES, APPEAL_SETTING_LIMITS, BLOCKS, themeFor, hexColor, type AppealConfig } from '../utils/appeals';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -31,7 +31,9 @@ const subs: Record<string, string> = {
   brand: dt('How the page looks and how the link looks when you share it in Discord.'),
   messages: dt('What the member is told when they send an appeal and when you answer it.'),
 };
-const typeNames: Record<string, string> = { ban: dt('Bans'), mute: dt('Mutes'), warn: dt('Warns'), kick: dt('Kicks') };
+const typeNames: Record<string, string> = { ban: dt('Bans'), mute: dt('Mutes'), warn: dt('Warns'), kick: dt('Kicks'), softban: dt('Softbans') };
+// The sanctions whose DM can carry the appeal link, one by one.
+const dmTypeNames: Record<string, string> = { ban: dt('Bans'), tempban: dt('Temporary bans'), softban: dt('Softbans'), kick: dt('Kicks'), timeout: dt('Timeouts and mutes'), warn: dt('Warns') };
 const when = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
 const liveForms = forms.filter((f) => f.status === 'live').length;
 const theme = themeFor(config.brand);
@@ -165,7 +167,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
           <details class="da-card da-sub">
             <summary><span class="da-who">{s.avatar_url && <img src={s.avatar_url} alt="" width="26" height="26" />}<b>{s.username}</b></span><span class="da-hint">{s.form_name} · {when(s.created_at)}</span><span class:list={['da-chip', s.status]}>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s.status as 'pending']}</span></summary>
             <div class="da-body">
-              {(s.punishments ?? []).length > 0 && <div class="da-block"><h4>{dt('Punishments')}</h4>{s.punishments.map((p: any) => <p>• {typeNames[p.type] ?? p.type}{p.reason ? ` — ${p.reason}` : ''}{p.until ? ` · ${when(p.until)}` : ''}</p>)}</div>}
+              {(s.punishments ?? []).length > 0 && <div class="da-block"><h4>{dt('Punishments')}</h4>{s.punishments.map((p: any) => <p>• {typeNames[p.type] ?? p.type}{p.case ? ` #${p.case}` : ''}{p.reason ? ` — ${p.reason}` : ''}{p.until ? ` · ${when(p.until)}` : ''}</p>)}</div>}
               <div class="da-block"><h4>{dt('Answers')}</h4>{(s.answers ?? []).map((a: any) => {
                 const view = answerView(a);
                 return <div class="da-ans"><b>{a.label}</b>{view.kind === 'text' ? <span>{view.text}</span> : (
@@ -257,9 +259,23 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
         </div></div>
         <div class="da-grid">
           <label class="da-field"><span>{dt('Where punishments come from')}</span><select name="punishment_source"><option value="both" selected={config.punishment_source === 'both'}>Petto + Discord</option><option value="petto" selected={config.punishment_source === 'petto'}>Petto</option><option value="discord" selected={config.punishment_source === 'discord'}>Discord</option></select></label>
-          <div class="da-field"><span>{dt('Warns are shown for')}</span><div class="da-pair"><input type="number" name="warns_age" min="1" max="3650" value={warnsAge.n} /><select name="warns_unit"><option value="days" selected={warnsAge.unit === 'days'}>{dt('days')}</option><option value="months" selected={warnsAge.unit === 'months'}>{dt('months')}</option></select></div></div>
+          <div class="da-field"><span>{dt('Warns and softbans are shown for')}</span><div class="da-pair"><input type="number" name="warns_age" min="1" max="3650" value={warnsAge.n} /><select name="warns_unit"><option value="days" selected={warnsAge.unit === 'days'}>{dt('days')}</option><option value="months" selected={warnsAge.unit === 'months'}>{dt('months')}</option></select></div></div>
           <label class="da-field da-wide"><span>{dt('Greeting')}</span><textarea name="greeting" maxlength="600" rows="3" placeholder={dt('Tell the staff why your punishment should be lifted. Be honest and clear.')}>{config.greeting ?? ''}</textarea><em>{dt('Shown at the top of your appeal page.')}</em></label>
+          <label class="da-field"><span>{dt('Wait before appealing')}</span><div class="da-pair"><input type="number" name="min_wait_hours" min="0" max={APPEAL_SETTING_LIMITS.minWaitHours} value={config.min_wait_hours ?? 0} /><span class="da-unit">{dt('hours')}</span></div><em>{dt('Hours a member waits after their latest punishment before they can send an appeal. 0 is no wait.')}</em></label>
           <label class="da-field"><span>{dt('Page language')}</span><select name="language"><option value="en" selected={config.language === 'en'}>English</option><option value="es" selected={config.language === 'es'}>Español</option><option value="pt-BR" selected={config.language === 'pt-BR'}>Português</option></select></label>
+        </div>
+      </div>
+      <div class="da-card da-dmcard">
+        <h2>{dt('Sanction DMs')}</h2>
+        <p class="da-hint">{dt('The message a member gets in DMs when they are punished (by a moderator, AutoMod, anti-scam, the Honeypot or warning escalation) can point to this appeal page.')}</p>
+        <div class="da-grid">
+          <label class="da-field da-wide"><span>{dt('Send the appeal link')}</span><select name="dm_link_mode">
+            <option value="always" selected={(config.dm_link_mode ?? 'always') === 'always'}>{dt('Always, for the punishments members can appeal')}</option>
+            <option value="types" selected={config.dm_link_mode === 'types'}>{dt('Only for the sanctions I pick')}</option>
+            <option value="never" selected={config.dm_link_mode === 'never'}>{dt('Never')}</option>
+          </select></label>
+          <div class="da-field da-wide da-dmtypes"><span>{dt('Sanctions whose DM has the link')}</span><div class="da-checkrow">{DM_LINK_TYPES.map((t) => <label class="da-check"><input type="checkbox" name="dm_link_types" value={t} checked={(config.dm_link_types ?? []).includes(t)} />{dmTypeNames[t]}</label>)}</div></div>
+          <label class="da-field da-wide"><span>{dt('Your line about appeals')}</span><input type="text" name="dm_note" value={config.dm_note ?? ''} maxlength={APPEAL_SETTING_LIMITS.dmNote} placeholder={dt('Think this is a mistake? Appeal here: {link}')} /><em>{dt('Replaces the usual sentence. {link} is the appeal link (added at the end if you leave it out) and {server} the name of the server. Empty for the usual sentence.')}</em></label>
         </div>
       </div>
       <div class="da-card">
@@ -660,6 +676,9 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   .da-field textarea, .da-inline textarea { resize: vertical; }
   .da-checkrow { display: flex; flex-wrap: wrap; gap: 8px 18px; }
   .da-pair { display: flex; gap: 8px; } .da-pair input { max-width: 110px; } .da-pair select { max-width: 130px; }
+  .da-unit { align-self: center; color: var(--text-muted); font-size: 13px; }
+  /* The sanctions to pick only matter when the DM link goes for the picked ones. */
+  .da-dmcard:has(select[name="dm_link_mode"] option[value="types"]:not(:checked)) .da-dmtypes { display: none; }
   .da-section { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; background: color-mix(in srgb, var(--bg-raise) 60%, transparent); }
   .da-q { border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--card); }
   .da-q-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; } .da-q-tools { display: flex; gap: 4px; } .da-q-tools button { border: 1px solid var(--border); background: var(--bg-raise); color: var(--text-muted); border-radius: 7px; width: 28px; height: 26px; cursor: pointer; } .da-q-tools button:hover { color: var(--text); border-color: var(--accent); } .da-q-tools .del:hover { color: var(--red); border-color: var(--red); }

@@ -11,6 +11,10 @@ export interface AppealConfig {
   anonymous_messages: boolean; allow_replies: boolean; store_days: number;
   submission_channel_id: string | null; log_channel_id: string | null; auto_thread: boolean; thread_name: string; ping_role_ids: string[];
   messages: Record<string, string>; brand: Brand; embed: EmbedMeta;
+  /** The appeal link in sanction DMs: `always` (the sanctions members can appeal), `never`, or `types` (only `dm_link_types`). */
+  dm_link_mode: 'always' | 'never' | 'types'; dm_link_types: string[];
+  /** The server's own line about appeals in sanction DMs ({link}, {server}), and the hours a member waits after a punishment before appealing. */
+  dm_note: string | null; min_wait_hours: number;
 }
 export interface Brand { name?: string; tagline?: string; banner_url?: string; icon_url?: string; theme?: string; accent?: string; }
 export interface EmbedMeta { title?: string; description?: string; image_url?: string; color?: string; thumbnail?: boolean; }
@@ -31,13 +35,14 @@ export interface Submission {
   channel_id: string | null; message_id: string | null; thread_id: string | null; resolved_by: string | null; resolved_at: string | null; resolution_reason: string | null; created_at: string;
 }
 export interface AppealMessage { id: number; submission_id: string; author_type: 'user' | 'staff' | 'system'; author_name: string | null; content: string; anonymous: boolean; created_at: string; }
-export interface PunishmentView { source: string; type: string; reason?: string | null; until?: string | null; moderator?: string | null; at?: string | null; }
+export interface PunishmentView { source: string; type: string; reason?: string | null; until?: string | null; moderator?: string | null; at?: string | null; case?: number | null; }
 
 export const CONFIG_DEFAULTS: Omit<AppealConfig, 'guild_id'> = {
   slug: null, enabled: false, greeting: null, language: 'en', rejoin_invite_code: null, auto_invite: false, allow_server_id: true,
   punishment_types: ['ban', 'mute'], punishment_details: ['reason', 'duration'], punishment_source: 'both', warns_max_age_days: 30,
   anonymous_messages: false, allow_replies: true, store_days: 7, submission_channel_id: null, log_channel_id: null, auto_thread: false,
   thread_name: 'Appeal by {username}', ping_role_ids: [], messages: {}, brand: {}, embed: {},
+  dm_link_mode: 'always', dm_link_types: ['ban', 'tempban', 'softban', 'kick', 'timeout', 'warn'], dm_note: null, min_wait_hours: 0,
 };
 
 // The accent a server can pick for its appeal site; the rest of the look is always Petto's.
@@ -182,7 +187,11 @@ export const LIST_TYPES = ['choice', 'multi', 'dropdown'] as const;
 export const FILE_ACCEPTS = ['images', 'pdf', 'images_pdf', 'documents'] as const;
 /** The limits of a file answer (the bot keeps the same numbers). */
 export const FILE_LIMITS = { bytes: 5 * 1024 * 1024, maxFiles: 5 };
-export const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick'] as const;
+export const PUNISHMENT_TYPES = ['ban', 'mute', 'warn', 'kick', 'softban'] as const;
+/** The sanctions whose DM can carry the appeal link when a server picks them one by one (the bot has the same list). */
+export const DM_LINK_TYPES = ['ban', 'tempban', 'softban', 'kick', 'timeout', 'warn'] as const;
+export const DM_LINK_MODES = ['always', 'never', 'types'] as const;
+export const APPEAL_SETTING_LIMITS = { dmNote: 300, minWaitHours: 720 };
 export const BLOCKS = ['none', 'day', 'week', 'month', 'forever'] as const;
 const clip = (value: unknown, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 
