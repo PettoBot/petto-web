@@ -1,0 +1,114 @@
+---
+export const prerender = false;
+import DashHoneypot from '../../../../components/DashHoneypot.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { callPettoHoneypot } from '../../../../utils/pettoBotApi';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
+import { withinBudget } from '../../../../utils/liveCall';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const PUNISHMENTS = ['softban', 'ban', 'kick'];
+const snowflake = (value: FormDataEntryValue | null) => (SNOWFLAKE.test(String(value ?? '')) ? String(value) : null);
+
+// Every change goes through the bot, which checks the same as `!honeypot` (Administrator, the channel, its permissions there) and
+// posts or updates the message in the channel at once. The page is then drawn again with the answer.
+let message: { kind: 'ok' | 'err'; text: string } | null = null;
+let openChannel: string | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const channelId = snowflake(form.get('channel_id'));
+  openChannel = channelId;
+  const botFailed = dt('Petto did not answer. Try again in a moment.');
+  const answer = (result: { ok: boolean; message: string; code?: string }) => {
+    if (result.ok) return { kind: 'ok' as const, text: result.message || dt('Saved.') };
+    if (result.code === 'no_access' && !result.message) return { kind: 'err' as const, text: dt('Only administrators can change the Honeypot, the same as the command.') };
+    return { kind: 'err' as const, text: result.message || botFailed };
+  };
+  if (!channelId) message = { kind: 'err', text: dt('Pick a text or announcement channel.') };
+  else if (action === 'add') {
+    const punishment = String(form.get('punishment') ?? 'softban');
+    message = answer(await callPettoHoneypot(Astro, id, session.userId, 'add', { channel_id: channelId, punishment: PUNISHMENTS.includes(punishment) ? punishment : 'softban' }, dashLang));
+  } else if (action === 'save') {
+    // One Save for the punishment and the message of a channel: only what changed is sent, so the message is posted once.
+    const res = await fetch(`${apiUrl}/rest/v1/honeypots?guild_id=eq.${id}&channel_id=eq.${channelId}&select=punishment,panel_mode,panel_text,panel_template`, { headers: apiHeaders }).catch(() => null);
+    const current: any = res?.ok ? ((await res.json().catch(() => [])) as any[])[0] ?? null : null;
+    const punishment = String(form.get('punishment') ?? 'softban');
+    const mode = String(form.get('mode') ?? 'default');
+    const panel = {
+      mode: ['default', 'custom', 'none'].includes(mode) ? mode : 'default',
+      text: String(form.get('text') ?? '').replace(/\u0000/g, '').trim().slice(0, 2000), template: String(form.get('template') ?? '').trim().slice(0, 100),
+    };
+    const punishmentChanged = PUNISHMENTS.includes(punishment) && punishment !== current?.punishment;
+    const panelChanged = !current || panel.mode !== (current.panel_mode ?? 'default') || panel.text !== String(current.panel_text ?? '') || panel.template !== String(current.panel_template ?? '');
+    if (!current) message = { kind: 'err', text: dt('That channel is not a honeypot.') };
+    else {
+      let result: { ok: boolean; message: string; code?: string } = { ok: true, message: dt('Nothing changed.') };
+      if (punishmentChanged) result = await callPettoHoneypot(Astro, id, session.userId, 'add', { channel_id: channelId, punishment }, dashLang);
+      if (result.ok && panelChanged) result = await callPettoHoneypot(Astro, id, session.userId, 'panel', { channel_id: channelId, ...panel }, dashLang);
+      message = answer(result);
+    }
+  } else if (action === 'post') {
+    message = answer(await callPettoHoneypot(Astro, id, session.userId, 'post', { channel_id: channelId, fresh: form.get('fresh') === '1' }, dashLang));
+  } else if (action === 'remove') {
+    message = answer(await callPettoHoneypot(Astro, id, session.userId, 'remove', { channel_id: channelId }, dashLang));
+    openChannel = null;
+  }
+}
+
+const [guildInfo, rowsRes, channelsRes, embedsRes, casesRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  fetch(`${apiUrl}/rest/v1/honeypots?guild_id=eq.${id}&select=*&order=created_at.asc`, { headers: apiHeaders }).catch(() => null),
+  getGuildList(Astro, id, botToken, 'channels'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
+  // The honeypot writes a case for each member it catches (the channel is not kept, the member and the action are).
+  fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&source=eq.honeypot&select=case_number,user_id,type,created_at&order=created_at.desc&limit=10`, { headers: apiHeaders }).catch(() => null),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const ready = Boolean(rowsRes?.ok);
+const rawRows: any[] = ready ? ((await rowsRes!.json().catch(() => [])) as any[]) : [];
+const allChannels: any[] = channelsRes?.ok ? await channelsRes.json() : [];
+const textChannels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+const channelName = new Map(allChannels.map((c: any) => [String(c.id), String(c.name)]));
+const honeypots = rawRows.map((r) => ({
+  channelId: String(r.channel_id), channelName: channelName.get(String(r.channel_id)) ?? null,
+  punishment: PUNISHMENTS.includes(r.punishment) ? String(r.punishment) : 'softban', caught: Math.max(0, Number(r.caught_count) || 0),
+  messages: Math.max(0, Number(r.trigger_count) || 0), mode: ['default', 'custom', 'none'].includes(r.panel_mode) ? String(r.panel_mode) : 'default',
+  text: String(r.panel_text ?? ''), template: r.panel_template ? String(r.panel_template) : '', panelMessageId: r.panel_message_id ? String(r.panel_message_id) : null,
+}));
+const used = new Set(honeypots.map((h) => h.channelId));
+const freeChannels = textChannels.filter((c) => !used.has(c.id));
+const embedNames: string[] = embedsRes?.ok ? ((await embedsRes.json().catch(() => [])) as any[]).map((row) => String(row.name)) : [];
+
+const caseRows: any[] = casesRes?.ok ? ((await casesRes.json().catch(() => [])) as any[]) : [];
+// The names of the members caught (most of them left the server: their Discord profile then). Never waits long for them.
+const profiles = caseRows.length
+  ? (await withinBudget(getMemberProfiles(Astro, id, caseRows.map((row) => String(row.user_id)), botToken, { fallback: 'user', userId: session.userId }), 1500))?.value ?? new Map()
+  : new Map();
+const catches = caseRows.map((row) => {
+  const profile = profiles.get(String(row.user_id)) ?? null;
+  return {
+    caseNumber: Number(row.case_number) || 0, userId: String(row.user_id), type: String(row.type), at: String(row.created_at),
+    name: profile ? profile.displayName || profile.username : null, username: profile?.username ?? null, avatar: memberAvatarUrl(String(row.user_id), profile, 64),
+  };
+});
+---
+<DashHoneypot user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  honeypots={honeypots} freeChannels={freeChannels} embedNames={embedNames} catches={catches} ready={ready} message={message} openChannel={openChannel} />

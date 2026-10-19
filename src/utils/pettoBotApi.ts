@@ -512,3 +512,23 @@ export async function callPettoWebForm(context: AstroContext, formId: string, us
     return { ok: false, status: 502, data: null };
   }
 }
+
+/**
+ * The Honeypot page: add a bait channel (or change its punishment), remove one, choose its message and post it again. The bot checks
+ * the same as `!honeypot` (Administrator, the channel and its own permissions there) and answers a message in the dashboard's language.
+ */
+export async function callPettoHoneypot(context: AstroContext, guildId: string, userId: string, action: 'add' | 'remove' | 'panel' | 'post', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string; honeypot?: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/honeypot/${action}`, {
+      method: 'POST', signal: AbortSignal.timeout(25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', code: typeof payload?.code === 'string' ? payload.code : payload?.error, honeypot: payload?.honeypot };
+  } catch {
+    return { ok: false, message: '' };
+  }
+}
