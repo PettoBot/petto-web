@@ -46,8 +46,9 @@ if (Astro.request.method === 'POST') {
     const punishment = String(form.get('punishment') ?? 'softban');
     message = answer(await callPettoHoneypot(Astro, id, session.userId, 'add', { channel_id: channelId, punishment: PUNISHMENTS.includes(punishment) ? punishment : 'softban' }, dashLang));
   } else if (action === 'save') {
-    // One Save for the punishment and the message of a channel: only what changed is sent, so the message is posted once.
-    const res = await fetch(`${apiUrl}/rest/v1/honeypots?guild_id=eq.${id}&channel_id=eq.${channelId}&select=punishment,panel_mode,panel_text,panel_template`, { headers: apiHeaders }).catch(() => null);
+    // One Save for the punishment, the message of a channel and what the caught member gets: only what changed is sent, so the message
+    // is posted once. The whole row is read (`*`): a column the bot adds later is then simply missing, never an error.
+    const res = await fetch(`${apiUrl}/rest/v1/honeypots?guild_id=eq.${id}&channel_id=eq.${channelId}&select=*`, { headers: apiHeaders }).catch(() => null);
     const current: any = res?.ok ? ((await res.json().catch(() => [])) as any[])[0] ?? null : null;
     const punishment = String(form.get('punishment') ?? 'softban');
     const mode = String(form.get('mode') ?? 'default');
@@ -57,11 +58,20 @@ if (Astro.request.method === 'POST') {
     };
     const punishmentChanged = PUNISHMENTS.includes(punishment) && punishment !== current?.punishment;
     const panelChanged = !current || panel.mode !== (current.panel_mode ?? 'default') || panel.text !== String(current.panel_text ?? '') || panel.template !== String(current.panel_template ?? '');
+    // The two switches of the caught member (sent only by the card that has them; an unchecked box sends nothing).
+    const member = form.get('member_settings') === '1' ? { dm: form.get('dm') === '1', reinvite: form.get('reinvite') === '1' } : null;
+    const memberChanged = Boolean(current && member && (member.dm !== (current.dm_member !== false) || member.reinvite !== (current.reinvite !== false)));
     if (!current) message = { kind: 'err', text: dt('That channel is not a honeypot.') };
     else {
       let result: { ok: boolean; message: string; code?: string } = { ok: true, message: dt('Nothing changed.') };
       if (punishmentChanged) result = await callPettoHoneypot(Astro, id, session.userId, 'add', { channel_id: channelId, punishment }, dashLang);
       if (result.ok && panelChanged) result = await callPettoHoneypot(Astro, id, session.userId, 'panel', { channel_id: channelId, ...panel }, dashLang);
+      if (result.ok && memberChanged && member) {
+        const saved = await callPettoHoneypot(Astro, id, session.userId, 'dm', { channel_id: channelId, ...member }, dashLang);
+        // A bot that does not know these settings yet answers that the action is unknown.
+        if (saved.ok) { if (!punishmentChanged && !panelChanged) result = saved; }
+        else result = saved.code === 'unknown_action' ? { ok: false, message: dt('Petto is being updated: the DM settings can be saved in a few minutes.') } : saved;
+      }
       message = answer(result);
     }
   } else if (action === 'post') {
@@ -92,6 +102,7 @@ const honeypots = rawRows.map((r) => ({
   punishment: PUNISHMENTS.includes(r.punishment) ? String(r.punishment) : 'softban', caught: Math.max(0, Number(r.caught_count) || 0),
   messages: Math.max(0, Number(r.trigger_count) || 0), mode: ['default', 'custom', 'none'].includes(r.panel_mode) ? String(r.panel_mode) : 'default',
   text: String(r.panel_text ?? ''), template: r.panel_template ? String(r.panel_template) : '', panelMessageId: r.panel_message_id ? String(r.panel_message_id) : null,
+  dm: r.dm_member !== false, reinvite: r.reinvite !== false,
 }));
 const used = new Set(honeypots.map((h) => h.channelId));
 const freeChannels = textChannels.filter((c) => !used.has(c.id));
