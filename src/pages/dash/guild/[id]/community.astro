@@ -3,12 +3,14 @@ export const prerender = false;
 import DashCommunity from '../../../../components/DashCommunity.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { describeTeam } from '../../../../utils/team';
-import { renderPollMessage } from '../../../../utils/pettoBotApi';
+import { renderPollMessage, callPettoBoosterRoles, type BoosterRoleInfo } from '../../../../utils/pettoBotApi';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
 import { isV2Data } from '../../../../utils/embedSchema';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { getDashLang, makeT } from '../../../../i18n/dash';
-const dt = makeT(getDashLang(Astro));
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
@@ -31,6 +33,18 @@ const apiHeaders = {
 
 let saved = false;
 let pollError: string | null = null;
+// What the bot answered to a change in Discord (booster roles): shown above the page, green or red.
+let notice: { ok: boolean; text: string } | null = null;
+const SNOWFLAKE = /^\d{15,25}$/;
+const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
+  const number = Math.round(Number(value));
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+};
+const idsOf = (values: FormDataEntryValue[]) => [...new Set(values.map((value) => String(value).trim()).filter((value) => SNOWFLAKE.test(value)))].slice(0, 25);
+const botAnswer = (result: { ok: boolean; message: string }, fallback: string) => {
+  notice = { ok: result.ok, text: result.message || (result.ok ? dt('Saved.') : fallback) };
+};
+const botDown = () => dt('Petto did not answer. Try again in a moment.');
 
 const discordHeaders = { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' };
 const pollLetters = Array.from({ length: 10 }, (_, i) => String.fromCodePoint(0x1f1e6 + i));
@@ -115,44 +129,112 @@ if (Astro.request.method === 'POST') {
     });
     saved = true;
   } else if (action === 'booster') {
-    const filteredWords = String(form.get('filtered_words') ?? '').split(',').map((w) => w.trim()).filter(Boolean);
-    await fetch(`${apiUrl}/rest/v1/booster_role_config?on_conflict=guild_id`, {
-      method: 'POST',
-      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({
-        guild_id: id,
-        base_role_id: String(form.get('base_role_id') ?? '').trim() || null,
-        role_limit: Math.max(1, Math.min(5, Number(form.get('role_limit') ?? 1) || 1)),
-        share_max: Math.max(0, Math.min(20, Number(form.get('share_max') ?? 0) || 0)),
-        filtered_words: filteredWords,
-        color_cooldown_ms: Math.max(0, Math.min(720, Number(form.get('color_cooldown_hours') ?? 0) || 0)) * 3600000,
-        icon_cooldown_ms: Math.max(0, Math.min(720, Number(form.get('icon_cooldown_hours') ?? 0) || 0)) * 3600000,
-        rename_cooldown_ms: Math.max(0, Math.min(720, Number(form.get('rename_cooldown_hours') ?? 0) || 0)) * 3600000,
-        updated_at: new Date().toISOString(),
-      }),
-    });
-    saved = true;
-  } else if (action === 'reputation') {
-    await fetch(`${apiUrl}/rest/v1/reputation_config?on_conflict=guild_id`, {
+    // Words of the filter: one per line or separated by commas, saved lowercase like `!boosterrole filter add`.
+    const filteredWords = [...new Set(String(form.get('filtered_words') ?? '').split(/[\n,]/).map((w) => w.trim().toLowerCase().slice(0, 50)).filter(Boolean))].slice(0, 200);
+    const onUnboost = String(form.get('on_unboost') ?? 'keep');
+    await ensureGuildRow(apiUrl, apiHeaders, id);
+    const res = await fetch(`${apiUrl}/rest/v1/booster_role_config?on_conflict=guild_id`, {
       method: 'POST',
       headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
         guild_id: id,
         enabled: form.get('enabled') === 'on',
-        cooldown_hours: Math.max(0, Math.min(720, Number(form.get('cooldown_hours') ?? 24) || 0)),
+        base_role_id: SNOWFLAKE.test(String(form.get('base_role_id') ?? '')) ? String(form.get('base_role_id')) : null,
+        role_limit: clampInt(form.get('role_limit'), 0, 25, 1),
+        share_max: clampInt(form.get('share_max'), 0, 25, 0),
+        allow_gradient: form.get('allow_gradient') === 'on',
+        allow_icon: form.get('allow_icon') === 'on',
+        on_unboost: ['keep', 'remove', 'delete'].includes(onUnboost) ? onUnboost : 'keep',
+        filtered_words: filteredWords,
+        color_cooldown_ms: clampInt(form.get('color_cooldown_hours'), 0, 720, 0) * 3600000,
+        icon_cooldown_ms: clampInt(form.get('icon_cooldown_hours'), 0, 720, 0) * 3600000,
+        rename_cooldown_ms: clampInt(form.get('rename_cooldown_hours'), 0, 720, 0) * 3600000,
+        updated_at: new Date().toISOString(),
       }),
-    });
-    saved = true;
-  } else if (action === 'reset_reputation') {
-    const userId = String(form.get('user_id') ?? '').trim();
-    if (userId) {
-      await fetch(`${apiUrl}/rest/v1/reputation?on_conflict=guild_id,user_id`, {
+    }).catch(() => null);
+    if (res?.ok) saved = true; else notice = { ok: false, text: dt('The settings could not be saved. Try again.') };
+  } else if (action.startsWith('br_')) {
+    // Changes to roles in Discord go through the bot, with the same checks as `!boosterrole admin`.
+    const memberId = String(form.get('member_id') ?? '').trim();
+    if (action === 'br_cleanup') {
+      botAnswer(await callPettoBoosterRoles(Astro, id, session.userId, 'cleanup', {}, dashLang), botDown());
+    } else if (!SNOWFLAKE.test(memberId)) {
+      notice = { ok: false, text: dt('Pick a member first.') };
+    } else if (action === 'br_set' || action === 'br_edit') {
+      const hex = String(form.get('hex') ?? '').trim();
+      const useSecond = action === 'br_set' ? form.get('gradient') === 'on' : true;
+      const hex2 = useSecond ? String(form.get('hex2') ?? '').trim() : '';
+      const name = String(form.get('name') ?? '').trim().slice(0, 100);
+      let result = await callPettoBoosterRoles(Astro, id, session.userId, 'set', { member_id: memberId, name, hex, hex2 }, dashLang);
+      // The icon only changes when one was given, or when "Remove the icon" was ticked.
+      const icon = String(form.get('icon') ?? '').trim().slice(0, 500);
+      const removeIcon = form.get('icon_remove') === 'on';
+      if (result.ok && action === 'br_edit' && (icon || removeIcon)) {
+        result = await callPettoBoosterRoles(Astro, id, session.userId, 'icon', { member_id: memberId, icon: removeIcon ? '' : icon }, dashLang);
+      }
+      botAnswer(result, botDown());
+    } else if (action === 'br_remove') {
+      botAnswer(await callPettoBoosterRoles(Astro, id, session.userId, 'remove', { member_id: memberId }, dashLang), botDown());
+    } else if (action === 'br_link') {
+      botAnswer(await callPettoBoosterRoles(Astro, id, session.userId, 'link', { member_id: memberId, role_id: String(form.get('role_id') ?? '') }, dashLang), botDown());
+    }
+  } else if (action === 'reputation') {
+    await ensureGuildRow(apiUrl, apiHeaders, id);
+    const res = await fetch(`${apiUrl}/rest/v1/reputation_config?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        guild_id: id,
+        enabled: form.get('enabled') === 'on',
+        cooldown_hours: clampInt(form.get('cooldown_hours'), 0, 720, 24),
+        giver_role_ids: idsOf(form.getAll('giver_role_ids')),
+        blocked_role_ids: idsOf(form.getAll('blocked_role_ids')),
+        channel_ids: idsOf(form.getAll('channel_ids')),
+      }),
+    }).catch(() => null);
+    if (res?.ok) saved = true; else notice = { ok: false, text: dt('The settings could not be saved. Try again.') };
+  } else if (action === 'rep_reward_add' || action === 'rep_reward_remove') {
+    const configRes = await fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=rewards`, { headers: apiHeaders }).catch(() => null);
+    const current: { points: number; role_id: string }[] = configRes?.ok ? ((await configRes.json())[0]?.rewards ?? []) : [];
+    const points = clampInt(form.get('points'), 1, 1_000_000, 0);
+    const roleId = String(form.get('role_id') ?? '');
+    let rewards = (Array.isArray(current) ? current : []).filter((reward) => Number(reward?.points) !== points);
+    if (action === 'rep_reward_add') {
+      if (!points || !SNOWFLAKE.test(roleId)) notice = { ok: false, text: dt('Pick a role and a number of points.') };
+      else rewards = [...rewards, { points, role_id: roleId }];
+    }
+    rewards = rewards.sort((a, b) => Number(a.points) - Number(b.points)).slice(0, 25);
+    if (!notice) {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const res = await fetch(`${apiUrl}/rest/v1/reputation_config?on_conflict=guild_id`, {
         method: 'POST',
         headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ guild_id: id, user_id: userId, points: 0 }),
-      });
-      saved = true;
+        body: JSON.stringify({ guild_id: id, rewards }),
+      }).catch(() => null);
+      if (res?.ok) saved = true; else notice = { ok: false, text: dt('The settings could not be saved. Try again.') };
     }
+  } else if (action === 'reset_reputation' || action === 'rep_set') {
+    const userId = String(form.get('user_id') ?? form.get('member_id') ?? '').trim();
+    if (!SNOWFLAKE.test(userId)) {
+      notice = { ok: false, text: dt('Pick a member first.') };
+    } else {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const points = action === 'rep_set' ? clampInt(form.get('points'), 0, 1_000_000, 0) : 0;
+      const res = await fetch(`${apiUrl}/rest/v1/reputation?on_conflict=guild_id,user_id`, {
+        method: 'POST',
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, user_id: userId, points }),
+      }).catch(() => null);
+      if (res?.ok) saved = true; else notice = { ok: false, text: dt('The points could not be changed. Try again.') };
+    }
+  } else if (action === 'reset_all_reputation') {
+    // Points go back to 0; the giving cooldowns, the log and the reward roles already given stay.
+    const res = await fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&points=neq.0`, {
+      method: 'PATCH',
+      headers: { ...apiHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({ points: 0 }),
+    }).catch(() => null);
+    if (res?.ok) saved = true; else notice = { ok: false, text: dt('The points could not be changed. Try again.') };
   } else if (action === 'create_poll') {
     const question = String(form.get('question') ?? '').trim().slice(0, 200);
     const options = String(form.get('options') ?? '').split(/\r?\n/).map((option) => option.trim().slice(0, 80)).filter(Boolean).slice(0, 10);
@@ -235,17 +317,19 @@ if (Astro.request.method === 'POST') {
 const COMMUNITY_SECTIONS = ['settings', 'reputation', 'boosters', 'polls'];
 const shown = COMMUNITY_SECTIONS.includes(section) ? section : 'settings';
 const needs = (...sections: string[]) => sections.includes(shown);
-const [guildInfo, reportRes, boosterRes, boosterRolesRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, pollsRes, templatesRes] = await Promise.all([
+const [guildInfo, reportRes, boosterRes, boosterListRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, repLogRes, pollsRes, templatesRes, prefixRes] = await Promise.all([
   getGuildInfo(id, botToken),
   needs('settings') ? fetch(`${apiUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
   needs('settings', 'boosters') ? fetch(`${apiUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
-  needs('boosters') ? fetch(`${apiUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color`, { headers: apiHeaders }) : null,
-  needs('settings', 'boosters') ? getGuildList(Astro, id, botToken, 'roles') : null,
-  needs('settings', 'polls') ? getGuildList(Astro, id, botToken, 'channels') : null,
-  needs('settings') ? fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
-  needs('reputation') ? fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&select=user_id,points&order=points.desc&limit=10`, { headers: apiHeaders }) : null,
+  needs('boosters') ? callPettoBoosterRoles(Astro, id, session.userId, 'list', {}, dashLang) : null,
+  needs('settings', 'boosters', 'reputation') ? getGuildList(Astro, id, botToken, 'roles') : null,
+  needs('settings', 'polls', 'reputation') ? getGuildList(Astro, id, botToken, 'channels') : null,
+  needs('settings', 'reputation') ? fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
+  needs('reputation') ? fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&points=gt.0&select=user_id,points&order=points.desc&limit=25`, { headers: { ...apiHeaders, Prefer: 'count=exact' } }) : null,
+  needs('reputation') ? fetch(`${apiUrl}/rest/v1/reputation_log?guild_id=eq.${id}&select=giver_id,receiver_id,channel_id,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }).catch(() => null) : null,
   needs('polls') ? fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,embed_template,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }) : null,
   needs('polls') ? fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }) : null,
+  needs('boosters', 'reputation', 'settings') ? fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders }).catch(() => null) : null,
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -261,23 +345,42 @@ const report = {
 const boosterRows = boosterRes?.ok ? await boosterRes.json() : [];
 const b = boosterRows[0] ?? {};
 const booster = {
+  enabled: b.enabled ?? true,
   baseRoleId: b.base_role_id ?? null,
   roleLimit: b.role_limit ?? 1,
   shareMax: b.share_max ?? 0,
-  filteredWords: b.filtered_words ?? [],
+  allowGradient: b.allow_gradient ?? true,
+  allowIcon: b.allow_icon ?? true,
+  onUnboost: (['keep', 'remove', 'delete'].includes(b.on_unboost) ? b.on_unboost : 'keep') as 'keep' | 'remove' | 'delete',
+  filteredWords: (b.filtered_words ?? []) as string[],
   colorCooldownHours: Math.round((b.color_cooldown_ms ?? 0) / 3600000),
   iconCooldownHours: Math.round((b.icon_cooldown_ms ?? 0) / 3600000),
   renameCooldownHours: Math.round((b.rename_cooldown_ms ?? 0) / 3600000),
 };
+const prefixRows = prefixRes?.ok ? await prefixRes.json().catch(() => []) : [];
+const prefix = String(prefixRows?.[0]?.prefix || '!');
 
-const rawBoosterRoles = boosterRolesRes?.ok ? await boosterRolesRes.json() : [];
-const boosterRoles = rawBoosterRoles.map((row: any) => ({ userId: row.user_id, roleId: row.role_id, color: row.color }));
+// The booster roles as the bot sees them (the Discord role, whether the owner still boosts). When the bot does not answer, the
+// saved rows are shown without that.
+const boosterList = boosterListRes?.ok ? boosterListRes.data : null;
+let boosterRoles: BoosterRoleInfo[] = Array.isArray(boosterList?.roles) ? boosterList.roles : [];
+if (needs('boosters') && !boosterList) {
+  const rowsRes = await fetch(`${apiUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,role_id,color,color2,shared_with,created_at`, { headers: apiHeaders }).catch(() => null);
+  const rows = rowsRes?.ok ? await rowsRes.json() : [];
+  boosterRoles = (Array.isArray(rows) ? rows : []).map((row: any) => ({ user_id: String(row.user_id), role_id: String(row.role_id), exists: true, name: null, color: row.color ?? null, color2: row.color2 ?? null, icon: null, editable: true, shared_with: row.shared_with ?? [], in_server: null, boosting: null, created_at: row.created_at ?? null }));
+}
+const boosterStatus = {
+  live: Boolean(boosterList),
+  canManageRoles: boosterList ? Boolean(boosterList.can_manage_roles) : true,
+  boostCount: Number(boosterList?.boost_count ?? 0),
+  premiumTier: Number(boosterList?.premium_tier ?? 0),
+  withoutRole: (Array.isArray(boosterList?.boosters_without_role) ? boosterList.boosters_without_role : []) as string[],
+};
 
 const allRoles = rolesRes?.ok ? await rolesRes.json() : [];
-const roles = allRoles
-  .filter((r: any) => r.name !== '@everyone')
-  .sort((a: any, b: any) => b.position - a.position)
-  .map((r: any) => ({ id: r.id, name: r.name }));
+const roleList = (Array.isArray(allRoles) ? allRoles : []).filter((r: any) => r.name !== '@everyone').sort((a: any, b: any) => b.position - a.position);
+const roles = roleList.map((r: any) => ({ id: r.id, name: r.name }));
+const roleDetails = roleList.map((r: any) => ({ id: String(r.id), name: String(r.name), color: Number(r.colors?.primary_color ?? r.color ?? 0), managed: Boolean(r.managed) }));
 
 const allChannels = channelsRes?.ok ? await channelsRes.json() : [];
 const channels = (Array.isArray(allChannels) ? allChannels : [])
@@ -287,12 +390,33 @@ const channels = (Array.isArray(allChannels) ? allChannels : [])
 
 const repConfigRows = reputationConfigRes?.ok ? await reputationConfigRes.json() : [];
 const rc = repConfigRows[0] ?? {};
-const reputation = { enabled: rc.enabled ?? true, cooldownHours: rc.cooldown_hours ?? 24 };
-const reputationTop = reputationRes?.ok ? (await reputationRes.json()).map((row: any) => ({ userId: row.user_id, points: row.points })) : [];
+const reputation = {
+  enabled: rc.enabled ?? true,
+  cooldownHours: rc.cooldown_hours ?? 24,
+  giverRoleIds: (rc.giver_role_ids ?? []) as string[],
+  blockedRoleIds: (rc.blocked_role_ids ?? []) as string[],
+  channelIds: (rc.channel_ids ?? []) as string[],
+  rewards: (Array.isArray(rc.rewards) ? rc.rewards : []).map((reward: any) => ({ points: Number(reward.points), roleId: String(reward.role_id) })).filter((reward: { points: number; roleId: string }) => reward.points > 0),
+};
+const reputationRows = reputationRes?.ok ? await reputationRes.json() : [];
+const reputationTotal = Number(String(reputationRes?.headers.get('content-range') ?? '').split('/')[1]) || reputationRows.length;
+const repLogRows = repLogRes?.ok ? await repLogRes.json().catch(() => []) : [];
+const repLog = (Array.isArray(repLogRows) ? repLogRows : []).map((row: any) => ({ giverId: String(row.giver_id), receiverId: String(row.receiver_id), channelId: row.channel_id ? String(row.channel_id) : null, at: String(row.created_at) }));
 const pollDesigns: string[] = (templatesRes?.ok ? await templatesRes.json() : []).filter((row: any) => isV2Data(row.data)).map((row: any) => String(row.name));
-const peopleIds = [...new Set([...reputationTop.map((row: { userId: string }) => row.userId), ...boosterRoles.map((row: { userId: string }) => row.userId)])].filter((value) => /^\d{15,25}$/.test(value)).slice(0, 60) as string[];
-const peopleMap = peopleIds.length ? await describeTeam(botToken, peopleIds) : new Map();
-const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl }]));
+
+// Names and pictures: one call to the bot for everyone on screen (kept for a while), as the leveling leaderboard does.
+const peopleIds = [...new Set([
+  ...reputationRows.map((row: any) => String(row.user_id)),
+  ...repLog.flatMap((row: { giverId: string; receiverId: string }) => [row.giverId, row.receiverId]),
+  ...boosterRoles.flatMap((row) => [row.user_id, ...(row.shared_with ?? []).slice(0, 5)]),
+  ...boosterStatus.withoutRole.slice(0, 12),
+])].filter((value) => SNOWFLAKE.test(value)).slice(0, 150) as string[];
+const profiles = peopleIds.length ? await getMemberProfiles(Astro, id, peopleIds, botToken, { userId: session.userId }) : new Map();
+const people: Record<string, { name: string; avatar: string }> = Object.fromEntries(peopleIds.map((userId) => {
+  const profile = profiles.get(userId) ?? null;
+  return [userId, { name: profile?.displayName || profile?.globalName || profile?.username || `Member ${userId.slice(-4)}`, avatar: memberAvatarUrl(userId, profile) }];
+}));
+const reputationTop = reputationRows.map((row: any) => ({ userId: String(row.user_id), points: Number(row.points) }));
 const rawPolls: PollRecord[] = pollsRes?.ok ? await pollsRes.json() : [];
 const pollIds = rawPolls.map((poll) => poll.id).filter((pollId) => Number.isInteger(pollId));
 const pollVotesRes = pollIds.length > 0 ? await fetch(`${apiUrl}/rest/v1/poll_votes?poll_id=in.(${pollIds.join(',')})&select=poll_id,choices`, { headers: apiHeaders }) : null;
@@ -312,6 +436,12 @@ const polls = rawPolls.map((poll) => {
   report={report}
   booster={booster}
   boosterRoles={boosterRoles}
+  boosterStatus={boosterStatus}
+  roleDetails={roleDetails}
+  prefix={prefix}
+  notice={notice}
+  reputationTotal={reputationTotal}
+  repLog={repLog}
   roles={roles}
   channels={channels}
   saved={saved}

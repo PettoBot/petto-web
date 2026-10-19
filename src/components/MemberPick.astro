@@ -1,0 +1,99 @@
+---
+// Pick one member of the server: type a name (the members whose name starts with it are listed, from the bot) or paste an id.
+// The chosen id goes in a hidden field (`name`, member_id by default), so a plain <form> reads it like any other field.
+import { getDashLang, makeT } from '../i18n/dash';
+interface Props { guildId: string; name?: string; value?: string; label?: string }
+const { guildId, name = 'member_id', value = '', label = '' } = Astro.props;
+const dt = makeT(getDashLang(Astro));
+---
+<div class="mp" data-pick data-search-url={`/dash/guild/${guildId}/members-search`}>
+  <input type="text" class="mp-input" data-pick-input value={label} placeholder={dt('Type a name or paste an ID')} autocomplete="off" maxlength="40" />
+  <input type="hidden" name={name} value={value} data-pick-value />
+  <span class="mp-ok" data-pick-ok hidden>✓</span>
+  <div class="mp-results" data-pick-results hidden></div>
+</div>
+
+<script is:inline>
+  if (!window.__memberPickBound) {
+    window.__memberPickBound = true;
+    var mpTimer = 0;
+    var mpSeq = 0;
+    var mpSet = function (wrap, id, name) {
+      wrap.querySelector('[data-pick-value]').value = id || '';
+      if (name != null) wrap.querySelector('[data-pick-input]').value = name;
+      wrap.querySelector('[data-pick-ok]').hidden = !id;
+      var list = wrap.querySelector('[data-pick-results]');
+      list.hidden = true;
+      list.textContent = '';
+    };
+    document.addEventListener('input', function (event) {
+      var input = event.target && event.target.closest ? event.target.closest('[data-pick-input]') : null;
+      if (!input) return;
+      var wrap = input.closest('[data-pick]');
+      var text = input.value.trim();
+      var mention = /^<@!?(\d{15,25})>$/.exec(text);
+      if (/^\d{15,25}$/.test(text) || mention) { mpSet(wrap, mention ? mention[1] : text, null); return; }
+      mpSet(wrap, '', null);
+      clearTimeout(mpTimer);
+      if (text.length < 2) return;
+      var seq = ++mpSeq;
+      mpTimer = setTimeout(function () {
+        fetch(wrap.getAttribute('data-search-url') + '?q=' + encodeURIComponent(text), { headers: { Accept: 'application/json' } })
+          .then(function (res) { return res.ok ? res.json() : { members: [] }; })
+          .then(function (data) {
+            if (seq !== mpSeq) return;
+            var list = wrap.querySelector('[data-pick-results]');
+            list.textContent = '';
+            (data.members || []).forEach(function (member) {
+              var button = document.createElement('button');
+              button.type = 'button';
+              button.className = 'mp-result';
+              button.setAttribute('data-pick-id', member.id);
+              var img = document.createElement('img');
+              img.src = member.avatar || '';
+              img.alt = '';
+              img.width = 20; img.height = 20;
+              var name = document.createElement('b');
+              name.textContent = member.displayName || member.username || member.id;
+              var small = document.createElement('small');
+              small.textContent = member.username ? '@' + member.username : member.id;
+              button.appendChild(img); button.appendChild(name); button.appendChild(small);
+              list.appendChild(button);
+            });
+            list.hidden = !list.children.length;
+          })
+          .catch(function () {});
+      }, 250);
+    });
+    document.addEventListener('click', function (event) {
+      var target = event.target && event.target.closest ? event.target : null;
+      if (!target) return;
+      var result = target.closest('[data-pick-id]');
+      if (result) {
+        event.preventDefault();
+        mpSet(result.closest('[data-pick]'), result.getAttribute('data-pick-id'), result.querySelector('b').textContent);
+        return;
+      }
+      // A quick choice next to a picker (e.g. a booster without a role) fills the picker of its form.
+      var quick = target.closest('[data-pick-quick]');
+      if (quick) {
+        var form = quick.closest('form');
+        var wrap = form && form.querySelector('[data-pick]');
+        if (wrap) mpSet(wrap, quick.getAttribute('data-pick-quick'), quick.getAttribute('data-pick-name'));
+        return;
+      }
+      document.querySelectorAll('[data-pick-results]:not([hidden])').forEach(function (list) { if (!list.parentNode.contains(target)) list.hidden = true; });
+    });
+  }
+</script>
+
+<style>
+  .mp { position: relative; width: 100%; }
+  .mp-input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 28px 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; }
+  .mp-ok { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--green); font-size: 13px; font-weight: 700; }
+  .mp-results { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); max-height: 260px; overflow: auto; }
+  .mp-results :global(.mp-result){ display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; color: var(--text); padding: 6px 8px; border-radius: 7px; cursor: pointer; text-align: left; font: 13px var(--sans); }
+  .mp-results :global(.mp-result:hover){ background: var(--bg-raise); }
+  .mp-results :global(.mp-result img){ border-radius: 50%; flex: 0 0 auto; }
+  .mp-results :global(.mp-result small){ color: var(--text-dim); font-size: 11px; margin-left: auto; }
+</style>

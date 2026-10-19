@@ -563,3 +563,29 @@ async function callPettoAction(context: AstroContext, guildId: string, userId: s
     return { ok: false, message: '' };
   }
 }
+
+export interface BoosterRoleInfo {
+  user_id: string; role_id: string; exists: boolean; name: string | null; color: string | null; color2: string | null; icon: string | null;
+  editable: boolean; shared_with: string[]; in_server: boolean | null; boosting: boolean | null; created_at: string | null;
+}
+
+/**
+ * The Booster roles page: the list (every booster role with its Discord role and whether its owner still boosts) and the changes in
+ * Discord (create or change a member's role, its icon, link an existing role, delete, clean up). The bot checks the same as
+ * `!boosterrole admin` (Manage Server, its own Manage Roles) and answers a message in the dashboard's language.
+ */
+export async function callPettoBoosterRoles(context: AstroContext, guildId: string, userId: string, action: 'list' | 'set' | 'icon' | 'remove' | 'link' | 'cleanup', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string; data?: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '' };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/boosterroles/${action}`, {
+      method: 'POST', signal: AbortSignal.timeout(action === 'list' ? 8_000 : 25_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', code: typeof payload?.code === 'string' ? payload.code : payload?.error, data: payload };
+  } catch {
+    return { ok: false, message: '' };
+  }
+}
