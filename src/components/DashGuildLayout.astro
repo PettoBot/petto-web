@@ -1224,7 +1224,15 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       var links = Array.prototype.slice.call(document.querySelectorAll('.dgl-link'));
       var same = function (a) { var u = new URL(a.getAttribute('href'), window.location.href); return u.pathname === target.pathname; };
       var exact = links.filter(function (a) { var u = new URL(a.getAttribute('href'), window.location.href); return u.pathname === target.pathname && u.search === target.search; });
-      var chosen = exact.length ? exact : links.filter(function (a) { var u = new URL(a.getAttribute('href'), window.location.href); return same(a) && !u.search; });
+      // A filter or page of a section (?section=cases&type=mute) keeps the link of its section (?section=cases) selected.
+      var within = links.filter(function (a) {
+        var u = new URL(a.getAttribute('href'), window.location.href);
+        if (u.pathname !== target.pathname || !u.search) return false;
+        var all = true;
+        u.searchParams.forEach(function (value, key) { if (target.searchParams.get(key) !== value) all = false; });
+        return all;
+      });
+      var chosen = exact.length ? exact : within.length ? within : links.filter(function (a) { var u = new URL(a.getAttribute('href'), window.location.href); return same(a) && !u.search; });
       if (!chosen.length) return;
       links.forEach(function (a) { a.classList.toggle('active', chosen.indexOf(a) !== -1); });
       if (window.dglOpenGroupOf) window.dglOpenGroupOf(chosen[0]);
@@ -1333,6 +1341,14 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (document.querySelector('.dgl-selmenu, dialog[open], [data-modal-open]')) return false;
       var active = document.activeElement;
       var content = document.getElementById('dgl-content');
+      // data-dash-hold holds the live update until the person is done, so it is not closed or emptied under them: a fold while it is
+      // open, a field while it has something typed that was not sent yet (a search), anything else (a form a script opened) while it
+      // is on the page.
+      var holds = content ? content.querySelectorAll('[data-dash-hold]') : [];
+      for (var i = 0; i < holds.length; i++) {
+        var hold = holds[i];
+        if (hold.tagName === 'DETAILS' ? hold.open : 'defaultValue' in hold ? hold.value !== hold.defaultValue : true) return false;
+      }
       return !(active && content && content.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
     }
 
@@ -1572,23 +1588,29 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         // Tabs that change what is shown on the page by themselves (data-an-tab) never load the page.
         if (a.hasAttribute('data-an-tab')) return;
         a.addEventListener('click', function (e) {
-          if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
           e.preventDefault();
-          var url = a.getAttribute('href');
-          startProgress();
-          showContentSkeleton();
-          readPage(url)
-            .then(function (answer) {
-              return swapContent(answer.html, url).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
-            })
-            .then(function (ok) {
-              if (ok) { updateActiveLink(url); finishProgress(); refreshCurrent(false); }
-              else window.location.href = url;
-            })
-            .catch(function () { window.location.href = url; });
+          navigateTo(a.getAttribute('href'));
         });
       });
     }
+
+    // Shows another address of this page (another tab, filter or page of a list) by loading only the content. A page script uses it
+    // for its own GET forms (window.dglNavigate), so a search does not reload the whole dashboard.
+    function navigateTo(url) {
+      if (dirtyForm) { shakeSaveBar(); return; }
+      startProgress();
+      showContentSkeleton();
+      readPage(url)
+        .then(function (answer) {
+          return swapContent(answer.html, url).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
+        })
+        .then(function (ok) {
+          if (ok) { updateActiveLink(url); finishProgress(); refreshCurrent(false); }
+          else window.location.href = url;
+        })
+        .catch(function () { window.location.href = url; });
+    }
+    window.dglNavigate = navigateTo;
 
     function bindForms(root) {
       root.querySelectorAll('form[method="POST" i]').forEach((form) => {

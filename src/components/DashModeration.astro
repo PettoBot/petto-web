@@ -2,6 +2,7 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
+import { CASE_FILTERS, caseLogHref } from '../utils/caseLog';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -69,6 +70,8 @@ interface Props {
   modStats?: ModStats;
   people?: Record<string, { name: string; avatar: string }>;
   casesLimit?: number;
+  /** The filters of the case log (kind, search, page), read from the address and applied in the database. */
+  caseLog?: { type: string; filter: string; q: string; before: number | null; older: boolean; failed: boolean; edit: number | null };
   stickyRolesEnabled: boolean;
   silentChannels: SilentChannel[];
   escalationRules: EscalationRule[];
@@ -83,12 +86,20 @@ interface Props {
   /** The server's prefix, for the commands named in the texts. */
   prefix?: string;
 }
-const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, caseMessage = null, section, prefix = '!' } = Astro.props;
+const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, caseLog = { type: '', filter: '', q: '', before: null, older: false, failed: false, edit: null }, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, caseMessage = null, section, prefix = '!' } = Astro.props;
 
 const typeColor: Record<string, string> = {
   ban: '#fe6465', tempban: '#fe6465', kick: '#ff9f5a', warn: '#fed53c',
   mute: '#c792ea', tempmute: '#c792ea', unban: '#a5ea7a', unmute: '#a5ea7a',
+  hardban: '#fe6465', softban: '#ff7a7a', jail: '#7aa2f7', unjail: '#a5ea7a',
 };
+// Any filter on the case log (a kind, a search or an older page): an empty answer then means "nothing matches", not "no cases yet".
+const caseFiltered = Boolean(caseLog.type || caseLog.q || caseLog.before);
+const nextCasesLimit = casesLimit === 25 ? 50 : 100;
+const lastCaseNumber = cases.length ? cases[cases.length - 1].caseNumber : null;
+// The case whose form is open: the one asked for in the address (?edit=, the Edit link without the script), or the one whose change
+// the bot refused, so what was typed can be fixed. A change that worked closes it.
+const editCase = caseMessage?.kind === 'err' ? caseMessage.number : caseMessage?.kind === 'ok' ? null : caseLog.edit;
 const sectionMeta: Record<string, string> = { protection: dt('Protection'), 'silent-channels': dt('Silent channels'), 'warn-escalation': dt('Warn escalation'), 'sanction-messages': dt('Sanction messages'), cases: dt('Case log'), active: dt('Active sanctions'), stats: dt('Moderator stats') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'protection';
 const selectedTitle = sectionMeta[selectedSection];
@@ -359,7 +370,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
             {c.reason && <span class="md-case-reason">{c.reason}</span>}
             {c.type === 'hardban'
               ? <span class="md-case-inactive">{dt('Only the owner can lift it')}</span>
-              : <button type="button" class="btn btn-ghost btn-sm md-lift" data-lift={c.caseNumber}>{dt('Lift')}</button>}
+              : <button type="button" class="btn btn-ghost btn-sm md-lift" data-lift={c.caseNumber} data-lift-confirm={dt('Lift this sanction now?')} data-lift-error={dt('It could not be lifted.')}>{dt('Lift')}</button>}
           </div>
         ))}
       </div>
@@ -392,10 +403,10 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   )}
 
   {selectedSection === 'cases' && (
-  <div class:list={['md-section', showSection('cases')]}>
-    <h2><Fragment set:html={dth('Recent cases <span class="md-count">{a}</span>', { a: (cases.length) })} /></h2>
+  <div class:list={['md-section', showSection('cases')]} data-case-log>
+    <h2><Fragment set:html={caseFiltered ? dth('Cases found <span class="md-count">{a}</span>', { a: cases.length + (caseLog.older ? '+' : '') }) : dth('Recent cases <span class="md-count">{a}</span>', { a: cases.length + (caseLog.older ? '+' : '') })} /></h2>
     {caseMessage && <div class:list={['md-case-flash', { 'md-case-flash-err': caseMessage.kind === 'err' }]} role={caseMessage.kind === 'err' ? 'alert' : 'status'}>{caseMessage.text}</div>}
-    {cases.length === 0 ? (
+    {cases.length === 0 && !caseFiltered && !caseLog.failed ? (
       <div class="md-case-empty">
         <Icon name="ph:clipboard-text-fill" width="22" height="22" />
         <div>
@@ -405,108 +416,226 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
       </div>
     ) : (
       <>
-        <div class="md-case-tools" data-case-tools>
-          <input type="search" class="md-case-search" placeholder={dt('Search by member, moderator, reason or case number')} autocomplete="off" data-case-search />
-          <div class="md-case-types">
-            <button type="button" class="md-case-pill on" data-case-type="">{dt('All')}</button>
-            {[...new Set(cases.map((c) => c.type))].map((type) => <button type="button" class="md-case-pill" data-case-type={type} style={`--c:${typeColor[type] ?? '#94a3b8'}`}>{type}</button>)}
+        {/* A plain form and plain links: they work without the dashboard's script, and with it they load only the content. */}
+        <form method="GET" class="md-case-tools" data-case-tools data-no-dirty role="search">
+          <input type="hidden" name="section" value="cases" />
+          {caseLog.type && <input type="hidden" name="type" value={caseLog.type} />}
+          {casesLimit !== 25 && <input type="hidden" name="cases" value={casesLimit} />}
+          <div class="md-case-search-row">
+            <input type="search" name="q" value={caseLog.q} maxlength="100" class="md-case-search" placeholder={dt('Search by member, moderator, reason or case number')} aria-label={dt('Search cases')} autocomplete="off" data-case-search data-dash-hold />
+            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:magnifying-glass-bold" width="12" height="12" />{dt('Search')}</button>
           </div>
-        </div>
-        <div class="md-case-list" data-case-list>
-          {cases.map((c) => (
-            <div class="md-case-row" data-type={c.type} data-search={`${c.caseNumber} ${c.type} ${c.userId} ${c.moderatorId} ${people[c.userId]?.name ?? ''} ${people[c.moderatorId]?.name ?? ''} ${c.reason ?? ''}`.toLowerCase()}>
-              <span class="md-case-num">#{c.caseNumber}</span>
-              <span class="md-case-type" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>{c.type}</span>
-              <span class="md-case-person">
-                {people[c.userId] ? <img src={people[c.userId].avatar} alt="" width="20" height="20" loading="lazy" /> : null}
-                <span><b>{people[c.userId]?.name ?? c.userId}</b><code>{c.userId}</code></span>
-              </span>
-              <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
-              <time class="md-case-when" datetime={c.createdAt} data-local-time>{c.createdAt}</time>
-              {c.reason && <span class="md-case-reason">{c.reason}</span>}
-              {(c.evidence ?? []).length > 0 && <span class="md-case-evidence">{dt('Proof')}: {(c.evidence ?? []).map((url, i) => <a href={url} target="_blank" rel="noopener noreferrer">{i + 1}</a>)}</span>}
-              {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
-              <details class="md-case-edit" open={caseMessage?.kind === 'err' && caseMessage.number === c.caseNumber}>
-                <summary><Icon name="ph:pencil-simple-fill" width="12" height="12" />{dt('Edit')}</summary>
-                <form method="POST" class="md-case-form" data-no-dirty>
-                  <input type="hidden" name="case" value={c.caseNumber} />
-                  <label><span>{dt('Reason of case #{a}', { a: c.caseNumber })}</span>
-                    <textarea name="reason" rows="2" maxlength="1000" required placeholder={dt('Why this sanction was given')}>{c.reason ?? ''}</textarea>
-                  </label>
-                  <div class="md-case-form-actions">
-                    <button type="submit" name="action" value="case_edit" class="btn btn-accent btn-sm">{dt('Save reason')}</button>
-                    <button type="submit" name="action" value="case_delete" class="btn btn-ghost btn-sm md-case-delete" formnovalidate data-confirm={dt('Delete case #{a}? It disappears from the history of the member, and a deleted warning stops counting for warn escalation. The sanction itself is not lifted.', { a: c.caseNumber })}><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete case')}</button>
-                  </div>
-                </form>
-              </details>
-            </div>
-          ))}
-        </div>
-        <p class="md-case-none" data-case-none hidden>{dt('No case matches that.')}</p>
-        {cases.length >= casesLimit && casesLimit < 200 && <a class="btn btn-ghost btn-sm md-case-more" href={`?section=cases&cases=${casesLimit === 25 ? 50 : casesLimit === 50 ? 100 : 200}`}>{dt('Show more cases')}</a>}
+          <p class="md-case-hint" data-case-hint hidden>{dt('Only the cases on this page are filtered as you type. Press Enter to search every case.')}</p>
+          <nav class="md-case-types" aria-label={dt('Kind of case')}>
+            <a href={caseLogHref({ q: caseLog.q, size: casesLimit })} class:list={['md-case-pill', { on: !caseLog.filter }]} aria-current={!caseLog.filter ? 'page' : undefined} data-case-pill>{dt('All')}</a>
+            {Object.keys(CASE_FILTERS).map((key) => (
+              <a href={caseLogHref({ type: key, q: caseLog.q, size: casesLimit })} class:list={['md-case-pill', { on: caseLog.filter === key }]} aria-current={caseLog.filter === key ? 'page' : undefined} style={`--c:${typeColor[key] ?? '#94a3b8'}`} title={CASE_FILTERS[key].join(', ')} data-case-pill>{key}</a>
+            ))}
+          </nav>
+          {caseLog.type && caseLog.type !== caseLog.filter && <p class="md-case-hint">{dt('Only {a} cases.', { a: caseLog.type })}</p>}
+        </form>
+        {caseLog.failed && <p class="md-case-flash md-case-flash-err" role="alert">{dt('The cases could not be read. Try again in a moment.')}</p>}
+        {cases.length > 0 && (
+          <div class="md-case-list" data-case-list>
+            {cases.map((c) => (
+              <div class="md-case-row" data-type={c.type} data-case={c.caseNumber} data-reason={c.reason ?? ''} data-search={`${c.caseNumber} #${c.caseNumber} ${c.type} ${c.userId} ${c.moderatorId} ${people[c.userId]?.name ?? ''} ${people[c.moderatorId]?.name ?? ''} ${c.reason ?? ''}`.toLowerCase()}>
+                <span class="md-case-num">#{c.caseNumber}</span>
+                <span class="md-case-type" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>{c.type}</span>
+                <span class="md-case-person">
+                  {people[c.userId] ? <img src={people[c.userId].avatar} alt="" width="20" height="20" loading="lazy" decoding="async" /> : null}
+                  <span><b>{people[c.userId]?.name ?? c.userId}</b><code>{c.userId}</code></span>
+                </span>
+                <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
+                <time class="md-case-when" datetime={c.createdAt} data-local-time>{c.createdAt}</time>
+                {c.reason && <span class="md-case-reason">{c.reason}</span>}
+                {(c.evidence ?? []).length > 0 && <span class="md-case-evidence">{dt('Proof')}: {(c.evidence ?? []).map((url, i) => <a href={url} target="_blank" rel="noopener noreferrer">{i + 1}</a>)}</span>}
+                {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
+                {/* One edit form at a time: a form in every row (a textarea in a fold, 100 of them) made the page slow to draw. The link
+                    works without the script (the page comes back with the form of that case open); with it, the form is put in place
+                    from the template below. */}
+                <a class:list={['md-case-edit', { on: editCase === c.caseNumber }]} href={caseLogHref({ type: caseLog.type, q: caseLog.q, size: casesLimit, before: caseLog.before, edit: c.caseNumber })} data-case-edit={c.caseNumber} aria-expanded={editCase === c.caseNumber ? 'true' : 'false'}><Icon name="ph:pencil-simple-fill" width="12" height="12" />{dt('Edit')}</a>
+                {editCase === c.caseNumber && (
+                  <form method="POST" class="md-case-form" data-no-dirty data-dash-hold data-case-form>
+                    <input type="hidden" name="case" value={c.caseNumber} />
+                    <label><span>{dt('Reason of case #{a}', { a: c.caseNumber })}</span>
+                      <textarea name="reason" rows="2" maxlength="1000" required placeholder={dt('Why this sanction was given')}>{c.reason ?? ''}</textarea>
+                    </label>
+                    <div class="md-case-form-actions">
+                      <button type="submit" name="action" value="case_edit" class="btn btn-accent btn-sm">{dt('Save reason')}</button>
+                      <button type="submit" name="action" value="case_delete" class="btn btn-ghost btn-sm md-case-delete" formnovalidate data-confirm={dt('Delete case #{a}? It disappears from the history of the member, and a deleted warning stops counting for warn escalation. The sanction itself is not lifted.', { a: c.caseNumber })}><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete case')}</button>
+                      <a class="btn btn-ghost btn-sm" href={caseLogHref({ type: caseLog.type, q: caseLog.q, size: casesLimit, before: caseLog.before })} data-case-edit-close>{dt('Cancel')}</a>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {cases.length > 0 && (
+          <template data-case-form-template>
+            <form method="POST" class="md-case-form" data-no-dirty data-dash-hold data-case-form>
+              <input type="hidden" name="case" value="" />
+              <label><span data-case-label={dt('Reason of case #{a}', { a: '{n}' })}></span>
+                <textarea name="reason" rows="2" maxlength="1000" required placeholder={dt('Why this sanction was given')}></textarea>
+              </label>
+              <div class="md-case-form-actions">
+                <button type="submit" name="action" value="case_edit" class="btn btn-accent btn-sm">{dt('Save reason')}</button>
+                <button type="submit" name="action" value="case_delete" class="btn btn-ghost btn-sm md-case-delete" formnovalidate data-case-confirm={dt('Delete case #{a}? It disappears from the history of the member, and a deleted warning stops counting for warn escalation. The sanction itself is not lifted.', { a: '{n}' })}><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete case')}</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-case-edit-close>{dt('Cancel')}</button>
+              </div>
+            </form>
+          </template>
+        )}
+        <p class="md-case-none" data-case-none hidden={cases.length > 0 || caseLog.failed}>{dt('No case matches that.')}{caseFiltered && <> <a href={caseLogHref({ size: casesLimit })}>{dt('Show every case')}</a></>}</p>
+        {(caseLog.before || caseLog.older) && (
+          <div class="md-case-pager">
+            {caseLog.before && <a class="btn btn-ghost btn-sm" href={caseLogHref({ type: caseLog.type, q: caseLog.q, size: casesLimit })}><Icon name="ph:arrow-left-bold" width="12" height="12" />{dt('Newest cases')}</a>}
+            {caseLog.older && casesLimit < 100 && <a class="btn btn-ghost btn-sm" href={caseLogHref({ type: caseLog.type, q: caseLog.q, size: nextCasesLimit, before: caseLog.before })}>{dt('Show more cases')}</a>}
+            {caseLog.older && lastCaseNumber && <a class="btn btn-ghost btn-sm" href={caseLogHref({ type: caseLog.type, q: caseLog.q, size: casesLimit, before: lastCaseNumber })}>{dt('Older cases')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></a>}
+          </div>
+        )}
       </>
     )}
   </div>
   )}
 
   {selectedSection === 'protection' && <button type="submit" form="mdForm" class="btn btn-accent btn-sm">{dt('Save changes')}</button>}
+  <script is:inline>
+    // Inside the content, so it also runs when the page is reached from the menu (the dashboard runs the scripts of the content it
+    // draws; a script after the layout only ran on a full load, and then the Lift button and the case search did nothing).
+    // The listeners are on the document and bound once; what depends on the drawn page runs on every draw.
+    (function () {
+      if (!window.__mdCasesBound) {
+        window.__mdCasesBound = true;
+        // Typing filters the cases already on the page at once; Enter (or Search) asks the server, which searches every case.
+        var filterRows = function (input) {
+          var log = input.closest('[data-case-log]');
+          if (!log) return;
+          var q = (input.value || '').trim().toLowerCase();
+          var local = q !== (input.defaultValue || '').trim().toLowerCase();
+          var shown = 0;
+          log.querySelectorAll('[data-case-list] .md-case-row').forEach(function (row) {
+            var ok = !local || !q || (row.getAttribute('data-search') || '').indexOf(q) !== -1;
+            row.hidden = !ok;
+            if (ok) shown += 1;
+          });
+          var none = log.querySelector('[data-case-none]');
+          if (none) none.hidden = shown !== 0;
+          var hint = log.querySelector('[data-case-hint]');
+          if (hint) hint.hidden = !local || !q;
+        };
+        document.addEventListener('input', function (event) {
+          var target = event.target;
+          if (target && target.matches && target.matches('[data-case-search]')) filterRows(target);
+        });
+        document.addEventListener('submit', function (event) {
+          var form = event.target;
+          if (!form || !form.matches || !form.matches('[data-case-tools]') || !window.dglNavigate) return;
+          event.preventDefault();
+          var params = new URLSearchParams(new FormData(form));
+          if (!String(params.get('q') || '').trim()) params.delete('q');
+          window.dglNavigate('?' + params.toString());
+        });
+        // The edit form of a case, put in its row from the template (one form on the page at a time). While it is open the
+        // dashboard does not redraw the page for a live update (data-dash-hold), so what is typed stays.
+        var closeEditor = function (form) {
+          var row = form.closest('.md-case-row');
+          var link = row && row.querySelector('[data-case-edit]');
+          if (link) { link.classList.remove('on'); link.setAttribute('aria-expanded', 'false'); }
+          form.remove();
+        };
+        var openEditor = function (row) {
+          var log = row.closest('[data-case-log]');
+          var template = log && log.querySelector('template[data-case-form-template]');
+          if (!template) return false;
+          log.querySelectorAll('[data-case-list] [data-case-form]').forEach(closeEditor);
+          var number = row.getAttribute('data-case');
+          var form = template.content.firstElementChild.cloneNode(true);
+          form.querySelector('input[name=case]').value = number;
+          var label = form.querySelector('[data-case-label]');
+          label.textContent = label.getAttribute('data-case-label').replace('{n}', number);
+          var area = form.querySelector('textarea');
+          area.defaultValue = row.getAttribute('data-reason') || '';
+          var del = form.querySelector('[data-case-confirm]');
+          del.setAttribute('data-confirm', del.getAttribute('data-case-confirm').replace('{n}', number));
+          row.appendChild(form);
+          var link = row.querySelector('[data-case-edit]');
+          if (link) { link.classList.add('on'); link.setAttribute('aria-expanded', 'true'); }
+          if (window.dglInitContent) window.dglInitContent(row);
+          area.focus();
+          area.setSelectionRange(area.value.length, area.value.length);
+          return true;
+        };
+        // Capture: these run before the dashboard's own handling of the links (which would load the page).
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          if (!target || !target.closest || !target.closest('#dgl-content [data-case-log]')) return;
+          var edit = target.closest('[data-case-edit]');
+          if (edit) {
+            var row = edit.closest('.md-case-row');
+            var open = row && row.querySelector('[data-case-form]');
+            if (open) { event.preventDefault(); event.stopPropagation(); closeEditor(open); return; }
+            if (row && openEditor(row)) { event.preventDefault(); event.stopPropagation(); }
+            return;
+          }
+          var close = target.closest('[data-case-edit-close]');
+          if (close) {
+            var form = close.closest('[data-case-form]');
+            if (form) { event.preventDefault(); event.stopPropagation(); closeEditor(form); }
+            return;
+          }
+          // A kind chosen while words are typed but not searched yet: the words go with it.
+          var pill = target.closest('[data-case-pill]');
+          if (pill) {
+            var input = document.querySelector('#dgl-content [data-case-search]');
+            if (input && input.value !== input.defaultValue) {
+              var url = new URL(pill.getAttribute('href'), window.location.href);
+              if (input.value.trim()) url.searchParams.set('q', input.value.trim()); else url.searchParams.delete('q');
+              pill.setAttribute('href', url.search);
+            }
+          }
+        }, true);
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          // The Lift button of the active sanctions: the bot lifts it and the page is read again.
+          var btn = target && target.closest ? target.closest('[data-lift]') : null;
+          if (!btn) return;
+          if (!window.confirm(btn.getAttribute('data-lift-confirm') || 'Lift this sanction now?')) return;
+          var guild = window.location.pathname.split('/dash/guild/')[1].split('/')[0];
+          var failed = btn.getAttribute('data-lift-error') || 'It could not be lifted.';
+          btn.disabled = true;
+          fetch('/dash/guild/' + guild + '/moderation-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ case: Number(btn.getAttribute('data-lift')) }) })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (data && data.ok) { if (window.dglRefreshPage) window.dglRefreshPage(true); else window.location.reload(); }
+              else { window.alert((data && data.message) || failed); btn.disabled = false; }
+            })
+            .catch(function () { window.alert(failed); btn.disabled = false; });
+        });
+      }
+      document.querySelectorAll('#dgl-content time[data-local-time]').forEach(function (t) {
+        var d = new Date(t.getAttribute('datetime'));
+        if (!isNaN(d.getTime())) t.textContent = d.toLocaleString();
+      });
+    })();
+  </script>
 </DashGuildLayout>
-
-<script is:inline>
-  // The Lift button of the active sanctions: the bot lifts it and the page is read again.
-  if (!window.__mdLiftBound) {
-    window.__mdLiftBound = true;
-    document.addEventListener('click', function (event) {
-      var btn = event.target.closest && event.target.closest('[data-lift]');
-      if (!btn) return;
-      if (!confirm('Lift this sanction now?')) return;
-      var guild = location.pathname.split('/')[3];
-      btn.disabled = true;
-      fetch('/dash/guild/' + guild + '/moderation-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ case: Number(btn.getAttribute('data-lift')) }) })
-        .then(function (r) { return r.json(); })
-        .then(function (data) { if (data && data.ok) location.reload(); else { alert((data && data.message) || 'It could not be lifted.'); btn.disabled = false; } })
-        .catch(function () { alert('It could not be lifted.'); btn.disabled = false; });
-    });
-  }
-</script>
-
-<script is:inline>
-  (function () {
-    function apply() {
-      var tools = document.querySelector('[data-case-tools]');
-      if (!tools) return;
-      var q = (tools.querySelector('[data-case-search]').value || '').trim().toLowerCase();
-      var active = tools.querySelector('.md-case-pill.on');
-      var type = active ? active.getAttribute('data-case-type') : '';
-      var shown = 0;
-      document.querySelectorAll('[data-case-list] .md-case-row').forEach(function (row) {
-        var ok = (!type || row.getAttribute('data-type') === type) && (!q || (row.getAttribute('data-search') || '').indexOf(q) !== -1);
-        row.hidden = !ok;
-        if (ok) shown += 1;
-      });
-      var none = document.querySelector('[data-case-none]');
-      if (none) none.hidden = shown !== 0;
-    }
-    if (!window.__caseToolsBound) {
-      window.__caseToolsBound = true;
-      document.addEventListener('input', function (event) { if (event.target && event.target.matches && event.target.matches('[data-case-search]')) apply(); });
-      document.addEventListener('click', function (event) {
-        var pill = event.target && event.target.closest ? event.target.closest('.md-case-pill') : null;
-        if (!pill) return;
-        pill.parentNode.querySelectorAll('.md-case-pill').forEach(function (other) { other.classList.remove('on'); });
-        pill.classList.add('on');
-        apply();
-      });
-    }
-    document.querySelectorAll('time[data-local-time]').forEach(function (t) { var d = new Date(t.getAttribute('datetime')); if (!isNaN(d.getTime())) t.textContent = d.toLocaleString(); });
-  })();
-</script>
 
 <style>
   .md-case-tools { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; max-width: 760px; }
   .md-case-search { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raise); color: var(--text); font: 13px var(--sans); }
   .md-case-types { display: flex; flex-wrap: wrap; gap: 6px; }
-  .md-case-pill { border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 999px; padding: 4px 11px; font: 600 11.5px var(--sans); cursor: pointer; text-transform: capitalize; }
+  .md-case-search-row { display: flex; gap: 8px; align-items: center; }
+  .md-case-search-row .md-case-search { flex: 1; min-width: 0; }
+  .md-case-search-row .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .md-case-hint { margin: 0; font-size: 12px; color: var(--text-dim); }
+  .md-case-pill { display: inline-block; text-decoration: none; border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 999px; padding: 4px 11px; font: 600 11.5px var(--sans); cursor: pointer; text-transform: capitalize; }
+  .md-case-pill:hover { color: var(--text); border-color: var(--c, var(--text-dim)); }
+  .md-case-pager { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .md-case-pager .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .md-case-none a { color: var(--accent); }
+  /* A row off screen is not laid out or painted until it is scrolled to: a long list used to freeze the page while it was drawn. */
+  .md-case-list .md-case-row { content-visibility: auto; contain-intrinsic-size: auto 46px; }
   .md-case-pill.on { background: color-mix(in srgb, var(--c, var(--accent)) 18%, transparent); color: var(--c, var(--accent)); border-color: var(--c, var(--accent)); }
   .md-case-person { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
   .md-case-person img { border-radius: 50%; }
@@ -515,23 +644,21 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   .md-case-person code { font-size: 10px; color: var(--text-dim); }
   .md-case-by, .md-case-when { font-size: 11.5px; color: var(--text-dim); }
   .md-case-none { color: var(--text-dim); font-size: 13px; }
-  .md-case-more { margin-top: 12px; }
   .md-case-row[hidden] { display: none; }
   .md-case-flash { font-size: 13px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 9px 13px; margin: 0 0 12px; max-width: 760px; }
   .md-case-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
   .md-case-empty { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; max-width: 760px; color: var(--text-dim); }
   .md-case-empty .md-empty-note { margin: 0 0 6px; }
   .md-case-empty-more { margin: 0; font-size: 12.5px; color: var(--text-dim); }
-  .md-case-edit { margin-left: auto; }
-  .md-case-edit[open] { flex-basis: 100%; margin-left: 0; }
-  .md-case-edit summary { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; list-style: none; font-size: 11.5px; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
-  .md-case-edit summary::-webkit-details-marker { display: none; }
-  .md-case-edit summary:hover, .md-case-edit[open] summary { color: var(--text); border-color: var(--text-dim); }
+  .md-case-edit { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; font-size: 11.5px; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+  .md-case-edit:hover, .md-case-edit.on { color: var(--text); border-color: var(--text-dim); }
+  .md-case-row > .md-case-form { flex-basis: 100%; }
   .md-case-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-width: 640px; }
   .md-case-form label { display: flex; flex-direction: column; gap: 5px; }
   .md-case-form label span { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; }
   .md-case-form textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise, var(--card)); color: var(--text); font: 13px var(--sans); resize: vertical; width: 100%; box-sizing: border-box; }
   .md-case-form-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .md-case-form-actions .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
   .md-case-delete:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
   h1 { font-size: 24px; margin: 0 0 6px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; }
