@@ -547,6 +547,14 @@ export async function callPettoCases(context: AstroContext, guildId: string, use
   return callPettoAction(context, guildId, userId, 'moderation', `cases/${action}`, body, lang);
 }
 
+/**
+ * Paginated messages of the Embeds page: post one from saved embeds, stop one (its buttons come off, or the message is deleted) and put
+ * the buttons back, like `!pagination`. The bot checks Manage Messages, the channel and the pages, and answers in the dashboard's language.
+ */
+export async function callPettoPagination(context: AstroContext, guildId: string, userId: string, action: 'create' | 'delete' | 'restore', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
+  return callPettoAction(context, guildId, userId, 'embeds', `pagination/${action}`, body, lang);
+}
+
 async function callPettoAction(context: AstroContext, guildId: string, userId: string, page: string, route: string, body: Record<string, unknown>, lang: string): Promise<{ ok: boolean; message: string; code?: string }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: '' };

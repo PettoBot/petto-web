@@ -5,6 +5,8 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getVariableGroups } from '../../../../utils/variableRegistry';
 import { getGuildInfo, getBotIdentity, getGuildList } from '../../../../utils/discord';
+import { callPettoPagination } from '../../../../utils/pettoBotApi';
+import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -23,13 +25,42 @@ const apiHeaders = {
   'Content-Type': 'application/json',
 };
 
-const [guildInfo, identity, templatesRes, channelsRes, variableGroups] = await Promise.all([
+// Paginated messages: every change goes through the bot, which checks the same as `!pagination` (Manage Messages, the channel, the
+// pages) and posts or changes the message in Discord at once. The page is then drawn again with the answer.
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+const SNOWFLAKE = /^\d{15,25}$/;
+let paginationMessage: { kind: 'ok' | 'err'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const answer = (result: { ok: boolean; message: string; code?: string }) => {
+    if (result.ok) return { kind: 'ok' as const, text: result.message || dt('Saved.') };
+    if (result.code === 'unknown_action' || (!result.message && result.code === 'not_found')) return { kind: 'err' as const, text: dt('Petto is being updated: paginated messages can be used in a few minutes.') };
+    return { kind: 'err' as const, text: result.message || dt('Petto did not answer. Try again in a moment.') };
+  };
+  if (action === 'pagination_create') {
+    const channelId = String(form.get('channel_id') ?? '');
+    const embeds = form.getAll('embed').map((value) => String(value).trim().slice(0, 100)).filter(Boolean).slice(0, 25);
+    if (!SNOWFLAKE.test(channelId)) paginationMessage = { kind: 'err', text: dt('Pick a channel where Petto can post.') };
+    else if (!embeds.length) paginationMessage = { kind: 'err', text: dt('Pick at least one saved embed for the pages.') };
+    else paginationMessage = answer(await callPettoPagination(Astro, id, session.userId, 'create', { channel_id: channelId, embeds, private: form.get('private') === '1' }, dashLang));
+  } else if (action === 'pagination_delete' || action === 'pagination_restore') {
+    const paginationId = String(form.get('pagination_id') ?? '');
+    if (!/^\d{1,19}$/.test(paginationId)) paginationMessage = { kind: 'err', text: dt('That paginated message no longer exists.') };
+    else if (action === 'pagination_restore') paginationMessage = answer(await callPettoPagination(Astro, id, session.userId, 'restore', { id: paginationId }, dashLang));
+    else paginationMessage = answer(await callPettoPagination(Astro, id, session.userId, 'delete', { id: paginationId, purge: form.get('purge') === '1' }, dashLang));
+  }
+}
+
+const [guildInfo, identity, templatesRes, channelsRes, variableGroups, paginationsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   // The same read the layout starts (shared per request and kept for a while): the bot's server nickname and avatar, or its own name and avatar.
   getBotIdentity(id, botToken, Astro.request).catch(() => null),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
   getGuildList(Astro, id, botToken, 'channels'),
   getVariableGroups(Astro),
+  fetch(`${apiUrl}/rest/v1/pagination_messages?guild_id=eq.${id}&select=*&order=created_at.asc`, { headers: apiHeaders }).catch(() => null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -41,6 +72,15 @@ const templateNames = templatesRes.ok ? (await templatesRes.json()).map((t: any)
 const rawChannels = channelsRes.ok ? await channelsRes.json() : [];
 const channels = (Array.isArray(rawChannels) ? rawChannels : []).filter((c: any) => c.type === 0 || c.type === 5).map((c: any) => ({ id: c.id, name: c.name }));
 const selected = new URL(Astro.request.url).searchParams.get('name') ?? templateNames[0] ?? '';
+// Every channel the bot listed (threads too), so a pagination in one shows its name; deleted ones show as such.
+const channelName = new Map((Array.isArray(rawChannels) ? rawChannels : []).map((c: any) => [String(c.id), String(c.name)]));
+const paginationsReady = Boolean(paginationsRes?.ok);
+const rawPaginations: any[] = paginationsReady ? ((await paginationsRes!.json().catch(() => [])) as any[]) : [];
+const paginations = rawPaginations.map((row) => ({
+  id: String(row.id), channelId: String(row.channel_id), channelName: channelName.get(String(row.channel_id)) ?? null, messageId: String(row.message_id),
+  url: `https://discord.com/channels/${id}/${row.channel_id}/${row.message_id}`, kind: row.kind === 'v2' ? 'v2' : 'embed', private: row.private === true,
+  pages: (Array.isArray(row.pages) ? row.pages : []).map((page: any) => (page?.type === 'embed' ? { type: 'embed', name: String(page.name ?? '') } : { type: page?.type === 'message' ? 'message' : 'code' })),
+}));
 ---
 <DashEmbeds
   user={session}
@@ -53,4 +93,7 @@ const selected = new URL(Astro.request.url).searchParams.get('name') ?? template
   selected={selected}
   channels={channels}
   variableGroups={variableGroups}
+  paginations={paginations}
+  paginationsReady={paginationsReady}
+  paginationMessage={paginationMessage}
 />
