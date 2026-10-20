@@ -366,7 +366,7 @@ export const dashEs: Record<string, string> = {
   "No avatars saved yet. They are saved from the moment Petto sees a change.": "Aún no hay avatares guardados. Se guardan desde que Petto ve un cambio.",
   "No names saved yet.": "Aún no hay nombres guardados.",
   "No nicknames saved yet.": "Aún no hay apodos guardados.",
-  "Petto stops saving your history, and nobody else can see it.": "Petto deja de guardar tu historial y nadie más puede verlo.",
+  "Petto stops saving your history, and nobody else can see it. The copies of your old avatars are deleted.": "Petto deja de guardar tu historial y nadie más puede verlo. Las copias de tus avatares antiguos se borran.",
   "Save my history again": "Volver a guardar mi historial",
   "Search the history of another user by ID...": "Buscar el historial de otro usuario por ID...",
   "Stop saving my history": "Dejar de guardar mi historial",
