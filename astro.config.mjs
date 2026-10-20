@@ -56,7 +56,7 @@ export default defineConfig({
           'funnel-fill', 'gauge-fill', 'gavel-fill', 'gear-fill', 'gear-six-fill', 'gift-fill', 'user-check-fill', 'medal', 'clock-counter-clockwise', 'palette-fill', 'broom-fill', 'sparkle', 'link-bold', 'globe', 'globe-fill', 'cake-fill', 'trophy-fill',
           'globe-hemisphere-west-fill', 'hand-fill', 'hand-waving-fill', 'handshake-fill', 'hard-drives-fill', 'image-fill', 'hash', 'hash-fill', 'headphones-fill',
           'headset-fill', 'heart-fill', 'identification-badge-fill', 'info-fill', 'key-fill', 'keyhole-fill',
-          'lightbulb-fill', 'link-fill', 'link-simple', 'list', 'list-checks-fill', 'list-dashes-fill', 'lock-open-fill', 'lock-simple-fill', 'magic-wand-fill', 'magnifying-glass', 'user', 'clock', 'image', 'text-t', 'users', 'shield-check',
+          'lightbulb-fill', 'link-fill', 'link-simple', 'list', 'list-checks-fill', 'list-dashes-fill', 'lock-open-fill', 'lock-simple-fill', 'magic-wand-fill', 'magnifying-glass', 'user', 'clock', 'image', 'image-broken', 'text-t', 'users', 'shield-check',
           'map-trifold-fill', 'medal-fill', 'megaphone-fill', 'moon-stars-fill', 'newspaper-fill', 'notebook-fill',
           'mask-happy-fill', 'list-bullets-fill', 'minus-circle-fill', 'ticket-fill', 'users-fill', 'scroll-fill', 'archive-fill', 'paint-brush-fill', 'paper-plane-tilt-fill', 'pencil-fill', 'pencil-simple-fill', 'play-fill', 'plus',
           'plus-bold', 'plus-circle-fill', 'prohibit-fill', 'pulse-fill', 'push-pin-fill', 'question-fill',

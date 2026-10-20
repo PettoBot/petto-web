@@ -1,5 +1,6 @@
 // Dashboard texts in Brazilian Portuguese. The key is the English text used in the code, so anything missing here shows in English.
 export const dashPt: Record<string, string> = {
+  "Discord no longer has this picture": "O Discord não tem mais esta imagem",
   "Set PREMIUM_LOGS_WEBHOOK_URL in the website first: the webhook of the channel of the team.": "Primeiro defina PREMIUM_LOGS_WEBHOOK_URL no site: o webhook do canal da equipe.",
   "The list of active Premium could not be read from the database.": "Não foi possível ler do banco de dados a lista de Premium ativos.",
   "Discord did not accept the message. Check the webhook of the channel.": "O Discord não aceitou a mensagem. Verifique o webhook do canal.",
