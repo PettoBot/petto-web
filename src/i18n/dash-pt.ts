@@ -366,7 +366,7 @@ export const dashPt: Record<string, string> = {
   "No avatars saved yet. They are saved from the moment Petto sees a change.": "Ainda não há avatares salvos. Eles são salvos a partir do momento em que o Petto vê uma mudança.",
   "No names saved yet.": "Ainda não há nomes salvos.",
   "No nicknames saved yet.": "Ainda não há apelidos salvos.",
-  "Petto stops saving your history, and nobody else can see it.": "O Petto para de salvar seu histórico e mais ninguém pode vê-lo.",
+  "Petto stops saving your history, and nobody else can see it. The copies of your old avatars are deleted.": "O Petto para de salvar seu histórico e mais ninguém pode vê-lo. As cópias dos seus avatares antigos são apagadas.",
   "Save my history again": "Voltar a salvar meu histórico",
   "Search the history of another user by ID...": "Buscar o histórico de outro usuário por ID...",
   "Stop saving my history": "Parar de salvar meu histórico",
