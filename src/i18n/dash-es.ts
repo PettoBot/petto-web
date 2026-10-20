@@ -1,5 +1,6 @@
 // Dashboard texts in Spanish. The key is the English text used in the code, so anything missing here shows in English.
 export const dashEs: Record<string, string> = {
+  "Discord no longer has this picture": "Discord ya no tiene esta imagen",
   "Set PREMIUM_LOGS_WEBHOOK_URL in the website first: the webhook of the channel of the team.": "Primero pon PREMIUM_LOGS_WEBHOOK_URL en la web: el webhook del canal del equipo.",
   "The list of active Premium could not be read from the database.": "No se pudo leer de la base de datos la lista de Premium activos.",
   "Discord did not accept the message. Check the webhook of the channel.": "Discord no aceptó el mensaje. Revisa el webhook del canal.",
