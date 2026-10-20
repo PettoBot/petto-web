@@ -493,7 +493,7 @@ export const ui = {
             { title: 'Open source bot', desc: 'The bot\'s code is public on GitHub under the AGPL-3.0 license.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },
             { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '/dash' },
-            { title: 'Slash commands', desc: 'Interaction and roleplay commands, plus /setup and /report, work as slash commands.', href: '/commands' },          ],
+            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and roleplay also work as slash commands.', href: '/commands' },          ],
         },
         {
           key: 'testing', label: 'In testing', items: [
@@ -1796,7 +1796,7 @@ export const ui = {
             { title: 'Bot de código abierto', desc: 'El código del bot es público en GitHub con licencia AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Tablero de feedback', desc: 'Escribe ideas, comentarios y errores, vota con me gusta y no me gusta, comenta y mira qué planea el equipo. También en el servidor de Petto, donde las reacciones cuentan como votos.', href: '/feedback' },
             { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '/dash' },
-            { title: 'Comandos slash', desc: 'Los comandos de interacción y roleplay, más /setup y /report, funcionan como comandos slash.', href: '/commands' },
+            { title: 'Comandos slash', desc: 'Los comandos de uso diario (/help, /ban, /ticket, /embed...) y los de roleplay también funcionan como comandos slash.', href: '/commands' },
           ],
         },
         {
@@ -3100,7 +3100,7 @@ export const ui = {
             { title: 'Bot de código aberto', desc: 'O código do bot é público no GitHub com licença AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Quadro de feedback', desc: 'Escreva ideias, comentários e bugs, vote com curtir e não curtir, comente e veja o que a equipe planeja. Também no servidor do Petto, onde as reações contam como votos.', href: '/feedback' },
             { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '/dash' },
-            { title: 'Comandos slash', desc: 'Os comandos de interação e roleplay, além de /setup e /report, funcionam como comandos slash.', href: '/commands' },
+            { title: 'Comandos slash', desc: 'Os comandos do dia a dia (/help, /ban, /ticket, /embed...) e os de roleplay também funcionam como comandos slash.', href: '/commands' },
           ],
         },
         {
