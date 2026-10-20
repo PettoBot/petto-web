@@ -52,6 +52,23 @@ async function fetchUser(botToken: string, id: string): Promise<TeamMember> {
   return member;
 }
 
+/**
+ * People looked up lately (see fetchUser) whose name or username contains `text`, so a search can find someone who already left the
+ * server (a banned member, for example), who the member search of the bot does not know.
+ */
+export function findKnownUsers(text: string, limit = 10): string[] {
+  const needle = text.trim().toLowerCase();
+  if (needle.length < 2) return [];
+  const found: string[] = [];
+  const now = Date.now();
+  for (const [id, { member, expiresAt }] of users) {
+    if (expiresAt <= now || member.username === id) continue;
+    if (member.username.toLowerCase().includes(needle) || member.displayName.toLowerCase().includes(needle)) found.push(id);
+    if (found.length >= limit) break;
+  }
+  return found;
+}
+
 async function fetchUsers(botToken: string, ids: string[]): Promise<Map<string, TeamMember>> {
   const out = new Map<string, TeamMember>();
   const unique = [...new Set(ids)];

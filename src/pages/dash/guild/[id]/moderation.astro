@@ -1,12 +1,13 @@
 ---
 export const prerender = false;
-import { describeTeam } from '../../../../utils/team';
+import { describeTeam, findKnownUsers } from '../../../../utils/team';
+import { caseFilterOf, caseLogFilters, caseTypesFor, readCaseSearch } from '../../../../utils/caseLog';
 import DashModeration from '../../../../components/DashModeration.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
-import { callPettoCases } from '../../../../utils/pettoBotApi';
+import { callPettoCases, callPettoMemberSearch } from '../../../../utils/pettoBotApi';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -143,7 +144,24 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const casesLimit = [25, 50, 100, 200].includes(Number(Astro.url.searchParams.get('cases'))) ? Number(Astro.url.searchParams.get('cases')) : 25;
+// The case log reads one page of cases (the newest first, or the ones older than `before`), filtered by kind and by a search in the
+// database, so a kind or a case that is not among the newest is still found. 100 at most: a longer list made the page slow to draw.
+const casesLimit = Math.min(100, [25, 50, 100, 200].includes(Number(Astro.url.searchParams.get('cases'))) ? Number(Astro.url.searchParams.get('cases')) : 25);
+const caseTypeParam = String(Astro.url.searchParams.get('type') ?? '').trim().toLowerCase();
+const caseType = caseTypesFor(caseTypeParam) ? caseTypeParam : '';
+const caseQuery = String(Astro.url.searchParams.get('q') ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+const caseBefore = Math.max(0, Math.trunc(Number(Astro.url.searchParams.get('before') ?? 0)) || 0) || null;
+// The case whose edit form is open (the Edit link of a case without the dashboard's script).
+const caseEdit = Math.max(0, Math.trunc(Number(Astro.url.searchParams.get('edit') ?? 0)) || 0) || null;
+const caseSearch = readCaseSearch(caseQuery);
+// Words are also looked up as names: members of the server (the bot's member search) and people seen lately (who may have left).
+const casePeopleIds = section === 'cases' && caseSearch.kind === 'text'
+  ? [...new Set([...findKnownUsers(caseSearch.text), ...(await Promise.race([
+    callPettoMemberSearch(Astro, id, session.userId, caseSearch.text).catch(() => []),
+    new Promise<[]>((resolve) => setTimeout(() => resolve([]), 3500)),
+  ])).map((member) => member.id)])]
+  : [];
+const caseFilters = caseLogFilters({ type: caseType, search: caseSearch, before: caseBefore, peopleIds: casePeopleIds });
 // Only the section on screen is drawn, so only what it shows is read.
 const MODERATION_SECTIONS = ['protection', 'silent-channels', 'warn-escalation', 'sanction-messages', 'cases', 'active', 'stats'];
 const shown = MODERATION_SECTIONS.includes(section) ? section : 'protection';
@@ -153,7 +171,7 @@ const [guildInfo, automodRes, antinukeRes, casesRes, silentRes, escalationRes, r
   () => getGuildInfo(id, botToken),
   when(['protection'], () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['protection'], () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
-  when(['cases'], () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=*&order=created_at.desc&limit=${casesLimit}`, { headers: apiHeaders })),
+  when(['cases'], () => fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&select=case_number,type,user_id,moderator_id,reason,active,created_at,evidence${caseFilters ? `&${caseFilters}` : ''}&order=case_number.desc&limit=${casesLimit + 1}`, { headers: apiHeaders })),
   when(['silent-channels'], () => fetch(`${apiUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id,action`, { headers: apiHeaders })),
   when(['warn-escalation'], () => fetch(`${apiUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count,action,duration_ms&order=warn_count.asc`, { headers: apiHeaders })),
   when(['protection'], () => getGuildList(Astro, id, botToken, 'roles')),
@@ -210,7 +228,11 @@ const antinuke = {
 const stickyRolesRows = stickyRolesRes?.ok ? await stickyRolesRes.json() : [];
 const stickyRolesEnabled: boolean = stickyRolesRows[0]?.enabled ?? false;
 
-const rawCases = casesRes?.ok ? await casesRes.json() : [];
+const rawCasePage = casesRes?.ok ? await casesRes.json() : [];
+// One more than a page is read, to know whether there are older cases.
+const olderCases = rawCasePage.length > casesLimit;
+const rawCases = rawCasePage.slice(0, casesLimit);
+const casesFailed = Boolean(casesRes && !casesRes.ok);
 const cases = rawCases.map((c: any) => ({
   caseNumber: c.case_number, type: c.type, userId: c.user_id, moderatorId: c.moderator_id,
   reason: c.reason, active: c.active, createdAt: c.created_at, evidence: (c.evidence ?? []) as string[],
@@ -243,7 +265,8 @@ const modStats = {
 // Names and pictures for the people in the cases, so the log is readable and not a list of ids. Discord answers are kept for a while.
 const caseUserIds = [...new Set([...cases, ...activeSanctions, ...modStats.moderators.map((m: { userId: string }) => ({ userId: m.userId, moderatorId: m.userId }))].flatMap((c: { userId: string; moderatorId: string }) => [c.userId, c.moderatorId]).filter((value: string) => /^\d{15,25}$/.test(value)))] as string[];
 const peopleMap = caseUserIds.length ? await describeTeam(botToken, caseUserIds.slice(0, 120)) : new Map();
-const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl }]));
+// The pictures are drawn at 20 px: the small size of Discord's picture is asked for, not the 128 px one.
+const people: Record<string, { name: string; avatar: string }> = Object.fromEntries([...peopleMap].map(([userId, person]) => [userId, { name: person.displayName, avatar: person.avatarUrl.replace(/\?size=128$/, '?size=32') }]));
 
 const allRoles = rolesRes?.ok ? await rolesRes.json() : [];
 const roles = allRoles
@@ -295,6 +318,7 @@ const escalationRules = rawEscalation.map((e: any) => ({
   modStats={modStats}
   people={people}
   casesLimit={casesLimit}
+  caseLog={{ type: caseType, filter: caseFilterOf(caseType), q: caseQuery, before: caseBefore, older: olderCases, failed: casesFailed, edit: caseEdit }}
   silentChannels={silentChannels}
   escalationRules={escalationRules}
   sanctionTemplates={sanctionTemplates}
