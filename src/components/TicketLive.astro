@@ -1,0 +1,610 @@
+---
+// Live tickets: the open tickets of the server as they change (who opened each one, who claimed it, how old it is, when the last message
+// came and whether the member waits for the staff), and one ticket open beside them with its last messages, a reply box and the staff
+// actions. Everything comes from tickets-live (the bot's src/web/ticketLiveRoutes.js): the list is read every few seconds and at once
+// when the bot says something changed (the stream's `tk` event, see DashGuildLayout.astro); an open ticket every 4 seconds. The script
+// sits inside the content, so it starts again when the page is reached from the menu, and stops by itself when the page is left.
+import { Icon } from 'astro-icon/components';
+import { getDashLang, makeT } from '../i18n/dash';
+interface Props { guildId: string; openCount: number; viewOnly: boolean; me: string }
+const { guildId, openCount, viewOnly, me } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const text = {
+  waiting: dt('Waiting for staff'),
+  answered: dt('Answered'),
+  unclaimed: dt('Unclaimed'),
+  claimedBy: dt('Claimed by {name}'),
+  opened: dt('Opened {time}'),
+  lastMessage: dt('Last message {time}'),
+  noMessages: dt('No messages yet'),
+  unread: dt('New messages'),
+  updated: dt('Updated {time}'),
+  offline: dt('Could not reach Petto. Trying again…'),
+  empty: dt('No open tickets right now. New ones appear here by themselves.'),
+  emptyFilter: dt('No ticket matches this filter.'),
+  more: dt('Showing the {n} newest open tickets.'),
+  pick: dt('Pick a ticket to read it here.'),
+  loading: dt('Loading…'),
+  channelGone: dt('The channel of this ticket no longer exists.'),
+  closedNote: dt('This ticket is closed.'),
+  noAccess: dt('You can read this ticket but not act on it: only its staff (a support role of its type) or a manager can.'),
+  viewOnly: dt('Your role can look at tickets here but not answer them.'),
+  openDiscord: dt('Open in Discord'),
+  claim: dt('Claim'),
+  unclaim: dt('Unclaim'),
+  addMember: dt('Add a member'),
+  addPlaceholder: dt('Member ID or mention'),
+  add: dt('Add'),
+  remove: dt('Remove {name} from the ticket'),
+  close: dt('Close ticket'),
+  closeReason: dt('Reason (shown in the log and the transcript)'),
+  closeReasonRequired: dt('Reason (this server requires one)'),
+  closeConfirm: dt('Close it'),
+  closeHint: dt('The transcript is made and sent like when it is closed in Discord.'),
+  cancel: dt('Cancel'),
+  replyPlaceholder: dt('Write a reply…'),
+  send: dt('Send'),
+  sending: dt('Sending…'),
+  replyNote: dt('Sent as Petto with your name on top, so the member knows who answered. Nobody is pinged.'),
+  back: dt('All tickets'),
+  members: dt('Added members'),
+  attachment: dt('Attachment'),
+  card: dt('Card from Petto'),
+  fields: dt('{n} fields'),
+  edited: dt('(edited)'),
+  failed: dt('That could not be done. Try again.'),
+  staff: dt('Staff'),
+  priority: dt('Priority: {p}'),
+  stale: dt('Showing the last copy: Discord is slow to answer.'),
+};
+---
+<div class="tkl" role="region" data-tkl data-guild={guildId} data-me={me} data-lang={lang} data-view-only={viewOnly ? '1' : undefined} aria-label={dt('Live tickets')}>
+  <script type="application/json" data-tkl-text set:html={JSON.stringify(text).replace(/</g, '\\u003c')}></script>
+  <div class="tkl-bar">
+    <span class="tkl-live" data-tkl-status><i aria-hidden="true"></i><span data-tkl-status-text>{dt('Live')}</span></span>
+    <div class="tkl-filters" role="tablist" aria-label={dt('Filter the tickets')}>
+      <button type="button" class="tkl-filter on" data-tkl-filter="all" role="tab" aria-selected="true">{dt('All')} <em data-tkl-count="all">{openCount}</em></button>
+      <button type="button" class="tkl-filter" data-tkl-filter="waiting" role="tab" aria-selected="false">{dt('Waiting')} <em data-tkl-count="waiting"></em></button>
+      <button type="button" class="tkl-filter" data-tkl-filter="unclaimed" role="tab" aria-selected="false">{dt('Unclaimed')} <em data-tkl-count="unclaimed"></em></button>
+      <button type="button" class="tkl-filter" data-tkl-filter="mine" role="tab" aria-selected="false">{dt('Mine')} <em data-tkl-count="mine"></em></button>
+    </div>
+    <input type="search" class="tkl-search" data-tkl-search placeholder={dt('Search by number or name')} aria-label={dt('Search by number or name')} autocomplete="off" />
+  </div>
+  <div class="tkl-body" data-tkl-body>
+    <div class="tkl-list" data-tkl-list aria-live="polite">
+      {openCount === 0
+        ? <div class="tkl-empty"><Icon name="ph:ticket" width="26" height="26" /><p>{text.empty}</p></div>
+        : Array.from({ length: Math.min(openCount, 4) }).map(() => <div class="tkl-skel" aria-hidden="true"><i></i><span></span></div>)}
+    </div>
+    <div class="tkl-pane" data-tkl-pane>
+      <div class="tkl-pick"><Icon name="ph:chat-circle-text-fill" width="28" height="28" /><p>{text.pick}</p></div>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+  (function () {
+    var root = document.querySelector('#dgl-content [data-tkl]');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    // A previous copy of this view (the page was drawn again or reached again from the menu) stops: one view runs at a time.
+    if (window.__tklStop) { try { window.__tklStop(); } catch (e) { /* already gone */ } }
+    var T = {};
+    try { T = JSON.parse(root.querySelector('[data-tkl-text]').textContent || '{}'); } catch (e) { T = {}; }
+    var guild = root.getAttribute('data-guild');
+    var lang = root.getAttribute('data-lang') || 'en';
+    var viewOnly = root.hasAttribute('data-view-only');
+    var base = '/dash/guild/' + guild + '/tickets-live';
+    var listEl = root.querySelector('[data-tkl-list]');
+    var pane = root.querySelector('[data-tkl-pane]');
+    var body = root.querySelector('[data-tkl-body]');
+    var statusEl = root.querySelector('[data-tkl-status]');
+    var statusText = root.querySelector('[data-tkl-status-text]');
+    var search = root.querySelector('[data-tkl-search]');
+    var me = null;
+    var tickets = [];
+    var filter = 'all';
+    var openNumber = null;
+    var openData = null;
+    var drawnIds = '';
+    var lastSignal = 0;
+    var listAt = 0;
+    var timers = [];
+    var stopped = false;
+    var SEEN_KEY = 'tkl:seen:' + guild;
+    var seen = {};
+    try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}') || {}; } catch (e) { seen = {}; }
+    function saveSeen() { try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch (e) { /* private window */ } }
+    function say(key, vars) {
+      var s = T[key] || key;
+      if (vars) s = s.replace(/\{(\w+)\}/g, function (w, k) { return k in vars ? String(vars[k]) : w; });
+      return s;
+    }
+    var rtf = window.Intl && Intl.RelativeTimeFormat ? new Intl.RelativeTimeFormat(lang, { numeric: 'auto', style: 'short' }) : null;
+    function ago(iso) {
+      if (!iso) return '';
+      var s = Math.round((Date.parse(iso) - Date.now()) / 1000);
+      var abs = Math.abs(s);
+      if (!rtf) return new Date(iso).toLocaleString();
+      if (abs < 45) return rtf.format(0, 'second');
+      if (abs < 3600) return rtf.format(Math.round(s / 60), 'minute');
+      if (abs < 86400) return rtf.format(Math.round(s / 3600), 'hour');
+      return rtf.format(Math.round(s / 86400), 'day');
+    }
+    function clock(iso) {
+      try { return new Date(iso).toLocaleString(lang, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }); } catch (e) { return iso; }
+    }
+    function h(tag, attrs, kids) {
+      var el = document.createElement(tag);
+      if (attrs) for (var k in attrs) {
+        if (attrs[k] == null || attrs[k] === false) continue;
+        if (k === 'class') el.className = attrs[k];
+        else if (k === 'text') el.textContent = attrs[k];
+        else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), attrs[k]);
+        else el.setAttribute(k, attrs[k] === true ? '' : attrs[k]);
+      }
+      (kids || []).forEach(function (kid) { if (kid != null && kid !== false) el.appendChild(typeof kid === 'string' ? document.createTextNode(kid) : kid); });
+      return el;
+    }
+    function avatarOf(person, size) {
+      var id = person && person.id ? String(person.id) : '0';
+      var src = person && person.avatar ? person.avatar : 'https://cdn.discordapp.com/embed/avatars/' + (Number(id.slice(-3)) % 6) + '.png';
+      return h('img', { class: 'tkl-av', src: src, alt: '', width: size || 28, height: size || 28, loading: 'lazy', referrerpolicy: 'no-referrer' });
+    }
+    // Text with its line breaks, and its web links as links. Never HTML from the message.
+    // Discord's headings (# text) are drawn bold and its small lines (-# text) small, as Discord shows them.
+    function richText(value) {
+      var wrap = h('div', { class: 'tkl-text' });
+      String(value || '').split('\n').forEach(function (line, n) {
+        if (n) wrap.appendChild(document.createTextNode('\n'));
+        var target = wrap;
+        var small = /^-#\s+/.exec(line);
+        var head = !small && /^#{1,3}\s+/.exec(line);
+        if (small || head) { target = h('span', { class: small ? 'tkl-small' : 'tkl-h' }); wrap.appendChild(target); line = line.slice((small || head)[0].length); }
+        line.split(/(https?:\/\/[^\s<>"]+)/g).forEach(function (part, i) {
+          if (i % 2) target.appendChild(h('a', { href: part, target: '_blank', rel: 'noopener noreferrer nofollow', text: part.length > 80 ? part.slice(0, 77) + '…' : part }));
+          else if (part) target.appendChild(document.createTextNode(part));
+        });
+      });
+      return wrap;
+    }
+    function api(url, init) {
+      var options = Object.assign({ credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }, init || {});
+      return fetch(url, options).then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (data) { return { ok: res.ok && data && data.ok, status: res.status, data: data || {} }; });
+      });
+    }
+    function setStatus(ok) {
+      statusEl.classList.toggle('off', !ok);
+      statusText.textContent = ok ? say('updated', { time: ago(new Date().toISOString()) }) : say('offline');
+    }
+    function isUnread(t) {
+      if (!t.lastMessageAt) return false;
+      if (t.lastAuthor && t.lastAuthor.staffReply && t.lastAuthor.id) return false;
+      var at = seen[t.number];
+      return !at ? Boolean(t.waiting) : Date.parse(t.lastMessageAt) > at;
+    }
+    function matches(t) {
+      if (filter === 'waiting' && !t.waiting) return false;
+      if (filter === 'unclaimed' && t.claimedBy) return false;
+      if (filter === 'mine' && !(t.claimedBy && me && t.claimedBy.id === me)) return false;
+      var q = (search.value || '').trim().toLowerCase().replace(/^#/, '');
+      if (!q) return true;
+      return String(t.number).indexOf(q) === 0 || [t.opener && t.opener.name, t.opener && t.opener.username, t.category && t.category.label, t.channelName].some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
+    }
+    function counts() {
+      var c = { all: tickets.length, waiting: 0, unclaimed: 0, mine: 0 };
+      tickets.forEach(function (t) { if (t.waiting) c.waiting++; if (!t.claimedBy) c.unclaimed++; if (me && t.claimedBy && t.claimedBy.id === me) c.mine++; });
+      root.querySelectorAll('[data-tkl-count]').forEach(function (el) { var n = c[el.getAttribute('data-tkl-count')]; el.textContent = n ? String(n) : (el.getAttribute('data-tkl-count') === 'all' ? '0' : ''); });
+    }
+    function drawList(total, limit) {
+      counts();
+      // The most recent conversation on top, as in a chat.
+      var when = function (t) { return Date.parse(t.lastMessageAt || t.openedAt || 0) || 0; };
+      var shown = tickets.filter(matches).sort(function (a, b) { return when(b) - when(a); });
+      listEl.textContent = '';
+      if (!tickets.length) { listEl.appendChild(h('div', { class: 'tkl-empty' }, [h('p', { text: say('empty') })])); return; }
+      if (!shown.length) { listEl.appendChild(h('div', { class: 'tkl-empty' }, [h('p', { text: say('emptyFilter') })])); return; }
+      shown.forEach(function (t) {
+        var unread = isUnread(t) && t.number !== openNumber;
+        var row = h('button', { type: 'button', class: 'tkl-row' + (t.number === openNumber ? ' on' : '') + (unread ? ' unread' : ''), 'data-number': t.number, 'aria-current': t.number === openNumber ? 'true' : null, onclick: function () { openTicket(t.number); } }, [
+          avatarOf(t.opener, 34),
+          h('div', { class: 'tkl-row-main' }, [
+            h('div', { class: 'tkl-row-top' }, [
+              h('b', { class: 'tkl-num', text: '#' + String(t.number).padStart(4, '0') }),
+              h('span', { class: 'tkl-cat', text: ((t.category && t.category.emoji && t.category.emoji.length <= 8 ? t.category.emoji + ' ' : '') + ((t.category && t.category.label) || '—')) }),
+              unread ? h('i', { class: 'tkl-dot', title: say('unread'), 'aria-label': say('unread') }) : null,
+              h('time', { class: 'tkl-age', datetime: t.lastMessageAt || t.openedAt, title: say('opened', { time: ago(t.openedAt) }), text: ago(t.lastMessageAt || t.openedAt) }),
+            ]),
+            h('div', { class: 'tkl-row-who', text: (t.opener && t.opener.name) || '' }),
+            h('div', { class: 'tkl-row-tags' }, [
+              t.waiting === true ? h('span', { class: 'tkl-tag wait', text: say('waiting') }) : t.waiting === false ? h('span', { class: 'tkl-tag ok', text: say('answered') }) : null,
+              t.claimedBy ? h('span', { class: 'tkl-tag claim' }, [avatarOf(t.claimedBy, 14), say('claimedBy', { name: t.claimedBy.name })]) : h('span', { class: 'tkl-tag', text: say('unclaimed') }),
+              t.priority && t.priority !== 'normal' ? h('span', { class: 'tkl-tag prio-' + t.priority, text: say('priority', { p: t.priority }) }) : null,
+            ]),
+          ]),
+        ]);
+        listEl.appendChild(row);
+      });
+      if (total > shown.length && total >= limit) listEl.appendChild(h('p', { class: 'tkl-more', text: say('more', { n: limit }) }));
+    }
+    function loadList() {
+      if (stopped) return Promise.resolve();
+      listAt = Date.now();
+      return api(base).then(function (r) {
+        if (stopped) return;
+        if (!r.ok) { setStatus(false); return; }
+        setStatus(true);
+        if (r.data.viewer) root.classList.toggle('tkl-manager', Boolean(r.data.viewer.manager));
+        tickets = r.data.tickets || [];
+        drawList(r.data.total || tickets.length, r.data.limit || 100);
+        // The ticket that was open left the list (closed elsewhere): its pane is read once more to show it closed.
+        if (openNumber && !tickets.some(function (t) { return t.number === openNumber; })) loadTicket(true);
+      }).catch(function () { setStatus(false); });
+    }
+
+    // ── one ticket
+    function messageEl(m) {
+      var kids = [];
+      if (m.content) kids.push(richText(m.content));
+      if (m.card) kids.push(h('div', { class: 'tkl-card', title: say('card') }, [richText(m.card)]));
+      (m.embeds || []).forEach(function (e) {
+        kids.push(h('div', { class: 'tkl-embed', style: e.color != null ? '--ec:#' + Number(e.color).toString(16).padStart(6, '0') : null }, [
+          e.title ? h('b', { text: e.title }) : null,
+          e.description ? richText(e.description) : null,
+          e.fields ? h('small', { text: say('fields', { n: e.fields }) }) : null,
+        ]));
+      });
+      (m.attachments || []).forEach(function (a) {
+        kids.push(h('a', { class: 'tkl-file', href: a.url, target: '_blank', rel: 'noopener noreferrer nofollow' }, [h('span', { text: (a.image ? '🖼 ' : '📎 ') + a.name }), a.size ? h('small', { text: Math.max(1, Math.round(a.size / 1024)) + ' KB' }) : null]));
+      });
+      (m.stickers || []).forEach(function (s) { kids.push(h('span', { class: 'tkl-tag', text: s })); });
+      var staffish = m.author && m.author.bot;
+      return h('div', { class: 'tkl-msg' + (staffish ? ' bot' : '') + (openData && m.author && m.author.id === openData.opener.id ? ' opener' : ''), 'data-id': m.id }, [
+        avatarOf(m.author, 32),
+        h('div', { class: 'tkl-msg-body' }, [
+          h('div', { class: 'tkl-msg-head' }, [h('b', { text: (m.author && m.author.name) || '?' }), m.author && m.author.bot ? h('span', { class: 'tkl-badge', text: 'BOT' }) : null, h('time', { datetime: m.createdAt, text: clock(m.createdAt) }), m.edited ? h('small', { text: say('edited') }) : null]),
+        ].concat(kids)),
+      ]);
+    }
+    function hold(on) {
+      // While a ticket is open the page is not drawn again under the person (a change of the server's settings waits until it is closed).
+      if (on) root.setAttribute('data-dash-hold', ''); else root.removeAttribute('data-dash-hold');
+    }
+    function act(action, extra, button) {
+      if (!openNumber) return Promise.resolve(null);
+      if (button) button.disabled = true;
+      return api(base, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(Object.assign({ action: action, ticket: openNumber }, extra || {})) })
+        .then(function (r) {
+          toast(r.data.message || (r.ok ? '' : say('failed')), !r.ok);
+          if (r.ok) { loadTicket(true); loadList(); }
+          return r;
+        })
+        .catch(function () { toast(say('failed'), true); return null; })
+        .finally(function () { if (button) button.disabled = false; });
+    }
+    var toastTimer = 0;
+    function toast(message, bad) {
+      var el = pane.querySelector('[data-tkl-toast]');
+      if (!el || !message) return;
+      el.textContent = message;
+      el.className = 'tkl-toast' + (bad ? ' bad' : '');
+      el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.hidden = true; }, 4000);
+    }
+    function drawPane(data, stale) {
+      var t = data.ticket;
+      openData = t;
+      var list = pane.querySelector('[data-tkl-msgs]');
+      var composer = pane.querySelector('[data-tkl-reply]');
+      // The frame of the ticket is drawn once; later reads only add the new messages (the box being typed in stays as it is).
+      if (!list || pane.getAttribute('data-number') !== String(t.number)) {
+        pane.textContent = '';
+        pane.setAttribute('data-number', String(t.number));
+        list = h('div', { class: 'tkl-msgs', 'data-tkl-msgs': '', role: 'log', 'aria-live': 'polite' });
+        pane.appendChild(h('header', { class: 'tkl-head', 'data-tkl-head': '' }));
+        pane.appendChild(h('div', { class: 'tkl-actions', 'data-tkl-actions': '' }));
+        pane.appendChild(list);
+        pane.appendChild(h('div', { class: 'tkl-toast', 'data-tkl-toast': '', hidden: true, role: 'status' }));
+        composer = h('div', { class: 'tkl-reply', 'data-tkl-reply': '' });
+        pane.appendChild(composer);
+        drawComposer(composer, t);
+      }
+      drawHead(pane.querySelector('[data-tkl-head]'), t);
+      drawActions(pane.querySelector('[data-tkl-actions]'), t);
+      composer.hidden = !(t.canAct && t.status === 'open' && !viewOnly);
+      var note = pane.querySelector('[data-tkl-note]');
+      var noteText = t.status !== 'open' ? say('closedNote') : t.channelGone ? say('channelGone') : viewOnly ? say('viewOnly') : !t.canAct ? say('noAccess') : stale ? say('stale') : '';
+      if (noteText) {
+        if (!note) { note = h('p', { class: 'tkl-note', 'data-tkl-note': '' }); pane.insertBefore(note, list); }
+        note.textContent = noteText;
+      } else if (note) note.remove();
+      var atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+      var have = {};
+      list.querySelectorAll('[data-id]').forEach(function (el) { have[el.getAttribute('data-id')] = el; });
+      var wanted = (data.messages || []).map(function (m) { return m.id; }).join(',');
+      if (wanted !== drawnIds) {
+        var fresh = {};
+        (data.messages || []).forEach(function (m) { fresh[m.id] = true; });
+        Object.keys(have).forEach(function (id) { if (!fresh[id]) have[id].remove(); });
+        (data.messages || []).forEach(function (m) {
+          var el = have[m.id];
+          if (el) { list.appendChild(el); return; }
+          var made = messageEl(m);
+          if (drawnIds) made.classList.add('tkl-new');
+          list.appendChild(made);
+        });
+        if (!data.messages || !data.messages.length) list.appendChild(h('p', { class: 'tkl-empty-msgs', text: say('noMessages') }));
+        else { var empty = list.querySelector('.tkl-empty-msgs'); if (empty) empty.remove(); }
+        if (atBottom || !drawnIds) list.scrollTop = list.scrollHeight;
+        drawnIds = wanted;
+      }
+      if (t.lastMessageAt) { seen[t.number] = Date.parse(t.lastMessageAt); saveSeen(); }
+    }
+    function drawHead(head, t) {
+      head.textContent = '';
+      head.appendChild(h('button', { type: 'button', class: 'tkl-back', onclick: closePane, 'aria-label': say('back') }, ['← ' + say('back')]));
+      head.appendChild(h('div', { class: 'tkl-head-main' }, [
+        avatarOf(t.opener, 40),
+        h('div', null, [
+          h('div', { class: 'tkl-head-title' }, [h('b', { text: '#' + String(t.number).padStart(4, '0') }), h('span', { text: (t.category && t.category.label) || '' }), t.channelName ? h('code', { text: '#' + t.channelName }) : null]),
+          h('div', { class: 'tkl-head-sub', text: [(t.opener && t.opener.name) + (t.opener && t.opener.username ? ' (@' + t.opener.username + ')' : ''), say('opened', { time: ago(t.openedAt) })].join(' · ') }),
+        ]),
+        t.channelId && !t.channelGone ? h('a', { class: 'btn btn-ghost btn-sm tkl-discord', href: 'https://discord.com/channels/' + guild + '/' + t.channelId, target: '_blank', rel: 'noopener' }, [say('openDiscord') + ' ↗']) : null,
+      ]));
+    }
+    function drawActions(box, t) {
+      // Rebuilt only when something it shows changed, so a reason or a member ID being typed is kept.
+      var key = [t.status, t.canAct, t.claimedBy && t.claimedBy.id, (t.members || []).map(function (m) { return m.id; }).join('.'), viewOnly].join('|');
+      if (box.getAttribute('data-key') === key) return;
+      if (box.contains(document.activeElement) && box.getAttribute('data-key')) return;
+      box.setAttribute('data-key', key);
+      box.textContent = '';
+      var can = t.canAct && t.status === 'open' && !viewOnly;
+      box.appendChild(h('div', { class: 'tkl-claim' }, [
+        t.claimedBy ? h('span', { class: 'tkl-tag claim' }, [avatarOf(t.claimedBy, 16), say('claimedBy', { name: t.claimedBy.name })]) : h('span', { class: 'tkl-tag', text: say('unclaimed') }),
+        can ? (t.claimedBy
+          ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: function (e) { act('unclaim', null, e.currentTarget); } }, [say('unclaim')])
+          : h('button', { type: 'button', class: 'btn btn-accent btn-sm', onclick: function (e) { act('claim', null, e.currentTarget); } }, [say('claim')])) : null,
+      ]));
+      var members = h('div', { class: 'tkl-members' }, [(t.members || []).length ? h('span', { class: 'tkl-members-label', text: say('members') }) : null]);
+      (t.members || []).forEach(function (m) {
+        members.appendChild(h('span', { class: 'tkl-chip' }, [avatarOf(m, 16), m.name, can ? h('button', { type: 'button', class: 'tkl-x', title: say('remove', { name: m.name }), 'aria-label': say('remove', { name: m.name }), onclick: function (e) { act('remove', { target: m.id }, e.currentTarget); } }, ['×']) : null]));
+      });
+      box.appendChild(members);
+      if (!can) return;
+      var addInput = h('input', { type: 'text', placeholder: say('addPlaceholder'), 'aria-label': say('addMember'), maxlength: 40, inputmode: 'text', autocomplete: 'off' });
+      var addForm = h('details', { class: 'tkl-more-act' }, [
+        h('summary', { text: say('addMember') }),
+        h('div', { class: 'tkl-inline' }, [addInput, h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: function (e) { var v = addInput.value.trim(); if (!v) { addInput.focus(); return; } act('add', { target: v }, e.currentTarget).then(function (r) { if (r && r.ok) addInput.value = ''; }); } }, [say('add')])]),
+      ]);
+      var reason = h('input', { type: 'text', placeholder: t.closeRequiresReason ? say('closeReasonRequired') : say('closeReason'), 'aria-label': say('closeReason'), maxlength: 500, required: t.closeRequiresReason ? true : null });
+      var closeForm = h('details', { class: 'tkl-more-act tkl-close' }, [
+        h('summary', { text: say('close') }),
+        h('div', { class: 'tkl-inline' }, [reason, h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: function (e) { if (t.closeRequiresReason && !reason.value.trim()) { reason.focus(); return; } act('close', { reason: reason.value }, e.currentTarget); } }, [say('closeConfirm')])]),
+        h('small', { text: say('closeHint') }),
+      ]);
+      box.appendChild(h('div', { class: 'tkl-act-row' }, [addForm, closeForm]));
+    }
+    function drawComposer(box, t) {
+      var area = h('textarea', { rows: 2, maxlength: 1800, placeholder: say('replyPlaceholder'), 'aria-label': say('replyPlaceholder') });
+      var counter = h('small', { class: 'tkl-counter', text: '0/1800' });
+      var button = h('button', { type: 'button', class: 'btn btn-accent btn-sm' }, [say('send')]);
+      function send() {
+        var content = area.value.trim();
+        if (!content || button.disabled) return;
+        button.disabled = true;
+        button.textContent = say('sending');
+        act('reply', { content: content }).then(function (r) {
+          if (r && r.ok) { area.value = ''; counter.textContent = '0/1800'; }
+        }).finally(function () { button.disabled = false; button.textContent = say('send'); area.focus(); });
+      }
+      area.addEventListener('input', function () { counter.textContent = area.value.length + '/1800'; area.style.height = 'auto'; area.style.height = Math.min(area.scrollHeight, 180) + 'px'; });
+      area.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+      button.addEventListener('click', send);
+      box.appendChild(area);
+      box.appendChild(h('div', { class: 'tkl-reply-foot' }, [h('small', { text: say('replyNote') }), counter, button]));
+    }
+    var loadingTicket = false;
+    function loadTicket(force) {
+      if (!openNumber || stopped || (loadingTicket && !force)) return Promise.resolve();
+      loadingTicket = true;
+      var number = openNumber;
+      return api(base + '?ticket=' + number).then(function (r) {
+        if (stopped || number !== openNumber) return;
+        if (!r.ok) { if (!pane.querySelector('[data-tkl-msgs]')) { pane.textContent = ''; pane.appendChild(h('p', { class: 'tkl-note', text: r.data.message || say('failed') })); } return; }
+        drawPane(r.data, r.data.stale);
+      }).catch(function () {}).finally(function () { loadingTicket = false; });
+    }
+    function openTicket(number) {
+      if (openNumber === number) return;
+      openNumber = number;
+      drawnIds = '';
+      hold(true);
+      body.classList.add('has-open');
+      pane.removeAttribute('data-number');
+      pane.textContent = '';
+      pane.appendChild(h('p', { class: 'tkl-note', text: say('loading') }));
+      listEl.querySelectorAll('.tkl-row').forEach(function (row) { var on = row.getAttribute('data-number') === String(number); row.classList.toggle('on', on); if (on) { row.classList.remove('unread'); var dot = row.querySelector('.tkl-dot'); if (dot) dot.remove(); } });
+      try { history.replaceState(history.state, '', location.pathname + location.search.replace(/([?&])ticket=\d+&?/, '$1').replace(/[?&]$/, '') + '#ticket-' + number); } catch (e) { /* fine */ }
+      loadTicket(true).then(function () { if (window.matchMedia('(max-width: 900px)').matches) root.scrollIntoView({ block: 'start' }); });
+    }
+    function closePane() {
+      openNumber = null; openData = null; drawnIds = '';
+      hold(false);
+      body.classList.remove('has-open');
+      pane.removeAttribute('data-number');
+      pane.textContent = '';
+      pane.appendChild(h('div', { class: 'tkl-pick' }, [h('p', { text: say('pick') })]));
+      try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { /* fine */ }
+      drawList(tickets.length, 100);
+    }
+
+    // ── controls
+    root.querySelectorAll('[data-tkl-filter]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        filter = b.getAttribute('data-tkl-filter');
+        root.querySelectorAll('[data-tkl-filter]').forEach(function (x) { var on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-selected', on ? 'true' : 'false'); });
+        drawList(tickets.length, 100);
+      });
+    });
+    search.addEventListener('input', function () { drawList(tickets.length, 100); });
+
+    // ── keeping it current: the bot's signal at once, otherwise every few seconds (less often while the signals arrive)
+    var signalTimer = 0;
+    function onSignal() {
+      if (stopped) return;
+      lastSignal = Date.now();
+      clearTimeout(signalTimer);
+      signalTimer = setTimeout(function () { loadList(); if (openNumber) loadTicket(); }, 250);
+    }
+    document.addEventListener('dgl:tickets', onSignal);
+    function tick() {
+      if (stopped) return;
+      if (!document.body.contains(root)) { stop(); return; }
+      if (document.hidden) return;
+      var every = Date.now() - lastSignal < 120000 ? 20000 : 8000;
+      if (Date.now() - listAt >= every) loadList();
+      if (openNumber) loadTicket();
+      if (statusEl && !statusEl.classList.contains('off') && listAt) statusText.textContent = say('updated', { time: ago(new Date(listAt).toISOString()) });
+    }
+    timers.push(setInterval(tick, 4000));
+    function onVisible() { if (!document.hidden && !stopped) { loadList(); if (openNumber) loadTicket(); } }
+    document.addEventListener('visibilitychange', onVisible);
+    function stop() {
+      stopped = true;
+      timers.forEach(clearInterval);
+      clearTimeout(signalTimer);
+      document.removeEventListener('dgl:tickets', onSignal);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (window.__tklStop === stop) window.__tklStop = null;
+    }
+    window.__tklStop = stop;
+    // Who is looking, for "Mine" (the tickets they claimed).
+    me = root.getAttribute('data-me');
+    loadList().then(function () {
+      var m = /#ticket-(\d+)/.exec(location.hash || '');
+      if (m) openTicket(Number(m[1]));
+    });
+  })();
+</script>
+
+<style is:global>
+  .tkl { border: 1px solid var(--border); border-radius: 16px; background: var(--card); overflow: clip; margin: 0 0 26px; scroll-margin-top: 130px; }
+  .tkl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+  .tkl-live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .tkl-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 60%, transparent); animation: tklPulse 2s infinite; }
+  .tkl-live.off i { background: var(--red); animation: none; }
+  @keyframes tklPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .tkl-filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tkl-filter { border: 1px solid transparent; background: transparent; color: var(--text-muted); font: inherit; font-size: 12.5px; padding: 5px 10px; border-radius: 999px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .tkl-filter:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .tkl-filter.on { color: var(--text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .tkl-filter em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
+  .tkl-filter em:empty { display: none; }
+  .tkl-search { margin-left: auto; min-width: 0; flex: 0 1 220px; border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; }
+  .tkl-body { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); min-height: 460px; }
+  .tkl-list { border-right: 1px solid var(--border-soft); overflow-y: auto; max-height: 640px; }
+  .tkl-row { all: unset; box-sizing: border-box; display: flex; gap: 10px; width: 100%; padding: 11px 12px; cursor: pointer; border-bottom: 1px solid var(--border-soft); position: relative; }
+  .tkl-row:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .tkl-row.on { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .tkl-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tkl-av { border-radius: 50%; flex: none; background: var(--bg-raise); object-fit: cover; }
+  .tkl-row-main { min-width: 0; flex: 1; display: grid; gap: 3px; }
+  .tkl-row-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .tkl-num { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .tkl-cat { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .tkl-age { margin-left: auto; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .tkl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+  .tkl-row.unread .tkl-row-who { color: var(--text); font-weight: 700; }
+  .tkl-row-who { font-size: 13.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tkl-row-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tkl-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .tkl-tag.wait { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 45%, var(--border)); background: color-mix(in srgb, var(--yellow) 10%, transparent); }
+  .tkl-tag.ok { color: var(--green); border-color: transparent; background: var(--green-soft); }
+  .tkl-tag.claim { color: var(--text-muted); }
+  .tkl-tag.prio-high, .tkl-tag.prio-urgent { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+  .tkl-tag .tkl-av { width: 14px; height: 14px; }
+  .tkl-empty, .tkl-pick { display: grid; place-items: center; gap: 8px; text-align: center; padding: 40px 20px; color: var(--text-dim); font-size: 13px; }
+  .tkl-empty p, .tkl-pick p { margin: 0; max-width: 34ch; line-height: 1.5; }
+  .tkl-empty svg, .tkl-pick svg { color: var(--accent); opacity: .8; }
+  .tkl-more { font-size: 11.5px; color: var(--text-dim); padding: 10px 12px; margin: 0; }
+  .tkl-skel { display: flex; gap: 10px; padding: 12px; border-bottom: 1px solid var(--border-soft); }
+  .tkl-skel i { width: 34px; height: 34px; border-radius: 50%; background: var(--bg-raise); }
+  .tkl-skel span { flex: 1; height: 34px; border-radius: 8px; background: linear-gradient(90deg, var(--bg-raise), color-mix(in srgb, var(--text) 6%, var(--bg-raise)), var(--bg-raise)); background-size: 200% 100%; animation: tklShine 1.2s linear infinite; }
+  @keyframes tklShine { to { background-position: -200% 0; } }
+  .tkl-pane { display: flex; flex-direction: column; min-width: 0; max-height: 640px; }
+  .tkl-head { padding: 12px 14px; border-bottom: 1px solid var(--border-soft); display: grid; gap: 8px; }
+  .tkl-back { all: unset; display: none; cursor: pointer; font-size: 12.5px; color: var(--accent); }
+  .tkl-head-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .tkl-head-main > div { min-width: 0; flex: 1; }
+  .tkl-head-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+  .tkl-head-title b { font-family: var(--mono); color: var(--accent); }
+  .tkl-head-title code { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .tkl-head-sub { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tkl-discord { flex: none; }
+  .tkl-actions { padding: 8px 14px; border-bottom: 1px solid var(--border-soft); display: grid; gap: 8px; }
+  .tkl-claim, .tkl-members, .tkl-act-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .tkl-members:empty { display: none; }
+  .tkl-members-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+  .tkl-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 4px 2px 3px; border-radius: 999px; background: var(--bg-raise); border: 1px solid var(--border-soft); }
+  .tkl-x { all: unset; cursor: pointer; padding: 0 5px; color: var(--text-dim); border-radius: 50%; }
+  .tkl-x:hover { color: var(--red); }
+  .tkl-more-act { font-size: 12.5px; }
+  .tkl-more-act summary { cursor: pointer; color: var(--text-muted); padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); list-style: none; }
+  .tkl-more-act summary::-webkit-details-marker { display: none; }
+  .tkl-more-act[open] { flex-basis: 100%; }
+  .tkl-more-act[open] summary { margin-bottom: 6px; display: inline-block; }
+  .tkl-close summary { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+  .tkl-close small { display: block; margin-top: 4px; color: var(--text-dim); font-size: 11.5px; }
+  .tkl-inline { display: flex; gap: 8px; }
+  .tkl-inline input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; }
+  .tkl-msgs { flex: 1; overflow-y: auto; padding: 12px 14px; display: grid; align-content: start; gap: 12px; min-height: 220px; }
+  .tkl-msg { display: flex; gap: 10px; min-width: 0; }
+  .tkl-msg.tkl-new { animation: tklIn .35s ease; }
+  @keyframes tklIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .tkl-msg-body { min-width: 0; flex: 1; display: grid; gap: 4px; }
+  .tkl-msg-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; }
+  .tkl-msg-head time, .tkl-msg-head small { font-size: 11px; color: var(--text-dim); }
+  .tkl-msg.opener .tkl-msg-head b { color: var(--yellow); }
+  .tkl-badge { font-family: var(--mono); font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: var(--accent); color: var(--bg, #111); }
+  .tkl-text { font-size: 13.5px; line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .tkl-text a { color: var(--accent); }
+  .tkl-text .tkl-small { font-size: 11.5px; color: var(--text-dim); }
+  .tkl-text .tkl-h { font-weight: 700; font-size: 14.5px; }
+  .tkl-card { border: 1px solid var(--border-soft); border-left: 3px solid var(--accent); border-radius: 8px; padding: 7px 10px; background: var(--bg-raise); }
+  .tkl-card .tkl-text { font-size: 12.5px; color: var(--text-muted); }
+  .tkl-embed { border-left: 3px solid var(--ec, var(--border)); border-radius: 6px; padding: 6px 10px; background: var(--bg-raise); display: grid; gap: 3px; }
+  .tkl-embed b { font-size: 13px; }
+  .tkl-embed .tkl-text { font-size: 12.5px; color: var(--text-muted); }
+  .tkl-embed small { font-size: 11px; color: var(--text-dim); }
+  .tkl-file { display: inline-flex; gap: 8px; align-items: center; justify-self: start; max-width: 100%; font-size: 12.5px; color: var(--accent); text-decoration: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 9px; background: var(--bg-raise); }
+  .tkl-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tkl-file small { color: var(--text-dim); flex: none; }
+  .tkl-note { margin: 10px 14px 0; font-size: 12.5px; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 8px 10px; }
+  .tkl-empty-msgs { font-size: 12.5px; color: var(--text-dim); }
+  .tkl-toast { margin: 0 14px 8px; font-size: 12.5px; color: var(--green); }
+  .tkl-toast.bad { color: var(--red); }
+  .tkl-reply { border-top: 1px solid var(--border-soft); padding: 10px 14px; display: grid; gap: 6px; }
+  .tkl-reply textarea { width: 100%; box-sizing: border-box; resize: none; min-height: 44px; max-height: 180px; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.45; }
+  .tkl-reply textarea:focus { outline: none; border-color: var(--accent); }
+  .tkl-reply-foot { display: flex; align-items: center; gap: 10px; }
+  .tkl-reply-foot small { font-size: 11.5px; color: var(--text-dim); flex: 1; min-width: 0; }
+  .tkl-reply-foot .tkl-counter { flex: none; font-family: var(--mono); }
+  @media (max-width: 900px) {
+    .tkl-body { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+    .tkl-list { border-right: 0; max-height: none; }
+    .tkl-pane { display: none; max-height: none; }
+    .tkl-body.has-open .tkl-list { display: none; }
+    .tkl-body.has-open .tkl-pane { display: flex; }
+    .tkl-back { display: inline-block; }
+    .tkl-msgs { max-height: 60vh; }
+    .tkl-search { flex: 1 1 100%; margin-left: 0; }
+    .tkl-reply-foot { flex-wrap: wrap; }
+    .tkl-reply-foot small:first-child { flex-basis: 100%; }
+    .tkl-reply-foot .btn { margin-left: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tkl-live i, .tkl-skel span, .tkl-msg.tkl-new { animation: none; } }
+</style>

@@ -16,12 +16,15 @@ export const ACCESS_SECTIONS: { id: string; label: string; pages: string[] }[] =
   { id: 'security', label: 'Security', pages: ['onboarding', 'verification', 'security', 'permissions', 'audit', 'logging'] },
   { id: 'leveling', label: 'Leveling', pages: ['leveling'] },
   { id: 'automation', label: 'Automation', pages: ['automation', 'code', 'bulk-role', 'reaction-role', 'counters'] },
-  { id: 'community', label: 'Community', pages: ['tickets', 'giveaways', 'community', 'birthdays', 'confessions', 'counting', 'partners', 'responders', 'senders', 'suggestions', 'tools', 'forms'] },
+  { id: 'tickets', label: 'Tickets', pages: ['tickets'] },
+  { id: 'community', label: 'Community', pages: ['giveaways', 'community', 'birthdays', 'confessions', 'counting', 'partners', 'responders', 'senders', 'suggestions', 'tools', 'forms'] },
   { id: 'quests', label: 'Quests', pages: ['quests'] },
   { id: 'rollouts', label: 'Rollouts', pages: ['rollouts'] },
   { id: 'vanity', label: 'Vanity roles', pages: ['vanity'] },
 ];
 const SECTION_IDS = new Set(ACCESS_SECTIONS.map((section) => section.id));
+// Tickets were part of Community before they had a section of their own: a rule saved then with Community still opens them.
+const ALSO_OPENED_BY: Record<string, string> = { community: 'tickets' };
 /** Open for anyone who has any rule: the overview and the live updates the pages ask for. */
 const OPEN_PAGES = new Set(['overview', 'live', 'role-blocks']);
 
@@ -50,7 +53,12 @@ export function accessFromRules(rules: AccessRule[], roleIds: string[]): RoleAcc
   const access: RoleAccess = { all: false, sections: {}, canEditAll: false };
   for (const rule of mine) {
     if (rule.sections.includes('*')) { access.all = true; if (rule.can_edit) access.canEditAll = true; }
-    for (const id of rule.sections) if (SECTION_IDS.has(id)) access.sections[id] = access.sections[id] || rule.can_edit;
+    for (const id of rule.sections) {
+      if (!SECTION_IDS.has(id)) continue;
+      access.sections[id] = access.sections[id] || rule.can_edit;
+      const also = ALSO_OPENED_BY[id];
+      if (also) access.sections[also] = access.sections[also] || rule.can_edit;
+    }
   }
   return access;
 }

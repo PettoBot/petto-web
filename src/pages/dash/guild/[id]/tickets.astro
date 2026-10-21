@@ -14,6 +14,9 @@ import { summarizeTickets } from '../../../../utils/ticketStats';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
+import { withinBudget } from '../../../../utils/liveCall';
+import { pageDecision } from '../../../../utils/dashAccess';
 const dt = makeT(getDashLang(Astro));
 
 function normalizeKey(key: string): string {
@@ -52,6 +55,8 @@ const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
 const { session } = auth;
+// Someone who may look but not change (a role with view access, the developer view): the live tickets show no reply box or actions.
+const viewOnly = Boolean(auth.devView) || Boolean(auth.access && !pageDecision(auth.access, 'tickets').canEdit);
 const premiumActive = await hasPremiumForGuild(Astro, session.userId, id);
 const ticketCategoryLimit = planLimits(premiumActive).ticketCategories;
 
@@ -520,16 +525,17 @@ async function refreshPanelById(panelId: string): Promise<boolean> {
 }
 
 // Only the section on screen is drawn, so only what it shows is read. The emojis of the picker load alongside the rest.
-const TICKET_SECTIONS = ['panels', 'types', 'forms', 'access', 'settings', 'replies', 'ai', 'open'];
-const shown = TICKET_SECTIONS.includes(section) ? section : 'panels';
+// `live` is another name of `open` (the live tickets); the old AI preview is gone (Petto has no AI for tickets), so it shows the panels.
+const TICKET_SECTIONS = ['panels', 'types', 'forms', 'access', 'settings', 'replies', 'open'];
+const shown = section === 'live' ? 'open' : TICKET_SECTIONS.includes(section) ? section : 'panels';
 const needs = (...sections: string[]) => sections.includes(shown);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
 const customEmojisPromise = needs('types') ? getGuildEmojis(id, botToken) : Promise.resolve([]);
 const [guildInfo, categoriesRes, openTicketsRes, rolesRes, channelsRes, panelsRes, settingsRes, embedTemplatesRes, ticketFormsRes, ticketBlacklistRes, repliesRes, statsTicketsRes, statsRatingsRes, closedTicketsRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   when(['panels', 'types', 'settings'], () => fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
-  when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=30`, { headers: apiHeaders })),
-  when(['types', 'settings'], () => getGuildList(Astro, id, botToken, 'roles')),
+  when(['open'], () => fetch(`${apiUrl}/rest/v1/tickets?guild_id=eq.${id}&status=eq.open&select=id,ticket_number,opener_id,claimed_by,channel_id,ticket_categories(label)&order=created_at.desc&limit=100`, { headers: apiHeaders })),
+  when(['types', 'settings', 'access'], () => getGuildList(Astro, id, botToken, 'roles')),
   when(['panels', 'types', 'settings'], () => getGuildList(Astro, id, botToken, 'channels')),
   when(['panels', 'types', 'settings'], () => fetch(`${apiUrl}/rest/v1/ticket_panels?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
   when(['settings'], () => fetch(`${apiUrl}/rest/v1/ticket_settings?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
@@ -567,7 +573,7 @@ const rawOpenTickets = openTicketsRes?.ok ? await openTicketsRes.json() : [];
 const openTickets = rawOpenTickets.map((t: any) => ({
   id: t.id,
   ticketNumber: t.ticket_number,
-  categoryLabel: t.ticket_categories?.label ?? 'Unknown',
+  categoryLabel: t.ticket_categories?.label ?? dt('Deleted type'),
   openerId: t.opener_id,
   claimedBy: t.claimed_by,
   channelId: t.channel_id,
@@ -608,7 +614,7 @@ const panels = rawPanels.map((p: any) => ({
 
 const embedTemplateNames: string[] = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 const forms = ticketFormsRes?.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? dt('Ticket details'), fields: f.fields ?? [] })) : [];
-const blacklist = ticketBlacklistRes?.ok ? await ticketBlacklistRes.json() : [];
+const rawBlacklist: any[] = ticketBlacklistRes?.ok ? await ticketBlacklistRes.json() : [];
 
 const settingsRows = settingsRes?.ok ? await settingsRes.json() : [];
 const s = settingsRows[0] ?? {};
@@ -644,7 +650,21 @@ const settings = {
   hoursBlock: s.hours_block ?? false,
   hoursMessage: s.hours_message ?? '',
 };
-const closedTickets = (closedTicketsRes?.ok ? await closedTicketsRes.json() : []).map((t: any) => ({ number: t.ticket_number, openerId: t.opener_id, closedAt: t.closed_at, reason: t.close_reason ?? '', categoryLabel: t.ticket_categories?.label ?? '' }));
+const closedRows: any[] = closedTicketsRes?.ok ? await closedTicketsRes.json() : [];
+// The names and pictures of the members on screen (the closed tickets' openers, the blocked members), never waiting long for them.
+const profileIds = [...closedRows.map((t) => String(t.opener_id)), ...rawBlacklist.filter((e) => e.target_type !== 'role').map((e) => String(e.target_id))];
+const profiles = profileIds.length
+  ? (await withinBudget(getMemberProfiles(Astro, id, profileIds, botToken, { fallback: 'user', userId: session.userId }), 1200))?.value ?? new Map()
+  : new Map();
+const closedTickets = closedRows.map((t: any) => {
+  const profile = profiles.get(String(t.opener_id)) ?? null;
+  return { number: t.ticket_number, openerId: t.opener_id, openerName: profile ? profile.displayName || profile.username : null, openerAvatar: profile ? memberAvatarUrl(String(t.opener_id), profile, 64) : null, closedAt: t.closed_at, reason: t.close_reason ?? '', categoryLabel: t.ticket_categories?.label ?? '' };
+});
+const roleNames = new Map(roles.map((r: any) => [String(r.id), String(r.name)]));
+const blacklist = rawBlacklist.map((e) => {
+  const profile = e.target_type === 'role' ? null : profiles.get(String(e.target_id)) ?? null;
+  return { ...e, name: e.target_type === 'role' ? roleNames.get(String(e.target_id)) ?? null : profile ? profile.displayName || profile.username : null, avatar: profile ? memberAvatarUrl(String(e.target_id), profile, 64) : null };
+});
 const quickReplies: { name: string; content: string }[] = repliesRes?.ok ? await repliesRes.json() : [];
 const ticketStats = needs('open') ? summarizeTickets(statsTicketsRes?.ok ? await statsTicketsRes.json() : [], statsRatingsRes?.ok ? await statsRatingsRes.json() : []) : null;
 const customEmojis = await customEmojisPromise;
@@ -672,5 +692,7 @@ const customEmojis = await customEmojisPromise;
   error={error}
   warnings={warnings}
   premiumActive={premiumActive}
-  section={section}
+  section={shown}
+  viewOnly={viewOnly}
+  me={String(session.userId)}
 />
