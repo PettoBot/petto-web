@@ -203,20 +203,49 @@ export async function callPettoQuestMethod(context: AstroContext, guildId: strin
 }
 
 /** Sets the verification up, posts its panel or switches it, now, through the bot, as the person who manages the server. */
-export async function callPettoVerification(context: AstroContext, guildId: string, userId: string, action: 'setup' | 'panel' | 'enable' | 'disable'): Promise<{ ok: boolean; message: string }> {
+/** How far a verification job of the bot is (setting it up edits every channel of the server, which can take a while). */
+export interface VerificationJob { id: string; action: string; status: 'running' | 'done' | 'failed'; phase: string; done: number; total: number; percent: number; ok: boolean | null; message: string | null }
+export interface VerificationAnswer { ok: boolean; message: string; status?: string; job?: VerificationJob | null }
+
+/**
+ * The buttons of the verification card. The bot answers within a moment and never waits for the long work: a quick action comes back
+ * done, a long one comes back `status: 'running'` with its job, and the page asks `callPettoVerificationJob` until it ends.
+ */
+export async function callPettoVerification(context: AstroContext, guildId: string, userId: string, action: 'setup' | 'panel' | 'enable' | 'disable'): Promise<VerificationAnswer> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
   try {
     const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/${action}`, {
       method: 'POST',
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(8_000),
       headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId }),
     });
     const payload: any = await response.json().catch(() => null);
-    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : response.ok ? 'Done.' : 'The bot could not do it.' };
+    return {
+      ok: Boolean(response.ok && payload?.ok),
+      message: typeof payload?.message === 'string' ? payload.message : response.ok ? 'Done.' : 'The bot could not do it.',
+      status: typeof payload?.status === 'string' ? payload.status : undefined,
+      job: payload?.job ?? null,
+    };
   } catch {
     return { ok: false, message: 'The bot did not answer in time.' };
+  }
+}
+
+/** The verification job of a server (or null when there is none), and whether members can get a verification link. */
+export async function callPettoVerificationJob(context: AstroContext, guildId: string, userId: string): Promise<{ ok: boolean; job: VerificationJob | null; link: { ok: boolean; problem: string | null; lettersInstead: boolean } | null }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, job: null, link: null };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/job?user_id=${encodeURIComponent(userId)}`, {
+      signal: AbortSignal.timeout(5_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json' },
+    });
+    const payload: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && payload?.ok), job: payload?.job ?? null, link: payload?.link ?? null };
+  } catch {
+    return { ok: false, job: null, link: null };
   }
 }
 

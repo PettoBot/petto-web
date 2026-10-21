@@ -162,11 +162,12 @@ const withCompression = (listener) => (req, res) => {
 
 // How long each dashboard request takes here, from its first byte in to its last byte out, with its Server-Timing parts: the owner's
 // /dash/health page shows the last 500 (src/utils/latencyStats.ts keeps them in Redis too, so a restart does not wipe them). Kept in
-// memory only, nothing is written per request. The live stream, the stamp a page asks for and the health page itself are left out.
+// memory only, nothing is written per request. The live stream, the stamp a page asks for, the health page itself and the progress the
+// verification card asks for every moment while a setup runs are left out.
 const LATENCY_KEEP = 500;
 const latency = (globalThis.__pettoLatency ??= { entries: [], max: LATENCY_KEEP, total: 0 });
 const DASH_REQUEST = /^\/(?:(?:es|pt-br)\/)?dash(?:\/|$)/i;
-const NOT_A_PAGE = /\/(?:events|version|health)\/?$/;
+const NOT_A_PAGE = /\/(?:events|version|health|verification-status)\/?$/;
 const latencyPath = (url) => {
   const [rawPath, query = ''] = url.split('?');
   const path = rawPath.replace(/^\/(?:es|pt-br)(?=\/dash)/i, '').replace(/\/\d{5,25}(?=\/|$)/g, '/:id').replace(/\/+$/, '') || '/';

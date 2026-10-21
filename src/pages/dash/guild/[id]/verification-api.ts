@@ -8,7 +8,10 @@ import { ensureGuildRow } from '../../../../utils/ensureGuild';
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 const ACTIONS = new Set(['setup', 'panel', 'enable', 'disable']);
 
-/** The buttons of the verification card: set it up, post the panel, switch it. Each one is done by the bot right away. */
+/**
+ * The buttons of the verification card: set it up, post the panel, switch it. The bot answers within a moment: a long one (setting it
+ * up on a big server) comes back `status: 'running'` with its job, and the card follows it with verification-status.
+ */
 export const POST: APIRoute = async (astro) => {
   const { id } = astro.params as { id: string };
   const auth = await getGuildSession(astro, id);
@@ -29,5 +32,5 @@ export const POST: APIRoute = async (astro) => {
     }
   }
   const result = await callPettoVerification(astro, id, String(auth.session.userId), action as 'setup' | 'panel' | 'enable' | 'disable');
-  return json(result, result.ok ? 200 : 400);
+  return json(result, result.ok ? (result.status === 'running' ? 202 : 200) : 400);
 };
