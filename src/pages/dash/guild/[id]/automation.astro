@@ -12,6 +12,7 @@ import { buildRoleButtonComponents, type RoleButtonRow } from '../../../../utils
 import { runBatched } from '../../../../utils/concurrency';
 import { getGuildEmojis } from '../../../../utils/guildEmojis';
 import { noteGuildWrite } from '../../../../utils/guildSnapshots';
+import { readCommandNames, MAX_COMMANDS_AT_ONCE, MAX_CHANNELS_AT_ONCE } from '../../../../utils/disabledCommands';
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
@@ -479,19 +480,41 @@ if (Astro.request.method === 'POST') {
     const dbRes = await fetch(`${apiUrl}/rest/v1/managed_webhooks?id=eq.${encodeURIComponent(localId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = dbRes.ok;
   } else if (action === 'add_disabled') {
-    const command = String(form.get('command') ?? '').trim().toLowerCase().slice(0, 32);
-    const channelId = String(form.get('channel_id') ?? '').trim() || null;
-    if (command) {
-      await fetch(`${apiUrl}/rest/v1/disabled_commands`, {
-        method: 'POST',
-        headers: { ...apiHeaders, Prefer: 'return=minimal' },
-        body: JSON.stringify({ guild_id: id, command, channel_id: channelId }),
-      });
-      saved = true;
+    // The same rules as `!dc` in the bot: real command names (an alias is saved as its command), one or more channels or the
+    // whole server, each rule once.
+    const { names, unknown, refused } = readCommandNames(String(form.get('command') ?? ''));
+    const channelIds = [...new Set(form.getAll('channel_ids').map(String).filter((c) => /^\d{15,25}$/.test(c)))];
+    const problems: string[] = [];
+    if (unknown.length) problems.push(dt('Petto has no command called {a}.', { a: unknown.join(', ') }));
+    if (refused.length) problems.push(dt('{a} always stay on, or nobody could turn anything back on.', { a: refused.join(', ') }));
+    if (!names.length && !problems.length) problems.push(dt('Write at least one command.'));
+    if (names.length > MAX_COMMANDS_AT_ONCE) problems.push(dt('Up to {a} commands at a time.', { a: MAX_COMMANDS_AT_ONCE }));
+    else if (channelIds.length > MAX_CHANNELS_AT_ONCE) problems.push(dt('Up to {a} channels at a time.', { a: MAX_CHANNELS_AT_ONCE }));
+    else if (names.length) {
+      const places: (string | null)[] = channelIds.length ? channelIds : [null];
+      const existingRes = await fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=command,channel_id`, { headers: apiHeaders });
+      const existing: { command: string; channel_id: string | null }[] = existingRes.ok ? await existingRes.json() : [];
+      const have = new Set(existing.map((r) => `${r.command}|${r.channel_id ?? ''}`));
+      const rows = names.flatMap((command) => places.filter((channelId) => !have.has(`${command}|${channelId ?? ''}`)).map((channelId) => ({ guild_id: id, command, channel_id: channelId })));
+      if (rows.length) {
+        const res = await fetch(`${apiUrl}/rest/v1/disabled_commands`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(rows) });
+        if (res.ok) saved = true;
+        else problems.push(dt('It could not be saved, try again.'));
+      } else saved = true;
     }
+    if (problems.length) error = problems.join(' ');
   } else if (action === 'delete_disabled') {
     await fetch(`${apiUrl}/rest/v1/disabled_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
     saved = true;
+  } else if (action === 'clear_disabled') {
+    // Every rule of one place: a channel, or the whole server ("server").
+    const place = String(form.get('channel_id') ?? '');
+    const filter = place === 'server' ? 'channel_id=is.null' : /^\d{15,25}$/.test(place) ? `channel_id=eq.${place}` : null;
+    if (filter) {
+      const res = await fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&${filter}`, { method: 'DELETE', headers: apiHeaders });
+      saved = res.ok;
+      if (!res.ok) error = dt('It could not be saved, try again.');
+    }
   } else if (action === 'add_autothread') {
     const channelId = String(form.get('channel_id') ?? '').trim();
     const nameTemplate = String(form.get('name_template') ?? '').trim().slice(0, 100) || '{user_name}';
