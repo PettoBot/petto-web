@@ -121,7 +121,12 @@ function targetLabel(target: string) {
           <label class="ob-switch"><input type="checkbox" name="enabled" checked={verification.enabled} data-vf-switch data-no-dirty /><span></span></label>
         </div>
         <div class="ob-auto"><div><strong>{dt('Set it up for me')}</strong><span>{dt('Makes the roles and a #verify channel, posts the panel and turns verification on. What you already chose is kept.')}</span></div><button type="button" class="btn btn-accent btn-sm" data-vf-action="setup"><Icon name="ph:magic-wand-fill" width="14" height="14" /> {dt('Set it up')}</button></div>
-        <p class="ob-vf-msg" id="ob-vf-msg" role="status" hidden data-working={dt('Working on it…')} data-failed={dt('It could not be done. Try again.')}></p>
+        <p class="ob-vf-msg" id="ob-vf-msg" role="status" hidden data-working={dt('Working on it…')} data-failed={dt('It could not be done. Try again.')} data-lost={dt('Petto stopped answering about the setup. Check the server and try again.')}></p>
+        <div class="ob-vf-progress" id="ob-vf-progress" hidden data-starting={dt('Starting…')} data-roles={dt('Making the roles…')} data-channels={dt('Setting up… {done}/{total} channels')} data-panel={dt('Posting the panel…')}>
+          <div class="ob-vf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+          <span class="ob-vf-step" aria-live="polite"></span>
+        </div>
+        <p class="ob-vf-warn" id="ob-vf-warn" hidden data-missing={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL is not set.')} data-secret={dt('Members cannot get a verification link right now: Petto\'s VERIFY_TOKEN_SECRET is not set.')} data-invalid={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL is not a web address.')} data-local={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL points to localhost, which only opens on the bot\'s computer.')} data-letters={dt('Until it is fixed, the panel offers the letters inside Discord instead.')}></p>
         <p class="ob-card-desc">{dt('A Cloudflare Turnstile captcha gate, new members must pass it to get in.')}</p>
         <div class="ob-row"><label>{dt('Role while unverified')}</label><select name="unverified_role_id" data-give-role data-fill="ob-roles"><option value="">{dt('None')}</option><SelectChosen items={roles} selected={verification.unverifiedRoleId} /></select></div>
         <div class="ob-row"><label>{dt('Role once verified')}</label><select name="verified_role_id" data-give-role data-fill="ob-roles"><option value="">{dt('None')}</option><SelectChosen items={roles} selected={verification.verifiedRoleId} /></select></div>
@@ -280,40 +285,144 @@ function targetLabel(target: string) {
   <SelectSource name="ob-roles" items={roles.map((r) => ({ id: r.id, name: r.name }))} />
 
   <script is:inline>
-    // The verification card: set it up, post the panel and switch it on or off right away, without the Save button.
+    // The verification card: set it up, post the panel and switch it on or off right away, without the Save button. The bot answers within
+    // a moment; a long one (setting it up edits every channel of the server) comes back running, and the card shows how far it is by
+    // asking verification-status every moment until it ends, then says the result and draws the page again. Leaving the page stops asking;
+    // coming back to it while the setup still runs picks it up again (the job is remembered for this tab).
     (function () {
       var msg = document.getElementById('ob-vf-msg');
       if (!msg) return;
       var guild = location.pathname.split('/')[3];
-      var words = { working: msg.getAttribute('data-working') || '', failed: msg.getAttribute('data-failed') || '' };
+      var progress = document.getElementById('ob-vf-progress');
+      var bar = progress ? progress.querySelector('.ob-vf-bar') : null;
+      var fill = bar ? bar.querySelector('span') : null;
+      var step = progress ? progress.querySelector('.ob-vf-step') : null;
+      var warn = document.getElementById('ob-vf-warn');
+      var toggle = document.querySelector('[data-vf-switch]');
+      var buttons = Array.prototype.slice.call(document.querySelectorAll('[data-vf-action]'));
+      var words = { working: msg.getAttribute('data-working') || '', failed: msg.getAttribute('data-failed') || '', lost: msg.getAttribute('data-lost') || '' };
+      var KEY = 'ob-vf-job:' + guild;
+      var following = null;
+      function remember(id) { try { if (id) sessionStorage.setItem(KEY, id); else sessionStorage.removeItem(KEY); } catch (e) {} }
+      function remembered() { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } }
       function say(text, ok) { msg.hidden = false; msg.textContent = text; msg.className = 'ob-vf-msg ' + (ok ? 'ok' : 'bad'); }
+      function busy(on) {
+        buttons.forEach(function (button) { button.disabled = on || button.hasAttribute('data-vf-off'); button.classList.toggle('ob-busy', on); });
+        if (toggle) toggle.disabled = on;
+      }
+      function stepText(job) {
+        if (!progress) return '';
+        if (job.phase === 'channels' && job.total) return (progress.getAttribute('data-channels') || '').replace('{done}', job.done).replace('{total}', job.total);
+        return progress.getAttribute('data-' + (job.phase === 'roles' || job.phase === 'panel' ? job.phase : 'starting')) || '';
+      }
+      function showJob(job) {
+        if (!progress) return;
+        progress.hidden = false;
+        var percent = Math.max(job.status === 'running' ? 4 : 100, Math.min(100, Number(job.percent) || 0));
+        if (fill) fill.style.width = percent + '%';
+        if (bar) bar.setAttribute('aria-valuenow', String(percent));
+        if (step) step.textContent = job.status === 'running' ? stepText(job) : '';
+        msg.hidden = true;
+      }
+      function status() {
+        return fetch('/dash/guild/' + guild + '/verification-status', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .catch(function () { return { ok: false }; });
+      }
+      function showLink(link) {
+        if (!warn || !link) return;
+        if (link.ok) { warn.hidden = true; return; }
+        var text = warn.getAttribute('data-' + (link.problem || 'missing')) || warn.getAttribute('data-missing') || '';
+        if (link.lettersInstead) text += ' ' + (warn.getAttribute('data-letters') || '');
+        warn.textContent = text; warn.hidden = false;
+      }
+      function finish(job, action) {
+        following = null; remember(null);
+        if (job) showJob(job);
+        busy(false);
+        setTimeout(function () { if (progress && !following) progress.hidden = true; }, 900);
+        say((job && job.message) || (job ? words.failed : words.lost), !!(job && job.ok));
+        if (toggle && action === 'enable' && !(job && job.ok)) toggle.checked = false;
+        // The roles, the channel and the switch changed: the page is read again (only the content, as the menu does).
+        if (job && job.ok && (action === 'setup' || action === 'enable')) setTimeout(function () { if (window.dglRefreshPage) window.dglRefreshPage(true); else location.reload(); }, 900);
+      }
+      function follow(job) {
+        if (!job) return;
+        remember(job.id);
+        showJob(job);
+        busy(true);
+        if (following) return;
+        following = job.id;
+        var misses = 0;
+        var action = job.action;
+        function tick() {
+          // Another page was opened from the menu: this card is gone, stop asking.
+          if (!msg.isConnected) { following = null; return; }
+          status().then(function (data) {
+            if (!msg.isConnected) { following = null; return; }
+            if (data && data.link) showLink(data.link);
+            var current = data && data.job;
+            if (!data || !data.ok) { misses += 1; if (misses > 6) finish(null, action); else setTimeout(tick, 2500); return; }
+            misses = 0;
+            if (!current || (current.id !== following && current.status !== 'running')) { finish(null, action); return; }
+            action = current.action || action;
+            if (current.status === 'running') { showJob(current); setTimeout(tick, 1200); return; }
+            finish(current, action);
+          });
+        }
+        setTimeout(tick, 1000);
+      }
       function call(action, extra) {
         return fetch('/dash/guild/' + guild + '/verification-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action: action }, extra || {})) })
           .then(function (r) { return r.json().catch(function () { return { ok: false, message: words.failed }; }); })
           .catch(function () { return { ok: false, message: words.failed }; });
       }
-      document.querySelectorAll('[data-vf-action]').forEach(function (button) {
+      function answer(result, action) {
+        if (result && result.ok && result.status === 'running' && result.job) { follow(result.job); return; }
+        busy(false);
+        if (toggle && action === 'enable' && !result.ok) toggle.checked = false;
+        if (toggle && action === 'disable' && !result.ok) toggle.checked = true;
+        say(result.message || words.failed, !!result.ok);
+        if (result.ok && (action === 'setup' || action === 'enable')) setTimeout(function () { if (window.dglRefreshPage) window.dglRefreshPage(true); else location.reload(); }, 900);
+      }
+      buttons.forEach(function (button) {
+        if (button.disabled) button.setAttribute('data-vf-off', '');
         button.addEventListener('click', function () {
+          if (following) return;
           var action = button.getAttribute('data-vf-action');
-          button.disabled = true; button.classList.add('ob-busy'); say(words.working, true);
+          busy(true); say(words.working, true);
           var select = document.querySelector('select[name="panel_channel_id"]');
-          call(action, action === 'panel' && select ? { channel_id: select.value } : {}).then(function (result) {
-            button.disabled = false; button.classList.remove('ob-busy');
-            say(result.message || words.failed, !!result.ok);
-            if (result.ok && action === 'setup') setTimeout(function () { location.reload(); }, 1200);
-          });
+          call(action, action === 'panel' && select ? { channel_id: select.value } : {}).then(function (result) { answer(result, action); });
         });
       });
-      var toggle = document.querySelector('[data-vf-switch]');
       if (toggle) toggle.addEventListener('change', function () {
+        if (following) return;
         var on = toggle.checked;
-        toggle.disabled = true; say(words.working, true);
-        call(on ? 'enable' : 'disable').then(function (result) {
-          toggle.disabled = false;
-          if (!result.ok) toggle.checked = !on;
-          say(result.message || words.failed, !!result.ok);
-        });
+        busy(true); say(words.working, true);
+        call(on ? 'enable' : 'disable').then(function (result) { answer(result, on ? 'enable' : 'disable'); });
       });
+      // Once per visit of the card: a setup still running (started before leaving the page) and whether members can get a link.
+      var checked = false;
+      function check() {
+        if (checked) return;
+        checked = true;
+        status().then(function (data) {
+          if (!data || !msg.isConnected) return;
+          showLink(data.link);
+          if (data.job && data.job.status === 'running') follow(data.job);
+          else if (remembered()) {
+            // It ended while the page was not open: its result is said once.
+            var id = remembered();
+            remember(null);
+            if (data.job && data.job.id === id) finish(data.job, data.job.action);
+          }
+        });
+      }
+      var panel = document.querySelector('[data-ob-panel="verification"]');
+      if (remembered()) check();
+      else setTimeout(function () { if (panel && !panel.hidden) check(); }, 0);
+      var tab = document.querySelector('[data-ob-tab="verification"]');
+      if (tab) tab.addEventListener('click', check);
     })();
   </script>
 
@@ -418,6 +527,12 @@ function targetLabel(target: string) {
   .ob-vf-msg.ok { color: var(--green); }
   .ob-vf-msg.bad { color: var(--red); }
   .ob-busy { opacity: .7; cursor: progress; }
+  .ob-vf-progress { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+  .ob-vf-bar { height: 8px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
+  .ob-vf-bar span { display: block; height: 100%; width: 4%; border-radius: inherit; background: var(--accent); transition: width .4s ease; }
+  .ob-vf-step { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .ob-vf-warn { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--yellow); }
+  @media (prefers-reduced-motion: reduce) { .ob-vf-bar span { transition: none; } }
   .ob-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
   .ob-switch input { opacity: 0; width: 0; height: 0; }
   .ob-switch span { position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background 0.15s; cursor: pointer; }
