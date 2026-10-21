@@ -637,3 +637,28 @@ export async function callPettoBoosterRoles(context: AstroContext, guildId: stri
     return { ok: false, message: '' };
   }
 }
+
+export type TicketLiveRoute = 'list' | 'messages' | 'reply' | 'claim' | 'unclaim' | 'add' | 'remove' | 'close';
+
+/**
+ * Live tickets (Tickets → Live tickets): the open tickets, the last messages of one, and what the staff does with it. The two reads are
+ * asked every few seconds while the view is open, so they wait little (a slow answer is skipped and the next one comes soon); the bot
+ * checks the staff of the ticket for every action. A member let in by role sends the grant of the Tickets page.
+ */
+export async function callPettoTicketLive(context: AstroContext, guildId: string, userId: string, route: TicketLiveRoute, body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; data: any }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, status: 503, data: { ok: false, code: 'not_configured' } };
+  const write = route !== 'list' && route !== 'messages';
+  try {
+    const grant = await roleGrant(context, guildId, 'tickets', write);
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/tickets/live/${route}`, {
+      method: 'POST', signal: AbortSignal.timeout(write ? 12_000 : 4_000),
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    });
+    const data: any = await response.json().catch(() => null);
+    return { ok: Boolean(response.ok && data?.ok), status: response.status, data: data ?? { ok: false } };
+  } catch {
+    return { ok: false, status: 504, data: { ok: false, code: 'bot_unavailable' } };
+  }
+}
