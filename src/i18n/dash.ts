@@ -45,3 +45,8 @@ export function makeT(lang: Locale, html = false) {
     return text;
   };
 }
+
+/** The locale for numbers and dates in the dashboard's language ("1,234" in English, "1.234" in Spanish and Portuguese). */
+export function dashLocale(lang: Locale): string {
+  return lang === 'en' ? 'en-US' : lang;
+}
