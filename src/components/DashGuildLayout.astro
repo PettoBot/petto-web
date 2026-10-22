@@ -1402,6 +1402,29 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // scripts with no src are assumed per-instance (e.g. a hydration trigger) and always re-run.
     var executedScriptSrcs = new Set();
     document.querySelectorAll('script[src]').forEach(function (s) { executedScriptSrcs.add(s.src); });
+    var executedInlineModules = new Set();
+    document.querySelectorAll('head script[type="module"]:not([src])').forEach(function (s) { executedInlineModules.add(s.textContent); });
+    // A page's own scripts (the bundled <script> of its components: the counters' live names, the forms builder, the appeals, the bulk
+    // role job...) are in the <head> of its answer, not in the content, so a page opened by the dashboard's navigation never ran them and
+    // those parts stayed dead until a reload. Each one that is not loaded yet is added once, after the new content is in place. A script
+    // is a module: the browser runs a given address once, so the parts shared with the page already open (the dashboard's own code)
+    // never run twice.
+    function runHeadScripts(freshHead) {
+      freshHead.querySelectorAll('script[type="module"]').forEach(function (old) {
+        if (old.src) {
+          var src = new URL(old.getAttribute('src'), location.href).href;
+          if (executedScriptSrcs.has(src)) return;
+          executedScriptSrcs.add(src);
+        } else {
+          if (executedInlineModules.has(old.textContent)) return;
+          executedInlineModules.add(old.textContent);
+        }
+        var script = document.createElement('script');
+        for (var i = 0; i < old.attributes.length; i++) script.setAttribute(old.attributes[i].name, old.attributes[i].value);
+        script.textContent = old.textContent;
+        document.head.appendChild(script);
+      });
+    }
     function executeScripts(container) {
       container.querySelectorAll('script').forEach(function (oldScript) {
         if (oldScript.src) {
@@ -1460,6 +1483,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         keepSymbols(fresh);
         current.replaceWith(fresh);
         executeScripts(fresh);
+        runHeadScripts(doc.head);
         initContent(fresh);
         if (window.PettoLevelingInit) window.PettoLevelingInit(fresh);
         if (window.PettoVoiceLevelingInit) window.PettoVoiceLevelingInit(fresh);
