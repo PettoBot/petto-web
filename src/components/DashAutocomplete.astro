@@ -60,8 +60,41 @@ const words = JSON.stringify({
       var seenVar = {};
       value.vars = value.vars.filter(function (v) { if (seenVar[v.tok]) return false; seenVar[v.tok] = 1; return true; });
       value.commands = json(document.getElementById('dgl-ac-commands'), []).map(function (c) { return { name: c[0], desc: c[1] }; });
+      // What the page did not bring comes from the server's own list (asked once, see loadServerData).
+      if (server) {
+        if (!value.roles.length) value.roles = server.roles;
+        if (!value.channels.length) value.channels = server.channels;
+        server.emojis.forEach(function (e) { if (!seenEmoji[e.id]) { seenEmoji[e.id] = 1; value.emojis.push(e); } });
+      }
       dataCache = { key: content, value: value };
       return value;
+    }
+    // A page that did not bring the roles, channels or emojis of the server (DashAcData) gets them once from /ac-data, when one of its
+    // autocomplete fields gets the focus: one small request per page at most, never one per keystroke.
+    var server = null;
+    var serverLoading = null;
+    function needsServerData() {
+      var data = pageData();
+      return !data.roles.length || !data.channels.length || !data.emojis.length;
+    }
+    function loadServerData() {
+      if (server || serverLoading) return serverLoading;
+      var match = /^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)/.exec(location.pathname);
+      if (!match) return null;
+      serverLoading = fetch('/dash/guild/' + match[1] + '/ac-data', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (res) { return res.ok ? res.json() : { r: [], c: [], e: [] }; })
+        .then(function (d) {
+          server = {
+            roles: (d.r || []).map(function (r) { return { id: r[0], name: r[1], color: r[2] }; }),
+            channels: (d.c || []).map(function (c) { return { id: c[0], name: c[1], type: c[2] }; }),
+            emojis: (d.e || []).map(function (e) { return { id: e[0], name: e[1], animated: !!e[2] }; }),
+          };
+          dataCache.key = null;
+          if (state) refresh(state.field);
+          return server;
+        })
+        .catch(function () { serverLoading = null; return null; });
+      return serverLoading;
     }
     function loadUnicode() {
       if (unicode || unicodeLoading) return unicodeLoading;
@@ -84,7 +117,8 @@ const words = JSON.stringify({
       channels: /(^|[^\w<&#])#([^\s#<>@{}]{0,32})$/,
       vars: /\{([\w.:\-|]{0,40})$/,
       commands: /(^|\s)\/([\w-]{0,32})$/,
-      emojis: /(^|[^\w<:]):([\w~+-]{2,32})$/,
+      // ":dan" and also ":dance:" (the name closed with its colon still offers it, first).
+      emojis: /(^|[^\w<:]):([\w~+-]{2,32}):?$/,
     };
     function detect(field) {
       if (field.selectionStart !== field.selectionEnd) return null;
@@ -96,7 +130,8 @@ const words = JSON.stringify({
         var match = PATTERNS[kinds[i]].exec(before);
         if (!match) continue;
         var query = kinds[i] === 'vars' ? match[1] : match[2];
-        return { kind: kinds[i], query: query, start: offset + before.length - query.length - 1, end: caret };
+        var closed = kinds[i] === 'emojis' && /:$/.test(match[0]) ? 1 : 0;
+        return { kind: kinds[i], query: query, start: offset + before.length - query.length - 1 - closed, end: caret };
       }
       return null;
     }
@@ -257,6 +292,7 @@ const words = JSON.stringify({
     }
     function open(field, found) {
       var data = pageData();
+      if (found.kind !== 'vars' && found.kind !== 'commands' && !server && needsServerData()) loadServerData();
       if (found.kind === 'emojis' && !unicode) loadUnicode().then(function () { if (state && state.field === field && state.kind === 'emojis') refresh(field); });
       var items = itemsFor(found.kind, found.query, data);
       var same = state && state.field === field && state.kind === found.kind && state.start === found.start;
@@ -320,6 +356,10 @@ const words = JSON.stringify({
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') setTimeout(function () { if (state) refresh(state.field); }, 0);
     }, true);
     document.addEventListener('focusin', function (e) {
+      if (isField(e.target) && !server && needsServerData()) {
+        var wants = kindsOf(e.target);
+        if (wants.indexOf('roles') !== -1 || wants.indexOf('channels') !== -1 || wants.indexOf('emojis') !== -1) loadServerData();
+      }
       if (isField(e.target) && !unicode && kindsOf(e.target).indexOf('emojis') !== -1) {
         // The standard emojis are fetched while the person starts typing, so the first ":" already finds them.
         (window.requestIdleCallback || setTimeout)(loadUnicode);
