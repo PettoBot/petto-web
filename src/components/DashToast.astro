@@ -1,0 +1,68 @@
+---
+// One place for the short messages of the dashboard ("Deleted", "Saved", "Could not save"): a stack at the bottom of the screen, inside
+// the phone's 16 px margins, above the bar of unsaved changes and the safe area, that a screen reader announces. Scripts call
+//   window.dglToast(text, { kind: 'ok' | 'error' | 'info', ms })
+// and get back a function that closes it. Each one comes in and goes out with the motion tokens (DashMotion.astro); at most three stay.
+---
+<div class="dgl-toasts" id="dgl-toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+<div class="dgl-toasts-alert" id="dgl-toasts-alert" role="alert" aria-live="assertive"></div>
+
+<script is:inline>
+  (function () {
+    if (window.dglToast) return;
+    var MAX = 3;
+    var ICONS = {
+      ok: '<svg viewBox="0 0 256 256" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M128 24a104 104 0 1 0 104 104A104.11 104.11 0 0 0 128 24Zm45.66 85.66-56 56a8 8 0 0 1-11.32 0l-24-24a8 8 0 0 1 11.32-11.32L112 148.69l50.34-50.35a8 8 0 0 1 11.32 11.32Z"/></svg>',
+      error: '<svg viewBox="0 0 256 256" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M236.8 188.09 149.35 36.22a24.76 24.76 0 0 0-42.7 0L19.2 188.09a23.51 23.51 0 0 0 0 23.72A24.35 24.35 0 0 0 40.55 224h174.9a24.35 24.35 0 0 0 21.33-12.19 23.51 23.51 0 0 0 .02-23.72ZM120 104a8 8 0 0 1 16 0v40a8 8 0 0 1-16 0Zm8 88a12 12 0 1 1 12-12 12 12 0 0 1-12 12Z"/></svg>',
+      info: '<svg viewBox="0 0 256 256" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M128 24a104 104 0 1 0 104 104A104.11 104.11 0 0 0 128 24Zm-4 48a12 12 0 1 1-12 12 12 12 0 0 1 12-12Zm12 112a16 16 0 0 1-16-16v-40a8 8 0 0 1 0-16 16 16 0 0 1 16 16v40a8 8 0 0 1 0 16Z"/></svg>',
+    };
+    function stack() { return document.getElementById('dgl-toasts'); }
+    function close(el) {
+      if (!el || !el.isConnected || el._closing) return;
+      el._closing = true;
+      clearTimeout(el._timer);
+      var done = function () { el.remove(); };
+      if (window.dglMotion) window.dglMotion.leave(el, done); else done();
+    }
+    window.dglToast = function (text, opts) {
+      opts = opts || {};
+      var host = stack();
+      if (!host || !text) return function () {};
+      var kind = opts.kind === 'error' ? 'error' : opts.kind === 'info' ? 'info' : 'ok';
+      // The same message twice in a row is one message (a double click, a script that reports twice).
+      var last = host.lastElementChild;
+      if (last && !last._closing && last.getAttribute('data-text') === text) { clearTimeout(last._timer); last._timer = setTimeout(function () { close(last); }, opts.ms || 3200); return function () { close(last); }; }
+      var el = document.createElement('div');
+      el.className = 'dgl-toast dgl-toast-' + kind;
+      el.setAttribute('data-text', text);
+      el.innerHTML = ICONS[kind];
+      var span = document.createElement('span');
+      span.textContent = text;
+      el.appendChild(span);
+      el.addEventListener('click', function () { close(el); });
+      host.appendChild(el);
+      // Errors are also said at once by the assertive region (they matter more than a "Saved").
+      if (kind === 'error') { var alert = document.getElementById('dgl-toasts-alert'); if (alert) { alert.textContent = ''; setTimeout(function () { alert.textContent = text; }, 30); } }
+      var live = Array.prototype.filter.call(host.children, function (child) { return !child._closing; });
+      while (live.length > MAX) close(live.shift());
+      el._timer = setTimeout(function () { close(el); }, opts.ms || (kind === 'error' ? 6000 : 3200));
+      return function () { close(el); };
+    };
+  })();
+</script>
+
+<style is:global>
+  /* Bottom of the screen, inside the margins, over the safe area; raised above the bar of unsaved changes while it shows. */
+  .dgl-toasts { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 1150; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(440px, calc(100vw - 32px)); transform: translateX(-50%); pointer-events: none; }
+  body:has(.dgl-savebar.show, .dpk-bar.show) .dgl-toasts { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .dgl-toasts-alert { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .dgl-toast { display: flex; align-items: flex-start; gap: 9px; max-width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--border); border-radius: 13px; background: color-mix(in srgb, var(--card) 94%, var(--text) 3%); color: var(--text); font-size: 13px; line-height: 1.4; box-shadow: 0 16px 36px -14px rgba(0, 0, 0, .6); pointer-events: auto; cursor: default; overflow-wrap: anywhere; animation: m-pop-in-up var(--m-base) var(--m-out) both; }
+  .dgl-toast span { min-width: 0; }
+  .dgl-toast svg { flex-shrink: 0; margin-top: 1px; }
+  .dgl-toast-ok svg { color: var(--green); }
+  .dgl-toast-info svg { color: var(--accent); }
+  .dgl-toast-error { border-color: color-mix(in srgb, var(--red) 50%, var(--border)); }
+  .dgl-toast-error svg { color: var(--red); }
+  .dgl-toast.dgl-leave { animation-name: m-pop-out-up !important; }
+  @media (prefers-reduced-motion: reduce) { .dgl-toast { animation: none; } }
+</style>
