@@ -151,7 +151,8 @@ async function write(astro: any, path: string, method: string, body?: unknown): 
 
 /** Reads the fields of the form, or says what is wrong. */
 export function readPartnerForm(form: FormData): { ok: true; value: PartnerValue } | { ok: false; error: 'invalid' | 'name' | 'url' | 'logo' } {
-  const text = (name: string, max: number) => String(form.get(name) ?? '').trim().slice(0, max);
+  // A line break the browser sends as \r\n counts as one character, as in the field.
+  const text = (name: string, max: number) => String(form.get(name) ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
   const kind = text('kind', 20) as PartnerKind;
   if (!(PARTNER_KINDS as readonly string[]).includes(kind)) return { ok: false, error: 'invalid' };
   const name = text('name', 60);

@@ -36,7 +36,9 @@ const whole = (value: FormDataEntryValue | null, min: number, max: number, fallb
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 };
 const snowflake = (value: FormDataEntryValue | null) => { const v = String(value ?? '').trim(); return SNOWFLAKE.test(v) ? v : null; };
-const text = (value: FormDataEntryValue | null, max: number) => String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
+// Line breaks typed in a box are kept as \n: browsers send \r\n, which would count twice against the limits.
+const lines = (value: FormDataEntryValue | null) => String(value ?? '').replace(/\r\n?/g, '\n');
+const text = (value: FormDataEntryValue | null, max: number) => lines(value).replace(/\u0000/g, '').trim().slice(0, max);
 const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/${path}`, { ...init, headers: { ...apiHeaders, ...(init.headers as Record<string, string> | undefined) } });
 const saveConfig = (patch: Record<string, unknown>) => rest('appeal_config?on_conflict=guild_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, ...patch, updated_at: new Date().toISOString() }) });
 
@@ -140,9 +142,9 @@ if (Astro.request.method === 'POST') {
     let sections: unknown = [];
     try { sections = JSON.parse(String(form.get('sections_json') ?? '[]')); } catch { /* an empty form */ }
     const clean = normalizeForm({
-      name: form.get('name'), icon: form.get('icon'), short_description: form.get('short_description'), description: form.get('description'),
+      name: form.get('name'), icon: form.get('icon'), short_description: form.get('short_description'), description: lines(form.get('description')),
       status: form.get('status'), requirement_types: form.getAll('requirement_types'), block_on_reject: form.get('block_on_reject'), generate_invite: form.get('generate_invite') === 'on',
-      messages: { submitted: form.get('msg_submitted'), accepted: form.get('msg_accepted'), rejected: form.get('msg_rejected') }, sections,
+      messages: { submitted: lines(form.get('msg_submitted')), accepted: lines(form.get('msg_accepted')), rejected: lines(form.get('msg_rejected')) }, sections,
     });
     const formId = Number(form.get('form_id'));
     if (Number.isInteger(formId) && formId > 0) {
@@ -179,7 +181,7 @@ if (Astro.request.method === 'POST') {
     message = result.ok ? { kind: 'ok', text: action === 'resolve' ? dt('Answer sent.') : dt('Message sent.') } : { kind: 'err', text: String(result.payload?.message ?? dt('It could not be saved, try again.')) };
   } else if (action === 'claim_send') {
     const asked = cleanSlug(form.get('slug'));
-    const result = await createClaim(Astro, { guildId: id, slug: asked, userId: session.userId, username: session.username, reason: form.get('reason'), serverUrl: form.get('server_url'), extraUrl: form.get('extra_url') });
+    const result = await createClaim(Astro, { guildId: id, slug: asked, userId: session.userId, username: session.username, reason: lines(form.get('reason')), serverUrl: form.get('server_url'), extraUrl: form.get('extra_url') });
     if (!('error' in result)) { redirectTo = '?section=settings&claim=sent'; }
     else {
       const errors = {
