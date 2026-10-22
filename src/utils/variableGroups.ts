@@ -1,4 +1,5 @@
 import { getVariableGroups, peekVariableGroups } from './variableRegistry';
+import { getDashLang } from '../i18n/dash';
 
 type Dt = (key: string, vars?: Record<string, unknown>) => string;
 
@@ -211,8 +212,17 @@ const fallbackGroups = (dt: Dt): VarGroup[] => [
 export async function variableGroupsJson(astro: { locals?: any }, dt: Dt, options: { ask?: boolean } = {}): Promise<string> {
   // `ask: false` never calls the bot: the copy it gave lately, or the built-in list.
   const registry = options.ask === false ? peekVariableGroups() : await getVariableGroups(astro);
+  const fallback = fallbackGroups(dt);
+  const english = getDashLang(astro as any) === 'en';
+  // The bot writes its descriptions in English. One the dashboard cannot translate (its wording is not in the catalog) takes the translated
+  // description the built-in list has for the same variable, so a Spanish or Portuguese menu is not half in English.
+  const known = new Map(fallback.flatMap((group) => group.vars.map((variable) => [variable.tok, variable.desc] as [string, string])));
+  const describe = (tok: string, desc: string) => {
+    const translated = dt(desc);
+    return english || translated !== desc || !known.has(tok) ? translated : (known.get(tok) as string);
+  };
   const groups: VarGroup[] = registry
-    ? registry.map((group) => ({ label: dt(group.label), vars: group.vars.map((variable) => ({ tok: variable.tok, desc: dt(variable.desc) })) }))
-    : fallbackGroups(dt);
+    ? registry.map((group) => ({ label: dt(group.label), vars: group.vars.map((variable) => ({ tok: variable.tok, desc: describe(variable.tok, variable.desc) })) }))
+    : fallback;
   return JSON.stringify(groups.map((g) => ({ l: g.label, v: g.vars.map((v) => [v.tok, v.desc]) }))).replace(/</g, '\\u003c');
 }
