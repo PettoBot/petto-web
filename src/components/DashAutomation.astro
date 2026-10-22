@@ -10,6 +10,8 @@ import ColorPicker from './ColorPicker.astro';
 import EmojiPicker from './EmojiPicker.astro';
 import LiveTextPreview from './LiveTextPreview.astro';
 import DashAcData from './DashAcData.astro';
+import { getAllCommands } from '../utils/commandList';
+import { useTranslations } from '../i18n/ui';
 
 import { getDashLang, makeT } from '../i18n/dash';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../utils/planLimits';
@@ -121,6 +123,33 @@ const sectionColors: Record<string, string> = {
   'reaction-messages': '#f59e0b', 'auto-threads': '#5b8def', 'disabled-commands': '#fe6465', aliases: '#c792ea', timers: '#5eead4', starboard: '#fed53c',
   monkeyboard: '#c98b4a', voicemaster: 'var(--accent)', webhooks: '#a78bfa', 'sticky-roles': '#5eead4', counters: '#2dd4a7',
 };
+// The match modes of an autoresponder, as the select of its form names them, and what each one does (the tooltip of its chip).
+const matchLabel: Record<string, string> = { contains: 'contains', startsWith: dt('starts with'), endsWith: dt('ends with'), exact: 'exact', regex: 'regex' };
+const matchHelp: Record<string, string> = {
+  contains: dt('Replies when the trigger appears anywhere in the message.'),
+  startsWith: dt('Replies when the message starts with the trigger.'),
+  endsWith: dt('Replies when the message ends with the trigger.'),
+  exact: dt('Replies only when the whole message is the trigger.'),
+  regex: dt('Replies when the message matches this regular expression.'),
+};
+// The tiles above the disabled commands: every category of the commands page (static), how many commands it has and how many of them
+// are turned off somewhere in this server (from the rules the page already has).
+const dcCategoryIcons: Record<string, string> = {
+  moderation: 'ph:shield-check-fill', tickets: 'ph:ticket', leveling: 'ph:chart-line-up-fill', giveaways: 'ph:gift-fill', automation: 'ph:robot-fill',
+  community: 'ph:users-three-fill', onboarding: 'ph:hand-waving-fill', logging: 'ph:notebook-fill', info: 'ph:info-fill', setup: 'ph:gear-fill', roleplay: 'ph:heart-fill',
+};
+const dcCategoryOf = new Map<string, string>();
+// With no rule there is nothing to filter: the tiles are only information then.
+const DcTile = disabledCommands.length ? 'button' : 'div';
+const dcCategories = selectedSection !== 'disabled-commands' ? [] : (() => {
+  const all = getAllCommands();
+  for (const c of all) dcCategoryOf.set(c.name.toLowerCase(), c.category);
+  const offNames = new Set(disabledCommands.map((d) => d.command.toLowerCase()));
+  return useTranslations(dashLang).commandsPage.categories.map((cat) => {
+    const names = all.filter((c) => c.category === cat.id).map((c) => c.name.toLowerCase());
+    return { id: cat.id, title: cat.title, icon: dcCategoryIcons[cat.id] ?? 'ph:squares-four-fill', total: names.length, off: names.filter((n) => offNames.has(n)).length };
+  }).filter((c) => c.total > 0);
+})();
 // The sections with message fields get the data of the typed autocomplete.
 const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders', 'sticky-messages', 'auto-threads'].includes(selectedSection);
 ---
@@ -554,28 +583,49 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
     <h2><span class="am-h2-icon" style="--c:#c792ea"><Icon name="ph:robot-fill" width="14" height="14" /></span><Fragment set:html={dth('Autoresponders <span class="am-count">{a}/{b}</span>', { a: (autoResponders.length), b: (responderLimit) })} />{!premiumActive && <span class="am-premium-tag">Premium: {PREMIUM_LIMITS.autoResponders}</span>}</h2>
     {autoResponders.length === 0 && <p class="am-empty"><Icon name="ph:sparkle" width="15" height="15" />{dt('Nothing here yet. Add the first one below.')}</p>}
     <div class="am-list dgl-stagger">
-      {autoResponders.map((a) => (
+      {autoResponders.map((a) => {
+        const kind = a.embedTemplate ? 'template' : a.replyType === 'embed' ? 'embed' : 'text';
+        const embedColor = a.embedColor != null ? `#${a.embedColor.toString(16).padStart(6, '0')}` : 'var(--border)';
+        return (
         <details class="am-ar am-card dgl-rc" data-ar={JSON.stringify({ id: a.arId, trigger: a.trigger, mode: a.matchMode, reply: a.reply, del: a.deleteTrigger, rep: a.replyToTrigger, ping: a.pingUser, type: a.replyType, title: a.embedTitle ?? '', color: a.embedColor != null ? `#${a.embedColor.toString(16).padStart(6, '0')}` : '', footer: a.embedFooter ?? '', template: a.embedTemplate, ch: a.channelIds, ro: a.roleIds })}>
           <summary class="am-card-sum">
             <span class="am-card-head"><span class="am-card-main">
-            <code class="am-row-key">{a.trigger}</code>
-            <span class="am-row-mode">{a.matchMode}</span>
-            {a.deleteTrigger && <span class="am-row-mode" title={dt('Deletes the triggering message')}><Icon name="ph:trash-fill" width="10" height="10" /></span>}
-            {a.replyToTrigger && <span class="am-row-mode" title={dt('Replies directly to the triggering message')}><Icon name="ph:arrow-bend-up-left-fill" width="10" height="10" /></span>}
-            {a.pingUser && <span class="am-row-mode" title={dt('Pings the triggering user')}><Icon name="ph:bell-fill" width="10" height="10" /></span>}
-            {a.channelIds.length > 0 && <span class="am-row-mode">{a.channelIds.length} channel{a.channelIds.length !== 1 ? 's' : ''}</span>}
-            {a.roleIds.length > 0 && <span class="am-row-mode">{a.roleIds.length} role{a.roleIds.length !== 1 ? 's' : ''}</span>}
-            {a.embedTemplate ? (
-              <span class="am-row-mode" title={dt('Uses a saved embed template')}>embed: {a.embedTemplate}</span>
-            ) : (
-              a.replyType === 'embed' && <span class="am-row-mode" title={dt('Sent as an embed')}>embed</span>
-            )}
+            <span class="am-ar-kind"><Icon name={kind === 'text' ? 'ph:chat-circle-text-fill' : 'ph:browser-fill'} width="13" height="13" /></span>
+            <span class="am-card-title">{kind === 'text' ? dt('Text reply') : kind === 'embed' ? dt('Embed reply') : dt('Saved embed')}</span>
             </span><span class="am-card-acts"><span class="am-act" aria-hidden="true"><Icon name="ph:pencil-simple-fill" width="12" height="12" /><span class="am-act-t"><span class="am-t-edit">{dt('Edit')}</span><span class="am-t-close">{dt('Close')}</span></span></span><button type="submit" form={`am-del-ar-${a.arId}`} class="am-act am-act-del" title={dt('Delete this autoresponder')} aria-label={dt('Delete this autoresponder')} data-confirm={dt('Delete this? This cannot be undone.')}><Icon name="ph:trash-fill" width="12" height="12" /></button></span></span>
-            {a.reply && <span class="am-row-val" title={a.reply}>{a.reply}</span>}
+            <span class="am-chat">
+              <span class="am-msg">
+                <span class="am-av am-av-member"><Icon name="ph:user-fill" width="12" height="12" /></span>
+                <span class="am-msg-body"><span class="am-msg-name">{dt('Member')}</span>{a.matchMode === 'regex' ? <code class="am-msg-text am-msg-code" title={a.trigger}>{a.trigger}</code> : <span class="am-msg-text am-msg-trigger" title={a.trigger}>{a.trigger}</span>}</span>
+              </span>
+              <span class="am-msg">
+                <img class="am-av" src="/assets/mascot-icon.webp" alt="" width="22" height="22" loading="lazy" decoding="async" />
+                <span class="am-msg-body"><span class="am-msg-name am-msg-bot">Petto<span class="am-msg-tag">{dt('APP')}</span></span>
+                  {kind === 'text' ? (
+                    a.reply ? <span class="am-msg-text am-msg-clamp" title={a.reply}>{a.reply}</span> : <span class="am-msg-text am-msg-none">{dt('No reply text')}</span>
+                  ) : (
+                    <span class="am-msg-embed" style={`--ec:${embedColor}`}>
+                      {kind === 'template' ? <span class="am-msg-embed-title">{a.embedTemplate}</span> : a.embedTitle && <span class="am-msg-embed-title">{a.embedTitle}</span>}
+                      {a.reply && <span class="am-msg-text am-msg-clamp" title={a.reply}>{a.reply}</span>}
+                      {kind === 'embed' && !a.embedTitle && !a.reply && <span class="am-msg-text am-msg-none">{dt('No reply text')}</span>}
+                    </span>
+                  )}
+                </span>
+              </span>
+            </span>
+            <span class="am-ar-chips">
+              <span class="am-row-mode am-ar-match" title={matchHelp[a.matchMode] ?? ''}>{matchLabel[a.matchMode] ?? a.matchMode}</span>
+              {a.deleteTrigger && <span class="am-row-mode" title={dt('Deletes the triggering message')}><Icon name="ph:trash-fill" width="10" height="10" /></span>}
+              {a.replyToTrigger && <span class="am-row-mode" title={dt('Replies directly to the triggering message')}><Icon name="ph:arrow-bend-up-left-fill" width="10" height="10" /></span>}
+              {a.pingUser && <span class="am-row-mode" title={dt('Pings the triggering user')}><Icon name="ph:bell-fill" width="10" height="10" /></span>}
+              {a.channelIds.length > 0 && <span class="am-row-mode">{a.channelIds.length} channel{a.channelIds.length !== 1 ? 's' : ''}</span>}
+              {a.roleIds.length > 0 && <span class="am-row-mode">{a.roleIds.length} role{a.roleIds.length !== 1 ? 's' : ''}</span>}
+            </span>
           </summary>
           <form method="POST" class="am-ar-delete" id={`am-del-ar-${a.arId}`} data-no-dirty><input type="hidden" name="action" value="delete_responder" /><input type="hidden" name="ar_id" value={a.arId} /></form>
         </details>
-      ))}
+        );
+      })}
     </div>
     {/* The edit form of an autoresponder is the same for every row: it is written once here and put in a row, with that row's values
         (data-ar), the first time the row opens (script below). A server with 75 autoresponders used to send 75 copies of it. */}
@@ -897,10 +947,21 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   {selectedSection === 'disabled-commands' && (
   <div class:list={['am-section', showSection('disabled-commands')]} data-section="disabled-commands">
     <h2><span class="am-h2-icon" style="--c:#fe6465"><Icon name="ph:prohibit-fill" width="14" height="14" /></span><Fragment set:html={dth('Disabled commands <span class="am-count">{a}</span>', { a: (disabledCommands.length) })} /></h2>
-    {disabledCommands.length === 0 && <p class="am-hint">{dt('No commands are disabled: everything works everywhere.')}</p>}
+    <div class="am-dc-cats dgl-stagger" role="group" aria-label={dt('Commands by category')}>
+      {dcCategories.map((c) => (
+        <DcTile {...(disabledCommands.length ? { type: 'button', 'data-dc-cat': c.id, 'aria-pressed': 'false', title: dt('Show only the disabled commands of {a}', { a: c.title }) } : {})} class="am-dc-cat dgl-card">
+          <span class="am-dc-cat-icon"><Icon name={c.icon} width="16" height="16" /></span>
+          <span class="am-dc-cat-name">{c.title}</span>
+          <span class="am-dc-cat-n">{c.total === 1 ? dt('1 command') : dt('{a} commands', { a: c.total })}</span>
+          {c.off > 0 && <span class="am-dc-cat-off">{dt('{a} disabled', { a: c.off })}</span>}
+        </DcTile>
+      ))}
+    </div>
+    {disabledCommands.length === 0 && <p class="am-empty"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('No commands are disabled: everything works everywhere.')}</p>}
+    {disabledCommands.length > 0 && <p class="am-empty" data-dc-none hidden><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('No command of this category is disabled.')}</p>}
     <div class="am-dc-groups">
       {groupRules(disabledCommands).map((group) => (
-        <div class="am-dc-group">
+        <div class="am-dc-group" data-dc-group>
           <div class="am-dc-head">
             <span class="am-dc-place">{group.channelId ? <><Icon name="ph:hash-bold" width="12" height="12" />{channelName(group.channelId)}</> : <><Icon name="ph:globe-hemisphere-west-fill" width="13" height="13" />{dt('The whole server')}</>}</span>
             <span class="am-row-mode">{group.rules.length === 1 ? dt('1 command') : dt('{a} commands', { a: group.rules.length })}</span>
@@ -911,7 +972,7 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
           </div>
           <div class="am-dc-chips">
             {group.rules.map((d) => (
-              <form method="POST" class="am-dc-chip">
+              <form method="POST" class="am-dc-chip" data-dc-chip={dcCategoryOf.get(d.command.toLowerCase()) ?? ''}>
                 <input type="hidden" name="action" value="delete_disabled" /><input type="hidden" name="id" value={d.id} />
                 <code>{prefix}{d.command}</code>
                 <button type="submit" class="am-dc-x" title={dt('Turn {a} back on', { a: `${prefix}${d.command}` })} aria-label={dt('Turn {a} back on', { a: `${prefix}${d.command}` })}><Icon name="ph:x-bold" width="10" height="10" /></button>
@@ -929,6 +990,34 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Disable')}</button>
     </form>
     <p class="am-hint">{dt('Several at once, separated by commas or spaces; an alias is saved as its command. No channel: the whole server. The same as {a} in Discord.', { a: `${prefix}dc suggest,rank #channel` })}</p>
+    <script is:inline>
+      // A category tile shows only the disabled commands of that category (the list is all on the page); the same tile again shows all.
+      if (!window.__amDcCatsBound) {
+        window.__amDcCatsBound = true;
+        document.addEventListener('click', function (e) {
+          var tile = e.target && e.target.closest ? e.target.closest('[data-dc-cat]') : null;
+          if (!tile) return;
+          var section = tile.closest('[data-section="disabled-commands"]');
+          if (!section) return;
+          var on = tile.getAttribute('aria-pressed') !== 'true';
+          var cat = on ? tile.getAttribute('data-dc-cat') : '';
+          section.querySelectorAll('[data-dc-cat]').forEach(function (t) { t.setAttribute('aria-pressed', String(t === tile && on)); });
+          var shown = 0;
+          section.querySelectorAll('[data-dc-group]').forEach(function (group) {
+            var any = false;
+            group.querySelectorAll('[data-dc-chip]').forEach(function (chip) {
+              var match = !cat || chip.getAttribute('data-dc-chip') === cat;
+              chip.hidden = !match;
+              if (match) any = true;
+            });
+            group.hidden = !any;
+            if (any) shown++;
+          });
+          var none = section.querySelector('[data-dc-none]');
+          if (none) none.hidden = shown > 0;
+        });
+      }
+    </script>
   </div>
   )}
   {['reaction-triggers', 'starboard', 'monkeyboard', 'autoresponders', 'voicemaster', 'disabled-commands'].includes(selectedSection) && (
@@ -1092,6 +1181,27 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   .am-row-val { color: var(--text-muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .am-card-line > .am-row-val { flex: 1; }
   .am-row-emojis { font-size: 16px; letter-spacing: 2px; }
+  /* An autoresponder card: what kind of reply it is, a small chat (the member's trigger, then Petto's reply) and its rules as chips. */
+  .am-ar-kind { width: 24px; height: 24px; display: grid; place-items: center; flex: none; border-radius: 8px; color: #c792ea; background: color-mix(in srgb, #c792ea 16%, transparent); }
+  .am-card-main > .am-card-title { flex: 1; min-width: 0; }
+  .am-chat { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border-radius: 12px; background: var(--bg-raise); border: 1px solid var(--border-soft); }
+  .am-msg { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+  .am-av { width: 22px; height: 22px; flex: none; border-radius: 50%; object-fit: cover; }
+  .am-av-member { display: grid; place-items: center; color: var(--text-dim); background: var(--card-hover, var(--card)); border: 1px solid var(--border-soft); box-sizing: border-box; }
+  .am-msg-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .am-msg-name { font-size: 11.5px; font-weight: 600; color: var(--text-muted); line-height: 1.3; }
+  .am-msg-bot { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); }
+  .am-msg-tag { font-size: 9px; font-weight: 600; line-height: 1.4; padding: 0 4px; border-radius: 3px; background: #5865f2; color: #fff; }
+  .am-msg-text { font-size: 12.5px; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+  .am-msg-trigger, .am-msg-code { align-self: flex-start; max-width: 100%; box-sizing: border-box; margin-top: 1px; padding: 4px 10px; border-radius: 4px 12px 12px 12px; background: var(--card); border: 1px solid var(--border-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .am-msg-code { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+  .am-msg-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; white-space: pre-line; }
+  .am-msg-none { color: var(--text-dim); font-style: italic; }
+  .am-msg-embed { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin-top: 2px; padding: 7px 10px; border-radius: 4px 8px 8px 4px; border-left: 3px solid var(--ec); background: var(--card); }
+  .am-msg-embed-title { font-size: 12.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .am-msg-embed .am-msg-clamp { -webkit-line-clamp: 2; line-clamp: 2; color: var(--text-muted); }
+  .am-ar-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .am-ar-match { cursor: help; }
   .am-hint.am-section-intro { margin: 0 0 12px; }
   .am-ar-edit input[name="message"] { width: 100%; max-width: none; }
   .am-add-wide > input[name="message_text"] { width: 100%; }
@@ -1099,6 +1209,26 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   .am-empty :global(svg) { color: var(--accent); flex: none; }
 
   .am-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  /* The category tiles of the disabled commands: an icon square, the name, how many commands and how many are off. */
+  .am-dc-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr)); gap: 10px; margin: 0 0 16px; }
+  .am-dc-cat { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+  div.am-dc-cat { cursor: default; }
+  button.am-dc-cat:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .am-dc-cat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .am-dc-cat[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+  .am-dc-cat-icon { width: 32px; height: 32px; display: grid; place-items: center; margin-bottom: 8px; border-radius: 10px; color: var(--accent); background: var(--accent-soft); }
+  .am-dc-cat-name { font-size: 13.5px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .am-dc-cat-n { font-size: 11.5px; color: var(--text-dim); }
+  .am-dc-cat-off { position: absolute; top: 14px; right: 14px; font-size: 10.5px; font-weight: 600; color: #fe6465; background: color-mix(in srgb, #fe6465 12%, transparent); border: 1px solid color-mix(in srgb, #fe6465 30%, var(--border-soft)); border-radius: 999px; padding: 1px 7px; }
+  .am-dc-chip[hidden], .am-dc-group[hidden], .am-empty[hidden] { display: none; }
+  @media (max-width: 640px) {
+    .am-dc-cats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .am-dc-cat { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; column-gap: 9px; row-gap: 1px; padding: 10px; border-radius: 12px; }
+    .am-dc-cat-icon { grid-row: 1 / span 3; width: 28px; height: 28px; margin: 0; border-radius: 9px; }
+    .am-dc-cat-name { font-size: 12.5px; }
+    .am-dc-cat-n { font-size: 11px; }
+    .am-dc-cat-off { position: static; justify-self: start; margin-top: 3px; font-size: 10px; }
+  }
   .am-dc-groups { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
   .am-dc-group { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; background: var(--bg-raise); }
   .am-dc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
@@ -1163,6 +1293,9 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
     .am-overview-grid, .am-list { grid-template-columns: minmax(0, 1fr); }
     .am-act-t { display: none; }
     .am-act { width: 26px; padding: 0; }
+    .am-section { padding: 16px 14px; }
+    .am-card-sum { padding: 12px 14px; }
+    .am-chat { padding: 10px; }
   }
 </style>
 
