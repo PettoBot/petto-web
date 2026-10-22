@@ -130,7 +130,9 @@ const dt = makeT(getDashLang(Astro));
     function track(form) {
       if (form.dataset.dpkBound || form.hasAttribute('data-no-dirty') || (form.getAttribute('method') || '').toUpperCase() !== 'POST' || form.closest('dialog')) return;
       form.dataset.dpkBound = '1';
-      var own = primarySave(form);
+      // Only a form with something to edit gives its Save to the bar; a form of buttons only (an action) keeps it.
+      var editable = form.querySelector('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea');
+      var own = editable ? primarySave(form) : null;
       if (own) own.classList.add('dpk-bar-own');
       var mark = function (event) {
         if (resetting || leaving || (event.target && event.target.closest && event.target.closest('[data-no-dirty]'))) return;
@@ -144,12 +146,21 @@ const dt = makeT(getDashLang(Astro));
       form.addEventListener('submit', function () { leaving = true; setTimeout(function () { leaving = false; }, 4000); });
     }
     document.querySelectorAll('form').forEach(track);
-    function save() {
-      if (!dirty.length || !bar) return;
+    // Several changed forms: all but the last are sent in the background (as their own Save would send them), then the last one is sent
+    // the normal way, which loads the page again with everything saved.
+    async function save() {
+      if (!dirty.length || !bar || bar.classList.contains('saving')) return;
+      for (var i = 0; i < dirty.length; i++) { if (!dirty[i].checkValidity()) { dirty[i].reportValidity(); return; } }
       var form = dirty[dirty.length - 1];
-      if (!form.checkValidity()) { form.reportValidity(); return; }
       bar.classList.add('saving');
       if (text) text.textContent = text.getAttribute('data-busy');
+      for (var j = 0; j < dirty.length - 1; j++) {
+        var other = dirty[j];
+        var data = new FormData(other);
+        var button = primarySave(other);
+        if (button && button.name) data.append(button.name, button.value);
+        try { await fetch(other.getAttribute('action') || location.href, { method: 'POST', body: data, credentials: 'same-origin', redirect: 'manual' }); } catch (e) { /* The last form still saves; the page shows what is saved. */ }
+      }
       leaving = true;
       var own = primarySave(form);
       if (form.requestSubmit) form.requestSubmit(own || undefined); else form.submit();
