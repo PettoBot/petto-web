@@ -65,7 +65,7 @@ function NodeBody({ node, onChange }: { node: V2Node; onChange: (node: V2Node) =
         <div className="v2e-stack">
           {node.items.map((item, i) => (
             <div key={i} className="ebr-btn-edit">
-              <input type="text" placeholder="https://... or {quest.image}" value={item.media.url} onChange={(ev) => onChange({ ...node, items: node.items.map((x, j) => (j === i ? { ...x, media: { url: ev.target.value } } : x)) })} />
+              <input type="text" placeholder={t('https://... or {quest.image}')} value={item.media.url} onChange={(ev) => onChange({ ...node, items: node.items.map((x, j) => (j === i ? { ...x, media: { url: ev.target.value } } : x)) })} />
               <input type="text" placeholder={t('Description')} maxLength={V2_LIMITS.description} value={item.description ?? ''} onChange={(ev) => onChange({ ...node, items: node.items.map((x, j) => (j === i ? { ...x, description: ev.target.value } : x)) })} />
               <button type="button" className="ebr-del" onClick={() => onChange({ ...node, items: node.items.filter((_, j) => j !== i) })}>×</button>
             </div>
@@ -106,7 +106,7 @@ function NodeBody({ node, onChange }: { node: V2Node; onChange: (node: V2Node) =
               <option value="button">{t('A link button')}</option>
             </select>
           </div>
-          {node.accessory?.type === 11 && <input type="text" placeholder="https://... or {quest.reward_image}" value={node.accessory.media.url} onChange={(ev) => onChange({ ...node, accessory: { type: 11, media: { url: ev.target.value } } })} />}
+          {node.accessory?.type === 11 && <input type="text" placeholder={t('https://... or {quest.reward_image}')} value={node.accessory.media.url} onChange={(ev) => onChange({ ...node, accessory: { type: 11, media: { url: ev.target.value } } })} />}
           {node.accessory?.type === 2 && <ButtonEditor button={node.accessory} onChange={(button) => onChange({ ...node, accessory: button })} />}
           <p className="v2e-note">{t('A section without its picture or button is sent as plain text.')}</p>
         </div>

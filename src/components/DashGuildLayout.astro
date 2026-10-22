@@ -8,6 +8,7 @@ import DashPreviews from './DashPreviews.astro';
 import DashSelectMenu from './DashSelectMenu.astro';
 import DashKeepPlace from './DashKeepPlace.astro';
 import DashMotion from './DashMotion.astro';
+import DashToast from './DashToast.astro';
 import DashAutocomplete from './DashAutocomplete.astro';
 import DashServerSort from './DashServerSort.astro';
 import { useTranslations } from '../i18n/ui';
@@ -18,6 +19,7 @@ import { isPettoOwner } from '../utils/premiumAdmin';
 import { canUseQuests } from '../utils/questAccess';
 import { canUseRollouts } from '../utils/rolloutAccess';
 import { canUseCodeCommands } from '../utils/codeAccess';
+import { canUseTicketAi } from '../utils/ticketAiAccess';
 import { pageDecision, pageOf } from '../utils/dashAccess';
 import { backupsUnderMaintenance } from '../utils/maintenance';
 
@@ -197,6 +199,7 @@ const allGroups: { label: string; icon: string; important?: boolean; items: NavI
       { id: 'tickets-settings', href: `/dash/guild/${guildId}/tickets?section=settings`, icon: 'ph:gear-six-fill', label: dt('Ticket Settings') },
       { id: 'tickets-replies', href: `/dash/guild/${guildId}/tickets?section=replies`, icon: 'ph:chat-circle-text-fill', label: dt('Quick replies') },
       { id: 'tickets-open', href: `/dash/guild/${guildId}/tickets?section=open`, icon: 'ph:broadcast-fill', label: dt('Live tickets'), isNew: true },
+      ...(canUseTicketAi(Astro, user.userId, guildId) ? [{ id: 'ticket-ai', href: `/dash/guild/${guildId}/ai-assistant`, icon: 'ph:robot-fill', label: dt('AI assistant'), isNew: true }] : []),
       { id: 'giveaways', href: `/dash/guild/${guildId}/giveaways?section=settings`, icon: catIcon.giveaways, label: dt('Giveaways') },
       { id: 'giveaways-presets', href: `/dash/guild/${guildId}/giveaways?section=presets`, icon: 'ph:star-fill', label: dt('Giveaway Presets') },
       { id: 'giveaways-active', href: `/dash/guild/${guildId}/giveaways?section=active`, icon: 'ph:timer-fill', label: dt('Running Giveaways') },
@@ -292,6 +295,7 @@ const skeletonOf: Record<string, string> = {
   audit: 'list', cases: 'list', 'active-sanctions': 'list', 'appeals-submissions': 'list', 'forms-submissions': 'list', 'tickets-open': 'list',
   'giveaways-active': 'list', 'vanity-logs': 'list', 'leveling-leaderboard': 'list', 'leveling-leaderboard-voice': 'list', backups: 'list',
   responders: 'cards', autoresponders: 'cards', 'custom-commands': 'cards', timers: 'cards', 'sticky-messages': 'cards', counters: 'cards',
+  'ticket-ai': 'form',
 };
 // The menu is split in a few sections, each with a title, so the long list reads as parts of the server.
 const sectionOf = (label: string) => {
@@ -631,6 +635,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
 
 <DashClientI18n />
 <DashMotion />
+<DashToast />
 <DashAutocomplete />
 <DashPreviews />
 <DashSelectMenu />
@@ -900,12 +905,16 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     }
     // The bar says what is happening: a spinner while it saves, then "Saved" for a moment, and it goes. The page is not reloaded.
     var barTimer = null;
+    // "Saving" never stays for ever: a save that has not answered in 25 s turns into the error state, and the bar can be used again.
+    var stuckTimer = 0;
     function setBarState(state, text) {
       if (!saveBar) return;
       clearTimeout(barTimer);
+      clearTimeout(stuckTimer);
       saveBar.classList.remove('saving', 'saved', 'error');
       if (state) saveBar.classList.add(state, 'show');
       if (text && saveBarText) saveBarText.textContent = text;
+      if (state === 'saving') stuckTimer = setTimeout(function () { if (saveBarBtn) saveBarBtn.disabled = false; setBarState('error', cdt('Something went wrong, try again.')); }, 25000);
     }
     function finishBar(text) {
       setBarState('saved', text);
@@ -1926,8 +1935,11 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           if (confirmMsg && !window.confirm(confirmMsg)) { e.preventDefault(); return; }
           e.preventDefault();
           var btn = submitter && submitter.tagName === 'BUTTON' ? submitter : form.querySelector('button[type="submit"]');
-          var originalText = btn ? btn.textContent : null;
-          if (btn) { btn.disabled = true; btn.textContent = cdt('Saving...'); }
+          // The button says "Saving..." at the width it had (a longer word in Spanish or Portuguese must not push it out of its row), and
+          // gets its own label and icon back if the save fails.
+          var originalHtml = btn ? btn.innerHTML : null;
+          if (btn) { btn.style.minWidth = btn.offsetWidth + 'px'; btn.classList.add('dgl-busy'); btn.disabled = true; btn.textContent = cdt('Saving...'); }
+          var restoreBtn = function () { if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; btn.classList.remove('dgl-busy'); btn.style.minWidth = ''; } };
           // A form the person edited and is saving from the bar is saved without redrawing the page.
           var fromBar = dirtyForms.indexOf(form) !== -1;
           if (saveBarBtn && fromBar) { saveBarBtn.disabled = true; setBarState('saving', cdt('Saving...')); }
@@ -1948,7 +1960,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 syncDirtyFlag();
                 prefetchedPages.clear();
                 savedAt = Date.now();
-                if (btn) { btn.disabled = false; btn.textContent = originalText; }
+                restoreBtn();
                 if (saveBarBtn) saveBarBtn.disabled = false;
                 if (dirtyCount()) { setBarState(null); updateSaveBarText(); }
                 else { document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } })); finishBar(cdt('Saved')); }
@@ -1963,14 +1975,15 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 hideSaveBar();
                 savedAt = Date.now();
                 setBarState(null);
+                announceNotice();
               }
-              if (!ok && btn) { btn.disabled = false; btn.textContent = originalText; }
+              if (!ok) restoreBtn();
               if (saveBarBtn) saveBarBtn.disabled = false;
               if (!ok) setBarState('error', cdt('Something went wrong, try again.'));
               finishProgress();
             })
             .catch(function () {
-              if (btn) { btn.disabled = false; btn.textContent = originalText; }
+              restoreBtn();
               if (saveBarBtn) saveBarBtn.disabled = false;
               setBarState(fromBar ? 'error' : null, cdt('Something went wrong, try again.'));
               finishProgress();
@@ -2641,7 +2654,32 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       }
     }
 
+    // The answer of an action (a delete, an add, a save from the form's own button) says how it went in a notice at the top of the page
+    // ("Deleted.", a warning). The page keeps the person's place, so that notice can be off screen: it is then also shown as a toast.
+    var NOTICE = '[class$="-flash"], [class*="-flash "], [role="alert"]';
+    function announceNotice() {
+      var content = document.getElementById('dgl-content');
+      var notice = content && content.querySelector(NOTICE);
+      if (!notice || !window.dglToast) return;
+      var text = (notice.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      var rect = notice.getBoundingClientRect();
+      var top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dash-sticky')) || 0;
+      if (rect.top >= top && rect.bottom <= window.innerHeight) return;
+      var bad = /(^|[\s_-])(bad|err|error|warn|warning|fail|failed)($|[\s_-])/i.test(notice.getAttribute('class') || '') || notice.getAttribute('role') === 'alert';
+      window.dglToast(text.length > 160 ? text.slice(0, 157) + '…' : text, { kind: bad ? 'error' : 'ok' });
+    }
+    // Notices drawn by the server are announced by screen readers like the toasts (an error at once).
+    function markNotices(root) {
+      root.querySelectorAll('[class$="-flash"], [class*="-flash "]').forEach(function (el) {
+        if (el.hasAttribute('role')) return;
+        var bad = /(^|[\s_-])(bad|err|error|warn|warning|fail|failed)($|[\s_-])/i.test(el.getAttribute('class') || '');
+        el.setAttribute('role', bad ? 'alert' : 'status');
+      });
+    }
+
     function initContent(root) {
+      markNotices(root);
       bindTapTargets(root);
       bindDetails(root);
       window.dglApplyRoleBlocks(root);
@@ -2994,6 +3032,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-sec button, .dgl-sec summary, .dgl-sec .btn { touch-action: manipulation; }
   .dgl-content .btn { transition: transform .14s cubic-bezier(.3, 1, .4, 1), background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .2s ease, opacity .18s ease; }
   .dgl-content .btn:active:not(:disabled) { transform: scale(.97); }
+  /* A button that says "Saving..." keeps its width and cuts a long word instead of growing out of its row. */
+  .dgl-busy { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The notices of the pages ("Saved.", warnings) never leave the content width: long words wrap, the icon keeps its size. */
+  .dgl-content :is([class$="-flash"], [class*="-flash "]) { max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; min-width: 0; scroll-margin-top: calc(var(--dash-sticky, 72px) + 12px); }
+  .dgl-content :is([class$="-flash"], [class*="-flash "]) > * { min-width: 0; }
+  .dgl-content :is([class$="-flash"], [class*="-flash "]) > svg { flex-shrink: 0; }
   /* The page finder (Ctrl+K). */
   .dgl-pal-veil { position: fixed; inset: 0; z-index: 1200; display: flex; justify-content: center; align-items: flex-start; padding: min(14vh, 120px) 16px 16px; background: rgba(10, 8, 6, .55); animation: m-fade-in var(--m-base) var(--m-out) both; }
   .dgl-pal-veil[hidden] { display: none; }
