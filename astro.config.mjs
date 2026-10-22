@@ -48,7 +48,7 @@ export default defineConfig({
           'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-left-bold',
           'caret-right-bold', 'caret-up-down', 'chart-bar', 'chart-bar-fill', 'chart-line-fill',
           'chart-line-up', 'chart-line-up-fill', 'chat-circle-dots-fill', 'chat-circle-text-fill',
-          'chats-circle-fill', 'chats-fill', 'chat-text-fill', 'check-bold', 'check-circle-fill',
+          'chats-circle-fill', 'chats-fill', 'chat-text-fill', 'check-bold', 'arrow-clockwise-bold', 'check-circle-fill',
           'check-fill', 'circle-dashed', 'circle-fill', 'clipboard-text-fill', 'clock-counter-clockwise-fill', 'credit-card-fill',
           'clock-fill', 'code-fill', 'command-fill', 'copy-bold', 'crown-fill', 'cube-fill', 'database-fill',
           'cloud-slash-fill', 'door-fill', 'door-open-fill', 'download-simple-bold', 'envelope-simple-fill', 'eye-fill', 'eye-slash-fill',

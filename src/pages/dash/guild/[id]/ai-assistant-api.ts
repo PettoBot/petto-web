@@ -12,7 +12,11 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const MAX_BODY = 64 * 1024;
 
 export const POST: APIRoute = async (astro) => {
-  const lang = getDashLang(astro);
+  // The page says which language it is shown in: this URL has no language prefix, so the cookie alone could be of another visit.
+  const raw = await astro.request.clone().text().catch(() => '');
+  let said = '';
+  try { said = String(JSON.parse(raw)?.lang ?? ''); } catch { /* not JSON: refused below */ }
+  const lang = ['en', 'es', 'pt-BR'].includes(said) ? (said as 'en' | 'es' | 'pt-BR') : getDashLang(astro);
   const dt = makeT(lang);
   const origin = astro.request.headers.get('origin');
   if (origin && origin !== astro.url.origin) return json({ ok: false, code: 'invalid', message: problemText(dt, 'invalid') }, 403);
@@ -27,7 +31,6 @@ export const POST: APIRoute = async (astro) => {
   const db = ticketAiDb(astro);
   if (!db) return json({ ok: false, code: 'not_configured', message: problemText(dt, 'upstream') }, 503);
 
-  const raw = await astro.request.text().catch(() => '');
   if (raw.length > MAX_BODY) return json({ ok: false, code: 'too_long', message: problemText(dt, 'too_long') }, 413);
   let body: any = null;
   try { body = JSON.parse(raw); } catch { /* refused below */ }
