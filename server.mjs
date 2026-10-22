@@ -44,7 +44,7 @@ const withStaticCache = (listener) => (req, res) => {
   res.setHeader = (name, value) => {
     if (String(name).toLowerCase() === 'cache-control' && value === 'public, max-age=0') {
       const path = (req.url ?? '/').split('?')[0];
-      value = path === '/version.json' ? 'no-store' : path.startsWith('/_astro/') ? HASHED_FILE_CACHE : MEDIA_FILE.test(path) ? STATIC_FILE_CACHE : STATIC_PAGE_CACHE;
+      value = path === '/version.json' ? 'no-store' : path === '/sw.js' ? 'no-cache' : path.startsWith('/_astro/') ? HASHED_FILE_CACHE : MEDIA_FILE.test(path) ? STATIC_FILE_CACHE : STATIC_PAGE_CACHE;
     }
     return setHeader(name, value);
   };
