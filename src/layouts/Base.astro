@@ -366,7 +366,11 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     @media (max-width: 760px) { .sk-editor { grid-template-columns: minmax(0, 1fr); } }
     /* A dashboard section that is being fetched: the old one steps aside for the placeholders (see DashGuildLayout). */
     .dgl-content.is-loading > :not(.dgl-sk) { display: none !important; }
-    .dgl-content { scroll-margin-top: 84px; }
+    /* --dash-sticky is the real height of what stays on top of a dashboard page (the site header, and on a phone the bar with the menu
+       button), measured by the script at the end of the body: anything the browser scrolls to (an anchor, a focused field) lands under it. */
+    html:has(body.dashboard-motion) { scroll-padding-top: calc(var(--dash-sticky, 72px) + 8px); }
+    .dgl-content { scroll-margin-top: calc(var(--dash-sticky, 72px) + 8px); }
+    body.dashboard-motion .dgl-content.dgl-quiet > * { animation: none !important; }
     /* Dashboard feel: fields that answer when you touch them, menus that follow the theme, sections that come in instead of popping. */
     body.dashboard-motion { color-scheme: dark; }
     :root[data-theme="light"] body.dashboard-motion { color-scheme: light; }
@@ -1267,5 +1271,50 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
   });
 </script>
 <DashSelectMenu />
+  {active === 'dash' && (
+    <script is:inline>
+      // The height of the sticky top of a dashboard page (--dash-sticky, see scroll-padding-top above), measured, not guessed: the site
+      // header plus, on a phone inside a server, the bar with the menu button. And a page opened fresh (a link, an address typed) starts
+      // at its top, whatever scrolled it while it loaded; a reload or the back button keep the browser's own restored place.
+      (function () {
+        var root = document.documentElement;
+        function measure() {
+          var off = 0;
+          var header = document.querySelector('header.nav');
+          if (header) {
+            var cs = getComputedStyle(header);
+            if (cs.position === 'sticky' || cs.position === 'fixed') off += header.getBoundingClientRect().height + (parseFloat(cs.top) || 0);
+          }
+          var bar = document.querySelector('.dgl-menu-bar');
+          if (bar && bar.offsetHeight && getComputedStyle(bar).position === 'sticky') off += bar.offsetHeight;
+          root.style.setProperty('--dash-sticky', Math.round(off) + 'px');
+        }
+        measure();
+        window.addEventListener('resize', measure, { passive: true });
+        // The language links say which page to come back to as the page was first drawn; after moving to other sections without a reload
+        // (the address changed) they come back to where the person is now, with its tab, filters and anchor.
+        document.addEventListener('click', function (event) {
+          var link = event.target && event.target.closest ? event.target.closest('a[href*="/dash/lang?"]') : null;
+          if (!link) return;
+          try {
+            var url = new URL(link.getAttribute('href'), location.href);
+            url.searchParams.set('next', location.pathname + location.search + location.hash);
+            link.setAttribute('href', url.pathname + url.search);
+          } catch (e) { /* the link keeps the page it had */ }
+        }, true);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+        try {
+          var entry = performance.getEntriesByType('navigation')[0];
+          if (entry && entry.type === 'navigate' && !location.hash) {
+            var touched = false;
+            ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(function (name) { window.addEventListener(name, function () { touched = true; }, { once: true, passive: true }); });
+            var top = function () { if (!touched && window.scrollY > 0) window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); };
+            window.addEventListener('load', top);
+            requestAnimationFrame(top);
+          }
+        } catch (e) { /* an old browser keeps its own behaviour */ }
+      })();
+    </script>
+  )}
 </body>
 </html>

@@ -1,5 +1,5 @@
 import { canManageGuild, getBotIdentity } from './discord';
-import { getCachedBotGuildIds, getCachedUserGuilds } from './discordCache';
+import { getBotGuildList, getCachedBotGuildIds, getCachedUserGuilds } from './discordCache';
 import { getEnv } from './env';
 import { getPremiumGuildIds } from './premium';
 import { getRoleAccess, type RoleAccess } from './dashAccess';
@@ -13,6 +13,8 @@ export interface DashLayoutData {
   /** The servers of the switcher (managed by the visitor, with Petto in them). */
   switchable: string[];
   premiumGuildIds: Set<string>;
+  /** Members of the bot's servers, from the bot's saved copies (the same list the bot's server ids come from), for the switcher. */
+  memberCounts: Map<string, number | null>;
   isManager: boolean;
   roleAccess: RoleAccess | null;
 }
@@ -27,11 +29,14 @@ export function loadDashLayoutData(astro: any, guildId: string, user: { userId?:
   return memoPerRequest(request, `dash-layout:${guildId}`, async () => {
     const started = performance.now();
     const botToken = getEnv(astro, 'DISCORD_TOKEN');
-    const [discordGuilds, botGuildIds, botIdentity] = await Promise.all([
+    const [discordGuilds, botGuildIds, botIdentity, botGuildList] = await Promise.all([
       user.accessToken ? getCachedUserGuilds(user.accessToken, request).catch(() => null) : Promise.resolve(null),
       user.accessToken && botToken ? getCachedBotGuildIds(botToken, request).catch(() => null) : Promise.resolve(null),
       botToken ? getBotIdentity(guildId, botToken, request).catch(() => null) : Promise.resolve(null),
+      // Kept in the shared cache (and read from the same saved copies as the ids above), so this is not a request per page.
+      user.accessToken && botToken ? getBotGuildList(botToken).catch(() => []) : Promise.resolve([]),
     ]);
+    const memberCounts = new Map(botGuildList.map((guild) => [guild.id, guild.memberCount] as [string, number | null]));
     const switchable = discordGuilds && botGuildIds ? discordGuilds.filter(canManageGuild).filter((g: any) => botGuildIds.has(g.id)).map((g: any) => g.id as string) : [];
     const guildEntry = discordGuilds?.find((g: any) => g.id === guildId);
     const isManager = Boolean(guildEntry && canManageGuild(guildEntry));
@@ -40,6 +45,6 @@ export function loadDashLayoutData(astro: any, guildId: string, user: { userId?:
       guildEntry && !isManager && user.userId ? getRoleAccess(astro, guildId, user.userId).catch(() => null) : Promise.resolve(null),
     ]);
     markTiming('layout', started);
-    return { discordGuilds, botGuildIds, botIdentity, switchable, premiumGuildIds, isManager, roleAccess };
+    return { discordGuilds, botGuildIds, botIdentity, switchable, premiumGuildIds, memberCounts, isManager, roleAccess };
   });
 }

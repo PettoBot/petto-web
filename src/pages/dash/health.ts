@@ -93,6 +93,9 @@ export const GET: APIRoute = async (astro) => {
 
 const WORDS: Record<string, Record<string, string>> = {
   es: {
+    'Build': 'Versión publicada', 'This server was built at': 'Este servidor se compiló el', 'Page': 'Página', 'Built at': 'Compilada el', 'State': 'Estado',
+    'Current': 'Al día', 'Old copy': 'Copia vieja', 'Checking…': 'Comprobando…', 'Could not read': 'No se pudo leer',
+    'What a visitor gets from each static page right now (including the copy Cloudflare keeps). An old copy refreshes itself in the visitor\'s browser once it sees the new build.': 'Lo que recibe ahora un visitante de cada página estática (también la copia que guarda Cloudflare). Una copia vieja se actualiza sola en el navegador del visitante en cuanto ve la nueva versión.',
     'Live updates': 'Cambios en vivo', 'Live stream (SSE)': 'Conexión en vivo (SSE)', 'Polling': 'Consultando cada pocos segundos', 'Your open pages': 'Tus páginas abiertas',
     'None of your pages is open on a server right now.': 'Ahora no tienes ninguna página de un servidor abierta.', 'Mode': 'Modo', 'Why': 'Por qué', 'Browser': 'Navegador', 'Server': 'Servidor', 'Last seen': 'Visto hace',
     'stream': 'en vivo', 'polling': 'consultando', 'silent': 'el proxy retiene la conexión', 'error': 'la conexión falló', 'unsupported': 'el navegador no la admite',
@@ -104,6 +107,9 @@ const WORDS: Record<string, Record<string, string>> = {
     'Checks': 'Comprobaciones', 'Everything as JSON': 'Todo en JSON', 'auth: session and access check · db: tables · discord: Discord API · bot: bot API · layout: menu data · render: until the page starts': 'auth: sesión y acceso · db: tablas · discord: API de Discord · bot: API del bot · layout: datos del menú · render: hasta que empieza la página',
   },
   'pt-BR': {
+    'Build': 'Versão publicada', 'This server was built at': 'Este servidor foi compilado em', 'Page': 'Página', 'Built at': 'Compilada em', 'State': 'Estado',
+    'Current': 'Em dia', 'Old copy': 'Cópia antiga', 'Checking…': 'Verificando…', 'Could not read': 'Não foi possível ler',
+    'What a visitor gets from each static page right now (including the copy Cloudflare keeps). An old copy refreshes itself in the visitor\'s browser once it sees the new build.': 'O que um visitante recebe agora de cada página estática (inclusive a cópia que o Cloudflare guarda). Uma cópia antiga se atualiza sozinha no navegador do visitante assim que vê a nova versão.',
     'Live updates': 'Mudanças ao vivo', 'Live stream (SSE)': 'Conexão ao vivo (SSE)', 'Polling': 'Consultando a cada poucos segundos', 'Your open pages': 'Suas páginas abertas',
     'None of your pages is open on a server right now.': 'Nenhuma página sua de um servidor está aberta agora.', 'Mode': 'Modo', 'Why': 'Por quê', 'Browser': 'Navegador', 'Server': 'Servidor', 'Last seen': 'Visto há',
     'stream': 'ao vivo', 'polling': 'consultando', 'silent': 'o proxy segura a conexão', 'error': 'a conexão falhou', 'unsupported': 'o navegador não suporta',
@@ -117,6 +123,10 @@ const WORDS: Record<string, Record<string, string>> = {
 };
 
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+
+// The pages whose build is compared with the server's on the health page: /version.json (what the static pages compare themselves with),
+// and the static pages people open the most, in every language.
+const BUILD_PAGES = ['/version.json', '/', '/premium', '/es/premium', '/pt-br/premium', '/commands'];
 
 function healthPage(report: Record<string, unknown>, latency: LatencyReport, lang: string, mine: LiveClient[]): string {
   const t = (text: string, values: Record<string, unknown> = {}) => (WORDS[lang]?.[text] ?? text).replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
@@ -174,9 +184,18 @@ th:first-child,td.path{text-align:left;max-width:52vw;overflow:hidden;text-overf
 pre{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;overflow-x:auto;font-size:12px}
 a{color:var(--accent)}
 tr:last-child td{border-bottom:0}
+td.ok{color:#4d8f2b;font-weight:600}td.bad{color:#c23c3d;font-weight:600}@media (prefers-color-scheme:dark){td.ok{color:#a5ea7a}td.bad{color:#fe6465}}
 </style></head><body>
 <h1>${t('Dashboard health')}</h1>
 <p class="muted small">${escape((report.build as any)?.version ? `v${(report.build as any).version}` : '')} · <a href="?format=json">${t('Everything as JSON')}</a></p>
+<h2>${t('Build')}</h2>
+<p class="muted small">${t('This server was built at')} <b data-build-server>${escape(buildInfo.builtAt.replace('T', ' ').slice(0, 19))} UTC</b>${buildInfo.commit ? ` · ${escape(buildInfo.commit)}` : ''}</p>
+<p class="muted small">${t('What a visitor gets from each static page right now (including the copy Cloudflare keeps). An old copy refreshes itself in the visitor\'s browser once it sees the new build.')}</p>
+<div class="scroll"><table><tr><th>${t('Page')}</th><th>${t('Built at')}</th><th>${t('State')}</th></tr>${BUILD_PAGES.map((path) => `<tr data-build-page="${path}"><td class="path">${path}</td><td>…</td><td class="muted">${t('Checking…')}</td></tr>`).join('')}</table></div>
+<script>(function(){var server=${JSON.stringify(buildInfo.builtAt)};var w=${JSON.stringify({ ok: t('Current'), old: t('Old copy'), fail: t('Could not read') })};
+document.querySelectorAll('[data-build-page]').forEach(function(row){var path=row.getAttribute('data-build-page');var cells=row.querySelectorAll('td');
+var read=path==='/version.json'?fetch(path,{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){return j.builtAt}):fetch(path,{cache:'no-store',credentials:'omit'}).then(function(r){return r.text()}).then(function(h){var m=/pageVersion\\s*=\\s*"([^"]+)"/.exec(h);return m?m[1]:null});
+read.then(function(at){if(!at)throw 0;cells[1].textContent=at.replace('T',' ').slice(0,19)+' UTC';var ok=at===server;cells[2].textContent=ok?w.ok:w.old;cells[2].className=ok?'ok':'bad';}).catch(function(){cells[2].textContent=w.fail;cells[2].className='bad';});});})();</script>
 <h2>${t('Live updates')}</h2>
 ${liveBody}
 <h2>${t('Latency')}</h2>

@@ -8,6 +8,7 @@ import DashPreviews from './DashPreviews.astro';
 import DashSelectMenu from './DashSelectMenu.astro';
 import DashMotion from './DashMotion.astro';
 import DashAutocomplete from './DashAutocomplete.astro';
+import DashServerSort from './DashServerSort.astro';
 import { useTranslations } from '../i18n/ui';
 import { canManageGuild, guildIconUrl } from '../utils/discord';
 import { loadDashLayoutData } from '../utils/dashLayoutData';
@@ -19,7 +20,7 @@ import { canUseCodeCommands } from '../utils/codeAccess';
 import { pageDecision, pageOf } from '../utils/dashAccess';
 import { backupsUnderMaintenance } from '../utils/maintenance';
 
-import { getDashLang, makeT } from '../i18n/dash';
+import { dashLocale, getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 interface Props {
@@ -36,7 +37,7 @@ const { guildId, guildName, guildIcon, user, active, pageTitle: rawPageTitle, pr
 const cssString = (value: string) => `"${(value.length > 26 ? `${value.slice(0, 25).trimEnd()}…` : value).replace(/[\\"]/g, '\\$&').replace(/[\r\n]/g, ' ')}"`;
 const pageTitle = dt(rawPageTitle);
 // The visitor's servers, the bot's servers and look, Premium and role access: read together, and started by the session check.
-const { discordGuilds, botGuildIds: activeBotGuildIds, botIdentity, premiumGuildIds, isManager, roleAccess } = await loadDashLayoutData(Astro, guildId, user);
+const { discordGuilds, botGuildIds: activeBotGuildIds, botIdentity, premiumGuildIds, memberCounts, isManager, roleAccess } = await loadDashLayoutData(Astro, guildId, user);
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId);
@@ -46,7 +47,7 @@ const roleBlockLabels = JSON.stringify({ everyone: dt('everyone'), managed: dt('
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
 // different server doesn't need a round trip through /dash/manage every time.
-interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean }
+interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean; members: number | null }
 let switcherGuilds: SwitcherGuild[] = [];
 let devView = false;
 if (discordGuilds) {
@@ -55,8 +56,9 @@ if (discordGuilds) {
   if (manageable.length > 0 && activeBotGuildIds) {
     switcherGuilds = manageable
       .filter((g: any) => activeBotGuildIds.has(g.id))
-      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id) }))
-      .sort((a: SwitcherGuild, b: SwitcherGuild) => a.name.localeCompare(b.name));
+      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id), members: memberCounts.get(g.id) ?? null }))
+      // The biggest first (the order of the server list); an unknown count goes last.
+      .sort((a: SwitcherGuild, b: SwitcherGuild) => (b.members ?? -1) - (a.members ?? -1) || a.name.localeCompare(b.name));
   }
 }
 
@@ -368,12 +370,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 <Icon name="ph:caret-up-down" width="13" height="13" />
               </button>
               <div class="dgl-switcher-panel" id="dgl-switcher-panel" hidden>
+                {switcherGuilds.length > 1 && <div class="dgl-switcher-sort"><DashServerSort targets="#dgl-switcher-list" compact /></div>}
                 {switcherGuilds.length > 0 && (
-                  <div class="dgl-switcher-list">
+                  <div class="dgl-switcher-list" id="dgl-switcher-list">
                     {switcherGuilds.map((g) => (
-                      <a href={`/dash/guild/${g.id}/overview`} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
+                      <a href={`/dash/guild/${g.id}/overview`} data-name={g.name.toLowerCase()} data-members={g.members != null ? String(g.members) : ''} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
                         {g.icon ? <img src={g.icon} alt="" /> : <div class="dgl-switcher-item-fallback"><Icon name="ph:buildings-fill" width="14" height="14" /></div>}
-                        <span>{g.name}</span>
+                        <span class="dgl-switcher-item-text"><span class="dgl-switcher-item-name">{g.name}</span>{g.members != null && <small>{dt('{n} members', { n: g.members.toLocaleString(dashLocale(dashLang)) })}</small>}</span>
                         {g.premium && <span class="dgl-switcher-premium"><InlineIcon name="ph:crown-fill" width="11" height="11" />Premium</span>}
                         {g.id === guildId && <Icon name="ph:check-fill" width="13" height="13" />}
                       </a>
@@ -1294,6 +1297,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       content.classList.add('is-loading');
       content.setAttribute('aria-busy', 'true');
       content.appendChild(sk);
+      // The placeholders (with the coming page's title) are shown where the page will start: at the top.
+      content.scrollTop = 0;
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
     function hideContentSkeleton() {
       clearTimeout(skeletonTimer);
@@ -1396,6 +1402,29 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // scripts with no src are assumed per-instance (e.g. a hydration trigger) and always re-run.
     var executedScriptSrcs = new Set();
     document.querySelectorAll('script[src]').forEach(function (s) { executedScriptSrcs.add(s.src); });
+    var executedInlineModules = new Set();
+    document.querySelectorAll('head script[type="module"]:not([src])').forEach(function (s) { executedInlineModules.add(s.textContent); });
+    // A page's own scripts (the bundled <script> of its components: the counters' live names, the forms builder, the appeals, the bulk
+    // role job...) are in the <head> of its answer, not in the content, so a page opened by the dashboard's navigation never ran them and
+    // those parts stayed dead until a reload. Each one that is not loaded yet is added once, after the new content is in place. A script
+    // is a module: the browser runs a given address once, so the parts shared with the page already open (the dashboard's own code)
+    // never run twice.
+    function runHeadScripts(freshHead) {
+      freshHead.querySelectorAll('script[type="module"]').forEach(function (old) {
+        if (old.src) {
+          var src = new URL(old.getAttribute('src'), location.href).href;
+          if (executedScriptSrcs.has(src)) return;
+          executedScriptSrcs.add(src);
+        } else {
+          if (executedInlineModules.has(old.textContent)) return;
+          executedInlineModules.add(old.textContent);
+        }
+        var script = document.createElement('script');
+        for (var i = 0; i < old.attributes.length; i++) script.setAttribute(old.attributes[i].name, old.attributes[i].value);
+        script.textContent = old.textContent;
+        document.head.appendChild(script);
+      });
+    }
     function executeScripts(container) {
       container.querySelectorAll('script').forEach(function (oldScript) {
         if (oldScript.src) {
@@ -1448,19 +1477,25 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         // never sees this node since it didn't exist yet, so without this it would replace
         // visible content with a permanently invisible one on every save/nav.
         fresh.classList.add('in');
+        // A background refresh redraws the same page in place: its blocks do not play their entrance again (they would jump).
+        if (keepScroll) fresh.classList.add('dgl-quiet');
         keepSymbols(current);
         keepSymbols(fresh);
         current.replaceWith(fresh);
         executeScripts(fresh);
+        runHeadScripts(doc.head);
         initContent(fresh);
         if (window.PettoLevelingInit) window.PettoLevelingInit(fresh);
         if (window.PettoVoiceLevelingInit) window.PettoVoiceLevelingInit(fresh);
         if (window.PettoRankPreviewInit) window.PettoRankPreviewInit(fresh);
         if (pushUrl) window.history.pushState({ dglAjax: true }, '', pushUrl);
         drawnHtml = { href: window.location.pathname + window.location.search, body: comparable(html) };
-        // The sticky top bar covers the first 80px of the page, so the new section is placed below it (scroll-margin-top in
-        // Base.astro). Moving to another section starts at its top; a save keeps the place the person was at.
-        if (!keepScroll) fresh.scrollIntoView({ block: pushUrl ? 'start' : 'nearest' });
+        // Moving to another section starts at the very top of the page, so its title shows under the sticky header (and, on a phone,
+        // under the bar with the menu button): scrolling the content box "into view" placed it under those bars. A save keeps the
+        // place the person was at, and only brings the section back if it is entirely off screen. `instant`: the page's smooth
+        // scrolling must not animate these jumps.
+        if (pushUrl) { fresh.scrollTop = 0; window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }
+        else if (!keepScroll && fresh.getBoundingClientRect().bottom < 0) fresh.scrollIntoView({ block: 'start', behavior: 'instant' });
         return true;
       });
     }
@@ -1636,7 +1671,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           var inner = before ? before.scrollTop : 0;
           return swapContent(answer.html, null, true).then(function (ok) {
             if (!ok) return;
-            window.scrollTo(0, y);
+            window.scrollTo({ top: y, left: 0, behavior: 'instant' });
             var after = document.getElementById('dgl-content');
             if (after && inner) after.scrollTop = inner;
             setShownVersion(answer.version || wanted);
@@ -2528,7 +2563,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (roleBlockInfo) { applyRoleBlocks(scope, roleBlockInfo); return; }
       if (roleBlockAsked || !scope.querySelector('[data-give-role]')) return;
       roleBlockAsked = true;
-      var match = window.location.pathname.match(/^\/dash\/guild\/(\d+)\//);
+      var match = window.location.pathname.match(/^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//);
       if (!match) return;
       var labels = {};
       try { labels = JSON.parse((document.getElementById('dgl-role-labels') || {}).textContent || '{}'); } catch (e) { labels = {}; }
@@ -2705,7 +2740,10 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-switcher-item.current { color: var(--accent); background: var(--accent-soft); }
   .dgl-switcher-item img, .dgl-switcher-item-fallback { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
   .dgl-switcher-item-fallback { display: flex; align-items: center; justify-content: center; background: var(--bg-raise); color: var(--text-dim); }
-  .dgl-switcher-item > span:not(.dgl-switcher-premium) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .dgl-switcher-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item-text small { font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .dgl-switcher-sort { display: flex; justify-content: flex-end; padding: 2px 2px 6px; }
   .dgl-switcher-item .dgl-switcher-premium { font-size: 8px; padding: 3px 5px; }
   .dgl-switcher-item :global(svg:last-child) { flex-shrink: 0; color: var(--accent); }
   .dgl-resync { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 20px); margin: 8px 10px 2px; padding: 7px 12px; border-radius: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted, var(--text)); font: inherit; font-size: .82rem; cursor: pointer; touch-action: manipulation; transition: color .15s ease, border-color .15s ease, background .15s ease; }
@@ -2812,6 +2850,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     scrollbar-width: none;
   }
   .dgl-content::-webkit-scrollbar { display: none; }
+  /* A field or card reached with Tab never lands on the very edge of the content box, with half its focus ring cut. */
+  .dgl-content { scroll-padding-block: 14px; }
 
   @media (max-width: 880px) {
     .dgl-sec { padding: 16px 0 32px; }

@@ -4347,4 +4347,6 @@ export const dashPt: Record<string, string> = {
   "See Premium plans": "Ver planos Premium",
   "Add Petto": "Adicionar Petto",
   "Nothing here yet. Add the first one above.": "Ainda não tem nada aqui. Adicione o primeiro acima.",
+  "Sort servers": "Ordenar servidores",
+  "Other servers": "Outros servidores",
 };

@@ -231,3 +231,20 @@ export async function movePartner(astro: any, id: number, direction: 'up' | 'dow
 export async function resetPartners(astro: any): Promise<PartnerResult> {
   return (await write(astro, 'site_partners?id=gt.0', 'DELETE')) ? { ok: true } : { ok: false, error: 'database' };
 }
+
+/**
+ * What a partner's icon is drawn from (PartnerIcon.astro): Petto's own drawing for the partners that have one, else the logo link with the
+ * website's favicon as its fallback, else the favicon alone, else the first letter of the name.
+ */
+export function partnerIcon(partner: Pick<PartnerRow, 'name' | 'url' | 'logo_url' | 'icon'>):
+  | { kind: 'discloud' | 'omniplex'; letter: string }
+  | { kind: 'image'; src: string; fallback: string; letter: string }
+  | { kind: 'letter'; letter: string } {
+  const letter = (partner.name.trim().slice(0, 1) || '?').toUpperCase();
+  if (partner.icon === 'discloud' || partner.icon === 'omniplex') return { kind: partner.icon, letter };
+  const favicon = faviconUrl(partner.url);
+  const logo = partner.logo_url?.trim() || null;
+  if (logo) return { kind: 'image', src: logo, fallback: favicon && favicon !== logo ? favicon : '', letter };
+  if (favicon) return { kind: 'image', src: favicon, fallback: '', letter };
+  return { kind: 'letter', letter };
+}
