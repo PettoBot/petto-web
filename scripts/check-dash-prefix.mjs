@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // Checks the rules of the dashboard's language prefix (src/utils/dashPrefix.mjs): which requests are sent to /es/dash or /pt-br/dash and
 // which are answered where they are. Run: node scripts/check-dash-prefix.mjs
 import { dashLangRedirect, withDashPrefix } from '../src/utils/dashPrefix.mjs';
@@ -39,4 +40,11 @@ for (const [path, lang, expected] of prefixCases) {
   if (got !== expected) { failed += 1; console.log(`FAIL withDashPrefix(${path}, ${lang}): expected ${expected}, got ${got}`); }
 }
 console.log(`${cases.length + prefixCases.length} prefix rules checked, ${failed} failed`);
+// The rewrite of /es/dash to /dash runs the middleware again: that inner request must never be redirected back (a loop).
+const middleware = readFileSync(new URL('../src/middleware.ts', import.meta.url), 'utf8');
+if (!/\(locals as Record<string, unknown>\)\.dashLang \? null : dashLangRedirect\(/.test(middleware)) {
+  console.error('FAILED: the language redirect in src/middleware.ts must be skipped when locals.dashLang is already set (redirect loop on /es/dash).');
+  process.exit(1);
+}
+console.log('redirect loop guard present');
 process.exit(failed ? 1 : 0);

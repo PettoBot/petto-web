@@ -161,7 +161,9 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
   }
   // A dashboard address without prefix whose page would be shown in Spanish or Portuguese (the saved choice, or the browser's language)
   // goes to the prefixed address, so the address always says the language on screen (a link from Discord, a bookmark, the login).
-  const to = dashLangRedirect({ method: request.method, pathname: url.pathname, search: url.search, headers: request.headers, lang: getDashLang({ cookies, request }) });
+  // Not while a prefixed address is being answered: /es/dash is rewritten to /dash and this runs again for that inner request, which would
+  // send it back to /es/dash for ever (the language is already set on `locals` by then).
+  const to = (locals as Record<string, unknown>).dashLang ? null : dashLangRedirect({ method: request.method, pathname: url.pathname, search: url.search, headers: request.headers, lang: getDashLang({ cookies, request }) });
   if (to) return new Response(null, { status: 303, headers: { location: to, 'cache-control': 'no-store', vary: 'Cookie, Accept-Language' } });
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
