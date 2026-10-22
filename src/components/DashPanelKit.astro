@@ -1,0 +1,202 @@
+---
+// The dashboard pages outside a server (the server picker, Premium, the staff panels, history, imports) get the same feel as a server's
+// pages: the motion tokens, the soft select menus, a top progress bar and page-shaped placeholders while the next page loads, and the bar of
+// unsaved changes for their forms. Base.astro adds this to every `active="dash"` page that is not the server app shell (DashGuildLayout
+// has its own, richer version). These pages load as whole pages (no AJAX), so the bar saves a form with a normal submit.
+//
+// A link can say which placeholder fits the page it opens with data-sk="list" | "grid" | "form" | "cards" (default "list").
+// A form that acts at once (add, delete, send) carries data-no-dirty, like in the server pages.
+import { getDashLang, makeT } from '../i18n/dash';
+import DashClientI18n from './DashClientI18n.astro';
+import DashMotion from './DashMotion.astro';
+import DashSelectMenu from './DashSelectMenu.astro';
+const dt = makeT(getDashLang(Astro));
+---
+<DashClientI18n />
+<DashMotion />
+<DashSelectMenu />
+<div class="dpk-progress" id="dpk-progress" aria-hidden="true"></div>
+<div class="dpk-bar" id="dpk-bar" role="status" aria-live="polite">
+  <span class="dpk-bar-dot" aria-hidden="true"></span>
+  <span class="dpk-bar-spin" aria-hidden="true"></span>
+  <span class="dpk-bar-text" data-idle={dt('You have unsaved changes')} data-busy={dt('Saving...')}>{dt('You have unsaved changes')}</span>
+  <div class="dpk-bar-actions">
+    <button type="button" class="dpk-bar-discard" data-dpk-discard>{dt('Discard')}</button>
+    <button type="button" class="dpk-bar-save" data-dpk-save>{dt('Save changes')}<kbd aria-hidden="true">Ctrl S</kbd></button>
+  </div>
+</div>
+
+<script>
+  // @ts-nocheck: plain browser JavaScript, like the dashboard's other scripts.
+  (function () {
+    if (window.__dpk) return;
+    window.__dpk = true;
+    var progress = document.getElementById('dpk-progress');
+    var bar = document.getElementById('dpk-bar');
+    var text = bar ? bar.querySelector('.dpk-bar-text') : null;
+    var saveBtn = bar ? bar.querySelector('[data-dpk-save]') : null;
+    var discardBtn = bar ? bar.querySelector('[data-dpk-discard]') : null;
+
+    // ---- Top progress bar: moves with a transform only, and keeps creeping until the next page replaces this one.
+    var frame = 0;
+    function startProgress() {
+      if (!progress) return;
+      cancelAnimationFrame(frame);
+      var start = performance.now();
+      progress.style.transition = 'opacity .2s ease';
+      progress.style.opacity = '1';
+      var step = function (now) {
+        var t = (now - start) / 900;
+        var value = t < 1 ? t * 0.7 : 0.7 + 0.25 * (1 - 1 / (1 + (t - 1)));
+        progress.style.transform = 'scaleX(' + value.toFixed(4) + ')';
+        frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+    }
+    function stopProgress() {
+      if (!progress) return;
+      cancelAnimationFrame(frame);
+      progress.style.opacity = '0';
+      progress.style.transform = 'scaleX(0)';
+    }
+
+    // ---- Placeholders shaped like the coming page, over the current content, while the browser waits for the next page.
+    var SHAPES = {
+      list: '<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-rows"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>',
+      grid: '<div class="sk-mods"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>',
+      cards: '<div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>',
+      form: '<div class="sk-panel"><span class="sk sk-head"></span><div class="sk-fields"><span class="sk"></span><span class="sk"></span><span class="sk wide"></span></div></div><div class="sk-panel"><span class="sk sk-head"></span><div class="sk-fields"><span class="sk"></span><span class="sk"></span></div></div>',
+    };
+    var skTimer = 0;
+    function showSkeleton(kind) {
+      var host = document.querySelector('main .wrap');
+      if (!host || host.querySelector(':scope > .dpk-sk')) return;
+      clearTimeout(skTimer);
+      // A blink-fast page never shows them.
+      skTimer = setTimeout(function () {
+        var curtain = document.getElementById('dl-curtain');
+        if (curtain && !curtain.hidden) return;
+        var sk = document.createElement('div');
+        sk.className = 'dpk-sk sk-wrap';
+        sk.setAttribute('aria-hidden', 'true');
+        sk.innerHTML = '<span class="sk sk-title"></span>' + (SHAPES[kind] || SHAPES.list);
+        host.style.minHeight = host.offsetHeight + 'px';
+        host.classList.add('dpk-loading');
+        host.appendChild(sk);
+      }, 140);
+    }
+    function clearSkeleton() {
+      clearTimeout(skTimer);
+      document.querySelectorAll('.dpk-sk').forEach(function (el) { el.remove(); });
+      document.querySelectorAll('.dpk-loading').forEach(function (el) { el.classList.remove('dpk-loading'); el.style.minHeight = ''; });
+    }
+    var plain = function (path) { return path.replace(/^\/(?:es|pt-br)(?=\/dash(?:\/|$))/i, ''); };
+    document.addEventListener('click', function (event) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+      var url;
+      try { url = new URL(link.href, location.href); } catch (e) { return; }
+      if (url.origin !== location.origin || (url.pathname === location.pathname && url.search === location.search)) return;
+      if (dirty.length) { event.preventDefault(); shake(); return; }
+      startProgress();
+      // Server pages and the server list have the loading curtain (DashLoader); the other dashboard pages get placeholders.
+      if (/^\/dash(\/|$)/.test(plain(url.pathname)) && !/^\/dash\/(guild|manage)(\/|$)/.test(plain(url.pathname))) showSkeleton(link.getAttribute('data-sk') || 'list');
+    });
+    window.addEventListener('pageshow', function () { stopProgress(); clearSkeleton(); });
+
+    // ---- The bar of unsaved changes for the forms of the page.
+    var dirty = [];
+    var leaving = false;
+    var resetting = false;
+    function primarySave(form) {
+      var buttons = form.querySelectorAll('button:not([type]), button[type="submit"], input[type="submit"]');
+      for (var i = 0; i < buttons.length; i++) {
+        var label = (buttons[i].textContent || buttons[i].value || '').trim().toLowerCase();
+        if (/^(save|guardar|salvar)(\b|$)/.test(label) && !buttons[i].hasAttribute('data-keep')) return buttons[i];
+      }
+      return null;
+    }
+    function render() {
+      if (!bar) return;
+      bar.classList.toggle('show', dirty.length > 0 || bar.classList.contains('saving'));
+      if (text && !bar.classList.contains('saving')) text.textContent = dirty.length > 1 ? (window.cdt ? cdt('{n} sections have unsaved changes', { n: dirty.length }) : dirty.length + ' sections have unsaved changes') : text.getAttribute('data-idle');
+    }
+    function shake() {
+      if (!bar) return;
+      bar.classList.add('show');
+      bar.classList.remove('shake'); void bar.offsetWidth; bar.classList.add('shake');
+    }
+    function track(form) {
+      if (form.dataset.dpkBound || form.hasAttribute('data-no-dirty') || (form.getAttribute('method') || '').toUpperCase() !== 'POST' || form.closest('dialog')) return;
+      form.dataset.dpkBound = '1';
+      var own = primarySave(form);
+      if (own) own.classList.add('dpk-bar-own');
+      var mark = function (event) {
+        if (resetting || leaving || (event.target && event.target.closest && event.target.closest('[data-no-dirty]'))) return;
+        if (dirty.indexOf(form) === -1) dirty.push(form);
+        form.classList.add('is-dirty');
+        render();
+      };
+      form.addEventListener('input', mark);
+      form.addEventListener('change', mark);
+      // Sent by its own button (or Enter): it is leaving the page, the guard must not ask.
+      form.addEventListener('submit', function () { leaving = true; setTimeout(function () { leaving = false; }, 4000); });
+    }
+    document.querySelectorAll('form').forEach(track);
+    function save() {
+      if (!dirty.length || !bar) return;
+      var form = dirty[dirty.length - 1];
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      bar.classList.add('saving');
+      if (text) text.textContent = text.getAttribute('data-busy');
+      leaving = true;
+      var own = primarySave(form);
+      if (form.requestSubmit) form.requestSubmit(own || undefined); else form.submit();
+      // A submit that a script stopped (a confirm that was refused): the bar comes back.
+      setTimeout(function () { if (document.visibilityState === 'visible') { leaving = false; bar.classList.remove('saving'); render(); } }, 4000);
+    }
+    if (saveBtn) saveBtn.addEventListener('click', save);
+    if (discardBtn) discardBtn.addEventListener('click', function () {
+      resetting = true;
+      dirty.forEach(function (form) { form.reset(); form.classList.remove('is-dirty'); });
+      resetting = false;
+      dirty = [];
+      render();
+    });
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && dirty.length) { e.preventDefault(); save(); }
+    });
+    window.addEventListener('beforeunload', function (e) { if (dirty.length && !leaving) { e.preventDefault(); e.returnValue = ''; } });
+  })();
+</script>
+
+<style is:global>
+  .dpk-progress { position: fixed; top: var(--dgl-header-h, 60px); left: 0; z-index: 80; width: 100%; height: 2.5px; border-radius: 0 3px 3px 0; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent)); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent); transform: scaleX(0); transform-origin: left center; opacity: 0; pointer-events: none; will-change: transform, opacity; }
+  .dpk-loading > :not(.dpk-sk) { display: none !important; }
+  .dpk-sk { padding-top: 8px; }
+  .dpk-bar-own { display: none !important; }
+  .dpk-bar { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 70; display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 13px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--card) 92%, var(--text) 3%); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .6); opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(16px) scale(.98); transition: opacity var(--m-base) var(--m-in), transform var(--m-base) var(--m-in); }
+  .dpk-bar.show { opacity: 1; pointer-events: auto; transform: translateX(-50%); transition-timing-function: var(--m-out); transition-duration: var(--m-slow); }
+  .dpk-bar.shake { animation: dpk-shake .4s; }
+  @keyframes dpk-shake { 20%, 60% { translate: -4px 0; } 40%, 80% { translate: 4px 0; } }
+  .dpk-bar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); flex-shrink: 0; }
+  .dpk-bar-spin { display: none; width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--text) 22%, transparent); border-top-color: var(--accent); animation: dpk-spin .7s linear infinite; }
+  @keyframes dpk-spin { to { transform: rotate(360deg); } }
+  .dpk-bar.saving .dpk-bar-dot, .dpk-bar.saving .dpk-bar-actions { display: none; }
+  .dpk-bar.saving .dpk-bar-spin { display: block; }
+  .dpk-bar-text { font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; }
+  .dpk-bar-actions { display: flex; gap: 6px; }
+  .dpk-bar-discard, .dpk-bar-save { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 12px; border-radius: 8px; font: 600 12px var(--sans); cursor: pointer; transition: transform var(--m-instant) ease, opacity var(--m-fast) ease; }
+  .dpk-bar-discard { border: 1px solid var(--border); background: none; color: var(--text-muted); }
+  .dpk-bar-save { border: 0; background: var(--text); color: var(--bg); }
+  .dpk-bar-save kbd { padding: 0 5px; border-radius: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); font: 600 9.5px var(--mono); opacity: .7; }
+  .dpk-bar-discard:active, .dpk-bar-save:active { transform: scale(var(--m-press)); }
+  @media (hover: none), (max-width: 760px) { .dpk-bar-save kbd { display: none; } }
+  @media (max-width: 600px) {
+    .dpk-bar { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateY(16px); }
+    .dpk-bar.show { transform: none; }
+    .dpk-bar-text { flex: 1; min-width: 0; white-space: normal; line-height: 1.35; }
+  }
+  @media (prefers-reduced-motion: reduce) { .dpk-bar.shake { animation: none; } .dpk-bar-spin { animation-duration: 2s; } }
+</style>
