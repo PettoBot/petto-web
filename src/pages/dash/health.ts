@@ -161,18 +161,19 @@ ${mine.length
   delete checks.live;
   return `<!doctype html><html lang="${escape(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${t('Dashboard health')} · Petto</title>
 <style>
-:root{color-scheme:light dark;--bg:#f6f6f8;--fg:#17171c;--muted:#6b6b76;--card:#fff;--line:#e3e3ea}
-@media (prefers-color-scheme:dark){:root{--bg:#111116;--fg:#ececf1;--muted:#9a9aa6;--card:#1b1b22;--line:#2b2b35}}
-body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-h1{font-size:20px;margin:0 0 4px}h2{font-size:17px;margin:22px 0 6px}h3{font-size:15px;margin:18px 0 6px}
+:root{color-scheme:light dark;--bg:#f6f6f8;--fg:#20242b;--muted:#66707d;--card:#fff;--line:#e3e6eb;--accent:#bd5136}
+@media (prefers-color-scheme:dark){:root{--bg:#18191d;--fg:#d6d3cc;--muted:#9b978f;--card:#212328;--line:#34373e;--accent:#f0a88f}}
+body{margin:0 auto;max-width:1120px;padding:20px 16px 48px;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+h1{font-family:Georgia,'Times New Roman',serif;font-size:26px;margin:0 0 4px}h2{display:flex;align-items:center;gap:8px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:28px 0 8px}h3{font-size:15px;margin:18px 0 6px}
 .muted{color:var(--muted)}.small{font-size:12.5px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}.card span{display:block;font-size:12px;color:var(--muted)}.card b{font-size:17px}
-.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}.card span{display:block;font-size:12px;color:var(--muted)}.card b{font-size:18px;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px;background:var(--card)}
 table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}th,td{padding:6px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
 th:first-child,td.path{text-align:left;max-width:52vw;overflow:hidden;text-overflow:ellipsis}td.part,th.part{color:var(--muted)}
-pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;overflow-x:auto;font-size:12px}
-a{color:inherit}
+pre{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;overflow-x:auto;font-size:12px}
+a{color:var(--accent)}
+tr:last-child td{border-bottom:0}
 </style></head><body>
 <h1>${t('Dashboard health')}</h1>
 <p class="muted small">${escape((report.build as any)?.version ? `v${(report.build as any).version}` : '')} · <a href="?format=json">${t('Everything as JSON')}</a></p>
