@@ -29,7 +29,7 @@ function TextBox({ value, onChange, rows = 4, max = V2_LIMITS.text }: { value: s
   const ref = useRef<HTMLTextAreaElement>(null);
   return (
     <div className="v2e-textbox">
-      <textarea ref={ref} rows={rows} maxLength={max} value={value} onChange={(ev) => onChange(ev.target.value)} />
+      <textarea ref={ref} data-ac="" rows={rows} maxLength={max} value={value} onChange={(ev) => onChange(ev.target.value)} />
       <FormatToolbar targetRef={ref} onChange={onChange} />
     </div>
   );

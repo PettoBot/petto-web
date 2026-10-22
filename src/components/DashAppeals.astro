@@ -23,14 +23,6 @@ const uploadAction = (kind: string) => `/dash/guild/${guildId}/appeals-image?kin
 const picturePath = (kind: string) => `/appeal/${addressOf}/img/${kind}`;
 const embedPreview = pictureUrl(config.embed?.image_url, 'embed', { path: addressOf, origin: '' });
 const titles: Record<string, string> = { overview: dt('Appeals'), forms: dt('Appeal forms'), submissions: dt('Appeal submissions'), settings: dt('Appeal settings'), brand: dt('Appeal brand'), messages: dt('Appeal messages') };
-const subs: Record<string, string> = {
-  overview: dt('Let banned or muted members appeal on a page of their own, and answer them from Discord or from here.'),
-  forms: dt('The questions a member answers. Sections, choices, and which punishments can open each form.'),
-  submissions: dt('Every appeal that arrives. Read it, write to the member, accept it or reject it.'),
-  settings: dt('Where appeals arrive, what the member sees about their punishment, and how long answered appeals are kept.'),
-  brand: dt('How the page looks and how the link looks when you share it in Discord.'),
-  messages: dt('What the member is told when they send an appeal and when you answer it.'),
-};
 const typeNames: Record<string, string> = { ban: dt('Bans'), mute: dt('Mutes'), warn: dt('Warns'), kick: dt('Kicks'), softban: dt('Softbans') };
 // The sanctions whose DM can carry the appeal link, one by one.
 const dmTypeNames: Record<string, string> = { ban: dt('Bans'), tempban: dt('Temporary bans'), softban: dt('Softbans'), kick: dt('Kicks'), timeout: dt('Timeouts and mutes'), warn: dt('Warns') };
@@ -41,6 +33,8 @@ const monthsOrDays = (days: number) => (days % 30 === 0 && days >= 30 ? { n: day
 const warnsAge = monthsOrDays(config.warns_max_age_days);
 const storeAge = monthsOrDays(config.store_days);
 const variableChips = ['{username}', '{server}', '{reason}', '{form}', '{link}'];
+// The typed autocomplete of the appeal messages offers these, not the general Petto variables (the appeal texts only know these five).
+const appealVars = JSON.stringify([{ l: dt('Appeal messages'), v: [['{username}', dt('Name of the member')], ['{server}', dt('Name of the server')], ['{reason}', dt('Reason the staff wrote')], ['{form}', dt('Name of the form')], ['{link}', dt('Link of the appeal page')]] }]).replace(/</g, '\\u003c');
 const sampleVars = { username: 'Liam', server: guildName, reason: dt('You can come back, please read the rules.'), form: dt('Ban appeal'), link: 'petto.sbs/appeal/…' };
 // What the members read when nothing is written: in the language the server chose for its appeal page, not the one of the dashboard (the bot has the same texts).
 const DEFAULT_MESSAGES: Record<string, Record<string, string>> = {
@@ -64,7 +58,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={`appeals-${section}`} pageTitle={titles[section]}>
   <h1>{titles[section]}{section === 'overview' && <span class:list={['da-badge', { on: config.enabled }]}>{config.enabled ? dt('Open') : dt('Closed')}</span>}</h1>
-  <p class="da-sub">{subs[section]}</p>
+  {(section === 'messages' || (section === 'forms' && editForm)) && <script type="application/json" data-var-groups set:html={appealVars}></script>}
   {message && <div class:list={['da-flash', message.kind]} role={message.kind === 'err' ? 'alert' : undefined}><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
 
   {section === 'overview' && (
@@ -87,8 +81,8 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
           <li class:list={{ done: config.enabled }}><Icon name={config.enabled ? 'ph:check-circle-fill' : 'ph:circle'} width="16" height="16" /><span>{dt('Turn on Take appeals')}</span></li>
         </ul>
       </div>
-      <div class="da-stats">
-        {(['pending', 'accepted', 'rejected', 'withdrawn'] as const).map((s) => <a href={`/dash/guild/${guildId}/appeals?section=submissions&status=${s}`} class="da-stat"><b>{counts[s] ?? 0}</b><span>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s]}</span></a>)}
+      <div class="da-stats dgl-stagger">
+        {(['pending', 'accepted', 'rejected', 'withdrawn'] as const).map((s) => <a href={`/dash/guild/${guildId}/appeals?section=submissions&status=${s}`} class="da-stat dgl-card"><b>{counts[s] ?? 0}</b><span>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s]}</span></a>)}
       </div>
     </>
   )}
@@ -97,7 +91,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
     <>
       <div class="da-row"><span class="da-hint">{forms.length}/{LIMITS.forms}</span><a class="btn btn-accent btn-sm" href={`${formsBack}&form=new`}><Icon name="ph:plus-bold" width="12" height="12" />{dt('New form')}</a></div>
       {forms.length === 0 && <div class="da-card"><p>{dt('No forms yet. Make one so members have something to fill in.')}</p></div>}
-      <div class="da-list">
+      <div class="da-list dgl-stagger">
         {forms.map((f) => (
           <div class="da-card da-form">
             <div class="da-row"><h3>{f.icon && <Icon name={`ph:${f.icon}-fill`} width="16" height="16" class="da-ico" />}{f.name}</h3><span class:list={['da-chip', f.status]}>{f.status === 'live' ? dt('Live') : dt('Draft')}</span></div>
@@ -143,7 +137,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
         <h2>{dt('Messages for this form')}</h2>
         <p class="da-hint">{dt('Leave empty to use the messages of the Messages page.')}</p>
         <div class="da-grid">
-          {['submitted', 'accepted', 'rejected'].map((k) => <label class="da-field da-wide"><span>{messageTitles[k]}</span><textarea name={`msg_${k}`} maxlength="1000" rows="2" placeholder={defaults[k]}>{editForm.messages?.[k] ?? ''}</textarea></label>)}
+          {['submitted', 'accepted', 'rejected'].map((k) => <label class="da-field da-wide"><span>{messageTitles[k]}</span><textarea name={`msg_${k}`} maxlength="1000" rows="2" placeholder={defaults[k]} data-ac="vars,emojis">{editForm.messages?.[k] ?? ''}</textarea></label>)}
         </div>
       </div>
       <div class="da-actions"><button type="submit" class="btn btn-accent">{dt('Save form')}</button></div>
@@ -162,7 +156,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
         {(['pending', 'accepted', 'rejected', 'withdrawn'] as const).map((s) => <a href={`/dash/guild/${guildId}/appeals?section=submissions&status=${s}`} class:list={['da-tab', { on: statusFilter === s }]}>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s]}</a>)}
       </div>
       {submissions.length === 0 && <div class="da-card"><p>{dt('Nothing here.')}</p></div>}
-      <div class="da-list">
+      <div class="da-list dgl-stagger">
         {submissions.map((s) => (
           <details class="da-card da-sub">
             <summary><span class="da-who">{s.avatar_url && <img src={s.avatar_url} alt="" width="26" height="26" />}<b>{s.username}</b></span><span class="da-hint">{s.form_name} · {when(s.created_at)}</span><span class:list={['da-chip', s.status]}>{{ pending: dt('Waiting'), accepted: dt('Accepted'), rejected: dt('Rejected'), withdrawn: dt('Withdrawn') }[s.status as 'pending']}</span></summary>
@@ -275,7 +269,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
             <option value="never" selected={config.dm_link_mode === 'never'}>{dt('Never')}</option>
           </select></label>
           <div class="da-field da-wide da-dmtypes"><span>{dt('Sanctions whose DM has the link')}</span><div class="da-checkrow">{DM_LINK_TYPES.map((t) => <label class="da-check"><input type="checkbox" name="dm_link_types" value={t} checked={(config.dm_link_types ?? []).includes(t)} />{dmTypeNames[t]}</label>)}</div></div>
-          <label class="da-field da-wide"><span>{dt('Your line about appeals')}</span><input type="text" name="dm_note" value={config.dm_note ?? ''} maxlength={APPEAL_SETTING_LIMITS.dmNote} placeholder={dt('Think this is a mistake? Appeal here: {link}')} /><em>{dt('Replaces the usual sentence. {link} is the appeal link (added at the end if you leave it out) and {server} the name of the server. Empty for the usual sentence.')}</em></label>
+          <label class="da-field da-wide"><span>{dt('Your line about appeals')}</span><input type="text" name="dm_note" value={config.dm_note ?? ''} maxlength={APPEAL_SETTING_LIMITS.dmNote} placeholder={dt('Think this is a mistake? Appeal here: {link}')} data-ac="emojis" /><em>{dt('Replaces the usual sentence. {link} is the appeal link (added at the end if you leave it out) and {server} the name of the server. Empty for the usual sentence.')}</em></label>
         </div>
       </div>
       <div class="da-card">
@@ -351,7 +345,7 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
       <div class="da-card"><p class="da-hint">{dt('Click a variable to add it:')}</p><div class="da-chips">{variableChips.map((v) => <button type="button" class="da-vchip" data-insert={v}>{v}</button>)}</div></div>
       {Object.keys(defaults).map((k) => (
         <div class="da-card">
-          <label class="da-field"><span>{messageTitles[k]}</span><textarea name={`msg_${k}`} rows="3" maxlength="1000" placeholder={defaults[k]} data-msg={k}>{config.messages?.[k] ?? ''}</textarea></label>
+          <label class="da-field"><span>{messageTitles[k]}</span><textarea name={`msg_${k}`} rows="3" maxlength="1000" placeholder={defaults[k]} data-msg={k} data-ac="vars,emojis">{config.messages?.[k] ?? ''}</textarea></label>
           <div class="da-prev"><small>{dt('Preview')}</small><span data-preview={k} data-default={defaults[k]}></span></div>
         </div>
       ))}
@@ -623,8 +617,8 @@ const blockNames: Record<string, string> = { none: dt("Don't block"), day: dt('B
   @media (max-width: 720px) { [data-builder] .da-grid { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <style>
-  h1 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .da-sub { font-size: 13.5px; color: var(--text-muted); margin: 0 0 18px; max-width: 70ch; }
+  h1 { font-size: 24px; margin: 0 0 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  details.da-sub { font-size: 13.5px; color: var(--text-muted); margin: 0 0 18px; max-width: 70ch; }
   .da-badge { font-family: var(--sans); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); color: var(--text-dim); }
   .da-badge.on { color: var(--green); background: var(--green-soft); border-color: transparent; }
   .da-flash { display: flex; align-items: center; gap: 8px; font-size: 13px; border-radius: 9px; padding: 9px 13px; margin-bottom: 16px; max-width: fit-content; }

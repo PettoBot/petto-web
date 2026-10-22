@@ -62,7 +62,6 @@ const globalDescHtml = renderMarkdown(globalDescription);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="customize" pageTitle="Customize" premiumActive={premiumActive}>
   <h1>{dt('Customize')}</h1>
-  <p class="cz-sub"><Fragment set:html={dth('How Petto looks and introduces itself in <b>{a}</b>. Every server sets its own.', { a: (guildName) })} /></p>
 
   <div class="cz-root">
     <div class="cz-flashes">
@@ -138,7 +137,7 @@ const globalDescHtml = renderMarkdown(globalDescription);
 
                 <div class="cz-field">
                   <div class="cz-field-head"><label for="description">{dt('Description')}</label><button type="button" class="cz-reset" data-reset="description" data-reset-field="description">{dt('Reset')}</button></div>
-                  <textarea id="description" name="description" maxlength="190" rows="3" placeholder={dt('A friendly moderation and community bot.')}>{description}</textarea>
+                  <textarea id="description" name="description" data-ac="emojis" maxlength="190" rows="3" placeholder={dt('A friendly moderation and community bot.')}>{description}</textarea>
                   <p class="cz-hint">{dt('Max 190 characters. Custom emoji like')} <code>{'<:name:id>'}</code> {dt('render fine.')}</p>
                 </div>
 
@@ -280,13 +279,23 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
     document.querySelectorAll<HTMLButtonElement>('.cz-reset').forEach((btn) => {
       btn.addEventListener('click', () => {
         const names = (btn.dataset.reset ?? '').split(',');
+        const fields: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] = [];
         for (const name of names) {
-          const field = form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | null;
+          const field = form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
           if (!field) continue;
+          fields.push(field);
           field.value = '';
-          field.dispatchEvent(new Event('input', { bubbles: true }));
-          if (field instanceof HTMLInputElement && field.type === 'file') field.dispatchEvent(new Event('change', { bubbles: true }));
+          // Only the field hears it (its preview updates): a reset saves at once, so it is not an unsaved change of the form.
+          field.dispatchEvent(new Event('input', { bubbles: false }));
+          if (field instanceof HTMLInputElement && field.type === 'file') field.dispatchEvent(new Event('change', { bubbles: false }));
         }
+        // The emptied fields are what the server now has (Discard goes back to them); if the reset fails, they are left as an
+        // unsaved change for the bar to save.
+        const settle = (ok: boolean) => fields.forEach((field) => {
+          if (!ok) { field.dispatchEvent(new Event('input', { bubbles: true })); return; }
+          if (field instanceof HTMLSelectElement) Array.from(field.options).forEach((option) => { option.defaultSelected = option.selected; });
+          else if (!(field instanceof HTMLInputElement && field.type === 'file')) field.defaultValue = field.value;
+        });
 
         // Reset is an immediate, field-scoped save. The server receives only
         // the field being reset, so other edits currently in the form remain
@@ -312,11 +321,12 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
           .then(async (res) => {
             if (!(res.headers.get('content-type') ?? '').includes('application/json')) { location.reload(); return; }
             const result = await res.json() as { saved: boolean; warning: boolean; error: string | null };
+            settle(!result.error && result.saved);
             if (result.error || !result.saved) flash('err', cdt('Something went wrong, try again.'));
             else if (result.warning) flash('warn', cdt("Discord didn't accept the profile sync, it'll retry next save."));
             else flash('ok', cdt('Saved.'));
           })
-          .catch(() => flash('err', cdt('Something went wrong, try again.')))
+          .catch(() => { settle(false); flash('err', cdt('Something went wrong, try again.')); })
           .finally(() => { btn.disabled = false; btn.textContent = label; });
       });
     });
@@ -324,9 +334,7 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
 </script>
 
 <style>
-  h1 { font-size: 24px; margin: 0 0 6px; }
-  .cz-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; }
-  .cz-sub :global(b){ color: var(--text); }
+  h1 { font-size: 24px; margin: 0 0 20px; }
   .cz-card-desc :global(.dp-mention), .cz-global-desc :global(.dp-mention) { color: #c9cdfb; background: rgba(88, 101, 242, .3); border-radius: 3px; padding: 0 2px; font-weight: 500; }
   .cz-card-desc :global(.dp-code), .cz-global-desc :global(.dp-code) { font-family: var(--mono); background: #1e1f22; border-radius: 4px; padding: 0 4px; font-size: 12px; }
   .cz-card-desc :global(.dp-quote), .cz-global-desc :global(.dp-quote) { display: block; border-left: 3px solid #4e5058; padding-left: 8px; }
@@ -334,10 +342,11 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
   .cz-card-desc :global(.dp-emoji), .cz-global-desc :global(.dp-emoji) { width: 18px; height: 18px; vertical-align: -3px; }
 
   .cz-flashes:empty { display: none; }
-  .cz-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
-  .cz-flash-ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
-  .cz-flash-warn { color: var(--yellow); background: var(--yellow-soft); border: 1px solid var(--yellow); }
-  .cz-flash-err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
+  /* A reset writes its message here from the script, so these reach it with :global. */
+  .cz-flashes :global(.cz-flash) { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; animation: m-pop-in var(--m-base) var(--m-out) both; }
+  .cz-flashes :global(.cz-flash-ok) { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
+  .cz-flashes :global(.cz-flash-warn) { color: var(--yellow); background: var(--yellow-soft); border: 1px solid var(--yellow); }
+  .cz-flashes :global(.cz-flash-err) { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
 
   .cz-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 44px; align-items: start; }
   .cz-layout > * { min-width: 0; }
@@ -351,8 +360,11 @@ declare function cdt(key: string, vars?: Record<string, string | number>): strin
   .cz-card-avatar-wrap { position: relative; width: 68px; }
   .cz-card-avatar { width: 68px; height: 68px; border-radius: 50%; object-fit: cover; border: 4px solid var(--card); background: var(--bg-raise); display: block; }
 
-  .cz-edit-btn { position: absolute; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; opacity: 0; transition: opacity 0.12s; backdrop-filter: blur(2px); }
+  .cz-edit-btn { position: absolute; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; opacity: 0; transition: opacity var(--m-fast) ease, transform var(--m-fast) var(--m-out); backdrop-filter: blur(2px); }
+  .cz-edit-btn:active { transform: scale(var(--m-press)); }
   .cz-card-banner:hover .cz-edit-btn, .cz-card-avatar-wrap:hover .cz-edit-btn, .cz-edit-btn:focus-visible { opacity: 1; }
+  /* A touch screen has no hover: the pencils stay in sight. */
+  @media (hover: none) { .cz-edit-btn { opacity: 1; } }
   .cz-edit-banner { top: 10px; right: 10px; width: 28px; height: 28px; }
   .cz-edit-avatar { right: -2px; bottom: 2px; width: 24px; height: 24px; border: 2px solid var(--card); }
   .cz-card-name { font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--text); margin-top: 12px; display: flex; align-items: center; gap: 6px; }
