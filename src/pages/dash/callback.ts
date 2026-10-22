@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { encodeSession } from '../../utils/session';
 import { getEnv } from '../../utils/env';
 import { getDashLang, makeT } from '../../i18n/dash';
+import { withDashPrefix } from '../../utils/dashPrefix.mjs';
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
@@ -21,7 +22,11 @@ strong{font-size:16px}small{font-size:13px;opacity:.65}.l{width:180px;height:4px
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
-export const GET: APIRoute = async ({ url, redirect, cookies, locals, request }) => {
+export const GET: APIRoute = async ({ url, redirect: plainRedirect, cookies, locals, request }) => {
+  // Discord sends everyone back to /dash/callback (no prefix): the next address carries the language the visitor uses, so a Spanish or
+  // Portuguese dashboard opens at /es/dash or /pt-br/dash right away.
+  const lang = getDashLang({ locals, cookies, request } as any);
+  const redirect = (to: string) => plainRedirect(withDashPrefix(to, lang));
   const clientId = getEnv({ locals }, 'DISCORD_CLIENT_ID');
   const clientSecret = getEnv({ locals }, 'DISCORD_CLIENT_SECRET');
   if (!clientId || !clientSecret) return redirect('/dash?error=server_not_configured');
@@ -85,9 +90,9 @@ export const GET: APIRoute = async ({ url, redirect, cookies, locals, request })
     const afterLogin = cookies.get('petto_after_login')?.value || (fromState ? `${fromState[2] === 'es' ? '/es' : fromState[2] === 'pt' ? '/pt-br' : ''}/form/${fromState[1]}` : undefined);
     cookies.delete('petto_after_login', { path: '/' });
     // Only places of this site that need a signed-in member: the dashboard, the appeal site, the feedback board, the forms filled on the web, and the checkout that opens from the Premium page.
-    const returnTo = afterLogin && /^\/(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|f\/[0-9A-Za-z]{12}$|(?:(?:es|pt-br)\/)?form[#/][0-9A-Za-z]{12}$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
+    const returnTo = afterLogin && /^\/(?:(?:es|pt-br)\/(?=dash))?(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|f\/[0-9A-Za-z]{12}$|(?:(?:es|pt-br)\/)?form[#/][0-9A-Za-z]{12}$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
     // The destination is checked above, so it is safe to put in the page. Only the plain list of servers gets the animation.
-    if (returnTo === '/dash/manage') return loadingPage(returnTo, makeT(getDashLang({ locals, cookies, request } as any)));
+    if (returnTo === '/dash/manage') return loadingPage(withDashPrefix(returnTo, lang), makeT(lang));
     return redirect(returnTo);
   } catch {
     return redirect('/dash?error=login_failed');

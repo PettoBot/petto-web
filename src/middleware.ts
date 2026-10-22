@@ -7,6 +7,7 @@ import { requestGuildChanges, timed } from './utils/serverTiming';
 import { bumpGuildVersion, dashEtag, guildVersion } from './utils/guildVersion';
 import { getGuildSession } from './utils/dashAuth';
 import { getDashLang } from './i18n/dash';
+import { dashLangRedirect } from './utils/dashPrefix.mjs';
 import { buildInfo } from './utils/buildInfo';
 import { startLatencyKeeping } from './utils/latencyStats';
 
@@ -158,6 +159,10 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
     }
     return response;
   }
+  // A dashboard address without prefix whose page would be shown in Spanish or Portuguese (the saved choice, or the browser's language)
+  // goes to the prefixed address, so the address always says the language on screen (a link from Discord, a bookmark, the login).
+  const to = dashLangRedirect({ method: request.method, pathname: url.pathname, search: url.search, headers: request.headers, lang: getDashLang({ cookies, request }) });
+  if (to) return new Response(null, { status: 303, headers: { location: to, 'cache-control': 'no-store', vary: 'Cookie, Accept-Language' } });
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
   const { lang, path } = prefixes[match[1].toLowerCase()];
@@ -172,8 +177,10 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
   (locals as Record<string, unknown>).dashLang = lang;
   const response = await rewrite(`${match[2]}${url.search}`);
 
-  const location = response.headers.get('location');
-  if (location && location.startsWith('/dash')) {
+  let location = response.headers.get('location');
+  // A redirect written with the full address of this site keeps the prefix too.
+  if (location && location.startsWith(`${url.origin}/dash`)) location = location.slice(url.origin.length);
+  if (location && /^\/dash(?:[/?#]|$)/.test(location)) {
     const headers = new Headers(response.headers);
     headers.set('location', `${path}${location}`);
     return new Response(null, { status: response.status, headers });
