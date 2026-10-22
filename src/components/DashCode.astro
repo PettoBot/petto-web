@@ -130,7 +130,7 @@ const triggerTypes = [
         <div class="cc-row">
           <label class="cc-field cc-grow">
             <span>{dt('Name')}</span>
-            <span class="cc-prefixed"><code id="cc-prefix-show">{prefix}</code><input type="text" id="cc-name" class="cc-input" maxlength="32" placeholder="hello" autocomplete="off" spellcheck="false" /></span>
+            <span class="cc-prefixed"><code id="cc-prefix-show">{prefix}</code><input type="text" id="cc-name" class="cc-input" maxlength="32" placeholder={dt('hello')} autocomplete="off" spellcheck="false" /></span>
           </label>
           <div class="cc-actions">
             <button type="button" class="cc-btn cc-btn-primary" id="cc-save"><Icon name="ph:floppy-disk-fill" width="14" height="14" />{dt('Save')}</button>
@@ -242,6 +242,14 @@ const triggerTypes = [
     // Why a request did not work: the answer of the page or the bot, or that nothing came back.
     const why = (answer: { status: number; payload: any }) => `[${answer.payload?.error ?? (answer.status || 'no answer')}]`;
     const say = (message: string, kind: 'ok' | 'bad' | 'info' = 'info') => { messageBox.textContent = message; messageBox.hidden = !message; messageBox.dataset.kind = kind; };
+    // A finished action ("Saved", "Deleted") is a short toast of the dashboard; problems stay written under the editor.
+    const toast = (message: string) => {
+      const show = (window as unknown as { dglToast?: (text: string, opts: { kind: string }) => void }).dglToast;
+      if (typeof show !== 'function') return false;
+      show(message, { kind: 'ok' });
+      return true;
+    };
+    const done = (message: string) => { if (toast(message)) say(''); else say(message, 'ok'); };
     const dirty = () => code.value !== savedCode || nameInput.value.trim().toLowerCase() !== savedName;
     // The dashboard's bar of unsaved changes (DashGuildLayout) follows the editor: it saves with the same save() as the Save button,
     // and "discard" puts back the saved command (or an empty new one).
@@ -561,7 +569,9 @@ const triggerTypes = [
       const name = nameInput.value.trim().toLowerCase();
       if (!name) { say(ui.needName, 'bad'); nameInput.focus(); return; }
       say(ui.saving);
-      const { status, payload } = await api({ action: 'save', name, code: code.value });
+      // One save at a time: a second press while the first is on its way would send it twice.
+      saveButton.disabled = true;
+      const { status, payload } = await api({ action: 'save', name, code: code.value }).finally(() => { saveButton.disabled = false; });
       if (status === 403 && payload?.error === 'turned_off') { say(ui.closed, 'bad'); return; }
       if (!payload) { say(`${ui.unavailable} ${why({ status, payload })}`, 'bad'); return; }
       if (!payload.ok) { say(payload.message || `${ui.unavailable} ${why({ status, payload })}`, 'bad'); return; }
@@ -571,9 +581,10 @@ const triggerTypes = [
       current = name; savedName = name; savedCode = code.value; nameInput.readOnly = true; deleteButton.hidden = false;
       drawList();
       syncBar();
-      say(ui.saved, 'ok');
+      done(ui.saved);
     }
-    $('cc-save').addEventListener('click', save);
+    const saveButton = $<HTMLButtonElement>('cc-save');
+    saveButton.addEventListener('click', save);
     nameInput.addEventListener('input', syncBar);
 
     deleteButton.addEventListener('click', async () => {
@@ -582,7 +593,7 @@ const triggerTypes = [
       if (!payload?.ok) { say(ui.unavailable, 'bad'); return; }
       commands = commands.filter((entry) => entry.name !== current);
       load(null, '');
-      say(ui.deleted, 'ok');
+      done(ui.deleted);
     });
 
     // ── The trigger ──
@@ -595,7 +606,7 @@ const triggerTypes = [
       const command = commands.find((entry) => entry.name === current);
       if (command) { command.triggerType = triggerType.value; command.triggerText = payload.text ?? ''; }
       drawList();
-      $('cc-trigger-note').textContent = ui.triggerSaved;
+      $('cc-trigger-note').textContent = toast(ui.triggerSaved) ? '' : ui.triggerSaved;
     });
 
     // ── The test ──
@@ -885,7 +896,7 @@ const triggerTypes = [
   .cc-status[data-kind='bad'] { color: var(--red); }
   .cc-status[data-kind='bad'] .cc-dot { background: var(--red); }
   .cc-count { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
-  .cc-message { margin: 0; font-size: 13px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); }
+  .cc-message { margin: 0; font-size: 13px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); overflow-wrap: anywhere; }
   .cc-message[data-kind='ok'] { color: var(--green); background: var(--green-soft); border-color: var(--green); }
   .cc-message[data-kind='bad'] { color: var(--red); background: var(--red-soft); border-color: var(--red); }
 

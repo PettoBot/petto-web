@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import './permissions-app.css';
+import { toast } from '../embeds/toast';
 
 // The Permissions page: Petto's levels (groups of roles or members with a level from 0 to 100, and the level each command needs),
 // every command grouped by category with what gates it, and a live preview of what a role can use. The groups and levels are saved
@@ -57,6 +58,10 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
   const base = groups.find((g) => g.isBase);
   const levelOptions = useMemo(() => [...new Set([0, ...groups.map((g) => g.level)])].sort((a, b) => a - b), [groups]);
 
+  // The result of a change goes to the dashboard's toast, which stays in view wherever the change was made down the page;
+  // the notice at the top is only for a page without it.
+  const report = (ok: boolean, text: string) => { if (!toast(text, ok ? 'ok' : 'error')) setNotice({ ok, text }); };
+
   async function call(action: string, extra: Record<string, unknown>, done?: string) {
     if (!canEdit) return false;
     setBusy(true);
@@ -64,13 +69,13 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
     try {
       const res = await fetch(`/dash/guild/${guildId}/permissions-api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...extra }) });
       const data = await res.json().catch(() => null);
-      if (!res.ok) { setNotice({ ok: false, text: t('It could not be saved, try again.') }); return false; }
+      if (!res.ok) { report(false, t('It could not be saved, try again.')); return false; }
       if (data?.groups) setGroups(data.groups.map((g: any) => ({ id: g.id, name: g.name, level: g.level, isBase: g.is_base ?? g.isBase, members: (g.members ?? []).map((m: any) => ({ subjectType: m.subject_type ?? m.subjectType, subjectId: m.subject_id ?? m.subjectId })) })));
       if (data?.levels) { const map: Record<string, number> = {}; for (const row of data.levels) map[row.command_name] = row.required_level; setLevels((old) => Object.fromEntries(Object.keys(old).map((k) => [k, map[k] ?? 0]))); }
-      if (done) setNotice({ ok: true, text: done });
+      if (done) report(true, done);
       return true;
     } catch {
-      setNotice({ ok: false, text: t('It could not be saved, try again.') });
+      report(false, t('It could not be saved, try again.'));
       return false;
     } finally {
       setBusy(false);
@@ -144,7 +149,7 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
                 <label className="pmx-level">
                   <span>{t('Level')}</span>
                   <input type="number" min={0} max={100} defaultValue={g.level} disabled={!canEdit || busy}
-                    onBlur={(e) => { const v = Math.max(0, Math.min(100, Number(e.currentTarget.value) || 0)); if (v !== g.level) call('update_group_level', { groupId: g.id, level: v }, t('Saved.')); }}
+                    onBlur={(e) => { const input = e.currentTarget; const v = Math.max(0, Math.min(100, Number(input.value) || 0)); if (v !== g.level) call('update_group_level', { groupId: g.id, level: v }, t('Saved.')).then((ok) => { if (!ok) input.value = String(g.level); }); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }} />
                 </label>
                 {!g.isBase && canEdit && <button type="button" className="pmx-icon-btn" aria-label={t('Delete group')} disabled={busy} onClick={() => { if (confirm(t('Delete this group?'))) call('delete_group', { groupId: g.id }, t('Group deleted.')); }}><Ico name="trash" /></button>}

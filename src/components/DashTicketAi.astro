@@ -1,0 +1,434 @@
+---
+// Tickets → AI assistant (beta). Sections in order: switch and scope, instructions, the fixed safety rules (read only), the test chat,
+// the setup helper, and the usage of the month. Sections 1 and 2 are one POST form (the save bar tracks it). The two chats are folds
+// whose code (DashTicketAiChat.ts) is only loaded the first time one of them is opened.
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import DashAcData from './DashAcData.astro';
+import { getDashLang, makeT, dashLocale } from '../i18n/dash';
+import { LIMITS, LANGUAGES } from '../utils/ticketAiPrompt.mjs';
+import { SAFETY_RULES, startersFor } from '../data/ticketAiRules';
+import type { TicketAiSettings, TableState } from '../utils/ticketAi';
+
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+interface Props {
+  user: { userId?: string; username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  settings: TicketAiSettings;
+  state: TableState;
+  categories: { id: string; label: string; emoji: string; panelId: string }[];
+  panels: { id: string; name: string }[];
+  channels: { id: string; name: string; type?: number }[];
+  usage: number;
+  groqConfigured: boolean;
+  viewOnly: boolean;
+  saved: boolean;
+  error: string | null;
+}
+const { user, guildId, guildName, guildIcon, settings, state, categories, panels, channels, usage, groqConfigured, viewOnly, saved, error } = Astro.props;
+const canSave = state === 'ok' && !viewOnly;
+const chatsOn = groqConfigured && !viewOnly;
+const scopeSome = settings.categoryIds.length > 0;
+const chosen = new Set(settings.categoryIds);
+
+// The ticket types grouped by the panel they are on (types on no panel last).
+const groups = [
+  ...panels.map((p) => ({ name: p.name, items: categories.filter((c) => c.panelId === p.id) })),
+  { name: dt('Not on a panel'), items: categories.filter((c) => !c.panelId || !panels.some((p) => p.id === c.panelId)) },
+].filter((g) => g.items.length > 0);
+
+const starters = startersFor(lang);
+const starterList = [
+  { id: 'community', icon: 'ph:users-three-fill', label: dt('Community') },
+  { id: 'shop', icon: 'ph:tag-fill', label: dt('Shop') },
+  { id: 'game', icon: 'ph:sword-fill', label: dt('Game server') },
+] as const;
+const languageLabels: Record<string, string> = {
+  auto: dt("The ticket user's language"), en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)', fr: 'Français', de: 'Deutsch', it: 'Italiano',
+};
+const toneLabels: Record<string, string> = { friendly: dt('Friendly'), neutral: dt('Neutral'), formal: dt('Formal') };
+const locale = dashLocale(lang);
+const count = (text: string, max: number) => `${text.length.toLocaleString(locale)} / ${max.toLocaleString(locale)}`;
+const monthName = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date());
+
+// What the scripts show in the browser, in the language of the dashboard.
+const clientData = JSON.stringify({
+  starters,
+  endpoint: `/dash/guild/${guildId}/ai-assistant-api`,
+  locale,
+  words: {
+    replace: dt('Replace what is in the instructions, knowledge and hand-over fields with this template?'),
+    you: dt('You'), assistant: dt('Assistant'), owner: dt('You'), helper: dt('Helper'),
+    thinking: dt('Writing...'),
+    handoffModel: dt('The assistant handed the ticket over to staff.'),
+    handoffKeyword: dt('Handed over to staff: the message matches “{k}”.'),
+    handoffLimit: dt('Handed over to staff: the limit of {n} AI replies was reached.'),
+    handoffSecret: dt('Handed over to staff: the message looked like it had a token or a card number, so it was not sent to the AI.'),
+    handoffEnd: dt('In a real ticket the assistant stops here and staff takes over.'),
+    lastReply: dt('That was the last AI reply allowed in this ticket. The next message goes to staff.'),
+    replies: dt('AI replies: {a} of {b}'),
+    network: dt('No answer from Petto. Check your connection and try again.'),
+    applied: dt('The draft is in the fields. Check it and press Save to keep it.'),
+    draftTitle: dt('Draft from the helper'),
+    instructions: dt('Instructions'), knowledge: dt('Knowledge'), handoff: dt('Hand over to staff when...'),
+    empty: dt('(empty)'),
+    draftNow: dt('Write the draft now with what you know.'),
+    apply: dt('Apply to the fields'), dismiss: dt('Dismiss'),
+  },
+}).replace(/</g, '\\u003c');
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="ticket-ai" pageTitle="AI assistant">
+  <div class="tai-title"><h1>{dt('AI assistant')}</h1><span class="tai-beta">{dt('Beta')}</span></div>
+  <DashAcData channels={channels} />
+  <script type="application/json" id="tai-data" set:html={clientData}></script>
+  <span hidden data-tai-handoff-icon><Icon name="ph:headset-fill" width="15" height="15" /></span>
+
+  {saved && <div class="tai-flash tai-ok"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {error && <div class="tai-flash tai-err" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
+  {state === 'pending' && !error && <div class="tai-flash tai-notice"><Icon name="ph:hourglass-medium-fill" width="15" height="15" /><span>{dt('The database update for the AI assistant is pending. You can look around and try the chats; saving turns on when the update arrives.')}</span></div>}
+  {state === 'error' && !error && <div class="tai-flash tai-notice"><Icon name="ph:warning-fill" width="15" height="15" /><span>{dt("Couldn't read the saved settings, so saving is off to keep them safe. Reload the page in a moment.")}</span></div>}
+  {!groqConfigured && <div class="tai-flash tai-notice" data-tai-state="not-configured"><Icon name="ph:plug-fill" width="15" height="15" /><span>{dt('The AI is not configured on this Petto yet, so the test chat and the setup helper are off. Your settings can still be saved.')}</span></div>}
+  {viewOnly && <div class="tai-flash tai-notice"><Icon name="ph:eye-fill" width="15" height="15" />{dt('You can look at this page but not change it.')}</div>}
+
+  <form method="POST" class="tai-form" id="tai-form" data-no-dirty={canSave ? undefined : ''}>
+    <section class="tai-card" aria-labelledby="tai-h-scope">
+      <h2 id="tai-h-scope"><span class="tai-num">1</span><Icon name="ph:sliders-horizontal-fill" width="16" height="16" />{dt('Switch and scope')}</h2>
+      <label class="tai-switch">
+        <input type="checkbox" name="enabled" checked={settings.enabled} disabled={viewOnly} />
+        <span><b>{dt('Answer tickets with the AI assistant')}</b><em>{dt('It writes the first answers in a ticket, using only your instructions.')}</em></span>
+      </label>
+
+      <fieldset class="tai-scope" disabled={viewOnly}>
+        <legend>{dt('Where it answers')}</legend>
+        <label class="tai-radio"><input type="radio" name="scope" value="all" checked={!scopeSome} /><span>{dt('In every ticket type')}</span></label>
+        <label class="tai-radio"><input type="radio" name="scope" value="some" checked={scopeSome} /><span>{dt('Only in the ticket types I choose')}</span></label>
+        <div class="tai-picker">
+          {groups.length === 0 && (
+            <p class="tai-empty"><Icon name="ph:ticket" width="15" height="15" />{dt('This server has no ticket types yet.')} <a href={`/dash/guild/${guildId}/tickets?section=types`}>{dt('Add ticket types')}</a></p>
+          )}
+          {groups.map((g) => (
+            <div class="tai-group">
+              <span class="tai-group-name">{g.name}</span>
+              <div class="tai-chips">
+                {g.items.map((c) => (
+                  <label class="tai-chip"><input type="checkbox" name="category_ids" value={c.id} checked={chosen.has(c.id)} /><span>{c.emoji && !c.emoji.startsWith('<') ? `${c.emoji} ` : ''}{c.label}</span></label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </fieldset>
+
+      <div class="tai-row">
+        <div class="tai-field tai-narrow">
+          <label for="tai-max">{dt('AI replies per ticket')}</label>
+          <input id="tai-max" type="number" name="max_replies" min={LIMITS.maxRepliesMin} max={LIMITS.maxRepliesMax} value={settings.maxReplies} required disabled={viewOnly} />
+          <span class="tai-hint">{dt('After this many replies it stops and asks for staff ({a} to {b}).', { a: LIMITS.maxRepliesMin, b: LIMITS.maxRepliesMax })}</span>
+        </div>
+        <p class="tai-note"><Icon name="ph:headset-fill" width="16" height="16" /><span><b>{dt('Staff can always take over.')}</b> {dt('As soon as a staff member writes in the ticket, the assistant stops answering there.')}</span></p>
+      </div>
+    </section>
+
+    <section class="tai-card" aria-labelledby="tai-h-instr">
+      <h2 id="tai-h-instr"><span class="tai-num">2</span><Icon name="ph:notebook-fill" width="16" height="16" />{dt('Instructions')}</h2>
+      <div class="tai-starters" role="group" aria-label={dt('Starter templates')}>
+        <span class="tai-starters-label">{dt('Start from a template')}</span>
+        {starterList.map((s) => (
+          <button type="button" class="tai-starter" data-tai-starter={s.id} disabled={viewOnly}><Icon name={s.icon} width="15" height="15" />{s.label}</button>
+        ))}
+      </div>
+
+      <div class="tai-field">
+        <div class="tai-label-row"><label for="tai-instructions">{dt('What the assistant should do and know')}</label><span class="tai-count" data-tai-counter="tai-instructions">{count(settings.instructions, LIMITS.instructions)}</span></div>
+        <textarea id="tai-instructions" name="instructions" data-ac="channels,commands,emojis" data-tai-count maxlength={LIMITS.instructions} rows="9" disabled={viewOnly} placeholder={dt('How support works here, the rules it must explain, what it must never do, the tone and language...')}>{settings.instructions}</textarea>
+        <span class="tai-hint">{dt('Type # to point to a channel and / for a command.')}</span>
+      </div>
+
+      <div class="tai-field">
+        <div class="tai-label-row"><label for="tai-knowledge">{dt('Knowledge')}</label><span class="tai-count" data-tai-counter="tai-knowledge">{count(settings.knowledge, LIMITS.knowledge)}</span></div>
+        <textarea id="tai-knowledge" name="knowledge" data-ac="channels,commands,emojis" data-tai-count maxlength={LIMITS.knowledge} rows="7" disabled={viewOnly} placeholder={dt('Short questions and answers, or pasted text. Q: How long is delivery?  A: 24 hours.')}>{settings.knowledge}</textarea>
+        <span class="tai-hint">{dt('The only facts it may use. Anything missing here, it says it does not know and calls staff.')}</span>
+      </div>
+
+      <div class="tai-field">
+        <div class="tai-label-row"><label for="tai-handoff">{dt('Hand over to staff when...')}</label><span class="tai-count" data-tai-counter="tai-handoff">{count(settings.handoff, LIMITS.handoff)}</span></div>
+        <textarea id="tai-handoff" name="handoff" data-tai-count maxlength={LIMITS.handoff} rows="4" disabled={viewOnly} placeholder={dt('One per line: refund, ban appeal, payment, threats...')}>{settings.handoff}</textarea>
+        <span class="tai-hint">{dt('One keyword or situation per line. A message with one of these words goes straight to staff.')}</span>
+      </div>
+
+      <div class="tai-row tai-two">
+        <div class="tai-field">
+          <label for="tai-tone">{dt('Tone')}</label>
+          <select id="tai-tone" name="tone" disabled={viewOnly}>
+            {Object.entries(toneLabels).map(([value, label]) => <option value={value} selected={settings.tone === value}>{label}</option>)}
+          </select>
+        </div>
+        <div class="tai-field">
+          <label for="tai-lang">{dt('Language of the replies')}</label>
+          <select id="tai-lang" name="language_mode" disabled={viewOnly}>
+            {Object.keys(LANGUAGES).map((value) => <option value={value} selected={settings.languageMode === value}>{languageLabels[value] ?? value}</option>)}
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-accent btn-sm tai-save" disabled={!canSave}>{dt('Save changes')}</button>
+    </section>
+  </form>
+
+  <section class="tai-card" aria-labelledby="tai-h-safety">
+    <h2 id="tai-h-safety"><span class="tai-num">3</span><Icon name="ph:shield-check-fill" width="16" height="16" />{dt('Safety')}<span class="tai-lock"><Icon name="ph:lock-fill" width="11" height="11" />{dt('Always on')}</span></h2>
+    <ul class="tai-rules">
+      {SAFETY_RULES.map((rule) => <li><span class="tai-rule-icon"><Icon name={rule.icon} width="14" height="14" /></span><span>{dt(rule.text)}</span></li>)}
+    </ul>
+    <p class="tai-hint">{dt('Petto puts these rules before and after your instructions. Your texts are read as data, so they cannot remove or change the rules.')}</p>
+  </section>
+
+  <details class="tai-card tai-fold" data-tai-chat="test">
+    <summary><h2><span class="tai-num">4</span><Icon name="ph:chat-circle-dots-fill" width="16" height="16" />{dt('Test chat')}</h2><Icon name="ph:caret-down" width="14" height="14" class="tai-caret" /></summary>
+    <div class="tai-chat-body">
+      <p class="tai-hint">{dt('Write as a member who opened a ticket. Nothing is sent to Discord.')}</p>
+      {chatsOn && (
+        <div class="tai-source" role="radiogroup" aria-label={dt('Instructions to test')}>
+          <label><input type="radio" name="tai_source" value="draft" checked /><span>{dt('What is in the fields now')}</span></label>
+          <label><input type="radio" name="tai_source" value="saved" disabled={state !== 'ok'} /><span>{dt('Saved settings')}</span></label>
+        </div>
+      )}
+      {chatsOn ? (
+        <div class="tai-chat" data-tai-kind="test">
+          <div class="tai-log" role="log" aria-live="polite"><p class="tai-log-empty">{dt('Try a common question, or one it should hand over, like a refund.')}</p></div>
+          <div class="tai-meta"><span data-tai-replies>{dt('AI replies: {a} of {b}', { a: 0, b: settings.maxReplies })}</span><button type="button" class="tai-link" data-tai-reset>{dt('Start over')}</button></div>
+          <div class="tai-compose">
+            <textarea rows="2" maxlength={LIMITS.message} aria-label={dt('Message as a ticket user')} placeholder={dt('Hi, how long does delivery take?')}></textarea>
+            <button type="button" class="btn btn-accent btn-sm tai-send" data-keep aria-label={dt('Send')}><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" /></button>
+          </div>
+        </div>
+      ) : (
+        <p class="tai-empty"><Icon name="ph:plug-fill" width="15" height="15" />{viewOnly ? dt('You can look at this page but not change it.') : dt('The AI is not configured on this Petto yet.')}</p>
+      )}
+    </div>
+  </details>
+
+  <details class="tai-card tai-fold" data-tai-chat="helper">
+    <summary><h2><span class="tai-num">5</span><Icon name="ph:magic-wand-fill" width="16" height="16" />{dt('Help me configure')}</h2><Icon name="ph:caret-down" width="14" height="14" class="tai-caret" /></summary>
+    <div class="tai-chat-body">
+      <p class="tai-hint">{dt('Answer a few questions and get a draft of the instructions, knowledge and hand-over list. Nothing is saved until you press Save.')}</p>
+      {chatsOn ? (
+        <div class="tai-chat" data-tai-kind="helper">
+          <div class="tai-log" role="log" aria-live="polite">
+            <div class="tai-msg tai-them" data-tai-intro><span class="tai-who">{dt('Helper')}</span><p>{dt('Hi! I will ask you a few short questions and then write a draft for you. First: what is your server about?')}</p></div>
+          </div>
+          <div class="tai-meta"><button type="button" class="tai-link" data-tai-draftnow>{dt('Write the draft now')}</button><button type="button" class="tai-link" data-tai-reset>{dt('Start over')}</button></div>
+          <div class="tai-compose">
+            <textarea rows="2" maxlength={LIMITS.message} aria-label={dt('Your answer')} placeholder={dt('A Minecraft server with a shop...')}></textarea>
+            <button type="button" class="btn btn-accent btn-sm tai-send" data-keep aria-label={dt('Send')}><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" /></button>
+          </div>
+        </div>
+      ) : (
+        <p class="tai-empty"><Icon name="ph:plug-fill" width="15" height="15" />{viewOnly ? dt('You can look at this page but not change it.') : dt('The AI is not configured on this Petto yet.')}</p>
+      )}
+    </div>
+  </details>
+
+  <section class="tai-card tai-usage" aria-labelledby="tai-h-usage">
+    <h2 id="tai-h-usage"><span class="tai-num">6</span><Icon name="ph:chart-bar-fill" width="16" height="16" />{dt('Usage')}</h2>
+    <div class="tai-usage-row">
+      <div class="tai-stat"><b>{usage.toLocaleString(locale)}</b><span>{dt('AI replies in tickets, {month}', { month: monthName })}</span></div>
+      <p class="tai-note"><Icon name="ph:flask-fill" width="16" height="16" /><span><b>{dt('This is a beta.')}</b> {dt('Answers can be wrong. Test it here first, keep your instructions clear, and check its tickets now and then. Test chat messages are not counted.')}</span></p>
+    </div>
+  </section>
+</DashGuildLayout>
+
+<script>
+  // The parts of the page that are always there: counters, templates. Listeners on the document, set once, so they also work after the
+  // dashboard swaps this page in again. The chats' code is loaded the first time a chat fold is opened.
+  type Starter = { instructions: string; knowledge: string; handoff: string };
+  const w = window as any;
+  if (!w.__taiBound) {
+    w.__taiBound = true;
+    const data = () => { try { return JSON.parse(document.getElementById('tai-data')?.textContent || '{}'); } catch { return {}; } };
+    const updateCount = (el: HTMLTextAreaElement) => {
+      const out = document.querySelector<HTMLElement>(`[data-tai-counter="${el.id}"]`);
+      if (!out) return;
+      const locale = data().locale || 'en-US';
+      out.textContent = `${el.value.length.toLocaleString(locale)} / ${el.maxLength.toLocaleString(locale)}`;
+      out.classList.toggle('near', el.value.length > el.maxLength * 0.9);
+    };
+    document.addEventListener('input', (e) => {
+      const el = e.target as HTMLElement;
+      if (el instanceof HTMLTextAreaElement && el.hasAttribute('data-tai-count')) updateCount(el);
+    });
+    // "Discard" of the save bar puts the form back: the counters follow once it has.
+    document.addEventListener('reset', (e) => {
+      const form = e.target as HTMLElement;
+      if (form.id !== 'tai-form') return;
+      setTimeout(() => form.querySelectorAll<HTMLTextAreaElement>('[data-tai-count]').forEach(updateCount), 0);
+    }, true);
+    document.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tai-starter]');
+      if (!button) return;
+      const d = data();
+      const starter: Starter | undefined = d.starters?.[button.dataset.taiStarter || ''];
+      const form = document.getElementById('tai-form') as HTMLFormElement | null;
+      if (!starter || !form) return;
+      const fields = ['instructions', 'knowledge', 'handoff'] as const;
+      const filled = fields.some((name) => (form.elements.namedItem(name) as HTMLTextAreaElement | null)?.value.trim());
+      if (filled && !window.confirm(d.words?.replace || 'Replace?')) return;
+      for (const name of fields) {
+        const field = form.elements.namedItem(name) as HTMLTextAreaElement | null;
+        if (!field) continue;
+        field.value = starter[name];
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      (form.elements.namedItem('instructions') as HTMLTextAreaElement | null)?.focus({ preventScroll: true });
+    });
+    // `toggle` does not bubble: it is caught on the way down.
+    document.addEventListener('toggle', (e) => {
+      const fold = e.target as HTMLDetailsElement;
+      if (!(fold instanceof HTMLDetailsElement) || !fold.open || !fold.matches('[data-tai-chat]')) return;
+      const chat = fold.querySelector<HTMLElement>('.tai-chat');
+      if (!chat || chat.dataset.taiMounted) return;
+      import('./DashTicketAiChat').then((m) => m.mountTicketAiChat(chat)).catch(() => {});
+    }, true);
+  }
+</script>
+
+<style>
+  .tai-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 0 0 18px; }
+  .tai-title h1 { margin: 0; }
+  .tai-beta { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); padding: 3px 9px; border-radius: 999px; }
+
+  .tai-flash { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 1.45; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; max-width: 720px; }
+  .tai-flash :global(svg) { flex-shrink: 0; margin-top: 2px; }
+  .tai-ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
+  .tai-notice { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 60%, transparent); }
+  .tai-err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
+
+  .tai-form { display: contents; }
+  .tai-card { display: flex; flex-direction: column; gap: 16px; max-width: 720px; margin: 0 0 16px; padding: 18px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); min-width: 0; box-sizing: border-box; }
+  .tai-card h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; }
+  .tai-card h2 :global(svg) { color: var(--accent); flex-shrink: 0; }
+  .tai-num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 7px; background: var(--bg-raise); color: var(--text-dim); font-family: var(--mono); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .tai-lock { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); background: var(--bg-raise); padding: 3px 8px; border-radius: 999px; }
+  .tai-lock :global(svg) { color: var(--text-dim) !important; }
+
+  .tai-switch { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .tai-switch input { margin-top: 3px; flex-shrink: 0; width: 16px; height: 16px; }
+  .tai-switch span { display: grid; gap: 2px; }
+  .tai-switch b { font-size: 14px; font-weight: 600; color: var(--text); }
+  .tai-switch em { font-style: normal; font-size: 12.5px; color: var(--text-dim); line-height: 1.4; }
+
+  .tai-scope { border: 1px solid var(--border-soft); border-radius: 12px; padding: 12px 14px; margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .tai-scope legend { font-size: 12px; font-weight: 600; color: var(--text-dim); padding: 0 6px; }
+  .tai-radio { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+  .tai-picker { display: none; flex-direction: column; gap: 10px; padding-top: 4px; }
+  .tai-scope:has(input[name="scope"][value="some"]:checked) .tai-picker { display: flex; animation: m-rise-in var(--m-base) var(--m-out) both; }
+  .tai-group { display: grid; gap: 6px; }
+  .tai-group-name { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); overflow-wrap: anywhere; }
+  .tai-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tai-chip { position: relative; display: inline-flex; cursor: pointer; }
+  .tai-chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .tai-chip span { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-raise); font-size: 12.5px; color: var(--text-muted); transition: background var(--m-fast) var(--m-std), color var(--m-fast) var(--m-std), border-color var(--m-fast) var(--m-std), transform var(--m-fast) var(--m-out); }
+  .tai-chip:active span { transform: scale(var(--m-press)); }
+  .tai-chip input:checked + span { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .tai-chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .tai-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .tai-row > * { flex: 1 1 240px; min-width: 0; }
+  .tai-two > * { flex: 1 1 200px; }
+  .tai-narrow { flex: 0 1 220px; }
+  .tai-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .tai-field label, .tai-starters-label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; }
+  .tai-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .tai-count { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; transition: color var(--m-fast) var(--m-std); }
+  .tai-count.near { color: var(--yellow); }
+  .tai-field textarea, .tai-field input, .tai-field select, .tai-compose textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13.5px; }
+  .tai-field textarea { resize: vertical; line-height: 1.5; min-height: 96px; }
+  .tai-hint { font-size: 12px; line-height: 1.45; color: var(--text-dim); margin: 0; }
+  .tai-note { display: flex; gap: 9px; align-items: flex-start; margin: 0; padding: 11px 13px; border-radius: 12px; background: var(--bg-raise); font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
+  .tai-note :global(svg) { flex-shrink: 0; color: var(--accent); margin-top: 1px; }
+  .tai-note b { color: var(--text); font-weight: 600; }
+  .tai-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 0; padding: 14px; border: 1px dashed var(--border); border-radius: 12px; font-size: 13px; color: var(--text-dim); }
+  .tai-empty :global(svg) { color: var(--accent); flex-shrink: 0; }
+  .tai-empty a { color: var(--accent); }
+
+  .tai-starters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .tai-starters-label { flex-basis: 100%; }
+  .tai-starter { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: border-color var(--m-fast) var(--m-std), background var(--m-fast) var(--m-std), transform var(--m-fast) var(--m-out); }
+  .tai-starter :global(svg) { color: var(--accent); }
+  .tai-starter:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--card-hover); }
+  .tai-starter:active:not(:disabled) { transform: scale(var(--m-press)); }
+  .tai-starter:disabled { opacity: .5; cursor: not-allowed; }
+  .tai-save { align-self: flex-start; }
+
+  .tai-rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .tai-rules li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+  .tai-rule-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); flex-shrink: 0; }
+
+  .tai-fold { gap: 0; }
+  .tai-fold summary { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; }
+  .tai-fold summary::-webkit-details-marker { display: none; }
+  .tai-caret { margin-left: auto; color: var(--text-dim); transition: transform var(--m-base) var(--m-out); }
+  .tai-fold[open] .tai-caret { transform: rotate(180deg); }
+  .tai-chat-body { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; }
+  .tai-source { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise); align-self: flex-start; max-width: 100%; }
+  .tai-source label { position: relative; cursor: pointer; }
+  .tai-source input { position: absolute; opacity: 0; pointer-events: none; }
+  .tai-source span { display: block; padding: 6px 11px; border-radius: 9px; font-size: 12.5px; color: var(--text-muted); transition: background var(--m-fast) var(--m-std), color var(--m-fast) var(--m-std); }
+  .tai-source input:checked + span { background: var(--accent-soft); color: var(--accent); }
+  .tai-source input:disabled + span { opacity: .45; cursor: not-allowed; }
+  .tai-source input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .tai-chat { display: flex; flex-direction: column; gap: 10px; }
+  .tai-log { display: flex; flex-direction: column; gap: 10px; min-height: 120px; max-height: min(420px, 60vh); overflow-y: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--bg); }
+  .tai-log-empty { margin: auto; text-align: center; font-size: 12.5px; color: var(--text-dim); max-width: 32ch; }
+  .tai-log :global(.tai-msg) { display: grid; gap: 3px; max-width: 86%; animation: m-rise-in var(--m-base) var(--m-out) both; }
+  .tai-log :global(.tai-msg p) { margin: 0; padding: 9px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .tai-log :global(.tai-who) { font-family: var(--mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+  .tai-log :global(.tai-them) { align-self: flex-start; }
+  .tai-log :global(.tai-them p) { background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 5px; color: var(--text); }
+  .tai-log :global(.tai-me) { align-self: flex-end; justify-items: end; }
+  .tai-log :global(.tai-me p) { background: var(--accent-soft); color: var(--text); border-bottom-right-radius: 5px; }
+  .tai-log :global(.tai-handoff) { align-self: stretch; display: flex; gap: 8px; align-items: flex-start; padding: 9px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--yellow) 55%, transparent); background: color-mix(in srgb, var(--yellow) 10%, transparent); color: var(--yellow); font-size: 12.5px; line-height: 1.45; animation: m-pop-in var(--m-base) var(--m-soft) both; }
+  .tai-log :global(.tai-handoff b) { display: block; color: var(--text); font-weight: 600; }
+  .tai-log :global(.tai-handoff svg) { flex-shrink: 0; margin-top: 1px; }
+  .tai-log :global(.tai-sys) { align-self: center; font-size: 12px; color: var(--text-dim); text-align: center; max-width: 40ch; }
+  .tai-log :global(.tai-problem) { align-self: stretch; padding: 8px 12px; border-radius: 10px; background: var(--red-soft); color: var(--red); font-size: 12.5px; }
+  .tai-log :global(.tai-dots) { display: inline-flex; gap: 4px; padding: 12px 14px !important; }
+  .tai-log :global(.tai-dots i) { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); animation: tai-dot 1s var(--m-std) infinite; }
+  .tai-log :global(.tai-dots i:nth-child(2)) { animation-delay: .15s; }
+  .tai-log :global(.tai-dots i:nth-child(3)) { animation-delay: .3s; }
+  @keyframes tai-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+  .tai-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .tai-link { border: 0; background: none; padding: 2px 0; color: var(--accent); font: inherit; font-family: var(--sans); font-size: 12.5px; cursor: pointer; }
+  .tai-link:hover { text-decoration: underline; }
+  .tai-link:disabled { opacity: .5; cursor: default; text-decoration: none; }
+  .tai-compose { display: flex; gap: 8px; align-items: flex-end; }
+  .tai-compose textarea { flex: 1; resize: none; min-height: 44px; max-height: 140px; line-height: 1.45; }
+  .tai-compose textarea:disabled, .tai-send:disabled { opacity: .5; cursor: not-allowed; }
+  .tai-send { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 12px; flex-shrink: 0; }
+
+  .tai-chat :global(.tai-draft) { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--accent) 6%, var(--card)); animation: m-pop-in var(--m-base) var(--m-soft) both; }
+  .tai-chat :global(.tai-draft-title) { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; color: var(--text); margin: 0; }
+  .tai-chat :global(.tai-draft-part) { display: grid; gap: 4px; }
+  .tai-chat :global(.tai-draft-part span) { font-family: var(--mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+  .tai-chat :global(.tai-draft-part pre) { margin: 0; max-height: 132px; overflow: auto; padding: 8px 10px; border-radius: 9px; background: var(--bg-raise); font-family: var(--sans); font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-muted); }
+  .tai-chat :global(.tai-draft-actions) { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tai-chat :global(.tai-draft-actions .btn) { display: inline-flex; align-items: center; gap: 6px; }
+
+  .tai-usage-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
+  .tai-stat { display: grid; gap: 4px; align-content: center; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raise); flex: 0 1 200px; }
+  .tai-stat b { font-family: var(--serif); font-size: 30px; line-height: 1; color: var(--text); }
+  .tai-stat span { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+  .tai-usage-row .tai-note { flex: 1 1 260px; }
+
+  @media (max-width: 600px) {
+    .tai-card { padding: 16px; border-radius: 14px; }
+    .tai-log :global(.tai-msg) { max-width: 92%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tai-picker, .tai-log :global(.tai-msg), .tai-log :global(.tai-handoff), .tai-chat :global(.tai-draft) { animation: none !important; }
+    .tai-log :global(.tai-dots i) { animation: none; opacity: .6; }
+  }
+</style>

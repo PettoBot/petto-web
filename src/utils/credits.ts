@@ -121,7 +121,8 @@ async function write(astro: any, path: string, method: string, body?: unknown): 
 
 /** Reads the fields of the form, or says what is wrong. The link is optional (a credit can be to a person with no page). */
 export function readCreditForm(form: FormData): { ok: true; value: CreditValue } | { ok: false; error: 'invalid' | 'name' | 'url' | 'logo' } {
-  const text = (name: string, max: number) => String(form.get(name) ?? '').trim().slice(0, max);
+  // A line break the browser sends as \r\n counts as one character, as in the field.
+  const text = (name: string, max: number) => String(form.get(name) ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
   const kind = text('kind', 20) as CreditKind;
   if (!(CREDIT_KINDS as readonly string[]).includes(kind)) return { ok: false, error: 'invalid' };
   const name = text('name', 80);

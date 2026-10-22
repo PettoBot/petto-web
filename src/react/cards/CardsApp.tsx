@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../embeds/embeds.css';
 import './cards.css';
 import { t } from '../embeds/t';
+import { toast } from '../embeds/toast';
 import { drawCard } from './cardCanvas';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
@@ -79,7 +80,7 @@ function SourceField({ value, onChange, assets, onUpload, uploading }: { value: 
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <div className="crd-source">
-      <input type="text" placeholder="https://... or {user.avatar}" value={value} onChange={(e) => onChange(e.target.value)} />
+      <input type="text" placeholder={t('https://... or {user.avatar}')} value={value} onChange={(e) => onChange(e.target.value)} />
       <div className="crd-source-row">
         <select value={value.startsWith('asset:') ? value : ''} onChange={(e) => e.target.value && onChange(e.target.value)}>
           <option value="">{t('Uploaded pictures')}</option>
@@ -142,6 +143,9 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       if (first) { setSelected(first.name); setDraft({ ...newCard(first.data.kind ?? 'welcome'), ...first.data }); }
     });
   }, [refresh, initialSelected]);
+
+  // Feedback goes to the dashboard's toast; the app's own corner message is only for a page without it.
+  const notify = (text: string, kind: 'ok' | 'error' = 'ok') => { if (!toast(text, kind)) setFlash(text); };
 
   useEffect(() => {
     if (!flash) return;
@@ -223,7 +227,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     const data = newCard(newKind);
     const res = await post(guildId, { action: 'save', name, data });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) { setFlash(errorText(body.error)); return; }
+    if (!res.ok) { notify(errorText(body.error), 'error'); return; }
     await refresh();
     setSelected(body.name);
     setDraft({ ...newCard(body.card?.kind ?? 'welcome'), ...body.card });
@@ -233,11 +237,13 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
 
   async function handleSave() {
     setSaving(true);
-    const res = await post(guildId, { action: 'save', name: selected, data: draft });
+    // A request that fails on the way (no network, a timeout) must not leave the button on "Saving...".
+    const res = await post(guildId, { action: 'save', name: selected, data: draft }).catch(() => null);
+    if (!res) { setSaving(false); notify(errorText(), 'error'); return false; }
     const body = await res.json().catch(() => ({}));
     setSaving(false);
-    if (!res.ok) { setFlash(errorText(body.error)); if (body.error === 'premium_required') setLockedNote(true); return false; }
-    setFlash(t('Saved.'));
+    if (!res.ok) { notify(errorText(body.error), 'error'); if (body.error === 'premium_required') setLockedNote(true); return false; }
+    notify(t('Saved.'));
     setDirty(false);
     setLockedNote(false);
     await refresh();
@@ -265,7 +271,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   async function handleDelete() {
     if (!window.confirm(t('Delete the "{name}" card? Messages that use it are sent without the picture.', { name: selected }))) return;
     const res = await post(guildId, { action: 'delete', name: selected });
-    if (!res.ok) { setFlash(errorText()); return; }
+    if (!res.ok) { notify(errorText(), 'error'); return; }
     const body = await refresh();
     const next = body?.cards[0];
     setSelected(next?.name ?? '');
@@ -278,7 +284,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     if (stash.current?.length) { setDraft({ ...draft, mode: 'advanced', layers: stash.current }); setDirty(true); return; }
     const res = await post(guildId, { action: 'normalize', data: draft });
     const body = await res.json().catch(() => null);
-    if (!res.ok || !body?.card) { setFlash(errorText()); return; }
+    if (!res.ok || !body?.card) { notify(errorText(), 'error'); return; }
     setDraft({ ...draft, mode: 'advanced', layers: body.card.layers, width: body.card.width, height: body.card.height });
     setDirty(true);
     setActiveLayer(null);
@@ -289,9 +295,9 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     try {
       const res = await call(guildId, `?upload&name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) { setFlash(errorText(body.error)); return null; }
+      if (!res.ok) { notify(errorText(body.error), 'error'); return null; }
       await refresh();
-      setFlash(t('Picture uploaded.'));
+      notify(t('Picture uploaded.'));
       return `asset:${body.asset.id}`;
     } finally { setUploading(false); }
   }
@@ -300,6 +306,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     if (!window.confirm(t('Delete this picture? Cards that use it will draw without it.'))) return;
     const res = await post(guildId, { action: 'delete_asset', id });
     if (res.ok) await refresh();
+    else notify(errorText(), 'error');
   }
 
   const fontOptions = useMemo(() => (overview?.fonts ?? []).map((f) => (
@@ -640,7 +647,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
               )}
 
               <div className="ebr-actions">
-                <button type="button" className="btn btn-accent btn-sm" onClick={handleSave} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
+                <button type="button" className="btn btn-accent btn-sm" onClick={(ev) => { ev.currentTarget.style.minWidth = `${ev.currentTarget.offsetWidth}px`; handleSave(); }} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
                 <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete}>{t('Delete this card')}</button>
               </div>
               <p className="ebr-tools-note">{t('To use this card, open an embed template and pick it under Image card. Welcome, tickets, giveaways and the other messages use their template.')}</p>
