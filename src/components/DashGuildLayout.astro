@@ -860,6 +860,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (resettingForm || !saveBar) return;
       customDirty.set(String(key), opts || {});
       syncDirtyFlag();
+      cancelFinish();
       saveBar.classList.remove('error');
       updateSaveBarText();
       showSaveBar();
@@ -871,9 +872,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (saveBar && !saveBar.classList.contains('saving') && !saveBar.classList.contains('saved')) saveBar.classList.remove('show', 'error');
       document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
     };
+    // A new change while the bar still says "Saved" (or "Discarded") on its way out: that ending is called off, the bar stays.
+    function cancelFinish() {
+      if (!saveBar || !(saveBar.classList.contains('saved') || barTimer)) return;
+      clearTimeout(barTimer);
+      barTimer = null;
+      saveBar.classList.remove('saved');
+    }
     function markDirty(form) {
       if (dirtyForms.indexOf(form) === -1) dirtyForms.push(form);
       dirtyForm = form;
+      cancelFinish();
       if (saveBar) saveBar.classList.remove('error');
       form.classList.add('is-dirty');
       updateSaveBarText();
@@ -976,14 +985,10 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         if (form.hasAttribute('data-no-dirty')) return;
         var ownSave = primarySave(form);
         if (ownSave && !form.closest('dialog, [role="dialog"], [data-keep-save]')) ownSave.classList.add('dgl-bar-save');
-        form.addEventListener('input', function () {
-          if (resettingForm || Date.now() - savedAt < 1200) return;
-          markDirty(form);
-        });
-        form.addEventListener('change', function () {
-          if (resettingForm || Date.now() - savedAt < 1200) return;
-          markDirty(form);
-        });
+        // A control marked data-no-dirty (or inside such a box) acts at once and is not an unsaved change.
+        var counts = function (e) { return !(resettingForm || Date.now() - savedAt < 1200 || (e.target && e.target.closest && e.target.closest('[data-no-dirty]'))); };
+        form.addEventListener('input', function (e) { if (counts(e)) markDirty(form); });
+        form.addEventListener('change', function (e) { if (counts(e)) markDirty(form); });
       });
     }
 
