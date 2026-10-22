@@ -1,0 +1,79 @@
+---
+// Keeps the person's place when the phone reloads the page by itself (the browser dropped the tab to save memory, or the page was
+// refreshed): the scroll position and what was typed in the fields and not yet saved come back. It only acts on a reload or a Back/Forward
+// (never on opening a page), only for the same address, and only for a field the page has not changed since. Everything is kept in
+// sessionStorage (this tab only) and is cleared when the changes are saved.
+---
+<script is:inline>
+  (function () {
+    if (window.__dglKeepPlace) return;
+    window.__dglKeepPlace = true;
+    var PREFIX = 'petto-place:';
+    var MAX_AGE_MS = 6 * 60 * 60 * 1000;
+    var kind = 'navigate';
+    try { var entry = performance.getEntriesByType('navigation')[0]; if (entry && entry.type) kind = entry.type; } catch (e) { /* unknown */ }
+    var address = function () { return PREFIX + location.pathname + location.search; };
+    var read = function () { try { return JSON.parse(sessionStorage.getItem(address()) || 'null') || { y: 0, f: {}, t: 0 }; } catch (e) { return { y: 0, f: {}, t: 0 }; } };
+    var write = function (state) { try { state.t = Date.now(); sessionStorage.setItem(address(), JSON.stringify(state)); } catch (e) { /* storage full or blocked */ } };
+    // A field is told apart by its form, its name and its place among the fields with that name.
+    var keyOf = function (el) {
+      if (!el || !el.name || el.disabled) return null;
+      var type = String(el.type || '').toLowerCase();
+      if (type === 'password' || type === 'file' || type === 'hidden' || type === 'submit' || type === 'button') return null;
+      if (el.closest('[data-no-draft]')) return null;
+      var scope = el.form || document;
+      var same = scope.querySelectorAll('[name="' + String(el.name).replace(/"/g, '\\"') + '"]');
+      var index = Array.prototype.indexOf.call(same, el);
+      var form = el.form ? (el.form.getAttribute('action') || '') + '#' + (el.form.id || '') : '';
+      return form + '|' + el.name + '|' + index;
+    };
+    var valueOf = function (el) { return el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; };
+    var defaultOf = function (el) { return el.type === 'checkbox' || el.type === 'radio' ? el.defaultChecked : (el.tagName === 'SELECT' ? (Array.prototype.filter.call(el.options, function (o) { return o.defaultSelected; })[0] || el.options[0] || { value: '' }).value : el.defaultValue); };
+
+    var scrollTimer = 0;
+    window.addEventListener('scroll', function () {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function () { var state = read(); state.y = Math.round(window.scrollY); write(state); }, 250);
+    }, { passive: true });
+
+    var typeTimer = 0;
+    document.addEventListener('input', function (event) {
+      var el = event.target;
+      clearTimeout(typeTimer);
+      typeTimer = setTimeout(function () {
+        var key = keyOf(el);
+        if (!key) return;
+        var state = read();
+        if (valueOf(el) === defaultOf(el)) delete state.f[key]; else state.f[key] = valueOf(el);
+        write(state);
+      }, 400);
+    }, true);
+
+    // Saved: nothing is left to bring back.
+    var clearDrafts = function () { var state = read(); state.f = {}; write(state); };
+    document.addEventListener('submit', clearDrafts, true);
+    document.addEventListener('dgl:dirty', function (event) { if (event.detail && event.detail.forms && !event.detail.forms.length) clearDrafts(); });
+
+    if (kind !== 'reload' && kind !== 'back_forward') return;
+    var restore = function () {
+      var state = read();
+      if (!state.t || Date.now() - state.t > MAX_AGE_MS) return;
+      var keys = Object.keys(state.f || {});
+      if (keys.length) {
+        var fields = {};
+        document.querySelectorAll('input[name], textarea[name], select[name]').forEach(function (el) { var key = keyOf(el); if (key) fields[key] = el; });
+        keys.forEach(function (key) {
+          var el = fields[key];
+          // Only a field that still shows what the page gave it.
+          if (!el || valueOf(el) !== defaultOf(el)) return;
+          if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!state.f[key]; else el.value = state.f[key];
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      }
+      if (state.y > 0 && window.scrollY < 5) window.scrollTo(0, state.y);
+    };
+    // The page draws its own parts when it loads: wait for them, then once more for the slow ones.
+    window.addEventListener('load', function () { setTimeout(restore, 350); setTimeout(restore, 1500); });
+  })();
+</script>
