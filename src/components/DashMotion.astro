@@ -1,0 +1,169 @@
+---
+// The motion of the dashboard in one place: the tokens (durations, easings, distances) every part uses, and two small helpers for the
+// scripts. Things come in and go out the same soft way: a list, a menu, a dialog or a toast fades and moves a few pixels, never jumps.
+// Only opacity and transform move (the GPU does it; nothing is laid out again on every frame), and with "reduce motion" everything
+// still opens and closes, at once.
+//
+//   window.dglMotion.leave(el, done)   plays the exit of `el`, then calls `done` (which hides or removes it). Opening it again cancels it.
+//   window.dglMotion.hide(el)          the exit, then `el.hidden = true`.
+//   window.dglMotion.flip(anchor, change)  runs `change()` (something above the rest grows or shrinks) and slides what comes after
+//                                       `anchor` from where it was to where it lands, with transforms only (see the accordions).
+---
+<script is:inline>
+  (function () {
+    if (window.dglMotion) return;
+    var media = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var reduced = function () { return !!(media && media.matches); };
+    function leave(el, done, cls) {
+      done = done || function () {};
+      if (!el || !el.isConnected || el.hidden || reduced()) { if (el && el._dglLeave) el._dglLeave(true); done(); return; }
+      if (el._dglLeave) return;
+      var name = cls || 'dgl-leave';
+      var finished = false;
+      var timer = 0;
+      var end = function (cancelled) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        el.removeEventListener('animationend', onEnd);
+        el.classList.remove(name);
+        el._dglLeave = null;
+        if (!cancelled) done();
+      };
+      var onEnd = function (event) { if (event.target === el) end(false); };
+      el._dglLeave = end;
+      el.classList.add(name);
+      el.addEventListener('animationend', onEnd);
+      // A safety net: an element that cannot animate (display: contents, a hidden parent) still closes.
+      timer = setTimeout(function () { end(false); }, 420);
+    }
+    // Something that was leaving and is opened again stays (its exit is cancelled, nothing is hidden under the person).
+    function stay(el) { if (el && el._dglLeave) el._dglLeave(true); }
+    function hide(el, then) { leave(el, function () { el.hidden = true; if (then) then(); }); }
+
+    // FLIP: what follows `anchor` (its next siblings, and those of every box around it up to `stop`) is measured, `change` runs, and each
+    // of them that is on screen starts where it was and slides to its new place. Off-screen ones simply move.
+    function following(anchor, stop) {
+      var out = [];
+      for (var node = anchor; node && node !== stop && node !== document.body; node = node.parentElement) {
+        for (var sib = node.nextElementSibling; sib; sib = sib.nextElementSibling) {
+          if (out.length > 60) return out;
+          out.push(sib);
+        }
+      }
+      return out;
+    }
+    function flip(anchor, change, stop) {
+      if (reduced() || !anchor) { change(); return; }
+      var list = following(anchor, stop || document.getElementById('dgl-content') || document.body);
+      var height = window.innerHeight;
+      // Measured where they are seen (mid-slide too), then their running slides stop, so a quick second press continues smoothly.
+      var before = list.map(function (el) { var r = el.getBoundingClientRect(); return [r.left, r.top]; });
+      list.forEach(function (el) { if (el._dglFlip) { el._dglFlip.cancel(); el._dglFlip = null; } });
+      change();
+      var moves = [];
+      list.forEach(function (el, i) {
+        var rect = el.getBoundingClientRect();
+        var dx = before[i][0] - rect.left;
+        var dy = before[i][1] - rect.top;
+        if ((Math.abs(dx) < 1 && Math.abs(dy) < 1) || !rect.height) return;
+        // Neither where it was nor where it lands is on screen: it just moves.
+        var wasVisible = before[i][1] < height && before[i][1] + rect.height > 0;
+        var isVisible = rect.top < height && rect.bottom > 0;
+        if (!wasVisible && !isVisible) return;
+        moves.push([el, dx, dy]);
+      });
+      moves.forEach(function (move) {
+        var el = move[0];
+        el._dglFlip = el.animate([{ transform: 'translate(' + move[1] + 'px, ' + move[2] + 'px)' }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+        el._dglFlip.onfinish = el._dglFlip.oncancel = function () { el._dglFlip = null; };
+      });
+    }
+    window.dglMotion = { reduced: reduced, leave: leave, stay: stay, hide: hide, flip: flip };
+  })();
+</script>
+
+<style is:global>
+  :root {
+    /* Durations: a tap answers fast, a panel opens a little slower, a page section settles the slowest. */
+    --m-instant: 90ms;
+    --m-fast: 140ms;
+    --m-base: 200ms;
+    --m-slow: 300ms;
+    /* Easings: things arrive decelerating (out), leave accelerating (in); "soft" is the gentle overshoot of a press that lets go. */
+    --m-out: cubic-bezier(.16, 1, .3, 1);
+    --m-in: cubic-bezier(.4, 0, 1, 1);
+    --m-std: cubic-bezier(.2, .8, .2, 1);
+    --m-soft: cubic-bezier(.34, 1.3, .64, 1);
+    /* Distances: how far something travels as it appears. */
+    --m-rise: 6px;
+    --m-rise-lg: 12px;
+    --m-press: .97;
+    --m-stagger: 35ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root { --m-instant: 1ms; --m-fast: 1ms; --m-base: 1ms; --m-slow: 1ms; --m-rise: 0px; --m-rise-lg: 0px; --m-press: 1; --m-stagger: 0ms; }
+  }
+
+  @keyframes m-pop-in { from { opacity: 0; transform: translateY(calc(var(--m-rise) * -1)) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes m-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(calc(var(--m-rise) * -1)) scale(.98); } }
+  @keyframes m-pop-in-up { from { opacity: 0; transform: translateY(var(--m-rise)) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes m-pop-out-up { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--m-rise)) scale(.98); } }
+  @keyframes m-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes m-fade-out { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes m-rise-in { from { opacity: 0; transform: translateY(var(--m-rise-lg)); } to { opacity: 1; transform: none; } }
+  @keyframes m-dialog-in { from { opacity: 0; transform: translateY(var(--m-rise-lg)) scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes m-dialog-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--m-rise)) scale(.98); } }
+
+  /* The generic exit (dglMotion.leave). A panel that opened upwards leaves downwards. */
+  .dgl-leave { animation: m-pop-out var(--m-fast) var(--m-in) both !important; pointer-events: none !important; }
+  .dgl-leave.dgl-float-up, .dgl-selmenu.up.dgl-leave, .dgl-ac.up.dgl-leave { animation-name: m-pop-out-up !important; }
+  /* Full-screen veils (the emoji picker, a modal box) fade; their box goes down a little. */
+  .ep-modal.dgl-leave, .rb-modal.dgl-leave, .dgl-backdrop.dgl-leave, .dgl-pal-veil.dgl-leave { animation: m-fade-out var(--m-base) var(--m-in) both !important; }
+  .ep-modal.dgl-leave > *, .rb-modal.dgl-leave > *, .dgl-pal-veil.dgl-leave > * { animation: m-dialog-out var(--m-base) var(--m-in) both; }
+  .ep-modal:not([hidden]), .rb-modal:not([hidden]) { animation: m-fade-in var(--m-base) var(--m-out) both; }
+  .ep-modal:not([hidden]) > *, .rb-modal:not([hidden]) > * { animation: m-dialog-in var(--m-slow) var(--m-out) both; }
+
+  /* Entrances of the floating lists. */
+  .dgl-selmenu { animation: m-pop-in var(--m-base) var(--m-out) both; transform-origin: top center; }
+  .dgl-selmenu.up { animation-name: m-pop-in-up; transform-origin: bottom center; }
+  .dgl-float.dgl-float:not([hidden]) { animation: m-pop-in var(--m-base) var(--m-out) both; transform-origin: top center; }
+  .dgl-float.dgl-float-up:not([hidden]) { animation-name: m-pop-in-up; transform-origin: bottom center; }
+  .dgl-switcher-panel:not([hidden]) { animation: m-pop-in var(--m-base) var(--m-out) both; transform-origin: top center; }
+
+  /* Native dialogs (opened with showModal, closed with close()) fade and settle both ways, in the browsers that can animate the
+     top layer; the others open and close at once, as before. */
+  body.dashboard-motion dialog {
+    transition: opacity var(--m-base) var(--m-in), transform var(--m-base) var(--m-in), overlay var(--m-base) allow-discrete, display var(--m-base) allow-discrete;
+    opacity: 0; transform: translateY(var(--m-rise)) scale(.98);
+  }
+  body.dashboard-motion dialog[open] { opacity: 1; transform: none; transition-timing-function: var(--m-out); transition-duration: var(--m-slow); }
+  @starting-style { body.dashboard-motion dialog[open] { opacity: 0; transform: translateY(var(--m-rise-lg)) scale(.97); } }
+  body.dashboard-motion dialog::backdrop { transition: background-color var(--m-base) ease, overlay var(--m-base) allow-discrete, display var(--m-base) allow-discrete; background-color: rgba(10, 8, 6, 0); }
+  body.dashboard-motion dialog[open]::backdrop { background-color: rgba(10, 8, 6, .6); }
+  @starting-style { body.dashboard-motion dialog[open]::backdrop { background-color: rgba(10, 8, 6, 0); } }
+
+  /* Cards that appear in a list come one after the other. A list opts in with .dgl-stagger. */
+  .dgl-stagger > * { animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
+  .dgl-stagger > :nth-child(2) { animation-delay: calc(var(--m-stagger) * 1); }
+  .dgl-stagger > :nth-child(3) { animation-delay: calc(var(--m-stagger) * 2); }
+  .dgl-stagger > :nth-child(4) { animation-delay: calc(var(--m-stagger) * 3); }
+  .dgl-stagger > :nth-child(5) { animation-delay: calc(var(--m-stagger) * 4); }
+  .dgl-stagger > :nth-child(6) { animation-delay: calc(var(--m-stagger) * 5); }
+  .dgl-stagger > :nth-child(7) { animation-delay: calc(var(--m-stagger) * 6); }
+  .dgl-stagger > :nth-child(n+8) { animation-delay: calc(var(--m-stagger) * 7); }
+
+  /* Hover and press: a card lifts a hair with a mouse, buttons and links answer a press. Touch screens only get the press. */
+  @media (hover: hover) and (pointer: fine) {
+    body.dashboard-motion .dgl-content :is(.dgl-card, .dgl-mod-card, .dgl-rc) { transition: transform var(--m-base) var(--m-out), border-color var(--m-base) ease, box-shadow var(--m-slow) ease; }
+    body.dashboard-motion .dgl-content :is(.dgl-card, .dgl-mod-card, .dgl-rc):hover { transform: translateY(-2px); }
+  }
+  body.dashboard-motion .dgl-content :is(.dgl-card, .dgl-mod-card, .dgl-rc):active { transform: scale(.99); transition-duration: var(--m-instant); }
+  /* An opened card holds a form: it stays still. */
+  body.dashboard-motion .dgl-content :is(.dgl-card, .dgl-mod-card, .dgl-rc)[open]:is(:hover, :active) { transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dgl-leave, .dgl-selmenu, .dgl-float.dgl-float:not([hidden]), .dgl-switcher-panel:not([hidden]), .dgl-stagger > *, .ep-modal:not([hidden]), .ep-modal:not([hidden]) > *, .rb-modal:not([hidden]), .rb-modal:not([hidden]) > * { animation: none !important; }
+    body.dashboard-motion dialog, body.dashboard-motion dialog::backdrop { transition: none; }
+  }
+</style>

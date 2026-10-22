@@ -49,3 +49,8 @@ export async function getVariableGroups(astro: { locals?: any }): Promise<Regist
   cached = { groups, expiresAt: Date.now() + (groups ? OK_TTL_MS : FAILED_TTL_MS) };
   return groups;
 }
+
+/** The bot's list if a page already read it lately (or null), without asking the bot: for parts that must add no request. */
+export function peekVariableGroups(): RegistryGroup[] | null {
+  return cached?.groups ?? null;
+}

@@ -1,0 +1,360 @@
+---
+// Typed autocomplete for the message fields of the dashboard. A textarea or input marked `data-ac` opens a small menu at the caret while
+// the person types a trigger:
+//   @  roles (and @everyone, @here)  -> <@&id>        #  channels -> <#id>        {  Petto variables -> {user.mention}
+//   /  Petto's commands -> /command   :name  emojis of the server and standard ones -> <:name:id> or the emoji
+// `data-ac` alone offers all of them; `data-ac="vars,emojis"` only those (roles, channels, vars, commands, emojis).
+// The data is what the page already has (DashAcData.astro, the Variables list, the emoji picker's list); the commands come once with the
+// full page and the standard emojis load once, the first time a ":" is typed. Nothing is asked while typing.
+import { getDashLang, makeT } from '../i18n/dash';
+import { getAllCommands } from '../utils/commandList';
+const dt = makeT(getDashLang(Astro));
+const commands = JSON.stringify(getAllCommands().map((command) => [command.name, command.desc.length > 90 ? `${command.desc.slice(0, 88).trimEnd()}…` : command.desc])).replace(/</g, '\\u003c');
+const words = JSON.stringify({
+  roles: dt('Roles'), channels: dt('Channels'), vars: dt('Variables'), commands: dt('Commands'), emojis: dt('Emojis'),
+  everyone: dt('Notifies everyone in the server'), here: dt('Notifies everyone who is online'), none: dt('No matches.'),
+  hint: dt('↑↓ to move, Enter to pick, Esc to close'), voice: dt('Voice'), noRoles: dt('This page has no roles to suggest.'),
+}).replace(/</g, '\\u003c');
+---
+<script type="application/json" id="dgl-ac-commands" set:html={commands}></script>
+<script type="application/json" id="dgl-ac-words" set:html={words}></script>
+
+<script>
+  // @ts-nocheck: plain browser JavaScript, like the dashboard's other scripts.
+  (function () {
+    if (window.__dglAc) return;
+    window.__dglAc = true;
+    var KINDS = ['roles', 'channels', 'vars', 'commands', 'emojis'];
+    var LIMIT = 40;
+    var words = {};
+    try { words = JSON.parse((document.getElementById('dgl-ac-words') || {}).textContent || '{}'); } catch (e) { words = {}; }
+    var menu = null;      // the open menu element
+    var state = null;     // { field, kind, start, query, items, index }
+    var unicode = null;   // the standard emojis, loaded on the first ":"
+    var unicodeLoading = null;
+    var dataCache = { key: null, value: null };
+
+    function esc(text) { return String(text == null ? '' : text).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function json(node, fallback) { try { return node ? JSON.parse(node.textContent || '') : fallback; } catch (e) { return fallback; } }
+
+    // What this page offers, read from the page the first time a menu opens (and again after the content is swapped).
+    function pageData() {
+      var content = document.getElementById('dgl-content') || document.body;
+      if (dataCache.key === content) return dataCache.value;
+      var value = { roles: [], channels: [], emojis: [], vars: [], commands: [] };
+      var seenRole = {}, seenChannel = {}, seenEmoji = {};
+      document.querySelectorAll('script[data-ac-data]').forEach(function (node) {
+        var d = json(node, {});
+        (d.r || []).forEach(function (r) { if (!seenRole[r[0]]) { seenRole[r[0]] = 1; value.roles.push({ id: r[0], name: r[1], color: r[2] }); } });
+        (d.c || []).forEach(function (c) { if (!seenChannel[c[0]]) { seenChannel[c[0]] = 1; value.channels.push({ id: c[0], name: c[1], type: c[2] }); } });
+        (d.e || []).forEach(function (e) { if (!seenEmoji[e[0]]) { seenEmoji[e[0]] = 1; value.emojis.push({ id: e[0], name: e[1], animated: !!e[2] }); } });
+        // The page's own variables come before the global ones.
+        (d.v || []).forEach(function (v) { value.vars.push({ tok: v[0], desc: v[1], group: '' }); });
+      });
+      // The emoji picker of the page already carries the server's emojis.
+      var picker = json(document.getElementById('ep-data'), null);
+      if (picker && picker.customEmojis) picker.customEmojis.forEach(function (e) { if (!seenEmoji[e.id]) { seenEmoji[e.id] = 1; value.emojis.push({ id: e.id, name: e.name, animated: !!e.animated }); } });
+      json(document.querySelector('script[data-var-groups]'), []).forEach(function (group) {
+        (group.v || []).forEach(function (v) { value.vars.push({ tok: v[0], desc: v[1], group: group.l }); });
+      });
+      var seenVar = {};
+      value.vars = value.vars.filter(function (v) { if (seenVar[v.tok]) return false; seenVar[v.tok] = 1; return true; });
+      value.commands = json(document.getElementById('dgl-ac-commands'), []).map(function (c) { return { name: c[0], desc: c[1] }; });
+      dataCache = { key: content, value: value };
+      return value;
+    }
+    function loadUnicode() {
+      if (unicode || unicodeLoading) return unicodeLoading;
+      unicodeLoading = import('../utils/unicodeEmojis').then(function (module) {
+        unicode = [];
+        module.UNICODE_EMOJIS.forEach(function (group) { group.emojis.forEach(function (pair) { unicode.push({ char: pair[0], name: pair[1].replace(/\s+/g, '_') }); }); });
+        return unicode;
+      }).catch(function () { unicode = []; return unicode; });
+      return unicodeLoading;
+    }
+
+    function kindsOf(field) {
+      var attr = (field.getAttribute('data-ac') || '').trim();
+      if (!attr || attr === 'all') return KINDS;
+      return attr.split(/[\s,]+/).filter(function (k) { return KINDS.indexOf(k) !== -1; });
+    }
+    // The trigger right before the caret, or null.
+    var PATTERNS = {
+      roles: /(^|[^\w<&@])@([^\s@<>#{}]{0,32})$/,
+      channels: /(^|[^\w<&#])#([^\s#<>@{}]{0,32})$/,
+      vars: /\{([\w.:\-|]{0,40})$/,
+      commands: /(^|\s)\/([\w-]{0,32})$/,
+      emojis: /(^|[^\w<:]):([\w~+-]{2,32})$/,
+    };
+    function detect(field) {
+      if (field.selectionStart !== field.selectionEnd) return null;
+      var caret = field.selectionStart;
+      var before = field.value.slice(Math.max(0, caret - 64), caret);
+      var offset = Math.max(0, caret - 64);
+      var kinds = kindsOf(field);
+      for (var i = 0; i < kinds.length; i++) {
+        var match = PATTERNS[kinds[i]].exec(before);
+        if (!match) continue;
+        var query = kinds[i] === 'vars' ? match[1] : match[2];
+        return { kind: kinds[i], query: query, start: offset + before.length - query.length - 1, end: caret };
+      }
+      return null;
+    }
+
+    function score(name, q) {
+      if (!q) return 1;
+      var n = name.toLowerCase();
+      if (n === q) return 4;
+      if (n.indexOf(q) === 0) return 3;
+      if (n.replace(/[\s_.-]/g, '').indexOf(q.replace(/[\s_.-]/g, '')) === 0) return 2.5;
+      return n.indexOf(q) !== -1 ? 2 : 0;
+    }
+    function rank(list, q, nameOf) {
+      q = (q || '').toLowerCase();
+      var out = [];
+      for (var i = 0; i < list.length; i++) { var s = score(nameOf(list[i]), q); if (s) out.push([s, i, list[i]]); }
+      out.sort(function (a, b) { return b[0] - a[0] || a[1] - b[1]; });
+      return out.slice(0, LIMIT).map(function (x) { return x[2]; });
+    }
+    function itemsFor(kind, q, data) {
+      if (kind === 'roles') {
+        var special = [{ special: 'everyone', name: 'everyone', desc: words.everyone }, { special: 'here', name: 'here', desc: words.here }];
+        return rank(special.concat(data.roles), q, function (r) { return r.name; }).map(function (r) {
+          if (r.special) return { html: '<span class="dgl-ac-ico">@</span><span class="dgl-ac-main">@' + esc(r.name) + '</span><span class="dgl-ac-desc">' + esc(r.desc) + '</span>', text: '@' + r.name + ' ' };
+          return { html: '<span class="dgl-ac-dot" style="--c:' + esc(r.color || 'var(--text-dim)') + '"></span><span class="dgl-ac-main">@' + esc(r.name) + '</span>', text: '<@&' + r.id + '> ' };
+        });
+      }
+      if (kind === 'channels') {
+        return rank(data.channels, q, function (c) { return c.name; }).map(function (c) {
+          var voice = c.type === 2 || c.type === 13;
+          return { html: '<span class="dgl-ac-ico">' + (voice ? '🔊' : '#') + '</span><span class="dgl-ac-main">' + esc(c.name) + '</span>' + (voice ? '<span class="dgl-ac-desc">' + esc(words.voice) + '</span>' : ''), text: '<#' + c.id + '> ' };
+        });
+      }
+      if (kind === 'vars') {
+        return rank(data.vars, q, function (v) { return v.tok.slice(1, -1); }).map(function (v) {
+          return { html: '<code class="dgl-ac-code">' + esc(v.tok) + '</code><span class="dgl-ac-desc">' + esc(v.desc) + '</span>', text: v.tok, select: /:/.test(v.tok) };
+        });
+      }
+      if (kind === 'commands') {
+        return rank(data.commands, q, function (c) { return c.name; }).map(function (c) {
+          return { html: '<span class="dgl-ac-ico">/</span><span class="dgl-ac-main">' + esc(c.name) + '</span><span class="dgl-ac-desc">' + esc(c.desc) + '</span>', text: '/' + c.name + ' ' };
+        });
+      }
+      var custom = rank(data.emojis, q, function (e) { return e.name; }).map(function (e) {
+        return { html: '<img class="dgl-ac-emoji" src="https://cdn.discordapp.com/emojis/' + esc(e.id) + '.' + (e.animated ? 'gif' : 'webp') + '?size=32" alt="" loading="lazy"><span class="dgl-ac-main">:' + esc(e.name) + ':</span>', text: '<' + (e.animated ? 'a' : '') + ':' + e.name + ':' + e.id + '> ' };
+      });
+      var standard = unicode ? rank(unicode, q, function (e) { return e.name; }).map(function (e) {
+        return { html: '<span class="dgl-ac-ico dgl-ac-uni">' + e.char + '</span><span class="dgl-ac-main">:' + esc(e.name) + ':</span>', text: e.char };
+      }) : [];
+      return custom.concat(standard).slice(0, LIMIT);
+    }
+
+    // Where the caret is on screen: a hidden copy of the field with the same text and style, measured up to the caret.
+    var mirror = null;
+    var COPY = ['boxSizing', 'width', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize', 'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent', 'letterSpacing', 'wordSpacing', 'tabSize'];
+    function caretPoint(field, position) {
+      if (!mirror) { mirror = document.createElement('div'); mirror.setAttribute('aria-hidden', 'true'); document.body.appendChild(mirror); }
+      var style = getComputedStyle(field);
+      var textarea = field.tagName === 'TEXTAREA';
+      var css = 'position:absolute;visibility:hidden;top:0;left:-9999px;overflow:hidden;white-space:' + (textarea ? 'pre-wrap' : 'pre') + ';word-wrap:break-word;';
+      COPY.forEach(function (name) { css += name.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); }) + ':' + style[name] + ';'; });
+      css += 'width:' + field.offsetWidth + 'px;';
+      mirror.style.cssText = css;
+      mirror.textContent = field.value.slice(0, position);
+      var mark = document.createElement('span');
+      mark.textContent = field.value.slice(position) || '.';
+      mirror.appendChild(mark);
+      var rect = field.getBoundingClientRect();
+      // A zoomed box (the phone layout scales the content a little): what the copy measures is scaled the same way.
+      var scale = field.offsetWidth ? rect.width / field.offsetWidth : 1;
+      var line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.3;
+      var x = rect.left + (mark.offsetLeft - field.scrollLeft) * scale;
+      var y = rect.top + (mark.offsetTop - field.scrollTop) * scale;
+      return { x: Math.min(Math.max(x, rect.left), rect.right), top: Math.max(rect.top, Math.min(y, rect.bottom - line * scale)), bottom: Math.max(rect.top, Math.min(y, rect.bottom - line * scale)) + line * scale, rect: rect };
+    }
+    function viewport() {
+      var vv = window.visualViewport;
+      var top = vv ? vv.offsetTop : 0, left = vv ? vv.offsetLeft : 0;
+      var bottom = vv ? vv.offsetTop + vv.height : window.innerHeight, right = vv ? vv.offsetLeft + vv.width : window.innerWidth;
+      // Nothing opens under the bar of unsaved changes.
+      var bar = document.getElementById('dgl-savebar');
+      if (bar && bar.classList.contains('show')) { var b = bar.getBoundingClientRect(); if (b.top > top + 160 && b.top < bottom) bottom = b.top; }
+      return { top: top, left: left, bottom: bottom, right: right };
+    }
+    function place() {
+      if (!menu || !state) return;
+      // A page swap (the dashboard's navigation) took the field away: the menu goes with it.
+      if (!state.field.isConnected) { close(); return; }
+      var point = caretPoint(state.field, state.start);
+      var view = viewport();
+      var screenBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight;
+      // The field left the screen (scrolled away): the menu closes instead of hanging in the air.
+      if (point.rect.bottom < view.top || point.rect.top > screenBottom) { close(); return; }
+      var width = Math.min(340, view.right - view.left - 16);
+      var left = Math.min(Math.max(view.left + 8, point.x - 14), view.right - width - 8);
+      menu.style.width = width + 'px';
+      menu.style.left = left + 'px';
+      var natural = Math.min(menu.scrollHeight, 300);
+      var below = view.bottom - point.bottom - 12, above = point.top - view.top - 12;
+      var up = below < Math.min(natural, 180) && above > below;
+      menu.classList.toggle('up', up);
+      menu.style.maxHeight = Math.max(120, Math.min(300, up ? above : below)) + 'px';
+      if (up) { menu.style.top = ''; menu.style.bottom = (window.innerHeight - point.top + 6) + 'px'; }
+      else { menu.style.bottom = ''; menu.style.top = (point.bottom + 6) + 'px'; }
+    }
+
+    function render() {
+      var list = menu.querySelector('.dgl-ac-list');
+      var items = state.items;
+      if (!items.length) {
+        list.innerHTML = '<div class="dgl-ac-empty">' + esc(state.kind === 'roles' && !pageData().roles.length ? words.noRoles : words.none) + '</div>';
+      } else {
+        var html = '';
+        for (var i = 0; i < items.length; i++) html += '<div class="dgl-ac-opt' + (i === state.index ? ' on' : '') + '" role="option" id="dgl-ac-o' + i + '" data-i="' + i + '" aria-selected="' + (i === state.index) + '">' + items[i].html + '</div>';
+        list.innerHTML = html;
+      }
+      menu.querySelector('.dgl-ac-head b').textContent = words[state.kind] || '';
+      state.field.setAttribute('aria-activedescendant', items.length ? 'dgl-ac-o' + state.index : '');
+    }
+    function highlight(index) {
+      if (!state || !state.items.length) return;
+      state.index = (index + state.items.length) % state.items.length;
+      menu.querySelectorAll('.dgl-ac-opt').forEach(function (el, i) { var on = i === state.index; el.classList.toggle('on', on); el.setAttribute('aria-selected', String(on)); });
+      var current = menu.querySelector('.dgl-ac-opt.on');
+      if (current) {
+        var list = menu.querySelector('.dgl-ac-list');
+        if (current.offsetTop < list.scrollTop) list.scrollTop = current.offsetTop - 4;
+        else if (current.offsetTop + current.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = current.offsetTop + current.offsetHeight - list.clientHeight + 4;
+      }
+      state.field.setAttribute('aria-activedescendant', 'dgl-ac-o' + state.index);
+    }
+    function ensureMenu(field) {
+      if (menu && menu._dglLeave) { window.dglMotion.stay(menu); }
+      if (!menu) {
+        menu = document.createElement('div');
+        menu.className = 'dgl-ac';
+        menu.id = 'dgl-ac';
+        menu.setAttribute('role', 'listbox');
+        menu.innerHTML = '<div class="dgl-ac-head"><b></b><span>' + esc(words.hint) + '</span></div><div class="dgl-ac-list"></div>';
+        // The field keeps the focus (and the phone its keyboard): a press on the menu never moves it.
+        menu.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        menu.addEventListener('click', function (e) { var opt = e.target.closest && e.target.closest('.dgl-ac-opt'); if (opt) pick(Number(opt.getAttribute('data-i'))); });
+        var touch = null;
+        menu.addEventListener('touchstart', function (e) { var t = e.touches[0]; touch = t ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
+        menu.addEventListener('touchend', function (e) {
+          var t = e.changedTouches[0];
+          var opt = e.target.closest && e.target.closest('.dgl-ac-opt');
+          if (!opt || !touch || !t || Math.abs(t.clientX - touch.x) > 8 || Math.abs(t.clientY - touch.y) > 8) return;
+          e.preventDefault();
+          pick(Number(opt.getAttribute('data-i')));
+        });
+      }
+      // Inside a modal dialog the menu must live in the dialog (the top layer), or it would open under it.
+      var host = field.closest('dialog') || document.body;
+      if (menu.parentNode !== host) host.appendChild(menu);
+      field.setAttribute('aria-controls', 'dgl-ac');
+      field.setAttribute('aria-expanded', 'true');
+    }
+    function open(field, found) {
+      var data = pageData();
+      if (found.kind === 'emojis' && !unicode) loadUnicode().then(function () { if (state && state.field === field && state.kind === 'emojis') refresh(field); });
+      var items = itemsFor(found.kind, found.query, data);
+      var same = state && state.field === field && state.kind === found.kind && state.start === found.start;
+      state = { field: field, kind: found.kind, query: found.query, start: found.start, end: found.end, items: items, index: same ? Math.min(state.index, Math.max(0, items.length - 1)) : 0 };
+      ensureMenu(field);
+      render();
+      if (!same) reveal(field);
+      place();
+    }
+    // The line being typed sits under the bar of unsaved changes (or the bottom of the screen): the page scrolls it up, so the menu has room.
+    function reveal(field) {
+      var point = caretPoint(field, field.selectionStart);
+      var over = point.bottom + 12 - viewport().bottom;
+      if (over <= 0) return;
+      var content = document.getElementById('dgl-content');
+      var inner = content && content.contains(field) && content.scrollHeight > content.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(content).overflowY);
+      if (inner) content.scrollTop += over; else window.scrollBy(0, over);
+    }
+    function close() {
+      if (state) { state.field.setAttribute('aria-expanded', 'false'); state.field.removeAttribute('aria-activedescendant'); }
+      state = null;
+      if (menu && !menu._dglLeave && menu.isConnected) { var gone = menu; window.dglMotion ? window.dglMotion.leave(gone, function () { gone.remove(); }) : gone.remove(); }
+    }
+    function refresh(field) {
+      var found = detect(field);
+      if (!found) { if (state) close(); return; }
+      open(field, found);
+    }
+    function pick(index) {
+      if (!state || !state.items[index]) return;
+      var item = state.items[index];
+      var field = state.field;
+      var start = state.start, end = field.selectionStart;
+      close();
+      field.focus({ preventScroll: true });
+      field.setSelectionRange(start, end);
+      // insertText keeps the browser's undo (Ctrl+Z) and tells React-driven editors through a normal input event.
+      var done = false;
+      try { done = document.execCommand && document.execCommand('insertText', false, item.text); } catch (e) { done = false; }
+      if (!done || field.value.slice(start, start + item.text.length) !== item.text) {
+        field.setRangeText(item.text, start, end, 'end');
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      // A variable with an argument ({choose:a|b|c}): the argument is selected, ready to be typed over.
+      if (item.select) {
+        var colon = item.text.indexOf(':');
+        field.setSelectionRange(start + colon + 1, start + item.text.length - 1);
+      }
+    }
+
+    function isField(el) { return el && el.matches && el.matches('textarea[data-ac], input[data-ac]') && !el.readOnly && !el.disabled; }
+    document.addEventListener('input', function (e) {
+      if (!isField(e.target) || e.isComposing) return;
+      refresh(e.target);
+    }, true);
+    document.addEventListener('keydown', function (e) {
+      if (!state || e.target !== state.field) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (!state.items.length) return; e.preventDefault(); highlight(state.index + (e.key === 'ArrowDown' ? 1 : -1)); }
+      else if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && state.items.length) { e.preventDefault(); e.stopPropagation(); pick(state.index); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') setTimeout(function () { if (state) refresh(state.field); }, 0);
+    }, true);
+    document.addEventListener('focusin', function (e) {
+      if (isField(e.target) && !unicode && kindsOf(e.target).indexOf('emojis') !== -1) {
+        // The standard emojis are fetched while the person starts typing, so the first ":" already finds them.
+        (window.requestIdleCallback || setTimeout)(loadUnicode);
+      }
+    });
+    document.addEventListener('focusout', function (e) { if (state && e.target === state.field) setTimeout(function () { if (state && document.activeElement !== state.field) close(); }, 120); });
+    document.addEventListener('pointerdown', function (e) { if (state && e.target !== state.field && !(menu && menu.contains(e.target))) close(); }, true);
+    var frame = 0;
+    var queue = function (e) { if (!state || (e && e.target === menu) || (menu && e && e.target && e.target.nodeType === 1 && menu.contains(e.target))) return; if (!frame) frame = requestAnimationFrame(function () { frame = 0; place(); }); };
+    window.addEventListener('scroll', queue, { capture: true, passive: true });
+    window.addEventListener('resize', queue);
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', queue); window.visualViewport.addEventListener('scroll', queue); }
+  })();
+</script>
+
+<style is:global>
+  .dgl-ac { position: fixed; z-index: 1100; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .6); animation: m-pop-in var(--m-base, .2s) var(--m-out, ease-out) both; transform-origin: top left; }
+  .dgl-ac.up { animation-name: m-pop-in-up; transform-origin: bottom left; }
+  .dgl-ac-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 9px 12px 6px; border-bottom: 1px solid var(--border-soft); }
+  .dgl-ac-head b { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+  .dgl-ac-head span { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (pointer: coarse) { .dgl-ac-head span { display: none; } }
+  .dgl-ac-list { overflow-y: auto; overscroll-behavior: contain; padding: 4px; -webkit-overflow-scrolling: touch; }
+  .dgl-ac-opt { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 6px 9px; border-radius: 9px; cursor: pointer; color: var(--text); font-size: 13px; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; transition: background-color var(--m-instant, 90ms) ease; }
+  .dgl-ac-opt.on { background: var(--accent-soft); }
+  @media (hover: hover) { .dgl-ac-opt:hover:not(.on) { background: var(--card-hover); } }
+  @media (pointer: coarse) { .dgl-ac-opt { min-height: 44px; font-size: 14px; } }
+  .dgl-ac-main { flex: 0 0 auto; max-width: 62%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .dgl-ac-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; color: var(--text-dim); font-size: 11.5px; }
+  .dgl-ac-ico { display: grid; place-items: center; flex-shrink: 0; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text-muted); font: 600 12px var(--mono); }
+  .dgl-ac-opt.on .dgl-ac-ico { color: var(--accent); }
+  .dgl-ac-uni { font-family: inherit; font-size: 15px; background: none; }
+  .dgl-ac-dot { flex-shrink: 0; width: 10px; height: 10px; margin: 0 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 20%, transparent); }
+  .dgl-ac-emoji { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+  .dgl-ac-code { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11.5px var(--mono); color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 6px; }
+  .dgl-ac-empty { padding: 14px 12px; font-size: 12.5px; color: var(--text-dim); text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .dgl-ac { animation: none; } }
+</style>

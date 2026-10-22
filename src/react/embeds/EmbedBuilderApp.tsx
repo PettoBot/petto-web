@@ -62,13 +62,15 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
+  // The template as it was loaded or last saved: what "discard" on the dashboard's bar of unsaved changes goes back to.
+  const savedData = useRef<TemplateData | null>(null);
 
   useEffect(() => {
-    if (!selected) { setData(emptyTemplate()); return; }
+    if (!selected) { setData(emptyTemplate()); savedData.current = null; return; }
     setLoading(true);
     api(guildId, apiPath, `?name=${encodeURIComponent(selected)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((row) => { if (row) setData(normalizeTemplateData(row.data)); setDirty(false); })
+      .then((row) => { if (row) { const loaded = normalizeTemplateData(row.data); setData(loaded); savedData.current = loaded; } setDirty(false); })
       .finally(() => setLoading(false));
   }, [selected, guildId, apiPath]);
 
@@ -134,14 +136,28 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   }
 
   async function handleSave() {
-    if (!selected) return;
+    if (!selected) return false;
     setSaving(true);
     const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'save', name: selected, data }) });
     setSaving(false);
     const failure = res.ok ? null : await res.json().catch(() => null);
     setFlash(res.ok ? t('Saved.') : failure?.error ? t(failure.error) : t("Couldn't save, try again."));
-    if (res.ok) setDirty(false);
+    if (res.ok) { setDirty(false); savedData.current = data; }
+    return res.ok;
   }
+
+  // The dashboard's bar of unsaved changes (DashGuildLayout) saves or discards the template like the Save button here.
+  const saveRef = useRef(handleSave);
+  saveRef.current = handleSave;
+  useEffect(() => {
+    const w = window as unknown as { dglDirty?: (key: string, opts: object) => void; dglClean?: (key: string) => void };
+    if (!dirty || !w.dglDirty || !w.dglClean) return;
+    w.dglDirty('embeds-editor', {
+      save: () => saveRef.current(),
+      discard: () => { if (savedData.current) setData(savedData.current); setDirty(false); },
+    });
+    return () => w.dglClean?.('embeds-editor');
+  }, [dirty]);
 
   async function handleDelete() {
     if (!selected) return;
@@ -309,7 +325,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
               <>
               <div className="ebr-field">
                 <div className="ebr-field-head"><label>{t('Message content')}</label></div>
-                <textarea ref={contentRef} rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
+                <textarea ref={contentRef} data-ac="" rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
                 <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
               </div>
 
@@ -329,12 +345,12 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                 <div className="ebr-embed-form">
                   <div className="ebr-field">
                     <label>{t('Title')}</label>
-                    <input ref={titleRef} type="text" maxLength={256} value={e.title} onChange={(ev) => updateEmbed(activeEmbed, { title: ev.target.value })} />
+                    <input ref={titleRef} type="text" data-ac="vars,emojis" maxLength={256} value={e.title} onChange={(ev) => updateEmbed(activeEmbed, { title: ev.target.value })} />
                     <FormatToolbar targetRef={titleRef} onChange={(v) => updateEmbed(activeEmbed, { title: v })} />
                   </div>
                   <div className="ebr-field">
                     <label>{t('Description')}</label>
-                    <textarea ref={descRef} rows={4} maxLength={4096} value={e.description} onChange={(ev) => updateEmbed(activeEmbed, { description: ev.target.value })} />
+                    <textarea ref={descRef} data-ac="" rows={4} maxLength={4096} value={e.description} onChange={(ev) => updateEmbed(activeEmbed, { description: ev.target.value })} />
                     <FormatToolbar targetRef={descRef} onChange={(v) => updateEmbed(activeEmbed, { description: v })} />
                   </div>
                   <div className="ebr-row-pair">
@@ -352,7 +368,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                     <div className="ebr-field"><label>{t('Image URL')}</label><input type="text" value={e.image} onChange={(ev) => updateEmbed(activeEmbed, { image: ev.target.value })} placeholder="https://..." /></div>
                   </div>
                   <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>{t('Author name')}</label><input type="text" value={e.author.name} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, name: ev.target.value } })} /></div>
+                    <div className="ebr-field"><label>{t('Author name')}</label><input type="text" data-ac="vars" value={e.author.name} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, name: ev.target.value } })} /></div>
                     <div className="ebr-field"><label>{t('Author icon URL')}</label><input type="text" value={e.author.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, icon: ev.target.value } })} placeholder="https://..." /></div>
                   </div>
                   <div className="ebr-field">
@@ -360,7 +376,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                     <input type="text" value={e.author.url ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, url: ev.target.value } })} placeholder="https://..." />
                   </div>
                   <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>{t('Footer text')}</label><input type="text" value={e.footer.text} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: ev.target.value } })} /></div>
+                    <div className="ebr-field"><label>{t('Footer text')}</label><input type="text" data-ac="vars" value={e.footer.text} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: ev.target.value } })} /></div>
                     <div className="ebr-field"><label>{t('Footer icon URL')}</label><input type="text" value={e.footer.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, icon: ev.target.value } })} placeholder="https://..." /></div>
                   </div>
                   <label className="ebr-check"><input type="checkbox" checked={e.timestamp} onChange={(ev) => updateEmbed(activeEmbed, { timestamp: ev.target.checked })} />{t('Show current time in the footer')}</label>
@@ -369,8 +385,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                     <h3>{t('Fields')} <span className="ebr-count">{e.fields.length}/25</span></h3>
                     {e.fields.map((f, fi) => (
                       <div key={fi} className="ebr-field-row-edit">
-                        <input type="text" placeholder={t('Name')} maxLength={256} value={f.name} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, name: ev.target.value } : x)) })} />
-                        <input type="text" placeholder={t('Value')} maxLength={1024} value={f.value} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, value: ev.target.value } : x)) })} />
+                        <input type="text" data-ac="vars,emojis" placeholder={t('Name')} maxLength={256} value={f.name} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, name: ev.target.value } : x)) })} />
+                        <input type="text" data-ac="" placeholder={t('Value')} maxLength={1024} value={f.value} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, value: ev.target.value } : x)) })} />
                         <label className="ebr-check"><input type="checkbox" checked={f.inline} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, inline: ev.target.checked } : x)) })} />{t('Inline')}</label>
                         <button type="button" className="ebr-del" onClick={() => updateEmbed(activeEmbed, { fields: e.fields.filter((_, i) => i !== fi) })}>×</button>
                       </div>

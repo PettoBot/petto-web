@@ -6,7 +6,6 @@ import MultiSelect from './MultiSelect.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
-const dth = makeT(dashLang, true);
 interface Job {
   id: number;
   action: 'add' | 'remove';
@@ -40,10 +39,11 @@ const jobActive = job ? ['pending', 'running'].includes(job.status) : false;
 const statusLabel: Record<string, string> = {
   pending: dt('Queued'), running: dt('Running'), completed: dt('Completed'), cancelled: dt('Cancelled'), failed: dt('Failed'),
 };
+// The words the page script writes while it follows a job, in the language of the dashboard.
+const jsWords = JSON.stringify({ labels: statusLabel, waiting: dt('Waiting to start...'), note: dt('{done} / {total} members processed, {ok} updated, {bad} failed.'), start: dt('Start'), busy: dt('A job is already running') });
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="bulk-role" pageTitle="Bulk Role">
   <h1>{dt('Bulk Role')}</h1>
-  <p class="br-sub"><Fragment set:html={dth('Assign or remove a role for many members of <b>{a}</b> at once, filtered by role, join date, or member type.', { a: (guildName) })} /></p>
 
   {started && <div class="br-flash br-flash-ok"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Job started, it\'ll process in the background.')}</div>}
   {error && <div class="br-flash br-flash-err" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
@@ -58,11 +58,11 @@ const statusLabel: Record<string, string> = {
           <span data-job-icon="other" class:list={{ 'br-icon-hidden': jobActive || job.status === 'completed' || job.status === 'failed' }}><Icon name="ph:prohibit-fill" width="16" height="16" /></span>
         </div>
         <div class="br-card-title">
-          {job.action === 'add' ? 'Assigning' : 'Removing'} <span class="br-role-chip">{roleName(job.targetRoleId)}</span>
+          {job.action === 'add' ? dt('Assigning') : dt('Removing')} <span class="br-role-chip">{roleName(job.targetRoleId)}</span>
           <span class="br-status-label" data-status-text>{statusLabel[job.status]}</span>
         </div>
         {jobActive && (
-          <form method="POST">
+          <form method="POST" data-no-dirty>
             <input type="hidden" name="action" value="cancel" />
             <button type="submit" class="btn btn-ghost btn-sm">{dt('Cancel')}</button>
           </form>
@@ -77,7 +77,8 @@ const statusLabel: Record<string, string> = {
     </div>
   )}
 
-  <form method="POST" class="br-form" data-status-url={`/dash/guild/${guildId}/bulk-role-status`}>
+  {/* Start runs a job at once: it is not a setting, so the bar of unsaved changes leaves it alone. */}
+  <form method="POST" class="br-form" data-no-dirty data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-words={jsWords}>
     <input type="hidden" name="action" value="start" />
     <div class="br-card">
       <div class="br-card-head">
@@ -137,7 +138,7 @@ const statusLabel: Record<string, string> = {
 
       <button type="submit" class="btn btn-accent btn-sm" disabled={jobActive}>
         <Icon name="ph:play-fill" width="13" height="13" />
-        <span data-start-label>{jobActive ? 'A job is already running' : 'Start'}</span>
+        <span data-start-label>{jobActive ? dt('A job is already running') : dt('Start')}</span>
       </button>
       <p class="br-hint">{dt('Runs once in the background, one job at a time per server. Large servers can take a few minutes, Discord\'s own rate limit paces it.')}</p>
     </div>
@@ -154,10 +155,12 @@ const statusLabel: Record<string, string> = {
         var statusText = card.querySelector('[data-status-text]');
         var icon = card.querySelector('[data-status-icon]');
         var pct = job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0;
-        var labels = { pending: 'Queued', running: 'Running', completed: 'Completed', cancelled: 'Cancelled', failed: 'Failed' };
+        var words = { labels: {}, waiting: 'Waiting to start...', note: '{done} / {total} members processed, {ok} updated, {bad} failed.', start: 'Start', busy: 'A job is already running' };
+        try { words = Object.assign(words, JSON.parse((document.querySelector('.br-form') as HTMLElement | null)?.dataset.words || '{}')); } catch (e) { /* The English words stay. */ }
+        var labels = words.labels as Record<string, string>;
 
         if (fill) fill.style.width = pct + '%';
-        if (note) note.textContent = job.status === 'pending' ? 'Waiting to start...' : (job.processedMembers + ' / ' + job.totalMembers + ' members processed, ' + job.successCount + ' updated, ' + job.errorCount + ' failed.');
+        if (note) note.textContent = job.status === 'pending' ? words.waiting : words.note.replace('{done}', job.processedMembers).replace('{total}', job.totalMembers).replace('{ok}', job.successCount).replace('{bad}', job.errorCount);
         if (statusText) statusText.textContent = labels[job.status] || job.status;
         if (icon) {
           icon.style.setProperty('--c', color);
@@ -181,7 +184,7 @@ const statusLabel: Record<string, string> = {
           if (startButton) {
             startButton.disabled = active;
             var startLabel = startButton.querySelector('[data-start-label]');
-            if (startLabel) startLabel.textContent = active ? 'A job is already running' : 'Start';
+            if (startLabel) startLabel.textContent = active ? words.busy : words.start;
           }
         }
       }
@@ -228,9 +231,7 @@ const statusLabel: Record<string, string> = {
 </DashGuildLayout>
 
 <style>
-  h1 { font-size: 24px; margin: 0 0 6px; }
-  .br-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; max-width: 68ch; }
-  .br-sub :global(b){ color: var(--text); }
+  h1 { font-size: 24px; margin: 0 0 20px; }
 
   .br-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
   .br-flash-ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }

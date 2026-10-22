@@ -191,11 +191,13 @@
   var target = null;
   function openPicker(r, i) {
     target = { r: r, i: i };
+    if (window.dglMotion) window.dglMotion.stay(modal);
     modal.hidden = false;
     setTab(tab);
-    search.focus();
+    search.focus({ preventScroll: true });
   }
-  function closePicker() { modal.hidden = true; target = null; }
+  // It fades out (window.dglMotion, the dashboard's motion helper) and is hidden after.
+  function closePicker() { if (window.dglMotion) window.dglMotion.hide(modal); else modal.hidden = true; target = null; }
   function setTab(name) {
     tab = name;
     search.value = '';

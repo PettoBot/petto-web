@@ -6,7 +6,6 @@ import { CODE_GENERATOR_URL } from '../data/codeGenerator';
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
-const dth = makeT(dashLang, true);
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string;
@@ -89,8 +88,10 @@ const triggerTypes = [
 ];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="code" pageTitle="Commands in code">
-  <h1>{dt('Commands in code')}</h1>
-  <p class="cc-sub"><Fragment set:html={dth('Write commands of <b>{a}</b> in Petto Code: embeds, buttons, forms, reactions, stored data and your own prefixes.', { a: guildName })} /> <a href="https://code.petto.sbs" target="_blank" rel="noopener">{dt('Read the docs')}</a></p>
+  <div class="cc-title">
+    <h1>{dt('Commands in code')}</h1>
+    <a class="cc-docs" href="https://code.petto.sbs" target="_blank" rel="noopener"><Icon name="ph:book-open-fill" width="13" height="13" />{dt('Read the docs')}</a>
+  </div>
   {loadFailed && <div class="cc-flash"><Icon name="ph:warning-fill" width="15" height="15" />{dt('We could not load your commands. Reload the page: nothing was deleted.')} <a href="" onclick="location.reload(); return false;">{dt('Reload')}</a></div>}
   {!ready && <div class="cc-flash"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
@@ -242,6 +243,20 @@ const triggerTypes = [
     const why = (answer: { status: number; payload: any }) => `[${answer.payload?.error ?? (answer.status || 'no answer')}]`;
     const say = (message: string, kind: 'ok' | 'bad' | 'info' = 'info') => { messageBox.textContent = message; messageBox.hidden = !message; messageBox.dataset.kind = kind; };
     const dirty = () => code.value !== savedCode || nameInput.value.trim().toLowerCase() !== savedName;
+    // The dashboard's bar of unsaved changes (DashGuildLayout) follows the editor: it saves with the same save() as the Save button,
+    // and "discard" puts back the saved command (or an empty new one).
+    function syncBar() {
+      const w = window as unknown as { dglDirty?: (key: string, opts: object) => void; dglClean?: (key: string) => void };
+      if (!w.dglDirty || !w.dglClean) return;
+      if (!dirty() || !(code.value.trim() || nameInput.value.trim())) { w.dglClean('code-editor'); return; }
+      w.dglDirty('code-editor', {
+        save: async () => { await save(); return !dirty(); },
+        discard: () => {
+          const command = current ? commands.find((entry) => entry.name === current) : null;
+          if (command) load(command.name, command.code, command.triggerType, command.triggerText); else load(null, '');
+        },
+      });
+    }
 
     async function api(body: Record<string, unknown>) {
       try {
@@ -328,7 +343,9 @@ const triggerTypes = [
         if (event.shiftKey || code.value.slice(start, end).includes('\n')) indentLines(event.shiftKey);
         else typeText('  ');
       } else if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        // The bar of unsaved changes also listens for Ctrl+S: the editor saves once, here.
         event.preventDefault();
+        event.stopPropagation();
         save();
       } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
@@ -470,6 +487,7 @@ const triggerTypes = [
     }
     code.addEventListener('input', (event) => {
       drawGutter();
+      syncBar();
       clearTimeout(checkTimer);
       checkTimer = setTimeout(checkNow, 450);
       // Suggestions follow what is typed or deleted by hand, not the code a template or a snippet puts.
@@ -524,6 +542,7 @@ const triggerTypes = [
       errorLine = 0;
       drawGutter();
       drawList();
+      syncBar();
       if (source) checkNow(); else setStatus('wait', '');
     }
     function open(name: string) {
@@ -551,9 +570,11 @@ const triggerTypes = [
       commands.sort((a, b) => a.name.localeCompare(b.name));
       current = name; savedName = name; savedCode = code.value; nameInput.readOnly = true; deleteButton.hidden = false;
       drawList();
+      syncBar();
       say(ui.saved, 'ok');
     }
     $('cc-save').addEventListener('click', save);
+    nameInput.addEventListener('input', syncBar);
 
     deleteButton.addEventListener('click', async () => {
       if (!current || !confirm(ui.confirmDelete)) return;
@@ -704,7 +725,7 @@ const triggerTypes = [
       savedCode = '';
       showTrigger('command', '');
       errorLine = 0;
-      drawGutter(); drawList(); checkNow();
+      drawGutter(); drawList(); syncBar(); checkNow();
     });
 
     window.addEventListener('beforeunload', (event) => { if (dirty() && code.value.trim()) { event.preventDefault(); } });
@@ -761,7 +782,7 @@ const triggerTypes = [
         showTrigger('command', '');
         result.hidden = true;
         errorLine = 0;
-        drawGutter(); drawList(); checkNow();
+        drawGutter(); drawList(); syncBar(); checkNow();
         say(commands.some((entry) => entry.name === imported.name) ? ui.importedExists : ui.imported, 'ok');
       } else {
         say(ui.importBad, 'bad');
@@ -787,10 +808,11 @@ const triggerTypes = [
 </script>
 
 <style>
-  h1 { font-size: 24px; margin: 0 0 6px; }
-  .cc-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 18px; max-width: 80ch; }
-  .cc-sub :global(b) { color: var(--text); }
-  .cc-sub a { color: var(--accent); }
+  .cc-title { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 18px; }
+  h1 { font-size: 24px; margin: 0; }
+  .cc-docs { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-muted); font-family: var(--sans); font-size: 12.5px; font-weight: 500; line-height: 1.2; text-decoration: none; transition: color var(--m-fast) var(--m-std), border-color var(--m-fast) var(--m-std), transform var(--m-fast) var(--m-out); }
+  .cc-docs:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .cc-docs:active { transform: scale(var(--m-press)); }
   .cc-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid var(--yellow); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 640px; }
   .cc-grid { display: grid; grid-template-columns: minmax(min(220px, 100%), 280px) minmax(0, 1fr); gap: 20px; align-items: start; }
   @media (max-width: 960px) { .cc-grid { grid-template-columns: 1fr; } }

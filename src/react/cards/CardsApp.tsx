@@ -236,12 +236,31 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     const res = await post(guildId, { action: 'save', name: selected, data: draft });
     const body = await res.json().catch(() => ({}));
     setSaving(false);
-    if (!res.ok) { setFlash(errorText(body.error)); if (body.error === 'premium_required') setLockedNote(true); return; }
+    if (!res.ok) { setFlash(errorText(body.error)); if (body.error === 'premium_required') setLockedNote(true); return false; }
     setFlash(t('Saved.'));
     setDirty(false);
     setLockedNote(false);
     await refresh();
+    return true;
   }
+
+  // The dashboard's bar of unsaved changes (DashGuildLayout) saves the card like the Save button here, or puts back the saved one.
+  const saveRef = useRef(handleSave);
+  saveRef.current = handleSave;
+  const discardRef = useRef(() => {});
+  discardRef.current = () => {
+    const row = overview?.cards.find((c) => c.name === selected);
+    if (row) setDraft({ ...newCard(row.data?.kind ?? 'welcome'), ...row.data });
+    stash.current = null;
+    setActiveLayer(null);
+    setDirty(false);
+  };
+  useEffect(() => {
+    const w = window as unknown as { dglDirty?: (key: string, opts: object) => void; dglClean?: (key: string) => void };
+    if (!dirty || !w.dglDirty || !w.dglClean) return;
+    w.dglDirty('cards-editor', { save: () => saveRef.current(), discard: () => discardRef.current() });
+    return () => w.dglClean?.('cards-editor');
+  }, [dirty]);
 
   async function handleDelete() {
     if (!window.confirm(t('Delete the "{name}" card? Messages that use it are sent without the picture.', { name: selected }))) return;
@@ -457,14 +476,14 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                     <div className="crd-vars">{variableList.map((v) => <code key={v}>{v}</code>)}</div>
                   </div>
                   <label className="ebr-check"><input type="checkbox" checked={basic.showTitle} onChange={(e) => editBasic({ showTitle: e.target.checked })} />{t('Title')}</label>
-                  <input type="text" maxLength={60} value={basic.title} onChange={(e) => editBasic({ title: e.target.value })} />
+                  <input type="text" data-ac="vars" maxLength={60} value={basic.title} onChange={(e) => editBasic({ title: e.target.value })} />
                   <label className="ebr-check"><input type="checkbox" checked={basic.showName} onChange={(e) => editBasic({ showName: e.target.checked })} />{t('Name')}</label>
-                  <input type="text" maxLength={80} value={basic.name} onChange={(e) => editBasic({ name: e.target.value })} />
+                  <input type="text" data-ac="vars" maxLength={80} value={basic.name} onChange={(e) => editBasic({ name: e.target.value })} />
                   <label className="ebr-check"><input type="checkbox" checked={basic.showSubtitle} onChange={(e) => editBasic({ showSubtitle: e.target.checked })} />{t('Subtitle')}</label>
-                  <input type="text" maxLength={120} value={basic.subtitle} onChange={(e) => editBasic({ subtitle: e.target.value })} />
+                  <input type="text" data-ac="vars" maxLength={120} value={basic.subtitle} onChange={(e) => editBasic({ subtitle: e.target.value })} />
                   {isRank && (<>
                     <label className="ebr-check"><input type="checkbox" checked={basic.showExtra !== false} onChange={(e) => editBasic({ showExtra: e.target.checked })} />{t('Rank text')}</label>
-                    <input type="text" maxLength={40} value={basic.extra ?? ''} onChange={(e) => editBasic({ extra: e.target.value })} />
+                    <input type="text" data-ac="vars" maxLength={40} value={basic.extra ?? ''} onChange={(e) => editBasic({ extra: e.target.value })} />
                   </>)}
                   <div className="ebr-row-pair">
                     <Field label={t('Text color')}><Color value={basic.textColor} onChange={(textColor) => editBasic({ textColor })} /></Field>
@@ -518,7 +537,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                       <Field label={t('Opacity')}><input type="range" min={0} max={1} step={0.05} value={layer.opacity} onChange={(e) => editLayer(layer.id, { opacity: Number(e.target.value) })} /></Field>
 
                       {layer.type === 'text' && (<>
-                        <Field label={t('Text')} wide><textarea rows={2} maxLength={300} value={layer.text} onChange={(e) => editLayer(layer.id, { text: e.target.value })} /></Field>
+                        <Field label={t('Text')} wide><textarea data-ac="vars" rows={2} maxLength={300} value={layer.text} onChange={(e) => editLayer(layer.id, { text: e.target.value })} /></Field>
                         <div className="crd-vars">{variableList.map((v) => <button key={v} type="button" className="crd-var" onClick={() => editLayer(layer.id, { text: layer.text + v })}>{v}</button>)}</div>
                         <div className="ebr-row-pair">
                           <Field label={t('Font')}><select value={layer.font} onChange={(e) => editLayer(layer.id, { font: e.target.value })}>{fontOptions}</select></Field>

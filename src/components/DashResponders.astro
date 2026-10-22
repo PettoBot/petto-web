@@ -3,12 +3,12 @@ import EmojiPicker from './EmojiPicker.astro';
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
+import DashAcData from './DashAcData.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 import { FREE_LIMITS } from '../utils/planLimits';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
-const dth = makeT(dashLang, true);
 interface Responder { name: string; label: string; emoji: string; style: string; reply: string; replyTemplate: string; give: string[]; remove: string[]; required: string[]; toggle: boolean; deleteMessage: boolean; reactEmoji: string; sendChannelId: string; }
 interface Panel { name: string; kind: string; content: string; embedTemplate: string; responders: string[]; placeholder: string; exclusive: boolean; channelId: string; }
 interface Props {
@@ -30,26 +30,54 @@ interface Props {
 }
 const { user, guildId, guildName, guildIcon, customEmojis = [], responders, panels, roles, channels, embedTemplates, limits, premium, ready, saved, notice } = Astro.props;
 const styles = [['primary', 'Blue'], ['secondary', 'Grey'], ['success', 'Green'], ['danger', 'Red']];
+const styleColors: Record<string, string> = { primary: '#5865f2', secondary: '#8b8fa3', success: '#2dd4a7', danger: '#fe6465' };
 const blank: Responder = { name: '', label: '', emoji: '', style: 'secondary', reply: '', replyTemplate: '', give: [], remove: [], required: [], toggle: false, deleteMessage: false, reactEmoji: '', sendChannelId: '' };
 const blankPanel: Panel = { name: '', kind: 'buttons', content: '', embedTemplate: '', responders: [], placeholder: '', exclusive: false, channelId: '' };
+// The one line each card shows while it is closed: what the button does with roles and where it answers.
+const roleNames = (ids: string[]) => ids.map((id) => roles.find((role) => role.id === id)?.name ?? id).join(', ');
+const channelName = (id: string) => channels.find((ch) => ch.id === id)?.name ?? id;
+function responderSummary(r: Responder) {
+  const parts: string[] = [];
+  if (r.give.length) parts.push(dt('Gives {a}', { a: roleNames(r.give) }));
+  if (r.remove.length) parts.push(dt('Takes {a}', { a: roleNames(r.remove) }));
+  if (r.required.length) parts.push(dt('Needs {a}', { a: roleNames(r.required) }));
+  if (!parts.length) parts.push(r.reply || r.replyTemplate ? dt('Only answers') : dt('Does nothing yet'));
+  parts.push(r.sendChannelId ? `#${channelName(r.sendChannelId)}` : dt('Answers in private'));
+  return parts.join(' · ');
+}
+const respondersByName = new Map(responders.map((r) => [r.name, r]));
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="responders" pageTitle="Buttons and panels">
   <h1>{dt('Buttons and panels')}</h1>
-  <p class="br-sub"><Fragment set:html={dth('Buttons and menus for <b>{a}</b> that answer in private and give or take roles. Make the buttons first, then put them in a panel and post it with the command.', { a: guildName })} /></p>
   {saved && <div class="br-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
   {notice === 'bad_name' && <div class="br-flash br-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('The name can have letters, numbers, dashes and underscores, up to 60.')}</div>}
   {notice === 'responder_limit' && <div class="br-flash br-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This server already has {a} button responders. Premium raises the limit.', { a: limits.responders })}</div>}
   {notice === 'panel_limit' && <div class="br-flash br-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This server already has {a} panels. Premium raises the limit.', { a: limits.panels })}</div>}
   {!ready && <div class="br-flash br-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
+  <DashAcData roles={roles} channels={channels} emojis={customEmojis} />
   <h2 class="br-h2">{dt('Button responders')} <span class="br-count">{responders.length} / {limits.responders}</span></h2>
-  <div class="br-list">
+  <div class="br-grid dgl-stagger">
     {[...responders, null].map((r) => {
       const item = r ?? blank;
       return (
-        <details class="br-item" open={!r && responders.length === 0}>
-          <summary>{r ? <><span class={`br-chip br-${item.style}`}>{item.emoji} {item.label || item.name}</span><code>{item.name}</code></> : <><Icon name="ph:plus-bold" width="12" height="12" />{dt('New button responder')}</>}</summary>
-          <form method="POST" class="br-form">
+        <details class:list={['br-card dgl-rc', { 'br-card-new': !r }]} open={!r && responders.length === 0} style={`--c:${styleColors[item.style] ?? styleColors.secondary}`}>
+          {r ? (
+            <summary class="br-card-sum">
+              <span class="br-card-head">
+                <span class="br-card-icon" aria-hidden="true">{item.emoji ? <span class="br-card-emoji">{item.emoji}</span> : <Icon name="ph:cursor-click-fill" width="17" height="17" />}</span>
+                <span class="br-card-name"><b>{item.label || item.name}</b><code>{item.name}</code></span>
+                <span class="br-card-acts">
+                  <span class="br-act" title={dt('Edit')}><Icon name="ph:pencil-simple-fill" width="13" height="13" /><span class="br-act-text"><span class="br-t-edit">{dt('Edit')}</span><span class="br-t-close">{dt('Close')}</span></span></span>
+                  <button type="submit" form={`br-del-${item.name}`} class="br-act br-act-del" title={dt('Delete')} aria-label={dt('Delete')} data-confirm={dt('Delete this? This cannot be undone.')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+                </span>
+              </span>
+              <span class="br-card-line">{responderSummary(item)}</span>
+            </summary>
+          ) : (
+            <summary class="br-card-sum br-card-add"><Icon name="ph:plus-bold" width="14" height="14" />{dt('New button responder')}</summary>
+          )}
+          <form method="POST" class="br-form" data-no-dirty={r ? undefined : ''}>
             <input type="hidden" name="action" value="save_responder" />
             <div class="br-row">
               <div class="br-field"><label>{dt('Name')}</label><input type="text" name="name" value={item.name} maxlength="60" required readonly={Boolean(r)} placeholder="vip-role" /></div>
@@ -66,14 +94,15 @@ const blankPanel: Panel = { name: '', kind: 'buttons', content: '', embedTemplat
               <div class="br-field"><label>{dt('React to that message with')}</label><input type="text" name="react_emoji" data-emoji-input value={item.reactEmoji} maxlength="64" placeholder="👍" /></div>
               <div class="br-field"><label>{dt('Send the answer in a channel')}</label><select name="send_channel_id"><option value="">{dt('No, answer in private')}</option>{channels.map((ch) => <option value={ch.id} selected={ch.id === item.sendChannelId}>#{ch.name}</option>)}</select></div>
             </div>
-            <div class="br-field"><label>{dt('Private reply')}</label><textarea name="reply" rows="3" maxlength="2000" placeholder={dt('Empty says what changed. Variables like {user.mention} work.')}>{item.reply}</textarea></div>
+            <div class="br-field"><label>{dt('Private reply')}</label><textarea name="reply" data-ac rows="3" maxlength="2000" placeholder={dt('Empty says what changed. Variables like {user.mention} work.')}>{item.reply}</textarea></div>
             <div class="br-field"><label>{dt('Or a saved embed as the reply')}</label><select name="reply_template"><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === item.replyTemplate}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select></div>
             <div class="br-actions">
-              <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
-              {r && <button type="submit" form={`br-del-${item.name}`} class="btn btn-ghost btn-sm">{dt('Delete')}</button>}
+              {r
+                ? <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
+                : <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:plus-bold" width="12" height="12" />{dt('Create')}</button>}
             </div>
           </form>
-          {r && <form method="POST" id={`br-del-${item.name}`}><input type="hidden" name="action" value="delete_responder" /><input type="hidden" name="name" value={item.name} /></form>}
+          {r && <form method="POST" id={`br-del-${item.name}`} data-no-dirty><input type="hidden" name="action" value="delete_responder" /><input type="hidden" name="name" value={item.name} /></form>}
         </details>
       );
     })}
@@ -81,19 +110,36 @@ const blankPanel: Panel = { name: '', kind: 'buttons', content: '', embedTemplat
 
   <h2 class="br-h2">{dt('Panels')} <span class="br-count">{panels.length} / {limits.panels}</span></h2>
   <p class="br-note">{dt('To post a panel in a channel, or update the one already there, use')} <code>!panel send {'<name>'} #channel</code></p>
-  <div class="br-list">
+  <div class="br-grid dgl-stagger">
     {[...panels, null].map((p) => {
       const item = p ?? blankPanel;
+      const shown = item.responders.map((name) => respondersByName.get(name)).filter((r): r is Responder => Boolean(r));
       return (
-        <details class="br-item">
-          <summary>{p ? <><span class="br-chip">{item.kind === 'select' ? dt('Menu') : dt('Buttons')}</span><code>{item.name}</code><small>{item.responders.length}</small></> : <><Icon name="ph:plus-bold" width="12" height="12" />{dt('New panel')}</>}</summary>
-          <form method="POST" class="br-form">
+        <details class:list={['br-card dgl-rc', { 'br-card-new': !p }]} style="--c:var(--accent)">
+          {p ? (
+            <summary class="br-card-sum">
+              <span class="br-card-head">
+                <span class="br-card-icon" aria-hidden="true"><Icon name={item.kind === 'select' ? 'ph:list-bullets-fill' : 'ph:squares-four-fill'} width="17" height="17" /></span>
+                <span class="br-card-name"><b>{item.name}</b><code>{item.kind === 'select' ? dt('Menu') : dt('Buttons')} · {item.responders.length}</code></span>
+                <span class="br-card-acts">
+                  <span class="br-act" title={dt('Edit')}><Icon name="ph:pencil-simple-fill" width="13" height="13" /><span class="br-act-text"><span class="br-t-edit">{dt('Edit')}</span><span class="br-t-close">{dt('Close')}</span></span></span>
+                  <button type="submit" form={`brp-del-${item.name}`} class="br-act br-act-del" title={dt('Delete')} aria-label={dt('Delete')} data-confirm={dt('Delete this? This cannot be undone.')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+                </span>
+              </span>
+              {shown.length > 0
+                ? <span class="br-card-chips">{shown.slice(0, 4).map((r) => <span class={`br-chip br-${r.style}`}>{r.emoji} {r.label || r.name}</span>)}{shown.length > 4 && <span class="br-chip">+{shown.length - 4}</span>}</span>
+                : <span class="br-card-line">{dt('No buttons in it yet')}</span>}
+            </summary>
+          ) : (
+            <summary class="br-card-sum br-card-add"><Icon name="ph:plus-bold" width="14" height="14" />{dt('New panel')}</summary>
+          )}
+          <form method="POST" class="br-form" data-no-dirty={p ? undefined : ''}>
             <input type="hidden" name="action" value="save_panel" />
             <div class="br-row">
               <div class="br-field"><label>{dt('Name')}</label><input type="text" name="name" value={item.name} maxlength="60" required readonly={Boolean(p)} placeholder="roles" /></div>
               <div class="br-field"><label>{dt('Shown as')}</label><select name="kind"><option value="buttons" selected={item.kind !== 'select'}>{dt('Buttons')}</option><option value="select" selected={item.kind === 'select'}>{dt('A menu')}</option></select></div>
             </div>
-            <div class="br-field"><label>{dt('Text above')}</label><textarea name="content" rows="3" maxlength="2000">{item.content}</textarea></div>
+            <div class="br-field"><label>{dt('Text above')}</label><textarea name="content" data-ac rows="3" maxlength="2000">{item.content}</textarea></div>
             <div class="br-field"><label>{dt('Or a saved embed')}</label><select name="embed_template"><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === item.embedTemplate}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select></div>
             <div class="br-field"><label>{dt('Menu text before choosing')}</label><input type="text" name="placeholder" value={item.placeholder} maxlength="100" /></div>
             <label class="br-check"><input type="checkbox" name="exclusive" checked={item.exclusive} />{dt('In a menu, choosing one takes back the roles the others give')}</label>
@@ -102,11 +148,12 @@ const blankPanel: Panel = { name: '', kind: 'buttons', content: '', embedTemplat
               {responders.map((r) => <label class="br-check"><input type="checkbox" name="responders" value={r.name} checked={item.responders.includes(r.name)} />{r.emoji} {r.label || r.name} <code>{r.name}</code></label>)}
             </fieldset>
             <div class="br-actions">
-              <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
-              {p && <button type="submit" form={`brp-del-${item.name}`} class="btn btn-ghost btn-sm">{dt('Delete')}</button>}
+              {p
+                ? <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
+                : <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:plus-bold" width="12" height="12" />{dt('Create')}</button>}
             </div>
           </form>
-          {p && <form method="POST" id={`brp-del-${item.name}`}><input type="hidden" name="action" value="delete_panel" /><input type="hidden" name="name" value={item.name} /></form>}
+          {p && <form method="POST" id={`brp-del-${item.name}`} data-no-dirty><input type="hidden" name="action" value="delete_panel" /><input type="hidden" name="name" value={item.name} /></form>}
         </details>
       );
     })}
@@ -116,21 +163,41 @@ const blankPanel: Panel = { name: '', kind: 'buttons', content: '', embedTemplat
 </DashGuildLayout>
 
 <style>
-  h1 { font-size: 24px; margin: 0 0 6px; }
-  .br-sub { font-size: 14px; color: var(--text-muted); margin: 0 0 20px; max-width: 68ch; }
-  .br-sub :global(b) { color: var(--text); }
-  .br-h2 { font-size: 16px; margin: 26px 0 10px; display: flex; align-items: center; gap: 10px; }
+  h1 { font-size: 24px; margin: 0 0 18px; }
+  .br-h2 { font-size: 16px; margin: 26px 0 12px; display: flex; align-items: center; gap: 10px; }
   .br-count { font-size: 12px; color: var(--text-dim); font-weight: 500; }
   .br-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 640px; }
   .br-flash-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
-  .br-list { display: flex; flex-direction: column; gap: 8px; max-width: 980px; }
-  .br-item { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 10px 14px; }
-  .br-item summary { cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 600; }
-  .br-item summary small { color: var(--text-dim); font-weight: 500; }
-  .br-item[open] summary { margin-bottom: 12px; }
-  .br-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; padding: 3px 9px; font-size: 12.5px; background: var(--bg-raise); color: var(--text); }
+  /* Two columns of cards (one on a phone). A card opens in place to be edited, so the others do not move around. */
+  .br-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 980px; align-items: start; }
+  .br-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); min-width: 0; }
+  .br-card[open] { border-color: color-mix(in srgb, var(--c) 45%, var(--border)); transform: none !important; }
+  .br-card-sum { list-style: none; cursor: pointer; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; }
+  .br-card-sum::-webkit-details-marker { display: none; }
+  .br-card-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .br-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .br-card-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+  .br-card-emoji { font-size: 18px; line-height: 1; }
+  .br-card-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .br-card-name b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .br-card-name code { font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .br-card-acts { display: flex; align-items: center; gap: 4px; flex: none; }
+  .br-act { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; transition: color var(--m-fast) var(--m-std), border-color var(--m-fast) var(--m-std), background var(--m-fast) var(--m-std), transform var(--m-instant) var(--m-std); }
+  .br-act:active { transform: scale(var(--m-press)); }
+  .br-card-sum:hover .br-act:not(.br-act-del), .br-card[open] .br-act:not(.br-act-del) { color: var(--text); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); }
+  .br-act-del { width: 28px; padding: 0; justify-content: center; }
+  .br-act-del:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--border)); background: var(--red-soft); }
+  .br-t-close, .br-card[open] .br-t-edit { display: none; }
+  .br-card[open] .br-t-close { display: inline; }
+  .br-card-line { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .br-card-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .br-card-add { flex-direction: row; align-items: center; justify-content: center; gap: 8px; min-height: 64px; box-sizing: border-box; font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
+  .br-card-new { border-style: dashed; background: transparent; }
+  .br-card-new:hover .br-card-add, .br-card-new[open] .br-card-add { color: var(--accent); }
+  .br-card-new[open] { background: var(--card); }
+  .br-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; padding: 3px 9px; font-size: 12.5px; background: var(--bg-raise); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .br-primary { background: #5865f2; color: #fff; } .br-success { background: #248046; color: #fff; } .br-danger { background: #da373c; color: #fff; }
-  .br-form { display: flex; flex-direction: column; gap: 14px; }
+  .br-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 16px 16px; }
   .br-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; }
   .br-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .br-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
@@ -138,9 +205,15 @@ const blankPanel: Panel = { name: '', kind: 'buttons', content: '', embedTemplat
   .br-field textarea { resize: vertical; }
   .br-field input[readonly] { opacity: 0.7; }
   .br-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
-  .br-check code, .br-item code { font-size: 11.5px; color: var(--text-dim); }
+  .br-check code { font-size: 11.5px; color: var(--text-dim); }
   .br-set { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
   .br-set legend { font-size: 12px; font-weight: 600; color: var(--text-dim); padding: 0 6px; }
   .br-note { font-size: 12px; line-height: 1.5; color: var(--text-dim); }
   .br-actions { display: flex; gap: 8px; }
+  .br-actions:not(:has(> :not(.dgl-bar-save))) { display: none; }
+  @media (max-width: 720px) {
+    .br-grid { grid-template-columns: minmax(0, 1fr); }
+    .br-act-text { display: none; }
+    .br-act:not(.br-act-del) { width: 28px; padding: 0; justify-content: center; }
+  }
 </style>
