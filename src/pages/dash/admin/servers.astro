@@ -2,7 +2,8 @@
 export const prerender = false;
 import DashAdminServers from '../../../components/DashAdminServers.astro';
 import { getDashboardSession } from '../../../utils/dashAuth';
-import { getBotGuildList, invalidateBotGuildCaches } from '../../../utils/discordCache';
+import { getBotGuildList, getCachedUserGuilds, invalidateBotGuildCaches } from '../../../utils/discordCache';
+import { canManageGuild } from '../../../utils/discord';
 import { leaveGuild } from '../../../utils/discord';
 import { getEnv } from '../../../utils/env';
 import { isPettoOwner } from '../../../utils/premiumAdmin';
@@ -27,14 +28,21 @@ if (Astro.request.method.toUpperCase() === 'POST') {
 
 let guilds: Awaited<ReturnType<typeof getBotGuildList>> = [];
 let unavailable = false;
-try {
-  guilds = (await getBotGuildList(botToken)).sort((a, b) => a.name.localeCompare(b.name));
-} catch {
+// The owner's own servers (the same cached list the server picker reads) only split the list in two; nothing else depends on them.
+const [listResult, mineResult] = await Promise.all([
+  getBotGuildList(botToken).then((list) => ({ list }), () => null),
+  getCachedUserGuilds(session.accessToken, Astro.request).catch(() => null),
+]);
+if (listResult) {
+  // The biggest first; a server whose count is unknown goes last.
+  guilds = listResult.list.sort((a, b) => (b.memberCount ?? -1) - (a.memberCount ?? -1) || a.name.localeCompare(b.name));
+} else {
   unavailable = true;
 }
+const mine = (mineResult ?? []).filter(canManageGuild).map((g: any) => String(g.id));
 
 const error = unavailable ? 'discord_unavailable' : Astro.url.searchParams.get('error') ?? undefined;
 const left = Astro.url.searchParams.get('left') === '1';
 ---
 
-<DashAdminServers guilds={guilds} error={error} left={left} />
+<DashAdminServers guilds={guilds} mine={mine} error={error} left={left} />

@@ -8,6 +8,7 @@ import DashPreviews from './DashPreviews.astro';
 import DashSelectMenu from './DashSelectMenu.astro';
 import DashMotion from './DashMotion.astro';
 import DashAutocomplete from './DashAutocomplete.astro';
+import DashServerSort from './DashServerSort.astro';
 import { useTranslations } from '../i18n/ui';
 import { canManageGuild, guildIconUrl } from '../utils/discord';
 import { loadDashLayoutData } from '../utils/dashLayoutData';
@@ -36,7 +37,7 @@ const { guildId, guildName, guildIcon, user, active, pageTitle: rawPageTitle, pr
 const cssString = (value: string) => `"${(value.length > 26 ? `${value.slice(0, 25).trimEnd()}…` : value).replace(/[\\"]/g, '\\$&').replace(/[\r\n]/g, ' ')}"`;
 const pageTitle = dt(rawPageTitle);
 // The visitor's servers, the bot's servers and look, Premium and role access: read together, and started by the session check.
-const { discordGuilds, botGuildIds: activeBotGuildIds, botIdentity, premiumGuildIds, isManager, roleAccess } = await loadDashLayoutData(Astro, guildId, user);
+const { discordGuilds, botGuildIds: activeBotGuildIds, botIdentity, premiumGuildIds, memberCounts, isManager, roleAccess } = await loadDashLayoutData(Astro, guildId, user);
 // The database snapshot is authoritative. Do not trust a stale prop after a
 // subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId);
@@ -46,7 +47,7 @@ const roleBlockLabels = JSON.stringify({ everyone: dt('everyone'), managed: dt('
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
 // different server doesn't need a round trip through /dash/manage every time.
-interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean }
+interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean; members: number | null }
 let switcherGuilds: SwitcherGuild[] = [];
 let devView = false;
 if (discordGuilds) {
@@ -55,8 +56,9 @@ if (discordGuilds) {
   if (manageable.length > 0 && activeBotGuildIds) {
     switcherGuilds = manageable
       .filter((g: any) => activeBotGuildIds.has(g.id))
-      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id) }))
-      .sort((a: SwitcherGuild, b: SwitcherGuild) => a.name.localeCompare(b.name));
+      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id), members: memberCounts.get(g.id) ?? null }))
+      // The biggest first (the order of the server list); an unknown count goes last.
+      .sort((a: SwitcherGuild, b: SwitcherGuild) => (b.members ?? -1) - (a.members ?? -1) || a.name.localeCompare(b.name));
   }
 }
 
@@ -368,12 +370,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 <Icon name="ph:caret-up-down" width="13" height="13" />
               </button>
               <div class="dgl-switcher-panel" id="dgl-switcher-panel" hidden>
+                {switcherGuilds.length > 1 && <div class="dgl-switcher-sort"><DashServerSort targets="#dgl-switcher-list" compact /></div>}
                 {switcherGuilds.length > 0 && (
-                  <div class="dgl-switcher-list">
+                  <div class="dgl-switcher-list" id="dgl-switcher-list">
                     {switcherGuilds.map((g) => (
-                      <a href={`/dash/guild/${g.id}/overview`} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
+                      <a href={`/dash/guild/${g.id}/overview`} data-name={g.name.toLowerCase()} data-members={g.members != null ? String(g.members) : ''} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
                         {g.icon ? <img src={g.icon} alt="" /> : <div class="dgl-switcher-item-fallback"><Icon name="ph:buildings-fill" width="14" height="14" /></div>}
-                        <span>{g.name}</span>
+                        <span class="dgl-switcher-item-text"><span class="dgl-switcher-item-name">{g.name}</span>{g.members != null && <small>{dt('{n} members', { n: g.members.toLocaleString('en-US') })}</small>}</span>
                         {g.premium && <span class="dgl-switcher-premium"><InlineIcon name="ph:crown-fill" width="11" height="11" />Premium</span>}
                         {g.id === guildId && <Icon name="ph:check-fill" width="13" height="13" />}
                       </a>
@@ -2713,7 +2716,10 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-switcher-item.current { color: var(--accent); background: var(--accent-soft); }
   .dgl-switcher-item img, .dgl-switcher-item-fallback { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
   .dgl-switcher-item-fallback { display: flex; align-items: center; justify-content: center; background: var(--bg-raise); color: var(--text-dim); }
-  .dgl-switcher-item > span:not(.dgl-switcher-premium) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .dgl-switcher-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-switcher-item-text small { font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .dgl-switcher-sort { display: flex; justify-content: flex-end; padding: 2px 2px 6px; }
   .dgl-switcher-item .dgl-switcher-premium { font-size: 8px; padding: 3px 5px; }
   .dgl-switcher-item :global(svg:last-child) { flex-shrink: 0; color: var(--accent); }
   .dgl-resync { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 20px); margin: 8px 10px 2px; padding: 7px 12px; border-radius: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted, var(--text)); font: inherit; font-size: .82rem; cursor: pointer; touch-action: manipulation; transition: color .15s ease, border-color .15s ease, background .15s ease; }

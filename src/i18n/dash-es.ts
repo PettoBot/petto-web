@@ -4347,4 +4347,6 @@ export const dashEs: Record<string, string> = {
   "See Premium plans": "Ver planes Premium",
   "Add Petto": "Añadir Petto",
   "Nothing here yet. Add the first one above.": "Todavía no hay nada. Añade el primero arriba.",
+  "Sort servers": "Ordenar servidores",
+  "Other servers": "Otros servidores",
 };
