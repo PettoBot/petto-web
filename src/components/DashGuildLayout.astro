@@ -6,6 +6,8 @@ import InlineIcon from './InlineIcon.astro';
 import DashClientI18n from './DashClientI18n.astro';
 import DashPreviews from './DashPreviews.astro';
 import DashSelectMenu from './DashSelectMenu.astro';
+import DashMotion from './DashMotion.astro';
+import DashAutocomplete from './DashAutocomplete.astro';
 import { useTranslations } from '../i18n/ui';
 import { canManageGuild, guildIconUrl } from '../utils/discord';
 import { loadDashLayoutData } from '../utils/dashLayoutData';
@@ -278,6 +280,23 @@ const stableInlineItems = new Set([
   'vanity-logs',
 ]);
 const activeNavItem = groups.flatMap((g) => g.items).find((item) => item.id === active);
+// The shape of the placeholders shown while a page loads (see showContentSkeleton): the same layout the page has, so nothing jumps
+// when it arrives. Most pages are settings forms.
+const skeletonOf: Record<string, string> = {
+  overview: 'stats', stats: 'stats', 'mod-stats': 'stats',
+  modules: 'grid', 'automation-overview': 'grid', 'automod-templates': 'grid', 'disabled-commands': 'grid',
+  embeds: 'editor', cards: 'editor', code: 'editor',
+  audit: 'list', cases: 'list', 'active-sanctions': 'list', 'appeals-submissions': 'list', 'forms-submissions': 'list', 'tickets-open': 'list',
+  'giveaways-active': 'list', 'vanity-logs': 'list', 'leveling-leaderboard': 'list', 'leveling-leaderboard-voice': 'list', backups: 'list',
+  responders: 'cards', autoresponders: 'cards', 'custom-commands': 'cards', timers: 'cards', 'sticky-messages': 'cards', counters: 'cards',
+};
+// The menu is split in a few sections, each with a title, so the long list reads as parts of the server.
+const sectionOf = (label: string) => {
+  if ([dt('Dashboard'), dt('Design')].includes(label)) return dt('Essentials');
+  if ([dt('Moderation'), dt('Appeals'), dt('Security')].includes(label)) return dt('Protection');
+  if ([dt('Integrations')].includes(label)) return dt('Connections');
+  return dt('Engagement');
+};
 // A page read by the dashboard's own navigation (X-Dash-Partial) only needs its content and its styles: the menu, the header and the
 // scripts are already on screen, so they are not drawn or sent again (about half of every answer).
 const partial = Boolean(Astro.request.headers.get('x-dash-partial'));
@@ -369,6 +388,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               <span>{dt('Sync server data')}</span>
             </button>
 
+            <button type="button" class="dgl-find" id="dgl-find" data-placeholder={dt('Jump to a page…')} data-empty={dt('No pages match.')} aria-haspopup="dialog">
+              <Icon name="ph:magnifying-glass" width="14" height="14" />
+              <span>{dt('Search pages')}</span>
+              <kbd>Ctrl K</kbd>
+            </button>
+
             <button type="button" class="dgl-mobile-toggle" id="dgl-mobile-toggle" aria-expanded="false">
               <span>
                 {stableInlineItems.has(activeNavItem?.id ?? '') ? <InlineIcon name={activeNavItem?.icon ?? 'ph:squares-four-fill'} width="15" height="15" /> : <Icon name={activeNavItem?.icon ?? 'ph:squares-four-fill'} width="15" height="15" />}
@@ -378,16 +403,18 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
             </button>
 
             <nav class="dgl-nav" id="dgl-sidenav">
-              {groups.map((group) => (
+              {groups.map((group, index) => (
+                <Fragment>
+                {(index === 0 || sectionOf(groups[index - 1].label) !== sectionOf(group.label)) && <div class="dgl-section-title">{sectionOf(group.label)}</div>}
                 <div class:list={['dgl-group', { 'has-active': group.items.some((item) => item.id === active) }]} data-group={group.label} data-important={group.important ? '' : undefined}>
                   <button type="button" class="dgl-label" aria-expanded="true">
-                    <Icon name={group.icon} width="14" height="14" class="dgl-label-icon" />
+                    <span class="dgl-label-tile"><Icon name={group.icon} width="14" height="14" class="dgl-label-icon" /></span>
                     <span>{group.label}</span>
                     <Icon name="ph:caret-down" width="12" height="12" class="dgl-label-caret" />
                   </button>
                   <div class="dgl-items"><div class="dgl-items-inner">
                   {group.items.map((item) => (
-                    <a href={item.href} data-full={item.full ? '' : undefined} class:list={['dgl-link', { active: active === item.id }]} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
+                    <a href={item.href} data-full={item.full ? '' : undefined} data-label={item.label} data-sk={skeletonOf[item.id] ?? 'form'} class:list={['dgl-link', { active: active === item.id }]} aria-current={active === item.id ? 'page' : undefined} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
                       {stableInlineItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
                       {item.label}
                       {item.isNew && <em class="dgl-new">{dt('New')}</em>}
@@ -399,6 +426,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                   ))}
                   </div></div>
                 </div>
+                </Fragment>
               ))}
             </nav>
             <script is:inline>
@@ -439,17 +467,34 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                   apply(group, open || group.classList.contains('has-active'));
                 });
                 var store = function () {
-                  var open = groups.filter(function (g) { return !g.classList.contains('closed'); }).map(function (g) { return g.getAttribute('data-group'); });
+                  var open = groups.filter(function (g) { return !g.classList.contains('closed') && !g.classList.contains('folding'); }).map(function (g) { return g.getAttribute('data-group'); });
                   try { sessionStorage.setItem(KEY, JSON.stringify(open)); } catch (e) {}
                 };
                 if (!Array.isArray(saved)) store();
                 // The first layout has no transition; the folding animates from then on.
                 requestAnimationFrame(function () { requestAnimationFrame(function () { nav.classList.add('ready'); }); });
+                // Opening or folding a part: its links come in (or fade out) and the parts under it slide to their new place, all with
+                // opacity and transforms (dglMotion.flip), so the menu never animates its height.
+                var toggle = function (group, open) {
+                  var motion = window.dglMotion;
+                  if (group._fold) { clearTimeout(group._fold); group._fold = 0; group.classList.remove('folding'); }
+                  if (!motion || motion.reduced() || !nav.classList.contains('ready')) { apply(group, open); return; }
+                  if (open) {
+                    motion.flip(group, function () { apply(group, true); }, nav);
+                    group.classList.remove('unfolding'); void group.offsetWidth; group.classList.add('unfolding');
+                    clearTimeout(group._unfold);
+                    group._unfold = setTimeout(function () { group.classList.remove('unfolding'); }, 600);
+                  } else {
+                    group.classList.remove('unfolding');
+                    group.classList.add('folding');
+                    group._fold = setTimeout(function () { group._fold = 0; group.classList.remove('folding'); motion.flip(group, function () { apply(group, false); }, nav); }, 130);
+                  }
+                };
                 nav.addEventListener('click', function (event) {
                   var head = event.target.closest && event.target.closest('.dgl-label');
                   if (!head) return;
                   var group = head.closest('.dgl-group');
-                  apply(group, group.classList.contains('closed'));
+                  toggle(group, group.classList.contains('closed') || group.classList.contains('folding'));
                   store();
                 });
                 // Moving to a section by the menu (the page is not reloaded) opens the part it lives in.
@@ -457,7 +502,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                   var group = link && link.closest('.dgl-group');
                   if (!group) return;
                   groups.forEach(function (g) { g.classList.toggle('has-active', g === group); });
-                  if (group.classList.contains('closed')) { apply(group, true); store(); }
+                  if (group.classList.contains('closed')) { toggle(group, true); store(); }
                 };
               })();
             </script>
@@ -564,6 +609,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     <Icon name="ph:floppy-disk-fill" width="15" height="15" class="dgl-savebar-icon" />
     <span class="dgl-savebar-spin" aria-hidden="true"></span>
     <Icon name="ph:check-circle-fill" width="15" height="15" class="dgl-savebar-done" />
+    <Icon name="ph:warning-fill" width="15" height="15" class="dgl-savebar-err" />
     <span class="dgl-savebar-text">{dt('You have unsaved changes')}</span>
     <div class="dgl-savebar-actions">
       <button type="button" class="dgl-savebar-discard" data-savebar-discard>{dt('Discard')}</button>
@@ -576,6 +622,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
 </Base>
 
 <DashClientI18n />
+<DashMotion />
+<DashAutocomplete />
 <DashPreviews />
 <DashSelectMenu />
 </Fragment>
@@ -759,6 +807,18 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       var inner = content && content.scrollHeight > content.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(content).overflowY);
       if (inner) content.scrollTop += over; else window.scrollBy(0, over);
     }
+    // A field that gets the focus while it sits under the bar of unsaved changes is scrolled up above it (after the phone's keyboard opens),
+    // so the bar never covers what is being typed.
+    document.addEventListener('focusin', function (e) {
+      var el = e.target;
+      var content = document.getElementById('dgl-content');
+      if (!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || !content || !content.contains(el)) return;
+      setTimeout(function () {
+        var bar = document.getElementById('dgl-savebar');
+        if (!bar || !bar.classList.contains('show') || document.activeElement !== el) return;
+        if (el.getBoundingClientRect().top > bar.getBoundingClientRect().top - 48) bringAboveBar(el);
+      }, 260);
+    });
     function unfloatPanel(panel) {
       panel.classList.remove('dgl-float', 'dgl-float-up');
       ['left', 'top', 'width', 'maxHeight', 'visibility'].forEach(function (name) { panel.style[name] = ''; });
@@ -781,15 +841,40 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     var discardBtn = saveBar ? saveBar.querySelector('[data-savebar-discard]') : null;
 
     var saveBarText = saveBar ? saveBar.querySelector('.dgl-savebar-text') : null;
+    // Changes that are not in a form a page posts (an editor that saves through its own API): the page registers them with
+    // window.dglDirty(key, { save, discard }) and takes them back with window.dglClean(key). `save` returns a promise; the bar shows
+    // "saving", then "saved" or the error, exactly as for a form. `discard` puts the page back as it was.
+    var customDirty = new Map();
+    var CUSTOM_DIRTY = { custom: true };
+    function syncDirtyFlag() {
+      dirtyForm = dirtyForms.length ? dirtyForms[dirtyForms.length - 1] : customDirty.size ? CUSTOM_DIRTY : null;
+    }
+    function dirtyCount() { return dirtyForms.length + customDirty.size; }
     function updateSaveBarText() {
       if (!saveBarText) return;
-      saveBarText.textContent = dirtyForms.length > 1
-        ? cdt('{n} sections have unsaved changes', { n: dirtyForms.length })
+      saveBarText.textContent = dirtyCount() > 1
+        ? cdt('{n} sections have unsaved changes', { n: dirtyCount() })
         : cdt('You have unsaved changes');
     }
+    window.dglDirty = function (key, opts) {
+      if (resettingForm || !saveBar) return;
+      customDirty.set(String(key), opts || {});
+      syncDirtyFlag();
+      saveBar.classList.remove('error');
+      updateSaveBarText();
+      showSaveBar();
+    };
+    window.dglClean = function (key) {
+      if (!customDirty.delete(String(key))) return;
+      syncDirtyFlag();
+      if (dirtyCount()) { updateSaveBarText(); return; }
+      if (saveBar && !saveBar.classList.contains('saving') && !saveBar.classList.contains('saved')) saveBar.classList.remove('show', 'error');
+      document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
+    };
     function markDirty(form) {
       if (dirtyForms.indexOf(form) === -1) dirtyForms.push(form);
       dirtyForm = form;
+      if (saveBar) saveBar.classList.remove('error');
       form.classList.add('is-dirty');
       updateSaveBarText();
       showSaveBar();
@@ -800,7 +885,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     function setBarState(state, text) {
       if (!saveBar) return;
       clearTimeout(barTimer);
-      saveBar.classList.remove('saving', 'saved');
+      saveBar.classList.remove('saving', 'saved', 'error');
       if (state) saveBar.classList.add(state, 'show');
       if (text && saveBarText) saveBarText.textContent = text;
     }
@@ -833,11 +918,19 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       }
       return false;
     }
-    function showSaveBar() { if (saveBar) saveBar.classList.add('show'); }
+    function showSaveBar() {
+      if (!saveBar) return;
+      var appearing = !saveBar.classList.contains('show');
+      saveBar.classList.add('show');
+      // The bar comes up while the person types in a field near the bottom: that field is moved above it.
+      var el = document.activeElement;
+      if (appearing && el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) setTimeout(function () { if (document.activeElement === el && el.getBoundingClientRect().top > saveBar.getBoundingClientRect().top - 48) bringAboveBar(el); }, 320);
+    }
     function hideSaveBar() {
       if (saveBar && !saveBar.classList.contains('saved')) saveBar.classList.remove('show');
       dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
       dirtyForms = [];
+      customDirty.clear();
       dirtyForm = null;
       updateSaveBarText();
       document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
@@ -860,8 +953,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       }
       return null;
     }
+    // A form that sends files (multipart) is saved by the browser itself, which loads the page again: it must not ask "leave the page?".
+    var leavingToSave = false;
+    function isMultipart(form) { return (form.getAttribute('enctype') || '').indexOf('multipart') !== -1; }
     function submitForm(form) {
       var primary = primarySave(form);
+      if (isMultipart(form)) {
+        if (!form.checkValidity()) { form.reportValidity(); return; }
+        leavingToSave = true;
+        setTimeout(function () { leavingToSave = false; }, 4000);
+        setBarState('saving', cdt('Saving...'));
+      }
       if (form.requestSubmit) form.requestSubmit(primary || undefined);
       else form.submit();
     }
@@ -870,8 +972,6 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       root.querySelectorAll('form').forEach(function (form) {
         if (form.dataset.dirtyBound) return;
         form.dataset.dirtyBound = '1';
-        // File-upload forms do a real page reload on submit anyway (see bindForms), no point tracking those.
-        if ((form.getAttribute('enctype') || '').indexOf('multipart') !== -1) return;
         // Forms that act at once (add or remove a row) are not part of "unsaved changes".
         if (form.hasAttribute('data-no-dirty')) return;
         var ownSave = primarySave(form);
@@ -890,7 +990,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // Saves every changed form, one after the other, with the same data a press on its own Save would send. The last one goes through the
     // usual submit, which swaps the page, so what is on screen is what was saved.
     async function saveAllDirty() {
-      var forms = dirtyForms.slice();
+      // A form with files reloads the page when it is sent, so it goes last.
+      var forms = dirtyForms.slice().sort(function (a, b) { return Number(isMultipart(a)) - Number(isMultipart(b)); });
       if (!forms.length) return;
       for (var i = 0; i < forms.length; i++) {
         if (!forms[i].checkValidity()) { forms[i].reportValidity(); return; }
@@ -910,24 +1011,53 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         } catch (err) { failed += 1; }
       }
       submitForm(forms[forms.length - 1]);
-      if (failed) { setBarState(null, cdt('{n} sections could not be saved', { n: failed })); if (saveBarBtn) saveBarBtn.disabled = false; }
+      if (failed) { setBarState('error', cdt('{n} sections could not be saved', { n: failed })); if (saveBarBtn) saveBarBtn.disabled = false; }
     }
-    if (saveBarBtn) saveBarBtn.addEventListener('click', function () {
-      if (!dirtyForms.length) return;
+    // The changes registered by a page script (window.dglDirty) are saved first, one after the other.
+    async function saveCustomDirty() {
+      var failed = 0;
+      var entries = Array.from(customDirty.entries());
+      for (var i = 0; i < entries.length; i++) {
+        setBarState('saving', cdt('Saving...'));
+        try {
+          var result = entries[i][1].save ? await entries[i][1].save() : true;
+          if (result === false) failed += 1; else customDirty.delete(entries[i][0]);
+        } catch (err) { failed += 1; }
+      }
+      syncDirtyFlag();
+      return failed;
+    }
+    if (saveBarBtn) saveBarBtn.addEventListener('click', async function () {
+      if (!dirtyCount() || saveBarBtn.disabled) return;
+      if (customDirty.size) {
+        saveBarBtn.disabled = true;
+        var failed = await saveCustomDirty();
+        saveBarBtn.disabled = false;
+        if (failed) { setBarState('error', cdt('Could not save. Try again.')); return; }
+        if (!dirtyForms.length) {
+          prefetchedPages.clear();
+          document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
+          finishBar(cdt('Saved'));
+          return;
+        }
+      }
       if (dirtyForms.length > 1) { saveAllDirty(); return; }
       submitForm(dirtyForms[0]);
     });
     // Ctrl+S (or Cmd+S) does what the bar does.
     document.addEventListener('keydown', function (e) {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && dirtyForms.length) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && dirtyCount()) {
         e.preventDefault();
         if (saveBarBtn && !saveBarBtn.disabled) saveBarBtn.click();
       }
     });
     if (discardBtn) discardBtn.addEventListener('click', function () {
       var forms = dirtyForms.slice();
+      var customs = Array.from(customDirty.values());
+      customDirty.clear();
       resettingForm = true;
       try {
+        customs.forEach(function (entry) { try { if (entry.discard) entry.discard(); } catch (err) { /* The page puts itself back as it can. */ } });
         forms.forEach(function (form) {
           form.reset();
           // Native reset restores hidden widget values but not their visual chips/thumbs.
@@ -946,20 +1076,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       } finally {
         resettingForm = false;
       }
-      setBarState('saving', cdt('Discarding...'));
-      setTimeout(function () {
-        dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
-        dirtyForms = [];
-        dirtyForm = null;
-        document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
-        finishBar(cdt('Discarded'));
-      }, 350);
+      dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
+      dirtyForms = [];
+      dirtyForm = null;
+      document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
+      finishBar(cdt('Discarded'));
     });
 
     // Anything that leaves the app entirely (header links, closing the tab, refresh) goes
     // through the browser's native unload flow, so it's the one place a blanket guard fits.
     window.addEventListener('beforeunload', function (e) {
-      if (dirtyForm) { e.preventDefault(); e.returnValue = ''; }
+      if (dirtyForm && !leavingToSave) { e.preventDefault(); e.returnValue = ''; }
     });
 
     function bindSwitcherMenu() {
@@ -969,14 +1096,14 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         if (dirtyForm) { shakeSaveBar(); return; }
-        var isOpen = !panel.hidden;
-        panel.hidden = !isOpen ? false : true;
+        var isOpen = !panel.hidden && !panel._dglLeave;
+        if (isOpen) window.dglMotion.hide(panel); else { window.dglMotion.stay(panel); panel.hidden = false; }
         btn.classList.toggle('open', !isOpen);
         btn.setAttribute('aria-expanded', String(!isOpen));
       });
       document.addEventListener('click', function (e) {
         if (!panel.hidden && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
-          panel.hidden = true;
+          window.dglMotion.hide(panel);
           btn.classList.remove('open');
           btn.setAttribute('aria-expanded', 'false');
         }
@@ -990,10 +1117,15 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     var menuBtn = document.getElementById('dgl-menu-btn');
     var menuBackdrop = document.getElementById('dgl-backdrop');
     function setDrawer(open) {
+      var wasOpen = !!dglSide?.classList.contains('open');
+      if (wasOpen === open) return;
       dglSide?.classList.toggle('open', open);
-      if (menuBackdrop) menuBackdrop.hidden = !open;
+      if (menuBackdrop) { if (open) { window.dglMotion.stay(menuBackdrop); menuBackdrop.hidden = false; } else window.dglMotion.hide(menuBackdrop); }
       menuBtn?.setAttribute('aria-expanded', String(open));
-      document.body.style.overflow = open ? 'hidden' : '';
+      // The page under the drawer does not scroll, and it stays exactly where it was (no jump to the top when the drawer closes).
+      document.documentElement.classList.toggle('dgl-drawer-open', open);
+      if (open) setTimeout(function () { document.getElementById('dgl-side-close')?.focus({ preventScroll: true }); }, 60);
+      else if (wasOpen) menuBtn?.focus({ preventScroll: true });
     }
     menuBtn?.addEventListener('click', function () { setDrawer(!dglSide?.classList.contains('open')); });
     menuBackdrop?.addEventListener('click', function () { setDrawer(false); });
@@ -1012,6 +1144,87 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       });
     });
 
+    // Ctrl+K (Cmd+K), "/" outside a field, or the search button of the menu: a small finder over the pages of the menu. Enter opens the
+    // page the usual way (the menu link is clicked, so it loads without a reload and keeps every guard).
+    var palette = null;
+    function openPalette() {
+      var trigger = document.getElementById('dgl-find');
+      if (!trigger) return;
+      if (dirtyForm) { shakeSaveBar(); return; }
+      setDrawer(false);
+      if (!palette) {
+        var veil = document.createElement('div');
+        veil.className = 'dgl-pal-veil';
+        veil.hidden = true;
+        veil.innerHTML = '<div class="dgl-pal" role="dialog" aria-modal="true"><div class="dgl-pal-field"><svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 218.34l-50.07-50.06a88.11 88.11 0 1 0-11.31 11.31l50.06 50.07a8 8 0 0 0 11.32-11.32ZM40 112a72 72 0 1 1 72 72 72.08 72.08 0 0 1-72-72Z"/></svg><input type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="dgl-pal-list"><kbd>Esc</kbd></div><div class="dgl-pal-list" id="dgl-pal-list" role="listbox"></div></div>';
+        document.body.appendChild(veil);
+        var input = veil.querySelector('input');
+        input.placeholder = trigger.getAttribute('data-placeholder') || '';
+        var list = veil.querySelector('.dgl-pal-list');
+        var links = Array.prototype.slice.call(document.querySelectorAll('.dgl-link')).map(function (a) {
+          var group = a.closest('.dgl-group');
+          return { a: a, label: a.getAttribute('data-label') || a.textContent.trim(), group: group ? group.getAttribute('data-group') : '' };
+        });
+        var shown = [];
+        var index = 0;
+        var draw = function () {
+          var q = input.value.trim().toLowerCase();
+          shown = links.filter(function (l) { return !q || (l.label + ' ' + l.group).toLowerCase().indexOf(q) !== -1; })
+            .sort(function (x, y) { return q ? Number(y.label.toLowerCase().indexOf(q) === 0) - Number(x.label.toLowerCase().indexOf(q) === 0) : 0; })
+            .slice(0, 40);
+          index = Math.min(index, Math.max(0, shown.length - 1));
+          list.innerHTML = '';
+          if (!shown.length) { var none = document.createElement('div'); none.className = 'dgl-pal-empty'; none.textContent = trigger.getAttribute('data-empty') || ''; list.appendChild(none); return; }
+          shown.forEach(function (l, i) {
+            var row = document.createElement('div');
+            row.className = 'dgl-pal-row' + (i === index ? ' on' : '') + (l.a.classList.contains('active') ? ' here' : '');
+            row.setAttribute('role', 'option');
+            row.setAttribute('aria-selected', String(i === index));
+            var icon = l.a.querySelector('svg');
+            if (icon) row.appendChild(icon.cloneNode(true));
+            var name = document.createElement('span'); name.textContent = l.label; row.appendChild(name);
+            var where = document.createElement('small'); where.textContent = l.group; row.appendChild(where);
+            row.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            row.addEventListener('click', function () { go(i); });
+            list.appendChild(row);
+          });
+        };
+        var move = function (to) {
+          if (!shown.length) return;
+          index = (to + shown.length) % shown.length;
+          list.querySelectorAll('.dgl-pal-row').forEach(function (r, i) { r.classList.toggle('on', i === index); r.setAttribute('aria-selected', String(i === index)); });
+          var on = list.querySelector('.dgl-pal-row.on');
+          if (on) on.scrollIntoView({ block: 'nearest' });
+        };
+        var go = function (i) { var l = shown[i]; closePalette(); if (l) l.a.click(); };
+        input.addEventListener('input', function () { index = 0; draw(); });
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); move(index + (e.key === 'ArrowDown' ? 1 : -1)); }
+          else if (e.key === 'Enter') { e.preventDefault(); go(index); }
+          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePalette(); }
+        });
+        veil.addEventListener('mousedown', function (e) { if (e.target === veil) { e.preventDefault(); closePalette(); } });
+        palette = { veil: veil, input: input, draw: draw, back: null };
+      }
+      palette.back = document.activeElement;
+      window.dglMotion.stay(palette.veil);
+      palette.veil.hidden = false;
+      palette.input.value = '';
+      palette.draw();
+      palette.input.focus({ preventScroll: true });
+    }
+    function closePalette() {
+      if (!palette || palette.veil.hidden) return;
+      window.dglMotion.hide(palette.veil);
+      if (palette.back && palette.back.focus && palette.back !== document.body) palette.back.focus({ preventScroll: true });
+    }
+    document.getElementById('dgl-find')?.addEventListener('click', openPalette);
+    document.addEventListener('keydown', function (e) {
+      var typing = e.target && (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palette && !palette.veil.hidden) closePalette(); else openPalette(); }
+      else if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); openPalette(); }
+    });
+
     function bindNavGuard(root) {
       root.querySelectorAll('.dgl-link, .dgl-switcher-item, .dgl-switcher-all, .dgl-side-user a').forEach(function (a) {
         if (a.dataset.navGuardBound) return;
@@ -1026,31 +1239,59 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // While a section is being fetched for longer than a blink, its content gives way to grey placeholders with a moving
     // highlight (the styles live in Base.astro). Only for moving between sections, never while saving a form.
     var skeletonTimer = null;
-    function showContentSkeleton() {
+    // The placeholders have the shape of the page that is coming (data-sk on its menu link) and its real title, so the title does not
+    // move and the blocks sit where the real ones will. They show at once when the page is not already here; a page read ahead is swapped in
+    // directly, with no placeholders at all.
+    function skeletonHtml(kind) {
+      var n = function (count, html) { var out = ''; for (var i = 0; i < count; i++) out += html; return out; };
+      var panel = function (fields) { return '<div class="sk-panel"><span class="sk sk-head"></span><div class="sk-fields">' + fields + '</div></div>'; };
+      switch (kind) {
+        case 'stats': return '<div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></div><span class="sk sk-block"></span><div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span></div>';
+        case 'grid': return '<div class="sk-toolbar"><span class="sk"></span></div><div class="sk-mods">' + n(9, '<span class="sk"></span>') + '</div>';
+        case 'cards': return '<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-grid">' + n(4, '<span class="sk sk-card"></span>') + '</div>';
+        case 'list': return '<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-rows">' + n(7, '<span class="sk"></span>') + '</div>';
+        case 'editor': return '<div class="sk-editor"><div class="sk-col"><span class="sk sk-field"></span><span class="sk sk-field"></span><span class="sk sk-field tall"></span><span class="sk sk-field"></span></div><div class="sk-col"><span class="sk sk-card tall"></span></div></div>';
+        default: return panel('<span class="sk"></span><span class="sk"></span><span class="sk wide"></span>') + panel('<span class="sk"></span><span class="sk"></span>');
+      }
+    }
+    // Which menu link a page address belongs to (the same rules as updateActiveLink), for the title and shape of its placeholders.
+    function navLinkFor(href) {
+      var target;
+      try { target = new URL(href, window.location.href); } catch (e) { return null; }
+      var links = Array.prototype.slice.call(document.querySelectorAll('.dgl-link'));
+      var parse = function (a) { return new URL(a.getAttribute('href'), window.location.href); };
+      return links.find(function (a) { var u = parse(a); return u.pathname === target.pathname && u.search === target.search; })
+        || links.find(function (a) { var u = parse(a); if (u.pathname !== target.pathname || !u.search) return false; var all = true; u.searchParams.forEach(function (v, k) { if (target.searchParams.get(k) !== v) all = false; }); return all; })
+        || links.find(function (a) { var u = parse(a); return u.pathname === target.pathname; })
+        || null;
+    }
+    function showContentSkeleton(href) {
       var content = document.getElementById('dgl-content');
       if (!content) return;
       clearTimeout(skeletonTimer);
-      skeletonTimer = setTimeout(function () {
-        if (content.querySelector(':scope > .dgl-sk')) return;
-        var sk = document.createElement('div');
-        sk.className = 'dgl-sk sk-wrap';
-        sk.setAttribute('aria-hidden', 'true');
-        // Placeholders across the whole width of the section: title, text, a row of numbers, a big block and cards.
-        sk.innerHTML = '<span class="sk sk-title"></span><span class="sk sk-line"></span><span class="sk sk-line short"></span>'
-          + '<div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>'
-          + '<span class="sk sk-block"></span>'
-          + '<div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>';
-        // The placeholders are shorter than the section they replace; holding its height keeps the page from jumping up.
-        content.style.minHeight = content.offsetHeight + 'px';
-        content.classList.add('is-loading');
-        content.appendChild(sk);
-      }, 160);
+      if (content.querySelector(':scope > .dgl-sk')) return;
+      var link = href ? navLinkFor(href) : null;
+      var kind = (link && link.getAttribute('data-sk')) || 'form';
+      var sk = document.createElement('div');
+      sk.className = 'dgl-sk sk-wrap';
+      sk.setAttribute('aria-hidden', 'true');
+      var title = document.createElement('h1');
+      title.className = 'dgl-sk-title';
+      title.textContent = link ? (link.getAttribute('data-label') || '') : ((content.querySelector('h1') || {}).textContent || '');
+      sk.appendChild(title);
+      sk.insertAdjacentHTML('beforeend', skeletonHtml(kind));
+      // The placeholders are shorter than the section they replace; holding its height keeps the page from jumping up.
+      content.style.minHeight = content.offsetHeight + 'px';
+      content.classList.add('is-loading');
+      content.setAttribute('aria-busy', 'true');
+      content.appendChild(sk);
     }
     function hideContentSkeleton() {
       clearTimeout(skeletonTimer);
       var content = document.getElementById('dgl-content');
       if (!content) return;
       content.classList.remove('is-loading');
+      content.removeAttribute('aria-busy');
       content.style.minHeight = '';
       content.querySelectorAll(':scope > .dgl-sk').forEach(function (el) { el.remove(); });
     }
@@ -1078,14 +1319,15 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       progressEl.style.transition = 'opacity 0.2s ease';
       progressEl.style.opacity = '1';
       progressWidth = 0;
-      progressEl.style.width = '0%';
+      progressEl.style.transform = 'scaleX(0)';
       function frame() {
         var t = Date.now() - progressStartedAt;
         // Straight line to 80% when the page is expected, then the same speed that slows down smoothly toward 95%
         // (no step in the pace, and never a full stop if the page is late).
         var speed = 80 / expected;
         progressWidth = t < expected ? speed * t : 80 + 15 * ((t - expected) * speed / 15) / (((t - expected) * speed / 15) + 1);
-        progressEl.style.width = progressWidth.toFixed(2) + '%';
+        // Only a transform moves (the GPU draws it): the bar never makes the page lay itself out again while it loads.
+        progressEl.style.transform = 'scaleX(' + (progressWidth / 100).toFixed(4) + ')';
         progressFrame = requestAnimationFrame(frame);
       }
       progressFrame = requestAnimationFrame(frame);
@@ -1100,15 +1342,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         progressStartedAt = 0;
       }
       // Arrived: run to the end, fade, and reset, all in about a third of a second so the bar never lingers after the page.
-      progressEl.style.transition = 'width 0.1s linear, opacity 0.18s ease';
-      progressEl.style.width = '100%';
+      progressEl.style.transition = 'transform 0.12s ease-out, opacity 0.2s ease 0.08s';
+      progressEl.style.transform = 'scaleX(1)';
+      progressEl.style.opacity = '0';
       progressHideTimer = setTimeout(function () {
-        progressEl.style.opacity = '0';
-        progressHideTimer = setTimeout(function () {
-          progressEl.style.transition = 'opacity 0.18s ease';
-          progressEl.style.width = '0%';
-        }, 190);
-      }, 110);
+        progressEl.style.transition = 'opacity 0.18s ease';
+        progressEl.style.transform = 'scaleX(0)';
+      }, 320);
     }
 
     // Each dashboard module ships its own scoped stylesheet, emitted as a <link>/<style> in
@@ -1566,7 +1806,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           if (!href) return;
           e.preventDefault();
           startProgress();
-          showContentSkeleton();
+          var ready = prefetchedPages.get(href);
+          if (!(ready && !ready.pending && prefetchUsable(ready))) showContentSkeleton(href);
           getPage(href)
             .then(function (answer) {
               if (!answer || !answer.ok) throw new Error('navigation failed');
@@ -1604,7 +1845,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     function navigateTo(url) {
       if (dirtyForm) { shakeSaveBar(); return; }
       startProgress();
-      showContentSkeleton();
+      showContentSkeleton(url);
       readPage(url)
         .then(function (answer) {
           return swapContent(answer.html, url).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
@@ -1650,12 +1891,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 commitDefaults(form);
                 form.classList.remove('is-dirty');
                 dirtyForms = dirtyForms.filter(function (f) { return f !== form; });
-                dirtyForm = dirtyForms.length ? dirtyForms[dirtyForms.length - 1] : null;
+                syncDirtyFlag();
                 prefetchedPages.clear();
                 savedAt = Date.now();
                 if (btn) { btn.disabled = false; btn.textContent = originalText; }
                 if (saveBarBtn) saveBarBtn.disabled = false;
-                if (dirtyForms.length) { setBarState(null); updateSaveBarText(); }
+                if (dirtyCount()) { setBarState(null); updateSaveBarText(); }
                 else { document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } })); finishBar(cdt('Saved')); }
                 return 'soft';
               }
@@ -1671,13 +1912,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               }
               if (!ok && btn) { btn.disabled = false; btn.textContent = originalText; }
               if (saveBarBtn) saveBarBtn.disabled = false;
-              if (!ok) setBarState(null, cdt('Something went wrong, try again.'));
+              if (!ok) setBarState('error', cdt('Something went wrong, try again.'));
               finishProgress();
             })
             .catch(function () {
               if (btn) { btn.disabled = false; btn.textContent = originalText; }
               if (saveBarBtn) saveBarBtn.disabled = false;
-              setBarState(null, cdt('Something went wrong, try again.'));
+              setBarState(fromBar ? 'error' : null, cdt('Something went wrong, try again.'));
               finishProgress();
             });
         });
@@ -1721,6 +1962,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       // Placed like the lists of the MultiSelect (floatPanel). The button left the screen: the menu goes with it instead of hanging in the air.
       if (!floatPanel(menu.panel, menu.btn, { width: 340, maxHeight: 420, gap: 6 })) { menu.panel.hidden = true; menu.btn.classList.remove('open'); unfloatPanel(menu.panel); openVarMenu = null; }
     }
+    // A variables menu closes with its exit; it goes back into the page once it is gone.
+    function closeVarPanel(panel) {
+      if (panel.hidden) return;
+      if (openVarMenu && openVarMenu.panel === panel) openVarMenu = null;
+      window.dglMotion.leave(panel, function () { panel.hidden = true; unfloatPanel(panel); });
+    }
     function queueVarMenu(e) {
       if (!openVarMenu || (e && e.target && e.target.nodeType === 1 && openVarMenu.panel.contains(e.target))) return;
       if (varMenuFrame) return;
@@ -1740,10 +1987,11 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         btn.addEventListener('click', function (e) {
           e.stopPropagation();
           if (panel.hasAttribute('data-varmenu-lazy')) buildVarMenu(panel);
-          var isOpen = !panel.hidden;
-          document.querySelectorAll('[data-varmenu-panel]').forEach((p) => { p.hidden = true; });
+          var isOpen = !panel.hidden && !panel._dglLeave;
+          document.querySelectorAll('[data-varmenu-panel]').forEach((p) => { if (p !== panel || isOpen) closeVarPanel(p); });
           document.querySelectorAll('.dgl-varbtn.open').forEach((b) => b.classList.remove('open'));
           if (!isOpen) {
+            window.dglMotion.stay(panel);
             // The scrollable dashboard panel clips regular absolute positioning once the button
             // isn't near the top, so the menu is fixed to the screen and placed from the button's
             // real position. It is placed again while the page scrolls, so it follows the button.
@@ -1801,7 +2049,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
 
     document.addEventListener('click', function (e) {
       document.querySelectorAll('[data-varmenu-panel]').forEach((p) => {
-        if (!p.hidden && !p.closest('[data-varmenu]').contains(e.target)) p.hidden = true;
+        if (!p.hidden && !p.closest('[data-varmenu]').contains(e.target)) closeVarPanel(p);
       });
       document.querySelectorAll('.dgl-varbtn.open').forEach((b) => {
         if (!b.closest('[data-varmenu]').contains(e.target)) b.classList.remove('open');
@@ -1866,6 +2114,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         function placeDropdown() { floatPanel(dropdown, control, { maxHeight: 280 }); }
         function openDropdown() {
           fill();
+          window.dglMotion.stay(dropdown);
           var wasHidden = dropdown.hidden;
           dropdown.hidden = false;
           wrap.classList.add('open');
@@ -1873,9 +2122,10 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           placeDropdown();
         }
         function closeDropdown() {
-          dropdown.hidden = true;
+          if (dropdown.hidden) return;
           wrap.classList.remove('open');
-          unfloatPanel(dropdown);
+          // The list fades out where it is, and only then goes back into the page.
+          window.dglMotion.leave(dropdown, function () { dropdown.hidden = true; unfloatPanel(dropdown); });
         }
         placeWhileOpen(wrap, function () { return !dropdown.hidden; }, placeDropdown);
 
@@ -2143,12 +2393,16 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           if (Math.abs(landed.top - top) > 1) panel.style.top = (top - (landed.top - top)) + 'px';
         }
         // The panel moves to the body while open: inside the form, a transformed or stacked ancestor would shift it and let fields paint over it.
-        function openPanel() { if (panel.parentNode !== document.body) document.body.appendChild(panel); panel.hidden = false; wrap.classList.add('open'); drawSV(); drawHue(); positionThumbs(); positionPanel(); }
-        function closePanel() { panel.hidden = true; wrap.classList.remove('open'); if (wrap.isConnected && panel.parentNode !== wrap) wrap.appendChild(panel); }
+        function openPanel() { window.dglMotion.stay(panel); if (panel.parentNode !== document.body) document.body.appendChild(panel); panel.hidden = false; wrap.classList.add('open'); drawSV(); drawHue(); positionThumbs(); positionPanel(); }
+        function closePanel() {
+          if (panel.hidden) return;
+          wrap.classList.remove('open');
+          window.dglMotion.leave(panel, function () { panel.hidden = true; if (wrap.isConnected && panel.parentNode !== wrap) wrap.appendChild(panel); });
+        }
 
         trigger.addEventListener('click', function (e) {
           e.stopPropagation();
-          if (panel.hidden) openPanel(); else closePanel();
+          if (panel.hidden || panel._dglLeave) openPanel(); else closePanel();
         });
         // Letting go of a drag outside the panel is not a click outside: it must not close it.
         closeOnOutside(wrap, function () { if (dragging || Date.now() - dragEndedAt < 400) return; closePanel(); }, panel);
@@ -2267,40 +2521,33 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         .catch(function () { roleBlockAsked = false; });
     };
 
-    // A fold (<details>) opens and closes by sliding its height instead of jumping. Anything else that opens one from a script still gets the
-    // soft entrance of its content (the stylesheet below).
-    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // A fold (<details>) opens and closes softly without animating its height: opening, its content fades in (the stylesheet) while what
+    // comes after it slides down from where it was; closing, the content fades out first and then what comes after slides up (dglMotion.flip,
+    // transforms only). Anything else that opens one from a script still gets the soft entrance of its content.
     function bindDetails(root) {
       root.querySelectorAll('details').forEach(function (box) {
         if (box.dataset.animBound || box.hasAttribute('data-no-anim')) return;
         var summary = box.querySelector(':scope > summary');
-        if (!summary || !box.animate) return;
+        if (!summary) return;
         box.dataset.animBound = '1';
         summary.addEventListener('click', function (event) {
-          if (reduceMotion) return;
+          if (window.dglMotion.reduced()) return;
           // A button, link or field inside the summary does its own thing.
           var inner = event.target.closest && event.target.closest('a, button, input, select, textarea, label');
           if (inner && summary.contains(inner) && inner !== summary) return;
           event.preventDefault();
-          if (box._slide) { box._slide.cancel(); box._slide = null; box.style.overflow = ''; }
-          var opening = !box.open;
-          var from = box.offsetHeight;
-          var to;
-          if (opening) { box.open = true; to = box.offsetHeight; }
-          else { box.open = false; to = box.offsetHeight; box.open = true; }
-          box.style.overflow = 'hidden';
-          box.classList.toggle('is-closing', !opening);
-          var slide = box.animate({ height: [from + 'px', to + 'px'] }, { duration: 300, easing: 'cubic-bezier(.3, 1, .4, 1)' });
-          box._slide = slide;
-          var done = function () {
-            if (box._slide !== slide) return;
-            box._slide = null;
-            box.style.overflow = '';
+          if (box._fold) {
+            // Pressed again while it was folding: it stays open.
+            clearTimeout(box._fold); box._fold = 0; box.classList.remove('is-closing');
+            return;
+          }
+          if (!box.open) { window.dglMotion.flip(box, function () { box.open = true; }); return; }
+          box.classList.add('is-closing');
+          box._fold = setTimeout(function () {
+            box._fold = 0;
             box.classList.remove('is-closing');
-            if (!opening) box.open = false;
-          };
-          slide.onfinish = done;
-          slide.oncancel = function () { if (box._slide === slide) { box._slide = null; box.style.overflow = ''; box.classList.remove('is-closing'); } };
+            window.dglMotion.flip(box, function () { box.open = false; });
+          }, 150);
         });
       });
     }
@@ -2369,6 +2616,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         return;
       }
       startProgress();
+      showContentSkeleton(window.location.pathname + window.location.search);
       readPage(window.location.pathname + window.location.search)
         .then(function (answer) {
           return swapContent(answer.html, null).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
@@ -2400,19 +2648,22 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-sec { padding: 28px 0; }
   .dgl-wrap { max-width: none; padding-left: 40px; padding-right: 40px; }
 
-  .dgl-layout { display: grid; grid-template-columns: 216px 1fr; gap: 24px; align-items: start; }
+  .dgl-layout { display: grid; grid-template-columns: 236px 1fr; gap: 24px; align-items: start; }
   .dgl-side {
     position: sticky; top: calc(var(--dgl-header-h, 60px) + 28px);
     height: calc(100vh - var(--dgl-header-h, 60px) - 56px);
     display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 16px; background: var(--card); overflow: hidden;
   }
-  .dgl-switcher-wrap { position: relative; border-bottom: 1px solid var(--border-soft); }
+  /* The server card at the top of the menu. */
+  .dgl-switcher-wrap { position: relative; padding: 10px 10px 0; }
   .dgl-switcher {
-    display: flex; align-items: center; gap: 10px; padding: 14px; width: 100%;
-    background: none; border: none; text-align: left; cursor: pointer; font-family: var(--sans);
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; width: 100%; border-radius: 13px;
+    background: color-mix(in srgb, var(--text) 3%, transparent); border: 1px solid var(--border-soft); text-align: left; cursor: pointer; font-family: var(--sans);
+    transition: background-color var(--m-fast) ease, border-color var(--m-fast) ease, transform var(--m-instant) ease;
   }
-  .dgl-switcher:hover, .dgl-switcher.open { background: var(--card-hover); }
-  .dgl-switcher img { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
+  .dgl-switcher:hover, .dgl-switcher.open { background: var(--card-hover); border-color: var(--border); }
+  .dgl-switcher:active { transform: scale(.985); }
+  .dgl-switcher img { width: 36px; height: 36px; border-radius: 11px; object-fit: cover; flex-shrink: 0; box-shadow: 0 0 0 1px var(--border-soft); }
   .dgl-switcher-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .dgl-switcher-eyebrow { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); }
   .dgl-switcher-name-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
@@ -2421,6 +2672,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-switcher :global(svg) { color: var(--text-dim); flex-shrink: 0; }
   .dgl-switcher.open .dgl-switcher-icon,
   .dgl-switcher.open :global(svg:last-child) { transform: rotate(180deg); }
+  .dgl-switcher > :global(svg:last-child) { transition: transform var(--m-base) var(--m-out); }
 
   .dgl-switcher-panel {
     position: absolute; top: calc(100% + 6px); left: 10px; right: 10px; z-index: 50;
@@ -2439,7 +2691,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-switcher-item > span:not(.dgl-switcher-premium) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dgl-switcher-item .dgl-switcher-premium { font-size: 8px; padding: 3px 5px; }
   .dgl-switcher-item :global(svg:last-child) { flex-shrink: 0; color: var(--accent); }
-  .dgl-resync { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 8px 0 0; padding: 8px 12px; border-radius: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted, var(--text)); font: inherit; font-size: .82rem; cursor: pointer; touch-action: manipulation; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+  .dgl-resync { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 20px); margin: 8px 10px 2px; padding: 7px 12px; border-radius: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted, var(--text)); font: inherit; font-size: .82rem; cursor: pointer; touch-action: manipulation; transition: color .15s ease, border-color .15s ease, background .15s ease; }
   .dgl-resync:hover { color: var(--text); border-color: var(--accent); }
   .dgl-resync[disabled] { opacity: .7; cursor: progress; }
   .dgl-resync.busy :global(svg) { animation: dgl-spin .8s linear infinite; }
@@ -2450,6 +2702,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   }
   .dgl-switcher-all:hover { color: var(--text); }
 
+  .dgl-find { display: flex; align-items: center; gap: 8px; width: calc(100% - 20px); margin: 6px 10px 0; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 3%, transparent); color: var(--text-dim); font: inherit; font-size: 12.5px; cursor: pointer; touch-action: manipulation; transition: color var(--m-fast) ease, border-color var(--m-fast) ease, transform var(--m-instant) ease; }
+  .dgl-find span { flex: 1; text-align: left; }
+  .dgl-find kbd { font: 600 9.5px var(--mono); padding: 1px 5px; border-radius: 5px; border: 1px solid var(--border); color: var(--text-dim); }
+  .dgl-find:hover { color: var(--text); border-color: var(--border); }
+  .dgl-find:active { transform: scale(.985); }
+  @media (hover: none) { .dgl-find kbd { display: none; } }
   .dgl-menu-bar, .dgl-menu-btn, .dgl-backdrop, .dgl-side-close { display: none; }
   .dgl-mobile-toggle {
     display: none; align-items: center; justify-content: space-between; width: 100%; padding: 12px 14px;
@@ -2461,47 +2719,54 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-mobile-toggle-caret { transition: transform 0.18s ease; color: var(--text-dim); }
   .dgl-side.open .dgl-mobile-toggle-caret { transform: rotate(180deg); }
 
-  .dgl-nav { padding: 12px 10px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .dgl-nav { padding: 4px 10px 14px; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
   .dgl-nav::-webkit-scrollbar { display: none; }
-  .dgl-group + .dgl-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
   :global(.dgl-ms-option.blocked) { opacity: .45; cursor: not-allowed; }
-  .dgl-label { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 8px; cursor: pointer; text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); padding: 8px 10px; margin-bottom: 2px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: color .18s ease, background-color .18s ease; }
-  .dgl-label span { flex: 1; min-width: 0; }
-  .dgl-label:hover { color: var(--text-muted); background: var(--card-hover); }
-  .dgl-label:active { background: var(--accent-soft); }
-  .dgl-label :global(.dgl-label-icon) { flex-shrink: 0; color: var(--text-dim); transition: color .18s ease, transform .25s cubic-bezier(.3, 1.4, .5, 1); }
-  .dgl-group:not(.closed) .dgl-label { color: var(--text-muted); }
-  .dgl-group:not(.closed) .dgl-label :global(.dgl-label-icon) { color: var(--accent); }
+  /* The menu reads as a few sections (a small title each), and each section as parts that fold, with their links indented under them. */
+  .dgl-section-title { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); padding: 16px 10px 6px; }
+  .dgl-section-title:first-child { padding-top: 10px; }
+  .dgl-group + .dgl-group { margin-top: 1px; }
+  .dgl-label { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; border-radius: 10px; cursor: pointer; text-align: left; font-family: var(--sans); font-size: 13.5px; font-weight: 600; color: var(--text-muted); padding: 6px 8px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: color var(--m-fast) ease, background-color var(--m-fast) ease, transform var(--m-instant) ease; }
+  .dgl-label span:not(.dgl-label-tile) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-label:hover { color: var(--text); background: var(--card-hover); }
+  .dgl-label:active { transform: scale(var(--m-press)); }
+  .dgl-label-tile { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text-dim); transition: background-color var(--m-base) ease, color var(--m-base) ease; }
+  .dgl-label :global(.dgl-label-icon) { transition: transform var(--m-base) var(--m-soft); }
   .dgl-label:active :global(.dgl-label-icon) { transform: scale(.85); }
-  .dgl-label :global(.dgl-label-caret) { flex-shrink: 0; transition: transform .28s cubic-bezier(.3, 1, .4, 1); }
-  .dgl-group.closed .dgl-label :global(.dgl-label-caret) { transform: rotate(-90deg); }
-  /* The links of a part unfold and fold by their height (a grid row that goes from one fraction to zero), so the parts below slide instead of jumping. */
-  .dgl-items { display: grid; grid-template-rows: 1fr; }
-  .dgl-items-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; opacity: 1; transform: none; }
-  .dgl-nav.ready .dgl-items { transition: grid-template-rows .32s cubic-bezier(.3, 1, .4, 1); }
-  .dgl-nav.ready .dgl-items-inner { transition: opacity .22s ease, transform .3s cubic-bezier(.3, 1, .4, 1); }
-  .dgl-group.closed .dgl-items { grid-template-rows: 0fr; }
-  .dgl-group.closed .dgl-items-inner { opacity: 0; transform: translateY(-6px); }
-  .dgl-link { transition: color .16s ease, background-color .16s ease, transform .12s ease; -webkit-tap-highlight-color: transparent; }
+  .dgl-group:not(.closed) .dgl-label { color: var(--text); }
+  .dgl-group:not(.closed) .dgl-label-tile, .dgl-group.has-active .dgl-label-tile { background: var(--accent-soft); color: var(--accent); }
+  .dgl-label :global(.dgl-label-caret) { flex-shrink: 0; color: var(--text-dim); transition: transform var(--m-slow) var(--m-out); }
+  .dgl-group.closed .dgl-label :global(.dgl-label-caret), .dgl-group.folding .dgl-label :global(.dgl-label-caret) { transform: rotate(-90deg); }
+  /* A folded part hides its links at once; the motion is in the links (they fade in one after the other or fade out together) and in the
+     parts below, which slide with transforms (the script of the menu). Nothing animates a height. */
+  .dgl-items { display: block; }
+  .dgl-group.closed .dgl-items { display: none; }
+  .dgl-items-inner { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 20px; padding-left: 9px; border-left: 1px solid var(--border-soft); }
+  .dgl-group.unfolding .dgl-link { animation: dgl-link-in var(--m-slow) var(--m-out) backwards; }
+  .dgl-group.unfolding .dgl-link:nth-child(2) { animation-delay: 20ms; }
+  .dgl-group.unfolding .dgl-link:nth-child(3) { animation-delay: 40ms; }
+  .dgl-group.unfolding .dgl-link:nth-child(4) { animation-delay: 60ms; }
+  .dgl-group.unfolding .dgl-link:nth-child(5) { animation-delay: 80ms; }
+  .dgl-group.unfolding .dgl-link:nth-child(n+6) { animation-delay: 100ms; }
+  .dgl-group.folding .dgl-items-inner { animation: dgl-items-out 130ms var(--m-in) both; pointer-events: none; }
+  @keyframes dgl-link-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes dgl-items-out { to { opacity: 0; transform: translateY(-4px); } }
+  .dgl-link { position: relative; display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-muted); text-decoration: none; padding: 7px 10px; border-radius: 9px; -webkit-tap-highlight-color: transparent; transition: color var(--m-fast) ease, background-color var(--m-fast) ease, transform var(--m-instant) ease; }
   .dgl-link:active { transform: scale(.98); }
-  @media (prefers-reduced-motion: reduce) { .dgl-nav.ready .dgl-items, .dgl-nav.ready .dgl-items-inner, .dgl-label :global(.dgl-label-caret) { transition: none; } }
-  .dgl-link { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text-muted); text-decoration: none; padding: 7px 10px; border-radius: 8px; }
   .dgl-soon { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
   .dgl-new { font-family: var(--mono); font-style: normal; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 5px; margin-left: auto; }
   .dgl-new.dgl-updated { color: var(--green, #3ba55d); background: color-mix(in srgb, var(--green, #3ba55d) 14%, transparent); }
   .dgl-new.dgl-soon { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
   .dgl-link:hover { color: var(--text); background: var(--card-hover); }
+  /* The open page: a soft pill, and a small bar that sits on the guide line of its part. */
   .dgl-link.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-  /* web 0.3.0: a small bar marks the open page and slides in; hovering nudges the link. */
-  .dgl-link { position: relative; }
-  .dgl-link::before { content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 16px; border-radius: 0 3px 3px 0; background: var(--accent); transform: translateY(-50%) scaleY(0); transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+  .dgl-link::before { content: ''; position: absolute; left: -11px; top: 50%; width: 3px; height: 18px; border-radius: 3px; background: var(--accent); transform: translateY(-50%) scaleY(0); transition: transform var(--m-slow) var(--m-out); }
   .dgl-link.active::before { transform: translateY(-50%) scaleY(1); }
+  .dgl-link :global(svg) { flex-shrink: 0; color: var(--text-dim); transition: transform var(--m-base) ease, color var(--m-fast) ease; }
   .dgl-link:hover :global(svg) { transform: translateX(1px); }
-  .dgl-link :global(svg) { transition: transform .2s ease, color .16s ease; }
-  @media (prefers-reduced-motion: reduce) { .dgl-link::before, .dgl-link :global(svg) { transition: none; } }
-  .dgl-link :global(svg) { flex-shrink: 0; color: var(--text-dim); }
   .dgl-link.active :global(svg) { color: var(--accent); }
   .dgl-link .dgl-premium-crown { margin-left: auto; color: var(--yellow); opacity: .9; }
+  @media (prefers-reduced-motion: reduce) { .dgl-group.unfolding .dgl-link, .dgl-group.folding .dgl-items-inner { animation: none; } }
 
   .dgl-side-version { padding: 0 14px 10px; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); opacity: 0.8; }
   .dgl-side-user { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border-soft); font-size: 12.5px; color: var(--text-muted); }
@@ -2536,11 +2801,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
        reserve the full height of both before the module content is laid out. */
     .dgl-layout { display: block; }
     /* The menu is a drawer at the side, closed until the button is pressed, so it never covers the page. */
-    .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 16px 16px 0; margin: 0; transform: translateX(-105%) !important; transition: transform .22s ease !important; visibility: hidden; }
-    .dgl-side.open, .dgl-side.reveal.open { transform: none !important; visibility: visible; box-shadow: 0 0 40px rgba(0,0,0,.55); }
-    .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); }
+    /* It slides in decelerating and out accelerating; it stays visible until it is fully out (visibility waits for the slide). */
+    .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 18px 18px 0; margin: 0; transform: translateX(-105%) !important; transition: transform var(--m-base) var(--m-in), visibility 0s linear var(--m-base) !important; visibility: hidden; will-change: transform; }
+    .dgl-side.open, .dgl-side.reveal.open { transform: none !important; visibility: visible; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--m-slow) var(--m-out), visibility 0s !important; }
+    .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); touch-action: none; }
     .dgl-backdrop[hidden] { display: none; }
-    .dgl-side-close { display: flex; align-items: center; justify-content: center; position: absolute; top: 8px; right: 8px; z-index: 2; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); cursor: pointer; }
+    .dgl-side-close { display: flex; align-items: center; justify-content: center; position: absolute; top: 14px; right: 10px; z-index: 2; width: 36px; height: 36px; border-radius: 11px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); cursor: pointer; touch-action: manipulation; transition: transform var(--m-instant) ease, color var(--m-fast) ease, background-color var(--m-fast) ease; }
+    .dgl-side-close:active { transform: scale(.92); background: var(--card-hover); color: var(--text); }
     /* The bar with the menu button stays under the site's header while the page scrolls, so the menu opens from anywhere on the page. */
     .dgl-menu-bar { display: flex; align-items: center; gap: 12px; margin: -8px 0 4px; padding: 8px 0; min-width: 0; position: sticky; top: var(--dgl-header-h, 60px); z-index: 30; background: var(--bg); }
     .dgl-menu-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; padding: 0; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--accent); cursor: pointer; touch-action: manipulation; transition: transform .12s ease, background .15s ease; }
@@ -2551,7 +2818,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     .dgl-switcher-panel { position: static; width: auto; margin: 6px 10px 10px; box-shadow: none; }
 
     .dgl-mobile-toggle { display: none !important; }
-    .dgl-switcher-wrap { padding-right: 44px; }
+    .dgl-switcher-wrap { padding-right: 54px; }
     .dgl-nav { display: flex; flex: 1; min-height: 0; overflow-y: auto; }
     .dgl-side-user { display: flex; }
     .dgl-side.reveal, .dgl-content.reveal { opacity: 1; transform: none; transition: none; }
@@ -2566,20 +2833,29 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   }
 
   .dgl-progress {
-    position: fixed; top: var(--dgl-header-h, 60px); left: 0; height: 2.5px; width: 0;
-    background: var(--accent); z-index: 80; opacity: 0; pointer-events: none;
-    transition: opacity 0.2s ease;
+    position: fixed; top: var(--dgl-header-h, 60px); left: 0; height: 2.5px; width: 100%;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent));
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+    border-radius: 0 3px 3px 0; transform: scaleX(0); transform-origin: left center; will-change: transform, opacity;
+    z-index: 80; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
   }
 
   .dgl-savebar {
-    position: fixed; bottom: 20px; left: 50%;
-    transform: translateX(-50%) translateY(14px);
+    position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%;
+    transform: translateX(-50%) translateY(16px) scale(.98);
     display: flex; align-items: center; gap: 10px;
-    background: var(--card); border: 1px solid var(--border); border-radius: 11px;
-    padding: 6px 7px 6px 12px; box-shadow: 0 14px 30px -14px rgba(0,0,0,0.55);
-    z-index: 70; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+    background: color-mix(in srgb, var(--card) 92%, var(--text) 3%); border: 1px solid var(--border); border-radius: 14px;
+    padding: 7px 7px 7px 13px; box-shadow: 0 18px 40px -16px rgba(0,0,0,0.6), 0 0 0 1px color-mix(in srgb, var(--text) 3%, transparent) inset;
+    z-index: 70; opacity: 0; pointer-events: none; transition: opacity var(--m-base) var(--m-in), transform var(--m-base) var(--m-in), border-color var(--m-base) ease;
   }
-  .dgl-savebar.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .dgl-savebar.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); transition-timing-function: var(--m-out); transition-duration: var(--m-slow); }
+  .dgl-savebar.error { border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
+  .dgl-savebar :global(.dgl-savebar-err) { display: none; flex-shrink: 0; color: var(--red); }
+  .dgl-savebar.error :global(.dgl-savebar-icon) { display: none; }
+  .dgl-savebar.error :global(.dgl-savebar-err) { display: block; }
+  .dgl-savebar.saved { border-color: color-mix(in srgb, var(--green) 45%, var(--border)); }
+  .dgl-savebar.saved :global(.dgl-savebar-done) { animation: dgl-saved-pop var(--m-slow) var(--m-soft) both; }
+  @keyframes dgl-saved-pop { from { transform: scale(.5); opacity: 0; } to { transform: none; opacity: 1; } }
   .dgl-savebar.shake { animation: dgl-savebar-shake 0.4s; }
   .dgl-savebar :global(.dgl-savebar-icon) { color: var(--yellow); flex-shrink: 0; }
   .dgl-savebar :global(.dgl-savebar-done), .dgl-savebar-spin { display: none; flex-shrink: 0; }
@@ -2602,7 +2878,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     padding: 5px 12px; border-radius: 8px; cursor: pointer; font-family: var(--sans);
     display: flex; align-items: center; gap: 6px;
   }
-  .dgl-savebar-save:hover { opacity: 0.85; }
+  .dgl-savebar-save:hover { opacity: 0.88; }
+  .dgl-savebar-save, .dgl-savebar-discard { transition: transform var(--m-instant) ease, opacity var(--m-fast) ease, border-color var(--m-fast) ease, color var(--m-fast) ease; }
+  .dgl-savebar-save:active:not(:disabled), .dgl-savebar-discard:active { transform: scale(var(--m-press)); }
   .dgl-savebar-kbd { margin-left: 6px; padding: 0 5px; border-radius: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); font: 600 9.5px var(--mono); opacity: .7; }
   @media (hover: none), (max-width: 760px) { .dgl-savebar-kbd { display: none; } }
   .dgl-savebar-save:disabled { opacity: 0.6; cursor: default; }
@@ -2617,7 +2895,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   }
 
   @media (max-width: 600px) {
-    .dgl-savebar { left: 12px; right: 12px; bottom: 14px; transform: translateY(14px); width: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 7px 8px 7px 12px; }
+    .dgl-savebar { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateY(16px); width: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 7px 8px 7px 12px; }
     .dgl-savebar.show { transform: translateY(0); }
     .dgl-savebar.shake { animation-name: dgl-savebar-shake-mobile; }
     .dgl-savebar-text { white-space: normal; font-size: 12.5px; line-height: 1.35; }
@@ -2649,6 +2927,24 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-sec button, .dgl-sec summary, .dgl-sec .btn { touch-action: manipulation; }
   .dgl-content .btn { transition: transform .14s cubic-bezier(.3, 1, .4, 1), background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .2s ease, opacity .18s ease; }
   .dgl-content .btn:active:not(:disabled) { transform: scale(.97); }
+  /* The page finder (Ctrl+K). */
+  .dgl-pal-veil { position: fixed; inset: 0; z-index: 1200; display: flex; justify-content: center; align-items: flex-start; padding: min(14vh, 120px) 16px 16px; background: rgba(10, 8, 6, .55); animation: m-fade-in var(--m-base) var(--m-out) both; }
+  .dgl-pal-veil[hidden] { display: none; }
+  .dgl-pal { width: min(520px, 100%); max-height: min(70vh, 520px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .7); animation: m-dialog-in var(--m-slow) var(--m-out) both; }
+  .dgl-pal-field { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); }
+  .dgl-pal-field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; box-shadow: none !important; }
+  .dgl-pal-field kbd { font: 600 10px var(--mono); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+  .dgl-pal-list { overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+  .dgl-pal-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 10px; border-radius: 10px; color: var(--text-muted); font-size: 13.5px; cursor: pointer; }
+  .dgl-pal-row svg { flex-shrink: 0; color: var(--text-dim); }
+  .dgl-pal-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dgl-pal-row small { font-family: var(--mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+  .dgl-pal-row.on { background: var(--accent-soft); color: var(--text); }
+  .dgl-pal-row.on svg, .dgl-pal-row.here svg { color: var(--accent); }
+  .dgl-pal-empty { padding: 22px 12px; text-align: center; color: var(--text-dim); font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .dgl-pal-veil, .dgl-pal { animation: none; } }
+  /* The page under the open drawer does not scroll (and keeps its place). */
+  html.dgl-drawer-open, html.dgl-drawer-open body { overflow: hidden; }
   /* The Save button of a form that the bar of unsaved changes already saves. */
   .dgl-bar-save { display: none !important; }
   /* The invisible area that makes a small control easy to hit (see bindTapTargets). */
@@ -2656,12 +2952,11 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-tap::after { content: ''; position: absolute; top: calc(var(--tap-y, 0px) * -1); bottom: calc(var(--tap-y, 0px) * -1); left: calc(var(--tap-x, 0px) * -1); right: calc(var(--tap-x, 0px) * -1); }
   /* A fold: while it slides, its content stays inside; the content fades in after it opens (also when a script opens it). */
   .dgl-content details > summary { cursor: pointer; transition: background-color .18s ease, color .18s ease; }
-  .dgl-content details.is-closing > *:not(summary) { animation: dgl-close .22s ease both; }
+  .dgl-content details.is-closing > *:not(summary) { animation: dgl-close 150ms var(--m-in) both; }
   .dgl-content details > summary > svg, .dgl-content details > summary .caret, .dgl-content details > summary .chevron { transition: transform .28s cubic-bezier(.3, 1, .4, 1); }
   @keyframes dgl-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-  @keyframes dgl-close { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes dgl-close { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px); } }
   /* Pickers, tabs and the lists that open under a control. */
-  .dgl-ms-dropdown:not([hidden]) { animation: dgl-pop .18s cubic-bezier(.2, .8, .2, 1) both; transform-origin: top center; }
   [data-panel]:not([hidden]) { animation: dgl-open .26s cubic-bezier(.2, .8, .2, 1) both; }
   @keyframes dgl-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
   .dgl-tab { transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .14s ease; }
