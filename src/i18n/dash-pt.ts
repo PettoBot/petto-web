@@ -4547,4 +4547,13 @@ export const dashPt: Record<string, string> = {
   "Assigned: {list}": "Atribuído: {list}",
   "1 was already there.": "1 já estava.",
   "Start from a template": "Começar de um modelo",
+  "What the server loves: the messages with enough reactions are reposted in its own channel.": "O que o servidor ama: as mensagens com reações suficientes são republicadas em um canal só delas.",
+  "The opposite of the starboard: the messages that deserve a facepalm.": "O oposto do starboard: as mensagens que merecem um facepalm.",
+  "The messages that make the server laugh at someone.": "As mensagens que fazem o servidor rir de alguém.",
+  "Uses the saved design {name}.": "Usa o design salvo {name}.",
+  "this is the best meme": "este é o melhor meme",
+  "Links only": "Só links",
+  "Attachments and links": "Arquivos e links",
+  "Attachments only": "Só arquivos",
+  "hello everyone!": "olá, pessoal!",
 };
