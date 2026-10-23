@@ -923,8 +923,37 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         barTimer = setTimeout(function () { setBarState(null); updateSaveBarText(); }, 260);
       }, 1300);
     }
-    // What a form holds right now becomes what "discard" goes back to, so discarding after a save does not undo the save.
+    // What the controls of a form held when the page was drawn (and after each save). A hidden input, where the color pickers keep their value,
+    // is not put back by form.reset(), so Discard restores those from here; a form with data-revert-clean also uses it to know that the
+    // fields were put back by hand (then the bar goes away, there is nothing to save).
+    function readControl(el) {
+      var type = (el.type || '').toLowerCase();
+      if (type === 'checkbox' || type === 'radio') return el.checked ? '1' : '0';
+      if (type === 'file') return String(el.files ? el.files.length : 0);
+      if (el.options && el.multiple) return Array.prototype.filter.call(el.options, function (o) { return o.selected; }).map(function (o) { return o.value; }).join('\u0001');
+      return el.value;
+    }
+    function controlsOf(form) {
+      return Array.prototype.filter.call(form.elements, function (el) {
+        var type = (el.type || '').toLowerCase();
+        return el.name && type !== 'submit' && type !== 'button' && type !== 'reset';
+      });
+    }
+    function takeBase(form) { form.__base = controlsOf(form).map(function (el) { return [el, readControl(el)]; }); }
+    function sameAsBase(form) { return !!form.__base && form.__base.every(function (pair) { return readControl(pair[0]) === pair[1]; }); }
+    function unmarkDirty(form) {
+      var at = dirtyForms.indexOf(form);
+      if (at === -1) return;
+      dirtyForms.splice(at, 1);
+      form.classList.remove('is-dirty');
+      syncDirtyFlag();
+      if (dirtyCount()) { updateSaveBarText(); return; }
+      if (saveBar && !saveBar.classList.contains('saving') && !saveBar.classList.contains('saved')) saveBar.classList.remove('show', 'error');
+      document.dispatchEvent(new CustomEvent('dgl:dirty', { detail: { forms: [] } }));
+    }
+    // What the controls of a form hold right now becomes what "discard" goes back to, so discarding after a save does not undo the save.
     function commitDefaults(form) {
+      takeBase(form);
       form.querySelectorAll('input, textarea, select').forEach(function (el) {
         if (el.tagName === 'SELECT') { Array.prototype.forEach.call(el.options, function (o) { o.defaultSelected = o.selected; }); return; }
         if (el.type === 'checkbox' || el.type === 'radio') el.defaultChecked = el.checked;
@@ -1005,8 +1034,20 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         if (ownSave && !form.closest('dialog, [role="dialog"], [data-keep-save]')) ownSave.classList.add('dgl-bar-save');
         // A control marked data-no-dirty (or inside such a box) acts at once and is not an unsaved change.
         var counts = function (e) { return !(resettingForm || Date.now() - savedAt < 1200 || (e.target && e.target.closest && e.target.closest('[data-no-dirty]'))); };
-        form.addEventListener('input', function (e) { if (counts(e)) markDirty(form); });
-        form.addEventListener('change', function (e) { if (counts(e)) markDirty(form); });
+        takeBase(form);
+        // A page that saves one field on its own says which fields are the new starting point (detail.names), or all of them.
+        form.addEventListener('dpk-rebase', function (e) {
+          var names = e.detail && e.detail.names;
+          if (!names || !form.__base) { takeBase(form); return; }
+          form.__base.forEach(function (pair) { if (names.indexOf(pair[0].name) !== -1) pair[1] = readControl(pair[0]); });
+        });
+        var touched = function (e) {
+          if (!counts(e)) return;
+          if (form.hasAttribute('data-revert-clean') && sameAsBase(form)) { unmarkDirty(form); return; }
+          markDirty(form);
+        };
+        form.addEventListener('input', touched);
+        form.addEventListener('change', touched);
       });
     }
 
@@ -1083,6 +1124,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         customs.forEach(function (entry) { try { if (entry.discard) entry.discard(); } catch (err) { /* The page puts itself back as it can. */ } });
         forms.forEach(function (form) {
           form.reset();
+          // A hidden input keeps what a script gave it through a reset: it goes back to what the page was drawn with.
+          if (form.__base) form.__base.forEach(function (pair) { if (pair[0].type === 'hidden') pair[0].value = pair[1]; });
+          // A form that shows previews of its fields (data-discard-sync) is told that they changed, since a script that listens to typing
+          // does not hear a reset.
+          if (form.hasAttribute('data-discard-sync')) {
+            controlsOf(form).forEach(function (el) {
+              if (el.type === 'hidden') return;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+          }
           // Native reset restores hidden widget values but not their visual chips/thumbs.
           form.querySelectorAll('[data-multiselect] input[type="checkbox"]').forEach(function (cb) {
             cb.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1097,7 +1149,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           });
         });
       } finally {
-        resettingForm = false;
+        // The widgets (a color picker, an autosizing field) tell their inputs again over the next frames: those echoes are not new changes.
+        // Then a form that opts in is checked once more: if it holds what the page was drawn with, it is clean.
+        setTimeout(function () {
+          resettingForm = false;
+          forms.forEach(function (f) { if (f.hasAttribute('data-revert-clean') && sameAsBase(f)) unmarkDirty(f); });
+        }, 350);
       }
       dirtyForms.forEach(function (f) { f.classList.remove('is-dirty'); });
       dirtyForms = [];
