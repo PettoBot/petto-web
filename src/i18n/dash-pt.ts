@@ -4556,4 +4556,6 @@ export const dashPt: Record<string, string> = {
   "Attachments and links": "Arquivos e links",
   "Attachments only": "Só arquivos",
   "hello everyone!": "olá, pessoal!",
+  "Stays at the bottom": "Fica no final",
+  "Written in code": "Escrito em código",
 };

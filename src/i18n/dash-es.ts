@@ -4556,4 +4556,6 @@ export const dashEs: Record<string, string> = {
   "Attachments and links": "Archivos y enlaces",
   "Attachments only": "Solo archivos",
   "hello everyone!": "¡hola a todos!",
+  "Stays at the bottom": "Se queda al final",
+  "Written in code": "Escrito en código",
 };
