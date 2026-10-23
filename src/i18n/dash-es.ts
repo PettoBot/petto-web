@@ -4576,4 +4576,5 @@ export const dashEs: Record<string, string> = {
   "1 minute": "1 minuto",
   "1 month": "1 mes",
   "1 year": "1 año",
+  "Picture could not be loaded": "No se pudo cargar la imagen",
 };

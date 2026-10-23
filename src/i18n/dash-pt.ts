@@ -4576,4 +4576,5 @@ export const dashPt: Record<string, string> = {
   "1 minute": "1 minuto",
   "1 month": "1 mês",
   "1 year": "1 ano",
+  "Picture could not be loaded": "Não foi possível carregar a imagem",
 };
