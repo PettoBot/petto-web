@@ -4,6 +4,7 @@ import './cards.css';
 import { t } from '../embeds/t';
 import { toast } from '../embeds/toast';
 import { drawCard } from './cardCanvas';
+import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
   RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
@@ -37,11 +38,12 @@ function Num({ value, onChange, min, max, step = 1 }: { value: number; onChange:
   return <input type="number" value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} onChange={(e) => onChange(Number(e.target.value))} />;
 }
 
+/** The site's own color picker (the one of the embed editor) in place of the browser's native color dialog. */
 function Color({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const number = /^#[0-9a-f]{6}$/i.test(value) ? parseInt(value.slice(1), 16) : null;
   return (
     <span className="crd-color">
-      <input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'} onChange={(e) => onChange(e.target.value)} />
-      <input type="text" value={value} maxLength={7} onChange={(e) => onChange(e.target.value)} />
+      <EmbedColorPicker value={number} onChange={(next) => onChange(`#${next.toString(16).padStart(6, '0')}`)} />
     </span>
   );
 }
@@ -117,6 +119,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [activeLayer, setActiveLayer] = useState<string | null>(null);
   const [lockedNote, setLockedNote] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -170,8 +173,11 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       if (res.ok && seq === previewSeq.current) {
         const url = URL.createObjectURL(await res.blob());
         setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
+        setPreviewFailed(false);
+      } else if (!res.ok && seq === previewSeq.current) {
+        setPreviewFailed(true);
       }
-    } catch { /* The next edit asks again. */ } finally {
+    } catch { setPreviewFailed(true); /* The next edit asks again. */ } finally {
       previewBusyRef.current = false;
       setPreviewBusy(false);
       const next = previewQueued.current;
@@ -390,7 +396,13 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
               <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}` }}>
-                {live ? <canvas ref={canvasRef} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {live ? <canvas ref={canvasRef} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {!live && previewFailed && (
+                  <div className="crd-stage-empty crd-stage-failed">
+                    <span>{t('The preview could not be drawn.')}</span>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void requestPreview(draft)}>{t('Try again')}</button>
+                  </div>
+                )}
                 {live && draft.layers.map((l) => {
                   const box = layerBox(l);
                   return (
