@@ -21,7 +21,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 
 function fieldsOf(form: HTMLFormElement | null) {
   const value = (name: string) => ((form?.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? '');
-  return { instructions: value('instructions'), knowledge: value('knowledge'), handoff: value('handoff'), tone: value('tone'), language_mode: value('language_mode'), max_replies: Number(value('max_replies')) || 3 };
+  return { instructions: value('instructions'), knowledge: value('knowledge'), handoff: value('handoff'), reply_style: value('reply_style'), tone: value('tone'), language_mode: value('language_mode'), max_replies: Number(value('max_replies')) || 3 };
 }
 
 export function mountTicketAiChat(root: HTMLElement): void {
