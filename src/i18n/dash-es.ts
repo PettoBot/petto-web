@@ -4547,4 +4547,13 @@ export const dashEs: Record<string, string> = {
   "Assigned: {list}": "Asignado: {list}",
   "1 was already there.": "1 ya estaba.",
   "Start from a template": "Empezar desde una plantilla",
+  "What the server loves: the messages with enough reactions are reposted in its own channel.": "Lo que el servidor ama: los mensajes con suficientes reacciones se republican en su propio canal.",
+  "The opposite of the starboard: the messages that deserve a facepalm.": "Lo opuesto al starboard: los mensajes que merecen un facepalm.",
+  "The messages that make the server laugh at someone.": "Los mensajes que hacen reír al servidor a costa de alguien.",
+  "Uses the saved design {name}.": "Usa el diseño guardado {name}.",
+  "this is the best meme": "este es el mejor meme",
+  "Links only": "Solo enlaces",
+  "Attachments and links": "Archivos y enlaces",
+  "Attachments only": "Solo archivos",
+  "hello everyone!": "¡hola a todos!",
 };
