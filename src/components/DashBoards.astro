@@ -1,0 +1,145 @@
+---
+// Boards (Automation): the starboard, the monkeyboard and the clownboard in one place. Each board is a row with its emojis and channel;
+// adding and editing happen in pop-up windows, like Media channels.
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import EmojiPicker from './EmojiPicker.astro';
+import Modal from './Modal.astro';
+import BoardFields from './BoardFields.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { BOARD_KINDS, blankBoard, type BoardRow } from '../data/boardKinds';
+
+const dt = makeT(getDashLang(Astro));
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  boards: BoardRow[];
+  channels: { id: string; name: string }[];
+  roles: { id: string; name: string }[];
+  templates: string[];
+  customEmojis: { id: string; name: string; animated: boolean }[];
+  ready: boolean[];
+  saved: string;
+  failed: string;
+}
+const { user, guildId, guildName, guildIcon, boards, channels, roles, templates, customEmojis, ready, saved, failed } = Astro.props;
+const names = new Map(channels.map((c) => [c.id, c.name]));
+const byKind = new Map(boards.map((b) => [b.kind, b]));
+const free = BOARD_KINDS.filter((k, i) => !byKind.has(k.id) && ready[i]);
+const kindNames: Record<string, string> = { star: dt('Starboard'), monkey: dt('Monkeyboard'), clown: dt('Clownboard') };
+const savedText: Record<string, string> = { saved: dt('Saved.'), removed: dt('Board removed.') };
+const errors: Record<string, string> = { board: dt('Choose a board from the list.'), save: dt('It could not be saved. Try again in a moment.') };
+const allReady = ready.every(Boolean);
+const emojiHtml = (e: string) => {
+  const m = /^<(a?):\w+:(\d+)>$/.exec(e);
+  return m ? `<img src="https://cdn.discordapp.com/emojis/${m[2]}.${m[1] ? 'gif' : 'png'}?size=32" alt="" width="18" height="18">` : e;
+};
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="boards" pageTitle={dt('Boards')}>
+  <div class="bd-top">
+    <h1>{dt('Boards')}</h1>
+    <button type="button" class="btn btn-accent btn-sm" data-modal-open="bd-new" disabled={!free.length}><Icon name="ph:plus-bold" width="14" height="14" />{dt('Add board')}</button>
+  </div>
+  {saved && <div class="bd-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{savedText[saved] ?? savedText.saved}</div>}
+  {failed && <div class="bd-flash bd-warn"><Icon name="ph:warning-fill" width="15" height="15" />{errors[failed] ?? errors.save}</div>}
+  {!allReady && <div class="bd-flash bd-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Some boards arrive with the next Petto update.')}</div>}
+
+  {boards.length === 0 && <p class="bd-empty"><Icon name="ph:star-fill" width="16" height="16" />{dt('No boards yet. Add one: when enough people react to a message with its emojis, it is reposted in the board channel.')}</p>}
+
+  <div class="bd-list dgl-stagger">
+    {boards.map((b) => {
+      const kind = BOARD_KINDS.find((k) => k.id === b.kind)!;
+      return (
+        <div class="bd-row">
+          <span class="bd-ico" style={`--c:#${b.color.toString(16).padStart(6, '0')}`}><Icon name={kind.icon} width="18" height="18" /></span>
+          <div class="bd-main">
+            <b>{kindNames[b.kind]}</b>
+            <span>{b.channelId ? `#${names.get(b.channelId) ?? b.channelId}` : dt('No channel')} · {dt('{n} reactions', { n: b.threshold })}</span>
+          </div>
+          <span class="bd-emojis" set:html={[b.emoji, ...b.extraEmojis].map(emojiHtml).join(' ')}></span>
+          <div class="bd-acts">
+            <button type="button" class="bd-act" data-modal-open={`bd-${b.kind}`} aria-label={dt('Edit')} title={dt('Edit')}><Icon name="ph:pencil-simple-fill" width="15" height="15" /></button>
+            <form method="POST" data-no-dirty>
+              <input type="hidden" name="action" value="disable" /><input type="hidden" name="board" value={b.kind} />
+              <button type="submit" class="bd-act bd-del" aria-label={dt('Remove board')} title={dt('Remove board')} data-confirm={dt('Remove this board? Its reposts are forgotten, the messages already posted stay in the channel.')}><Icon name="ph:trash-fill" width="15" height="15" /></button>
+            </form>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+  <p class="bd-hint">{dt('With the prefix: !starboard, !monkeyboard and !clownboard, for example !starboard emoji ⭐ 🍌.')}</p>
+
+  <Modal id="bd-new" title={dt('New board')} icon="ph:star-fill">
+    <form method="POST" class="bd-form" data-no-dirty data-board-add>
+      <input type="hidden" name="action" value="save" />
+      <div class="bd-kinds" role="radiogroup" aria-label={dt('Which board')}>
+        {free.map((k, i) => (
+          <label class="bd-kind"><input type="radio" name="board" value={k.id} checked={i === 0} data-kind-emoji={k.emoji} /><span><Icon name={k.icon} width="15" height="15" />{kindNames[k.id]} <em>{k.emoji}</em></span></label>
+        ))}
+      </div>
+      {free[0] && <BoardFields kind={free[0]} board={blankBoard(free[0])} channels={channels} roles={roles} templates={templates} uid="new" />}
+      <footer><button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button><button type="submit" class="btn btn-accent btn-sm" data-keep>{dt('Create')}</button></footer>
+    </form>
+  </Modal>
+
+  {boards.map((b) => {
+    const kind = BOARD_KINDS.find((k) => k.id === b.kind)!;
+    return (
+      <Modal id={`bd-${b.kind}`} title={kindNames[b.kind]} icon={kind.icon}>
+        <form method="POST" class="bd-form" data-no-dirty>
+          <input type="hidden" name="action" value="save" /><input type="hidden" name="board" value={b.kind} />
+          <BoardFields kind={kind} board={b} channels={channels} roles={roles} templates={templates} uid={b.kind} />
+          <footer><button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button><button type="submit" class="btn btn-accent btn-sm" data-keep>{dt('Save')}</button></footer>
+        </form>
+      </Modal>
+    );
+  })}
+  <EmojiPicker customEmojis={customEmojis} />
+</DashGuildLayout>
+
+<script>
+  // Choosing which board to add puts its own emoji in the first box (when nothing else was typed there).
+  document.addEventListener('change', (event) => {
+    const radio = event.target as HTMLInputElement | null;
+    if (!radio || radio.name !== 'board' || !radio.dataset.kindEmoji) return;
+    const form = radio.closest('form[data-board-add]');
+    const first = form?.querySelector<HTMLInputElement>('input[name="emoji"]');
+    if (first && (!first.value || first.dataset.auto === '1' || ['⭐', '🐒', '🤡'].includes(first.value))) { first.value = radio.dataset.kindEmoji; first.dataset.auto = '1'; first.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
+</script>
+
+<style>
+  .bd-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 1000px; margin-bottom: 18px; }
+  h1 { font-size: 24px; margin: 0; }
+  .bd-top .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
+  .bd-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 1000px; }
+  .bd-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .bd-empty { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-dim); margin: 6px 0 14px; }
+  .bd-list { display: grid; gap: 10px; max-width: 1000px; }
+  .bd-row { display: flex; align-items: center; gap: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 14px; }
+  .bd-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--c, var(--accent)) 18%, transparent); color: var(--c, var(--accent)); flex: none; }
+  .bd-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .bd-main b { font-size: 14.5px; }
+  .bd-main span { font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bd-emojis { display: inline-flex; align-items: center; gap: 4px; font-size: 18px; flex: none; }
+  .bd-emojis :global(img) { display: block; }
+  .bd-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+  .bd-acts form { margin: 0; }
+  .bd-act { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border); background: none; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; transition: transform var(--m-instant) ease, border-color var(--m-fast) ease, color var(--m-fast) ease; }
+  .bd-act:hover { border-color: var(--text-dim); color: var(--text); }
+  .bd-act:active { transform: scale(var(--m-press)); }
+  .bd-del:hover { color: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); }
+  .bd-hint { font-size: 12px; color: var(--text-dim); margin: 10px 0 0; max-width: 1000px; }
+  .bd-form { display: grid; gap: 16px; }
+  .bd-form footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+  .bd-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bd-kind input { position: absolute; opacity: 0; pointer-events: none; }
+  .bd-kind span { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer; transition: background var(--m-fast) ease, border-color var(--m-fast) ease, color var(--m-fast) ease; }
+  .bd-kind em { font-style: normal; }
+  .bd-kind input:checked + span { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .bd-kind input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 560px) { .bd-row { flex-wrap: wrap; } .bd-main span { white-space: normal; } }
+</style>
