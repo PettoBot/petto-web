@@ -5,6 +5,7 @@ import { getEnv } from './env';
 import { TICKET_AI_CONFIG as CFG } from '../data/ticketAiConfig';
 import {
   LIMITS, normalizeSettings, buildTicketTurn, buildHelperTurn, checkMessage, detectHandoff, defuseMentions, parseHelperReply,
+  parseMessageLinks,
 } from './ticketAiPrompt.mjs';
 
 export interface TicketAiSettings {
@@ -14,6 +15,10 @@ export interface TicketAiSettings {
   knowledge: string;
   handoff: string;
   replyStyle: string;
+  /** links of Discord messages of the server that the bot reads live (at most 10) */
+  messageLinks: string[];
+  /** the assistant knows the channels the ticket user can see */
+  channelGuide: boolean;
   tone: string;
   languageMode: string;
   maxReplies: number;
@@ -23,7 +28,7 @@ export interface TicketAiSettings {
 export type TableState = 'ok' | 'pending' | 'error';
 
 export const DEFAULT_SETTINGS: TicketAiSettings = {
-  enabled: false, categoryIds: [], instructions: '', knowledge: '', handoff: '', replyStyle: '', tone: 'friendly', languageMode: 'auto', maxReplies: LIMITS.maxRepliesDefault, updatedAt: null,
+  enabled: false, categoryIds: [], instructions: '', knowledge: '', handoff: '', replyStyle: '', messageLinks: [], channelGuide: true, tone: 'friendly', languageMode: 'auto', maxReplies: LIMITS.maxRepliesDefault, updatedAt: null,
 };
 
 type Db = { url: string; headers: Record<string, string> };
@@ -51,7 +56,9 @@ function fromRow(row: any): TicketAiSettings {
   return {
     enabled: row.enabled === true,
     categoryIds: Array.isArray(row.category_ids) ? row.category_ids.map(String).filter((id: string) => /^\d{1,25}$/.test(id)) : [],
-    instructions: s.instructions, knowledge: s.knowledge, handoff: s.handoff, replyStyle: s.reply_style, tone: s.tone, languageMode: s.language_mode, maxReplies: s.max_replies,
+    instructions: s.instructions, knowledge: s.knowledge, handoff: s.handoff, replyStyle: s.reply_style,
+    messageLinks: Array.isArray(row.message_links) ? row.message_links.map(String).slice(0, LIMITS.discordMessages) : [], channelGuide: row.channel_guide !== false,
+    tone: s.tone, languageMode: s.language_mode, maxReplies: s.max_replies,
     updatedAt: row.updated_at ?? null,
   };
 }
@@ -82,19 +89,21 @@ export async function readTicketAiUsage(db: Db, guildId: string): Promise<{ stat
   }
 }
 
-export type SaveInput = { enabled: boolean; categoryIds: string[]; instructions: string; knowledge: string; handoff: string; replyStyle: string; tone: string; languageMode: string; maxReplies: number };
+export type SaveInput = { enabled: boolean; categoryIds: string[]; instructions: string; knowledge: string; handoff: string; replyStyle: string; messageLinks: string[]; channelGuide: boolean; tone: string; languageMode: string; maxReplies: number };
 
 /** Checks what the page sent. Texts over their cap are refused (the fields have the same maxlength, so this only catches a forged post). */
-export function checkSaveInput(form: FormData, knownCategoryIds: Set<string> | null): { ok: true; value: SaveInput } | { ok: false; errors: string[] } {
+export function checkSaveInput(form: FormData, knownCategoryIds: Set<string> | null, guildId?: string): { ok: true; value: SaveInput } | { ok: false; errors: string[] } {
   const s = normalizeSettings({
     instructions: form.get('instructions'), knowledge: form.get('knowledge'), handoff: form.get('handoff'), reply_style: form.get('reply_style'),
     tone: String(form.get('tone') ?? ''), language_mode: String(form.get('language_mode') ?? ''), max_replies: form.get('max_replies'),
   }, { strict: true });
   if (s.errors.length) return { ok: false, errors: s.errors };
+  const messageLinks = parseMessageLinks(String(form.get('message_links') ?? ''), guildId);
+  if (!messageLinks) return { ok: false, errors: ['links'] };
   const scope = form.get('scope') === 'some' ? 'some' : 'all';
   const categoryIds = scope === 'all' ? [] : [...new Set(form.getAll('category_ids').map(String).filter((id) => /^\d{1,25}$/.test(id) && (!knownCategoryIds || knownCategoryIds.has(id))))].slice(0, 100);
   if (scope === 'some' && !categoryIds.length) return { ok: false, errors: ['scope'] };
-  return { ok: true, value: { enabled: form.get('enabled') === 'on', categoryIds, instructions: s.instructions, knowledge: s.knowledge, handoff: s.handoff, replyStyle: s.reply_style, tone: s.tone, languageMode: s.language_mode, maxReplies: s.max_replies } };
+  return { ok: true, value: { enabled: form.get('enabled') === 'on', categoryIds, instructions: s.instructions, knowledge: s.knowledge, handoff: s.handoff, replyStyle: s.reply_style, messageLinks, channelGuide: form.get('channel_guide') === 'on', tone: s.tone, languageMode: s.language_mode, maxReplies: s.max_replies } };
 }
 
 export async function saveTicketAiSettings(db: Db, guildId: string, userId: string, value: SaveInput): Promise<{ ok: boolean; pending: boolean }> {
@@ -105,7 +114,7 @@ export async function saveTicketAiSettings(db: Db, guildId: string, userId: stri
       signal: AbortSignal.timeout(8000),
       body: JSON.stringify({
         guild_id: guildId, enabled: value.enabled, category_ids: value.categoryIds, instructions: value.instructions, knowledge: value.knowledge,
-        handoff: value.handoff, reply_style: value.replyStyle, tone: value.tone, max_replies: value.maxReplies, language_mode: value.languageMode,
+        handoff: value.handoff, reply_style: value.replyStyle, message_links: value.messageLinks, channel_guide: value.channelGuide, tone: value.tone, max_replies: value.maxReplies, language_mode: value.languageMode,
         updated_at: new Date().toISOString(), updated_by: userId,
       }),
     });
