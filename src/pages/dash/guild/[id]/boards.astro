@@ -1,0 +1,64 @@
+---
+export const prerender = false;
+import DashBoards from '../../../../components/DashBoards.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getGuildEmojis } from '../../../../utils/guildEmojis';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { BOARD_KINDS, boardFromRow, rowFromForm, type BoardRow } from '../../../../data/boardKinds';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+
+let saved = '';
+let failed = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const kind = BOARD_KINDS.find((k) => k.id === String(form.get('board') ?? ''));
+  if (!kind) failed = 'board';
+  else if (action === 'disable') {
+    const entries = await fetch(`${apiUrl}/rest/v1/${kind.entries}?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+    const res = await fetch(`${apiUrl}/rest/v1/${kind.table}?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+    if (entries?.ok && res?.ok) saved = 'removed'; else failed = 'save';
+  } else if (action === 'save') {
+    await ensureGuildRow(apiUrl, apiHeaders, id);
+    const res = await fetch(`${apiUrl}/rest/v1/${kind.table}?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rowFromForm(kind, id, form)),
+    }).catch(() => null);
+    if (res?.ok) saved = 'saved'; else failed = 'save';
+  } else failed = 'board';
+}
+
+const [guildInfo, channelsRes, rolesRes, templatesRes, customEmojis, ...boardRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
+  fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
+  getGuildEmojis(id, botToken),
+  ...BOARD_KINDS.map((k) => fetch(`${apiUrl}/rest/v1/${k.table}?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null)),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const channels: { id: string; name: string }[] = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+const roles: { id: string; name: string }[] = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+const templates: string[] = templatesRes?.ok ? (await templatesRes.json()).map((t: any) => t.name) : [];
+const ready: boolean[] = boardRes.map((r) => Boolean(r?.ok));
+const boards: BoardRow[] = [];
+for (let i = 0; i < BOARD_KINDS.length; i++) {
+  const rows = ready[i] ? await boardRes[i]!.json() : [];
+  if (rows[0]) boards.push(boardFromRow(BOARD_KINDS[i], rows[0]));
+}
+---
+<DashBoards user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} boards={boards} channels={channels} roles={roles} templates={templates} customEmojis={customEmojis} ready={ready} saved={saved} failed={failed} />
