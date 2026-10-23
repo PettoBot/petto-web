@@ -206,5 +206,7 @@ export const commandText: Record<string, CommandText> = {
   suggestion: ['Set up suggestions and answer them: approve, deny, consider or implement.', 'Configura las sugerencias y respóndelas: aprobar, rechazar, considerar o implementar.', 'Configure as sugestões e responda: aprovar, recusar, considerar ou implementar.'],
   suggest: ['Make a suggestion for this server; the server votes on it.', 'Haz una sugerencia para el servidor; el servidor la vota.', 'Faça uma sugestão para o servidor; o servidor vota nela.'],
   counting: ['A channel where members count one number after the other.', 'Un canal donde los miembros cuentan un número detrás de otro.', 'Um canal onde os membros contam um número depois do outro.'],
+  imgonly: ['Channels where only pictures and videos can be posted.', 'Canales donde solo se pueden enviar imágenes y videos.', 'Canais onde só podem ser enviadas imagens e vídeos.'],
+  urlonly: ['Channels where only links (of the sites you choose) can be posted.', 'Canales donde solo se pueden enviar enlaces (de los sitios que elijas).', 'Canais onde só podem ser enviados links (dos sites que você escolher).'],
   quickreply: ['(Staff) Quick replies for tickets: save a text with a name and send it with one command.', '(Staff) Respuestas rápidas para tickets: guarda un texto con un nombre y envíalo con un comando.', '(Staff) Respostas rápidas para tickets: salve um texto com um nome e envie com um comando.'],
 };

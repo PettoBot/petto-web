@@ -1,0 +1,149 @@
+---
+// Media channels (Community): channels where only pictures and videos, or only links of some sites, can be posted. The bot deletes what does
+// not fit (src/events/messageCreateMediaOnly.js of petto-bot). One card per channel; the sites are chips with their logo.
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MediaFields from './MediaFields.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { MEDIA_NETWORKS, type MediaRule } from '../data/mediaChannels';
+
+const dt = makeT(getDashLang(Astro));
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  rules: MediaRule[];
+  channels: { id: string; name: string }[];
+  roles: { id: string; name: string }[];
+  ready: boolean;
+  saved: string;
+  failed: string;
+}
+const { user, guildId, guildName, guildIcon, rules, channels, roles, ready, saved, failed } = Astro.props;
+const names = new Map(channels.map((c) => [c.id, c.name]));
+const taken = new Set(rules.map((r) => r.channelId));
+const free = channels.filter((c) => !taken.has(c.id));
+const savedText: Record<string, string> = { added: dt('Channel added.'), saved: dt('Saved.'), removed: dt('Channel removed.') };
+const errors: Record<string, string> = {
+  channel: dt('Choose a channel from the list.'),
+  empty: dt('Turn on attachments, links or both. To stop checking a channel, remove it.'),
+  save: dt('It could not be saved. Try again in a moment.'),
+};
+const siteName = (id: string) => MEDIA_NETWORKS.find((n) => n.id === id)?.name ?? id;
+const summary = (r: MediaRule) => {
+  const parts: string[] = [];
+  if (r.attachments) parts.push([r.images && dt('Pictures'), r.videos && dt('Videos'), r.audio && dt('Audio'), r.files && dt('Files')].filter(Boolean).join(', ') || dt('Attachments'));
+  if (r.links) parts.push(r.networks.length ? r.networks.map(siteName).join(', ') : dt('Links of any site'));
+  return parts.join(' · ');
+};
+const blank: MediaRule = { channelId: '', attachments: true, links: false, images: true, videos: true, audio: false, files: false, networks: [], caption: true, notice: true, bypassRoleIds: [] };
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="media" pageTitle={dt('Media channels')}>
+  <div class="md-top">
+    <h1>{dt('Media channels')}</h1>
+    <button type="button" class="btn btn-accent btn-sm" data-md-open="md-d-new" disabled={!ready || !free.length}><Icon name="ph:plus-bold" width="14" height="14" />{dt('Add channel')}</button>
+  </div>
+  {saved && <div class="md-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{savedText[saved] ?? savedText.saved}</div>}
+  {failed && <div class="md-flash md-warn"><Icon name="ph:warning-fill" width="15" height="15" />{errors[failed] ?? errors.save}</div>}
+  {!ready && <div class="md-flash md-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+
+  {rules.length === 0 && ready && <p class="md-empty"><Icon name="ph:image-fill" width="16" height="16" />{dt('No media channels yet. Add one, or use the commands: !imgonly add and !urlonly add.')}</p>}
+
+  <div class="md-list dgl-stagger">
+    {rules.map((r) => (
+      <div class="md-row">
+        <span class="md-ico"><Icon name={r.links && !r.attachments ? 'ph:link-fill' : 'ph:image-fill'} width="18" height="18" /></span>
+        <div class="md-main"><b>#{names.get(r.channelId) ?? r.channelId}</b><span>{summary(r)}</span></div>
+        <div class="md-acts">
+          <button type="button" class="md-act" data-md-open={`md-d-${r.channelId}`} aria-label={dt('Edit')} title={dt('Edit')}><Icon name="ph:pencil-simple-fill" width="15" height="15" /></button>
+          <form method="POST" data-no-dirty>
+            <input type="hidden" name="action" value="remove" /><input type="hidden" name="channel_id" value={r.channelId} />
+            <button type="submit" class="md-act md-del" aria-label={dt('Remove channel')} title={dt('Remove channel')} data-confirm={dt('Remove this channel? Messages there will not be checked any more.')}><Icon name="ph:trash-fill" width="15" height="15" /></button>
+          </form>
+        </div>
+      </div>
+    ))}
+  </div>
+  <p class="md-hint md-prefix">{dt('With the prefix: !imgonly add #channel, !urlonly add #channel youtube x, !imgonly list.')}</p>
+
+  <dialog class="md-dialog" id="md-d-new" aria-labelledby="md-t-new">
+    <form method="POST" class="md-form" data-no-dirty>
+      <input type="hidden" name="action" value="save" />
+      <header><span class="md-ico"><Icon name="ph:image-fill" width="18" height="18" /></span><h2 id="md-t-new">{dt('New media channel')}</h2><button type="button" class="md-x" data-md-close aria-label={dt('Close')}><Icon name="ph:x-bold" width="14" height="14" /></button></header>
+      <p class="md-lede">{dt('Everything else sent there is deleted, and the person is told why in a notice that deletes itself.')}</p>
+      <div class="md-field">
+        <label for="md-ch-new">{dt('Channel')}</label>
+        <select id="md-ch-new" name="channel_id" required>
+          <option value="">{dt('Choose a channel')}</option>
+          {free.map((c) => <option value={c.id}>#{c.name}</option>)}
+        </select>
+      </div>
+      <MediaFields rule={blank} roles={roles} />
+      <footer><button type="button" class="btn btn-ghost btn-sm" data-md-close>{dt('Cancel')}</button><button type="submit" class="btn btn-accent btn-sm" data-keep>{dt('Create')}</button></footer>
+    </form>
+  </dialog>
+
+  {rules.map((r) => (
+    <dialog class="md-dialog" id={`md-d-${r.channelId}`} aria-labelledby={`md-t-${r.channelId}`}>
+      <form method="POST" class="md-form" data-no-dirty>
+        <input type="hidden" name="action" value="save" /><input type="hidden" name="channel_id" value={r.channelId} />
+        <header><span class="md-ico"><Icon name={r.links && !r.attachments ? 'ph:link-fill' : 'ph:image-fill'} width="18" height="18" /></span><h2 id={`md-t-${r.channelId}`}>#{names.get(r.channelId) ?? r.channelId}</h2><button type="button" class="md-x" data-md-close aria-label={dt('Close')}><Icon name="ph:x-bold" width="14" height="14" /></button></header>
+        <MediaFields rule={r} roles={roles} />
+        <footer><button type="button" class="btn btn-ghost btn-sm" data-md-close>{dt('Cancel')}</button><button type="submit" class="btn btn-accent btn-sm" data-keep>{dt('Save')}</button></footer>
+      </form>
+    </dialog>
+  ))}
+</DashGuildLayout>
+
+<script>
+  // The dialogs open from their buttons (the list can be swapped in again by the dashboard, so the listener is on the document, once).
+  const w = window as unknown as { __mdBound?: boolean };
+  if (!w.__mdBound) {
+    w.__mdBound = true;
+    document.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      const open = target?.closest<HTMLElement>('[data-md-open]');
+      if (open) { (document.getElementById(open.dataset.mdOpen ?? '') as HTMLDialogElement | null)?.showModal(); return; }
+      if (target?.closest('[data-md-close]')) { target.closest('dialog')?.close(); return; }
+      // A click on the dimmed area (the dialog element itself, outside its content) closes it too.
+      if (target instanceof HTMLDialogElement && target.classList.contains('md-dialog')) target.close();
+    });
+  }
+</script>
+
+<style>
+  .md-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 1000px; margin-bottom: 18px; }
+  h1 { font-size: 24px; margin: 0; }
+  .md-top .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
+  .md-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 1000px; }
+  .md-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .md-empty { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-dim); margin: 6px 0 14px; }
+  .md-list { display: grid; gap: 10px; max-width: 1000px; }
+  .md-row { display: flex; align-items: center; gap: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 14px; }
+  .md-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+  .md-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .md-main b { font-size: 14.5px; overflow-wrap: anywhere; }
+  .md-main span { font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .md-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+  .md-acts form { margin: 0; }
+  .md-act { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border); background: none; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; transition: transform var(--m-instant) ease, border-color var(--m-fast) ease, color var(--m-fast) ease; }
+  .md-act:hover { border-color: var(--text-dim); color: var(--text); }
+  .md-act:active { transform: scale(var(--m-press)); }
+  .md-del:hover { color: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); }
+  .md-hint { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 0; }
+  .md-prefix { max-width: 1000px; }
+  .md-dialog { width: min(560px, calc(100vw - 24px)); max-height: min(90vh, 820px); overflow: auto; border: 1px solid var(--border); border-radius: 18px; padding: 0; background: var(--card); color: var(--text); box-shadow: 0 24px 70px rgba(0, 0, 0, .5); }
+  .md-dialog::backdrop { backdrop-filter: blur(3px); }
+  .md-form { display: grid; gap: 16px; padding: 18px; }
+  .md-form header { display: flex; align-items: center; gap: 10px; }
+  .md-form h2 { flex: 1; margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+  .md-x { width: 30px; height: 30px; border-radius: 8px; border: 0; background: none; color: var(--text-dim); display: grid; place-items: center; cursor: pointer; }
+  .md-x:hover { color: var(--text); background: var(--card-hover, rgba(255,255,255,.06)); }
+  .md-lede { margin: -6px 0 0; font-size: 13px; color: var(--text-dim); }
+  .md-field { display: grid; gap: 6px; }
+  .md-field label { font-size: 13px; font-weight: 600; }
+  .md-field select { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; min-width: 0; }
+  .md-form footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+  @media (max-width: 560px) { .md-row { flex-wrap: wrap; } .md-main span { white-space: normal; } .md-form { padding: 16px 14px; } }
+</style>
