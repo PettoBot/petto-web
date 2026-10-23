@@ -4571,4 +4571,9 @@ export const dashEs: Record<string, string> = {
   "Repeat every": "Repetir cada",
   "Unit": "Unidad",
   "Minimum interval: 10 minutes (600 seconds), up to 10 years. One timer per channel.": "Intervalo mínimo: 10 minutos (600 segundos), hasta 10 años. Un temporizador por canal.",
+  "With a saved embed, the message is optional and goes above it.": "Con un embed guardado, el mensaje es opcional y va encima.",
+  "1 second": "1 segundo",
+  "1 minute": "1 minuto",
+  "1 month": "1 mes",
+  "1 year": "1 año",
 };
