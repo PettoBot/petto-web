@@ -128,7 +128,7 @@ function renderEmbed(e: PreviewEmbed, ctx: PreviewContext): string {
     return safeUrl(map[value.trim()] ?? value);
   };
   const author = e.author?.name
-    ? `<div class="dp-embed-author">${icon(e.author.icon) ? `<img src="${icon(e.author.icon)}" alt="">` : ''}<span>${renderMarkdown(e.author.name, ctx)}</span></div>`
+    ? `<div class="dp-embed-author">${icon(e.author.icon) ? `<img src="${icon(e.author.icon)}" alt="" referrerpolicy="no-referrer">` : ''}<span>${renderMarkdown(e.author.name, ctx)}</span></div>`
     : '';
   const title = e.title
     ? (e.url && safeUrl(e.url) ? `<a class="dp-embed-title dp-link" href="${safeUrl(e.url)}" target="_blank" rel="noopener noreferrer">${renderMarkdown(e.title, ctx)}</a>` : `<div class="dp-embed-title">${renderMarkdown(e.title, ctx)}</div>`)
@@ -137,10 +137,10 @@ function renderEmbed(e: PreviewEmbed, ctx: PreviewContext): string {
   const fields = e.fields?.length
     ? `<div class="dp-embed-fields">${e.fields.map((f) => `<div class="dp-embed-field${f.inline ? ' inline' : ''}"><div class="dp-embed-field-name">${renderMarkdown(f.name, ctx)}</div><div class="dp-embed-field-value">${renderMarkdown(f.value, ctx)}</div></div>`).join('')}</div>`
     : '';
-  const thumb = icon(e.thumbnail) ? `<img class="dp-embed-thumb" src="${icon(e.thumbnail)}" alt="">` : '';
-  const image = icon(e.image) ? `<img class="dp-embed-image" src="${icon(e.image)}" alt="">` : '';
+  const thumb = icon(e.thumbnail) ? `<img class="dp-embed-thumb" src="${icon(e.thumbnail)}" alt="" referrerpolicy="no-referrer">` : '';
+  const image = icon(e.image) ? `<img class="dp-embed-image" src="${icon(e.image)}" alt="" referrerpolicy="no-referrer">` : '';
   const footerText = [e.footer?.text ? renderMarkdown(e.footer.text, ctx) : '', e.timestamp ? tr(ctx, 'Today at 12:00 PM') : ''].filter(Boolean).join(' • ');
-  const footer = footerText ? `<div class="dp-embed-footer">${icon(e.footer?.icon) ? `<img src="${icon(e.footer?.icon)}" alt="">` : ''}<span>${footerText}</span></div>` : '';
+  const footer = footerText ? `<div class="dp-embed-footer">${icon(e.footer?.icon) ? `<img src="${icon(e.footer?.icon)}" alt="" referrerpolicy="no-referrer">` : ''}<span>${footerText}</span></div>` : '';
   return `<div class="dp-embed" style="--dp-c:${embedColor(e.color)}">${author}<div class="dp-embed-body"><div class="dp-embed-main">${title}${description}${fields}</div>${thumb}</div>${image}${footer}</div>`;
 }
 
@@ -179,14 +179,14 @@ function renderV2Node(node: V2PreviewNode, ctx: PreviewContext): string {
     case 14: return `<div class="dp-v2-sep${node.divider === false ? ' nodivider' : ''}${node.spacing === 2 ? ' large' : ''}"></div>`;
     case 12: {
       const items = (node.items ?? []).map((item) => previewImage(item.media?.url, ctx)).filter(Boolean);
-      return items.length ? `<div class="dp-v2-gallery n${Math.min(items.length, 4)}">${items.slice(0, 10).map((src) => `<img src="${src}" alt="">`).join('')}</div>` : '';
+      return items.length ? `<div class="dp-v2-gallery n${Math.min(items.length, 4)}">${items.slice(0, 10).map((src) => `<img src="${src}" alt="" referrerpolicy="no-referrer">`).join('')}</div>` : '';
     }
     case 9: {
       const text = (node.components ?? []).map((child) => renderV2Node(child, ctx)).join('');
       const accessory = node.accessory?.type === 11 ? previewImage(node.accessory.media?.url, ctx) : '';
       const button = node.accessory?.type === 2 ? renderV2Button(node.accessory, ctx) : '';
       if (!text && !accessory && !button) return '';
-      return `<div class="dp-v2-section"><div class="dp-v2-section-text">${text}</div>${accessory ? `<img class="dp-v2-thumb" src="${accessory}" alt="">` : ''}${button}</div>`;
+      return `<div class="dp-v2-section"><div class="dp-v2-section-text">${text}</div>${accessory ? `<img class="dp-v2-thumb" src="${accessory}" alt="" referrerpolicy="no-referrer">` : ''}${button}</div>`;
     }
     case 1: {
       const buttons = (node.components ?? []).filter((b) => b.type === 2 && (b.label || b.emoji?.name)).map((b) => renderV2Button(b, ctx)).join('');

@@ -152,6 +152,22 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.8',
+          display: '0.7.8',
+          name: 'Mochi',
+          date: "October 23, 2026",
+          items: [
+            "Tickets: an AI assistant (beta) that answers the person who opened a ticket from the instructions and knowledge the owner wrote, reads messages of the server such as its rules, knows the channels and answers with cards that have a Talk to a person button; live tickets in the dashboard; transcripts that look like Discord; a deleted ticket channel closes its ticket; ratings can be given once; warmer default ticket messages with their own emojis",
+            "New commands: `!pagination` (one message with up to 25 pages), `!quote` (a message as a black and white quote picture), `!image <effect>` (invert, blur, pixelate, deep fry and more), `!hex` finds the main color of a picture, and easier command blocking with `!dc suggest #cmds`, several commands at once and `!dc list`",
+            "Media channels: `!imgonly` (only pictures and videos) and `!urlonly` (only links from the sites you choose) delete what does not fit with a notice that deletes itself; there is a Media channels page in the dashboard",
+            "Boards: a clownboard joins the starboard and the monkeyboard, every board can count up to five emojis, and the new Boards page has a card for each board with a sample of the repost",
+            "Timers and autoresponders: repeating timers can send a saved embed, delete the message of the time before and repeat every so many seconds, minutes, hours, days, weeks, months or years; autoresponders can delete their own previous reply",
+            "Appeals: softbans can be appealed, you choose whether sanction DMs carry the appeal link, write your own line about appeals and ask members to wait up to 720 hours before appealing",
+            "Dashboard: autoresponders, custom commands, timers and sticky messages are cards with a small chat that shows what the bot sends (formatting, emojis, saved embeds, GIFs and pictures), a new look for the verification panel, and Petto can post its stats on Omniplex",
+            "Fixes: `!dc suggest #cmds` did nothing, `/channel clear` failed, the verification panel could be posted twice and setting it up timed out on big servers, and the profile history now keeps old avatars for good",
+          ],
+        },
+        {
           version: '0.7.7',
           display: '0.7.7',
           name: 'Tiramisu',
@@ -1456,6 +1472,22 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.8',
+          display: '0.7.8',
+          name: 'Mochi',
+          date: "23 de octubre de 2026",
+          items: [
+            "Tickets: un asistente de IA (beta) que responde a quien abrió el ticket con las instrucciones y el conocimiento que escribió el dueño, lee mensajes del servidor como sus reglas, conoce los canales y responde con tarjetas que tienen un botón Hablar con una persona; tickets en vivo en la dashboard; transcripciones que se ven como Discord; un canal de ticket borrado cierra su ticket; las valoraciones se dan una sola vez; mensajes de tickets por defecto más cálidos con sus propios emojis",
+            "Comandos nuevos: `!pagination` (un mensaje con hasta 25 páginas), `!quote` (un mensaje como imagen de cita en blanco y negro), `!image <efecto>` (invertir, desenfocar, pixelar, deep fry y más), `!hex` encuentra el color principal de una imagen, y bloquear comandos es más fácil con `!dc suggest #cmds`, varios comandos a la vez y `!dc list`",
+            "Canales de medios: `!imgonly` (solo imágenes y videos) y `!urlonly` (solo enlaces de los sitios que elijas) borran lo que no encaja con un aviso que se borra solo; hay una página de Canales de medios en la dashboard",
+            "Tableros: un clownboard se une al starboard y al monkeyboard, cada tablero puede contar hasta cinco emojis, y la nueva página Boards tiene una tarjeta por cada tablero con una muestra de la publicación",
+            "Temporizadores y autorespuestas: los temporizadores pueden enviar un embed guardado, borrar el mensaje de la vez anterior y repetirse cada tantos segundos, minutos, horas, días, semanas, meses o años; las autorespuestas pueden borrar su propia respuesta anterior",
+            "Apelaciones: los softbans se pueden apelar, eliges si los MD de sanción llevan el enlace de apelación, escribes tu propia línea sobre apelaciones y pides a los miembros esperar hasta 720 horas antes de apelar",
+            "Dashboard: las autorespuestas, los comandos propios, los temporizadores y los mensajes fijos son tarjetas con un pequeño chat que muestra lo que envía el bot (formato, emojis, embeds guardados, GIFs e imágenes), un nuevo aspecto para el panel de verificación, y Petto puede publicar sus estadísticas en Omniplex",
+            "Correcciones: `!dc suggest #cmds` no hacía nada, `/channel clear` fallaba, el panel de verificación podía publicarse dos veces y configurarlo se agotaba en servidores grandes, y el historial de perfil ahora guarda los avatares antiguos para siempre",
+          ],
+        },
         {
           version: '0.7.7',
           display: '0.7.7',
@@ -2762,6 +2794,22 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.8',
+          display: '0.7.8',
+          name: 'Mochi',
+          date: "23 de outubro de 2026",
+          items: [
+            "Tickets: um assistente de IA (beta) que responde a quem abriu o ticket com as instruções e o conhecimento que o dono escreveu, lê mensagens do servidor como as regras, conhece os canais e responde com cartões que têm um botão Falar com uma pessoa; tickets ao vivo no dashboard; transcrições que parecem o Discord; um canal de ticket apagado fecha o ticket; as avaliações são dadas uma única vez; mensagens de ticket padrão mais acolhedoras com seus próprios emojis",
+            "Comandos novos: `!pagination` (uma mensagem com até 25 páginas), `!quote` (uma mensagem como imagem de citação em preto e branco), `!image <efeito>` (inverter, desfocar, pixelar, deep fry e mais), `!hex` encontra a cor principal de uma imagem, e bloquear comandos ficou mais fácil com `!dc suggest #cmds`, vários comandos de uma vez e `!dc list`",
+            "Canais de mídia: `!imgonly` (só imagens e vídeos) e `!urlonly` (só links dos sites que você escolher) apagam o que não se encaixa com um aviso que se apaga sozinho; há uma página de Canais de mídia no dashboard",
+            "Quadros: um clownboard se junta ao starboard e ao monkeyboard, cada quadro pode contar até cinco emojis, e a nova página Boards tem um cartão para cada quadro com uma amostra da republicação",
+            "Temporizadores e autorrespostas: os temporizadores podem enviar um embed salvo, apagar a mensagem da vez anterior e se repetir a cada tantos segundos, minutos, horas, dias, semanas, meses ou anos; as autorrespostas podem apagar a própria resposta anterior",
+            "Apelações: softbans podem ser apelados, você escolhe se as DMs de sanção levam o link de apelação, escreve sua própria linha sobre apelações e pede aos membros que esperem até 720 horas antes de apelar",
+            "Dashboard: as autorrespostas, os comandos próprios, os temporizadores e as mensagens fixas são cartões com um pequeno chat que mostra o que o bot envia (formatação, emojis, embeds salvos, GIFs e imagens), um novo visual para o painel de verificação, e o Petto pode publicar suas estatísticas no Omniplex",
+            "Correções: `!dc suggest #cmds` não fazia nada, `/channel clear` falhava, o painel de verificação podia ser publicado duas vezes e configurá-lo dava timeout em servidores grandes, e o histórico de perfil agora guarda os avatares antigos para sempre",
+          ],
+        },
         {
           version: '0.7.7',
           display: '0.7.7',
