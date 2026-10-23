@@ -1,0 +1,174 @@
+---
+// Media channels (Community): channels where only pictures and videos, or only links of some sites, can be posted. The bot deletes what does
+// not fit (src/events/messageCreateMediaOnly.js of petto-bot). One card per channel; the sites are chips with their logo.
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { MEDIA_NETWORKS, type MediaRule } from '../data/mediaChannels';
+
+const dt = makeT(getDashLang(Astro));
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  rules: MediaRule[];
+  channels: { id: string; name: string }[];
+  roles: { id: string; name: string }[];
+  ready: boolean;
+  saved: string;
+  failed: string;
+}
+const { user, guildId, guildName, guildIcon, rules, channels, roles, ready, saved, failed } = Astro.props;
+const names = new Map(channels.map((c) => [c.id, c.name]));
+const taken = new Set(rules.map((r) => r.channelId));
+const free = channels.filter((c) => !taken.has(c.id));
+const savedText: Record<string, string> = { added: dt('Channel added.'), saved: dt('Saved.'), removed: dt('Channel removed.') };
+const errors: Record<string, string> = {
+  channel: dt('Choose a channel from the list.'),
+  empty: dt('Turn on attachments, links or both. To stop checking a channel, remove it.'),
+  save: dt('It could not be saved. Try again in a moment.'),
+};
+const siteName = (id: string) => MEDIA_NETWORKS.find((n) => n.id === id)?.name ?? id;
+const summary = (r: MediaRule) => {
+  const parts: string[] = [];
+  if (r.attachments) parts.push([r.images && dt('Pictures'), r.videos && dt('Videos'), r.audio && dt('Audio'), r.files && dt('Files')].filter(Boolean).join(', ') || dt('Attachments'));
+  if (r.links) parts.push(r.networks.length ? r.networks.map(siteName).join(', ') : dt('Links of any site'));
+  return parts.join(' · ');
+};
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="media" pageTitle={dt('Media channels')}>
+  <h1>{dt('Media channels')}</h1>
+  {saved && <div class="md-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{savedText[saved] ?? savedText.saved}</div>}
+  {failed && <div class="md-flash md-warn"><Icon name="ph:warning-fill" width="15" height="15" />{errors[failed] ?? errors.save}</div>}
+  {!ready && <div class="md-flash md-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+
+  <form method="POST" class="md-add" data-no-dirty>
+    <input type="hidden" name="action" value="add" />
+    <div class="md-add-head"><Icon name="ph:image-fill" width="18" height="18" /><b>{dt('Add a channel')}</b></div>
+    <div class="md-add-grid">
+      <select name="channel_id" required disabled={!ready || !free.length} aria-label={dt('Channel')}>
+        <option value="">{free.length ? dt('Choose a channel') : dt('Every channel has a rule already')}</option>
+        {free.map((c) => <option value={c.id}>#{c.name}</option>)}
+      </select>
+      <div class="md-presets" role="radiogroup" aria-label={dt('What it accepts')}>
+        <label class="md-preset"><input type="radio" name="preset" value="media" checked /><span><Icon name="ph:image-fill" width="15" height="15" />{dt('Pictures and videos')}</span></label>
+        <label class="md-preset"><input type="radio" name="preset" value="links" /><span><Icon name="ph:link-fill" width="15" height="15" />{dt('Links')}</span></label>
+        <label class="md-preset"><input type="radio" name="preset" value="both" /><span><Icon name="ph:paperclip-bold" width="15" height="15" />{dt('Both')}</span></label>
+      </div>
+      <button class="btn btn-accent btn-sm" type="submit" disabled={!ready || !free.length}>{dt('Add')}</button>
+    </div>
+    <p class="md-hint">{dt('Everything else sent there is deleted, and the person is told why in a notice that deletes itself. You adjust the rule after adding it.')}</p>
+  </form>
+
+  {rules.length === 0 && ready && <p class="md-empty"><Icon name="ph:image-fill" width="16" height="16" />{dt('No media channels yet. Add one above, or use the commands: !imgonly add and !urlonly add.')}</p>}
+
+  <div class="md-list dgl-stagger">
+    {rules.map((r) => (
+      <details class="md-card">
+        <summary>
+          <span class="md-name"><Icon name={r.links && !r.attachments ? 'ph:link-fill' : 'ph:image-fill'} width="16" height="16" />#{names.get(r.channelId) ?? r.channelId}</span>
+          <span class="md-sum">{summary(r)}</span>
+          <Icon name="ph:caret-down" width="14" height="14" class="md-caret" />
+        </summary>
+        <form method="POST" class="md-form">
+          <input type="hidden" name="channel_id" value={r.channelId} />
+
+          <div class="md-block">
+            <label class="md-master"><input type="checkbox" name="attachments_enabled" checked={r.attachments} /><span><b>{dt('Attachments')}</b><em>{dt('Files uploaded to Discord, the ones from the phone or the computer.')}</em></span></label>
+            <div class="md-sub">
+              <label class="md-chip"><input type="checkbox" name="allow_images" checked={r.images} /><span><Icon name="ph:image-fill" width="14" height="14" />{dt('Pictures')}</span></label>
+              <label class="md-chip"><input type="checkbox" name="allow_videos" checked={r.videos} /><span>{dt('Videos')}</span></label>
+              <label class="md-chip"><input type="checkbox" name="allow_audio" checked={r.audio} /><span>{dt('Audio')}</span></label>
+              <label class="md-chip"><input type="checkbox" name="allow_files" checked={r.files} /><span>{dt('Other files')}</span></label>
+            </div>
+          </div>
+
+          <div class="md-block">
+            <label class="md-master"><input type="checkbox" name="links_enabled" checked={r.links} /><span><b>{dt('Links')}</b><em>{dt('A link to a site, like a video, a post or a song.')}</em></span></label>
+            <div class="md-sub">
+              <label class="md-chip md-any"><input type="checkbox" name="any_site" checked={r.networks.length === 0} /><span>{dt('Any site')}</span></label>
+              <div class="md-sites">
+                {MEDIA_NETWORKS.map((n) => (
+                  <label class="md-chip"><input type="checkbox" name="networks" value={n.id} checked={r.networks.includes(n.id)} /><span><Icon name={n.icon} width="14" height="14" />{n.name}</span></label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div class="md-opts">
+            <label class="md-switch"><input type="checkbox" name="allow_caption" checked={r.caption} /><span><b>{dt('Text next to it is fine')}</b><em>{dt('A message with a picture or a link and a few words.')}</em></span></label>
+            <label class="md-switch"><input type="checkbox" name="notice" checked={r.notice} /><span><b>{dt('Say why it was deleted')}</b><em>{dt('A short notice that deletes itself.')}</em></span></label>
+          </div>
+
+          <div class="md-field">
+            <label>{dt('Roles that can write anything')}</label>
+            <MultiSelect lazy name="bypass_role_ids" options={roles} selected={r.bypassRoleIds} placeholder={dt('Search roles...')} />
+            <span class="md-hint">{dt('Members with Manage Messages are never touched.')}</span>
+          </div>
+
+          <div class="md-foot">
+            <button class="btn btn-accent btn-sm" type="submit" name="action" value="save" disabled={!ready}>{dt('Save')}</button>
+            <button class="btn btn-ghost btn-sm md-remove" type="submit" name="action" value="remove" data-confirm={dt('Remove this channel? Messages there will not be checked any more.')} disabled={!ready}>{dt('Remove channel')}</button>
+          </div>
+        </form>
+      </details>
+    ))}
+  </div>
+  <p class="md-hint md-prefix">{dt('With the prefix: !imgonly add #channel, !urlonly add #channel youtube x, !imgonly list.')}</p>
+</DashGuildLayout>
+
+<style>
+  h1 { font-size: 24px; margin: 0 0 18px; }
+  .md-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 1000px; }
+  .md-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .md-add { max-width: 1000px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px 18px; margin-bottom: 18px; }
+  .md-add-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--accent); }
+  .md-add-head b { color: var(--text); font-size: 14.5px; }
+  .md-add-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; }
+  .md-add select { border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; min-width: 0; }
+  .md-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  .md-preset input, .md-chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .md-preset span, .md-chip span { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 7px 12px; font-size: 13px; cursor: pointer; transition: background var(--m-fast) ease, border-color var(--m-fast) ease, color var(--m-fast) ease; }
+  .md-preset span:hover, .md-chip span:hover { border-color: var(--text-dim); }
+  .md-preset input:checked + span, .md-chip input:checked + span { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .md-preset input:focus-visible + span, .md-chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .md-hint { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 0; }
+  .md-empty { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-dim); margin: 6px 0 14px; }
+  .md-list { display: grid; gap: 10px; max-width: 1000px; }
+  .md-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; }
+  .md-card summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
+  .md-card summary::-webkit-details-marker { display: none; }
+  .md-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14.5px; color: var(--text); overflow-wrap: anywhere; }
+  .md-name :global(svg) { color: var(--accent); flex: none; }
+  .md-sum { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+  .md-caret { flex: none; color: var(--text-dim); transition: transform var(--m-base) var(--m-out); }
+  .md-card[open] .md-caret { transform: rotate(180deg); }
+  .md-form { display: flex; flex-direction: column; gap: 16px; padding: 4px 16px 18px; border-top: 1px solid var(--border-soft, var(--border)); padding-top: 16px; }
+  .md-block { display: grid; gap: 10px; }
+  .md-master, .md-switch { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .md-switch { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .md-master input, .md-switch input { margin-top: 3px; }
+  .md-master b, .md-switch b { display: block; font-size: 13.5px; font-weight: 600; }
+  .md-master em, .md-switch em { display: block; font-style: normal; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .md-sub { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 26px; }
+  .md-sites { display: contents; }
+  /* The kinds and the sites only matter while their rule is on; "any site" makes the single sites pointless. */
+  .md-block:has(.md-master input:not(:checked)) .md-sub { opacity: .45; }
+  .md-block:has(input[name="any_site"]:checked) .md-sites { opacity: .45; }
+  .md-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .md-field { display: grid; gap: 6px; }
+  .md-field > label { font-size: 13px; font-weight: 600; }
+  .md-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .md-remove { color: var(--red, #ff6b6b); }
+  .md-prefix { max-width: 1000px; }
+  @media (max-width: 720px) {
+    .md-add-grid { grid-template-columns: 1fr; }
+    .md-opts { grid-template-columns: 1fr; }
+    .md-sub { padding-left: 0; }
+    .md-card summary { flex-wrap: wrap; }
+    .md-sum { flex-basis: 100%; text-align: left; white-space: normal; order: 3; }
+  }
+  @media (prefers-reduced-motion: reduce) { .md-caret { transition: none; } }
+</style>

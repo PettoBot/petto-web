@@ -1,0 +1,62 @@
+---
+export const prerender = false;
+import DashMedia from '../../../../components/DashMedia.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { presetRow, rowFromForm, ruleFromRow, type MediaRule } from '../../../../data/mediaChannels';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const TEXT_TYPES = new Set([0, 5, 15]); // text, announcement, forum
+
+const [guildInfo, channelsRes, rolesRes] = await Promise.all([
+  getGuildInfo(id, botToken),
+  getGuildList(Astro, id, botToken, 'channels'),
+  getGuildList(Astro, id, botToken, 'roles'),
+]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const channels: { id: string; name: string }[] = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => TEXT_TYPES.has(c.type)).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+const roles: { id: string; name: string }[] = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+
+let saved = '';
+let failed = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const channelId = String(form.get('channel_id') ?? '').trim();
+  if (!SNOWFLAKE.test(channelId) || !channels.some((c) => c.id === channelId)) failed = 'channel';
+  else if (action === 'remove') {
+    const res = await fetch(`${apiUrl}/rest/v1/media_only_channels?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: { ...apiHeaders, Prefer: 'return=minimal' } }).catch(() => null);
+    if (res?.ok) saved = 'removed'; else failed = 'save';
+  } else if (action === 'add' || action === 'save') {
+    const row = action === 'add' ? presetRow(id, channelId, String(form.get('preset') ?? 'media')) : rowFromForm(id, channelId, form);
+    if (action === 'save' && !row.attachments_enabled && !row.links_enabled) failed = 'empty';
+    else {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const res = await fetch(`${apiUrl}/rest/v1/media_only_channels?on_conflict=guild_id,channel_id`, {
+        method: 'POST',
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(row),
+      }).catch(() => null);
+      if (res?.ok) saved = action === 'add' ? 'added' : 'saved'; else failed = 'save';
+    }
+  } else failed = 'save';
+}
+
+const listRes = await fetch(`${apiUrl}/rest/v1/media_only_channels?guild_id=eq.${id}&select=*&order=channel_id`, { headers: apiHeaders }).catch(() => null);
+const ready = Boolean(listRes?.ok);
+const rules: MediaRule[] = ready ? (await listRes!.json()).map(ruleFromRow) : [];
+---
+<DashMedia user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} rules={rules} channels={channels} roles={roles} ready={ready} saved={saved} failed={failed} />
