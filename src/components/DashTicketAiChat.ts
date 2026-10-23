@@ -7,7 +7,7 @@ type Turn = { role: Role; content: string };
 type Words = Record<string, string>;
 type Draft = { instructions: string; knowledge: string; handoff: string };
 
-function pageData(): { endpoint: string; words: Words } {
+function pageData(): { endpoint: string; lang?: string; words: Words } {
   try { return JSON.parse(document.getElementById('tai-data')?.textContent || '{}'); } catch { return { endpoint: '', words: {} }; }
 }
 const fill = (text: string, vars: Record<string, string | number>) => Object.keys(vars).reduce((s, k) => s.split(`{${k}}`).join(String(vars[k])), text);
@@ -28,7 +28,7 @@ export function mountTicketAiChat(root: HTMLElement): void {
   if (root.dataset.taiMounted) return;
   root.dataset.taiMounted = '1';
   const kind = root.dataset.taiKind === 'helper' ? 'helper' : 'test';
-  const { endpoint, words } = pageData();
+  const { endpoint, lang, words } = pageData();
   const log = root.querySelector<HTMLElement>('.tai-log')!;
   const input = root.querySelector<HTMLTextAreaElement>('.tai-compose textarea')!;
   const send = root.querySelector<HTMLButtonElement>('.tai-send')!;
@@ -144,8 +144,8 @@ export function mountTicketAiChat(root: HTMLElement): void {
     const source = (document.querySelector<HTMLInputElement>('input[name="tai_source"]:checked')?.value) === 'saved' ? 'saved' : 'draft';
     const fields = fieldsOf(form);
     const body = kind === 'test'
-      ? { action: 'test', source, draft: source === 'draft' ? fields : undefined, history, message: text }
-      : { action: 'helper', current: { instructions: fields.instructions, knowledge: fields.knowledge, handoff: fields.handoff }, history, message: text };
+      ? { action: 'test', lang, source, draft: source === 'draft' ? fields : undefined, history, message: text }
+      : { action: 'helper', lang, current: { instructions: fields.instructions, knowledge: fields.knowledge, handoff: fields.handoff }, history, message: text };
     let data: any = null;
     try {
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
