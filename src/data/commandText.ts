@@ -49,6 +49,7 @@ export const commandText: Record<string, CommandText> = {
   honeypot: ['Catch spam bots in a bait channel and apply a moderation action.', 'Atrapa bots de spam en un canal señuelo y aplica una acción de moderación.', 'Pega bots de spam em um canal isca e aplica uma ação de moderação.'],
   reaction: ['Automatically react to matching messages.', 'Reacciona automáticamente a los mensajes que coincidan.', 'Reage automaticamente às mensagens que coincidirem.'],
   reactionrole: ['Give members a role with a reaction or a button.', 'Da un rol a los miembros con una reacción o un botón.', 'Dá um cargo aos membros com uma reação ou um botão.'],
+  clownboard: ['Configure the clownboard, the starboard with the clown.', 'Configura el clownboard, el starboard con el payaso.', 'Configura o clownboard, o starboard com o palhaço.'],
   monkeyboard: ['Configure the monkeyboard, the starboard with the monkey.', 'Configura el monkeyboard, el starboard con el monito.', 'Configura o monkeyboard, o starboard com o macaquinho.'],
   starboard: ['Configure the reaction-based starboard.', 'Configura el starboard basado en reacciones.', 'Configura o starboard baseado em reações.'],
   stickymessage: ['A message that re-posts itself at the bottom of a channel.', 'Un mensaje que se vuelve a publicar solo al final de un canal.', 'Uma mensagem que se republica sozinha no fim de um canal.'],
