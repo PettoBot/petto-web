@@ -4,6 +4,7 @@ const VOICE_OWNER_PERMISSIONS = ['manage_channels', 'move_members', 'manage_perm
 import { redrawPanelsInServerLanguage } from '../../../../utils/panelLanguage';
 import DashAutomation from '../../../../components/DashAutomation.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
+import { timerIntervalMs } from '../../../../utils/timerInterval';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { validateTemplate } from '../../../../utils/embedSchema';
@@ -166,6 +167,7 @@ if (Astro.request.method === 'POST') {
     const deleteTrigger = form.get('delete_trigger') === 'on';
     const replyToTrigger = form.get('reply_to_trigger') === 'on';
     const pingUser = form.get('ping_user') === 'on';
+    const deletePrevious = form.get('delete_previous') === 'on';
     const channelIds = form.getAll('channel_ids').map(String);
     const roleIds = form.getAll('role_ids').map(String);
     const replyType = String(form.get('reply_type') ?? 'text');
@@ -188,6 +190,8 @@ if (Astro.request.method === 'POST') {
           body: JSON.stringify({
             guild_id: id, ar_id: crypto.randomUUID().slice(0, 8), trigger, reply, match_mode: matchMode,
             delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
+            // Only sent when on: a server whose database does not have the column yet can still save its autoresponders.
+            ...(deletePrevious ? { delete_previous: true } : {}),
             channel_ids: channelIds, role_ids: roleIds,
             reply_type: replyType, embed_color: embedColor, embed_title: embedTitle, embed_footer: embedFooter,
             embed_template: embedTemplate,
@@ -205,6 +209,7 @@ if (Astro.request.method === 'POST') {
     const deleteTrigger = form.get('delete_trigger') === 'on';
     const replyToTrigger = form.get('reply_to_trigger') === 'on';
     const pingUser = form.get('ping_user') === 'on';
+    const deletePrevious = form.get('delete_previous') === 'on';
     const channelIds = form.getAll('channel_ids').map(String);
     const roleIds = form.getAll('role_ids').map(String);
     const replyType = String(form.get('reply_type') ?? 'text');
@@ -214,16 +219,17 @@ if (Astro.request.method === 'POST') {
     const embedFooter = String(form.get('embed_footer') ?? '').trim().slice(0, 100) || null;
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (arId && trigger && (reply || embedTemplate)) {
-      await fetch(`${apiUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(arId)}&guild_id=eq.${id}`, {
-        method: 'PATCH',
-        headers: { ...apiHeaders, Prefer: 'return=minimal' },
-        body: JSON.stringify({
-          trigger, reply, match_mode: matchMode, delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
-          channel_ids: channelIds, role_ids: roleIds, reply_type: replyType, embed_color: embedColor, embed_title: embedTitle,
-          embed_footer: embedFooter, embed_template: embedTemplate,
-        }),
-      });
-      saved = true;
+      const patch = {
+        trigger, reply, match_mode: matchMode, delete_trigger: deleteTrigger, reply_to_trigger: replyToTrigger, ping_user: pingUser,
+        channel_ids: channelIds, role_ids: roleIds, reply_type: replyType, embed_color: embedColor, embed_title: embedTitle,
+        embed_footer: embedFooter, embed_template: embedTemplate,
+      };
+      const patchUrl = `${apiUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(arId)}&guild_id=eq.${id}`;
+      const send = (body: object) => fetch(patchUrl, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
+      // delete_previous arrives with a database update: before it, the rest is still saved.
+      let res = await send({ ...patch, delete_previous: deletePrevious });
+      if (!res.ok) res = await send(patch);
+      saved = res.ok;
     }
   } else if (action === 'delete_responder') {
     await fetch(`${apiUrl}/rest/v1/auto_responders?ar_id=eq.${encodeURIComponent(String(form.get('ar_id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
@@ -545,18 +551,25 @@ if (Astro.request.method === 'POST') {
     saved = res.ok;
   } else if (action === 'add_timer') {
     const channelId = String(form.get('channel_id') ?? '').trim();
-    const minutes = Math.max(10, Math.min(525600, Number(form.get('interval_minutes') ?? 10) || 10));
+    const intervalMs = timerIntervalMs(form);
     const message = String(form.get('message') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000);
+    const deletePrevious = form.get('delete_previous') === 'on';
     if (channelId && message) {
-      const res = await fetch(`${apiUrl}/rest/v1/auto_messages`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, interval_ms: minutes * 60 * 1000, message, next_run_at: new Date(Date.now() + minutes * 60 * 1000).toISOString() }) });
+      const res = await fetch(`${apiUrl}/rest/v1/auto_messages`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, interval_ms: intervalMs, message, ...(deletePrevious ? { delete_previous: true } : {}), next_run_at: new Date(Date.now() + intervalMs).toISOString() }) });
       saved = res.ok;
       if (!res.ok) error = dt('That channel may already have a timer.');
     }
   } else if (action === 'edit_timer') {
-    const minutes = Math.max(10, Math.min(525600, Number(form.get('interval_minutes') ?? 10) || 10));
+    const intervalMs = timerIntervalMs(form);
     const message = String(form.get('message') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000);
+    const deletePrevious = form.get('delete_previous') === 'on';
     if (message) {
-      const res = await fetch(`${apiUrl}/rest/v1/auto_messages?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ interval_ms: minutes * 60 * 1000, message, next_run_at: new Date(Date.now() + minutes * 60 * 1000).toISOString() }) });
+      const patchUrl = `${apiUrl}/rest/v1/auto_messages?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`;
+      const patch = { interval_ms: intervalMs, message, next_run_at: new Date(Date.now() + intervalMs).toISOString() };
+      const send = (body: object) => fetch(patchUrl, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
+      // delete_previous arrives with a database update: before it, the rest is still saved.
+      let res = await send({ ...patch, delete_previous: deletePrevious });
+      if (!res.ok) res = await send(patch);
       saved = res.ok;
     }
   } else if (action === 'save_sticky_roles') {
@@ -650,7 +663,7 @@ const WITH_TEMPLATES = ['webhooks', 'starboard', 'monkeyboard', 'custom-commands
 const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, monkeyboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders })),
-  when(['autoresponders'], () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=id,ar_id,trigger,reply,match_mode,delete_trigger,reply_to_trigger,ping_user,channel_ids,role_ids,reply_type,embed_color,embed_title,embed_footer,embed_template&order=trigger.asc`, { headers: apiHeaders })),
+  when(['autoresponders'], () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=*&order=trigger.asc`, { headers: apiHeaders })),
   when(['sticky-messages'], () => fetch(`${apiUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content,embed_template`, { headers: apiHeaders })),
   when(['reaction-roles'], () => fetch(apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,channel_id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: apiHeaders })),
   when(['reaction-triggers'], () => fetch(`${apiUrl}/rest/v1/reaction_triggers?guild_id=eq.${id}&select=id,emoji,trigger,owner_id,match_mode,channel_ids,role_ids,case_sensitive,cooldown_seconds,enabled&order=trigger.asc`, { headers: apiHeaders })),
@@ -658,7 +671,7 @@ const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, react
   when(['disabled-commands'], () => fetch(`${apiUrl}/rest/v1/disabled_commands?guild_id=eq.${id}&select=id,command,channel_id`, { headers: apiHeaders })),
   when(['auto-threads'], () => fetch(`${apiUrl}/rest/v1/auto_threads?guild_id=eq.${id}&select=channel_id,name_template,message_text,embed_template,archive_minutes`, { headers: apiHeaders })),
   when(['aliases'], () => fetch(`${apiUrl}/rest/v1/command_aliases?guild_id=eq.${id}&select=id,name,command&order=name.asc`, { headers: apiHeaders })),
-  when(['timers'], () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id,channel_id,interval_ms,message,next_run_at&order=id.asc`, { headers: apiHeaders })),
+  when(['timers'], () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=*&order=id.asc`, { headers: apiHeaders })),
   when(['starboard'], () => fetch(`${apiUrl}/rest/v1/starboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['monkeyboard'], () => fetch(`${apiUrl}/rest/v1/monkeyboards?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['voicemaster'], () => fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
@@ -689,7 +702,7 @@ const stickyRolesEnabled = stickyRolesRes?.ok ? Boolean((await stickyRolesRes.js
 const stickyRolesSaved = stickySnapshotsRes?.ok ? (await stickySnapshotsRes.json()).length : 0;
 const embedTemplateNames = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 const autoResponders = respondersRes?.ok ? (await respondersRes.json()).map((a: any) => ({
-  id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, replyToTrigger: a.reply_to_trigger ?? false, pingUser: a.ping_user ?? false, channelIds: a.channel_ids ?? [], roleIds: a.role_ids ?? [],
+  id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, replyToTrigger: a.reply_to_trigger ?? false, pingUser: a.ping_user ?? false, deletePrevious: a.delete_previous ?? false, channelIds: a.channel_ids ?? [], roleIds: a.role_ids ?? [],
   replyType: a.reply_type ?? 'text', embedColor: a.embed_color, embedTitle: a.embed_title, embedFooter: a.embed_footer, embedTemplate: a.embed_template,
 })) : [];
 const stickyMessages = stickyRes?.ok ? (await stickyRes.json()).map((s: any) => ({ channelId: s.channel_id, content: s.content, embedTemplate: s.embed_template ?? '' })) : [];
@@ -699,7 +712,7 @@ const reactionMessages = reactionMessagesRes?.ok ? (await reactionMessagesRes.js
 const disabledCommands = disabledRes?.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
 const autoThreads = autoThreadsRes?.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
 const aliases = aliasesRes?.ok ? (await aliasesRes.json()).map((a: any) => ({ id: a.id, name: a.name, command: a.command })) : [];
-const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at })) : [];
+const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at, deletePrevious: t.delete_previous ?? false })) : [];
 const starboardRows = starboardRes?.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
 const monkeyboardRows = monkeyboardRes?.ok ? await monkeyboardRes.json() : [];
