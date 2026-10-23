@@ -7,6 +7,7 @@
 <script>
   import { renderMessage, renderV2Message, defaultContext, type PreviewMessage } from '../utils/discordPreview';
   import { normalizeTemplateData } from '../react/embeds/types';
+  import { parseEmbedScript } from '../utils/embedScript';
 
   const guildId = () => location.pathname.match(/\/dash\/guild\/(\d+)/)?.[1] ?? '';
   const translate = (key: string): string => ((window as unknown as { cdt?: (k: string) => string }).cdt ? (window as unknown as { cdt: (k: string) => string }).cdt(key) : key);
@@ -86,7 +87,86 @@
     if (runs.get(slot) === run) await draw(slot, message);
   }
 
+  // ---- Cards of the Automation pages (autoresponders, custom commands, timers, sticky messages) ----
+  // The bot's side of a card says what it answers: its text and/or a saved embed. Here it is drawn as Discord would draw it: formatting,
+  // custom emojis and mentions, the embeds of a saved design with their pictures, and a picture for a link to a GIF or an image.
+  const mediaUrl = /https:\/\/[^\s<>()]+/g;
+  const mediaCache = new Map<string, Promise<string | null>>();
+  function mediaFor(url: string): Promise<string | null> {
+    let pending = mediaCache.get(url);
+    if (!pending) {
+      pending = fetch(`/dash/guild/${guildId()}/link-preview-api?url=${encodeURIComponent(url)}`, { headers: { Accept: 'application/json' } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((row) => (row && typeof row.image === 'string' ? row.image : null))
+        .catch(() => null);
+      mediaCache.set(url, pending);
+    }
+    return pending;
+  }
+
+  /** The inside of a message (its text and embeds) without the header of the bot, which the card already has. */
+  function bodyOf(html: string): string {
+    const holder = document.createElement('template');
+    holder.innerHTML = html;
+    const body = holder.content.querySelector('.dp-body');
+    body?.querySelector('.dp-head')?.remove();
+    body?.querySelector('.dp-empty')?.remove();
+    return body?.innerHTML ?? '';
+  }
+
+  async function paintCard(el: HTMLElement) {
+    const text = (el.dataset.cpText ?? '').trim();
+    const name = el.dataset.cpTemplate ?? '';
+    const asEmbed = el.dataset.cpEmbed === '1';
+    let html = '';
+    let templateHtml = '';
+    if (name) {
+      const message = await loadTemplate(name);
+      if (message) {
+        const v2 = (message as { v2?: { components?: unknown[] } }).v2;
+        templateHtml = bodyOf(v2 ? renderV2Message(v2 as never, context()) : renderMessage(message, context()));
+      }
+    }
+    // A reply written as embed code ({embed}&v{title: ...}) is drawn as the embed it makes.
+    let script: PreviewMessage | null = null;
+    if (text && /\{embed\}/i.test(text)) {
+      try { script = normalizeTemplateData(parseEmbedScript(text).data) as unknown as PreviewMessage; } catch { script = null; }
+      if (script) html += bodyOf(renderMessage(script, context()));
+    }
+    if (text && !script) {
+      // A link to a GIF or a picture is shown as the picture (Discord hides the link when the message is only that link).
+      const links = [...new Set(text.match(mediaUrl) ?? [])].slice(0, 3);
+      const pictures = (await Promise.all(links.map(async (link) => ({ link, image: await mediaFor(link) })))).filter((item) => item.image);
+      let shown = text;
+      if (pictures.length && pictures.every((item) => item.link === text)) shown = '';
+      if (asEmbed) {
+        const color = el.dataset.cpColor || undefined;
+        html += bodyOf(renderMessage({ embeds: [{ title: el.dataset.cpTitle || undefined, description: shown, color, footer: el.dataset.cpFooter ? { text: el.dataset.cpFooter } : undefined }] }, context()));
+      } else if (shown) {
+        html += bodyOf(renderMessage({ content: shown }, context()));
+      }
+      html += pictures.map((item) => `<img class="cp-media" src="${item.image!.replace(/"/g, '&quot;')}" alt="" loading="lazy" referrerpolicy="no-referrer">`).join('');
+    }
+    // The text of the message goes above the embed, as in the channel.
+    html += templateHtml;
+    if (!html) return;
+    const name_ = el.querySelector(':scope > .am-msg-name');
+    [...el.children].forEach((child) => { if (child !== name_) child.remove(); });
+    const box = document.createElement('div');
+    box.className = 'cp-body';
+    box.innerHTML = html;
+    el.appendChild(box);
+  }
+
+  function paintCards() {
+    document.querySelectorAll<HTMLElement>('[data-cp]:not([data-cp-done])').forEach((el) => {
+      el.setAttribute('data-cp-done', '1');
+      void paintCard(el);
+    });
+  }
+
   function scan() {
+    paintCards();
     document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-dp]').forEach(refreshText);
     document.querySelectorAll<HTMLSelectElement>('select[data-dp-template-only]').forEach(refreshTemplateOnly);
   }
@@ -112,7 +192,7 @@
   const own = (node: Node) => node instanceof Element && (node.classList.contains('dp-slot') || node.closest('.dp-slot') !== null);
   const needsScan = (mutation: MutationRecord) =>
     !own(mutation.target)
-    && [...mutation.addedNodes].some((node) => node instanceof Element && !own(node) && (node.matches('[data-dp], select[data-dp-template-only]') || node.querySelector('[data-dp], select[data-dp-template-only]')));
+    && [...mutation.addedNodes].some((node) => node instanceof Element && !own(node) && (node.matches('[data-dp], [data-cp], select[data-dp-template-only]') || node.querySelector('[data-dp], [data-cp], select[data-dp-template-only]')));
   new MutationObserver((mutations) => {
     if (!mutations.some(needsScan)) return;
     window.clearTimeout(timer);
@@ -122,6 +202,10 @@
 </script>
 
 <style is:global>
+  .cp-body { display: grid; gap: 6px; min-width: 0; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+  .cp-body .dp-content { margin: 0; }
+  .cp-body .dp-embed { max-width: 100%; }
+  .cp-media { display: block; max-width: min(100%, 320px); max-height: 220px; border-radius: 8px; object-fit: contain; }
   .dp-slot { margin-top: 2px; grid-column: 1 / -1; }
   .dp-slot[hidden] { display: none; }
   .dp-msg { display: flex; width: 100%; box-sizing: border-box; gap: 12px; background: #313338; border-radius: 8px; padding: 12px 14px; max-width: 520px; text-align: left; }
