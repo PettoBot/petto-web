@@ -9,7 +9,8 @@ const MAX_BYTES = 3000;
 // address) with its one-line description, the address in small letters, and two buttons. It keeps the kinds of parts of the card that
 // Discord accepted before (banner, text, divider, text, buttons with emoji), because Discord drops the whole preview when something in
 // it is not to its liking and does not say what.
-// The banner is the same file as in that card (a plain WebP, not the smaller one with a colour profile): Discord already keeps a copy of it,
+// A page with a banner of its own (a blog post) shows that banner instead (a PNG, see data/pageImages.mjs).
+// The default banner is the same file as in that card (a plain WebP, not the smaller one with a colour profile): Discord already keeps a copy of it,
 // and a new image has to be fetched from the site within the 10 seconds Discord gives the whole preview.
 const buttons: Record<Locale, { invite: string; dashboard: string }> = {
   en: { invite: 'Add to Discord', dashboard: 'Dashboard' },
@@ -30,7 +31,7 @@ const plain = (text: string, link = false) => text.replace(link ? /[\\*_~`|[\]()
  * shared (its title, description and address) in its language. Discord drops the whole preview when the payload is invalid or over
  * 3,000 bytes, so the size is checked while the site builds.
  */
-export function discordEmbedJson(lang: Locale, page: { title: string; description: string; url: string }): string {
+export function discordEmbedJson(lang: Locale, page: { title: string; description: string; url: string; image?: { url: string; alt: string } }): string {
   const text = buttons[lang];
   const url = page.url.startsWith(SITE) ? page.url : SITE;
   const address = url.replace(/^https:\/\//, '').replace(/\/$/, '');
@@ -39,7 +40,7 @@ export function discordEmbedJson(lang: Locale, page: { title: string; descriptio
       type: 17,
       accent_color: ACCENT,
       components: [
-        { type: 12, items: [{ media: { url: `${SITE}/assets/petto-link-banner.webp` }, description: 'Petto, a moderation and community bot for Discord' }] },
+        { type: 12, items: [{ media: { url: page.image?.url ?? `${SITE}/assets/petto-link-banner.webp` }, description: page.image?.alt ?? 'Petto, a moderation and community bot for Discord' }] },
         { type: 10, content: `## [${clip(plain(page.title, true), 80) || 'Petto'}](${url})\n${clip(plain(page.description), 200)}` },
         { type: 14, spacing: 1 },
         { type: 10, content: `-# ${address}` },
