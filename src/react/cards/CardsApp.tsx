@@ -7,7 +7,7 @@ import { drawCard } from './cardCanvas';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
-  RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
+  LEVELUP_HEIGHT, LEVELUP_TEXTS, RANK_DEFAULTS, RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
 } from './cardTypes';
 
 interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string }
@@ -25,7 +25,7 @@ const ERRORS: Record<string, string> = {
 };
 const errorText = (code?: string) => (code && ERRORS[code] ? t(ERRORS[code]) : t("Couldn't do that, try again."));
 
-const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel', rank: 'Side', rankBottom: 'Bottom bar' };
+const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel', rank: 'Side', rankBottom: 'Bottom bar', levelup: 'Level-up' };
 
 async function call(guildId: string, path: string, init?: RequestInit) {
   return fetch(`/dash/guild/${guildId}/cards-api${path}`, init);
@@ -209,6 +209,27 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
   function editBasic(patch: Partial<Basic>) { setDraft((d) => ({ ...d, basic: { ...(d.basic as Basic), ...patch } })); setDirty(true); }
+  // The level-up layout is wider than tall and has texts of its own; a card that still has the rank texts and height gets these,
+  // and going back to the rank layouts gives the rank ones back, so the fields show what is drawn.
+  function pickPreset(preset: string) {
+    setDraft((d) => {
+      const b = { ...(d.basic as Basic), preset };
+      let height = d.height;
+      if (d.kind === 'rank') {
+        if (preset === 'levelup') {
+          if (b.extra === RANK_DEFAULTS.extra) b.extra = LEVELUP_TEXTS.extra;
+          if (b.subtitle === RANK_DEFAULTS.subtitle) b.subtitle = LEVELUP_TEXTS.subtitle;
+          if (height === 320) height = LEVELUP_HEIGHT;
+        } else if ((d.basic as Basic).preset === 'levelup') {
+          if (b.extra === LEVELUP_TEXTS.extra) b.extra = RANK_DEFAULTS.extra;
+          if (b.subtitle === LEVELUP_TEXTS.subtitle) b.subtitle = RANK_DEFAULTS.subtitle;
+          if (height === LEVELUP_HEIGHT) height = 320;
+        }
+      }
+      return { ...d, height, basic: b };
+    });
+    setDirty(true);
+  }
   function editBackground(patch: Partial<Background>) { setDraft((d) => ({ ...d, background: { ...d.background, ...patch } })); setDirty(true); }
   function editLayer(id: string, patch: Partial<Layer>) {
     setDraft((d) => ({ ...d, layers: d.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)) }));
@@ -487,7 +508,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                   <h3>{t('Layout and text')}</h3>
                   <div className="crd-presets">
                     {presetList.map((p) => (
-                      <button key={p} type="button" className={`crd-preset${basic.preset === p ? ' active' : ''}`} onClick={() => editBasic({ preset: p })}>{t(PRESET_LABELS[p] ?? p)}</button>
+                      <button key={p} type="button" className={`crd-preset${basic.preset === p ? ' active' : ''}`} onClick={() => pickPreset(p)}>{t(PRESET_LABELS[p] ?? p)}</button>
                     ))}
                   </div>
                   <div className="ebr-field">
@@ -504,6 +525,14 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                     <label className="ebr-check"><input type="checkbox" checked={basic.showExtra !== false} onChange={(e) => editBasic({ showExtra: e.target.checked })} />{t('Rank text')}</label>
                     <input type="text" data-ac="vars" maxLength={40} value={basic.extra ?? ''} onChange={(e) => editBasic({ extra: e.target.value })} />
                   </>)}
+                  {isRank && basic.preset === 'levelup' && (
+                    <div className="crd-group">
+                      <label className="ebr-check"><input type="checkbox" checked={basic.showDecoration !== false} onChange={(e) => editBasic({ showDecoration: e.target.checked })} />{t('Avatar decoration')}</label>
+                      <label className="ebr-check"><input type="checkbox" checked={basic.showNameplate === true} onChange={(e) => editBasic({ showNameplate: e.target.checked })} />{t('Nameplate')}</label>
+                      <label className="ebr-check"><input type="checkbox" checked={basic.showTag !== false} onChange={(e) => editBasic({ showTag: e.target.checked })} />{t('Server tag')}</label>
+                      <p className="ebr-tools-note">{t('Each one only shows when the member has it on Discord. The preview uses yours.')}</p>
+                    </div>
+                  )}
                   <div className="ebr-row-pair">
                     <Field label={t('Text color')}><Color value={basic.textColor} onChange={(textColor) => editBasic({ textColor })} /></Field>
                     <Field label={t('Accent color')}><Color value={basic.accent} onChange={(accent) => editBasic({ accent })} /></Field>

@@ -29,6 +29,8 @@ export interface Basic {
   avatarShape: 'circle' | 'rounded' | 'square'; showAvatar: boolean; showTitle: boolean; showName: boolean; showSubtitle: boolean;
   /** Only in rank cards: the third line, such as the rank. */
   extra?: string; showExtra?: boolean;
+  /** Only in the level-up layout: what Discord shows around the person. Each one is drawn only when the person has it. */
+  showDecoration?: boolean; showNameplate?: boolean; showTag?: boolean;
 }
 export interface Background {
   color: string;
@@ -59,7 +61,12 @@ export const RANK_DEFAULTS: Basic = {
   preset: 'rank', title: 'LEVEL {level}', name: '{user.display_name}', subtitle: '{level_xp_current} / {level_xp_needed} XP', extra: 'RANK #{level_rank}',
   textColor: '#ffffff', accent: '#ffb199', font: 'Poppins', avatarShape: 'circle',
   showAvatar: true, showTitle: true, showName: true, showSubtitle: true, showExtra: true,
+  showDecoration: true, showNameplate: false, showTag: true,
 };
+
+/** The texts and the height the level-up layout starts with; the bot gives a card that still has the rank texts these. */
+export const LEVELUP_TEXTS = { extra: '#{level_rank}', subtitle: 'You are now in Top {level_top_percent}%' };
+export const LEVELUP_HEIGHT = 240;
 
 export function newCard(kind: Kind = 'welcome'): CardData {
   if (kind === 'rank') {
@@ -108,4 +115,5 @@ export const VARIABLE_CHOICES = [
 /** The variables of a rank card, which the bot fills in with the member's progress. */
 export const RANK_VARIABLE_CHOICES = [
   '{user.display_name}', '{level}', '{level_next}', '{level_rank}', '{level_rank_total}', '{level_xp}', '{level_xp_current}', '{level_xp_needed}', '{level_xp_to_next}', '{level_progress}', '{level_streak}', '{level_messages}',
+  '{level_top_percent}', '{level_previous}',
 ];
