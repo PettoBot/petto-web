@@ -1003,7 +1003,7 @@ export const ui = {
         ['If you take the URL away', ', the buttons go back to the gateway. The bot can handle both, so it is safe to switch.'],
       ],
       h2_7: 'Credits',
-      p7: 'This was found by Liam, who tried every step on real servers, sent the screenshots and noticed what the other application was doing. Santi, his research assistant, searched, wrote the code and wrote this post.',
+      p7: 'This was found by Liam, who tried every step on real servers, sent the screenshots and noticed what the other application was doing. Claude, his research assistant, helped with the research, the tests and the corrections.',
     },
     blogEmbedBuilder: {
       title: 'Embed Builder is now part of Petto',
@@ -2387,7 +2387,7 @@ export const ui = {
         ['Si quitas la URL', ', los botones vuelven al gateway. El bot puede atender las dos formas, así que cambiar es seguro.'],
       ],
       h2_7: 'Créditos',
-      p7: 'Esto lo encontró Liam, que probó cada paso en servidores reales, mandó las capturas y se dio cuenta de lo que hacía la otra aplicación. Santi, su ayudante de investigación, buscó, escribió el código y escribió este post.',
+      p7: 'Esto lo encontró Liam, que probó cada paso en servidores reales, mandó las capturas y se dio cuenta de lo que hacía la otra aplicación. Claude, su ayudante de investigación, ayudó con la investigación, las pruebas y las correcciones.',
     },
     blogEmbedBuilder: {
       title: 'Embed Builder ahora es parte de Petto',
@@ -3771,7 +3771,7 @@ export const ui = {
         ['Se você tirar a URL', ', os botões voltam para o gateway. O bot pode atender os dois jeitos, então trocar é seguro.'],
       ],
       h2_7: 'Créditos',
-      p7: 'Isto foi descoberto pelo Liam, que testou cada passo em servidores reais, mandou as capturas e percebeu o que o outro aplicativo estava fazendo. O Santi, seu assistente de pesquisa, pesquisou, escreveu o código e escreveu este post.',
+      p7: 'Isto foi descoberto pelo Liam, que testou cada passo em servidores reais, mandou as capturas e percebeu o que o outro aplicativo estava fazendo. O Claude, seu assistente de pesquisa, ajudou com a pesquisa, os testes e as correções.',
     },
     blogEmbedBuilder: {
       title: 'O Embed Builder agora faz parte do Petto',
