@@ -106,6 +106,7 @@ export const commandText: Record<string, CommandText> = {
   summary: ['Activity of this server: messages, voice, joins, leaves, invites and sanctions, with the busiest hour.', 'Actividad del servidor: mensajes, voz, entradas, salidas, invitaciones y sanciones, con la hora más activa.', 'Atividade do servidor: mensagens, voz, entradas, saídas, convites e sanções, com a hora mais ativa.'],
   uptime: ['Show how long Petto has been running.', 'Muestra cuánto tiempo lleva Petto en línea.', 'Mostra há quanto tempo o Petto está no ar.'],
   userinfo: ['Show information about a member.', 'Muestra información sobre un miembro.', 'Mostra informações sobre um membro.'],
+  usercosmetics: ['Show the avatar decoration, nameplate and server tag of a member.', 'Muestra la decoración de avatar, la placa de nombre y la etiqueta de servidor de un miembro.', 'Mostra a decoração de avatar, a placa de nome e a tag de servidor de um membro.'],
   version: ['Browse Petto releases and published changes.', 'Explora las versiones de Petto y los cambios publicados.', 'Explora as versões do Petto e as mudanças publicadas.'],
   calc: ['Calculate a simple arithmetic expression.', 'Calcula una expresión aritmética simple.', 'Calcula uma expressão aritmética simples.'],
   time: ['Show the current time in a time zone.', 'Muestra la hora actual en una zona horaria.', 'Mostra a hora atual em um fuso horário.'],
