@@ -1,8 +1,12 @@
 import type { Locale } from '../i18n/ui';
 
 const SITE = 'https://petto.sbs';
-// The peach of the site.
-const ACCENT = 0xf0a88f;
+// The icons of the two buttons are from Petto's colorless set (the server's own emojis), and the card has no accent color, so it is as
+// plain as the other cards in the chat.
+const EMOJI = {
+  invite: { id: '1562517637668540456', name: 'pe_ticket_add' },
+  dashboard: { id: '1533209778438934609', name: 'pe_config' },
+};
 const MAX_BYTES = 3000;
 
 // The card is kept small and plain, and it is about the page that was shared: the banner, the title of that page (a link to its own
@@ -18,7 +22,7 @@ const buttons: Record<Locale, { invite: string; dashboard: string }> = {
   'pt-BR': { invite: 'Adicionar ao Discord', dashboard: 'Dashboard' },
 };
 
-const linkButton = (label: string, emoji: string, url: string) => ({ type: 2, style: 5, label, emoji: { name: emoji }, url });
+const linkButton = (label: string, emoji: { id: string; name: string }, url: string) => ({ type: 2, style: 5, label, emoji, url });
 const clip = (text: string, max: number) => {
   const line = text.replace(/\s+/g, ' ').trim();
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
@@ -38,13 +42,12 @@ export function discordEmbedJson(lang: Locale, page: { title: string; descriptio
   const payload = {
     component: {
       type: 17,
-      accent_color: ACCENT,
       components: [
         { type: 12, items: [{ media: { url: page.image?.url ?? `${SITE}/assets/petto-link-banner.webp` }, description: page.image?.alt ?? 'Petto, a moderation and community bot for Discord' }] },
         { type: 10, content: `## [${clip(plain(page.title, true), 80) || 'Petto'}](${url})\n${clip(plain(page.description), 200)}` },
         { type: 14, spacing: 1 },
         { type: 10, content: `-# ${address}` },
-        { type: 1, components: [linkButton(text.invite, '🚀', `${SITE}/invite`), linkButton(text.dashboard, '🧩', `${SITE}/dash`)] },
+        { type: 1, components: [linkButton(text.invite, EMOJI.invite, `${SITE}/invite`), linkButton(text.dashboard, EMOJI.dashboard, `${SITE}/dash`)] },
       ],
     },
   };
