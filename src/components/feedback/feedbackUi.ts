@@ -1,5 +1,9 @@
 // Shared bits of the feedback board pages: how a post is shown (kind, state, time) and the small styles every page uses.
 import type { Post } from '../../utils/feedback';
+import { prefixFor } from '../../utils/dashPrefix.mjs';
+
+/** The address of the board in a language: /feedback, /es/feedback or /pt-br/feedback. Its pages link to each other with it. */
+export const feedbackBase = (lang: string) => `${prefixFor(lang)}/feedback`;
 
 export const KIND_ICON: Record<string, string> = { idea: 'ph:lightbulb-fill', feedback: 'ph:chat-circle-dots-fill', bug: 'ph:bug-fill' };
 export const KIND_LABEL: Record<string, string> = { idea: 'Idea', feedback: 'Feedback', bug: 'Bug' };
