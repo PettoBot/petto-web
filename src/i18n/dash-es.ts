@@ -2117,6 +2117,7 @@ export const dashEs: Record<string, string> = {
   "Tell us what Petto needs": "Cuéntanos qué necesita Petto",
   "Ideas, feedback and bugs. Write yours, vote on the ones you want, and see what the team plans.": "Ideas, comentarios y errores. Escribe los tuyos, vota los que quieras y mira qué planea el equipo.",
   "The board is not available right now. Try again in a moment.": "El tablero no está disponible ahora. Inténtalo en un momento.",
+  "Clear all": "Quitar todos",
   "Search posts": "Buscar publicaciones",
   "Sort": "Ordenar",
   "Top": "Mejores",

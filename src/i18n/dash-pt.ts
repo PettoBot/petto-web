@@ -2117,6 +2117,7 @@ export const dashPt: Record<string, string> = {
   "Tell us what Petto needs": "Conte o que o Petto precisa",
   "Ideas, feedback and bugs. Write yours, vote on the ones you want, and see what the team plans.": "Ideias, comentários e bugs. Escreva os seus, vote nos que quiser e veja o que a equipe planeja.",
   "The board is not available right now. Try again in a moment.": "O quadro não está disponível agora. Tente em instantes.",
+  "Clear all": "Limpar tudo",
   "Search posts": "Buscar publicações",
   "Sort": "Ordenar",
   "Top": "Melhores",

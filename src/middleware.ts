@@ -165,6 +165,15 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
   // send it back to /es/dash for ever (the language is already set on `locals` by then).
   const to = (locals as Record<string, unknown>).dashLang ? null : dashLangRedirect({ method: request.method, pathname: url.pathname, search: url.search, headers: request.headers, lang: getDashLang({ cookies, request }) });
   if (to) return new Response(null, { status: 303, headers: { location: to, 'cache-control': 'no-store', vary: 'Cookie, Accept-Language' } });
+  // The feedback board has the same prefixes: /es/feedback and /pt-br/feedback pick the language and render the single /feedback route.
+  // Its own links already carry the prefix (feedbackBase), so nothing is rewritten in the page.
+  const board = url.pathname.match(/^\/(es|pt-br)(\/feedback(?:\/.*)?)$/i);
+  if (board && !/^\/feedback\/login(?:[/?#]|$)/.test(board[2])) {
+    const { lang } = prefixes[board[1].toLowerCase()];
+    cookies.set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax', secure: url.protocol === 'https:' });
+    (locals as Record<string, unknown>).dashLang = lang;
+    return rewrite(`${board[2]}${url.search}`);
+  }
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
   const { lang, path } = prefixes[match[1].toLowerCase()];

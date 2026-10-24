@@ -3,7 +3,7 @@
 
 /** @typedef {'en' | 'es' | 'pt-BR'} DashLang */
 
-/** The prefix of a language: '' for English. @param {string} lang @returns {string} */
+/** The prefix of a language: '' for English. Also used by the feedback board's own links. @param {string} lang @returns {string} */
 export function prefixFor(lang) {
   return lang === 'es' ? '/es' : lang === 'pt-BR' ? '/pt-br' : '';
 }
@@ -15,7 +15,9 @@ export function withDashPrefix(path, lang) {
 }
 
 // Routes that must answer where they are asked: the language switch, signing in and out.
-const NEVER = /^\/dash\/(?:lang|callback|logout)(?:[/?#]|$)/;
+const NEVER = /^\/(?:dash\/(?:lang|callback|logout)|feedback\/login)(?:[/?#]|$)/;
+// The pages that carry the language in their address: the dashboard and the feedback board (/es/feedback, /pt-br/feedback).
+const LANGUAGE_PAGES = /^\/(?:dash|feedback)(?:\/|$)/;
 
 /**
  * Where a request for an address WITHOUT prefix should go so the address says the language the page will be shown in, or null to answer
@@ -26,7 +28,7 @@ const NEVER = /^\/dash\/(?:lang|callback|logout)(?:[/?#]|$)/;
  */
 export function dashLangRedirect(req) {
   const { method, pathname, search, headers, lang } = req;
-  if (!/^\/dash(?:\/|$)/.test(pathname)) return null;
+  if (!LANGUAGE_PAGES.test(pathname)) return null;
   if (NEVER.test(pathname)) return null;
   if (!['GET', 'HEAD'].includes(method.toUpperCase())) return null;
   const prefix = prefixFor(lang);

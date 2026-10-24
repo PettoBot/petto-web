@@ -25,6 +25,12 @@ const cases = [
   ['old browser without sec-fetch, JSON', { method: 'GET', pathname: '/dash/guild/1/version', search: '', headers: h({ accept: 'application/json' }), lang: 'es' }, null],
   ['not a dashboard path', { method: 'GET', pathname: '/premium', search: '', headers: h(nav), lang: 'es' }, null],
   ['dashboard-like but not it', { method: 'GET', pathname: '/dashboard', search: '', headers: h(nav), lang: 'es' }, null],
+  ['feedback board in Spanish', { method: 'GET', pathname: '/feedback', search: '?kind=idea', headers: h(nav), lang: 'es' }, '/es/feedback?kind=idea'],
+  ['a post of the board in Portuguese', { method: 'GET', pathname: '/feedback/12', search: '', headers: h(nav), lang: 'pt-BR' }, '/pt-br/feedback/12'],
+  ['feedback board in English', { method: 'GET', pathname: '/feedback', search: '', headers: h(nav), lang: 'en' }, null],
+  ['feedback sign-in is answered where it is asked', { method: 'GET', pathname: '/feedback/login', search: '?next=/feedback', headers: h(nav), lang: 'es' }, null],
+  ['feedback list read by the board script', { method: 'GET', pathname: '/feedback', search: '?kind=bug', headers: h({ accept: 'text/html', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }), lang: 'es' }, null],
+  ['the feedback API is not a page', { method: 'POST', pathname: '/api/feedback', search: '', headers: h(nav), lang: 'es' }, null],
   ['already prefixed is not touched here', { method: 'GET', pathname: '/es/dash/manage', search: '', headers: h(nav), lang: 'es' }, null],
 ];
 let failed = 0;
