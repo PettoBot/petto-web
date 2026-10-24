@@ -161,6 +161,7 @@ export const ui = {
             "Dashboard: Level rewards and Multipliers show the saved list right away and in your language, and a form that could not start no longer saves an empty list over what you had",
             "Dashboard: the rank card preview tells you when it could not be drawn and has a Try again button, and the embed preview shows your picture",
             "Dashboard: Image cards use Petto's own color picker instead of the phone's dialog, and the preview redraws while you edit, before saving, and says when it could not be drawn",
+            "Dashboard: Sticky messages and repeating timers can now be moved to another channel from their Edit card, and the Vanity and Server Tag thank-yous and log entries no longer show up in the Embeds list",
           ],
         },
         {
@@ -1494,6 +1495,7 @@ export const ui = {
             "Dashboard: Recompensas por nivel y Multiplicadores muestran enseguida la lista guardada y en tu idioma, y un formulario que no pudo arrancar ya no guarda una lista vacía encima de la que tenías",
             "Dashboard: la vista previa de la tarjeta de rank avisa cuando no se pudo dibujar y tiene un botón para reintentar, y la vista previa del embed muestra tu foto",
             "Dashboard: las tarjetas de imagen usan el selector de color de Petto en lugar del cuadro del teléfono, y la vista previa se redibuja mientras editas, antes de guardar, y avisa si no se pudo dibujar",
+            "Dashboard: los mensajes fijos y los timers que se repiten ahora se pueden pasar a otro canal desde su tarjeta de Editar, y los agradecimientos y logs de Vanity y Server Tag ya no salen en la lista de Embeds",
           ],
         },
         {
@@ -2828,6 +2830,7 @@ export const ui = {
             "Dashboard: Recompensas por nível e Multiplicadores mostram logo a lista salva e no seu idioma, e um formulário que não conseguiu iniciar não salva mais uma lista vazia por cima da que você tinha",
             "Dashboard: a pré-visualização do cartão de rank avisa quando não foi possível desenhá-la e tem um botão para tentar de novo, e a pré-visualização do embed mostra a sua foto",
             "Dashboard: os cartões de imagem usam o seletor de cor do Petto no lugar da caixa do celular, e a pré-visualização é redesenhada enquanto você edita, antes de salvar, e avisa se não foi possível desenhá-la",
+            "Dashboard: as mensagens fixas e os timers que se repetem agora podem ser movidos para outro canal pelo cartão de Editar, e os agradecimentos e logs do Vanity e do Server Tag não aparecem mais na lista de Embeds",
           ],
         },
         {
