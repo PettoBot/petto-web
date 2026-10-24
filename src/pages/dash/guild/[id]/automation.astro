@@ -242,12 +242,17 @@ if (Astro.request.method === 'POST') {
     const template = String(form.get('embed_template') ?? '').trim().slice(0, 100);
     // A sticky is a text, a saved embed, or a saved embed with a text to fall back on.
     if (channelId && (content || template)) {
-      await fetch(`${apiUrl}/rest/v1/sticky_messages?on_conflict=guild_id,channel_id`, {
+      const res = await fetch(`${apiUrl}/rest/v1/sticky_messages?on_conflict=guild_id,channel_id`, {
         method: 'POST',
         headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ guild_id: id, channel_id: channelId, content, embed_template: template || null }),
       });
-      saved = true;
+      // Editing can move it to another channel (one sticky per channel): the one left behind is removed once the new one is saved.
+      const oldChannelId = String(form.get('old_channel_id') ?? '');
+      if (res.ok && /^\d{15,25}$/.test(oldChannelId) && oldChannelId !== channelId) {
+        await fetch(`${apiUrl}/rest/v1/sticky_messages?channel_id=eq.${encodeURIComponent(oldChannelId)}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
+      }
+      saved = res.ok;
     }
   } else if (action === 'delete_sticky') {
     await fetch(`${apiUrl}/rest/v1/sticky_messages?channel_id=eq.${encodeURIComponent(String(form.get('channel_id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
@@ -567,10 +572,13 @@ if (Astro.request.method === 'POST') {
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     if (message || embedTemplate) {
       const patchUrl = `${apiUrl}/rest/v1/auto_messages?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`;
-      const patch = { interval_ms: intervalMs, message, next_run_at: new Date(Date.now() + intervalMs).toISOString() };
+      // The channel can be changed here: the message of the time before lives in the old one, so it is forgotten.
+      const channelId = String(form.get('channel_id') ?? '');
+      const moved = /^\d{15,25}$/.test(channelId) && channelId !== String(form.get('old_channel_id') ?? '');
+      const patch = { interval_ms: intervalMs, message, next_run_at: new Date(Date.now() + intervalMs).toISOString(), ...(moved ? { channel_id: channelId } : {}) };
       const send = (body: object) => fetch(patchUrl, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
       // delete_previous and embed_template arrive with a database update: before it, the rest is still saved.
-      let res = await send({ ...patch, delete_previous: deletePrevious, embed_template: embedTemplate });
+      let res = await send({ ...patch, delete_previous: deletePrevious, embed_template: embedTemplate, ...(moved ? { last_message_id: null } : {}) });
       if (!res.ok) res = await send(patch);
       saved = res.ok;
     }
