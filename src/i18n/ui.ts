@@ -165,6 +165,7 @@ export const ui = {
             "Voice leveling: nobody else is needed any more to earn voice XP (people needed in voice starts at 1 instead of 2, and servers still on the old 2 are moved to 1 once), the Voice page says what is needed to earn it, and bots and deafened members no longer count as company",
             "Rules page redesigned as cards by topic (Chat, Voice, Daily bonus, Multipliers, Who earns XP, Members who leave), with ready-made profiles (Relaxed, Balanced, Strict) that fill the Chat and Voice rules. New rules: a daily limit on the XP earned from messages, and a share of the voice XP earned while alone",
             "Feedback board redesigned: a compact list with the votes on the left, a search bar with a folding panel of filters (with the active ones shown as pills you can remove), and a New post button that fits a phone. In Spanish and Portuguese the address now says so (petto.sbs/es/feedback, /pt-br/feedback), and a link to the board takes you to your language",
+            "Feedback board: \"Top\" no longer lifts a post only because it is new: the author's own like does not count, a post nobody else has voted on is not in it, and on a tie the older post goes first. The posts in the Petto server get Like and Dislike buttons instead of reactions, so the votes no longer get out of step with the website",
           ],
         },
         {
@@ -1502,6 +1503,7 @@ export const ui = {
             "Niveles de voz: ya no hace falta otra persona para ganar XP de voz (las personas necesarias en voz empiezan en 1 en vez de 2, y los servidores que seguían con el 2 viejo pasan a 1 una vez), la página de Voz dice qué se necesita para ganarlo, y los bots y quienes están ensordecidos ya no cuentan como compañía",
             "Página de Reglas rediseñada en tarjetas por tema (Chat, Voz, Bono diario, Multiplicadores, Quién gana XP, Miembros que se van), con perfiles listos (Relajado, Equilibrado, Estricto) que llenan las reglas de Chat y Voz. Reglas nuevas: un límite diario de XP por mensajes, y un porcentaje del XP de voz que se gana estando solo",
             "Tablero de feedback rediseñado: una lista compacta con los votos a la izquierda, una barra de búsqueda con un panel de filtros plegable (con los activos como etiquetas que puedes quitar) y un botón de Nueva publicación que cabe en el celular. En español y portugués la dirección ahora lo dice (petto.sbs/es/feedback, /pt-br/feedback), y un enlace al tablero te lleva a tu idioma",
+            "Tablero de feedback: \"Mejores\" ya no sube una publicación solo por ser nueva: el like del propio autor no cuenta, una publicación que nadie más ha votado no sale, y en un empate va primero la más antigua. Las publicaciones en el servidor de Petto tienen botones de Like y Dislike en lugar de reacciones, así los votos ya no se desajustan con la web",
           ],
         },
         {
@@ -2840,6 +2842,7 @@ export const ui = {
             "Níveis de voz: não é mais preciso outra pessoa para ganhar XP de voz (as pessoas necessárias em voz começam em 1 em vez de 2, e os servidores que ainda tinham o 2 antigo passam para 1 uma vez), a página de Voz diz o que é preciso para ganhá-lo, e bots e quem está ensurdecido não contam mais como companhia",
             "Página de Regras redesenhada em cartões por tema (Chat, Voz, Bônus diário, Multiplicadores, Quem ganha XP, Membros que saem), com perfis prontos (Relaxado, Equilibrado, Rígido) que preenchem as regras de Chat e Voz. Regras novas: um limite diário de XP com mensagens, e uma porcentagem do XP de voz ganho estando sozinho",
             "Quadro de feedback redesenhado: uma lista compacta com os votos à esquerda, uma barra de busca com um painel de filtros que dobra (com os ativos como etiquetas que você pode remover) e um botão de Nova publicação que cabe no celular. Em espanhol e português o endereço agora diz isso (petto.sbs/es/feedback, /pt-br/feedback), e um link para o quadro leva você ao seu idioma",
+            "Quadro de feedback: \"Melhores\" não sobe mais uma publicação só por ser nova: o like do próprio autor não conta, uma publicação que ninguém mais votou não aparece, e em caso de empate vai primeiro a mais antiga. As publicações no servidor do Petto têm botões de Like e Dislike no lugar de reações, assim os votos não ficam mais fora de sincronia com o site",
           ],
         },
         {

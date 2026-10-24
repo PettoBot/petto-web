@@ -14,8 +14,9 @@ function same(a: string, b: string): boolean {
 }
 
 /**
- * A like or dislike reaction in the Petto server, sent by the feedback bot. It counts as the vote of that person, the same one
- * they would give on the website. `value` 0 takes the vote back (the reaction was removed).
+ * A like or dislike button pressed in the Petto server, sent by the feedback bot. It counts as the vote of that person, the same one
+ * they would give on the website. Pressing the same button again takes the vote back, and the other button changes it. `value` 0 takes
+ * the vote back (older versions of the bot sent it when a reaction was removed).
  */
 export const POST: APIRoute = async (context) => {
   const secret = getEnv(context, 'FEEDBACK_BOT_SECRET');
@@ -29,12 +30,15 @@ export const POST: APIRoute = async (context) => {
   if (tooMany(userId, 'vote')) return json({ ok: false, error: 'rate' }, 429);
   const post = await getPost(context, postId);
   if (!post) return json({ ok: false, error: 'not_found' }, 404);
+  const before = await currentVote(context, postId, userId);
+  let vote = value;
+  if (body?.toggle === true && value === before) vote = 0;
   // Taking a reaction back only removes the vote if it is the same kind (taking back a like does not erase a dislike).
-  if (value === 0) {
+  if (value === 0 && body?.toggle !== true) {
     const was = Number(body?.was);
-    if (![1, -1].includes(was) || (await currentVote(context, postId, userId)) !== was) return json({ ok: true, up: post.votes_up, down: post.votes_down });
+    if (![1, -1].includes(was) || before !== was) return json({ ok: true, up: post.votes_up, down: post.votes_down, vote: before, post });
   }
-  if (!(await setVote(context, postId, userId, value))) return json({ ok: false, error: 'unavailable' }, 503);
+  if (!(await setVote(context, postId, userId, vote))) return json({ ok: false, error: 'unavailable' }, 503);
   const fresh = (await getPost(context, postId)) ?? post;
-  return json({ ok: true, up: fresh.votes_up, down: fresh.votes_down, post: fresh });
+  return json({ ok: true, up: fresh.votes_up, down: fresh.votes_down, vote, post: fresh });
 };
