@@ -536,11 +536,10 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                         <label className="ebr-check"><input type="checkbox" checked={basic.animateDecoration === true} onChange={(e) => editBasic({ animateDecoration: e.target.checked })} />{t('Moving decoration')}{!premium ? ' · Premium' : ''}</label>
                       )}
                       <label className="ebr-check"><input type="checkbox" checked={basic.showNameplate === true} onChange={(e) => editBasic({ showNameplate: e.target.checked })} />{t('Nameplate')}</label>
-                      <label className="ebr-check"><input type="checkbox" checked={basic.showTag !== false} onChange={(e) => editBasic({ showTag: e.target.checked })} />{t('Server tag')}</label>
                       <p className="ebr-tools-note">{t('Each one only shows when the member has it on Discord. The preview uses yours. A moving decoration is sent as an animated picture and the preview shows it still.')}</p>
                       {look && (
                         <p className="ebr-tools-note">
-                          {t('In the preview you have')}: {t('Avatar decoration')} {look.includes('decoration') ? '✓' : '✗'}{look.includes('moving') ? ` (${t('moving')})` : ''} · {t('Nameplate')} {look.includes('nameplate') ? '✓' : '✗'} · {t('Server tag')} {look.includes('tag') ? '✓' : '✗'}
+                          {t('In the preview you have')}: {t('Avatar decoration')} {look.includes('decoration') ? '✓' : '✗'}{look.includes('moving') ? ` (${t('moving')})` : ''} · {t('Nameplate')} {look.includes('nameplate') ? '✓' : '✗'}
                         </p>
                       )}
                     </div>

@@ -30,7 +30,7 @@ export interface Basic {
   /** Only in rank cards: the third line, such as the rank. */
   extra?: string; showExtra?: boolean;
   /** Only in the level-up layout: what Discord shows around the person. Each one is drawn only when the person has it. */
-  showDecoration?: boolean; showNameplate?: boolean; showTag?: boolean; animateDecoration?: boolean;
+  showDecoration?: boolean; showNameplate?: boolean; animateDecoration?: boolean;
 }
 export interface Background {
   color: string;
@@ -61,7 +61,7 @@ export const RANK_DEFAULTS: Basic = {
   preset: 'rank', title: 'LEVEL {level}', name: '{user.display_name}', subtitle: '{level_xp_current} / {level_xp_needed} XP', extra: 'RANK #{level_rank}',
   textColor: '#ffffff', accent: '#ffb199', font: 'Poppins', avatarShape: 'circle',
   showAvatar: true, showTitle: true, showName: true, showSubtitle: true, showExtra: true,
-  showDecoration: true, showNameplate: false, showTag: true, animateDecoration: false,
+  showDecoration: true, showNameplate: false, animateDecoration: false,
 };
 
 /** The texts and the height the level-up layout starts with; the bot gives a card that still has the rank texts these. */
