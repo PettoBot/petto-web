@@ -528,9 +528,12 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                   {isRank && basic.preset === 'levelup' && (
                     <div className="crd-group">
                       <label className="ebr-check"><input type="checkbox" checked={basic.showDecoration !== false} onChange={(e) => editBasic({ showDecoration: e.target.checked })} />{t('Avatar decoration')}</label>
+                      {basic.showDecoration !== false && (
+                        <label className="ebr-check"><input type="checkbox" checked={basic.animateDecoration === true} onChange={(e) => editBasic({ animateDecoration: e.target.checked })} />{t('Moving decoration')}{!premium ? ' · Premium' : ''}</label>
+                      )}
                       <label className="ebr-check"><input type="checkbox" checked={basic.showNameplate === true} onChange={(e) => editBasic({ showNameplate: e.target.checked })} />{t('Nameplate')}</label>
                       <label className="ebr-check"><input type="checkbox" checked={basic.showTag !== false} onChange={(e) => editBasic({ showTag: e.target.checked })} />{t('Server tag')}</label>
-                      <p className="ebr-tools-note">{t('Each one only shows when the member has it on Discord. The preview uses yours.')}</p>
+                      <p className="ebr-tools-note">{t('Each one only shows when the member has it on Discord. The preview uses yours. A moving decoration is sent as an animated picture and the preview shows it still.')}</p>
                     </div>
                   )}
                   <div className="ebr-row-pair">

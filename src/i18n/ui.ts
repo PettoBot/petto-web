@@ -158,7 +158,7 @@ export const ui = {
           name: 'Mochi',
           date: "October 23, 2026",
           items: [
-            "Level-up card: a new look for the rank and level-up image card (Level-up layout) with the avatar, the name, a #rank chip, \"You are now in Top X%\" and a hexagon from the previous level to the new one. It can show the member's avatar decoration, nameplate and server tag, each one with its own switch in the card editor; new variables `{level_top_percent}`, `{user.avatar_decoration}`, `{user.nameplate}`, `{user.server_tag}` and `{user.server_tag_badge}`",
+            "Level-up card: a new look for the rank and level-up image card (Level-up layout) with the avatar, the name, a #rank chip, \"You are now in Top X%\" and a hexagon from the previous level to the new one. It can show the member's avatar decoration, nameplate and server tag, each one with its own switch in the card editor (Premium servers can also make an animated decoration move); new variables `{level_top_percent}`, `{user.avatar_decoration}`, `{user.nameplate}`, `{user.server_tag}` and `{user.server_tag_badge}`",
             "Dashboard: the Embeds page loaded forever (a grey shape) when you came to it from another page of the dashboard; it opens now",
             "Dashboard: Level rewards and Multipliers show the saved list right away and in your language, and a form that could not start no longer saves an empty list over what you had",
             "Dashboard: the rank card preview tells you when it could not be drawn and has a Try again button, and the embed preview shows your picture",
@@ -1545,7 +1545,7 @@ export const ui = {
           name: 'Mochi',
           date: "23 de octubre de 2026",
           items: [
-            "Tarjeta de subida de nivel: un diseño nuevo para la tarjeta de imagen de rango y de subida de nivel (diseño Subida de nivel) con el avatar, el nombre, una etiqueta #puesto, \"Ahora estás en el Top X%\" y un hexágono del nivel anterior al nuevo. Puede mostrar la decoración del avatar, la placa de nombre y la etiqueta de servidor del miembro, cada una con su propio interruptor en el editor de tarjetas; variables nuevas `{level_top_percent}`, `{user.avatar_decoration}`, `{user.nameplate}`, `{user.server_tag}` y `{user.server_tag_badge}`",
+            "Tarjeta de subida de nivel: un diseño nuevo para la tarjeta de imagen de rango y de subida de nivel (diseño Subida de nivel) con el avatar, el nombre, una etiqueta #puesto, \"Ahora estás en el Top X%\" y un hexágono del nivel anterior al nuevo. Puede mostrar la decoración del avatar, la placa de nombre y la etiqueta de servidor del miembro, cada una con su propio interruptor en el editor de tarjetas (los servidores Premium también pueden hacer que una decoración animada se mueva); variables nuevas `{level_top_percent}`, `{user.avatar_decoration}`, `{user.nameplate}`, `{user.server_tag}` y `{user.server_tag_badge}`",
             "Dashboard: la página de Embeds se quedaba cargando (una forma gris) al llegar desde otra página del dashboard; ahora abre bien",
             "Dashboard: Recompensas por nivel y Multiplicadores muestran enseguida la lista guardada y en tu idioma, y un formulario que no pudo arrancar ya no guarda una lista vacía encima de la que tenías",
             "Dashboard: la vista previa de la tarjeta de rank avisa cuando no se pudo dibujar y tiene un botón para reintentar, y la vista previa del embed muestra tu foto",
@@ -2933,7 +2933,7 @@ export const ui = {
           name: 'Mochi',
           date: "23 de outubro de 2026",
           items: [
-            "Cartão de subida de nível: um visual novo para o cartão de imagem de rank e de subida de nível (layout Subida de nível) com o avatar, o nome, uma etiqueta #posição, \"Agora você está no Top X%\" e um hexágono do nível anterior para o novo. Pode mostrar a decoração do avatar, a placa de nome e a tag de servidor do membro, cada uma com seu próprio interruptor no editor de cartões; variáveis novas `{level_top_percent}`, `{user.avatar_decoration}`, `{user.nameplate}`, `{user.server_tag}` e `{user.server_tag_badge}`",
+            "Cartão de subida de nível: um visual novo para o cartão de imagem de rank e de subida de nível (layout Subida de nível) com o avatar, o nome, uma etiqueta #posição, \"Agora você está no Top X%\" e um hexágono do nível anterior para o novo. Pode mostrar a decoração do avatar, a placa de nome e a tag de servidor do membro, cada uma com seu próprio interruptor no editor de cartões (servidores Premium também podem fazer uma decoração animada se mover); variáveis novas `{level_top_percent}`, `{user.avatar_decoration}`, `{user.nameplate}`, `{user.server_tag}` e `{user.server_tag_badge}`",
             "Dashboard: a página de Embeds ficava carregando (uma forma cinza) ao chegar de outra página do dashboard; agora abre normalmente",
             "Dashboard: Recompensas por nível e Multiplicadores mostram logo a lista salva e no seu idioma, e um formulário que não conseguiu iniciar não salva mais uma lista vazia por cima da que você tinha",
             "Dashboard: a pré-visualização do cartão de rank avisa quando não foi possível desenhá-la e tem um botão para tentar de novo, e a pré-visualização do embed mostra a sua foto",
