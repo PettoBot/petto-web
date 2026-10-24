@@ -1,6 +1,6 @@
 // The feedback board (petto.sbs/feedback): ideas, feedback and bugs that people write and vote on. The posts live in the bot's
 // database (tables `feedback_posts`, `feedback_votes`, `feedback_comments`). Each new post is also published in the Petto server by the
-// feedback bot (the `feed` service), which adds the like and dislike reactions; a reaction there comes back here as a vote.
+// feedback bot (the `feed` service), which puts like and dislike buttons on the message; a press there comes back here as a vote.
 import { getEnv } from './env';
 import { getTeamIds } from './team';
 
@@ -121,16 +121,30 @@ export async function listPosts(astro: any, options: ListOptions): Promise<{ pos
   const q = String(options.q ?? '').replace(/[^\p{L}\p{N} _-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
   if (q) filters.push(`title=ilike.*${encodeURIComponent(q)}*`);
   const sort = isSort(options.sort) ? options.sort : 'top';
-  const order = sort === 'new' ? 'created_at.desc' : sort === 'discussed' ? 'comments_count.desc,created_at.desc' : 'votes_up.desc,created_at.desc';
+  const order = sort === 'new' ? 'created_at.desc' : sort === 'discussed' ? 'comments_count.desc,created_at.desc' : 'votes_up.desc,created_at.asc';
   const rows = await read<Post>(astro, `feedback_posts?select=*&${filters.join('&')}${filters.length ? '&' : ''}order=${order}&limit=300`);
   if (!rows) return null;
   const tag = (TAGS as readonly string[]).includes(String(options.tag)) ? String(options.tag) : '';
   const matching = tag ? rows.filter((row) => row.tags?.includes(tag)) : rows;
-  // The best score first for "top": likes minus dislikes, not only likes.
-  if (sort === 'top') matching.sort((a, b) => (b.votes_up - b.votes_down) - (a.votes_up - a.votes_down) || +new Date(b.created_at) - +new Date(a.created_at));
-  const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+  // "Top" is ranked by what other people think: the author's own like (the one every post starts with) does not count, and a post
+  // nobody else has voted on does not appear in it. On a tie the older post goes first, so a new post does not rise only for being new.
+  let ranked = matching;
+  if (sort === 'top') {
+    const authors = [...new Set(matching.map((row) => row.user_id))];
+    const own = matching.length && authors.length
+      ? await read<{ post_id: number; user_id: string; value: number }>(astro, `feedback_votes?select=post_id,user_id,value&post_id=in.(${matching.map((row) => row.id).join(',')})&user_id=in.(${authors.join(',')})&limit=5000`)
+      : [];
+    if (own === null) return null;
+    const ownVote = new Map(own.filter((vote) => matching.some((row) => row.id === vote.post_id && row.user_id === vote.user_id)).map((vote) => [vote.post_id, vote.value]));
+    const others = (row: Post) => {
+      const mine = ownVote.get(row.id) ?? 0;
+      return { count: row.votes_up + row.votes_down - (mine ? 1 : 0), score: row.votes_up - row.votes_down - mine };
+    };
+    ranked = matching.filter((row) => others(row).count > 0).sort((a, b) => others(b).score - others(a).score || +new Date(a.created_at) - +new Date(b.created_at));
+  }
+  const pages = Math.max(1, Math.ceil(ranked.length / PAGE_SIZE));
   const page = Math.min(pages, Math.max(1, Math.floor(Number(options.page) || 1)));
-  return { posts: matching.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), total: matching.length, pages };
+  return { posts: ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), total: ranked.length, pages };
 }
 
 export async function getPost(astro: any, id: number): Promise<Post | null> {
