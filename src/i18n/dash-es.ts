@@ -2057,6 +2057,8 @@ export const dashEs: Record<string, string> = {
   "Avatar decoration": "Decoración del avatar",
   "Nameplate": "Placa de nombre",
   "Server tag": "Etiqueta de servidor",
+  "In the preview you have": "En la vista previa tienes",
+  "moving": "se mueve",
   "Moving decoration": "Decoración que se mueve",
   "Each one only shows when the member has it on Discord. The preview uses yours. A moving decoration is sent as an animated picture and the preview shows it still.": "Cada uno solo aparece cuando el miembro lo tiene en Discord. La vista previa usa los tuyos. Una decoración que se mueve se envía como una imagen animada y la vista previa la muestra quieta.",
   "The method was sent.": "Se envió el método.",

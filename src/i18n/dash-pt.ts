@@ -2057,6 +2057,8 @@ export const dashPt: Record<string, string> = {
   "Avatar decoration": "Decoração do avatar",
   "Nameplate": "Placa de nome",
   "Server tag": "Tag de servidor",
+  "In the preview you have": "Na prévia você tem",
+  "moving": "se move",
   "Moving decoration": "Decoração que se move",
   "Each one only shows when the member has it on Discord. The preview uses yours. A moving decoration is sent as an animated picture and the preview shows it still.": "Cada um só aparece quando o membro o tem no Discord. A prévia usa os seus. Uma decoração que se move é enviada como uma imagem animada e a prévia a mostra parada.",
   "The method was sent.": "O método foi enviado.",

@@ -120,6 +120,8 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewFailed, setPreviewFailed] = useState(false);
+  // What the person previewing has around their profile (decoration, nameplate, tag), as the bot reports it with the preview.
+  const [look, setLook] = useState<string[] | null>(null);
   const [activeLayer, setActiveLayer] = useState<string | null>(null);
   const [lockedNote, setLockedNote] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -174,6 +176,8 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
         const url = URL.createObjectURL(await res.blob());
         setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
         setPreviewFailed(false);
+        const seen = res.headers.get('x-card-look');
+        setLook(seen ? seen.split(',').filter((word) => word !== 'none') : null);
       } else if (!res.ok && seq === previewSeq.current) {
         setPreviewFailed(true);
       }
@@ -534,6 +538,11 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                       <label className="ebr-check"><input type="checkbox" checked={basic.showNameplate === true} onChange={(e) => editBasic({ showNameplate: e.target.checked })} />{t('Nameplate')}</label>
                       <label className="ebr-check"><input type="checkbox" checked={basic.showTag !== false} onChange={(e) => editBasic({ showTag: e.target.checked })} />{t('Server tag')}</label>
                       <p className="ebr-tools-note">{t('Each one only shows when the member has it on Discord. The preview uses yours. A moving decoration is sent as an animated picture and the preview shows it still.')}</p>
+                      {look && (
+                        <p className="ebr-tools-note">
+                          {t('In the preview you have')}: {t('Avatar decoration')} {look.includes('decoration') ? '✓' : '✗'}{look.includes('moving') ? ` (${t('moving')})` : ''} · {t('Nameplate')} {look.includes('nameplate') ? '✓' : '✗'} · {t('Server tag')} {look.includes('tag') ? '✓' : '✗'}
+                        </p>
+                      )}
                     </div>
                   )}
                   <div className="ebr-row-pair">
