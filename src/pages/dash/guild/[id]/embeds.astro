@@ -53,7 +53,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, identity, templatesRes, channelsRes, variableGroups, paginationsRes] = await Promise.all([
+const [guildInfo, identity, templatesRes, channelsRes, variableGroups, paginationsRes, identityNotifyRes, identityLogsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   // The same read the layout starts (shared per request and kept for a while): the bot's server nickname and avatar, or its own name and avatar.
   getBotIdentity(id, botToken, Astro.request).catch(() => null),
@@ -61,13 +61,23 @@ const [guildInfo, identity, templatesRes, channelsRes, variableGroups, paginatio
   getGuildList(Astro, id, botToken, 'channels'),
   getVariableGroups(Astro),
   fetch(`${apiUrl}/rest/v1/pagination_messages?guild_id=eq.${id}&select=*&order=created_at.asc`, { headers: apiHeaders }).catch(() => null),
+  // What the Vanity and Server Tag pages use for their thank-you messages and log entries (read to keep it out of the list below).
+  fetch(`${apiUrl}/rest/v1/identity_notifications?guild_id=eq.${id}&select=embed_name`, { headers: apiHeaders }).catch(() => null),
+  fetch(`${apiUrl}/rest/v1/identity_logs?guild_id=eq.${id}&select=embeds`, { headers: apiHeaders }).catch(() => null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const botName = identity?.name || 'Petto';
 const botIcon = identity?.icon || '/assets/mascot-icon.webp';
 
-const templateNames = templatesRes.ok ? (await templatesRes.json()).map((t: any) => t.name) : [];
+// The messages of Vanity and Server Tag (thank-yous and log entries) belong to those pages, with a default design of Petto's: they are not
+// listed here as custom embeds. The ones the old Vanity bot import named, and the ones called just vanity / tag / guildtag that those pages
+// point to, stay out of the list (they keep working where they are used). An embed of the server's own that a page uses is still listed.
+const IDENTITY_NAMES = /^(?:notify_(?:vanity_add|vanity_remove|tag_add|tag_remove|error)|vanity_notify|guildtag_notify)$/;
+const identityUsed = new Set<string>();
+for (const row of identityNotifyRes?.ok ? ((await identityNotifyRes.json().catch(() => [])) as any[]) : []) if (row?.embed_name) identityUsed.add(String(row.embed_name));
+for (const row of identityLogsRes?.ok ? ((await identityLogsRes.json().catch(() => [])) as any[]) : []) for (const name of Object.values(row?.embeds ?? {})) if (name) identityUsed.add(String(name));
+const templateNames: string[] = templatesRes.ok ? (await templatesRes.json()).map((t: any) => t.name).filter((name: string) => !IDENTITY_NAMES.test(name) && !(identityUsed.has(name) && /^(?:vanity|tag|guildtag)$/.test(name))) : [];
 // Text and announcement channels are the places a test message can go.
 const rawChannels = channelsRes.ok ? await channelsRes.json() : [];
 const channels = (Array.isArray(rawChannels) ? rawChannels : []).filter((c: any) => c.type === 0 || c.type === 5).map((c: any) => ({ id: c.id, name: c.name }));
