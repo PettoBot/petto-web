@@ -4577,4 +4577,6 @@ export const dashEs: Record<string, string> = {
   "1 month": "1 mes",
   "1 year": "1 año",
   "Picture could not be loaded": "No se pudo cargar la imagen",
+  "The preview could not be drawn.": "No se pudo dibujar la vista previa.",
+  "Drawing the preview…": "Dibujando la vista previa…",
 };

@@ -4577,4 +4577,6 @@ export const dashPt: Record<string, string> = {
   "1 month": "1 mês",
   "1 year": "1 ano",
   "Picture could not be loaded": "Não foi possível carregar a imagem",
+  "The preview could not be drawn.": "Não foi possível desenhar a pré-visualização.",
+  "Drawing the preview…": "Desenhando a pré-visualização…",
 };

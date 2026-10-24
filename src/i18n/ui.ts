@@ -152,6 +152,18 @@ export const ui = {
       linkCopied: 'Link copied',
       entries: [
         {
+          version: '0.7.8-1',
+          display: '0.7.8~1',
+          name: 'Mochi',
+          date: "October 23, 2026",
+          items: [
+            "Dashboard: the Embeds page loaded forever (a grey shape) when you came to it from another page of the dashboard; it opens now",
+            "Dashboard: Level rewards and Multipliers show the saved list right away and in your language, and a form that could not start no longer saves an empty list over what you had",
+            "Dashboard: the rank card preview tells you when it could not be drawn and has a Try again button, and the embed preview shows your picture",
+            "Dashboard: Image cards use Petto's own color picker instead of the phone's dialog, and the preview redraws while you edit, before saving, and says when it could not be drawn",
+          ],
+        },
+        {
           version: '0.7.8',
           display: '0.7.8',
           name: 'Mochi',
@@ -1472,6 +1484,18 @@ export const ui = {
       copyLink: 'Copiar enlace',
       linkCopied: 'Enlace copiado',
       entries: [
+        {
+          version: '0.7.8-1',
+          display: '0.7.8~1',
+          name: 'Mochi',
+          date: "23 de octubre de 2026",
+          items: [
+            "Dashboard: la página de Embeds se quedaba cargando (una forma gris) al llegar desde otra página del dashboard; ahora abre bien",
+            "Dashboard: Recompensas por nivel y Multiplicadores muestran enseguida la lista guardada y en tu idioma, y un formulario que no pudo arrancar ya no guarda una lista vacía encima de la que tenías",
+            "Dashboard: la vista previa de la tarjeta de rank avisa cuando no se pudo dibujar y tiene un botón para reintentar, y la vista previa del embed muestra tu foto",
+            "Dashboard: las tarjetas de imagen usan el selector de color de Petto en lugar del cuadro del teléfono, y la vista previa se redibuja mientras editas, antes de guardar, y avisa si no se pudo dibujar",
+          ],
+        },
         {
           version: '0.7.8',
           display: '0.7.8',
@@ -2794,6 +2818,18 @@ export const ui = {
       copyLink: 'Copiar link',
       linkCopied: 'Link copiado',
       entries: [
+        {
+          version: '0.7.8-1',
+          display: '0.7.8~1',
+          name: 'Mochi',
+          date: "23 de outubro de 2026",
+          items: [
+            "Dashboard: a página de Embeds ficava carregando (uma forma cinza) ao chegar de outra página do dashboard; agora abre normalmente",
+            "Dashboard: Recompensas por nível e Multiplicadores mostram logo a lista salva e no seu idioma, e um formulário que não conseguiu iniciar não salva mais uma lista vazia por cima da que você tinha",
+            "Dashboard: a pré-visualização do cartão de rank avisa quando não foi possível desenhá-la e tem um botão para tentar de novo, e a pré-visualização do embed mostra a sua foto",
+            "Dashboard: os cartões de imagem usam o seletor de cor do Petto no lugar da caixa do celular, e a pré-visualização é redesenhada enquanto você edita, antes de salvar, e avisa se não foi possível desenhá-la",
+          ],
+        },
         {
           version: '0.7.8',
           display: '0.7.8',
