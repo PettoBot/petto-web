@@ -75,7 +75,7 @@ interface VoiceConfig {
 }
 
 interface RankConfig { style: string; card: string; notifyCard: string; voiceNotifyCard: string }
-interface Rules { minMessageChars: number; antiRepeat: boolean; voiceMinMembers: number; voiceIgnoreMuted: boolean; dailyBonusXp: number; streakBonusXp: number; streakMaxDays: number; xpMultiplier: number; multiplierMode: string; multiplierCap: number; resetOnLeave: boolean; restoreRoles: boolean; noXpRoleIds: string[]; onlyXpRoleIds: string[] }
+interface Rules { minMessageChars: number; antiRepeat: boolean; dailyXpCap: number; voiceAlonePercent: number; voiceMinMembers: number; voiceIgnoreMuted: boolean; dailyBonusXp: number; streakBonusXp: number; streakMaxDays: number; xpMultiplier: number; multiplierMode: string; multiplierCap: number; resetOnLeave: boolean; restoreRoles: boolean; noXpRoleIds: string[]; onlyXpRoleIds: string[] }
 interface CardRow { name: string; kind: string; data: unknown }
 interface XpEvent { id: string; name: string; multiplier: number; source: string; startsAt: string; endsAt: string }
 
@@ -114,6 +114,18 @@ const voiceXpHint = [
     ? dt("Voice XP is earned also when you are alone. Deafened members and the server's AFK channel never earn it.")
     : dt("Voice XP needs at least {a} people in the channel. Deafened members and the server's AFK channel never earn it.", { a: rules.voiceMinMembers }),
   rules.voiceIgnoreMuted ? dt('Muted members do not earn it either.') : '',
+].filter(Boolean).join(' ');
+// The profiles of the Rules page: each one fills the Chat and Voice rules (the form is saved with the Save bar, as always).
+const ruleProfiles = [
+  { id: 'relaxed', name: dt('Relaxed'), text: dt('Everything counts, even short messages and repeats. Voice earns alone, at full XP.'), icon: 'ph:sun-fill', values: { min_message_chars: 0, anti_repeat: false, daily_xp_cap: 0, voice_min_members: 1, voice_alone_percent: 100, voice_ignore_muted: false } },
+  { id: 'balanced', name: dt('Balanced'), text: dt('Short messages and repeats earn nothing. Voice earns alone, at half XP.'), icon: 'ph:scales-fill', values: { min_message_chars: 3, anti_repeat: true, daily_xp_cap: 0, voice_min_members: 1, voice_alone_percent: 50, voice_ignore_muted: false } },
+  { id: 'strict', name: dt('Strict'), text: dt('Longer messages, a daily limit, and voice only with company and the microphone on.'), icon: 'ph:shield-check-fill', values: { min_message_chars: 8, anti_repeat: true, daily_xp_cap: 1500, voice_min_members: 2, voice_alone_percent: 0, voice_ignore_muted: true } },
+];
+// A short line for each card, from what is saved.
+const chatSummary = [
+  rules.minMessageChars > 0 ? dt('Messages shorter than {a} characters earn nothing.', { a: rules.minMessageChars }) : dt('Every message counts, however short.'),
+  rules.antiRepeat ? dt('The same text again within a minute earns nothing.') : '',
+  rules.dailyXpCap > 0 ? dt('At most {a} XP a day from messages.', { a: rules.dailyXpCap.toLocaleString(dashLocale(dashLang)) }) : dt('No daily limit.'),
 ].filter(Boolean).join(' ');
 const boardLink = `${Astro.url.origin}/lb/${publicBoard?.slug || guildId}`;
 const boardErrors: Record<string, string> = {
@@ -541,36 +553,91 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   {selectedSection === 'rules' && (
   <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rules' }]}>
     <h2><Icon name="ph:shield-check-fill" width="15" height="15" />{dt('Rules')}</h2>
-    <p class="lv-note">{dt('What counts as activity, and the bonus for coming back every day.')}</p>
+    <p class="lv-note">{dt('How XP is earned, topic by topic. Start from a profile and adjust what you want.')}</p>
     <form method="POST" class="lv-form lv-stage-form" data-stage-form="rules">
       <input type="hidden" name="action" value="rules" />
       <input type="hidden" name="events_payload" value="{}" data-stage-payload />
-      <div class="lv-grid">
-        <div class="lv-field"><label>{dt('Minimum message length')}</label><input type="number" name="min_message_chars" value={rules.minMessageChars} min="0" max="200" /><span class="lv-hint">{dt('Links, mentions and custom emoji do not count. 0 turns it off.')}</span></div>
-        <div class="lv-field"><label>{dt('People needed in voice')}</label><input type="number" name="voice_min_members" value={rules.voiceMinMembers} min="1" max="20" /><span class="lv-hint">{dt('1 also earns voice XP when you are alone. Bots and deafened members do not count as company.')}</span></div>
-        <label class="lv-check"><input type="checkbox" name="anti_repeat" checked={rules.antiRepeat} />{dt('The same message again within a minute earns no XP')}</label>
-        <label class="lv-check"><input type="checkbox" name="voice_ignore_muted" checked={rules.voiceIgnoreMuted} />{dt('No voice XP while muted')}</label>
-        <div class="lv-field"><label>{dt('Daily bonus XP')}</label><input type="number" name="daily_bonus_xp" value={rules.dailyBonusXp} min="0" max="100000" /><span class="lv-hint">{dt('Given on the first activity of each day. 0 turns it off.')}</span></div>
-        <div class="lv-field"><label>{dt('Streak bonus XP per day')}</label><input type="number" name="streak_bonus_xp" value={rules.streakBonusXp} min="0" max="10000" /><span class="lv-hint">{dt('Added for each earlier day in a row.')}</span></div>
-        <div class="lv-field"><label>{dt('Streak bonus stops after (days)')}</label><input type="number" name="streak_max_days" value={rules.streakMaxDays} min="1" max="365" /></div>
-        <div class="lv-field"><label>{dt('Base multiplier for all XP')}</label><input type="number" name="xp_multiplier" value={rules.xpMultiplier} min="0" max="20" step="0.05" /><span class="lv-hint">{dt('1 changes nothing, 1.5 gives half more XP to everyone. Role, channel and category multipliers add to it.')}</span></div>
-        <div class="lv-field"><label>{dt('Several role multipliers')}</label>
-          <select name="multiplier_mode">
-            <option value="highest" selected={rules.multiplierMode === 'highest'}>{dt('Only the highest')}</option>
-            <option value="stack" selected={rules.multiplierMode === 'stack'}>{dt('Multiply them all')}</option>
-            <option value="sum" selected={rules.multiplierMode === 'sum'}>{dt('Add each extra to 1')}</option>
-          </select>
-          <span class="lv-hint">{dt('What happens when a member has more than one role with a multiplier.')}</span>
+      <div class="lv-card lv-profiles">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#c792ea"><Icon name="ph:magic-wand-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Start from a profile')}</div></div>
+        <p class="lv-card-desc">{dt('A profile fills the Chat and Voice rules in one go. Nothing is saved until you press Save, and you can change any field after.')}</p>
+        <div class="lv-profile-row">
+          {ruleProfiles.map((profile) => (
+            <button type="button" class="lv-profile" data-lv-profile={JSON.stringify(profile.values)}>
+              <span class="lv-profile-name"><Icon name={profile.icon} width="14" height="14" />{profile.name}</span>
+              <span class="lv-profile-text">{profile.text}</span>
+            </button>
+          ))}
         </div>
-        <div class="lv-field"><label>{dt('Most a multiplier can reach')}</label><input type="number" name="multiplier_cap" value={rules.multiplierCap} min="1" max="100" step="0.5" /><span class="lv-hint">{dt('The combined multiplier never goes above this.')}</span></div>
-        <label class="lv-check"><input type="checkbox" name="restore_roles" checked={rules.restoreRoles} />{dt('Give the reward roles back to a member who returns')}</label>
-        <label class="lv-check"><input type="checkbox" name="reset_on_leave" checked={rules.resetOnLeave} />{dt('Wipe the XP and level of a member who leaves')}</label>
-        <div class="lv-field lv-field-wide"><label>{dt('Roles that earn no XP')}</label>
-          <MultiSelect lazy name="no_xp_role_ids" options={roles.map((role) => ({ id: role.id, name: role.name }))} selected={rules.noXpRoleIds} placeholder={dt('Search roles...')} />
+      </div>
+
+      <div class="lv-card">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#8fb3ff"><Icon name="ph:chat-circle-dots-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Chat')}</div></div>
+        <p class="lv-card-desc">{chatSummary}</p>
+        <div class="lv-grid">
+          <div class="lv-field"><label>{dt('Minimum message length')}</label><input type="number" name="min_message_chars" value={rules.minMessageChars} min="0" max="200" /><span class="lv-hint">{dt('Links, mentions and custom emoji do not count. 0 turns it off.')}</span></div>
+          <div class="lv-field"><label>{dt('Daily XP limit from messages')}</label><input type="number" name="daily_xp_cap" value={rules.dailyXpCap} min="0" max="1000000" /><span class="lv-hint">{dt('The most XP a member can earn from messages in a day. 0 means no limit. The daily bonus is not counted.')}</span></div>
+          <label class="lv-check"><input type="checkbox" name="anti_repeat" checked={rules.antiRepeat} />{dt('The same message again within a minute earns no XP')}</label>
         </div>
-        <div class="lv-field lv-field-wide"><label>{dt('Only these roles earn XP')}</label>
-          <MultiSelect lazy name="only_xp_role_ids" options={roles.map((role) => ({ id: role.id, name: role.name }))} selected={rules.onlyXpRoleIds} placeholder={dt('Search roles...')} />
-          <span class="lv-hint">{dt('Leave it empty so everyone can earn XP.')}</span>
+      </div>
+
+      <div class="lv-card">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#5eead4"><Icon name="ph:headphones-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Voice')}</div></div>
+        <p class="lv-card-desc">{voiceXpHint}</p>
+        <div class="lv-grid">
+          <div class="lv-field"><label>{dt('People needed in voice')}</label><input type="number" name="voice_min_members" value={rules.voiceMinMembers} min="1" max="20" /><span class="lv-hint">{dt('1 also earns voice XP when you are alone. Bots and deafened members do not count as company.')}</span></div>
+          <div class="lv-field"><label>{dt('XP while alone (%)')}</label><input type="number" name="voice_alone_percent" value={rules.voiceAlonePercent} min="0" max="100" step="5" /><span class="lv-hint">{dt('Only matters when 1 person is enough. 100 is all the XP, 50 is half, 0 gives nothing while alone.')}</span></div>
+          <label class="lv-check"><input type="checkbox" name="voice_ignore_muted" checked={rules.voiceIgnoreMuted} />{dt('Only with the microphone on (no voice XP while muted)')}</label>
+        </div>
+        <p class="lv-hint">{dt('Petto cannot hear who is talking: it only knows if the microphone is muted or the member is deafened.')}</p>
+      </div>
+
+      <div class="lv-card">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#f5c945"><Icon name="ph:calendar-check-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Daily bonus and streak')}</div></div>
+        <p class="lv-card-desc">{dt('What counts as activity, and the bonus for coming back every day.')}</p>
+        <div class="lv-grid">
+          <div class="lv-field"><label>{dt('Daily bonus XP')}</label><input type="number" name="daily_bonus_xp" value={rules.dailyBonusXp} min="0" max="100000" /><span class="lv-hint">{dt('Given on the first activity of each day. 0 turns it off.')}</span></div>
+          <div class="lv-field"><label>{dt('Streak bonus XP per day')}</label><input type="number" name="streak_bonus_xp" value={rules.streakBonusXp} min="0" max="10000" /><span class="lv-hint">{dt('Added for each earlier day in a row.')}</span></div>
+          <div class="lv-field"><label>{dt('Streak bonus stops after (days)')}</label><input type="number" name="streak_max_days" value={rules.streakMaxDays} min="1" max="365" /></div>
+        </div>
+      </div>
+
+      <div class="lv-card">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#ffb199"><Icon name="ph:rocket-launch-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Multipliers')}</div></div>
+        <p class="lv-card-desc">{dt('Give more XP (or less) to a role, a channel or a whole category. 2 is double, 0.5 is half and 0 earns nothing.')}</p>
+        <div class="lv-grid">
+          <div class="lv-field"><label>{dt('Base multiplier for all XP')}</label><input type="number" name="xp_multiplier" value={rules.xpMultiplier} min="0" max="20" step="0.05" /><span class="lv-hint">{dt('1 changes nothing, 1.5 gives half more XP to everyone. Role, channel and category multipliers add to it.')}</span></div>
+          <div class="lv-field"><label>{dt('Several role multipliers')}</label>
+            <select name="multiplier_mode">
+              <option value="highest" selected={rules.multiplierMode === 'highest'}>{dt('Only the highest')}</option>
+              <option value="stack" selected={rules.multiplierMode === 'stack'}>{dt('Multiply them all')}</option>
+              <option value="sum" selected={rules.multiplierMode === 'sum'}>{dt('Add each extra to 1')}</option>
+            </select>
+            <span class="lv-hint">{dt('What happens when a member has more than one role with a multiplier.')}</span>
+          </div>
+          <div class="lv-field"><label>{dt('Most a multiplier can reach')}</label><input type="number" name="multiplier_cap" value={rules.multiplierCap} min="1" max="100" step="0.5" /><span class="lv-hint">{dt('The combined multiplier never goes above this.')}</span></div>
+        </div>
+      </div>
+
+      <div class="lv-card">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#a78bfa"><Icon name="ph:users-three-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Who earns XP')}</div></div>
+        <p class="lv-card-desc">{dt('Leave both empty so everyone earns XP.')}</p>
+        <div class="lv-grid">
+          <div class="lv-field lv-field-wide"><label>{dt('Roles that earn no XP')}</label>
+            <MultiSelect lazy name="no_xp_role_ids" options={roles.map((role) => ({ id: role.id, name: role.name }))} selected={rules.noXpRoleIds} placeholder={dt('Search roles...')} />
+          </div>
+          <div class="lv-field lv-field-wide"><label>{dt('Only these roles earn XP')}</label>
+            <MultiSelect lazy name="only_xp_role_ids" options={roles.map((role) => ({ id: role.id, name: role.name }))} selected={rules.onlyXpRoleIds} placeholder={dt('Search roles...')} />
+            <span class="lv-hint">{dt('Leave it empty so everyone can earn XP.')}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="lv-card">
+        <div class="lv-card-head"><div class="lv-card-icon" style="--c:#ff8f8f"><Icon name="ph:sign-out-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Members who leave and come back')}</div></div>
+        <p class="lv-card-desc">{dt('What happens to the XP and the reward roles of someone who leaves the server.')}</p>
+        <div class="lv-grid">
+          <label class="lv-check"><input type="checkbox" name="restore_roles" checked={rules.restoreRoles} />{dt('Give the reward roles back to a member who returns')}</label>
+          <label class="lv-check"><input type="checkbox" name="reset_on_leave" checked={rules.resetOnLeave} />{dt('Wipe the XP and level of a member who leaves')}</label>
         </div>
       </div>
 
@@ -1022,6 +1089,44 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
   window.PettoRankPreviewInit(document);
 })();
 </script>
+<script is:inline>
+(function () {
+  // The profiles of the Rules page fill the Chat and Voice fields; the form tells the bar of unsaved changes as if they were typed.
+  var forms = document.querySelectorAll('form[data-stage-form="rules"]');
+  forms.forEach(function (form) {
+    if (form.dataset.profilesBound) return;
+    form.dataset.profilesBound = '1';
+    var buttons = Array.prototype.slice.call(form.querySelectorAll('[data-lv-profile]'));
+    var read = function (button) { try { return JSON.parse(button.getAttribute('data-lv-profile') || '{}'); } catch (e) { return {}; } };
+    var field = function (name) { return form.elements.namedItem(name); };
+    var matches = function (values) {
+      return Object.keys(values).every(function (name) {
+        var input = field(name);
+        if (!input) return false;
+        return input.type === 'checkbox' ? input.checked === Boolean(values[name]) : Number(input.value) === Number(values[name]);
+      });
+    };
+    var mark = function () { buttons.forEach(function (button) { button.classList.toggle('is-active', matches(read(button))); }); };
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        var values = read(button);
+        Object.keys(values).forEach(function (name) {
+          var input = field(name);
+          if (!input) return;
+          if (input.type === 'checkbox') input.checked = Boolean(values[name]); else input.value = String(values[name]);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        mark();
+      });
+    });
+    form.addEventListener('input', mark);
+    form.addEventListener('change', mark);
+    form.addEventListener('reset', function () { setTimeout(mark, 0); });
+    mark();
+  });
+})();
+</script>
 </DashGuildLayout>
 
 <script>
@@ -1162,6 +1267,16 @@ const voiceMinutesForLevel = (level: number) => Math.max(0, Math.ceil(voiceCurve
     text-transform: uppercase; color: var(--text-dim); margin-top: 4px;
   }
   .lv-section-label :global(svg) { color: var(--accent); }
+  .lv-profile-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 4px; }
+  .lv-profile { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; text-align: left; padding: 12px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); font: inherit; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+  .lv-profile:hover { border-color: var(--accent); background: var(--card-hover, var(--card)); }
+  .lv-profile:active { transform: scale(.985); }
+  .lv-profile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .lv-profile.is-active { border-color: var(--accent); background: var(--accent-soft); }
+  .lv-profile-name { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
+  .lv-profile-name :global(svg) { color: var(--accent); }
+  .lv-profile-text { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+  @media (max-width: 720px) { .lv-profile-row { grid-template-columns: minmax(0, 1fr); } }
   .lv-section-hidden { display: none; }
   .lv-board-page { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px; margin-bottom: 26px; max-width: 760px; }
   .lv-board-page-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }

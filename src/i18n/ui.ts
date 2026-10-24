@@ -163,6 +163,7 @@ export const ui = {
             "Dashboard: Image cards use Petto's own color picker instead of the phone's dialog, and the preview redraws while you edit, before saving, and says when it could not be drawn",
             "Dashboard: Sticky messages and repeating timers can now be moved to another channel from their Edit card, and the Vanity and Server Tag thank-yous and log entries no longer show up in the Embeds list",
             "Voice leveling: nobody else is needed any more to earn voice XP (people needed in voice starts at 1 instead of 2, and servers still on the old 2 are moved to 1 once), the Voice page says what is needed to earn it, and bots and deafened members no longer count as company",
+            "Rules page redesigned as cards by topic (Chat, Voice, Daily bonus, Multipliers, Who earns XP, Members who leave), with ready-made profiles (Relaxed, Balanced, Strict) that fill the Chat and Voice rules. New rules: a daily limit on the XP earned from messages, and a share of the voice XP earned while alone",
           ],
         },
         {
@@ -1498,6 +1499,7 @@ export const ui = {
             "Dashboard: las tarjetas de imagen usan el selector de color de Petto en lugar del cuadro del teléfono, y la vista previa se redibuja mientras editas, antes de guardar, y avisa si no se pudo dibujar",
             "Dashboard: los mensajes fijos y los timers que se repiten ahora se pueden pasar a otro canal desde su tarjeta de Editar, y los agradecimientos y logs de Vanity y Server Tag ya no salen en la lista de Embeds",
             "Niveles de voz: ya no hace falta otra persona para ganar XP de voz (las personas necesarias en voz empiezan en 1 en vez de 2, y los servidores que seguían con el 2 viejo pasan a 1 una vez), la página de Voz dice qué se necesita para ganarlo, y los bots y quienes están ensordecidos ya no cuentan como compañía",
+            "Página de Reglas rediseñada en tarjetas por tema (Chat, Voz, Bono diario, Multiplicadores, Quién gana XP, Miembros que se van), con perfiles listos (Relajado, Equilibrado, Estricto) que llenan las reglas de Chat y Voz. Reglas nuevas: un límite diario de XP por mensajes, y un porcentaje del XP de voz que se gana estando solo",
           ],
         },
         {
@@ -2834,6 +2836,7 @@ export const ui = {
             "Dashboard: os cartões de imagem usam o seletor de cor do Petto no lugar da caixa do celular, e a pré-visualização é redesenhada enquanto você edita, antes de salvar, e avisa se não foi possível desenhá-la",
             "Dashboard: as mensagens fixas e os timers que se repetem agora podem ser movidos para outro canal pelo cartão de Editar, e os agradecimentos e logs do Vanity e do Server Tag não aparecem mais na lista de Embeds",
             "Níveis de voz: não é mais preciso outra pessoa para ganhar XP de voz (as pessoas necessárias em voz começam em 1 em vez de 2, e os servidores que ainda tinham o 2 antigo passam para 1 uma vez), a página de Voz diz o que é preciso para ganhá-lo, e bots e quem está ensurdecido não contam mais como companhia",
+            "Página de Regras redesenhada em cartões por tema (Chat, Voz, Bônus diário, Multiplicadores, Quem ganha XP, Membros que saem), com perfis prontos (Relaxado, Equilibrado, Rígido) que preenchem as regras de Chat e Voz. Regras novas: um limite diário de XP com mensagens, e uma porcentagem do XP de voz ganho estando sozinho",
           ],
         },
         {
