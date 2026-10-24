@@ -18,6 +18,10 @@ const fallbackGroups = (dt: Dt): VarGroup[] => [
       { tok: '{user.id}', desc: dt('User ID') },
       { tok: '{user.avatar}', desc: dt('Global avatar image URL') },
       { tok: '{user.display_avatar}', desc: dt('Server avatar, falls back to global') },
+      { tok: '{user.avatar_decoration}', desc: dt('Picture of their avatar decoration, empty if they have none') },
+      { tok: '{user.nameplate}', desc: dt('Picture of their nameplate, empty if they have none') },
+      { tok: '{user.server_tag}', desc: dt('Their server tag text (like ABC), empty if they do not show one') },
+      { tok: '{user.server_tag_badge}', desc: dt('Picture of their server tag badge, empty if they have none') },
       { tok: '{user.display_name}', desc: dt('Server nickname, or username if none') },
       { tok: '{user.joined_at}', desc: dt('Date they joined this server') },
       { tok: '{user.joined_at_timestamp}', desc: dt('Unix timestamp of that join date') },
@@ -125,6 +129,7 @@ const fallbackGroups = (dt: Dt): VarGroup[] => [
       { tok: '{level_xp}', desc: dt('Only in the level-up message: total XP') },
       { tok: '{level_xp_needed}', desc: dt('Only in the level-up message: XP needed for the next level') },
       { tok: '{level_rank}', desc: dt('Only in the level-up message: leaderboard rank') },
+      { tok: '{level_top_percent}', desc: dt('Only in the level-up message: the top percent they are in, such as 2.5') },
     ],
   },
   {

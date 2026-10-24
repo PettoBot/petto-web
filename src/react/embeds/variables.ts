@@ -13,6 +13,10 @@ export const VARIABLE_GROUPS: VarGroup[] = [
       { tok: '{user.id}', desc: 'User ID' },
       { tok: '{user.avatar}', desc: 'Global avatar image URL' },
       { tok: '{user.display_avatar}', desc: 'Server avatar, falls back to global' },
+      { tok: '{user.avatar_decoration}', desc: 'Picture of their avatar decoration, empty if they have none' },
+      { tok: '{user.nameplate}', desc: 'Picture of their nameplate, empty if they have none' },
+      { tok: '{user.server_tag}', desc: 'Their server tag text (like ABC), empty if they do not show one' },
+      { tok: '{user.server_tag_badge}', desc: 'Picture of their server tag badge, empty if they have none' },
       { tok: '{user.display_name}', desc: 'Server nickname, or username if none' },
       { tok: '{user.joined_at}', desc: 'Date they joined this server' },
       { tok: '{user.joined_at_timestamp}', desc: 'Unix timestamp of that join date' },
@@ -120,6 +124,7 @@ export const VARIABLE_GROUPS: VarGroup[] = [
       { tok: '{level_xp}', desc: 'Only in the level-up message: total XP' },
       { tok: '{level_xp_needed}', desc: 'Only in the level-up message: XP needed for the next level' },
       { tok: '{level_rank}', desc: 'Only in the level-up message: leaderboard rank' },
+      { tok: '{level_top_percent}', desc: 'Only in the level-up message: the top percent they are in, such as 2.5' },
     ],
   },
   {
