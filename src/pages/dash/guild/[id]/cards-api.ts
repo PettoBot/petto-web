@@ -18,6 +18,8 @@ async function relay(response: Response | null) {
   const headers: Record<string, string> = { 'Content-Type': type, 'Cache-Control': response.headers.get('cache-control') ?? 'no-store' };
   const problems = response.headers.get('x-card-problems');
   if (problems) headers['X-Card-Problems'] = problems;
+  const look = response.headers.get('x-card-look');
+  if (look) headers['X-Card-Look'] = look;
   return new Response(await response.arrayBuffer(), { status: response.status, headers });
 }
 
