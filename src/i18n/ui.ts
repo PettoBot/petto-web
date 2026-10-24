@@ -162,6 +162,7 @@ export const ui = {
             "Dashboard: the rank card preview tells you when it could not be drawn and has a Try again button, and the embed preview shows your picture",
             "Dashboard: Image cards use Petto's own color picker instead of the phone's dialog, and the preview redraws while you edit, before saving, and says when it could not be drawn",
             "Dashboard: Sticky messages and repeating timers can now be moved to another channel from their Edit card, and the Vanity and Server Tag thank-yous and log entries no longer show up in the Embeds list",
+            "Voice leveling: nobody else is needed any more to earn voice XP (people needed in voice starts at 1 instead of 2, and servers still on the old 2 are moved to 1 once), the Voice page says what is needed to earn it, and bots and deafened members no longer count as company",
           ],
         },
         {
@@ -1496,6 +1497,7 @@ export const ui = {
             "Dashboard: la vista previa de la tarjeta de rank avisa cuando no se pudo dibujar y tiene un botón para reintentar, y la vista previa del embed muestra tu foto",
             "Dashboard: las tarjetas de imagen usan el selector de color de Petto en lugar del cuadro del teléfono, y la vista previa se redibuja mientras editas, antes de guardar, y avisa si no se pudo dibujar",
             "Dashboard: los mensajes fijos y los timers que se repiten ahora se pueden pasar a otro canal desde su tarjeta de Editar, y los agradecimientos y logs de Vanity y Server Tag ya no salen en la lista de Embeds",
+            "Niveles de voz: ya no hace falta otra persona para ganar XP de voz (las personas necesarias en voz empiezan en 1 en vez de 2, y los servidores que seguían con el 2 viejo pasan a 1 una vez), la página de Voz dice qué se necesita para ganarlo, y los bots y quienes están ensordecidos ya no cuentan como compañía",
           ],
         },
         {
@@ -2831,6 +2833,7 @@ export const ui = {
             "Dashboard: a pré-visualização do cartão de rank avisa quando não foi possível desenhá-la e tem um botão para tentar de novo, e a pré-visualização do embed mostra a sua foto",
             "Dashboard: os cartões de imagem usam o seletor de cor do Petto no lugar da caixa do celular, e a pré-visualização é redesenhada enquanto você edita, antes de salvar, e avisa se não foi possível desenhá-la",
             "Dashboard: as mensagens fixas e os timers que se repetem agora podem ser movidos para outro canal pelo cartão de Editar, e os agradecimentos e logs do Vanity e do Server Tag não aparecem mais na lista de Embeds",
+            "Níveis de voz: não é mais preciso outra pessoa para ganhar XP de voz (as pessoas necessárias em voz começam em 1 em vez de 2, e os servidores que ainda tinham o 2 antigo passam para 1 uma vez), a página de Voz diz o que é preciso para ganhá-lo, e bots e quem está ensurdecido não contam mais como companhia",
           ],
         },
         {
