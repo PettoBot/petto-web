@@ -107,6 +107,7 @@ export const commandText: Record<string, CommandText> = {
   uptime: ['Show how long Petto has been running.', 'Muestra cuánto tiempo lleva Petto en línea.', 'Mostra há quanto tempo o Petto está no ar.'],
   userinfo: ['Show information about a member.', 'Muestra información sobre un miembro.', 'Mostra informações sobre um membro.'],
   usercosmetics: ['Show the avatar decoration, nameplate and server tag of a member.', 'Muestra la decoración de avatar, la placa de nombre y la etiqueta de servidor de un miembro.', 'Mostra a decoração de avatar, a placa de nome e a tag de servidor de um membro.'],
+  jumbo: ['Show an emoji or a sticker big, and steal it for this server.', 'Muestra un emoji o un sticker en grande y róbalo para este servidor.', 'Mostra um emoji ou um sticker em tamanho grande e roube-o para este servidor.'],
   version: ['Browse Petto releases and published changes.', 'Explora las versiones de Petto y los cambios publicados.', 'Explora as versões do Petto e as mudanças publicadas.'],
   calc: ['Calculate a simple arithmetic expression.', 'Calcula una expresión aritmética simple.', 'Calcula uma expressão aritmética simples.'],
   time: ['Show the current time in a time zone.', 'Muestra la hora actual en una zona horaria.', 'Mostra a hora atual em um fuso horário.'],
