@@ -158,6 +158,7 @@ export const ui = {
           name: 'Mochi',
           date: "October 23, 2026",
           items: [
+            "Phone menu: the account button that opens the dashboard now keeps the language of the page you are on (/es or /pt-br) instead of dropping it from the address",
             "New command `!jumbo` (also `!bigemoji` and `!enlarge`): shows a custom emoji, a moving one, an ordinary emoji or a sticker big, with a link to the original; reply to a message with an emoji or a sticker, or type it after the command. When the server does not have it yet, a Steal button adds it for whoever presses it, if they may manage emojis and stickers",
             "The cards of Petto have no color on their side, except green when something went well and red when it was refused or needs attention (the sanction cards and the colors a server chooses stay); titles are small instead of big, `!version` has no 3D icons, and every colorful icon was replaced by the flat grey one of its design. Quests and rollouts are as they were",
             "`!userinfo` and `!serverinfo` are redesigned with no color: the avatar is drawn with its decoration, the nameplate is a picture, the server tag sits next to the name and every row has a Petto icon; `!serverinfo` is organized in two blocks and shows the invite splash. New `!usercosmetics` (`!uc`) shows the decoration (moving when it moves), the nameplate and the server tag of a member. The level-up card has thicker hexagons and no server tag",
@@ -1549,6 +1550,7 @@ export const ui = {
           name: 'Mochi',
           date: "23 de octubre de 2026",
           items: [
+            "Menú del celular: el botón de la cuenta que abre el dashboard ahora mantiene el idioma de la página en la que estás (/es o /pt-br) en vez de quitarlo de la dirección",
             "Comando nuevo `!jumbo` (también `!bigemoji` y `!enlarge`): muestra en grande un emoji personalizado, uno animado, un emoji normal o un sticker, con un enlace al original; responde a un mensaje con un emoji o un sticker, o escríbelo después del comando. Si el servidor aún no lo tiene, un botón Robar lo agrega para quien lo presione, si puede gestionar emojis y stickers",
             "Las tarjetas de Petto ya no llevan color al lado, salvo verde cuando algo salió bien y rojo cuando se rechazó o necesita atención (las tarjetas de sanciones y los colores que elige un servidor se quedan); los títulos son pequeños en vez de grandes, `!version` ya no tiene íconos 3D y cada ícono de color se cambió por el gris y plano de su diseño. Las quests y los rollouts siguen como estaban",
             "`!userinfo` y `!serverinfo` se rediseñaron sin color: el avatar se dibuja con su decoración, la placa de nombre es una imagen, la etiqueta de servidor va junto al nombre y cada fila tiene un ícono de Petto; `!serverinfo` se organiza en dos bloques y muestra la imagen de invitación. Nuevo `!usercosmetics` (`!uc`): muestra la decoración (animada si se mueve), la placa de nombre y la etiqueta de servidor de un miembro. La tarjeta de subida de nivel tiene hexágonos más gruesos y ya no lleva la etiqueta de servidor",
@@ -2941,6 +2943,7 @@ export const ui = {
           name: 'Mochi',
           date: "23 de outubro de 2026",
           items: [
+            "Menu do celular: o botão da conta que abre o dashboard agora mantém o idioma da página em que você está (/es ou /pt-br) em vez de tirá-lo do endereço",
             "Novo comando `!jumbo` (também `!bigemoji` e `!enlarge`): mostra em tamanho grande um emoji personalizado, um animado, um emoji comum ou um sticker, com um link para o original; responda a uma mensagem com um emoji ou um sticker, ou escreva depois do comando. Se o servidor ainda não o tem, um botão Roubar o adiciona para quem apertar, se puder gerenciar emojis e stickers",
             "Os cartões do Petto não têm mais cor ao lado, exceto verde quando algo deu certo e vermelho quando foi recusado ou precisa de atenção (os cartões de sanções e as cores que um servidor escolhe continuam); os títulos são pequenos em vez de grandes, o `!version` não tem mais ícones 3D e cada ícone colorido foi trocado pelo cinza e plano do seu design. As quests e os rollouts continuam como estavam",
             "`!userinfo` e `!serverinfo` foram redesenhados sem cor: o avatar é desenhado com sua decoração, a placa de nome é uma imagem, a tag de servidor fica ao lado do nome e cada linha tem um ícone do Petto; `!serverinfo` é organizado em dois blocos e mostra a imagem do convite. Novo `!usercosmetics` (`!uc`): mostra a decoração (animada se se move), a placa de nome e a tag de servidor de um membro. O cartão de subida de nível tem hexágonos mais grossos e não leva mais a tag de servidor",

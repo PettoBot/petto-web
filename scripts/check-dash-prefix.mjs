@@ -53,4 +53,12 @@ if (!/\(locals as Record<string, unknown>\)\.dashLang \? null : dashLangRedirect
   process.exit(1);
 }
 console.log('redirect loop guard present');
+// The account button of the phone menu keeps the language of the page: /es/dash and /pt-br/dash set the dashboard language, a bare /dash
+// would open the dashboard in whatever language was saved (and drop the prefix from the address).
+const dock = readFileSync(new URL('../src/components/GlassDock.astro', import.meta.url), 'utf8');
+if (!/class:list=\{\['gdock-account'[^>]*href=\{`\$\{base\}\/dash`\}/.test(dock)) {
+  console.error('FAILED: the account button of src/components/GlassDock.astro must link to `${base}/dash` so it keeps the language prefix.');
+  process.exit(1);
+}
+console.log('phone menu account button keeps the language prefix');
 process.exit(failed ? 1 : 0);
