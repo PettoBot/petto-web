@@ -445,6 +445,49 @@ await shot('custom-8ball', 'games', {
   build: async (lang) => ({ content: (await petto.run(BALL_CODE[lang], codeData(lang), { random: () => 0.7 })).output }),
 });
 
+// Feeds: the notices of the accounts a server follows, built by the bot's own card (src/feeds/card.js). YouTube, Bluesky, Modrinth and the Pokémon are
+// real (their public APIs answer); Twitch and Pinterest, which need keys, and the live stream, which cannot be real at any moment, are examples.
+process.env.PETTO_FEED_ASSETS_URL = 'http://localhost:4399/assets/feeds';
+const feedCard = load('src/feeds/card.js');
+const feedYoutube = load('src/feeds/providers/youtube.js');
+const feedBluesky = load('src/feeds/providers/bluesky.js');
+const feedModrinth = load('src/feeds/providers/modrinth.js');
+const feedPokemon = load('src/feeds/providers/pokemon.js');
+const feedTwitch = load('src/feeds/providers/twitch.js');
+const UPDATES_ROLE = '223456789012345678';
+const feedNames = { [UPDATES_ROLE]: 'Updates' };
+const feedOf = (message, extra = {}) => ({ message, ping_roles: [UPDATES_ROLE], options: {}, ...extra });
+const DUCK = 'http://localhost:4399/assets/duck-purple.png';
+const feedShot = (id, channel, build, typed = null) => shot(id, channel, { build: async (lang) => build(lang), names: feedNames, ...(typed ? { typed } : {}) });
+const feedBot = (feed, item, lang) => feedCard.buildFeedMessage(feed, item, { lang });
+
+const mkbhd = await feedYoutube.fetchChannel('UCBJycsmduvYEL83R_U4JriQ');
+const mkbhdAvatar = (/og:image" content="([^"]+)"/.exec(await (await realFetch('https://www.youtube.com/channel/UCBJycsmduvYEL83R_U4JriQ', { headers: { 'User-Agent': 'Mozilla/5.0' } })).text()) ?? [])[1] ?? null;
+const longVideo = mkbhd.entries.find((entry) => !entry.short);
+const shortVideo = mkbhd.entries.find((entry) => entry.short);
+await feedShot('feed-youtube-video', 'videos', (lang) => feedBot(feedOf({ en: 'New video from **{feed.author}**!', es: '¡Nuevo video de **{feed.author}**!', 'pt-BR': 'Vídeo novo de **{feed.author}**!' }[lang]), feedYoutube.toItem(longVideo, 'video', { avatar: mkbhdAvatar }), lang));
+await feedShot('feed-youtube-short', 'videos', (lang) => feedBot(feedOf('', { ping_roles: [] }), feedYoutube.toItem(shortVideo, 'short', { avatar: mkbhdAvatar }), lang));
+await feedShot('feed-youtube-live', 'directos', (lang) => feedBot(feedOf({ en: '🔴 We are live!', es: '🔴 ¡Estamos en directo!', 'pt-BR': '🔴 Estamos ao vivo!' }[lang]), {
+  platform: 'youtube', type: 'live', title: { en: 'Petto Studio · building the feeds, live', es: 'Petto Studio · construyendo los feeds en vivo', 'pt-BR': 'Petto Studio · construindo os feeds ao vivo' }[lang], url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  description: { en: 'Come and say hi, we answer questions in the chat.', es: 'Pasa a saludar, respondemos preguntas en el chat.', 'pt-BR': 'Passe para dizer oi, respondemos perguntas no chat.' }[lang],
+  image: DUCK, avatar: DUCK, author: 'Petto Studio', publishedAt: NOW - 120000, extra: '👁 1,284',
+}, lang));
+await feedShot('feed-twitch-live', 'directos', (lang) => feedBot(feedOf({ en: '{feed.author} is live!', es: '¡{feed.author} está en vivo!', 'pt-BR': '{feed.author} está ao vivo!' }[lang]), {
+  platform: 'twitch', type: 'live', title: { en: 'Chill Minecraft night · come hang out', es: 'Noche tranquila de Minecraft · pasen a saludar', 'pt-BR': 'Noite tranquila de Minecraft · apareça' }[lang], url: 'https://www.twitch.tv/pettoplays',
+  image: DUCK, avatar: DUCK, author: 'PettoPlays', publishedAt: NOW - 300000, extra: '🎮 Minecraft · 👁 342',
+}, lang));
+const skyActor = await feedBluesky.resolveActor('jay.bsky.team');
+const skyPost = (await feedBluesky.fetchPosts(skyActor.id, 20))[0];
+await feedShot('feed-bluesky', 'social', (lang) => feedBot(feedOf('', { ping_roles: [] }), feedBluesky.toItem(skyPost), lang));
+const sodium = await feedModrinth.resolveProject('sodium');
+const sodiumVersion = (await feedModrinth.fetchVersions(sodium.id, 3))[0];
+await feedShot('feed-modrinth', 'minecraft', (lang) => feedBot(feedOf({ en: 'A new version is out:', es: 'Salió una versión nueva:', 'pt-BR': 'Saiu uma versão nova:' }[lang]), feedModrinth.toItem(sodium, sodiumVersion), lang));
+await feedShot('feed-pokemon', 'pokemon', async (lang) => feedBot(feedOf('', { ping_roles: [] }), feedPokemon.toItem(await feedPokemon.fetchPokemon(feedPokemon.pokemonOfDay(), lang), NOW - 180000), lang));
+await feedShot('feed-pinterest', 'inspo', (lang) => feedBot(feedOf('', { ping_roles: [] }), {
+  platform: 'pinterest', type: 'pin', title: { en: 'Cozy purple desk setup', es: 'Escritorio morado acogedor', 'pt-BR': 'Mesa roxa aconchegante' }[lang], url: 'https://www.pinterest.com/', description: { en: 'Saved to the board Desk ideas', es: 'Guardado en el tablero Ideas de escritorio', 'pt-BR': 'Salvo no quadro Ideias de mesa' }[lang],
+  image: DUCK, avatar: DUCK, author: 'pettodesigns', publishedAt: NOW - 3600000,
+}, lang));
+
 await saveEmoji(shots);
 fs.writeFileSync(path.join(SHOT_DIR, 'core.json'), `${JSON.stringify(shots, null, 1)}\n`);
 console.log(`Wrote ${Object.keys(shots).length} screenshots of the systems`);

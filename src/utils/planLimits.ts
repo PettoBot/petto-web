@@ -15,6 +15,7 @@ export interface PlanLimits {
   componentPanels: number;
   counters: number;
   paginationMessages: number;
+  feeds: number;
 }
 
 export const FREE_LIMITS: Readonly<PlanLimits> = Object.freeze({
@@ -30,6 +31,7 @@ export const FREE_LIMITS: Readonly<PlanLimits> = Object.freeze({
   componentPanels: 50,
   counters: 25,
   paginationMessages: 25,
+  feeds: 3,
 });
 
 export const PREMIUM_LIMITS: Readonly<PlanLimits> = Object.freeze({
@@ -45,6 +47,7 @@ export const PREMIUM_LIMITS: Readonly<PlanLimits> = Object.freeze({
   componentPanels: 100,
   counters: 50,
   paginationMessages: 50,
+  feeds: 10,
 });
 
 /** The periods of the Statistics page: every server sees these, and Premium also the longer ones (the bot keeps every day). */

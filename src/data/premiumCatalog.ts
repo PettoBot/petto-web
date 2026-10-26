@@ -17,6 +17,7 @@
 // Change them together, never only here.
 import { FREE_LIMITS, PREMIUM_LIMITS, FREE_STAT_DAYS, PREMIUM_STAT_DAYS, type PlanLimits } from '../utils/planLimits';
 import type { Locale } from '../i18n/ui';
+import { FEEDS_ON_PREMIUM_PAGE } from '../utils/feeds';
 
 export type PlanId = 'free' | 'premium' | 'custom';
 export interface L10n { en: string; es: string; pt: string }
@@ -28,6 +29,8 @@ export interface PremiumFeature {
   name: L10n;
   desc?: L10n;
   isNew?: boolean;
+  /** A benefit that is not available yet: it is drawn locked, with this reason. */
+  locked?: { reason: L10n };
   compare?: { free: L10n; premium: L10n };
 }
 
@@ -61,7 +64,7 @@ const days = (list: readonly number[], and: string) => `${list.slice(0, -1).join
 const PAID: PlanId[] = ['premium', 'custom'];
 const ALL: PlanId[] = ['free', 'premium', 'custom'];
 
-export const FEATURES: readonly PremiumFeature[] = [
+const ALL_FEATURES: readonly PremiumFeature[] = [
   // What every plan has (the Free card).
   { id: 'safety', icon: 'ph:shield-check-fill', plans: ALL, name: { en: 'Moderation, automod, anti-nuke & verification', es: 'Moderación, automod, anti-nuke y verificación', pt: 'Moderação, automod, anti-nuke e verificação' } },
   { id: 'community', icon: 'ph:ticket-fill', plans: ALL, name: { en: 'Tickets, leveling, giveaways, forms & appeals', es: 'Tickets, niveles, sorteos, formularios y apelaciones', pt: 'Tickets, níveis, sorteios, formulários e apelações' } },
@@ -76,6 +79,20 @@ export const FEATURES: readonly PremiumFeature[] = [
     id: 'room', icon: 'ph:stack-fill', plans: PAID,
     name: { en: 'About twice the room', es: 'Cerca del doble de espacio', pt: 'Cerca do dobro de espaço' },
     desc: { en: 'About twice the room for commands, autoresponders, tickets, cards and more', es: 'Cerca del doble de espacio para comandos, autorespuestas, tickets, tarjetas y más', pt: 'Cerca do dobro de espaço para comandos, autorespostas, tickets, cartões e mais' },
+  },
+  {
+    id: 'feeds', icon: 'ph:bell-ringing-fill', plans: PAID, isNew: true,
+    name: { en: 'More feeds', es: 'Más feeds', pt: 'Mais feeds' },
+    desc: { en: 'Follow up to 10 accounts (YouTube, Twitch, Kick, Reddit, GitHub, RSS and more) and get their news in a channel', es: 'Sigue hasta 10 cuentas (YouTube, Twitch, Kick, Reddit, GitHub, RSS y más) y recibe sus novedades en un canal', pt: 'Siga até 10 contas (YouTube, Twitch, Kick, Reddit, GitHub, RSS e mais) e receba as novidades em um canal' },
+  },
+  {
+    id: 'feeds-paid', icon: 'ph:lock-fill', plans: PAID,
+    name: { en: 'Feeds of X, Instagram and TikTok', es: 'Feeds de X, Instagram y TikTok', pt: 'Feeds de X, Instagram e TikTok' },
+    desc: { en: 'Follow accounts of services that cost money to follow', es: 'Sigue cuentas de servicios que cuesta dinero seguir', pt: 'Siga contas de serviços que custa dinheiro seguir' },
+    locked: { reason: {
+      en: 'Locked for now: X charges for its API, and Instagram and TikTok have no public way to follow an account, so Petto needs a paid provider. They will be Premium only, to cover that cost, and unlock when they are ready.',
+      es: 'Bloqueado por ahora: X cobra por su API, e Instagram y TikTok no tienen una forma pública de seguir cuentas, así que Petto necesita un proveedor de pago. Serán solo Premium, para cubrir ese costo, y se desbloquean cuando estén listos.',
+      pt: 'Bloqueado por enquanto: o X cobra pela API, e o Instagram e o TikTok não têm uma forma pública de seguir contas, então o Petto precisa de um provedor pago. Serão só Premium, para cobrir esse custo, e desbloqueiam quando estiverem prontos.' } },
   },
   {
     id: 'card-editor', icon: 'ph:image-fill', plans: PAID,
@@ -128,6 +145,10 @@ export const FEATURES: readonly PremiumFeature[] = [
   { id: 'custom-contact', icon: 'ph:chat-circle-fill', plans: ['custom'], name: { en: 'Direct line to the developer', es: 'Línea directa con el desarrollador', pt: 'Linha direta com o desenvolvedor' } },
 ];
 
+/** The feeds are in test: while they are not open to everybody the Premium page does not talk about them. */
+const FEED_FEATURES = ['feeds', 'feeds-paid'];
+export const FEATURES: readonly PremiumFeature[] = ALL_FEATURES.filter((f) => FEEDS_ON_PREMIUM_PAGE || !FEED_FEATURES.includes(f.id));
+
 /** What the Free plan lists. */
 export const freeFeatures = () => FEATURES.filter((f) => f.plans.includes('free'));
 /** What Premium adds over Free: the "what you get" grid and the dashboard benefits. */
@@ -148,13 +169,14 @@ export const LIMIT_ROWS: ReadonlyArray<{ key: keyof PlanLimits; label: L10n }> =
   { key: 'buttonResponders', label: { en: 'Button responders', es: 'Botones con respuesta', pt: 'Botões com resposta' } },
   { key: 'componentPanels', label: { en: 'Button panels', es: 'Paneles de botones', pt: 'Painéis de botões' } },
   { key: 'counters', label: { en: 'Counters', es: 'Contadores', pt: 'Contadores' } },
+  { key: 'feeds', label: { en: 'Followed accounts (Feeds)', es: 'Cuentas seguidas (Feeds)', pt: 'Contas seguidas (Feeds)' } },
   { key: 'paginationMessages', label: { en: 'Paginated messages', es: 'Mensajes con páginas', pt: 'Mensagens com páginas' } },
 ];
 
 /** Every row of the Free → Premium table in a language: the numbered limits, then each feature that has a comparison. */
 export function compareRows(lang: Locale | string): Array<{ label: string; free: string; premium: string; numeric: boolean; isNew: boolean }> {
   return [
-    ...LIMIT_ROWS.map((row) => ({ label: tr(row.label, lang), free: String(FREE_LIMITS[row.key]), premium: String(PREMIUM_LIMITS[row.key]), numeric: true, isNew: false })),
+    ...LIMIT_ROWS.filter((row) => FEEDS_ON_PREMIUM_PAGE || row.key !== 'feeds').map((row) => ({ label: tr(row.label, lang), free: String(FREE_LIMITS[row.key]), premium: String(PREMIUM_LIMITS[row.key]), numeric: true, isNew: false })),
     ...FEATURES.filter((f) => f.compare).map((f) => ({ label: tr(f.name, lang), free: tr(f.compare!.free, lang), premium: tr(f.compare!.premium, lang), numeric: false, isNew: Boolean(f.isNew) })),
   ];
 }
