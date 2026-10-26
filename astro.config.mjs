@@ -71,7 +71,7 @@ export default defineConfig({
         'simple-icons': [
           'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
           'googlegemini', 'nodedotjs', 'npm', 'phosphoricons', 'postgresql', 'simpleicons',
-          'typescript', 'vite', 'x', 'youtube', 'instagram', 'tiktok', 'pinterest', 'spotify', 'twitch', 'kick', 'soundcloud', 'reddit',
+          'typescript', 'vite', 'x', 'youtube', 'instagram', 'tiktok', 'pinterest', 'spotify', 'twitch', 'kick', 'soundcloud', 'reddit', 'bluesky', 'modrinth', 'pokemon', 'rss',
         ],
       },
     }),

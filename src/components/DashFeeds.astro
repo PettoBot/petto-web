@@ -1,0 +1,598 @@
+---
+// Feeds: follow an account of another service (YouTube, Twitch, Bluesky, Modrinth, the Pokémon of the day) and let Petto post what it
+// publishes in a channel. The list is read from the database by the page; looking up an account, following it, the test notice and the
+// preview of the card go through the bot (feeds-api.ts). The preview is the real card of the bot drawn with the same renderer as the
+// Embed Builder.
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import DashAcData from './DashAcData.astro';
+import Modal from './Modal.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, platformById, type FeedRow } from '../utils/feeds';
+
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null };
+  guildId: string;
+  guildName: string;
+  guildIcon: string;
+  platform: string | null;
+  feeds: FeedRow[];
+  channels: { id: string; name: string }[];
+  roles: { id: string; name: string; color: number }[];
+  limit: number;
+  premium: boolean;
+  premiumLimit: number;
+  freeLimit: number;
+  ready: boolean;
+}
+const { user, guildId, guildName, guildIcon, platform, feeds, channels, roles, limit, premium, premiumLimit, freeLimit, ready } = Astro.props;
+const current = platform ? platformById(platform) : null;
+const shown = current ? feeds.filter((feed) => feed.platform === current.id) : feeds;
+const channelName = new Map(channels.map((channel) => [channel.id, channel.name]));
+const used = feeds.length;
+const full = used >= limit;
+const countOf = (id: string) => feeds.filter((feed) => feed.platform === id).length;
+
+const statusOf = (feed: FeedRow): { key: string; label: string; detail: string } => {
+  if (!feed.enabled && feed.failures >= 5) return { key: 'off', label: dt('Turned off'), detail: feed.lastError ?? '' };
+  if (!feed.enabled) return { key: 'paused', label: dt('Paused'), detail: '' };
+  if (!feed.ready) return { key: 'wait', label: dt('Getting ready'), detail: '' };
+  if (feed.failures > 0 && feed.lastError) return { key: 'warn', label: dt('Having trouble'), detail: feed.lastError };
+  return { key: 'ok', label: dt('Active'), detail: '' };
+};
+
+const text = {
+  find: dt('Find'), change: dt('Change'), looking: dt('Looking…'), pasteFirst: dt('Paste the link or the name first.'),
+  save: dt('Save feed'), create: dt('Follow this account'), saving: dt('Saving…'), saved: dt('Saved.'), newFeed: dt('New feed'), editFeed: dt('Edit feed'),
+  pickChannel: dt('Pick the channel for the notices.'), pickAccount: dt('Find the account first.'), pickType: dt('Pick at least one kind of notice.'),
+  failed: dt('Petto did not answer. Try again in a moment.'), deleteAsk: dt('Stop following {name}? The channel keeps what was already posted.'),
+  previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'),
+};
+const config = {
+  guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, types: p.types, defaultTypes: p.defaultTypes, account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
+  types: Object.fromEntries(Object.entries(FEED_TYPES).map(([id, type]) => [id, dt(type.label)])),
+  roles: roles.map((role) => [role.id, role.name]), text,
+  feeds: Object.fromEntries(feeds.map((feed) => [feed.id, feed])),
+};
+const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
+const typeIcon = (id: string): string => typeTable[id]?.icon ?? 'ph:bell-ringing-fill';
+const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={current ? `feeds-${current.id}` : 'feeds-overview'} pageTitle={current ? `${current.name} · ${dt('Feeds')}` : dt('Feeds')}>
+  <div class="fd" data-feeds data-config={JSON.stringify(config)} style={current ? `--fd-c:${current.color}` : ''}>
+    <header class="fd-head">
+      <div class="fd-title">
+        {current ? <span class="fd-logo" style={`--fd-c:${current.color}`}><Icon name={current.icon} width="22" height="22" /></span> : <span class="fd-logo fd-logo-all"><Icon name="ph:bell-ringing-fill" width="22" height="22" /></span>}
+        <div>
+          <h1>{current ? current.name : dt('Feeds')}</h1>
+          <p>{current ? dt('Petto posts what these accounts publish, in the channel you choose.') : dt('Follow accounts of other services and Petto posts what they publish: videos, live streams, posts and more.')}</p>
+        </div>
+      </div>
+      <div class="fd-head-actions">
+        <span class={`fd-count${full ? ' fd-count-full' : ''}`} title={premium ? dt('The limit of Premium servers.') : dt('Free servers follow up to {count} accounts, Premium servers up to {premium}.', { count: String(freeLimit), premium: String(premiumLimit) })}>
+          <Icon name="ph:bell-ringing-fill" width="14" height="14" />{dt('{used} of {limit} accounts', { used: String(used), limit: String(limit) })}
+        </span>
+        {current && !current.soon && <button type="button" class="btn btn-accent btn-sm" data-feed-new={current.id} disabled={!ready || full}><Icon name="ph:plus-bold" width="14" height="14" />{dt('New feed')}</button>}
+      </div>
+    </header>
+
+    <div class="fd-flash" data-flash hidden role="status"></div>
+    {!ready && <div class="fd-note fd-note-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+    {ready && full && !premium && <div class="fd-note"><Icon name="ph:crown-fill" width="15" height="15" />{dt('You follow the {count} accounts a free server can. Premium servers can follow up to {premium}.', { count: String(limit), premium: String(premiumLimit) })} <a href="/premium">{dt('See Premium')}</a></div>}
+
+    {!current && (
+      <div class="fd-platforms" role="list" aria-label={dt('Platforms')}>
+        {FEED_PLATFORMS.map((p, i) => (
+          p.soon
+            ? <div role="listitem" class="fd-plat fd-plat-soon" style={`--fd-c:${p.color};--i:${i}`}><span class="fd-logo"><Icon name={p.icon} width="22" height="22" /></span><b>{p.name}</b><small>{dt('Coming soon')}</small></div>
+            : <a class="fd-plat" href={`/dash/guild/${guildId}/feeds?platform=${p.id}`} style={`--fd-c:${p.color};--i:${i}`}><span class="fd-logo"><Icon name={p.icon} width="22" height="22" /></span><b>{p.name}</b><small>{countOf(p.id) ? dt('{count} followed', { count: String(countOf(p.id)) }) : dt('Nothing followed yet')}</small></a>
+        ))}
+      </div>
+    )}
+
+    {shown.length > 0 && (
+      <div class="fd-tools">
+        <label class="fd-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" data-feed-search placeholder={dt('Search accounts')} aria-label={dt('Search accounts')} autocomplete="off" /></label>
+      </div>
+    )}
+
+    {shown.length > 0 ? (
+      <ul class="fd-list">
+        {shown.map((feed, i) => {
+          const p = platformById(feed.platform);
+          const status = statusOf(feed);
+          return (
+            <li class="fd-row" data-feed-row={feed.id} data-search={`${feed.accountName} ${p?.name ?? ''} ${channelName.get(feed.channelId) ?? ''}`.toLowerCase()} style={`--fd-c:${p?.color ?? '#888'};--i:${Math.min(i, 8)}`}>
+              <span class="fd-avatar">{feed.accountAvatar ? <img src={feed.accountAvatar} alt="" loading="lazy" referrerpolicy="no-referrer" /> : p ? <Icon name={p.icon} width="20" height="20" /> : null}</span>
+              <div class="fd-main">
+                <div class="fd-name">{feed.accountUrl ? <a href={feed.accountUrl} target="_blank" rel="noopener noreferrer">{feed.accountName}</a> : feed.accountName}{!current && p && <span class="fd-plat-tag"><Icon name={p.icon} width="11" height="11" />{p.name}</span>}</div>
+                <div class="fd-meta">
+                  <span class="fd-chans"><Icon name="ph:hash-bold" width="11" height="11" />{channelName.get(feed.channelId) ?? dt('deleted channel')}</span>
+                  {feed.types.map((type) => <span class="fd-type"><Icon name={typeIcon(type)} width="11" height="11" />{typeLabel(type)}</span>)}
+                </div>
+                <div class="fd-last">{feed.lastSentAt ? <>{dt('Last notice')}: <time datetime={feed.lastSentAt} data-when></time></> : dt('Nothing posted yet')}</div>
+                {status.detail && <div class="fd-err" title={status.detail}>{status.detail}</div>}
+              </div>
+              <span class={`fd-status fd-status-${status.key}`}>{status.label}</span>
+              <div class="fd-actions">
+                <button type="button" class="fd-icon" data-feed-test={feed.id} title={dt('Send a test notice')} aria-label={dt('Send a test notice')}><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" /></button>
+                <button type="button" class="fd-icon" data-feed-edit={feed.id} title={dt('Edit')} aria-label={dt('Edit')}><Icon name="ph:pencil-simple-bold" width="15" height="15" /></button>
+                <button type="button" class="fd-icon" data-feed-toggle={feed.id} data-on={feed.enabled ? '1' : ''} title={feed.enabled ? dt('Pause') : dt('Resume')} aria-label={feed.enabled ? dt('Pause') : dt('Resume')}><Icon name={feed.enabled ? 'ph:pause-fill' : 'ph:play-fill'} width="15" height="15" /></button>
+                <button type="button" class="fd-icon fd-icon-danger" data-feed-delete={feed.id} data-name={feed.accountName} title={dt('Stop following')} aria-label={dt('Stop following')}><Icon name="ph:trash-bold" width="15" height="15" /></button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    ) : (
+      ready && (current ? (
+        <div class="fd-empty"><span class="fd-logo" style={`--fd-c:${current.color}`}><Icon name={current.icon} width="26" height="26" /></span><h2>{dt('No {name} account followed yet', { name: current.name })}</h2><p>{dt('Add one and Petto will post its news here as soon as they happen.')}</p><button type="button" class="btn btn-accent btn-sm" data-feed-new={current.id} disabled={full}><Icon name="ph:plus-bold" width="14" height="14" />{dt('New feed')}</button></div>
+      ) : <p class="fd-hint">{dt('Pick a platform to follow your first account.')}</p>)
+    )}
+    <p class="fd-hint fd-none" data-feed-nomatch hidden>{dt('No account matches your search.')}</p>
+  </div>
+
+  <DashAcData roles={roles} channels={channels} vars={FEED_VARIABLES.map((variable) => ({ tok: variable.tok, desc: dt(variable.desc) }))} />
+
+  <Modal id="fd-modal" title={dt('New feed')} icon="ph:bell-ringing-fill">
+    <form class="fd-form" data-feed-form data-no-dirty autocomplete="off" novalidate>
+      <div class="fd-cols">
+        <div class="fd-fields">
+          <div class="fd-field" data-step="account">
+            <label for="fd-account">{dt('Account')}</label>
+            <div class="fd-find" data-find>
+              <input id="fd-account" type="text" data-account-input maxlength="200" />
+              <button type="button" class="btn btn-ghost btn-sm" data-find-btn>{dt('Find')}</button>
+            </div>
+            <div class="fd-found" data-found hidden></div>
+            <span class="fd-help" data-account-help></span>
+          </div>
+
+          <fieldset class="fd-field fd-set" data-types-box><legend>{dt('What to post')}</legend><div class="fd-types" data-types></div></fieldset>
+
+          <div class="fd-field">
+            <label for="fd-channel">{dt('Channel')}</label>
+            <select id="fd-channel" data-channel><option value="">{dt('Pick a channel')}</option>{channels.map((channel) => <option value={channel.id}>#{channel.name}</option>)}</select>
+          </div>
+
+          <div class="fd-field">
+            <label for="fd-message">{dt('Message above the notice')} <small>({dt('optional')})</small></label>
+            <textarea id="fd-message" data-message data-ac="vars,emojis,roles" rows="3" maxlength="1500" placeholder={dt('{feed.author} just posted!')}></textarea>
+            <div class="fd-chips" data-var-chips>{FEED_VARIABLES.slice(0, 4).map((variable) => <button type="button" class="fd-chip" data-var={variable.tok} title={dt(variable.desc)}>{variable.tok}</button>)}</div>
+          </div>
+
+          <div class="fd-field">
+            <label for="fd-role">{dt('Ping')}</label>
+            <div class="fd-find">
+              <select id="fd-role" data-role-select><option value="">{dt('Add a role to ping')}</option>{roles.map((role) => <option value={role.id}>{role.name}</option>)}</select>
+              <label class="fd-check"><input type="checkbox" data-everyone />@everyone</label>
+            </div>
+            <div class="fd-roles" data-roles></div>
+          </div>
+
+          <details class="fd-more">
+            <summary>{dt('More options')}</summary>
+            <div class="fd-field" data-image-field>
+              <label for="fd-image">{dt('Big picture')}</label>
+              <select id="fd-image" data-image><option value="">{dt('Automatic')}</option><option value="on">{dt('Always show it')}</option><option value="off">{dt('Never show it')}</option></select>
+              <span class="fd-help">{dt('Automatic shows the cover of videos and streams, and leaves it out for Shorts.')}</span>
+            </div>
+            <label class="fd-check"><input type="checkbox" data-button />{dt('Add a button that opens it')}</label>
+            <div class="fd-field"><label for="fd-include">{dt('Only if the title has one of these words')}</label><input id="fd-include" type="text" data-include maxlength="300" placeholder={dt('words, separated by commas')} /></div>
+            <div class="fd-field"><label for="fd-exclude">{dt('Skip it if the title has one of these words')}</label><input id="fd-exclude" type="text" data-exclude maxlength="300" placeholder={dt('words, separated by commas')} /></div>
+          </details>
+        </div>
+
+        <aside class="fd-preview" aria-label={dt('Preview')}>
+          <div class="fd-eyebrow">{dt('Preview')}</div>
+          <div class="fd-tabs" data-preview-tabs></div>
+          <div class="fd-preview-box" data-preview></div>
+          <p class="fd-help">{dt('This is an example. The real notice has the title, picture and link of what was published.')}</p>
+        </aside>
+      </div>
+      <p class="fd-error" data-error hidden role="alert"></p>
+      <div class="fd-foot">
+        <button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button>
+        <button type="submit" class="btn btn-accent btn-sm" data-submit>{dt('Follow this account')}</button>
+      </div>
+    </form>
+  </Modal>
+</DashGuildLayout>
+
+<script>
+  import { renderV2Message, defaultContext } from '../utils/discordPreview';
+
+  type Feed = {
+    id: number; platform: string; accountId: string; accountName: string; accountAvatar: string | null; accountUrl: string | null; channelId: string; types: string[];
+    message: string; pingRoles: string[]; pingEveryone: boolean; options: { image?: boolean; button?: boolean }; filters: { include: string[]; exclude: string[] };
+  };
+  type Account = { id: string; name: string; avatar: string | null; url: string | null };
+
+  function initFeeds() {
+    const root = document.querySelector<HTMLElement>('[data-feeds]');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    const config = JSON.parse(root.dataset.config ?? '{}');
+    const text = config.text as Record<string, string>;
+    const api = `/dash/guild/${config.guildId}/feeds-api`;
+    const $ = <T extends HTMLElement>(sel: string, scope: ParentNode = document) => scope.querySelector<T>(sel);
+    const modal = () => document.getElementById('fd-modal') as HTMLElement | null;
+    const flashBox = $<HTMLElement>('[data-flash]', root)!;
+
+    const call = async (action: string, body: Record<string, unknown> = {}) => {
+      try {
+        const res = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ action, ...body }) });
+        const data = await res.json().catch(() => null);
+        return { ok: Boolean(res.ok && data?.ok), data, message: typeof data?.message === 'string' && data.message ? data.message : '' };
+      } catch {
+        return { ok: false, data: null, message: '' };
+      }
+    };
+    const flash = (message: string, ok: boolean) => {
+      flashBox.hidden = false;
+      flashBox.className = `fd-flash ${ok ? 'fd-flash-ok' : 'fd-flash-err'}`;
+      flashBox.textContent = message;
+      flashBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+
+    // Dates are written in the viewer's own time zone.
+    root.querySelectorAll<HTMLTimeElement>('time[data-when]').forEach((el) => {
+      const date = new Date(el.dateTime);
+      if (!Number.isNaN(date.getTime())) el.textContent = date.toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    });
+
+    // Search: filters the rows by account, platform or channel.
+    const rows = [...root.querySelectorAll<HTMLElement>('[data-feed-row]')];
+    $<HTMLInputElement>('[data-feed-search]', root)?.addEventListener('input', (event) => {
+      const query = (event.target as HTMLInputElement).value.trim().toLowerCase();
+      let any = false;
+      rows.forEach((row) => { const match = !query || (row.dataset.search ?? '').includes(query); row.hidden = !match; if (match) any = true; });
+      const none = $<HTMLElement>('[data-feed-nomatch]', root);
+      if (none) none.hidden = any;
+    });
+
+    // ---- The window to follow an account or to change a feed ----
+    const state = { platform: '', feedId: 0, input: '', account: null as Account | null, type: '', roles: [] as string[], timer: 0, run: 0 };
+
+    const form = () => $<HTMLFormElement>('[data-feed-form]', modal() ?? document)!;
+    const field = <T extends HTMLElement>(sel: string) => $<T>(sel, form())!;
+    const words = (value: string) => value.split(',').map((word) => word.trim()).filter(Boolean).slice(0, 10);
+    const fillRoles = () => {
+      const box = field<HTMLElement>('[data-roles]');
+      box.replaceChildren(...state.roles.map((id) => {
+        const chip = document.createElement('button');
+        chip.type = 'button'; chip.className = 'fd-chip fd-chip-role'; chip.dataset.removeRole = id;
+        chip.title = text.removeRole; chip.textContent = `@${(config.roles as [string, string][]).find(([rid]) => rid === id)?.[1] ?? id}  ×`;
+        return chip;
+      }));
+    };
+    const checkedTypes = () => [...form().querySelectorAll<HTMLInputElement>('[data-types] input:checked')].map((input) => input.value);
+    const showError = (message: string) => { const el = field<HTMLElement>('[data-error]'); el.hidden = !message; el.textContent = message; };
+
+    const showFound = () => {
+      const found = field<HTMLElement>('[data-found]');
+      const find = field<HTMLElement>('[data-find]');
+      found.hidden = !state.account;
+      find.hidden = Boolean(state.account);
+      if (!state.account) { found.replaceChildren(); return; }
+      const img = document.createElement('img');
+      img.src = state.account.avatar ?? ''; img.alt = ''; img.referrerPolicy = 'no-referrer';
+      const name = document.createElement('b'); name.textContent = state.account.name;
+      const change = document.createElement('button');
+      change.type = 'button'; change.className = 'btn btn-ghost btn-sm'; change.dataset.changeAccount = '1'; change.textContent = text.change;
+      found.replaceChildren(...(state.account.avatar ? [img] : []), name, change);
+      if (state.feedId) change.hidden = true; // an account cannot change in a feed that already exists
+    };
+
+    const renderTabs = () => {
+      const platform = config.platforms[state.platform];
+      const box = field<HTMLElement>('[data-preview-tabs]');
+      const chosen = checkedTypes();
+      const list: string[] = (platform.types as string[]).filter((type) => chosen.includes(type));
+      if (!list.includes(state.type)) state.type = list[0] ?? platform.defaultTypes[0];
+      box.hidden = list.length < 2;
+      box.replaceChildren(...list.map((type) => {
+        const tab = document.createElement('button');
+        tab.type = 'button'; tab.className = `fd-tab${type === state.type ? ' fd-tab-on' : ''}`; tab.dataset.previewType = type; tab.textContent = config.types[type];
+        return tab;
+      }));
+    };
+
+    const drawPreview = async () => {
+      const run = ++state.run;
+      const box = field<HTMLElement>('[data-preview]');
+      const image = field<HTMLSelectElement>('[data-image]').value;
+      const answer = await call('preview', {
+        platform: state.platform, type: state.type, message: field<HTMLTextAreaElement>('[data-message]').value, ping_roles: state.roles, ping_everyone: field<HTMLInputElement>('[data-everyone]').checked,
+        account: state.account?.name ?? '', options: { ...(image ? { image: image === 'on' } : {}), button: field<HTMLInputElement>('[data-button]').checked },
+      });
+      if (run !== state.run) return;
+      const doc = answer.data?.messages?.[0];
+      if (!answer.ok || !doc) { box.textContent = text.previewFail; return; }
+      const bot = document.querySelector<HTMLElement>('[data-dp-bot]');
+      const tr = (key: string) => ((window as unknown as { cdt?: (k: string) => string }).cdt ? (window as unknown as { cdt: (k: string) => string }).cdt(key) : key);
+      let html = renderV2Message({ components: doc }, { ...defaultContext, botName: bot?.dataset.name || defaultContext.botName, botIcon: bot?.dataset.icon || defaultContext.botIcon, t: tr });
+      // The renderer does not know the names of the roles: the roles pinged are written in the order of the ping line.
+      for (const id of state.roles) html = html.replace('<span class="dp-mention">@role</span>', `<span class="dp-mention">@${((config.roles as [string, string][]).find(([rid]) => rid === id)?.[1] ?? 'role').replace(/[&<>"']/g, '')}</span>`);
+      box.innerHTML = html;
+    };
+    const schedule = () => { window.clearTimeout(state.timer); state.timer = window.setTimeout(() => { renderTabs(); void drawPreview(); }, 350); };
+
+    const open = (platformId: string, feed?: Feed) => {
+      const platform = config.platforms[platformId];
+      const el = modal();
+      if (!platform || !el) return;
+      Object.assign(state, { platform: platformId, feedId: feed?.id ?? 0, input: '', account: feed ? { id: feed.accountId, name: feed.accountName, avatar: feed.accountAvatar, url: feed.accountUrl } : null, roles: feed ? [...feed.pingRoles] : [], type: '' });
+      el.style.setProperty('--fd-c', platform.color);
+      el.querySelector('.mdl-head h2')!.textContent = feed ? `${text.editFeed} · ${platform.name}` : `${text.newFeed} · ${platform.name}`;
+      field<HTMLElement>('[data-submit]').textContent = feed ? text.save : text.create;
+      const input = field<HTMLInputElement>('[data-account-input]');
+      input.value = '';
+      input.placeholder = platform.account?.placeholder ?? '';
+      field<HTMLLabelElement>('[data-step="account"] label').textContent = platform.account?.label ?? platform.name;
+      field<HTMLElement>('[data-account-help]').textContent = platform.account?.help ?? '';
+      field<HTMLElement>('[data-step="account"]').hidden = !platform.account;
+      field<HTMLElement>('[data-types-box]').hidden = (platform.types as string[]).length < 2;
+      field<HTMLElement>('[data-types]').replaceChildren(...(platform.types as string[]).map((type) => {
+        const label = document.createElement('label');
+        label.className = 'fd-type-pick';
+        const check = document.createElement('input');
+        check.type = 'checkbox'; check.value = type; check.checked = feed ? feed.types.includes(type) : (platform.defaultTypes as string[]).includes(type);
+        const span = document.createElement('span'); span.textContent = config.types[type];
+        label.append(check, span);
+        return label;
+      }));
+      field<HTMLSelectElement>('[data-channel]').value = feed?.channelId ?? '';
+      field<HTMLTextAreaElement>('[data-message]').value = feed?.message ?? '';
+      field<HTMLInputElement>('[data-everyone]').checked = feed?.pingEveryone ?? false;
+      field<HTMLSelectElement>('[data-image]').value = feed?.options.image === undefined ? '' : feed.options.image ? 'on' : 'off';
+      field<HTMLElement>('[data-image-field]').hidden = !(platform.types as string[]).some((type) => ['video', 'short', 'live', 'clip', 'update', 'daily', 'post'].includes(type));
+      field<HTMLInputElement>('[data-button]').checked = feed?.options.button ?? false;
+      field<HTMLInputElement>('[data-include]').value = (feed?.filters.include ?? []).join(', ');
+      field<HTMLInputElement>('[data-exclude]').value = (feed?.filters.exclude ?? []).join(', ');
+      field<HTMLSelectElement>('[data-role-select]').value = '';
+      showError('');
+      showFound(); fillRoles(); renderTabs();
+      field<HTMLElement>('[data-submit]').toggleAttribute('disabled', false);
+      // Opening goes through the common window code (it moves the window to <body> and focuses it).
+      const opener = document.createElement('button');
+      opener.type = 'button'; opener.dataset.modalOpen = 'fd-modal'; opener.hidden = true; document.body.appendChild(opener); opener.click(); opener.remove();
+      void drawPreview();
+      // The Pokémon of the day needs no account: it is looked up at once.
+      if (!platform.account && !feed) void find('');
+    };
+
+    async function find(raw: string) {
+      const platform = config.platforms[state.platform];
+      const value = raw.trim();
+      if (platform.account && !value) { showError(text.pasteFirst); return; }
+      const button = field<HTMLButtonElement>('[data-find-btn]');
+      button.disabled = true; button.textContent = text.looking; showError('');
+      const answer = await call('resolve', { platform: state.platform, account: value });
+      button.disabled = false; button.textContent = text.find;
+      if (!answer.ok) { showError(answer.message || text.failed); return; }
+      state.account = answer.data.account as Account;
+      state.input = value;
+      showFound(); schedule();
+    }
+
+    async function save(event: Event) {
+      event.preventDefault();
+      const types = checkedTypes();
+      const channelId = field<HTMLSelectElement>('[data-channel]').value;
+      if (!state.account) { showError(text.pickAccount); return; }
+      if (!types.length) { showError(text.pickType); return; }
+      if (!channelId) { showError(text.pickChannel); return; }
+      const image = field<HTMLSelectElement>('[data-image]').value;
+      const body = {
+        channel_id: channelId, types, message: field<HTMLTextAreaElement>('[data-message]').value, ping_roles: state.roles, ping_everyone: field<HTMLInputElement>('[data-everyone]').checked,
+        options: { ...(image ? { image: image === 'on' } : {}), button: field<HTMLInputElement>('[data-button]').checked },
+        filters: { include: words(field<HTMLInputElement>('[data-include]').value), exclude: words(field<HTMLInputElement>('[data-exclude]').value) },
+      };
+      const submit = field<HTMLButtonElement>('[data-submit]');
+      submit.disabled = true; const label = submit.textContent; submit.textContent = text.saving; showError('');
+      const answer = state.feedId
+        ? await call('update', { id: state.feedId, ...body })
+        : await call('create', { platform: state.platform, account: state.input || state.account.url || state.account.id, ...body });
+      submit.disabled = false; submit.textContent = label;
+      if (!answer.ok) { showError(answer.message || text.failed); return; }
+      sessionStorage.setItem('fd-flash', answer.message || text.saved);
+      location.reload();
+    }
+
+    // The window lives in <body> once opened: its events are caught on the document. A page swapped in again binds again, so the listeners
+    // of the page before are taken off first (otherwise every click would be handled twice).
+    const w = window as unknown as { __fdOff?: (() => void)[] };
+    w.__fdOff?.forEach((off) => off());
+    w.__fdOff = [];
+    const on = <K extends keyof DocumentEventMap>(type: K, fn: (event: DocumentEventMap[K]) => void) => { document.addEventListener(type, fn); w.__fdOff!.push(() => document.removeEventListener(type, fn)); };
+    on('submit', (event) => { if ((event.target as HTMLElement | null)?.matches('[data-feed-form]')) void save(event); });
+    on('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-find-btn]')) { void find(field<HTMLInputElement>('[data-account-input]').value); return; }
+      if (target.closest('[data-change-account]')) { state.account = null; showFound(); schedule(); field<HTMLInputElement>('[data-account-input]').focus(); return; }
+      const variable = target.closest<HTMLElement>('[data-var]');
+      if (variable) {
+        const area = field<HTMLTextAreaElement>('[data-message]');
+        const at = area.selectionStart ?? area.value.length;
+        area.value = `${area.value.slice(0, at)}${variable.dataset.var}${area.value.slice(area.selectionEnd ?? at)}`;
+        area.focus(); area.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
+      const removeRole = target.closest<HTMLElement>('[data-remove-role]');
+      if (removeRole) { state.roles = state.roles.filter((id) => id !== removeRole.dataset.removeRole); fillRoles(); schedule(); return; }
+      const tab = target.closest<HTMLElement>('[data-preview-type]');
+      if (tab) { state.type = tab.dataset.previewType ?? state.type; renderTabs(); void drawPreview(); }
+    });
+    on('keydown', (event) => {
+      const input = event.target as HTMLElement | null;
+      if (event.key === 'Enter' && input?.matches('[data-account-input]')) { event.preventDefault(); void find((input as HTMLInputElement).value); }
+    });
+    on('change', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || !target.closest('[data-feed-form]')) return;
+      if (target.matches('[data-role-select]')) {
+        const id = (target as HTMLSelectElement).value;
+        if (id && !state.roles.includes(id) && state.roles.length < 10) { state.roles.push(id); fillRoles(); }
+        (target as HTMLSelectElement).value = '';
+      }
+      schedule();
+    });
+    on('input', (event) => { if ((event.target as HTMLElement | null)?.closest('[data-feed-form]')) schedule(); });
+
+    // ---- The buttons of the page ----
+    root.addEventListener('click', async (event) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest<HTMLButtonElement>('button');
+      if (!button) return;
+      if (button.dataset.feedNew) { open(button.dataset.feedNew); return; }
+      const feed = (id: string | undefined) => (config.feeds as Record<string, Feed>)[id ?? ''];
+      if (button.dataset.feedEdit) { const f = feed(button.dataset.feedEdit); if (f) open(f.platform, f); return; }
+      if (button.dataset.feedTest) {
+        button.disabled = true;
+        const answer = await call('test', { id: Number(button.dataset.feedTest) });
+        button.disabled = false;
+        flash(answer.message || (answer.ok ? text.saved : text.failed), answer.ok);
+        return;
+      }
+      if (button.dataset.feedToggle) {
+        button.disabled = true;
+        const answer = await call('update', { id: Number(button.dataset.feedToggle), enabled: !button.dataset.on });
+        if (answer.ok) { location.reload(); return; }
+        button.disabled = false; flash(answer.message || text.failed, false);
+        return;
+      }
+      if (button.dataset.feedDelete) {
+        if (!confirm(text.deleteAsk.replace('{name}', button.dataset.name ?? ''))) return;
+        button.disabled = true;
+        const answer = await call('delete', { id: Number(button.dataset.feedDelete) });
+        if (answer.ok) { location.reload(); return; }
+        button.disabled = false; flash(answer.message || text.failed, false);
+      }
+    });
+
+    try {
+      const saved = sessionStorage.getItem('fd-flash');
+      if (saved) { sessionStorage.removeItem('fd-flash'); flash(saved, true); }
+    } catch { /* storage can be off */ }
+  }
+  try { initFeeds(); } catch (error) { console.error(error); }
+  if (!(window as unknown as { __fdObserver?: boolean }).__fdObserver) {
+    (window as unknown as { __fdObserver?: boolean }).__fdObserver = true;
+    new MutationObserver(() => { if (document.querySelector('[data-feeds]:not([data-bound])')) { try { initFeeds(); } catch (error) { console.error(error); } } }).observe(document.body, { childList: true, subtree: true });
+  }
+</script>
+
+<style is:global>
+  .fd { --fd-c: var(--accent); max-width: 980px; }
+  .fd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .fd-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .fd-title h1 { margin: 0; font-size: 22px; }
+  .fd-title p { margin: 2px 0 0; font-size: 13px; color: var(--text-dim); max-width: 520px; }
+  .fd-logo { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; color: #fff; background: var(--fd-c, var(--accent)); }
+  .fd-logo-all { background: var(--accent-soft); color: var(--accent); }
+  .fd-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .fd-count { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--card); font-variant-numeric: tabular-nums; }
+  .fd-count-full { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, var(--border)); }
+  .fd-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px 14px; margin-bottom: 14px; }
+  .fd-note a { color: var(--accent); }
+  .fd-note-warn { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, var(--border)); }
+  .fd-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--border); }
+  .fd-flash[hidden] { display: none; }
+  .fd-flash-ok { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 55%, transparent); }
+  .fd-flash-err { color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border-color: color-mix(in srgb, var(--red, #f87171) 50%, transparent); }
+  .fd-platforms { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .fd-plat { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 11px; align-items: center; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px; text-decoration: none; color: inherit; transition: border-color var(--m-base, .2s) ease, transform var(--m-base, .2s) var(--m-out, ease), box-shadow var(--m-base, .2s) ease; animation: m-rise-in var(--m-slow, .3s) var(--m-out, ease) both; animation-delay: calc(var(--i, 0) * var(--m-stagger, 40ms)); }
+  .fd-plat .fd-logo { grid-row: 1 / 3; width: 38px; height: 38px; }
+  .fd-plat b { font-size: 14px; align-self: end; }
+  .fd-plat small { font-size: 12px; color: var(--text-dim); align-self: start; }
+  a.fd-plat:hover { border-color: color-mix(in srgb, var(--fd-c) 55%, var(--border)); transform: translateY(-2px); box-shadow: 0 8px 24px -16px var(--fd-c); }
+  .fd-plat-soon { opacity: .55; }
+  .fd-plat-soon .fd-logo { background: var(--bg-soft, var(--card-hover)); color: var(--text-dim); }
+  .fd-tools { display: flex; margin-bottom: 10px; }
+  .fd-search { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 340px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 0 12px; color: var(--text-dim); }
+  .fd-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13.5px; padding: 9px 0; outline: none; }
+  .fd-list { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 8px; }
+  .fd-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; border: 1px solid var(--border); border-left: 3px solid var(--fd-c); border-radius: 12px; background: var(--card); padding: 11px 12px; animation: m-rise-in var(--m-slow, .3s) var(--m-out, ease) both; animation-delay: calc(var(--i, 0) * var(--m-stagger, 40ms)); }
+  .fd-row[hidden] { display: none; }
+  .fd-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--bg-soft, var(--card-hover)); color: var(--fd-c); flex: none; }
+  .fd-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .fd-main { min-width: 0; display: grid; gap: 3px; }
+  .fd-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+  .fd-name a { color: inherit; text-decoration: none; }
+  .fd-name a:hover { text-decoration: underline; }
+  .fd-plat-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #fff; background: var(--fd-c); border-radius: 999px; padding: 1px 8px; }
+  .fd-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+  .fd-chans, .fd-type { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-soft, var(--card-hover)); border-radius: 6px; padding: 2px 7px; }
+  .fd-last { font-size: 12px; color: var(--text-dim); }
+  .fd-err { font-size: 12px; color: var(--red, #f87171); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fd-status { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; border: 1px solid var(--border); color: var(--text-muted); }
+  .fd-status-ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); }
+  .fd-status-warn, .fd-status-wait { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
+  .fd-status-off { color: var(--red, #f87171); border-color: color-mix(in srgb, var(--red, #f87171) 50%, transparent); }
+  .fd-actions { display: flex; gap: 4px; }
+  .fd-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--text-muted); cursor: pointer; transition: background .15s ease, color .15s ease; }
+  .fd-icon:hover { background: var(--card-hover); color: var(--text); }
+  .fd-icon-danger:hover { color: var(--red, #f87171); }
+  .fd-icon:disabled { opacity: .5; cursor: progress; }
+  .fd-empty { display: grid; justify-items: center; text-align: center; gap: 8px; border: 1px dashed var(--border); border-radius: 16px; padding: 34px 18px; background: var(--card); }
+  .fd-empty h2 { margin: 6px 0 0; font-size: 16px; }
+  .fd-empty p { margin: 0 0 8px; font-size: 13.5px; color: var(--text-dim); max-width: 380px; }
+  .fd-hint { font-size: 13px; color: var(--text-dim); }
+  .fd-hint[hidden] { display: none; }
+
+  #fd-modal .mdl-box { width: min(940px, 100%); }
+  #fd-modal .mdl-ico { background: var(--fd-c, var(--accent)); color: #fff; }
+  .fd-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .fd-fields { display: grid; gap: 14px; min-width: 0; }
+  .fd-field { display: grid; gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; }
+  .fd-field[hidden] { display: none; }
+  .fd-field > label, .fd-set legend { font-size: 12.5px; font-weight: 600; color: var(--text); padding: 0; }
+  .fd-field small { font-weight: 400; color: var(--text-dim); }
+  .fd-field input[type="text"], .fd-field select, .fd-field textarea { width: 100%; box-sizing: border-box; }
+  .fd-field textarea { resize: vertical; min-height: 70px; }
+  .fd-help { font-size: 12px; color: var(--text-dim); }
+  .fd-find { display: flex; gap: 8px; align-items: center; }
+  .fd-find[hidden] { display: none; }
+  .fd-find input, .fd-find select { flex: 1; min-width: 0; }
+  .fd-found { display: flex; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--green) 50%, var(--border)); background: var(--green-soft); border-radius: 10px; padding: 8px 10px; }
+  .fd-found[hidden] { display: none; }
+  .fd-found img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+  .fd-found b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; }
+  .fd-types { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fd-type-pick { cursor: pointer; }
+  .fd-type-pick input { position: absolute; opacity: 0; pointer-events: none; }
+  .fd-type-pick span { display: inline-flex; align-items: center; font-size: 13px; border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; color: var(--text-muted); transition: all .15s ease; }
+  .fd-type-pick input:checked + span { background: var(--fd-c, var(--accent)); border-color: var(--fd-c, var(--accent)); color: #fff; }
+  .fd-type-pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fd-chips, .fd-roles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fd-chip { font: inherit; font-size: 11.5px; font-family: var(--mono); color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+  .fd-chip-role { font-family: var(--sans); color: var(--text); background: var(--bg-soft, var(--card-hover)); border: 1px solid var(--border); }
+  .fd-chip-role:hover { border-color: var(--red, #f87171); }
+  .fd-check { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .fd-more { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 12px; }
+  .fd-more summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+  .fd-more[open] summary { margin-bottom: 12px; }
+  .fd-preview { position: sticky; top: 0; display: grid; gap: 10px; min-width: 0; align-content: start; }
+  .fd-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+  .fd-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fd-tabs[hidden] { display: none; }
+  .fd-tab { font: inherit; font-size: 12.5px; border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+  .fd-tab-on { background: var(--fd-c, var(--accent)); border-color: var(--fd-c, var(--accent)); color: #fff; }
+  .fd-preview-box { min-height: 120px; font-size: 13px; color: var(--text-dim); }
+  .fd-preview-box .dp-msg { max-width: none; }
+  .fd-error { margin: 0; font-size: 13px; color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red, #f87171) 45%, transparent); border-radius: 10px; padding: 9px 12px; }
+  .fd-error[hidden] { display: none; }
+  .fd-foot { display: flex; justify-content: flex-end; gap: 8px; }
+  @media (max-width: 760px) {
+    .fd-cols { grid-template-columns: minmax(0, 1fr); }
+    .fd-preview { position: static; order: -1; }
+    .fd-row { grid-template-columns: auto minmax(0, 1fr); }
+    .fd-status { grid-column: 2; justify-self: start; }
+    .fd-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  }
+  @media (prefers-reduced-motion: reduce) { .fd-plat, .fd-row { animation: none; } }
+</style>
