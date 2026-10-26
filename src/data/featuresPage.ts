@@ -93,7 +93,7 @@ const en: FeaturesCopy = {
       id: 'custom', icon: 'ph:code-fill', color: 'yellow', title: 'Make it yours',
       desc: 'Write your own commands, build messages visually and keep every setting in a dashboard.',
       points: ['Petto Code: your own commands with embeds, buttons, forms and saved data', 'Embed Builder for embeds and Components V2 messages, with a live preview', 'Custom prefix for the server, and one of your own for each person'],
-      commands: ['!customcommand', '!prefix'], shots: [], href: '/embed-builder',
+      commands: ['!customcommand', '!prefix'], shots: ['custom-welcome', 'custom-8ball'], href: '/embed-builder',
     },
   ],
 };
@@ -161,7 +161,7 @@ const es: FeaturesCopy = {
       id: 'custom', icon: 'ph:code-fill', color: 'yellow', title: 'Hazlo tuyo',
       desc: 'Escribe tus propios comandos, crea mensajes de forma visual y mantén cada ajuste en un dashboard.',
       points: ['Petto Code: tus propios comandos con embeds, botones, formularios y datos guardados', 'Embed Builder para embeds y mensajes Components V2, con vista previa en vivo', 'Prefijo propio para el servidor, y uno tuyo para cada persona'],
-      commands: ['!customcommand', '!prefix'], shots: [], href: '/embed-builder',
+      commands: ['!customcommand', '!prefix'], shots: ['custom-welcome', 'custom-8ball'], href: '/embed-builder',
     },
   ],
 };
@@ -229,7 +229,7 @@ const ptBR: FeaturesCopy = {
       id: 'custom', icon: 'ph:code-fill', color: 'yellow', title: 'Faça do seu jeito',
       desc: 'Escreva seus próprios comandos, crie mensagens de forma visual e mantenha cada ajuste em um dashboard.',
       points: ['Petto Code: seus próprios comandos com embeds, botões, formulários e dados guardados', 'Embed Builder para embeds e mensagens Components V2, com prévia ao vivo', 'Prefixo próprio para o servidor, e um seu para cada pessoa'],
-      commands: ['!customcommand', '!prefix'], shots: [], href: '/embed-builder',
+      commands: ['!customcommand', '!prefix'], shots: ['custom-welcome', 'custom-8ball'], href: '/embed-builder',
     },
   ],
 };

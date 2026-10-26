@@ -160,6 +160,8 @@ export const ui = {
           name: 'Mochi',
           date: "October 23, 2026",
           items: [
+            "The menus Product and Community of the top bar no longer go past the edge of the screen on a narrow window (or a phone in desktop mode): the panel moves back inside",
+            "On the Features page, the Make it yours group now shows two commands written in Petto Code, run by the bot's own engine: a welcome card with a button and an 8ball",
             "Phone menu: the account button that opens the dashboard now keeps the language of the page you are on (/es or /pt-br) instead of dropping it from the address",
             "Statistics in the dashboard has four new tabs: Heat map (messages by weekday and hour), Growth (net members and how long the members who left had stayed), Compare (every number next to the period before, with the change in percent, and how many messages carry a link, a file, a reply or a mention) and Data and privacy, where a server chooses what Petto counts (everything, counts per member, how messages are written) and deletes every counter",
             "The Privacy Policy says exactly what the statistics count, what they never keep (the text of messages), who sees them, how long they are kept and how to stop being counted (`!stats privacy`, `!statsconfig`, the dashboard), and the Terms of Service have a new clause about statistics and analysis. The Features page shows the new `!stats` pictures",
@@ -1562,6 +1564,8 @@ export const ui = {
           name: 'Mochi',
           date: "23 de octubre de 2026",
           items: [
+            "Los menús Producto y Comunidad de la barra de arriba ya no se salen de la pantalla en una ventana estrecha (o un celular en modo escritorio): el panel se mueve para quedar dentro",
+            "En la página de Features, el grupo Hazlo tuyo ahora muestra dos comandos escritos en Petto Code, ejecutados por el motor del propio bot: una tarjeta de bienvenida con un botón y una bola 8",
             "Menú del celular: el botón de la cuenta que abre el dashboard ahora mantiene el idioma de la página en la que estás (/es o /pt-br) en vez de quitarlo de la dirección",
             "Las estadísticas del dashboard tienen cuatro pestañas nuevas: Mapa de calor (mensajes por día de la semana y hora), Crecimiento (miembros netos y cuánto llevaban los que se fueron), Comparar (cada número junto al periodo anterior, con el cambio en porcentaje, y cuántos mensajes llevan un enlace, un archivo, una respuesta o una mención) y Datos y privacidad, donde un servidor elige qué cuenta Petto (todo, cuentas por miembro, cómo se escriben los mensajes) y borra todos los contadores",
             "La Política de Privacidad dice exactamente qué cuentan las estadísticas, qué nunca guardan (el texto de los mensajes), quién las ve, cuánto tiempo se guardan y cómo dejar de ser contado (`!stats privacy`, `!statsconfig`, el dashboard), y los Términos de Servicio tienen una cláusula nueva sobre estadísticas y análisis. La página de Características muestra las imágenes nuevas de `!stats`",
@@ -2965,6 +2969,8 @@ export const ui = {
           name: 'Mochi',
           date: "23 de outubro de 2026",
           items: [
+            "Os menus Produto e Comunidade da barra de cima não saem mais da tela em uma janela estreita (ou um celular em modo desktop): o painel volta para dentro",
+            "Na página de Features, o grupo Faça do seu jeito agora mostra dois comandos escritos em Petto Code, executados pelo motor do próprio bot: um cartão de boas-vindas com um botão e uma bola 8",
             "Menu do celular: o botão da conta que abre o dashboard agora mantém o idioma da página em que você está (/es ou /pt-br) em vez de tirá-lo do endereço",
             "As estatísticas do dashboard têm quatro abas novas: Mapa de calor (mensagens por dia da semana e hora), Crescimento (membros líquidos e quanto tempo os que saíram ficaram), Comparar (cada número ao lado do período anterior, com a variação em porcentagem, e quantas mensagens têm um link, um arquivo, uma resposta ou uma menção) e Dados e privacidade, onde um servidor escolhe o que o Petto conta (tudo, contagens por membro, como as mensagens são escritas) e apaga todos os contadores",
             "A Política de Privacidade diz exatamente o que as estatísticas contam, o que nunca guardam (o texto das mensagens), quem as vê, por quanto tempo ficam e como deixar de ser contado (`!stats privacy`, `!statsconfig`, o dashboard), e os Termos de Serviço têm uma cláusula nova sobre estatísticas e análise. A página de Recursos mostra as imagens novas do `!stats`",
