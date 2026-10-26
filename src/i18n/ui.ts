@@ -1,4 +1,5 @@
 import { commandRows, type CommandRow } from '../data/commandCatalog';
+import { integrationCategories } from '../data/integrationSections';
 import { CODE_GENERATOR_URL } from '../data/codeGenerator';
 
 export const locales = ['en', 'es', 'pt-BR'] as const;
@@ -4211,6 +4212,8 @@ for (const lang of locales) {
   for (const category of ui[lang].commandsPage.categories) {
     (category.cmds as CommandRow[]).push(...commandRows(category.id, lang));
   }
+  // One section for each service of the Integrations category (Last.fm, Twitch, Minecraft...), after the others.
+  (ui[lang].commandsPage.categories as unknown as unknown[]).push(...integrationCategories(lang));
 }
 
 export function useTranslations(lang: Locale) {
