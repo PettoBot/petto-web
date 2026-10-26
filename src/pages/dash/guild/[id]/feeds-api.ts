@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { callPettoFeeds, type FeedsRoute } from '../../../../utils/pettoBotApi';
 import { getDashLang } from '../../../../i18n/dash';
+import { canUseFeeds } from '../../../../utils/feedsAccess';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
 const ROUTES: FeedsRoute[] = ['resolve', 'create', 'update', 'delete', 'test', 'preview'];
@@ -12,6 +13,7 @@ export const POST: APIRoute = async (astro) => {
   const { id } = astro.params as { id: string };
   const auth = await getGuildSession(astro, id);
   if ('redirect' in auth) return json({ ok: false, error: 'unauthorized' }, 401);
+  if (!canUseFeeds(astro, auth.session.userId)) return json({ ok: false, error: 'no_access' }, 403);
   const body = await astro.request.json().catch(() => null);
   const route = String(body?.action ?? '') as FeedsRoute;
   if (!body || !ROUTES.includes(route)) return json({ ok: false, error: 'unknown_action' }, 400);

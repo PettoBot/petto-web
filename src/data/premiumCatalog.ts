@@ -17,6 +17,7 @@
 // Change them together, never only here.
 import { FREE_LIMITS, PREMIUM_LIMITS, FREE_STAT_DAYS, PREMIUM_STAT_DAYS, type PlanLimits } from '../utils/planLimits';
 import type { Locale } from '../i18n/ui';
+import { FEEDS_ON_PREMIUM_PAGE } from '../utils/feeds';
 
 export type PlanId = 'free' | 'premium' | 'custom';
 export interface L10n { en: string; es: string; pt: string }
@@ -63,7 +64,7 @@ const days = (list: readonly number[], and: string) => `${list.slice(0, -1).join
 const PAID: PlanId[] = ['premium', 'custom'];
 const ALL: PlanId[] = ['free', 'premium', 'custom'];
 
-export const FEATURES: readonly PremiumFeature[] = [
+const ALL_FEATURES: readonly PremiumFeature[] = [
   // What every plan has (the Free card).
   { id: 'safety', icon: 'ph:shield-check-fill', plans: ALL, name: { en: 'Moderation, automod, anti-nuke & verification', es: 'Moderación, automod, anti-nuke y verificación', pt: 'Moderação, automod, anti-nuke e verificação' } },
   { id: 'community', icon: 'ph:ticket-fill', plans: ALL, name: { en: 'Tickets, leveling, giveaways, forms & appeals', es: 'Tickets, niveles, sorteos, formularios y apelaciones', pt: 'Tickets, níveis, sorteios, formulários e apelações' } },
@@ -144,6 +145,10 @@ export const FEATURES: readonly PremiumFeature[] = [
   { id: 'custom-contact', icon: 'ph:chat-circle-fill', plans: ['custom'], name: { en: 'Direct line to the developer', es: 'Línea directa con el desarrollador', pt: 'Linha direta com o desenvolvedor' } },
 ];
 
+/** The feeds are in test: while they are not open to everybody the Premium page does not talk about them. */
+const FEED_FEATURES = ['feeds', 'feeds-paid'];
+export const FEATURES: readonly PremiumFeature[] = ALL_FEATURES.filter((f) => FEEDS_ON_PREMIUM_PAGE || !FEED_FEATURES.includes(f.id));
+
 /** What the Free plan lists. */
 export const freeFeatures = () => FEATURES.filter((f) => f.plans.includes('free'));
 /** What Premium adds over Free: the "what you get" grid and the dashboard benefits. */
@@ -171,7 +176,7 @@ export const LIMIT_ROWS: ReadonlyArray<{ key: keyof PlanLimits; label: L10n }> =
 /** Every row of the Free → Premium table in a language: the numbered limits, then each feature that has a comparison. */
 export function compareRows(lang: Locale | string): Array<{ label: string; free: string; premium: string; numeric: boolean; isNew: boolean }> {
   return [
-    ...LIMIT_ROWS.map((row) => ({ label: tr(row.label, lang), free: String(FREE_LIMITS[row.key]), premium: String(PREMIUM_LIMITS[row.key]), numeric: true, isNew: false })),
+    ...LIMIT_ROWS.filter((row) => FEEDS_ON_PREMIUM_PAGE || row.key !== 'feeds').map((row) => ({ label: tr(row.label, lang), free: String(FREE_LIMITS[row.key]), premium: String(PREMIUM_LIMITS[row.key]), numeric: true, isNew: false })),
     ...FEATURES.filter((f) => f.compare).map((f) => ({ label: tr(f.name, lang), free: tr(f.compare!.free, lang), premium: tr(f.compare!.premium, lang), numeric: false, isNew: Boolean(f.isNew) })),
   ];
 }
