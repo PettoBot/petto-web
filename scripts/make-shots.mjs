@@ -164,7 +164,7 @@ function plain(payload, id, lang) {
   const images = [];
   for (const file of payload.files ?? []) {
     const name = `${id}-${lang}-${file.name}`;
-    fs.writeFileSync(path.join(IMG_DIR, name), file.attachment);
+    fs.writeFileSync(path.join(IMG_DIR, name), typeof file.attachment === 'string' ? fs.readFileSync(file.attachment) : file.attachment); // a file the bot ships is read from its path
     text = text.split(`attachment://${file.name}`).join(`/assets/shots/${name}`);
     if (!text.includes(`/assets/shots/${name}`)) images.push({ url: `/assets/shots/${name}` });
   }
