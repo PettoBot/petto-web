@@ -78,6 +78,11 @@ export const FEATURES: readonly PremiumFeature[] = [
     desc: { en: 'About twice the room for commands, autoresponders, tickets, cards and more', es: 'Cerca del doble de espacio para comandos, autorespuestas, tickets, tarjetas y más', pt: 'Cerca do dobro de espaço para comandos, autorespostas, tickets, cartões e mais' },
   },
   {
+    id: 'feeds', icon: 'ph:bell-ringing-fill', plans: PAID, isNew: true,
+    name: { en: 'More feeds', es: 'Más feeds', pt: 'Mais feeds' },
+    desc: { en: 'Follow up to 10 accounts (YouTube, Twitch, Kick, Reddit, GitHub, RSS and more) and get their news in a channel', es: 'Sigue hasta 10 cuentas (YouTube, Twitch, Kick, Reddit, GitHub, RSS y más) y recibe sus novedades en un canal', pt: 'Siga até 10 contas (YouTube, Twitch, Kick, Reddit, GitHub, RSS e mais) e receba as novidades em um canal' },
+  },
+  {
     id: 'card-editor', icon: 'ph:image-fill', plans: PAID,
     name: { en: 'Card editor and fonts', es: 'Editor y fuentes de tarjetas', pt: 'Editor e fontes dos cartões' },
     desc: { en: 'Image cards: layer editor and all 40 fonts', es: 'Tarjetas de imagen: editor de capas y las 40 fuentes', pt: 'Cartões de imagem: editor de camadas e as 40 fontes' },
@@ -148,6 +153,7 @@ export const LIMIT_ROWS: ReadonlyArray<{ key: keyof PlanLimits; label: L10n }> =
   { key: 'buttonResponders', label: { en: 'Button responders', es: 'Botones con respuesta', pt: 'Botões com resposta' } },
   { key: 'componentPanels', label: { en: 'Button panels', es: 'Paneles de botones', pt: 'Painéis de botões' } },
   { key: 'counters', label: { en: 'Counters', es: 'Contadores', pt: 'Contadores' } },
+  { key: 'feeds', label: { en: 'Followed accounts (Feeds)', es: 'Cuentas seguidas (Feeds)', pt: 'Contas seguidas (Feeds)' } },
   { key: 'paginationMessages', label: { en: 'Paginated messages', es: 'Mensajes con páginas', pt: 'Mensagens com páginas' } },
 ];
 

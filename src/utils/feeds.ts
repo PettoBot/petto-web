@@ -1,6 +1,6 @@
 // The platforms a server can follow from the dashboard, with what each one can notify. The same ids, colors and types as the bot
 // (petto-bot src/feeds/platforms.js); the bot checks everything again, this only draws the pages and the forms.
-export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'daily';
+export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'daily';
 
 export interface FeedPlatform {
   id: string;
@@ -28,11 +28,27 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
     account: { label: 'Kick channel', placeholder: 'https://kick.com/name', help: 'Paste the link of the channel or its name.' } },
   { id: 'bluesky', name: 'Bluesky', color: '#1185fe', ink: '#ffffff', icon: 'simple-icons:bluesky', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Bluesky account', placeholder: 'name.bsky.social', help: 'Paste the link of the profile or its handle.' } },
+  { id: 'reddit', name: 'Reddit', color: '#ff4500', ink: '#ffffff', icon: 'simple-icons:reddit', types: ['post'], defaultTypes: ['post'],
+    account: { label: 'Subreddit', placeholder: 'r/minecraft', help: 'Paste the link of the subreddit or write r/name.' } },
+  { id: 'steam', name: 'Steam', color: '#66c0f4', ink: '#0b1d2a', icon: 'simple-icons:steam', types: ['post'], defaultTypes: ['post'],
+    account: { label: 'Steam game', placeholder: 'https://store.steampowered.com/app/730', help: 'Paste the link of the game in the Steam store.' } },
+  { id: 'github', name: 'GitHub', color: '#8b949e', ink: '#101010', icon: 'simple-icons:github', types: ['update'], defaultTypes: ['update'],
+    account: { label: 'GitHub repository', placeholder: 'owner/repository', help: 'Paste the link of the repository or write owner/name. Its new releases are posted.' } },
   { id: 'modrinth', name: 'Modrinth', color: '#1bd96a', ink: '#0b2a18', icon: 'simple-icons:modrinth', types: ['update'], defaultTypes: ['update'],
     account: { label: 'Modrinth project', placeholder: 'https://modrinth.com/mod/name', help: 'Paste the link of the mod, plugin or pack.' } },
+  { id: 'npm', name: 'npm', color: '#cb3837', ink: '#ffffff', icon: 'simple-icons:npm', types: ['update'], defaultTypes: ['update'],
+    account: { label: 'npm package', placeholder: 'discord.js', help: 'Write the name of the package or paste its link.' } },
+  { id: 'pypi', name: 'PyPI', color: '#3775a9', ink: '#ffffff', icon: 'simple-icons:pypi', types: ['update'], defaultTypes: ['update'],
+    account: { label: 'PyPI package', placeholder: 'requests', help: 'Write the name of the package or paste its link.' } },
+  { id: 'anilist', name: 'AniList', color: '#02a9ff', ink: '#ffffff', icon: 'simple-icons:anilist', types: ['episode'], defaultTypes: ['episode'],
+    account: { label: 'Anime', placeholder: 'One Piece', help: 'Write the name of the anime or paste its AniList link.' } },
+  { id: 'pinterest', name: 'Pinterest', color: '#e60023', ink: '#ffffff', icon: 'simple-icons:pinterest', types: ['pin'], defaultTypes: ['pin'],
+    account: { label: 'Pinterest profile or board', placeholder: 'https://www.pinterest.com/name/board', help: 'Paste the link of a profile or of one of its boards.' } },
+  { id: 'rss', name: 'RSS', color: '#f26522', ink: '#ffffff', icon: 'simple-icons:rss', types: ['post'], defaultTypes: ['post'],
+    account: { label: 'Website or feed', placeholder: 'https://example.com/feed.xml', help: 'Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.' } },
+  { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null },
+  { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null },
   { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null },
-
-  { id: 'pinterest', name: 'Pinterest', color: '#e60023', ink: '#ffffff', icon: 'simple-icons:pinterest', types: ['pin'], defaultTypes: ['pin'], account: null, soon: true },
 ];
 
 export const platformById = (id: string) => FEED_PLATFORMS.find((platform) => platform.id === id) ?? null;
@@ -48,7 +64,8 @@ export const FEED_TYPES: Record<FeedType, { label: string; icon: string }> = {
   post: { label: 'Posts', icon: 'ph:newspaper-fill' },
   pin: { label: 'Pins', icon: 'ph:push-pin-fill' },
   update: { label: 'New versions', icon: 'ph:cube-fill' },
-  daily: { label: 'Pokémon of the day', icon: 'ph:star-fill' },
+  episode: { label: 'New episodes', icon: 'ph:television-fill' },
+  daily: { label: 'Of the day', icon: 'ph:star-fill' },
 };
 
 /** The variables a feed message understands (the same as the bot: src/feeds/card.js). */
