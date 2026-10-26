@@ -111,6 +111,28 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     'vanity.rule': { text: 'cinnamochi' }, 'vanity.word': { text: 'discord.gg/petto' }, 'vanity.source': { text: 'custom_status' }, 'vanity.value': { text: 'join discord.gg/petto' }, 'vanity.role': { text: '@Vanity', mention: true },
     tag: { text: 'PETT' }, 'tag.rule': { text: 'partner-server' }, 'tag.condition': { text: 'is_guild_id' }, 'tag.rule_value': { text: '707307527846625280' }, 'tag.guild_id': { text: '707307527846625280' },
     'tag.enabled': { text: 'true' }, 'tag.badge': { text: 'badge' }, 'tag.role': { text: '@Partner', mention: true },
+    // The variables of the other sections (members, giveaways, commands, boards, counters, rollouts, invites, dates), so a preview reads naturally.
+    'user.display_avatar': { text: '' }, 'user.joined_at_timestamp': { text: '1783000000' }, 'user.created_at_timestamp': { text: '1593000000' }, 'user.boost_since_timestamp': { text: '1782900000' },
+    user_joindate: { text: 'Jul 1, 2026' }, user_createdate: { text: 'Jul 1, 2020' }, user_displaycolor: { text: '#8399ff' },
+    server_icon: { text: '' }, 'guild.icon': { text: '' }, 'guild.banner': { text: '' }, 'guild.created_at_timestamp': { text: '1593000000' }, channel_createdate: { text: 'Jul 1, 2020' },
+    message_link: { text: 'https://discord.com/channels/…' }, message_content: { text: 'hello everyone' },
+    'gw.entries': { text: '184' }, 'gw.host_name': name, 'gw.host_avatar': { text: '' }, 'gw.duration': { text: '1783000000' }, 'gw.timestamp': { text: 'in 2 days' }, 'gw.ends': { text: 'in 2 days' },
+    'gw.reaction': { text: '🎉' }, 'gw.entry_mode': { text: 'click on' }, 'gw.entry_text': { text: 'Click the button to enter' }, 'gw.winner_text': { text: '2 winners' }, 'gw.status': { text: 'Active' }, 'gw.preset': { text: '@Booster +2 entries' },
+    args: { text: 'hello world' }, arguments: { text: 'hello world' }, args_raw: { text: 'hello world' }, arg_count: { text: '2' }, command_name: { text: 'hello' },
+    arg1: { text: 'hello' }, arg2: { text: 'world' }, arg3: { text: '' }, arg4: { text: '' }, arg5: { text: '' }, arg6: { text: '' }, arg7: { text: '' }, arg8: { text: '' }, arg9: { text: '' }, arg10: { text: '' },
+    'clown.count': { text: '5' }, 'clown.emoji': { text: '🤡' }, 'clown.channel': { text: '#general', mention: true }, 'clown.channel_name': { text: 'general' }, 'clown.link': { text: 'https://discord.com/channels/…' },
+    'clown.message_id': { text: '1498210265458675853' }, 'clown.author': mention, 'clown.author_name': name, 'clown.author_id': id, 'clown.author_avatar': { text: '' }, 'clown.content': { text: 'This message got a lot of clowns!' },
+    'clown.image': { text: '' }, 'clown.attachments': { text: '[photo.png](https://…)' }, 'clown.time': { text: 'Today at 4:20 PM' },
+    'counter.count': count, 'counter.goal': { text: '1,200' }, 'counter.server': server,
+    'rollout.name': { text: 'Guild profile' }, 'rollout.id': { text: '2026-09_guild_profile' }, 'rollout.kind': { text: 'Users experiment' }, 'rollout.type': { text: 'Rollout increased' }, 'rollout.status': { text: 'Rolling out' },
+    'rollout.percent': { text: '50%' }, 'rollout.from': { text: '37.5%' }, 'rollout.to': { text: '50%' }, 'rollout.change': { text: '+12.5%' }, 'rollout.badge': { text: '+12.5% (50%)' },
+    'rollout.kind_icon': { text: '' }, 'rollout.event_icon': { text: '' }, 'rollout.variants': { text: 'Variant 1: +12.5%' }, 'rollout.ranges': { text: 'Variant 1: 0-50%' }, 'rollout.platforms': { text: 'android, desktop' },
+    'rollout.filters': { text: 'None' }, 'rollout.source': { text: 'Discord experiments' },
+    inviter: mention, 'inviter.name': { text: 'Kiwi' }, 'inviter.id': id, 'inviter.invites': { text: '7' }, 'invite.code': { text: 'petto' },
+    'date.now': { text: 'Oct 26, 2026' }, 'date.utc_now': { text: 'Oct 26, 2026, 15:20 UTC' }, 'date.utc_timestamp': { text: '1783000000' },
+    timestamp: { text: 'just now' }, 'timestamp.unix': { text: '1783000000' }, 'timestamp.short_time': { text: '16:20' }, 'timestamp.long_time': { text: '16:20:30' }, 'timestamp.short_date': { text: '26/10/2026' },
+    'timestamp.long_date': { text: '26 October 2026' }, 'timestamp.full': { text: '26 October 2026 16:20' }, 'timestamp.full_long': { text: 'Monday, 26 October 2026 16:20' },
+    'timestamp.short_datetime': { text: '26/10/2026, 16:20' }, 'timestamp.medium_datetime': { text: '26/10/2026, 16:20:30' }, 'timestamp.relative': { text: 'just now' },
   };
 }
 

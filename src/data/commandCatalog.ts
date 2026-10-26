@@ -57,7 +57,8 @@ function syntaxOf(cmd: GeneratedCommand): string {
 export function commandRows(categoryId: string, lang: CatalogLocale): CommandRow[] {
   return (categoryOf[categoryId] ?? []).flatMap((name) => {
     const cmd = byName.get(name);
-    if (!cmd) return [];
+    // The services of the Integrations category have a section each (data/integrationSections.ts), not a row in Info.
+    if (!cmd || (cmd as GeneratedCommand & { integration?: unknown }).integration) return [];
     const text = commandText[name]?.[localeIndex[lang]] ?? cmd.description;
     return [[name, syntaxOf(cmd), text] as const];
   });

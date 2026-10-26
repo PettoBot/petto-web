@@ -24,11 +24,33 @@ process.env.DISCLOUD_DATABASE_URL ??= 'postgres://sync:sync@127.0.0.1:1/sync';
 const require = createRequire(path.join(botRoot, 'package.json'));
 const { Collection } = require('discord.js');
 const { loadCommands } = require(path.join(botRoot, 'src', 'handlers', 'commandHandler.js'));
+const { CATALOGS } = require(path.join(botRoot, 'src', 'i18n', 'index.js'));
+const { DEFAULT_PREFIX_ROUTES } = require(path.join(botRoot, 'src', 'utils', 'defaultCommandAliases.js'));
 
 const client = { commands: new Collection() };
 loadCommands(client);
 
 const optionTypes = { 1: 'subcommand', 2: 'group' };
+
+// The commands of the Integrations category get a section of their own on the commands page: every subcommand with its description in
+// the three languages (from the bot's own catalogs), its arguments and the short words that reach it.
+const LANGS = ['en', 'es', 'pt-BR'];
+const describe = (key, english) => Object.fromEntries(LANGS.map((lang) => [lang, (lang === 'en' ? english : CATALOGS[lang]?.[key]) ?? english]));
+const argsOf = (options) => (options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) }));
+function integrationOf(cmd, json) {
+  const base = `cmd.integrations.${json.name}`;
+  const routes = DEFAULT_PREFIX_ROUTES.filter((route) => route.command === json.name);
+  const words = cmd.prefixSubcommandAliases ?? {};
+  const subs = (json.options ?? []).filter((o) => optionTypes[o.type]).map((sub) => ({
+    name: sub.name,
+    desc: describe(`${base}.${sub.name}.desc`, sub.description),
+    args: argsOf(sub.options),
+    // The word typed in place of the subcommand (`!lfm np`) and the commands that are a shortcut to it (`!np`).
+    words: Object.entries(words).filter(([, target]) => target === sub.name).map(([word]) => word),
+    shortcuts: routes.filter((route) => route.subcommand === sub.name).map((route) => route.alias),
+  }));
+  return { desc: describe(`${base}.desc`, json.description), args: argsOf(json.options), subs };
+}
 const commands = [];
 const seen = new Set();
 for (const cmd of client.commands.values()) {
@@ -47,6 +69,7 @@ for (const cmd of client.commands.values()) {
     args: (json.options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) })),
     // The Discord permission the bot asks for before the command runs (its default_member_permissions), for the Permissions page.
     permissions: json.default_member_permissions ?? null,
+    ...(cmd.category === 'integrations' ? { integration: integrationOf(cmd, json) } : {}),
   });
 }
 commands.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
