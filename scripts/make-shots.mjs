@@ -34,7 +34,21 @@ const LIAM = '293504726505357312';
 const CHU = '1421156491322462291';
 const KIRA = '257181659865153539';
 const person = (id) => ({ name: people[id].name, avatar: people[id].avatar });
-const BOT = { name: 'Petto', bot: true, avatar: '/assets/bot-avatar.png' };
+// The avatar of the bot is the one every member sees on Discord (its global avatar), read from the public page of the application.
+const BOT_ID = '1489326875498119168';
+async function botAvatar() {
+  const target = path.join(IMG_DIR, 'petto-avatar.png');
+  try {
+    const application = await (await fetch(`https://discord.com/api/v10/applications/${BOT_ID}/rpc`)).json();
+    const hash = application.bot?.avatar;
+    if (hash) {
+      const picture = await fetch(`https://cdn.discordapp.com/avatars/${BOT_ID}/${hash}.png?size=256`);
+      if (picture.ok) fs.writeFileSync(target, Buffer.from(await picture.arrayBuffer()));
+    }
+  } catch { /* the one saved last time stays */ }
+  return fs.existsSync(target) ? '/assets/shots/petto-avatar.png' : '/assets/bot-avatar.png';
+}
+const BOT = { name: 'Petto', bot: true, avatar: await botAvatar() };
 
 stub('src/utils/logger.js', { info() {}, warn() {}, error() {}, debug() {} });
 const links = new Map([[LIAM, 'liam_music']]);
