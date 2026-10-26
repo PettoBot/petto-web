@@ -1,0 +1,239 @@
+---
+// The analysis tabs of the Statistics page: the week by hour, a period against the one before it, and the "Data and privacy" tab where a
+// server chooses what Petto counts and deletes what was counted. Same numbers as `!stats` in the bot.
+import { Icon } from 'astro-icon/components';
+import { dashLocale, getDashLang, makeT } from '../i18n/dash';
+import { localePath } from '../i18n/ui';
+import { BOT_TIME_LABEL } from '../utils/activityStats';
+import type { Analysis, StatsRules } from '../utils/statsAnalysis';
+
+interface Props {
+  id: 'heatmap' | 'compare' | 'data';
+  analysis: Analysis;
+  rules: StatsRules;
+  flash?: { kind: 'ok' | 'err'; text: string } | null;
+}
+const { id, analysis, rules, flash = null } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const numLocale = dashLocale(lang);
+const n = (value: number) => Math.round(value).toLocaleString(numLocale);
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const FULL_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const hoursText = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
+};
+const percent = (share: number) => `${Math.round(share * 100)}%`;
+const max = Math.max(1, ...analysis.heatmap.flat());
+const weekdayMax = Math.max(1, ...analysis.byWeekday);
+const weekdayTotal = Math.max(1, analysis.byWeekday.reduce((a, b) => a + b, 0));
+const peak = analysis.peak;
+const policyUrl = `${localePath[lang]}/privacy#statistics`;
+
+// The change as a chip: green up, red down (the other way round for the members who left), grey "new" when there was nothing before.
+const chip = (value: number | null, inverse = false) => {
+  if (value === null) return { text: dt('new'), tone: 'flat' };
+  if (value === 0) return { text: '0%', tone: 'flat' };
+  const good = (value > 0) !== inverse;
+  return { text: `${value > 0 ? '▲' : '▼'} ${Math.abs(value).toLocaleString(numLocale)}%`, tone: good ? 'good' : 'bad' };
+};
+const compareRows = [
+  { key: 'messages', label: 'Messages', now: analysis.now.messages, before: analysis.before.messages, change: analysis.change.messages, color: '#f0a88f', format: n, inverse: false },
+  { key: 'reactions', label: 'Reactions', now: analysis.now.reactions, before: analysis.before.reactions, change: analysis.change.reactions, color: '#f5c26b', format: n, inverse: false },
+  { key: 'voiceSeconds', label: 'Voice', now: analysis.now.voiceSeconds, before: analysis.before.voiceSeconds, change: analysis.change.voiceSeconds, color: '#9bd0f5', format: hoursText, inverse: false },
+  { key: 'joins', label: 'Joined', now: analysis.now.joins, before: analysis.before.joins, change: analysis.change.joins, color: '#8fdca8', format: n, inverse: false },
+  { key: 'leaves', label: 'Left', now: analysis.now.leaves, before: analysis.before.leaves, change: analysis.change.leaves, color: '#f08fa0', format: n, inverse: true },
+];
+const shapes = [
+  { key: 'links', label: 'With a link', color: '#c6a8f5' },
+  { key: 'attachments', label: 'With a file or picture', color: '#9bd0f5' },
+  { key: 'replies', label: 'Replies', color: '#8fdca8' },
+  { key: 'mentions', label: 'With a mention', color: '#f5c26b' },
+] as const;
+const toggles = [
+  { field: 'enabled', title: 'Count the activity of this server', text: 'Messages, reactions and voice time per channel, hour and day, and the members who join and leave. Turned off, nothing is counted from now on.', icon: 'ph:chart-line-up-fill' },
+  { field: 'members', title: 'Keep counts per member', text: 'How many messages and how much voice time each member has. It makes the rankings of members and the page of one member. Turned off, there are no member rankings.', icon: 'ph:users-three-fill' },
+  { field: 'content', title: 'Count how messages are written', text: 'How many messages carry a link, a file, a reply or a mention. Only the number, never the text.', icon: 'ph:chat-circle-text-fill' },
+] as const;
+---
+{id === 'heatmap' && (
+  <div class="sa-grid">
+    <article class="sa-card sa-wide">
+      <h2>{dt('Messages by day and hour')}</h2>
+      <p class:list={['sa-sub', { 'sa-lit': Boolean(peak) }]}>{peak ? dt('Busiest: {a} at {b} ({c} messages)', { a: dt(FULL_WEEKDAYS[peak.weekday]), b: `${String(peak.hour).padStart(2, '0')}:00 ${BOT_TIME_LABEL}`, c: n(peak.value) }) : dt('Not enough data yet')}</p>
+      <div class="sa-heat" role="img" aria-label={dt('Messages by day and hour')}>
+        <div class="sa-heat-hours"><span></span>{Array.from({ length: 24 }, (_, h) => <span>{h % 3 === 0 ? String(h).padStart(2, '0') : ''}</span>)}</div>
+        {analysis.heatmap.map((hours, weekday) => (
+          <div class="sa-heat-row">
+            <span class="sa-heat-day">{dt(WEEKDAYS[weekday])}</span>
+            {hours.map((value, hour) => (
+              <i class:list={['sa-cell', { 'sa-peak': peak && peak.weekday === weekday && peak.hour === hour }]} style={`--a:${value ? (0.14 + 0.86 * Math.sqrt(value / max)).toFixed(3) : 0}`} title={`${dt(WEEKDAYS[weekday])} ${String(hour).padStart(2, '0')}:00 · ${n(value)}`}></i>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div class="sa-scale"><span>{dt('Quiet')}</span>{[0, 1, 2, 3, 4, 5].map((i) => <i style={`--a:${(0.14 + 0.86 * (i / 5)).toFixed(2)}`}></i>)}<span>{dt('Busy')}</span></div>
+    </article>
+    <article class="sa-card">
+      <h2>{dt('Part of the day')}</h2>
+      <ul class="sa-bars">
+        {(['Night 00-05', 'Morning 06-11', 'Afternoon 12-17', 'Evening 18-23'] as const).map((label, i) => (
+          <li><span>{dt(label)}</span><b>{percent(analysis.dayparts[i])}</b><s><i style={`--w:${Math.max(analysis.dayparts[i] ? 3 : 0, analysis.dayparts[i] * 100)}%`}></i></s></li>
+        ))}
+      </ul>
+    </article>
+    <article class="sa-card">
+      <h2>{dt('Share by weekday')}</h2>
+      <ul class="sa-bars">
+        {analysis.byWeekday.map((value, i) => (
+          <li class:list={{ 'sa-top': value === weekdayMax && value > 0 }}><span>{dt(FULL_WEEKDAYS[i])}</span><b>{percent(value / weekdayTotal)}</b><s><i style={`--w:${Math.max(value ? 3 : 0, (value / weekdayMax) * 100)}%`}></i></s></li>
+        ))}
+      </ul>
+    </article>
+  </div>
+)}
+
+{id === 'compare' && (
+  <div class="sa-grid">
+    <article class="sa-card sa-wide">
+      <h2>{dt('Each number against the period before')}</h2>
+      <p class="sa-sub">{analysis.hasPrevious ? dt('The same number of days, right before this period.') : dt('Not enough data from the period before yet.')}</p>
+      <div class="sa-legend"><span><i class="sa-before"></i>{dt('Before')}</span><span><i class="sa-now"></i>{dt('This period')}</span></div>
+      <ul class="sa-compare">
+        {compareRows.map((row) => {
+          const top = Math.max(1, row.now, row.before);
+          const c = chip(row.change, row.inverse);
+          return (
+            <li style={`--c:${row.color}`}>
+              <div class="sa-compare-head"><span>{dt(row.label)}</span><em class:list={['sa-chip', `sa-chip-${c.tone}`]}>{c.text}</em></div>
+              <div class="sa-pair"><s><i class="sa-before" style={`--w:${Math.max(row.before ? 2 : 0, (row.before / top) * 100)}%`}></i></s><b>{row.format(row.before)}</b></div>
+              <div class="sa-pair"><s><i class="sa-now" style={`--w:${Math.max(row.now ? 2 : 0, (row.now / top) * 100)}%`}></i></s><b>{row.format(row.now)}</b></div>
+            </li>
+          );
+        })}
+      </ul>
+    </article>
+    <article class="sa-card">
+      <h2>{dt('How messages are written')}</h2>
+      <p class="sa-sub">{dt('Out of every 100 messages (only counted, never read)')}</p>
+      <ul class="sa-bars sa-shape">
+        {shapes.map((shape) => (
+          <li style={`--c:${shape.color}`}><span>{dt(shape.label)}</span><b>{analysis.content.per100[shape.key]}</b><s><i style={`--w:${Math.max(analysis.content.per100[shape.key] ? 3 : 0, Math.min(100, analysis.content.per100[shape.key]))}%`}></i></s><small>{dt('{a} in the period', { a: n(analysis.content.totals[shape.key]) })}</small></li>
+        ))}
+      </ul>
+      {!rules.content && <p class="sa-note">{dt('This server does not count how messages are written, so this stays empty.')}</p>}
+    </article>
+  </div>
+)}
+
+{id === 'data' && (
+  <div class="sa-data">
+    {flash && <div class:list={['sa-flash', { 'sa-flash-err': flash.kind === 'err' }]} role={flash.kind === 'err' ? 'alert' : 'status'}>{flash.text}</div>}
+    <article class="sa-card sa-intro">
+      <h2><Icon name="ph:shield-check-fill" width="17" height="17" />{dt('Data and privacy')}</h2>
+      <p>{dt('Petto counts activity to draw these statistics. It keeps numbers only, never what was written. Here you choose what this server counts.')}</p>
+      <ul class="sa-facts">
+        <li>{dt('Kept: messages, reactions and voice time per channel, hour and day; per member and day; members who join and leave; and how long the ones who left had stayed.')}</li>
+        <li>{dt('Never kept: the text of messages, files, links, or who replied to whom. Bots are not counted.')}</li>
+        <li>{dt('Counts per member are deleted after 13 months and the rest after two years.')}</li>
+      </ul>
+      <a class="sa-policy" href={policyUrl} target="_blank" rel="noopener">{dt('Read the privacy policy')} <Icon name="ph:arrow-square-out-bold" width="13" height="13" /></a>
+    </article>
+    <div class="sa-toggles">
+      {toggles.map((toggle) => {
+        const on = rules[toggle.field];
+        const locked = toggle.field !== 'enabled' && !rules.enabled;
+        return (
+          <article class:list={['sa-card', 'sa-toggle', { 'sa-off': !on }]}>
+            <div class="sa-toggle-head"><Icon name={toggle.icon} width="16" height="16" /><h3>{dt(toggle.title)}</h3><em class:list={['sa-state', { on }]}>{on ? dt('On') : dt('Off')}</em></div>
+            <p>{dt(toggle.text)}</p>
+            {locked && <p class="sa-note">{dt('Nothing is counted while the first switch is off.')}</p>}
+            <form method="POST" data-no-dirty>
+              <input type="hidden" name="field" value={toggle.field} />
+              <input type="hidden" name="value" value={on ? 'off' : 'on'} />
+              <button type="submit" name="action" value="stats_rule" class:list={['btn', 'btn-sm', on ? 'btn-ghost' : 'btn-accent']}>{on ? dt('Turn off') : dt('Turn on')}</button>
+            </form>
+          </article>
+        );
+      })}
+    </div>
+    <article class="sa-card sa-people">
+      <h3><Icon name="ph:users-three-fill" width="16" height="16" />{dt('Members can choose too')}</h3>
+      <p>{dt('Any member can write {a} to stop being counted in every server. Their counts per member are deleted at that moment, and they can be counted again whenever they want.', { a: '!stats privacy' })}</p>
+    </article>
+    <article class="sa-card sa-danger">
+      <h3><Icon name="ph:trash-fill" width="16" height="16" />{dt('Delete every counter of this server')}</h3>
+      <p>{dt('Messages, voice time, hours, members, joins and leaves counted so far. It cannot be undone, and Petto starts counting again from zero if counting is on.')}</p>
+      <form method="POST" data-no-dirty>
+        <button type="submit" name="action" value="stats_delete" class="btn btn-sm sa-delete" data-confirm={dt('Delete every counter of this server? This cannot be undone.')}>{dt('Delete counters')}</button>
+      </form>
+    </article>
+  </div>
+)}
+
+<style>
+  .sa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; }
+  .sa-wide { grid-column: 1 / -1; }
+  .sa-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 16px 16px 14px; min-width: 0; animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .sa-card h2 { font-size: 16.5px; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; }
+  .sa-card h3 { font-size: 14.5px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .sa-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 10px; }
+  .sa-lit { color: var(--accent); }
+  .sa-note { font-size: 12.5px; color: var(--text-dim); margin: 6px 0 0; }
+
+  .sa-heat { display: grid; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+  .sa-heat-hours, .sa-heat-row { display: grid; grid-template-columns: 38px repeat(24, minmax(14px, 1fr)); gap: 3px; align-items: center; min-width: 520px; }
+  .sa-heat-hours span { font: 10px var(--mono); color: var(--text-dim); text-align: center; }
+  .sa-heat-day { font: 11px var(--mono); color: var(--text-dim); }
+  .sa-cell { display: block; aspect-ratio: 1; min-height: 14px; border-radius: 5px; background: color-mix(in srgb, #f0a88f calc(var(--a) * 100%), var(--bg-raise)); }
+  .sa-peak { outline: 2px solid var(--text); outline-offset: 1px; }
+  .sa-scale { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 11.5px; color: var(--text-dim); }
+  .sa-scale i { width: 16px; height: 12px; border-radius: 3px; background: color-mix(in srgb, #f0a88f calc(var(--a) * 100%), var(--bg-raise)); }
+  .sa-scale span:first-child { margin-right: 4px; } .sa-scale span:last-child { margin-left: 4px; }
+
+  .sa-bars { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 11px; }
+  .sa-bars li { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; font-size: 13.5px; --c: #f0a88f; }
+  .sa-bars b { font: 600 12.5px var(--mono); color: var(--text-muted); }
+  .sa-bars s { grid-column: 1 / -1; display: block; height: 8px; border-radius: 4px; background: var(--bg-raise); overflow: hidden; text-decoration: none; }
+  .sa-bars s i { display: block; height: 100%; width: var(--w); border-radius: 4px; background: color-mix(in srgb, var(--c) 70%, transparent); }
+  .sa-bars .sa-top s i { background: var(--c); }
+  .sa-bars small { grid-column: 1 / -1; font-size: 11.5px; color: var(--text-dim); }
+
+  .sa-legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+  .sa-legend i { display: inline-block; width: 18px; height: 8px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+  .sa-before { background: color-mix(in srgb, var(--text-dim) 55%, transparent); } .sa-now { background: var(--c, var(--accent)); }
+  .sa-legend .sa-now { background: var(--accent); }
+  .sa-compare { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+  .sa-compare-head { display: flex; justify-content: space-between; align-items: center; font: 600 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 5px; }
+  .sa-pair { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin-top: 4px; }
+  .sa-pair s { display: block; height: 11px; border-radius: 6px; background: var(--bg-raise); overflow: hidden; text-decoration: none; }
+  .sa-pair s i { display: block; height: 100%; width: var(--w); border-radius: 6px; }
+  .sa-pair b { font: 600 12.5px var(--mono); min-width: 64px; text-align: right; }
+  .sa-chip { font: 700 11px var(--mono); font-style: normal; padding: 2px 9px; border-radius: 999px; text-transform: none; letter-spacing: 0; }
+  .sa-chip-good { color: #5fbf86; background: color-mix(in srgb, #5fbf86 16%, transparent); }
+  .sa-chip-bad { color: #e0697b; background: color-mix(in srgb, #e0697b 16%, transparent); }
+  .sa-chip-flat { color: var(--text-dim); background: var(--bg-raise); }
+
+  .sa-data { display: grid; gap: 10px; }
+  .sa-intro p { margin: 6px 0 10px; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+  .sa-facts { margin: 0 0 10px; padding-left: 18px; color: var(--text-muted); font-size: 13.5px; line-height: 1.6; display: grid; gap: 4px; }
+  .sa-policy { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+  .sa-toggles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 10px; }
+  .sa-toggle { display: flex; flex-direction: column; gap: 8px; }
+  .sa-toggle p { margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.55; flex: 1; }
+  .sa-toggle form { margin-top: 2px; }
+  .sa-toggle-head { display: flex; align-items: center; gap: 8px; }
+  .sa-toggle-head h3 { flex: 1; }
+  .sa-state { font: 700 11px var(--mono); font-style: normal; padding: 2px 9px; border-radius: 999px; color: var(--text-dim); background: var(--bg-raise); }
+  .sa-state.on { color: #5fbf86; background: color-mix(in srgb, #5fbf86 16%, transparent); }
+  .sa-off { opacity: .92; }
+  .sa-people p, .sa-danger p { margin: 6px 0 10px; color: var(--text-muted); font-size: 13.5px; line-height: 1.55; }
+  .sa-people code { font-family: var(--mono); font-size: 12.5px; }
+  .sa-danger { border-color: color-mix(in srgb, #e0697b 40%, var(--border)); }
+  .sa-delete { background: color-mix(in srgb, #e0697b 18%, transparent); color: #e0697b; border: 1px solid color-mix(in srgb, #e0697b 45%, transparent); }
+  .sa-delete:hover { background: color-mix(in srgb, #e0697b 28%, transparent); }
+  .sa-flash { border: 1px solid color-mix(in srgb, #5fbf86 45%, var(--border)); background: color-mix(in srgb, #5fbf86 12%, transparent); border-radius: 12px; padding: 10px 14px; font-size: 13.5px; }
+  .sa-flash-err { border-color: color-mix(in srgb, #e0697b 45%, var(--border)); background: color-mix(in srgb, #e0697b 12%, transparent); }
+  @media (prefers-reduced-motion: reduce) { .sa-card { animation: none; } }
+</style>

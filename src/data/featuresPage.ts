@@ -84,10 +84,10 @@ const en: FeaturesCopy = {
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
-      id: 'stats', icon: 'ph:chart-bar-fill', color: 'red', title: 'Statistics of your server',
-      desc: 'See what happens in your server: messages, voice time, members who join and leave, and the hours when everyone is there.',
-      points: ['A summary by metric with the most active hour, as an image', 'Joins and leaves by day, and how the members arrived (invites)', 'Only counts: the text of the messages is never stored'],
-      commands: ['!summary', '!digest'], shots: ['summary'],
+      id: 'stats', icon: 'ph:chart-bar-fill', color: 'red', title: 'Statistics and analysis you can trust',
+      desc: 'See what happens in your server and compare it with the period before: trends, the busiest hours of the week, the top channels and members, how the server grows and how long members stay.',
+      points: ['Line charts of messages, voice time and active members, each against the period before, with the change in percent', 'A heat map of the week by hour, the top channels and members with their share, and the channels that stayed quiet', 'Growth: who joins, who leaves and how long the ones who left had stayed, plus the page of one member with their streak and place', 'Privacy first: only counts, never what is written. Any member can stop being counted with one button, and a server can turn counting off or delete it all'],
+      commands: ['!stats', '!stats heatmap', '!stats @member', '!stats privacy', '!statsconfig'], shots: ['stats-overview', 'stats-heatmap', 'stats-member', 'stats-privacy'],
     },
     {
       id: 'custom', icon: 'ph:code-fill', color: 'yellow', title: 'Make it yours',
@@ -152,10 +152,10 @@ const es: FeaturesCopy = {
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
-      id: 'stats', icon: 'ph:chart-bar-fill', color: 'red', title: 'Estadísticas de tu servidor',
-      desc: 'Mira lo que pasa en tu servidor: mensajes, tiempo en voz, miembros que entran y salen, y las horas en que todos están.',
-      points: ['Un resumen por métrica con la hora más activa, como imagen', 'Entradas y salidas por día, y cómo llegaron los miembros (invitaciones)', 'Solo cuenta: el texto de los mensajes nunca se guarda'],
-      commands: ['!summary', '!digest'], shots: ['summary'],
+      id: 'stats', icon: 'ph:chart-bar-fill', color: 'red', title: 'Estadísticas y análisis de confianza',
+      desc: 'Mira qué pasa en tu servidor y compáralo con el periodo anterior: tendencias, las horas más activas de la semana, los canales y miembros top, cómo crece el servidor y cuánto se quedan los miembros.',
+      points: ['Gráficas de líneas de mensajes, tiempo en voz y miembros activos, cada una contra el periodo anterior, con el cambio en porcentaje', 'Un mapa de calor de la semana por hora, el top de canales y miembros con su porcentaje, y los canales que estuvieron en silencio', 'Crecimiento: quién entra, quién sale y cuánto llevaban los que se fueron, y la página de un miembro con su racha y su lugar', 'Privacidad primero: solo cuentas, nunca lo que se escribe. Cualquier miembro puede dejar de ser contado con un botón, y un servidor puede apagar el conteo o borrarlo todo'],
+      commands: ['!stats', '!stats heatmap', '!stats @miembro', '!stats privacy', '!statsconfig'], shots: ['stats-overview', 'stats-heatmap', 'stats-member', 'stats-privacy'],
     },
     {
       id: 'custom', icon: 'ph:code-fill', color: 'yellow', title: 'Hazlo tuyo',
@@ -220,10 +220,10 @@ const ptBR: FeaturesCopy = {
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
-      id: 'stats', icon: 'ph:chart-bar-fill', color: 'red', title: 'Estatísticas do seu servidor',
-      desc: 'Veja o que acontece no seu servidor: mensagens, tempo em voz, membros que entram e saem, e as horas em que todo mundo está.',
-      points: ['Um resumo por métrica com o horário mais ativo, como imagem', 'Entradas e saídas por dia, e como os membros chegaram (convites)', 'Só contagens: o texto das mensagens nunca é guardado'],
-      commands: ['!summary', '!digest'], shots: ['summary'],
+      id: 'stats', icon: 'ph:chart-bar-fill', color: 'red', title: 'Estatísticas e análise confiáveis',
+      desc: 'Veja o que acontece no seu servidor e compare com o período anterior: tendências, os horários mais ativos da semana, os canais e membros top, como o servidor cresce e quanto tempo os membros ficam.',
+      points: ['Gráficos de linhas de mensagens, tempo em voz e membros ativos, cada um contra o período anterior, com a variação em porcentagem', 'Um mapa de calor da semana por hora, o top de canais e membros com sua porcentagem, e os canais que ficaram em silêncio', 'Crescimento: quem entra, quem sai e quanto tempo os que saíram ficaram, e a página de um membro com sua sequência e seu lugar', 'Privacidade em primeiro lugar: só contagens, nunca o que é escrito. Qualquer membro pode deixar de ser contado com um botão, e um servidor pode desligar a contagem ou apagar tudo'],
+      commands: ['!stats', '!stats heatmap', '!stats @membro', '!stats privacy', '!statsconfig'], shots: ['stats-overview', 'stats-heatmap', 'stats-member', 'stats-privacy'],
     },
     {
       id: 'custom', icon: 'ph:code-fill', color: 'yellow', title: 'Faça do seu jeito',

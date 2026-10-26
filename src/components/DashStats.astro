@@ -5,6 +5,8 @@ import { dashLocale, getDashLang, makeT } from '../i18n/dash';
 import { STAT_TABS, BOT_TIME_LABEL, type StatsData } from '../utils/activityStats';
 import { FREE_STAT_DAYS, PREMIUM_STAT_DAYS } from '../utils/planLimits';
 import DashMemberPick from './DashMemberPick.astro';
+import DashStatsAnalysis from './DashStatsAnalysis.astro';
+import type { Analysis, StatsRules } from '../utils/statsAnalysis';
 
 const statsLang = getDashLang(Astro);
 const dt = makeT(statsLang);
@@ -25,8 +27,11 @@ interface Props {
   inviteRoles?: { id: string; name: string; color: number }[];
   inviteSettings?: { fakeDays: number; rewards: { roleId: string; invites: number; name: string | null; color: number }[] };
   inviteMessage?: { kind: 'ok' | 'err'; text: string } | null;
+  analysis: Analysis;
+  rules: StatsRules;
+  dataMessage?: { kind: 'ok' | 'err'; text: string } | null;
 }
-const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, inviteMessage = null } = Astro.props;
+const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, inviteMessage = null, analysis, rules, dataMessage = null } = Astro.props;
 const roleColor = (color: number) => (color ? `#${color.toString(16).padStart(6, '0')}` : 'var(--text-dim)');
 const rewardIds = new Set(inviteSettings.rewards.map((reward) => reward.roleId));
 
@@ -38,6 +43,10 @@ const tabs: Record<string, { label: string; icon: string; color: string }> = {
   leaves: { label: 'Leaves', icon: 'ph:user-minus-fill', color: '#f08fa0' },
   invites: { label: 'Invites', icon: 'ph:link-fill', color: '#c6a8f5' },
   sanctions: { label: 'Sanctions', icon: 'ph:gavel-fill', color: '#f5c26b' },
+  heatmap: { label: 'Heat map', icon: 'ph:fire-fill', color: '#f0a88f' },
+  growth: { label: 'Growth', icon: 'ph:chart-line-up-fill', color: '#8fdca8' },
+  compare: { label: 'Compare', icon: 'ph:scales-fill', color: '#c6a8f5' },
+  data: { label: 'Data and privacy', icon: 'ph:shield-check-fill', color: '#9aa3b2' },
 };
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const FULL_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -132,6 +141,13 @@ const panels: Record<string, { charts: { title: string; sub: string; chart: Retu
     { title: 'Sanctions per day', sub: `${n(stats.sanctions.total)} ${dt('in total')}`, chart: chart(stats.sanctions.daily, dailyLabels, tabs.sanctions.color, n, -1) },
     { title: 'Sanctions by kind', sub: kindPeak === -1 ? dt('Not enough data yet') : `${dt('Most')}: ${dt(kindNames[kindPeak])}`, chart: chart(kindValues, kindNames.map((k) => dt(k)), tabs.sanctions.color, n, kindPeak) },
   ] },
+  heatmap: { charts: [] },
+  compare: { charts: [] },
+  data: { charts: [] },
+  growth: { charts: [
+    { title: 'Net members gained per day', sub: `${growth >= 0 ? '+' : ''}${n(growth)} ${dt('in total')}`, chart: chart(analysis.netByDay.map((value) => Math.max(0, value)), dailyLabels, tabs.growth.color, n, -1, 'line') },
+    { title: 'How long members stayed before leaving', sub: analysis.lifespanTotal ? dt('{a}% left within a week', { a: Math.round((analysis.earlyLeaveShare ?? 0) * 100) }) : dt('Nobody left in this period, or it was not counted yet.'), chart: chart(analysis.lifespan, ['Under a day', 'Under a week', 'Under a month', '1 to 3 months', 'Over 3 months'].map((label) => dt(label)), tabs.growth.color, n, peakIndex(analysis.lifespan)) },
+  ] },
   invites: { charts: [
     { title: 'Joins through invites per day', sub: `${n(stats.totals.invited)} ${dt('in total')}`, chart: chart(stats.daily.invited, dailyLabels, tabs.invites.color, n, -1) },
     { title: 'Best days of the week', sub: peakIndex(stats.weekdays.invited) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.invited)])}`, chart: chart(stats.weekdays.invited, WEEKDAYS.map((d) => dt(d)), tabs.invites.color, n, peakIndex(stats.weekdays.invited)) },
@@ -217,6 +233,8 @@ const bestMessage = bestDayOf(stats.daily.messages);
         ))}
       </div>
 
+      {(id === 'heatmap' || id === 'compare' || id === 'data') && <DashStatsAnalysis id={id} analysis={analysis} rules={rules} flash={dataMessage} />}
+
       <div class="st-lists">
         {(id === 'overview' || id === 'messages') && (
           <Fragment>
@@ -242,7 +260,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
             </article>
           </Fragment>
         )}
-        {(id === 'joins' || id === 'leaves' || id === 'invites') && (
+        {(id === 'joins' || id === 'leaves' || id === 'invites' || id === 'growth') && (
           <article class="st-card st-list">
             <h2>{dt('Growth')}</h2>
             <ol>

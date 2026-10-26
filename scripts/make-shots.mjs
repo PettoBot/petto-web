@@ -344,6 +344,73 @@ await shot('anti-scam', 'staff-alerts', {
 const { buildHoneypotPanel, buildHoneypotImageAttachment } = load('src/utils/honeypotPanel.js');
 await shot('honeypot', 'do-not-write-here', { build: async (lang) => ({ components: [buildHoneypotPanel({ punishment: 'softban', caughtCount: 37, lang })], files: [buildHoneypotImageAttachment()] }) });
 
+// The analysis of `!stats`: the pictures and lines of the bot for a made-up server whose members are the team. The numbers are invented
+// (a community of 1,840 members); the pictures, the lines and the panel are what the bot draws.
+const statsV2 = load('src/utils/statsV2.js');
+const statsCards = load('src/imgutils/statsCards.js');
+const { describeStats, quietLine } = load('src/utils/statsLines.js');
+const { buildPrivacyPanel } = load('src/utils/statsPanels.js');
+const { botDay } = load('src/utils/botTime.js');
+const DAYS = 14;
+const dayAt = (back) => botDay(new Date(NOW - back * 86_400_000));
+const HOURLY = [2, 1, 1, 0, 0, 1, 3, 6, 9, 12, 14, 15, 16, 15, 14, 16, 18, 21, 26, 30, 34, 31, 22, 9];
+const CH = { 111: 'general', 222: 'memes', 333: 'gaming-voice', 444: 'music-voice', 555: 'bots', 666: 'announcements' };
+const TEAM = Object.keys(people);
+let seed = 11;
+const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+const rows = { channelRows: [], hourlyRows: [], flowRows: [], contentRows: [], lifespanRows: [], memberDaily: [] };
+const userRows = [];
+for (let back = 0; back < DAYS * 2; back += 1) {
+  const weekday = (new Date(`${dayAt(back)}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const f = (weekday >= 5 ? 1.35 : 1) * (back < DAYS ? 1.15 : 0.95) * (0.85 + rnd() * 0.3);
+  Object.keys(CH).forEach((id, n) => rows.channelRows.push({ channel_id: id, day: dayAt(back), messages: Math.round((id === '666' ? 6 : 640 - n * 130) * f), reactions: Math.round(60 * f), voice_seconds: id === '333' ? Math.round(26000 * f) : id === '444' ? Math.round(11000 * f) : 0 }));
+  HOURLY.forEach((value, hour) => rows.hourlyRows.push({ day: dayAt(back), hour, messages: Math.round(value * (2 + weekday * 0.3) * f), voice_seconds: value * 80 }));
+  rows.flowRows.push({ day: dayAt(back), joins: Math.round((10 + rnd() * 8) * (back < DAYS ? 1.2 : 1)), leaves: Math.round(4 + rnd() * 6), invited: 5 });
+  rows.contentRows.push({ day: dayAt(back), links: Math.round(210 * f), attachments: Math.round(380 * f), replies: Math.round(760 * f), mentions: Math.round(420 * f) });
+  [0, 1, 2, 3, 4].forEach((bucket) => rows.lifespanRows.push({ day: dayAt(back), bucket, members: [3, 2, 1, 1, 2][bucket] }));
+  rows.memberDaily.push({ day: dayAt(back), active: Math.round(120 * f) });
+  TEAM.forEach((id, n) => userRows.push({ user_id: id, day: dayAt(back), messages: Math.round((90 / (n + 1) + rnd() * 6) * f), voice_seconds: n < 4 ? Math.round(2600 / (n + 1)) : 0 }));
+}
+const sumBy = (filter) => Object.values(userRows.filter(filter).reduce((acc, row) => { const e = (acc[row.user_id] ??= { user_id: row.user_id, messages: 0, voice_seconds: 0, active_days: 0 }); e.messages += row.messages; e.voice_seconds += row.voice_seconds; e.active_days += 1; return acc; }, {}));
+const inPeriod = new Set(Array.from({ length: DAYS }, (_, i) => dayAt(i)));
+const memberTotals = sumBy((row) => inPeriod.has(row.day));
+const analysis = statsV2.buildStatsV2({ days: DAYS, now: new Date(NOW), ...rows, memberTotals, activeDistinct: { current: 142, previous: 118 }, memberTotal: 1840 });
+const channelNames = Object.fromEntries(Object.entries(CH).map(([id, name]) => [id, `#${name}`]));
+const nameOf = Object.fromEntries(TEAM.map((id) => [id, people[id].name]));
+const channelLabel = (id) => channelNames[id] ?? '#deleted';
+const { ContainerBuilder: Box, TextDisplayBuilder: Text, SeparatorBuilder: Rule, SeparatorSpacingSize: Space, MediaGalleryBuilder: Gallery, MediaGalleryItemBuilder: GalleryItem } = require('discord.js');
+const statsReply = (lang, titleKey, image, lines) => {
+  const container = new Box().addTextDisplayComponents(new Text().setContent(tn(lang, 'info.stats.header', DAYS, { title: t(lang, `info.statsCard.title.${titleKey}`), server: 'Petto', count: DAYS })));
+  container.addMediaGalleryComponents(new Gallery().addItems(new GalleryItem().setURL('attachment://stats.png')));
+  container.addSeparatorComponents(new Rule().setDivider(true).setSpacing(Space.Small));
+  container.addTextDisplayComponents(new Text().setContent([...lines, t(lang, 'info.stats.line.private')].join('\n')));
+  return { components: [container], files: [new AttachmentBuilder(image, { name: 'stats.png' })] };
+};
+await shot('stats-overview', 'staff', { typed: '!stats', who: KIRA, build: async (lang) => statsReply(lang, 'overview', statsCards.buildTrendCard({ guildName: 'Petto', days: DAYS, stats: analysis, lang }), describeStats('overview', analysis, lang)) });
+await shot('stats-heatmap', 'staff', { typed: '!stats heatmap', who: KIRA, build: async (lang) => statsReply(lang, 'heatmap', statsCards.buildHeatmapCard({ guildName: 'Petto', days: DAYS, stats: analysis, lang }), describeStats('heatmap', analysis, lang)) });
+await shot('stats-channels', 'staff', {
+  typed: '!stats channels', who: KIRA, names: { ...CH, 777: 'old-rules', 888: 'archive' },
+  build: async (lang) => statsReply(lang, 'channels', statsCards.buildTopCard({ guildName: 'Petto', days: DAYS, kind: 'channels', lang, messages: analysis.topChannels.messages.map((r) => ({ label: channelLabel(r.id), value: r.messages, share: r.share })), voice: analysis.topChannels.voice.map((r) => ({ label: channelLabel(r.id), value: r.voiceSeconds, share: r.share })) }), [quietLine(['777', '888'], lang, (id) => `<#${id}>`)]),
+});
+await shot('stats-members', 'staff', {
+  typed: '!stats members', who: KIRA,
+  build: async (lang) => {
+    const concentration = describeStats('members', analysis, lang)[0] ?? null;
+    return statsReply(lang, 'members', statsCards.buildTopCard({ guildName: 'Petto', days: DAYS, kind: 'members', lang, note: concentration ? concentration.replace(/^<:[^>]+>\s*/, '').replace(/\*\*/g, '') : null, messages: analysis.topMembers.messages.map((r) => ({ label: nameOf[r.id], value: r.messages, share: r.share })), voice: analysis.topMembers.voice.map((r) => ({ label: nameOf[r.id], value: r.voiceSeconds, share: r.share })) }), []);
+  },
+});
+await shot('stats-growth', 'staff', { typed: '!stats growth', who: KIRA, build: async (lang) => statsReply(lang, 'growth', statsCards.buildGrowthCard({ guildName: 'Petto', days: DAYS, stats: analysis, lang }), describeStats('growth', analysis, lang)) });
+await shot('stats-compare', 'staff', { typed: '!stats compare', who: KIRA, build: async (lang) => statsReply(lang, 'compare', statsCards.buildCompareCard({ guildName: 'Petto', days: DAYS, stats: analysis, lang }), describeStats('compare', analysis, lang)) });
+await shot('stats-member', 'staff', {
+  typed: `!stats <@${LIAM}>`, who: KIRA,
+  build: async (lang) => {
+    const mine = statsV2.buildMemberStats({ userId: LIAM, days: DAYS, now: new Date(NOW), userRows: userRows.filter((row) => row.user_id === LIAM), memberTotals });
+    const image = await statsCards.buildMemberCard({ guildName: 'Petto', name: people[LIAM].name, avatarUrl: people[LIAM].cdn, member: mine, lang });
+    return statsReply(lang, 'member', image, []);
+  },
+});
+await shot('stats-privacy', 'general', { typed: '!stats privacy', build: async (lang) => buildPrivacyPanel({ userId: LIAM, optedOut: false, lang }) });
+
 await saveEmoji(shots);
 fs.writeFileSync(path.join(SHOT_DIR, 'core.json'), `${JSON.stringify(shots, null, 1)}\n`);
 console.log(`Wrote ${Object.keys(shots).length} screenshots of the systems`);

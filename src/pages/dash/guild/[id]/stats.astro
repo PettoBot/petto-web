@@ -5,6 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { buildStats, STAT_TABS, botDay } from '../../../../utils/activityStats';
+import { buildAnalysis, rulesFromRow, COUNTER_TABLES } from '../../../../utils/statsAnalysis';
 import { getMemberProfiles } from '../../../../utils/memberNames';
 // On Node the site may add rows up in the database itself (see utils/directDb.ts); elsewhere this is null.
 import { directQuery } from '../../../../utils/directQuery';
@@ -35,6 +36,7 @@ const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
 // The settings of the Invites tab (rewards, bonus invites, resets, fake joins) go through the bot, which checks the same as `/invites`
 // and gives or takes the reward roles at once. The page is then drawn again on the Invites tab with its answer.
 let inviteMessage: { kind: 'ok' | 'err'; text: string } | null = null;
+let dataMessage: { kind: 'ok' | 'err'; text: string } | null = null;
 if (Astro.request.method === 'POST') {
   const dashLang = getDashLang(Astro);
   const dt = makeT(dashLang);
@@ -50,9 +52,37 @@ if (Astro.request.method === 'POST') {
   else if (action === 'invite_reset') result = await callPettoInvites(Astro, id, session.userId, 'reset', { member_id: snowflake('member_id') }, dashLang);
   if (result) tab = 'invites';
   if (result) inviteMessage = { kind: result.ok ? 'ok' : 'err', text: result.message || (result.ok ? dt('Saved.') : dt('Petto did not answer. Try again in a moment.')) };
+
+  // The Data and privacy tab: what this server lets Petto count, and deleting what was counted. The bot reads the rules again within a minute.
+  if (action === 'stats_rule' || action === 'stats_delete') {
+    tab = 'data';
+    const write = { ...headers, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' };
+    try {
+      if (action === 'stats_rule') {
+        const field = String(form.get('field') ?? '');
+        const value = String(form.get('value') ?? '') === 'on';
+        const current = rulesFromRow((await rows('stats_config', 'enabled,members_enabled,content_enabled'))[0]);
+        if (!(field in current)) throw new Error('field');
+        const next = { ...current, [field]: value };
+        const res = await fetch(`${apiUrl}/rest/v1/stats_config?on_conflict=guild_id`, { method: 'POST', headers: write, body: JSON.stringify({ guild_id: id, enabled: next.enabled, members_enabled: next.members, content_enabled: next.content, updated_at: new Date().toISOString() }) });
+        if (!res.ok) throw new Error(String(res.status));
+        dataMessage = { kind: 'ok', text: dt('Saved.') };
+      } else {
+        for (const table of COUNTER_TABLES) {
+          const res = await fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}`, { method: 'DELETE', headers: { ...headers, Prefer: 'return=minimal' } });
+          if (!res.ok) throw new Error(`${table} ${res.status}`);
+        }
+        dataMessage = { kind: 'ok', text: dt('Every counter of this server was deleted.') };
+      }
+    } catch {
+      dataMessage = { kind: 'err', text: dt('Petto did not answer. Try again in a moment.') };
+    }
+  }
 }
 // Days are counted in GMT-5 (Colombia), the time Petto works in.
 const since = botDay(new Date(Date.now() - (days - 1) * 86_400_000));
+// The period before this one (the same number of days) is read too, to set the two side by side.
+const sincePrevious = botDay(new Date(Date.now() - (days * 2 - 1) * 86_400_000));
 const sinceInstant = new Date(`${since}T00:00:00-05:00`).toISOString();
 
 // A table that is not there yet (the bot has not been updated) gives an empty list, so the page still opens.
@@ -67,12 +97,12 @@ async function rows(table: string, select: string, extra = ''): Promise<any[]> {
   }
 }
 
-const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, caseRows, inviterRows, rolesRes, inviteConfigRows, rewardRows] = await Promise.all([
+const [guildInfo, channelsRes, channelRowsAll, hourlyRows, flowRowsAll, memberRows, caseRows, inviterRows, rolesRes, inviteConfigRows, rewardRows, contentRows, lifespanRows, ruleRows] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'channels').catch(() => null),
-  rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${since}`),
+  rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${sincePrevious}`),
   rows('activity_hourly', 'day,hour,messages,voice_seconds', `&day=gte.${since}`),
-  rows('member_flow', 'day,joins,leaves,invited', `&day=gte.${since}`),
+  rows('member_flow', 'day,joins,leaves,invited', `&day=gte.${sincePrevious}`),
   // Per member and day, these rows are the largest read of the page; the database adds them up per member when the site can
   // reach it (one row per member, dated on the first day of the range, which is all the page needs). Members are listed in the
   // order they first show up, as the rows were, so members with the same count keep a stable place.
@@ -84,7 +114,15 @@ const [guildInfo, channelsRes, channelRows, hourlyRows, flowRows, memberRows, ca
   getGuildList(Astro, id, botToken, 'roles').catch(() => null),
   rows('invite_config', 'fake_days'),
   rows('invite_rewards', 'role_id,invites', '&order=invites.asc'),
+  rows('activity_content', 'day,links,attachments,replies,mentions', `&day=gte.${sincePrevious}`),
+  rows('member_lifespan', 'day,bucket,members', `&day=gte.${since}`),
+  rows('stats_config', 'enabled,members_enabled,content_enabled'),
 ]);
+// The tabs of the page read only this period; the analysis (the comparison) reads both.
+const channelRows = channelRowsAll.filter((row) => String(row.day).slice(0, 10) >= since);
+const flowRows = flowRowsAll.filter((row) => String(row.day).slice(0, 10) >= since);
+const analysis = buildAnalysis({ days, channelRows: channelRowsAll, hourlyRows, flowRows: flowRowsAll, contentRows, lifespanRows });
+const rules = rulesFromRow(ruleRows[0]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const botId = getEnv(Astro, 'DISCORD_CLIENT_ID') || null;
@@ -138,4 +176,7 @@ const inviteSettings = {
   inviteRoles={inviteRoles}
   inviteSettings={inviteSettings}
   inviteMessage={inviteMessage}
+  analysis={analysis}
+  rules={rules}
+  dataMessage={dataMessage}
 />

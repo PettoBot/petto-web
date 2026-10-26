@@ -1,6 +1,6 @@
 // Turns the activity counters the bot writes (per channel, hour, member and day, plus joins and leaves) into what the
 // Statistics page shows. Same numbers as the bot's `!summary`.
-export const STAT_TABS = ['overview', 'messages', 'voice', 'joins', 'leaves', 'invites', 'sanctions'] as const;
+export const STAT_TABS = ['overview', 'messages', 'voice', 'heatmap', 'joins', 'leaves', 'growth', 'compare', 'invites', 'sanctions', 'data'] as const;
 
 // The time of Petto: GMT-5, Colombia (no daylight saving). Days and hours are counted in it.
 export const BOT_OFFSET_MS = -5 * 60 * 60 * 1000;
