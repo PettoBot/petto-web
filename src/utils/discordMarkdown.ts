@@ -32,7 +32,7 @@ function inline(text: string, context: MarkdownContext): string {
   html = html.replace(/`([^`]+)`/g, (_, code) => keep(`<code>${code}</code>`));
   html = html.replace(/&lt;t:(\d+)(?::([a-zA-Z]))?&gt;/g, (_, seconds, style) => keep(`<span class="ds-time">${esc(timestamp(Number(seconds), style ?? 'f', now, locale))}</span>`));
   html = html.replace(/&lt;(a?):([\w]+):(\d+)&gt;/g, (_, animated, name, id) => keep(`<img class="ds-emoji" src="${emojiUrl(id, animated === 'a')}" alt=":${name}:" title=":${name}:" loading="lazy" />`));
-  html = html.replace(/&lt;@[!&]?(\d+)&gt;/g, (_, id) => keep(`<span class="ds-mention">@${esc(names[id] ?? 'member')}</span>`));
+  html = html.replace(/&lt;@(?:!|&amp;)?(\d+)&gt;/g, (_, id) => keep(`<span class="ds-mention">@${esc(names[id] ?? 'member')}</span>`));
   html = html.replace(/&lt;#(\d+)&gt;/g, (_, id) => keep(`<span class="ds-mention">#${esc(names[id] ?? 'channel')}</span>`));
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => keep(`<a class="ds-link" href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`));
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, '$1<em>$2</em>').replace(/__(.+?)__/g, '<u>$1</u>');
