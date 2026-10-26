@@ -4750,4 +4750,5 @@ export const dashEs: Record<string, string> = {
   "Paste the link of the channel or its name.": "Pega el enlace del canal o su nombre.",
   "Paste the link of the profile or its handle.": "Pega el enlace del perfil o su usuario.",
   "Paste the link of the mod, plugin or pack.": "Pega el enlace del mod, plugin o pack.",
+  "Kick channel": "Canal de Kick",
 };

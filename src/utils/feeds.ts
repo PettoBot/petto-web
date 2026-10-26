@@ -7,6 +7,8 @@ export interface FeedPlatform {
   name: string;
   /** The color of the side bar of the card (and of the page). */
   color: string;
+  /** The color of the text over `color` (dark over the light brand colors). */
+  ink: string;
   /** An icon of the `simple-icons` set (every one must be in the list of astro.config.mjs). */
   icon: string;
   types: FeedType[];
@@ -18,17 +20,19 @@ export interface FeedPlatform {
 }
 
 export const FEED_PLATFORMS: FeedPlatform[] = [
-  { id: 'youtube', name: 'YouTube', color: '#ff0000', icon: 'simple-icons:youtube', types: ['video', 'short', 'live'], defaultTypes: ['video', 'short', 'live'],
+  { id: 'youtube', name: 'YouTube', color: '#ff0000', ink: '#ffffff', icon: 'simple-icons:youtube', types: ['video', 'short', 'live'], defaultTypes: ['video', 'short', 'live'],
     account: { label: 'YouTube channel', placeholder: 'https://www.youtube.com/@name', help: 'Paste the link of the channel or its @name.' } },
-  { id: 'twitch', name: 'Twitch', color: '#9146ff', icon: 'simple-icons:twitch', types: ['live', 'clip'], defaultTypes: ['live'],
+  { id: 'twitch', name: 'Twitch', color: '#9146ff', ink: '#ffffff', icon: 'simple-icons:twitch', types: ['live', 'clip'], defaultTypes: ['live'],
     account: { label: 'Twitch channel', placeholder: 'https://www.twitch.tv/name', help: 'Paste the link of the channel or its name.' } },
-  { id: 'bluesky', name: 'Bluesky', color: '#1185fe', icon: 'simple-icons:bluesky', types: ['post'], defaultTypes: ['post'],
+  { id: 'kick', name: 'Kick', color: '#53fc18', ink: '#101010', icon: 'simple-icons:kick', types: ['live'], defaultTypes: ['live'],
+    account: { label: 'Kick channel', placeholder: 'https://kick.com/name', help: 'Paste the link of the channel or its name.' } },
+  { id: 'bluesky', name: 'Bluesky', color: '#1185fe', ink: '#ffffff', icon: 'simple-icons:bluesky', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Bluesky account', placeholder: 'name.bsky.social', help: 'Paste the link of the profile or its handle.' } },
-  { id: 'modrinth', name: 'Modrinth', color: '#1bd96a', icon: 'simple-icons:modrinth', types: ['update'], defaultTypes: ['update'],
+  { id: 'modrinth', name: 'Modrinth', color: '#1bd96a', ink: '#0b2a18', icon: 'simple-icons:modrinth', types: ['update'], defaultTypes: ['update'],
     account: { label: 'Modrinth project', placeholder: 'https://modrinth.com/mod/name', help: 'Paste the link of the mod, plugin or pack.' } },
-  { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null },
-  { id: 'kick', name: 'Kick', color: '#53fc18', icon: 'simple-icons:kick', types: ['live'], defaultTypes: ['live'], account: null, soon: true },
-  { id: 'pinterest', name: 'Pinterest', color: '#e60023', icon: 'simple-icons:pinterest', types: ['pin'], defaultTypes: ['pin'], account: null, soon: true },
+  { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null },
+
+  { id: 'pinterest', name: 'Pinterest', color: '#e60023', ink: '#ffffff', icon: 'simple-icons:pinterest', types: ['pin'], defaultTypes: ['pin'], account: null, soon: true },
 ];
 
 export const platformById = (id: string) => FEED_PLATFORMS.find((platform) => platform.id === id) ?? null;

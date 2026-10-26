@@ -4750,4 +4750,5 @@ export const dashPt: Record<string, string> = {
   "Paste the link of the channel or its name.": "Cole o link do canal ou o nome.",
   "Paste the link of the profile or its handle.": "Cole o link do perfil ou o usuário.",
   "Paste the link of the mod, plugin or pack.": "Cole o link do mod, plugin ou pack.",
+  "Kick channel": "Canal da Kick",
 };
