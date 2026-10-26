@@ -4768,4 +4768,11 @@ export const dashEs: Record<string, string> = {
   "Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.": "Pega el enlace de un blog, un sitio de noticias o su feed RSS. Petto encuentra el feed.",
   "New episodes": "Episodios nuevos",
   "Of the day": "Del día",
+  "Locked for now": "Bloqueado por ahora",
+  "Premium, locked for now": "Premium, bloqueado por ahora",
+  "These services cost money to follow, so they will be Premium only to cover that cost. They unlock when they are ready.": "Seguir estos servicios cuesta dinero, así que serán solo Premium para cubrir ese costo. Se desbloquean cuando estén listos.",
+  "Locked": "Bloqueado",
+  "X charges for its API, so following accounts there has a monthly cost.": "X cobra por su API, así que seguir cuentas ahí tiene un costo mensual.",
+  "Instagram has no public way to follow an account; a paid provider is needed.": "Instagram no tiene una forma pública de seguir una cuenta; hace falta un proveedor de pago.",
+  "TikTok has no public way to follow an account; a paid provider is needed.": "TikTok no tiene una forma pública de seguir una cuenta; hace falta un proveedor de pago.",
 };

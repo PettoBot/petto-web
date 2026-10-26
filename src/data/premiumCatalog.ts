@@ -28,6 +28,8 @@ export interface PremiumFeature {
   name: L10n;
   desc?: L10n;
   isNew?: boolean;
+  /** A benefit that is not available yet: it is drawn locked, with this reason. */
+  locked?: { reason: L10n };
   compare?: { free: L10n; premium: L10n };
 }
 
@@ -81,6 +83,15 @@ export const FEATURES: readonly PremiumFeature[] = [
     id: 'feeds', icon: 'ph:bell-ringing-fill', plans: PAID, isNew: true,
     name: { en: 'More feeds', es: 'Más feeds', pt: 'Mais feeds' },
     desc: { en: 'Follow up to 10 accounts (YouTube, Twitch, Kick, Reddit, GitHub, RSS and more) and get their news in a channel', es: 'Sigue hasta 10 cuentas (YouTube, Twitch, Kick, Reddit, GitHub, RSS y más) y recibe sus novedades en un canal', pt: 'Siga até 10 contas (YouTube, Twitch, Kick, Reddit, GitHub, RSS e mais) e receba as novidades em um canal' },
+  },
+  {
+    id: 'feeds-paid', icon: 'ph:lock-fill', plans: PAID,
+    name: { en: 'Feeds of X, Instagram and TikTok', es: 'Feeds de X, Instagram y TikTok', pt: 'Feeds de X, Instagram e TikTok' },
+    desc: { en: 'Follow accounts of services that cost money to follow', es: 'Sigue cuentas de servicios que cuesta dinero seguir', pt: 'Siga contas de serviços que custa dinheiro seguir' },
+    locked: { reason: {
+      en: 'Locked for now: X charges for its API, and Instagram and TikTok have no public way to follow an account, so Petto needs a paid provider. They will be Premium only, to cover that cost, and unlock when they are ready.',
+      es: 'Bloqueado por ahora: X cobra por su API, e Instagram y TikTok no tienen una forma pública de seguir cuentas, así que Petto necesita un proveedor de pago. Serán solo Premium, para cubrir ese costo, y se desbloquean cuando estén listos.',
+      pt: 'Bloqueado por enquanto: o X cobra pela API, e o Instagram e o TikTok não têm uma forma pública de seguir contas, então o Petto precisa de um provedor pago. Serão só Premium, para cobrir esse custo, e desbloqueiam quando estiverem prontos.' } },
   },
   {
     id: 'card-editor', icon: 'ph:image-fill', plans: PAID,

@@ -4768,4 +4768,11 @@ export const dashPt: Record<string, string> = {
   "Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.": "Cole o link de um blog, de um site de notícias ou do feed RSS. O Petto encontra o feed.",
   "New episodes": "Novos episódios",
   "Of the day": "Do dia",
+  "Locked for now": "Bloqueado por enquanto",
+  "Premium, locked for now": "Premium, bloqueado por enquanto",
+  "These services cost money to follow, so they will be Premium only to cover that cost. They unlock when they are ready.": "Seguir esses serviços custa dinheiro, então serão só Premium para cobrir esse custo. Desbloqueiam quando estiverem prontos.",
+  "Locked": "Bloqueado",
+  "X charges for its API, so following accounts there has a monthly cost.": "O X cobra pela API, então seguir contas lá tem um custo mensal.",
+  "Instagram has no public way to follow an account; a paid provider is needed.": "O Instagram não tem uma forma pública de seguir uma conta; é preciso um provedor pago.",
+  "TikTok has no public way to follow an account; a paid provider is needed.": "O TikTok não tem uma forma pública de seguir uma conta; é preciso um provedor pago.",
 };

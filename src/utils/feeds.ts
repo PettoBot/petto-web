@@ -51,6 +51,17 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
   { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null },
 ];
 
+/**
+ * Services Petto cannot follow for free: X charges for its API, and Instagram and TikTok have no public way to follow an account, so a paid
+ * provider would be needed. They are shown locked (here and on the Premium page) with the reason, and will be Premium only to cover that cost.
+ */
+export interface LockedPlatform { id: string; name: string; color: string; ink: string; icon: string; reason: string }
+export const LOCKED_PLATFORMS: LockedPlatform[] = [
+  { id: 'x', name: 'X', color: '#111111', ink: '#ffffff', icon: 'simple-icons:x', reason: 'X charges for its API, so following accounts there has a monthly cost.' },
+  { id: 'instagram', name: 'Instagram', color: '#e1306c', ink: '#ffffff', icon: 'simple-icons:instagram', reason: 'Instagram has no public way to follow an account; a paid provider is needed.' },
+  { id: 'tiktok', name: 'TikTok', color: '#010101', ink: '#ffffff', icon: 'simple-icons:tiktok', reason: 'TikTok has no public way to follow an account; a paid provider is needed.' },
+];
+
 export const platformById = (id: string) => FEED_PLATFORMS.find((platform) => platform.id === id) ?? null;
 /** The platforms that work now (the others are shown as coming soon). */
 export const LIVE_PLATFORMS = FEED_PLATFORMS.filter((platform) => !platform.soon);
