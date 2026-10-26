@@ -4775,4 +4775,9 @@ export const dashPt: Record<string, string> = {
   "X charges for its API, so following accounts there has a monthly cost.": "O X cobra pela API, então seguir contas lá tem um custo mensal.",
   "Instagram has no public way to follow an account; a paid provider is needed.": "O Instagram não tem uma forma pública de seguir uma conta; é preciso um provedor pago.",
   "TikTok has no public way to follow an account; a paid provider is needed.": "O TikTok não tem uma forma pública de seguir uma conta; é preciso um provedor pago.",
+  "Free servers follow up to {count} accounts of each platform, Premium servers up to {premium}.": "Servidores grátis seguem até {count} contas de cada plataforma, os Premium até {premium}.",
+  "{used} of {limit} {name} accounts": "{used} de {limit} contas de {name}",
+  "{used} followed, up to {limit} of each platform": "{used} seguidas, até {limit} de cada plataforma",
+  "You follow the {count} {name} accounts a free server can. Premium servers can follow up to {premium} of each platform.": "Você segue as {count} contas de {name} que um servidor grátis permite. Servidores Premium podem seguir até {premium} de cada plataforma.",
+  "{count} of {limit} followed": "{count} de {limit} seguidas",
 };

@@ -15,6 +15,7 @@ export interface PlanLimits {
   componentPanels: number;
   counters: number;
   paginationMessages: number;
+  /** Accounts a server follows in Feeds, for each platform (3 of YouTube, 3 of Twitch...). */
   feeds: number;
 }
 
