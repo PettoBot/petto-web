@@ -411,6 +411,40 @@ await shot('stats-member', 'staff', {
 });
 await shot('stats-privacy', 'general', { typed: '!stats privacy', build: async (lang) => buildPrivacyPanel({ userId: LIAM, optedOut: false, lang }) });
 
+// Custom commands: two commands written in Petto Code, run by the bot's own engine (the text of each is what a server owner would write).
+const petto = load('src/scripting');
+const { buildComponents } = load('src/utils/codeCommands.js');
+const { EmbedBuilder } = (await import('node:module')).createRequire(path.join(botRoot, 'package.json'))('discord.js');
+const codeData = (lang) => ({
+  User: { ID: LIAM, Username: people[LIAM].name, Mention: `<@${LIAM}>` },
+  Member: { RoleIDs: [] },
+  Guild: { ID: '323456789012345678', Name: 'Petto HQ', MemberCount: 148 },
+  Args: [],
+  Lang: lang,
+});
+const WELCOME_CODE = {
+  en: '{{ sendMessage nil (complexMessage "embed" (cembed "title" (printf "Welcome to %s, %s!" .Guild.Name .User.Username) "description" (printf "There are %d of us now. Read the rules and pick your role below." .Guild.MemberCount) "color" "#f0a88f") "components" (cslice (crow (cbutton "label" "Get the Member role" "id" "member" "style" "success") (cbutton "label" "Rules" "url" "https://petto.sbs")))) }}',
+  es: '{{ sendMessage nil (complexMessage "embed" (cembed "title" (printf "¡Bienvenido a %s, %s!" .Guild.Name .User.Username) "description" (printf "Ya somos %d. Lee las reglas y elige tu rol abajo." .Guild.MemberCount) "color" "#f0a88f") "components" (cslice (crow (cbutton "label" "Obtener el rol Miembro" "id" "member" "style" "success") (cbutton "label" "Reglas" "url" "https://petto.sbs")))) }}',
+  'pt-BR': '{{ sendMessage nil (complexMessage "embed" (cembed "title" (printf "Bem-vindo ao %s, %s!" .Guild.Name .User.Username) "description" (printf "Já somos %d. Leia as regras e escolha seu cargo abaixo." .Guild.MemberCount) "color" "#f0a88f") "components" (cslice (crow (cbutton "label" "Pegar o cargo Membro" "id" "member" "style" "success") (cbutton "label" "Regras" "url" "https://petto.sbs")))) }}',
+};
+await shot('custom-welcome', 'general', {
+  typed: '!welcome',
+  build: async (lang) => {
+    const result = await petto.run(WELCOME_CODE[lang], codeData(lang), { now: () => NOW });
+    const effect = result.effects[0];
+    return { embeds: [new EmbedBuilder(effect.embed)], components: buildComponents(effect.components, 'welcome') };
+  },
+});
+const BALL_CODE = {
+  en: '{{ $a := cslice "It is certain." "Ask again later." "Very doubtful." "Without a doubt." "Better not tell you now." }}🎱 {{ index $a (randInt (len $a)) }}',
+  es: '{{ $a := cslice "Es seguro." "Pregunta más tarde." "Muy dudoso." "Sin duda." "Mejor no decírtelo ahora." }}🎱 {{ index $a (randInt (len $a)) }}',
+  'pt-BR': '{{ $a := cslice "É certo." "Pergunte mais tarde." "Muito duvidoso." "Sem dúvida." "Melhor não te dizer agora." }}🎱 {{ index $a (randInt (len $a)) }}',
+};
+await shot('custom-8ball', 'games', {
+  typed: byLang({ en: '!8ball will I win the giveaway?', es: '!8ball ¿voy a ganar el sorteo?', 'pt-BR': '!8ball será que eu ganho o sorteio?' }),
+  build: async (lang) => ({ content: (await petto.run(BALL_CODE[lang], codeData(lang), { random: () => 0.7 })).output }),
+});
+
 await saveEmoji(shots);
 fs.writeFileSync(path.join(SHOT_DIR, 'core.json'), `${JSON.stringify(shots, null, 1)}\n`);
 console.log(`Wrote ${Object.keys(shots).length} screenshots of the systems`);
