@@ -4775,4 +4775,9 @@ export const dashEs: Record<string, string> = {
   "X charges for its API, so following accounts there has a monthly cost.": "X cobra por su API, así que seguir cuentas ahí tiene un costo mensual.",
   "Instagram has no public way to follow an account; a paid provider is needed.": "Instagram no tiene una forma pública de seguir una cuenta; hace falta un proveedor de pago.",
   "TikTok has no public way to follow an account; a paid provider is needed.": "TikTok no tiene una forma pública de seguir una cuenta; hace falta un proveedor de pago.",
+  "Free servers follow up to {count} accounts of each platform, Premium servers up to {premium}.": "Los servidores gratis siguen hasta {count} cuentas de cada plataforma, los Premium hasta {premium}.",
+  "{used} of {limit} {name} accounts": "{used} de {limit} cuentas de {name}",
+  "{used} followed, up to {limit} of each platform": "{used} seguidas, hasta {limit} de cada plataforma",
+  "You follow the {count} {name} accounts a free server can. Premium servers can follow up to {premium} of each platform.": "Sigues las {count} cuentas de {name} que permite un servidor gratis. Los servidores Premium pueden seguir hasta {premium} de cada plataforma.",
+  "{count} of {limit} followed": "{count} de {limit} seguidas",
 };

@@ -83,7 +83,7 @@ const ALL_FEATURES: readonly PremiumFeature[] = [
   {
     id: 'feeds', icon: 'ph:bell-ringing-fill', plans: PAID, isNew: true,
     name: { en: 'More feeds', es: 'Más feeds', pt: 'Mais feeds' },
-    desc: { en: 'Follow up to 10 accounts (YouTube, Twitch, Kick, Reddit, GitHub, RSS and more) and get their news in a channel', es: 'Sigue hasta 10 cuentas (YouTube, Twitch, Kick, Reddit, GitHub, RSS y más) y recibe sus novedades en un canal', pt: 'Siga até 10 contas (YouTube, Twitch, Kick, Reddit, GitHub, RSS e mais) e receba as novidades em um canal' },
+    desc: { en: 'Follow up to 10 accounts of each platform (YouTube, Twitch, Kick, Reddit, GitHub, RSS and more) and get their news in a channel', es: 'Sigue hasta 10 cuentas de cada plataforma (YouTube, Twitch, Kick, Reddit, GitHub, RSS y más) y recibe sus novedades en un canal', pt: 'Siga até 10 contas de cada plataforma (YouTube, Twitch, Kick, Reddit, GitHub, RSS e mais) e receba as novidades em um canal' },
   },
   {
     id: 'feeds-paid', icon: 'ph:lock-fill', plans: PAID,
@@ -169,7 +169,7 @@ export const LIMIT_ROWS: ReadonlyArray<{ key: keyof PlanLimits; label: L10n }> =
   { key: 'buttonResponders', label: { en: 'Button responders', es: 'Botones con respuesta', pt: 'Botões com resposta' } },
   { key: 'componentPanels', label: { en: 'Button panels', es: 'Paneles de botones', pt: 'Painéis de botões' } },
   { key: 'counters', label: { en: 'Counters', es: 'Contadores', pt: 'Contadores' } },
-  { key: 'feeds', label: { en: 'Followed accounts (Feeds)', es: 'Cuentas seguidas (Feeds)', pt: 'Contas seguidas (Feeds)' } },
+  { key: 'feeds', label: { en: 'Followed accounts of each platform (Feeds)', es: 'Cuentas seguidas de cada plataforma (Feeds)', pt: 'Contas seguidas de cada plataforma (Feeds)' } },
   { key: 'paginationMessages', label: { en: 'Paginated messages', es: 'Mensajes con páginas', pt: 'Mensagens com páginas' } },
 ];
 
