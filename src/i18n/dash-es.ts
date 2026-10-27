@@ -4749,6 +4749,7 @@ export const dashEs: Record<string, string> = {
   "Letterboxd user": "Usuario de Letterboxd",
   "Write the user name or paste the link of the profile. What they watch and write is posted.": "Escribe el nombre de usuario o pega el enlace del perfil. Se publica lo que ve y escribe.",
   "Photos": "Fotos",
+  "Random songs": "Canciones al azar",
   "Search accounts": "Buscar cuentas",
   "Send a test notice": "Enviar un aviso de prueba",
   "Skip it if the title has one of these words": "Omitirlo si el título tiene alguna de estas palabras",

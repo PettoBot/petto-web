@@ -4749,6 +4749,7 @@ export const dashPt: Record<string, string> = {
   "Letterboxd user": "Usuário do Letterboxd",
   "Write the user name or paste the link of the profile. What they watch and write is posted.": "Escreva o nome de usuário ou cole o link do perfil. O que a pessoa assiste e escreve é publicado.",
   "Photos": "Fotos",
+  "Random songs": "Músicas aleatórias",
   "Search accounts": "Buscar contas",
   "Send a test notice": "Enviar um aviso de teste",
   "Skip it if the title has one of these words": "Ignorar se o título tiver alguma destas palavras",

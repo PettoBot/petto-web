@@ -3,7 +3,7 @@
 /** Whether the Premium page talks about the feeds. The feeds are open to every server, so it is on. */
 export const FEEDS_ON_PREMIUM_PAGE = true;
 
-export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'game' | 'photo' | 'daily';
+export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'track' | 'game' | 'photo' | 'daily';
 
 export interface FeedPlatform {
   id: string;
@@ -67,7 +67,12 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
   { id: 'cat', name: 'Cats', color: '#f5a524', ink: '#1a1100', icon: 'ph:cat-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
   { id: 'dog', name: 'Dogs', color: '#b7791f', ink: '#1a1100', icon: 'ph:dog-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
   { id: 'fox', name: 'Foxes', color: '#ff7a1a', ink: '#1a0d00', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'bird', name: 'Birds', color: '#38bdf8', ink: '#041824', icon: 'ph:bird-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'duck', name: 'Ducks', color: '#facc15', ink: '#1f1700', icon: 'ph:feather-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'capybara', name: 'Capybaras', color: '#a16207', ink: '#ffffff', icon: 'ph:leaf-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'bunny', name: 'Bunnies', color: '#f9a8d4', ink: '#2a0a18', icon: 'ph:rabbit-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
   { id: 'animals', name: 'Animals', color: '#9b7bff', ink: '#10062b', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'randommusic', name: 'Random music', color: '#a238ff', ink: '#ffffff', icon: 'ph:shuffle-fill', types: ['track'], defaultTypes: ['track'], account: null, pace: true },
   { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
   { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
 ];
@@ -106,6 +111,7 @@ export const FEED_TYPES: Record<FeedType, { label: string; icon: string }> = {
   update: { label: 'New versions', icon: 'ph:cube-fill' },
   episode: { label: 'New episodes', icon: 'ph:television-fill' },
   release: { label: 'New releases', icon: 'ph:music-notes-fill' },
+  track: { label: 'Random songs', icon: 'ph:shuffle-fill' },
   game: { label: 'Free games', icon: 'ph:game-controller-fill' },
   photo: { label: 'Photos', icon: 'ph:camera-fill' },
   daily: { label: 'Of the day', icon: 'ph:star-fill' },
