@@ -8,7 +8,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
 import Modal from './Modal.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { FEED_EMOJIS, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, platformById, type FeedRow } from '../utils/feeds';
+import { FEED_PACES, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, paceOf, platformById, type FeedRow } from '../utils/feeds';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -31,7 +31,7 @@ const { user, guildId, guildName, guildIcon, platform, feeds, channels, roles, l
 const current = platform ? platformById(platform) : null;
 const shown = current ? feeds.filter((feed) => feed.platform === current.id) : feeds;
 const channelName = new Map(channels.map((channel) => [channel.id, channel.name]));
-// The limit is for each platform (3 of YouTube, 3 of Twitch... on Free; 10 of each on Premium).
+// The limit is for each platform (3 of YouTube, 3 of Twitch... on Free; 25 of each on Premium).
 const used = current ? feeds.filter((feed) => feed.platform === current.id).length : feeds.length;
 const full = current ? used >= limit : false;
 const countOf = (id: string) => feeds.filter((feed) => feed.platform === id).length;
@@ -49,18 +49,20 @@ const text = {
   save: dt('Save feed'), create: dt('Follow this account'), saving: dt('Saving…'), saved: dt('Saved.'), newFeed: dt('New feed'), editFeed: dt('Edit feed'),
   pickChannel: dt('Pick the channel for the notices.'), pickAccount: dt('Find the account first.'), pickType: dt('Pick at least one kind of notice.'),
   failed: dt('Petto did not answer. Try again in a moment.'), deleteAsk: dt('Stop following {name}? The channel keeps what was already posted.'),
-  previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'),
+  previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'), loadingPreview: dt('Drawing the preview…'), retry: dt('Try again'),
   searchName: dt('Search {name} or paste a link'), noResults: dt('No results. Try another name or paste the link.'),
   followed: dt('Now following {name} on {platform} in {channel}. Nothing from the past is posted: the next notice will be new.'), updated: dt('Saved the changes to {name}.'),
-  paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'),
+  paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'), everyN: dt('Every {n} minutes'),
 };
 const config = {
-  guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
+  guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, pace: Boolean(p.pace), account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
   types: Object.fromEntries(Object.entries(FEED_TYPES).map(([id, type]) => [id, dt(type.label)])),
-  roles: roles.map((role) => [role.id, role.name]), channels: channels.map((channel) => [channel.id, channel.name]), emojis: FEED_EMOJIS, text,
+  paces: FEED_PACES.map((pace) => [pace.minutes, dt(pace.label)]),
+  roles: roles.map((role) => [role.id, role.name]), channels: channels.map((channel) => [channel.id, channel.name]), text,
   feeds: Object.fromEntries(feeds.map((feed) => [feed.id, feed])),
 };
 const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
+const paceLabel = (minutes: number): string => { const known = FEED_PACES.find((pace) => pace.minutes === minutes); return known ? dt(known.label) : dt('Every {n} minutes', { n: String(minutes) }); };
 const typeIcon = (id: string): string => typeTable[id]?.icon ?? 'ph:bell-ringing-fill';
 const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 ---
@@ -127,6 +129,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
                 <div class="fd-meta">
                   <span class="fd-chans"><Icon name="ph:hash-bold" width="11" height="11" />{channelName.get(feed.channelId) ?? dt('deleted channel')}</span>
                   {feed.types.map((type) => <span class="fd-type"><Icon name={typeIcon(type)} width="11" height="11" />{typeLabel(type)}</span>)}
+                  {p?.pace && <span class="fd-type"><Icon name="ph:timer-fill" width="11" height="11" />{paceLabel(paceOf(feed.accountId))}</span>}
                 </div>
                 <div class="fd-last">{feed.lastSentAt ? <>{dt('Last notice')}: <time datetime={feed.lastSentAt} data-when></time></> : dt('Nothing posted yet')}</div>
                 {status.detail && <div class="fd-err" title={status.detail}>{status.detail}</div>}
@@ -151,6 +154,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   </div>
 
   <DashAcData roles={roles} channels={channels} vars={FEED_VARIABLES.map((variable) => ({ tok: variable.tok, desc: dt(variable.desc) }))} />
+  <div hidden data-icons="platform">{FEED_PLATFORMS.map((p) => <span data-icon-id={p.id}><Icon name={p.icon} width="16" height="16" /></span>)}</div>
+  <div hidden data-icons="type">{Object.entries(FEED_TYPES).map(([id, type]) => <span data-icon-id={id}><Icon name={type.icon} width="14" height="14" /></span>)}</div>
   <Modal id="fd-modal" title={dt('New feed')} icon="ph:bell-ringing-fill">
     <form class="fd-form" data-feed-form data-no-dirty autocomplete="off" novalidate>
       <p class="fd-sub" data-sub></p>
@@ -166,6 +171,12 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         </div>
         <div class="fd-found" data-found hidden></div>
         <span class="fd-help" data-account-help></span>
+      </div>
+
+      <div class="fd-field" data-step="pace" hidden>
+        <label for="fd-pace">{dt('How often')}</label>
+        <select id="fd-pace" data-pace>{FEED_PACES.map((pace) => <option value={String(pace.minutes)}>{dt(pace.label)}</option>)}</select>
+        <span class="fd-help">{dt('Every time Petto posts something new. The shortest is every 15 minutes, so the channel is not flooded.')}</span>
       </div>
 
       <fieldset class="fd-field fd-set" data-types-box><legend>{dt('What to post')}</legend><div class="fd-types" data-types></div></fieldset>
@@ -236,7 +247,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const $ = <T extends HTMLElement>(sel: string, scope: ParentNode = document) => scope.querySelector<T>(sel);
     const modal = () => document.getElementById('fd-modal') as HTMLElement | null;
     const flashBox = $<HTMLElement>('[data-flash]', root)!;
-    const emoji = (id: string | undefined) => (id ? `https://cdn.discordapp.com/emojis/${id}.png?size=32` : '');
+    // The icons of the platforms and of the kinds of notice come drawn with the page (a hidden copy of each one); they are copied where they are needed.
+    const icon = (kind: 'platform' | 'type', id: string) => document.querySelector<HTMLElement>(`[data-icons="${kind}"] [data-icon-id="${id}"] svg`)?.cloneNode(true) as SVGElement | undefined;
 
     const call = async (action: string, body: Record<string, unknown> = {}) => {
       try {
@@ -292,11 +304,13 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const field = <T extends HTMLElement>(sel: string) => $<T>(sel, form())!;
     const words = (value: string) => value.split(',').map((word) => word.trim()).filter(Boolean).slice(0, 10);
     const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', content?: string) => { const node = document.createElement(tag); if (className) node.className = className; if (content !== undefined) node.textContent = content; return node; };
-    const picture = (url: string | null, fallbackId: string | undefined) => {
+    // The picture of an account; one that has none (or does not load) shows the icon of its platform.
+    const picture = (url: string | null, platformId: string) => {
+      const badge = () => { const node = el('span', 'fd-pic fd-pic-ico'); const svg = icon('platform', platformId); if (svg) node.append(svg); return node; };
+      if (!url) return badge();
       const img = el('img', 'fd-pic');
-      img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
-      img.src = url || emoji(fallbackId);
-      if (fallbackId) img.addEventListener('error', () => { img.src = emoji(fallbackId); }, { once: true });
+      img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.src = url;
+      img.addEventListener('error', () => img.replaceWith(badge()), { once: true });
       return img;
     };
 
@@ -325,7 +339,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const change = el('button', 'btn btn-ghost btn-sm', text.change);
       change.type = 'button'; change.dataset.changeAccount = '1';
       change.hidden = Boolean(state.feedId); // an account cannot change in a feed that already exists
-      found.replaceChildren(picture(state.account.avatar, config.emojis.platforms[state.platform]), names, change);
+      found.replaceChildren(picture(state.account.avatar, state.platform), names, change);
     };
 
     // ---- The search while typing ----
@@ -346,7 +360,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         const names = el('div', 'fd-res-text');
         names.append(el('b', '', result.name));
         if (result.detail) names.append(el('small', '', result.detail));
-        row.append(picture(result.avatar, config.emojis.platforms[state.platform]), names);
+        row.append(picture(result.avatar, state.platform), names);
         return row;
       }));
       markActive();
@@ -395,6 +409,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (!previewOpen()) return;
       const run = ++state.run;
       const box = field<HTMLElement>('[data-preview]');
+      // Nothing drawn yet (or the last try failed): a placeholder while the card comes, so the box is never empty.
+      if (!box.dataset.html) box.replaceChildren(el('div', 'fd-prev-wait', text.loadingPreview));
       const image = field<HTMLSelectElement>('[data-image]').value;
       const answer = await call('preview', {
         platform: state.platform, type: state.type, message: field<HTMLTextAreaElement>('[data-message]').value, ping_roles: state.roles, ping_everyone: field<HTMLInputElement>('[data-everyone]').checked,
@@ -402,7 +418,14 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       });
       if (run !== state.run) return;
       const doc = answer.data?.messages?.[0];
-      if (!answer.ok || !doc) { box.textContent = text.previewFail; return; }
+      if (!answer.ok || !doc) {
+        const retry = el('button', 'btn btn-ghost btn-sm', text.retry);
+        retry.type = 'button';
+        retry.addEventListener('click', () => { box.dataset.html = ''; void drawPreview(); });
+        box.dataset.html = '';
+        box.replaceChildren(el('div', 'fd-prev-wait', text.previewFail), retry);
+        return;
+      }
       const bot = document.querySelector<HTMLElement>('[data-dp-bot]');
       const tr = (key: string) => ((window as unknown as { cdt?: (k: string) => string }).cdt ? (window as unknown as { cdt: (k: string) => string }).cdt(key) : key);
       let html = renderV2Message({ components: doc }, { ...defaultContext, botName: bot?.dataset.name || defaultContext.botName, botIcon: bot?.dataset.icon || defaultContext.botIcon, t: tr });
@@ -430,14 +453,23 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       input.placeholder = platform.account ? text.searchName.replace('{name}', platform.account.label) : '';
       field<HTMLElement>('[data-account-help]').textContent = '';
       field<HTMLElement>('[data-step="account"]').hidden = !platform.account;
+      field<HTMLElement>('[data-step="pace"]').hidden = !platform.pace;
+      if (platform.pace) {
+        const minutes = feed ? (/^every:(\d+)$/.exec(feed.accountId)?.[1] ?? '1440') : '1440';
+        const pick = field<HTMLSelectElement>('[data-pace]');
+        // A pace the list does not have (set with a command) is added so it is not lost when the feed is saved.
+        if (![...pick.options].some((option) => option.value === minutes)) pick.append(new Option(text.everyN.replace('{n}', minutes), minutes));
+        pick.value = minutes; state.input = minutes;
+        state.account = { id: '', name: platform.name, avatar: null, url: null };
+      }
       field<HTMLElement>('[data-types-box]').hidden = (platform.types as string[]).length < 2;
       field<HTMLElement>('[data-types]').replaceChildren(...(platform.types as string[]).map((type) => {
         const label = el('label', 'fd-type-pick');
         const check = el('input');
         check.type = 'checkbox'; check.value = type; check.checked = feed ? feed.types.includes(type) : (platform.defaultTypes as string[]).includes(type);
         const span = el('span');
-        const emojiId = config.emojis.types[type];
-        if (emojiId) { const img = el('img', 'fd-emo'); img.alt = ''; img.src = emoji(emojiId); span.append(img); }
+        const svg = icon('type', type);
+        if (svg) span.append(svg);
         span.append(document.createTextNode(config.types[type]));
         label.append(check, span);
         return label;
@@ -459,7 +491,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const opener = el('button');
       opener.type = 'button'; opener.dataset.modalOpen = 'fd-modal'; opener.hidden = true; document.body.appendChild(opener); opener.click(); opener.remove();
       // A platform with no account to choose (the Pokémon of the day, Wikipedia, Chess.com) is looked up at once.
-      if (!platform.account && !feed) void autoResolve();
+      if (!platform.account && !platform.pace && !feed) void autoResolve();
     };
 
     async function autoResolve() {
@@ -487,8 +519,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const submit = field<HTMLButtonElement>('[data-submit]');
       submit.disabled = true; submit.classList.add('fd-saving'); const label = submit.textContent; submit.textContent = text.saving; showError('');
       const answer = state.feedId
-        ? await call('update', { id: state.feedId, ...body })
-        : await call('create', { platform: state.platform, account: state.input || state.account.url || state.account.id, ...body });
+        ? await call('update', { id: state.feedId, ...body, ...(config.platforms[state.platform].pace ? { every: state.input } : {}) })
+        : await call('create', { platform: state.platform, account: config.platforms[state.platform].pace ? state.input : state.input || state.account.url || state.account.id, ...body });
       if (!answer.ok) { submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label; showError(plain(answer.message) || text.failed); return; }
       const channel = (config.channels as [string, string][]).find(([id]) => id === channelId)?.[1] ?? '';
       const done = state.feedId ? text.updated.replace('{name}', state.account.name) : text.followed.replace('{name}', state.account.name).replace('{platform}', config.platforms[state.platform].name).replace('{channel}', `#${channel}`);
@@ -502,7 +534,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const w = window as unknown as { __fdOff?: (() => void)[] };
     w.__fdOff?.forEach((off) => off());
     w.__fdOff = [];
-    const on = <K extends keyof DocumentEventMap>(type: K, fn: (event: DocumentEventMap[K]) => void) => { document.addEventListener(type, fn); w.__fdOff!.push(() => document.removeEventListener(type, fn)); };
+    const on = <K extends keyof DocumentEventMap>(type: K, fn: (event: DocumentEventMap[K]) => void, capture = false) => { document.addEventListener(type, fn, capture); w.__fdOff!.push(() => document.removeEventListener(type, fn, capture)); };
     on('submit', (event) => { if ((event.target as HTMLElement | null)?.matches('[data-feed-form]')) void save(event); });
     on('click', (event) => {
       const target = event.target as HTMLElement | null;
@@ -536,6 +568,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     on('change', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target || !target.closest('[data-feed-form]')) return;
+      if (target.matches('[data-pace]')) state.input = (target as HTMLSelectElement).value;
       if (target.matches('[data-role-select]')) {
         const id = (target as HTMLSelectElement).value;
         if (id && !state.roles.includes(id) && state.roles.length < 10) { state.roles.push(id); fillRoles(); }
@@ -557,7 +590,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       }
       schedule();
     });
-    on('toggle', (event) => { if ((event.target as HTMLElement | null)?.matches?.('[data-preview-details]') && previewOpen()) { renderTabs(); void drawPreview(); } }, );
+    // `toggle` does not bubble, so it is heard on the way down.
+    on('toggle', (event) => { if ((event.target as HTMLElement | null)?.matches?.('[data-preview-details]') && previewOpen()) { renderTabs(); void drawPreview(); window.setTimeout(() => field<HTMLElement>('[data-preview-details]').scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60); } }, true);
 
     // ---- The buttons of the page ----
     root.addEventListener('click', async (event) => {
@@ -722,7 +756,9 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-type-pick { cursor: pointer; }
   .fd-type-pick input { position: absolute; opacity: 0; pointer-events: none; }
   .fd-type-pick span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; color: var(--text-muted); transition: all .15s ease; }
-  .fd-emo { width: 16px; height: 16px; }
+  .fd-pic-ico { display: grid; place-items: center; color: var(--fd-ink, #fff); background: var(--fd-c, var(--accent)); }
+  .fd-pic-ico svg { width: 16px; height: 16px; }
+  .fd-type-pick svg { width: 14px; height: 14px; flex: none; }
   .fd-type-pick input:checked + span { background: var(--fd-c, var(--accent)); border-color: var(--fd-c, var(--accent)); color: var(--fd-ink, #fff); }
   .fd-type-pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
   .fd-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; cursor: pointer; color: var(--text); }
@@ -759,6 +795,9 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-preview-box .dp-sub { font-size: 12px; color: #b5bac1; }
   .fd-preview-box .dp-emoji { width: 1.25em; height: 1.25em; vertical-align: -0.25em; display: inline-block; }
   .fd-prev .fd-tabs { margin-bottom: 8px; }
+  .fd-prev-wait { display: flex; align-items: center; gap: 10px; padding: 18px 4px; font-size: 13px; color: var(--text-dim); }
+  .fd-prev-wait:first-child:not(:last-child) { padding-bottom: 8px; }
+  .fd-prev-wait::before { content: ''; width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--fd-c, var(--accent)) 25%, transparent); border-top-color: var(--fd-c, var(--accent)); animation: fd-turn .7s linear infinite; flex: none; }
   .fd-error { margin: 0; font-size: 13px; color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red, #f87171) 45%, transparent); border-radius: 10px; padding: 9px 12px; }
   .fd-error[hidden] { display: none; }
   .fd-foot { display: flex; justify-content: flex-end; gap: 8px; }
