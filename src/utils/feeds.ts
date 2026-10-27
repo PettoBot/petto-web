@@ -3,7 +3,7 @@
 /** Whether the Premium page talks about the feeds. Turn it on together with FEEDS_PUBLIC=true (bot and dashboard) when the feeds open to every server. */
 export const FEEDS_ON_PREMIUM_PAGE = false;
 
-export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'daily';
+export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'game' | 'daily';
 
 export interface FeedPlatform {
   id: string;
@@ -18,7 +18,8 @@ export interface FeedPlatform {
   defaultTypes: FeedType[];
   /** What the account box asks for: a link, a name... (English, passed through dt()). */
   account: { label: string; placeholder: string; help: string } | null;
-  /** The kind of notice the preview shows first. */
+  /** An auto feed (the Pokémon, Wikipedia, Chess.com): instead of an account it asks how often to post. */
+  pace?: boolean;
   soon?: boolean;
 }
 
@@ -31,10 +32,15 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
     account: { label: 'Kick channel', placeholder: 'https://kick.com/name', help: 'Paste the link of the channel or its name.' } },
   { id: 'bluesky', name: 'Bluesky', color: '#1185fe', ink: '#ffffff', icon: 'simple-icons:bluesky', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Bluesky account', placeholder: 'name.bsky.social', help: 'Paste the link of the profile or its handle.' } },
+  { id: 'mastodon', name: 'Mastodon', color: '#6364ff', ink: '#ffffff', icon: 'simple-icons:mastodon', types: ['post'], defaultTypes: ['post'],
+    account: { label: 'Mastodon account', placeholder: '@name@mastodon.social', help: 'Write the account as @name@server or paste the link of its profile.' } },
   { id: 'reddit', name: 'Reddit', color: '#ff4500', ink: '#ffffff', icon: 'simple-icons:reddit', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Subreddit', placeholder: 'r/minecraft', help: 'Paste the link of the subreddit or write r/name.' } },
+  { id: 'tumblr', name: 'Tumblr', color: '#36465d', ink: '#ffffff', icon: 'simple-icons:tumblr', types: ['post'], defaultTypes: ['post'],
+    account: { label: 'Tumblr blog', placeholder: 'name.tumblr.com', help: 'Write the name of the blog or paste its link.' } },
   { id: 'steam', name: 'Steam', color: '#66c0f4', ink: '#0b1d2a', icon: 'simple-icons:steam', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Steam game', placeholder: 'https://store.steampowered.com/app/730', help: 'Paste the link of the game in the Steam store.' } },
+  { id: 'epic', name: 'Epic Games', color: '#ffffff', ink: '#101010', icon: 'simple-icons:epicgames', types: ['game'], defaultTypes: ['game'], account: null },
   { id: 'github', name: 'GitHub', color: '#8b949e', ink: '#101010', icon: 'simple-icons:github', types: ['update'], defaultTypes: ['update'],
     account: { label: 'GitHub repository', placeholder: 'owner/repository', help: 'Paste the link of the repository or write owner/name. Its new releases are posted.' } },
   { id: 'modrinth', name: 'Modrinth', color: '#1bd96a', ink: '#0b2a18', icon: 'simple-icons:modrinth', types: ['update'], defaultTypes: ['update'],
@@ -45,13 +51,21 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
     account: { label: 'PyPI package', placeholder: 'requests', help: 'Write the name of the package or paste its link.' } },
   { id: 'anilist', name: 'AniList', color: '#02a9ff', ink: '#ffffff', icon: 'simple-icons:anilist', types: ['episode'], defaultTypes: ['episode'],
     account: { label: 'Anime', placeholder: 'One Piece', help: 'Write the name of the anime or paste its AniList link.' } },
+  { id: 'letterboxd', name: 'Letterboxd', color: '#00e054', ink: '#0b2a18', icon: 'simple-icons:letterboxd', types: ['post'], defaultTypes: ['post'],
+    account: { label: 'Letterboxd user', placeholder: 'https://letterboxd.com/name', help: 'Write the user name or paste the link of the profile. What they watch and write is posted.' } },
   { id: 'pinterest', name: 'Pinterest', color: '#e60023', ink: '#ffffff', icon: 'simple-icons:pinterest', types: ['pin'], defaultTypes: ['pin'],
     account: { label: 'Pinterest profile or board', placeholder: 'https://www.pinterest.com/name/board', help: 'Paste the link of a profile or of one of its boards.' } },
+  { id: 'spotify', name: 'Spotify', color: '#1db954', ink: '#0b1d12', icon: 'simple-icons:spotify', types: ['release', 'episode'], defaultTypes: ['release', 'episode'],
+    account: { label: 'Artist or podcast', placeholder: 'https://open.spotify.com/artist/…', help: 'Search an artist or a podcast, or paste its Spotify link. New releases and episodes are posted.' } },
+  { id: 'deezer', name: 'Deezer', color: '#a238ff', ink: '#ffffff', icon: 'simple-icons:deezer', types: ['release'], defaultTypes: ['release'],
+    account: { label: 'Artist', placeholder: 'https://www.deezer.com/artist/…', help: 'Search an artist or paste its Deezer link. Its new albums and singles are posted.' } },
+  { id: 'applemusic', name: 'Apple Music', color: '#fa243c', ink: '#ffffff', icon: 'simple-icons:applemusic', types: ['release'], defaultTypes: ['release'],
+    account: { label: 'Artist', placeholder: 'https://music.apple.com/…/artist/…', help: 'Search an artist or paste its Apple Music link. Its new albums and singles are posted.' } },
   { id: 'rss', name: 'RSS', color: '#f26522', ink: '#ffffff', icon: 'simple-icons:rss', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Website or feed', placeholder: 'https://example.com/feed.xml', help: 'Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.' } },
-  { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null },
-  { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null },
-  { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null },
+  { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
+  { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
+  { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
 ];
 
 /**
@@ -64,6 +78,14 @@ export const LOCKED_PLATFORMS: LockedPlatform[] = [
   { id: 'instagram', name: 'Instagram', color: '#e1306c', ink: '#ffffff', icon: 'simple-icons:instagram', reason: 'Instagram has no public way to follow an account; a paid provider is needed.' },
   { id: 'tiktok', name: 'TikTok', color: '#010101', ink: '#ffffff', icon: 'simple-icons:tiktok', reason: 'TikTok has no public way to follow an account; a paid provider is needed.' },
 ];
+
+/** How often an auto feed can post, in minutes (the same limits as the bot: 15 minutes at the least, once a day at the most). */
+export const FEED_PACES: { minutes: number; label: string }[] = [
+  { minutes: 1440, label: 'Once a day' }, { minutes: 720, label: 'Every 12 hours' }, { minutes: 360, label: 'Every 6 hours' }, { minutes: 180, label: 'Every 3 hours' },
+  { minutes: 60, label: 'Every hour' }, { minutes: 30, label: 'Every 30 minutes' }, { minutes: 15, label: 'Every 15 minutes' },
+];
+/** The pace written in the account of an auto feed (`every:15`, or the old names for once a day). */
+export const paceOf = (accountId: string): number => { const match = /^every:(\d+)$/.exec(accountId); return match ? Number(match[1]) : 1440; };
 
 export const platformById = (id: string) => FEED_PLATFORMS.find((platform) => platform.id === id) ?? null;
 /** The platforms that work now (the others are shown as coming soon). */
@@ -79,6 +101,8 @@ export const FEED_TYPES: Record<FeedType, { label: string; icon: string }> = {
   pin: { label: 'Pins', icon: 'ph:push-pin-fill' },
   update: { label: 'New versions', icon: 'ph:cube-fill' },
   episode: { label: 'New episodes', icon: 'ph:television-fill' },
+  release: { label: 'New releases', icon: 'ph:music-notes-fill' },
+  game: { label: 'Free games', icon: 'ph:game-controller-fill' },
   daily: { label: 'Of the day', icon: 'ph:star-fill' },
 };
 

@@ -67,9 +67,9 @@ export default defineConfig({
           'speaker-slash-fill', 'spinner-gap', 'squares-four-fill', 'star-fill', 'stop-circle-fill', 'sun-fill',
           'stack-fill', 'tag-fill', 'terminal-window-fill', 'ticket', 'timer-fill', 'trash-fill', 'trophy-fill', 'flask-fill',
           'upload-simple-bold', 'user-fill', 'user-gear-fill', 'lock-key-fill', 'user-minus-fill', 'user-plus-fill', 'users-three-fill',
-          'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-bold', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill'],
+          'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-bold', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill', 'music-notes-fill', 'game-controller-fill'],
         'simple-icons': [
-          'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
+          'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epicgames', 'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
           'googlegemini', 'nodedotjs', 'npm', 'phosphoricons', 'postgresql', 'simpleicons',
           'typescript', 'vite', 'x', 'youtube', 'instagram', 'tiktok', 'pinterest', 'spotify', 'twitch', 'kick', 'soundcloud', 'reddit', 'bluesky', 'modrinth', 'pokemon', 'rss', 'steam', 'pypi', 'anilist', 'wikipedia', 'chessdotcom',
         ],

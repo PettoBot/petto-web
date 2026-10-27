@@ -48,7 +48,7 @@ export const PREMIUM_LIMITS: Readonly<PlanLimits> = Object.freeze({
   componentPanels: 100,
   counters: 50,
   paginationMessages: 50,
-  feeds: 10,
+  feeds: 25,
 });
 
 /** The periods of the Statistics page: every server sees these, and Premium also the longer ones (the bot keeps every day). */

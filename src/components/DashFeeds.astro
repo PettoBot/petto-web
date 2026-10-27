@@ -8,7 +8,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
 import Modal from './Modal.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, platformById, type FeedRow } from '../utils/feeds';
+import { FEED_PACES, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, paceOf, platformById, type FeedRow } from '../utils/feeds';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -31,7 +31,7 @@ const { user, guildId, guildName, guildIcon, platform, feeds, channels, roles, l
 const current = platform ? platformById(platform) : null;
 const shown = current ? feeds.filter((feed) => feed.platform === current.id) : feeds;
 const channelName = new Map(channels.map((channel) => [channel.id, channel.name]));
-// The limit is for each platform (3 of YouTube, 3 of Twitch... on Free; 10 of each on Premium).
+// The limit is for each platform (3 of YouTube, 3 of Twitch... on Free; 25 of each on Premium).
 const used = current ? feeds.filter((feed) => feed.platform === current.id).length : feeds.length;
 const full = current ? used >= limit : false;
 const countOf = (id: string) => feeds.filter((feed) => feed.platform === id).length;
@@ -52,15 +52,17 @@ const text = {
   previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'), loadingPreview: dt('Drawing the preview…'), retry: dt('Try again'),
   searchName: dt('Search {name} or paste a link'), noResults: dt('No results. Try another name or paste the link.'),
   followed: dt('Now following {name} on {platform} in {channel}. Nothing from the past is posted: the next notice will be new.'), updated: dt('Saved the changes to {name}.'),
-  paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'),
+  paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'), everyN: dt('Every {n} minutes'),
 };
 const config = {
-  guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
+  guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, pace: Boolean(p.pace), account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
   types: Object.fromEntries(Object.entries(FEED_TYPES).map(([id, type]) => [id, dt(type.label)])),
+  paces: FEED_PACES.map((pace) => [pace.minutes, dt(pace.label)]),
   roles: roles.map((role) => [role.id, role.name]), channels: channels.map((channel) => [channel.id, channel.name]), text,
   feeds: Object.fromEntries(feeds.map((feed) => [feed.id, feed])),
 };
 const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
+const paceLabel = (minutes: number): string => { const known = FEED_PACES.find((pace) => pace.minutes === minutes); return known ? dt(known.label) : dt('Every {n} minutes', { n: String(minutes) }); };
 const typeIcon = (id: string): string => typeTable[id]?.icon ?? 'ph:bell-ringing-fill';
 const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 ---
@@ -127,6 +129,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
                 <div class="fd-meta">
                   <span class="fd-chans"><Icon name="ph:hash-bold" width="11" height="11" />{channelName.get(feed.channelId) ?? dt('deleted channel')}</span>
                   {feed.types.map((type) => <span class="fd-type"><Icon name={typeIcon(type)} width="11" height="11" />{typeLabel(type)}</span>)}
+                  {p?.pace && <span class="fd-type"><Icon name="ph:timer-fill" width="11" height="11" />{paceLabel(paceOf(feed.accountId))}</span>}
                 </div>
                 <div class="fd-last">{feed.lastSentAt ? <>{dt('Last notice')}: <time datetime={feed.lastSentAt} data-when></time></> : dt('Nothing posted yet')}</div>
                 {status.detail && <div class="fd-err" title={status.detail}>{status.detail}</div>}
@@ -168,6 +171,12 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         </div>
         <div class="fd-found" data-found hidden></div>
         <span class="fd-help" data-account-help></span>
+      </div>
+
+      <div class="fd-field" data-step="pace" hidden>
+        <label for="fd-pace">{dt('How often')}</label>
+        <select id="fd-pace" data-pace>{FEED_PACES.map((pace) => <option value={String(pace.minutes)}>{dt(pace.label)}</option>)}</select>
+        <span class="fd-help">{dt('Every time Petto posts something new. The shortest is every 15 minutes, so the channel is not flooded.')}</span>
       </div>
 
       <fieldset class="fd-field fd-set" data-types-box><legend>{dt('What to post')}</legend><div class="fd-types" data-types></div></fieldset>
@@ -444,6 +453,15 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       input.placeholder = platform.account ? text.searchName.replace('{name}', platform.account.label) : '';
       field<HTMLElement>('[data-account-help]').textContent = '';
       field<HTMLElement>('[data-step="account"]').hidden = !platform.account;
+      field<HTMLElement>('[data-step="pace"]').hidden = !platform.pace;
+      if (platform.pace) {
+        const minutes = feed ? (/^every:(\d+)$/.exec(feed.accountId)?.[1] ?? '1440') : '1440';
+        const pick = field<HTMLSelectElement>('[data-pace]');
+        // A pace the list does not have (set with a command) is added so it is not lost when the feed is saved.
+        if (![...pick.options].some((option) => option.value === minutes)) pick.append(new Option(text.everyN.replace('{n}', minutes), minutes));
+        pick.value = minutes; state.input = minutes;
+        state.account = { id: '', name: platform.name, avatar: null, url: null };
+      }
       field<HTMLElement>('[data-types-box]').hidden = (platform.types as string[]).length < 2;
       field<HTMLElement>('[data-types]').replaceChildren(...(platform.types as string[]).map((type) => {
         const label = el('label', 'fd-type-pick');
@@ -473,7 +491,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const opener = el('button');
       opener.type = 'button'; opener.dataset.modalOpen = 'fd-modal'; opener.hidden = true; document.body.appendChild(opener); opener.click(); opener.remove();
       // A platform with no account to choose (the Pokémon of the day, Wikipedia, Chess.com) is looked up at once.
-      if (!platform.account && !feed) void autoResolve();
+      if (!platform.account && !platform.pace && !feed) void autoResolve();
     };
 
     async function autoResolve() {
@@ -501,8 +519,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const submit = field<HTMLButtonElement>('[data-submit]');
       submit.disabled = true; submit.classList.add('fd-saving'); const label = submit.textContent; submit.textContent = text.saving; showError('');
       const answer = state.feedId
-        ? await call('update', { id: state.feedId, ...body })
-        : await call('create', { platform: state.platform, account: state.input || state.account.url || state.account.id, ...body });
+        ? await call('update', { id: state.feedId, ...body, ...(config.platforms[state.platform].pace ? { every: state.input } : {}) })
+        : await call('create', { platform: state.platform, account: config.platforms[state.platform].pace ? state.input : state.input || state.account.url || state.account.id, ...body });
       if (!answer.ok) { submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label; showError(plain(answer.message) || text.failed); return; }
       const channel = (config.channels as [string, string][]).find(([id]) => id === channelId)?.[1] ?? '';
       const done = state.feedId ? text.updated.replace('{name}', state.account.name) : text.followed.replace('{name}', state.account.name).replace('{platform}', config.platforms[state.platform].name).replace('{channel}', `#${channel}`);
@@ -550,6 +568,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     on('change', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target || !target.closest('[data-feed-form]')) return;
+      if (target.matches('[data-pace]')) state.input = (target as HTMLSelectElement).value;
       if (target.matches('[data-role-select]')) {
         const id = (target as HTMLSelectElement).value;
         if (id && !state.roles.includes(id) && state.roles.length < 10) { state.roles.push(id); fillRoles(); }
