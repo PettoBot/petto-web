@@ -165,7 +165,7 @@ export interface FeedRow {
   message: string;
   pingRoles: string[];
   pingEveryone: boolean;
-  options: { image?: boolean; button?: boolean };
+  options: { image?: boolean; button?: boolean; player?: boolean };
   filters: { include: string[]; exclude: string[] };
   enabled: boolean;
   ready: boolean;

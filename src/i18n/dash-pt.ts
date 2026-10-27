@@ -4840,4 +4840,6 @@ export const dashPt: Record<string, string> = {
   "The featured article of Wikipedia, every so often.": "O artigo em destaque da Wikipédia, de tempos em tempos.",
   "The daily chess puzzle of Chess.com, every so often.": "O problema de xadrez do dia do Chess.com, de tempos em tempos.",
   "A Pokémon from the Pokédex, every so often.": "Um Pokémon da Pokédex, de tempos em tempos.",
+  "Show the video player": "Mostrar o player do vídeo",
+  "Posts the link instead of the card, so Discord plays the video right there. Streams keep their card.": "Publica o link em vez do cartão, assim o Discord reproduz o vídeo ali mesmo. As lives mantêm o cartão.",
 };

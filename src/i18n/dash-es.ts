@@ -4840,4 +4840,6 @@ export const dashEs: Record<string, string> = {
   "The featured article of Wikipedia, every so often.": "El artículo destacado de Wikipedia, cada cierto tiempo.",
   "The daily chess puzzle of Chess.com, every so often.": "El problema de ajedrez del día de Chess.com, cada cierto tiempo.",
   "A Pokémon from the Pokédex, every so often.": "Un Pokémon de la Pokédex, cada cierto tiempo.",
+  "Show the video player": "Mostrar el reproductor del video",
+  "Posts the link instead of the card, so Discord plays the video right there. Streams keep their card.": "Publica el enlace en vez de la tarjeta, así Discord reproduce el video ahí mismo. Los directos mantienen su tarjeta.",
 };
