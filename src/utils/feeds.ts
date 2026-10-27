@@ -65,20 +65,6 @@ export const LOCKED_PLATFORMS: LockedPlatform[] = [
   { id: 'tiktok', name: 'TikTok', color: '#010101', ink: '#ffffff', icon: 'simple-icons:tiktok', reason: 'TikTok has no public way to follow an account; a paid provider is needed.' },
 ];
 
-/**
- * The application emojis of Petto (`pe_f_*`) for each platform and kind of notice, the same ones the bot puts in its cards. `daily` has none yet.
- * They are shown as pictures of Discord's CDN where the dashboard names a platform or a kind of notice.
- */
-export const FEED_EMOJIS: { platforms: Record<string, string>; types: Record<string, string> } = {
-  platforms: {
-    youtube: '1564404645802147990', twitch: '1564404646737612862', kick: '1564404648176255108', bluesky: '1564404649564573876', pinterest: '1564406561328070656',
-    modrinth: '1564404650755751997', pokemon: '1564406028442017973', rss: '1564405447048298647', reddit: '1564413384114446366', steam: '1564413385687175280',
-    github: '1564413388048826583', npm: '1564413631020531722', pypi: '1564415143578964088', anilist: '1564413683747262475', wikipedia: '1564415088608288889', chess: '1564413774314602626',
-  },
-  types: { video: '1564405498906812426', short: '1564405498906812426', live: '1564405931364843602', clip: '1564404652496134294', post: '1564405577092964444', pin: '1564404654643879966', update: '1564405656780275852', episode: '1564413566851743924' },
-};
-export const emojiUrl = (id: string, size = 32) => `https://cdn.discordapp.com/emojis/${id}.png?size=${size}`;
-
 export const platformById = (id: string) => FEED_PLATFORMS.find((platform) => platform.id === id) ?? null;
 /** The platforms that work now (the others are shown as coming soon). */
 export const LIVE_PLATFORMS = FEED_PLATFORMS.filter((platform) => !platform.soon);
