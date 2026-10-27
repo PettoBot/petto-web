@@ -33,11 +33,11 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
   { id: 'bluesky', name: 'Bluesky', color: '#1185fe', ink: '#ffffff', icon: 'simple-icons:bluesky', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Bluesky account', placeholder: 'name.bsky.social', help: 'Paste the link of the profile or its handle.' } },
   { id: 'mastodon', name: 'Mastodon', color: '#6364ff', ink: '#ffffff', icon: 'simple-icons:mastodon', types: ['post'], defaultTypes: ['post'],
-    account: { label: 'Mastodon account', placeholder: '@name@mastodon.social', help: 'Write the account as @name@server or paste the link of its profile.' } },
+    account: { label: 'Mastodon account', placeholder: '@name@mastodon.social', help: 'Mastodon is a social network like X, but made of many servers (mastodon.social, mastodon.online…). Write the account as @name@server, for example @Gargron@mastodon.social, or paste the link of its profile. Each new public post is shared.' } },
   { id: 'reddit', name: 'Reddit', color: '#ff4500', ink: '#ffffff', icon: 'simple-icons:reddit', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Subreddit', placeholder: 'r/minecraft', help: 'Paste the link of the subreddit or write r/name.' } },
   { id: 'tumblr', name: 'Tumblr', color: '#36465d', ink: '#ffffff', icon: 'simple-icons:tumblr', types: ['post'], defaultTypes: ['post'],
-    account: { label: 'Tumblr blog', placeholder: 'name.tumblr.com', help: 'Write the name of the blog or paste its link.' } },
+    account: { label: 'Tumblr blog', placeholder: 'name.tumblr.com', help: 'Write the name of the blog (name.tumblr.com) or paste its link. Each new post of the blog is shared.' } },
   { id: 'steam', name: 'Steam', color: '#66c0f4', ink: '#0b1d2a', icon: 'simple-icons:steam', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Steam game', placeholder: 'https://store.steampowered.com/app/730', help: 'Paste the link of the game in the Steam store.' } },
   { id: 'epic', name: 'Epic Games', color: '#ffffff', ink: '#101010', icon: 'simple-icons:epicgames', types: ['game'], defaultTypes: ['game'], account: null },
@@ -65,7 +65,9 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
     account: { label: 'Website or feed', placeholder: 'https://example.com/feed.xml', help: 'Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.' } },
   { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
   { id: 'cat', name: 'Cats', color: '#f5a524', ink: '#1a1100', icon: 'ph:cat-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'dog', name: 'Dogs', color: '#b7791f', ink: '#1a1100', icon: 'ph:dog-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
   { id: 'fox', name: 'Foxes', color: '#ff7a1a', ink: '#1a0d00', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'animals', name: 'Animals', color: '#9b7bff', ink: '#10062b', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
   { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
   { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
 ];
@@ -84,7 +86,7 @@ export const LOCKED_PLATFORMS: LockedPlatform[] = [
 /** How often an auto feed can post, in minutes (the same limits as the bot: 15 minutes at the least, once a day at the most). */
 export const FEED_PACES: { minutes: number; label: string }[] = [
   { minutes: 1440, label: 'Once a day' }, { minutes: 720, label: 'Every 12 hours' }, { minutes: 360, label: 'Every 6 hours' }, { minutes: 180, label: 'Every 3 hours' },
-  { minutes: 60, label: 'Every hour' }, { minutes: 30, label: 'Every 30 minutes' }, { minutes: 15, label: 'Every 15 minutes' },
+  { minutes: 60, label: 'Every hour' }, { minutes: 30, label: 'Every 30 minutes' }, { minutes: 15, label: 'Every 15 minutes' }, { minutes: 5, label: 'Every 5 minutes' },
 ];
 /** The pace written in the account of an auto feed (`every:15`, or the old names for once a day). */
 export const paceOf = (accountId: string): number => { const match = /^every:(\d+)$/.exec(accountId); return match ? Number(match[1]) : 1440; };

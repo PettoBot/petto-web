@@ -64,6 +64,10 @@ const config = {
 const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
 const paceLabel = (minutes: number): string => { const known = FEED_PACES.find((pace) => pace.minutes === minutes); return known ? dt(known.label) : dt('Every {n} minutes', { n: String(minutes) }); };
 const typeIcon = (id: string): string => typeTable[id]?.icon ?? 'ph:bell-ringing-fill';
+// The picture a feed of a website falls back to when the one its feed gives does not load: the icon of the site.
+const siteIcon = (url: string | null): string => {
+  try { return url ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(url).hostname)}&sz=128` : ''; } catch { return ''; }
+};
 const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={current ? `feeds-${current.id}` : 'feeds-overview'} pageTitle={current ? `${current.name} · ${dt('Feeds')}` : dt('Feeds')}>
@@ -123,7 +127,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
           const status = statusOf(feed);
           return (
             <li class="fd-row" data-feed-row={feed.id} data-search={`${feed.accountName} ${p?.name ?? ''} ${channelName.get(feed.channelId) ?? ''}`.toLowerCase()} style={`--fd-c:${p?.color ?? '#888'};--fd-ink:${p?.ink ?? '#fff'};--i:${Math.min(i, 8)}`}>
-              <span class="fd-avatar">{feed.accountAvatar ? <img src={feed.accountAvatar} alt="" loading="lazy" referrerpolicy="no-referrer" /> : p ? <Icon name={p.icon} width="20" height="20" /> : null}</span>
+              <span class="fd-avatar">{feed.accountAvatar ? <img src={feed.accountAvatar} alt="" loading="lazy" referrerpolicy="no-referrer" data-platform={feed.platform} data-fallback={siteIcon(feed.accountUrl)} /> : p ? <Icon name={p.icon} width="20" height="20" /> : null}</span>
               <div class="fd-main">
                 <div class="fd-name">{feed.accountUrl ? <a href={feed.accountUrl} target="_blank" rel="noopener noreferrer">{feed.accountName}</a> : feed.accountName}{!current && p && <span class="fd-plat-tag"><Icon name={p.icon} width="11" height="11" />{p.name}</span>}</div>
                 <div class="fd-meta">
@@ -176,7 +180,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       <div class="fd-field" data-step="pace" hidden>
         <label for="fd-pace">{dt('How often')}</label>
         <select id="fd-pace" data-pace>{FEED_PACES.map((pace) => <option value={String(pace.minutes)}>{dt(pace.label)}</option>)}</select>
-        <span class="fd-help">{dt('Every time Petto posts something new. The shortest is every 15 minutes, so the channel is not flooded.')}</span>
+        <span class="fd-help">{dt('Every time Petto posts something new. The shortest is every 5 minutes, so the channel is not flooded.')}</span>
       </div>
 
       <fieldset class="fd-field fd-set" data-types-box><legend>{dt('What to post')}</legend><div class="fd-types" data-types></div></fieldset>
@@ -249,6 +253,16 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const flashBox = $<HTMLElement>('[data-flash]', root)!;
     // The icons of the platforms and of the kinds of notice come drawn with the page (a hidden copy of each one); they are copied where they are needed.
     const icon = (kind: 'platform' | 'type', id: string) => document.querySelector<HTMLElement>(`[data-icons="${kind}"] [data-icon-id="${id}"] svg`)?.cloneNode(true) as SVGElement | undefined;
+
+    // A picture in the list that does not load tries the icon of the site once and then shows the icon of its platform (errors do not bubble, so this listens while they go down).
+    root.addEventListener('error', (event) => {
+      const img = event.target;
+      if (!(img instanceof HTMLImageElement) || !img.closest('.fd-avatar')) return;
+      const fallback = img.dataset.fallback;
+      if (fallback && img.src !== fallback) { img.src = fallback; return; }
+      const svg = icon('platform', img.dataset.platform ?? '');
+      if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); img.replaceWith(svg); } else img.remove();
+    }, true);
 
     const call = async (action: string, body: Record<string, unknown> = {}) => {
       try {
