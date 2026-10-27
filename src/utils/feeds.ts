@@ -1,7 +1,7 @@
 // The platforms a server can follow from the dashboard, with what each one can notify. The same ids, colors and types as the bot
 // (petto-bot src/feeds/platforms.js); the bot checks everything again, this only draws the pages and the forms.
-/** Whether the Premium page talks about the feeds. Turn it on together with FEEDS_PUBLIC=true (bot and dashboard) when the feeds open to every server. */
-export const FEEDS_ON_PREMIUM_PAGE = false;
+/** Whether the Premium page talks about the feeds. The feeds are open to every server, so it is on. */
+export const FEEDS_ON_PREMIUM_PAGE = true;
 
 export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'game' | 'photo' | 'daily';
 
