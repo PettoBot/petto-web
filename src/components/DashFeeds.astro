@@ -8,7 +8,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
 import Modal from './Modal.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, platformById, type FeedRow } from '../utils/feeds';
+import { FEED_EMOJIS, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, platformById, type FeedRow } from '../utils/feeds';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -50,11 +50,14 @@ const text = {
   pickChannel: dt('Pick the channel for the notices.'), pickAccount: dt('Find the account first.'), pickType: dt('Pick at least one kind of notice.'),
   failed: dt('Petto did not answer. Try again in a moment.'), deleteAsk: dt('Stop following {name}? The channel keeps what was already posted.'),
   previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'),
+  searchName: dt('Search {name} or paste a link'), noResults: dt('No results. Try another name or paste the link.'),
+  followed: dt('Now following {name} on {platform} in {channel}. Nothing from the past is posted: the next notice will be new.'), updated: dt('Saved the changes to {name}.'),
+  paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'),
 };
 const config = {
   guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
   types: Object.fromEntries(Object.entries(FEED_TYPES).map(([id, type]) => [id, dt(type.label)])),
-  roles: roles.map((role) => [role.id, role.name]), text,
+  roles: roles.map((role) => [role.id, role.name]), channels: channels.map((channel) => [channel.id, channel.name]), emojis: FEED_EMOJIS, text,
   feeds: Object.fromEntries(feeds.map((feed) => [feed.id, feed])),
 };
 const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
@@ -148,63 +151,62 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   </div>
 
   <DashAcData roles={roles} channels={channels} vars={FEED_VARIABLES.map((variable) => ({ tok: variable.tok, desc: dt(variable.desc) }))} />
-
   <Modal id="fd-modal" title={dt('New feed')} icon="ph:bell-ringing-fill">
     <form class="fd-form" data-feed-form data-no-dirty autocomplete="off" novalidate>
-      <div class="fd-cols">
-        <div class="fd-fields">
-          <div class="fd-field" data-step="account">
-            <label for="fd-account">{dt('Account')}</label>
-            <div class="fd-find" data-find>
-              <input id="fd-account" type="text" data-account-input maxlength="200" />
-              <button type="button" class="btn btn-ghost btn-sm" data-find-btn>{dt('Find')}</button>
-            </div>
-            <div class="fd-found" data-found hidden></div>
-            <span class="fd-help" data-account-help></span>
+      <p class="fd-sub" data-sub></p>
+
+      <div class="fd-field" data-step="account">
+        <div class="fd-combo" data-combo>
+          <div class="fd-search-box">
+            <Icon name="ph:magnifying-glass-bold" width="15" height="15" />
+            <input id="fd-account" type="text" data-account-input maxlength="200" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fd-results" aria-label={dt('Search')} />
+            <span class="fd-spin" data-spin hidden aria-hidden="true"></span>
           </div>
-
-          <fieldset class="fd-field fd-set" data-types-box><legend>{dt('What to post')}</legend><div class="fd-types" data-types></div></fieldset>
-
-          <div class="fd-field">
-            <label for="fd-channel">{dt('Channel')}</label>
-            <select id="fd-channel" data-channel><option value="">{dt('Pick a channel')}</option>{channels.map((channel) => <option value={channel.id}>#{channel.name}</option>)}</select>
-          </div>
-
-          <div class="fd-field">
-            <label for="fd-message">{dt('Message above the notice')} <small>({dt('optional')})</small></label>
-            <textarea id="fd-message" data-message data-ac="vars,emojis,roles" rows="3" maxlength="1500" placeholder={dt('{feed.author} just posted!')}></textarea>
-            <div class="fd-chips" data-var-chips>{FEED_VARIABLES.slice(0, 4).map((variable) => <button type="button" class="fd-chip" data-var={variable.tok} title={dt(variable.desc)}>{variable.tok}</button>)}</div>
-          </div>
-
-          <div class="fd-field">
-            <label for="fd-role">{dt('Ping')}</label>
-            <div class="fd-find">
-              <select id="fd-role" data-role-select><option value="">{dt('Add a role to ping')}</option>{roles.map((role) => <option value={role.id}>{role.name}</option>)}</select>
-              <label class="fd-check"><input type="checkbox" data-everyone />@everyone</label>
-            </div>
-            <div class="fd-roles" data-roles></div>
-          </div>
-
-          <details class="fd-more">
-            <summary>{dt('More options')}</summary>
-            <div class="fd-field" data-image-field>
-              <label for="fd-image">{dt('Big picture')}</label>
-              <select id="fd-image" data-image><option value="">{dt('Automatic')}</option><option value="on">{dt('Always show it')}</option><option value="off">{dt('Never show it')}</option></select>
-              <span class="fd-help">{dt('Automatic shows the cover of videos and streams, and leaves it out for Shorts.')}</span>
-            </div>
-            <label class="fd-check"><input type="checkbox" data-button />{dt('Add a button that opens it')}</label>
-            <div class="fd-field"><label for="fd-include">{dt('Only if the title has one of these words')}</label><input id="fd-include" type="text" data-include maxlength="300" placeholder={dt('words, separated by commas')} /></div>
-            <div class="fd-field"><label for="fd-exclude">{dt('Skip it if the title has one of these words')}</label><input id="fd-exclude" type="text" data-exclude maxlength="300" placeholder={dt('words, separated by commas')} /></div>
-          </details>
+          <ul class="fd-results" id="fd-results" data-results role="listbox" hidden></ul>
         </div>
-
-        <aside class="fd-preview" aria-label={dt('Preview')}>
-          <div class="fd-eyebrow">{dt('Preview')}</div>
-          <div class="fd-tabs" data-preview-tabs></div>
-          <div class="fd-preview-box" data-preview></div>
-          <p class="fd-help">{dt('This is an example. The real notice has the title, picture and link of what was published.')}</p>
-        </aside>
+        <div class="fd-found" data-found hidden></div>
+        <span class="fd-help" data-account-help></span>
       </div>
+
+      <fieldset class="fd-field fd-set" data-types-box><legend>{dt('What to post')}</legend><div class="fd-types" data-types></div></fieldset>
+
+      <div class="fd-field">
+        <label for="fd-channel">{dt('Channel')}</label>
+        <select id="fd-channel" data-channel><option value="">{dt('Pick a channel')}</option>{channels.map((channel) => <option value={channel.id}>#{channel.name}</option>)}</select>
+      </div>
+
+      <div class="fd-field">
+        <label for="fd-message">{dt('Message above the notice')} <small>({dt('optional')})</small></label>
+        <textarea id="fd-message" data-message data-ac="vars,emojis,roles" rows="3" maxlength="1500" placeholder={dt('{feed.author} just posted!')}></textarea>
+        <div class="fd-chips" data-var-chips>{FEED_VARIABLES.slice(0, 4).map((variable) => <button type="button" class="fd-chip" data-var={variable.tok} title={dt(variable.desc)}>{variable.tok}</button>)}</div>
+      </div>
+
+      <div class="fd-field">
+        <label for="fd-role">{dt('Ping')}</label>
+        <select id="fd-role" data-role-select><option value="">{dt('Add a role to ping')}</option>{roles.map((role) => <option value={role.id}>{role.name}</option>)}</select>
+        <div class="fd-roles" data-roles></div>
+        <label class="fd-switch"><span>{dt('Also mention @everyone')}</span><input type="checkbox" data-everyone /><i aria-hidden="true"></i></label>
+      </div>
+
+      <details class="fd-more">
+        <summary>{dt('More options')}</summary>
+        <div class="fd-field" data-image-field>
+          <label for="fd-image">{dt('Big picture')}</label>
+          <select id="fd-image" data-image><option value="">{dt('Automatic')}</option><option value="on">{dt('Always show it')}</option><option value="off">{dt('Never show it')}</option></select>
+          <span class="fd-help">{dt('Automatic shows the cover of videos and streams, and leaves it out for Shorts.')}</span>
+        </div>
+        <label class="fd-switch"><span>{dt('Add a button that opens it')}</span><input type="checkbox" data-button /><i aria-hidden="true"></i></label>
+        <div class="fd-field"><label for="fd-include">{dt('Only if the title has one of these words')}</label><input id="fd-include" type="text" data-include maxlength="300" placeholder={dt('words, separated by commas')} /></div>
+        <div class="fd-field"><label for="fd-exclude">{dt('Skip it if the title has one of these words')}</label><input id="fd-exclude" type="text" data-exclude maxlength="300" placeholder={dt('words, separated by commas')} /></div>
+      </details>
+
+      <details class="fd-more fd-prev" data-preview-details>
+        <summary>{dt('Preview')}</summary>
+        <div class="fd-tabs" data-preview-tabs></div>
+        <div class="fd-preview-box" data-preview></div>
+        <p class="fd-help">{dt('This is an example. The real notice has the title, picture and link of what was published.')}</p>
+      </details>
+
       <p class="fd-error" data-error hidden role="alert"></p>
       <div class="fd-foot">
         <button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button>
@@ -222,6 +224,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     message: string; pingRoles: string[]; pingEveryone: boolean; options: { image?: boolean; button?: boolean }; filters: { include: string[]; exclude: string[] };
   };
   type Account = { id: string; name: string; avatar: string | null; url: string | null };
+  type Result = { value: string; name: string; avatar: string | null; url: string | null; detail: string };
 
   function initFeeds() {
     const root = document.querySelector<HTMLElement>('[data-feeds]');
@@ -233,6 +236,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const $ = <T extends HTMLElement>(sel: string, scope: ParentNode = document) => scope.querySelector<T>(sel);
     const modal = () => document.getElementById('fd-modal') as HTMLElement | null;
     const flashBox = $<HTMLElement>('[data-flash]', root)!;
+    const emoji = (id: string | undefined) => (id ? `https://cdn.discordapp.com/emojis/${id}.png?size=32` : '');
 
     const call = async (action: string, body: Record<string, unknown> = {}) => {
       try {
@@ -243,11 +247,26 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         return { ok: false, data: null, message: '' };
       }
     };
+    // The bot writes its answers for Discord (**bold**, `code`, commands to type): here they are shown as plain words.
+    const plain = (message: string) => message.replace(/\s*(Pru[eé]balo|Try it|Teste)[^.]*`[^`]*`\.?/i, '').replace(/\s*\(feed `#\d+`\)/i, '').replace(/[*`]/g, '').trim();
     const flash = (message: string, ok: boolean) => {
       flashBox.hidden = false;
       flashBox.className = `fd-flash ${ok ? 'fd-flash-ok' : 'fd-flash-err'}`;
-      flashBox.textContent = message;
+      flashBox.textContent = plain(message);
       flashBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+
+    // The list is read again and swapped in place (no page reload, so nothing blinks); the page is reloaded only if that fails.
+    const refresh = async (message = '') => {
+      try {
+        if (message) sessionStorage.setItem('fd-flash', message);
+        const res = await fetch(location.href, { headers: { Accept: 'text/html' }, credentials: 'same-origin' });
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const next = doc.querySelector<HTMLElement>('[data-feeds]');
+        if (!res.ok || !next) throw new Error('refresh');
+        root.replaceWith(next);
+        initFeeds();
+      } catch { location.reload(); }
     };
 
     // Dates are written in the viewer's own time zone.
@@ -256,7 +275,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (!Number.isNaN(date.getTime())) el.textContent = date.toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' });
     });
 
-    // Search: filters the rows by account, platform or channel.
+    // Search of the page: filters the rows by account, platform or channel.
     const rows = [...root.querySelectorAll<HTMLElement>('[data-feed-row]')];
     $<HTMLInputElement>('[data-feed-search]', root)?.addEventListener('input', (event) => {
       const query = (event.target as HTMLInputElement).value.trim().toLowerCase();
@@ -267,38 +286,97 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     });
 
     // ---- The window to follow an account or to change a feed ----
-    const state = { platform: '', feedId: 0, input: '', account: null as Account | null, type: '', roles: [] as string[], timer: 0, run: 0 };
+    const state = { platform: '', feedId: 0, input: '', account: null as Account | null, type: '', roles: [] as string[], timer: 0, run: 0, searchTimer: 0, searchRun: 0, results: [] as Result[], active: -1 };
 
     const form = () => $<HTMLFormElement>('[data-feed-form]', modal() ?? document)!;
     const field = <T extends HTMLElement>(sel: string) => $<T>(sel, form())!;
     const words = (value: string) => value.split(',').map((word) => word.trim()).filter(Boolean).slice(0, 10);
+    const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', content?: string) => { const node = document.createElement(tag); if (className) node.className = className; if (content !== undefined) node.textContent = content; return node; };
+    const picture = (url: string | null, fallbackId: string | undefined) => {
+      const img = el('img', 'fd-pic');
+      img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+      img.src = url || emoji(fallbackId);
+      if (fallbackId) img.addEventListener('error', () => { img.src = emoji(fallbackId); }, { once: true });
+      return img;
+    };
+
     const fillRoles = () => {
       const box = field<HTMLElement>('[data-roles]');
       box.replaceChildren(...state.roles.map((id) => {
-        const chip = document.createElement('button');
-        chip.type = 'button'; chip.className = 'fd-chip fd-chip-role'; chip.dataset.removeRole = id;
-        chip.title = text.removeRole; chip.textContent = `@${(config.roles as [string, string][]).find(([rid]) => rid === id)?.[1] ?? id}  ×`;
+        const chip = el('button', 'fd-chip fd-chip-role');
+        chip.type = 'button'; chip.dataset.removeRole = id; chip.title = text.removeRole;
+        chip.textContent = `@${(config.roles as [string, string][]).find(([rid]) => rid === id)?.[1] ?? id}  ×`;
         return chip;
       }));
     };
     const checkedTypes = () => [...form().querySelectorAll<HTMLInputElement>('[data-types] input:checked')].map((input) => input.value);
-    const showError = (message: string) => { const el = field<HTMLElement>('[data-error]'); el.hidden = !message; el.textContent = message; };
+    const showError = (message: string) => { const box = field<HTMLElement>('[data-error]'); box.hidden = !message; box.textContent = message; };
 
+    // The account chosen: a card with its picture, in place of the search.
     const showFound = () => {
       const found = field<HTMLElement>('[data-found]');
-      const find = field<HTMLElement>('[data-find]');
+      const combo = field<HTMLElement>('[data-combo]');
       found.hidden = !state.account;
-      find.hidden = Boolean(state.account);
+      combo.hidden = Boolean(state.account);
       if (!state.account) { found.replaceChildren(); return; }
-      const img = document.createElement('img');
-      img.src = state.account.avatar ?? ''; img.alt = ''; img.referrerPolicy = 'no-referrer';
-      const name = document.createElement('b'); name.textContent = state.account.name;
-      const change = document.createElement('button');
-      change.type = 'button'; change.className = 'btn btn-ghost btn-sm'; change.dataset.changeAccount = '1'; change.textContent = text.change;
-      found.replaceChildren(...(state.account.avatar ? [img] : []), name, change);
-      if (state.feedId) change.hidden = true; // an account cannot change in a feed that already exists
+      const names = el('div', 'fd-found-text');
+      names.append(el('b', '', state.account.name));
+      if (state.account.url) names.append(el('small', '', state.account.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)));
+      const change = el('button', 'btn btn-ghost btn-sm', text.change);
+      change.type = 'button'; change.dataset.changeAccount = '1';
+      change.hidden = Boolean(state.feedId); // an account cannot change in a feed that already exists
+      found.replaceChildren(picture(state.account.avatar, config.emojis.platforms[state.platform]), names, change);
     };
 
+    // ---- The search while typing ----
+    const resultsBox = () => field<HTMLUListElement>('[data-results]');
+    const spin = (on: boolean) => { field<HTMLElement>('[data-spin]').hidden = !on; };
+    const hideResults = () => { const box = resultsBox(); box.hidden = true; box.replaceChildren(); state.results = []; state.active = -1; field<HTMLInputElement>('[data-account-input]').setAttribute('aria-expanded', 'false'); };
+    const showRows = (rowsList: HTMLElement[]) => { const box = resultsBox(); box.replaceChildren(...rowsList); box.hidden = false; field<HTMLInputElement>('[data-account-input]').setAttribute('aria-expanded', 'true'); };
+    const skeleton = () => showRows([0, 1, 2].map(() => { const row = el('li', 'fd-res fd-res-skel'); row.append(el('span', 'fd-pic'), (() => { const t = el('div', 'fd-res-text'); t.append(el('b'), el('small')); return t; })()); return row; }));
+    const note = (message: string, bad = false) => showRows([el('li', `fd-res-note${bad ? ' fd-res-bad' : ''}`, message)]);
+    const markActive = () => resultsBox().querySelectorAll<HTMLElement>('[data-pick]').forEach((row, i) => row.classList.toggle('fd-res-on', i === state.active));
+
+    const renderResults = (list: Result[]) => {
+      state.results = list; state.active = list.length ? 0 : -1;
+      if (!list.length) { note(text.noResults); return; }
+      showRows(list.map((result, i) => {
+        const row = el('li', 'fd-res');
+        row.setAttribute('role', 'option'); row.dataset.pick = String(i);
+        const names = el('div', 'fd-res-text');
+        names.append(el('b', '', result.name));
+        if (result.detail) names.append(el('small', '', result.detail));
+        row.append(picture(result.avatar, config.emojis.platforms[state.platform]), names);
+        return row;
+      }));
+      markActive();
+    };
+
+    async function runSearch(raw: string) {
+      const run = ++state.searchRun;
+      const query = raw.trim();
+      if (query.length < 2) { spin(false); hideResults(); return; }
+      spin(true); skeleton();
+      // A link (or an @name) points at one account: it is looked up as it is.
+      const link = /^https?:\/\//i.test(query) || (state.platform === 'youtube' && query.startsWith('@'));
+      const answer = link ? await call('resolve', { platform: state.platform, account: query }) : await call('search', { platform: state.platform, query });
+      if (run !== state.searchRun) return; // a newer search took its place
+      spin(false);
+      if (!answer.ok) { note(answer.message || text.failed, true); return; }
+      renderResults(link ? [{ value: query, name: answer.data.account.name, avatar: answer.data.account.avatar, url: answer.data.account.url, detail: '' }] : (answer.data.results as Result[]));
+    }
+
+    const pick = (index: number) => {
+      const result = state.results[index];
+      if (!result) return;
+      state.account = { id: result.value, name: result.name, avatar: result.avatar, url: result.url };
+      state.input = result.value;
+      state.searchRun += 1; // what is still on its way is not wanted any more
+      spin(false); hideResults(); showError(''); showFound(); schedule();
+    };
+
+    // ---- The preview (a section that opens on demand, so typing is never slowed down by it) ----
+    const previewOpen = () => Boolean(field<HTMLDetailsElement>('[data-preview-details]').open);
     const renderTabs = () => {
       const platform = config.platforms[state.platform];
       const box = field<HTMLElement>('[data-preview-tabs]');
@@ -307,13 +385,14 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (!list.includes(state.type)) state.type = list[0] ?? platform.defaultTypes[0];
       box.hidden = list.length < 2;
       box.replaceChildren(...list.map((type) => {
-        const tab = document.createElement('button');
-        tab.type = 'button'; tab.className = `fd-tab${type === state.type ? ' fd-tab-on' : ''}`; tab.dataset.previewType = type; tab.textContent = config.types[type];
+        const tab = el('button', `fd-tab${type === state.type ? ' fd-tab-on' : ''}`, config.types[type]);
+        tab.type = 'button'; tab.dataset.previewType = type;
         return tab;
       }));
     };
 
     const drawPreview = async () => {
+      if (!previewOpen()) return;
       const run = ++state.run;
       const box = field<HTMLElement>('[data-preview]');
       const image = field<HTMLSelectElement>('[data-image]').value;
@@ -329,32 +408,37 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       let html = renderV2Message({ components: doc }, { ...defaultContext, botName: bot?.dataset.name || defaultContext.botName, botIcon: bot?.dataset.icon || defaultContext.botIcon, t: tr });
       // The renderer does not know the names of the roles: the roles pinged are written in the order of the ping line.
       for (const id of state.roles) html = html.replace('<span class="dp-mention">@role</span>', `<span class="dp-mention">@${((config.roles as [string, string][]).find(([rid]) => rid === id)?.[1] ?? 'role').replace(/[&<>"']/g, '')}</span>`);
-      box.innerHTML = html;
+      // The same picture again is not written again (writing it would blink its images).
+      if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
     };
-    const schedule = () => { window.clearTimeout(state.timer); state.timer = window.setTimeout(() => { renderTabs(); void drawPreview(); }, 350); };
+    const schedule = () => { window.clearTimeout(state.timer); state.timer = window.setTimeout(() => { renderTabs(); void drawPreview(); }, 400); };
 
     const open = (platformId: string, feed?: Feed) => {
       const platform = config.platforms[platformId];
-      const el = modal();
-      if (!platform || !el) return;
-      Object.assign(state, { platform: platformId, feedId: feed?.id ?? 0, input: '', account: feed ? { id: feed.accountId, name: feed.accountName, avatar: feed.accountAvatar, url: feed.accountUrl } : null, roles: feed ? [...feed.pingRoles] : [], type: '' });
-      el.style.setProperty('--fd-c', platform.color);
-      el.style.setProperty('--fd-ink', platform.ink);
-      el.querySelector('.mdl-head h2')!.textContent = feed ? `${text.editFeed} · ${platform.name}` : `${text.newFeed} · ${platform.name}`;
+      const box = modal();
+      if (!platform || !box) return;
+      Object.assign(state, { platform: platformId, feedId: feed?.id ?? 0, input: '', account: feed ? { id: feed.accountId, name: feed.accountName, avatar: feed.accountAvatar, url: feed.accountUrl } : null, roles: feed ? [...feed.pingRoles] : [], type: '', results: [], active: -1 });
+      state.searchRun += 1;
+      box.style.setProperty('--fd-c', platform.color);
+      box.style.setProperty('--fd-ink', platform.ink);
+      const head = box.querySelector('.mdl-head h2')!;
+      head.textContent = `${feed ? text.editFeed : text.newFeed} · ${platform.name}`;
       field<HTMLElement>('[data-submit]').textContent = feed ? text.save : text.create;
+      field<HTMLElement>('[data-sub]').textContent = platform.account?.help ?? '';
       const input = field<HTMLInputElement>('[data-account-input]');
       input.value = '';
-      input.placeholder = platform.account?.placeholder ?? '';
-      field<HTMLLabelElement>('[data-step="account"] label').textContent = platform.account?.label ?? platform.name;
-      field<HTMLElement>('[data-account-help]').textContent = platform.account?.help ?? '';
+      input.placeholder = platform.account ? text.searchName.replace('{name}', platform.account.label) : '';
+      field<HTMLElement>('[data-account-help]').textContent = '';
       field<HTMLElement>('[data-step="account"]').hidden = !platform.account;
       field<HTMLElement>('[data-types-box]').hidden = (platform.types as string[]).length < 2;
       field<HTMLElement>('[data-types]').replaceChildren(...(platform.types as string[]).map((type) => {
-        const label = document.createElement('label');
-        label.className = 'fd-type-pick';
-        const check = document.createElement('input');
+        const label = el('label', 'fd-type-pick');
+        const check = el('input');
         check.type = 'checkbox'; check.value = type; check.checked = feed ? feed.types.includes(type) : (platform.defaultTypes as string[]).includes(type);
-        const span = document.createElement('span'); span.textContent = config.types[type];
+        const span = el('span');
+        const emojiId = config.emojis.types[type];
+        if (emojiId) { const img = el('img', 'fd-emo'); img.alt = ''; img.src = emoji(emojiId); span.append(img); }
+        span.append(document.createTextNode(config.types[type]));
         label.append(check, span);
         return label;
       }));
@@ -362,35 +446,30 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       field<HTMLTextAreaElement>('[data-message]').value = feed?.message ?? '';
       field<HTMLInputElement>('[data-everyone]').checked = feed?.pingEveryone ?? false;
       field<HTMLSelectElement>('[data-image]').value = feed?.options.image === undefined ? '' : feed.options.image ? 'on' : 'off';
-      field<HTMLElement>('[data-image-field]').hidden = !(platform.types as string[]).some((type) => ['video', 'short', 'live', 'clip', 'update', 'daily', 'post'].includes(type));
       field<HTMLInputElement>('[data-button]').checked = feed?.options.button ?? false;
       field<HTMLInputElement>('[data-include]').value = (feed?.filters.include ?? []).join(', ');
       field<HTMLInputElement>('[data-exclude]').value = (feed?.filters.exclude ?? []).join(', ');
       field<HTMLSelectElement>('[data-role-select]').value = '';
-      showError('');
-      showFound(); fillRoles(); renderTabs();
-      field<HTMLElement>('[data-submit]').toggleAttribute('disabled', false);
+      field<HTMLDetailsElement>('[data-preview-details]').open = false;
+      box.querySelectorAll<HTMLDetailsElement>('.fd-more:not(.fd-prev)').forEach((details) => { details.open = false; });
+      field<HTMLElement>('[data-preview]').dataset.html = '';
+      showError(''); spin(false); hideResults(); showFound(); fillRoles(); renderTabs();
+      field<HTMLButtonElement>('[data-submit]').disabled = false;
       // Opening goes through the common window code (it moves the window to <body> and focuses it).
-      const opener = document.createElement('button');
+      const opener = el('button');
       opener.type = 'button'; opener.dataset.modalOpen = 'fd-modal'; opener.hidden = true; document.body.appendChild(opener); opener.click(); opener.remove();
-      void drawPreview();
-      // The Pokémon of the day needs no account: it is looked up at once.
-      if (!platform.account && !feed) void find('');
+      // A platform with no account to choose (the Pokémon of the day, Wikipedia, Chess.com) is looked up at once.
+      if (!platform.account && !feed) void autoResolve();
     };
 
-    async function find(raw: string) {
-      const platform = config.platforms[state.platform];
-      const value = raw.trim();
-      if (platform.account && !value) { showError(text.pasteFirst); return; }
-      const button = field<HTMLButtonElement>('[data-find-btn]');
-      button.disabled = true; button.textContent = text.looking; showError('');
-      const answer = await call('resolve', { platform: state.platform, account: value });
-      button.disabled = false; button.textContent = text.find;
+    async function autoResolve() {
+      const answer = await call('resolve', { platform: state.platform, account: '' });
       if (!answer.ok) { showError(answer.message || text.failed); return; }
-      state.account = answer.data.account as Account;
-      state.input = value;
-      showFound(); schedule();
+      state.account = answer.data.account as Account; state.input = '';
+      schedule();
     }
+
+    const closeWindow = () => { const closer = el('button'); closer.type = 'button'; closer.dataset.modalClose = '1'; closer.hidden = true; modal()?.appendChild(closer); closer.click(); closer.remove(); };
 
     async function save(event: Event) {
       event.preventDefault();
@@ -406,14 +485,16 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         filters: { include: words(field<HTMLInputElement>('[data-include]').value), exclude: words(field<HTMLInputElement>('[data-exclude]').value) },
       };
       const submit = field<HTMLButtonElement>('[data-submit]');
-      submit.disabled = true; const label = submit.textContent; submit.textContent = text.saving; showError('');
+      submit.disabled = true; submit.classList.add('fd-saving'); const label = submit.textContent; submit.textContent = text.saving; showError('');
       const answer = state.feedId
         ? await call('update', { id: state.feedId, ...body })
         : await call('create', { platform: state.platform, account: state.input || state.account.url || state.account.id, ...body });
-      submit.disabled = false; submit.textContent = label;
-      if (!answer.ok) { showError(answer.message || text.failed); return; }
-      sessionStorage.setItem('fd-flash', answer.message || text.saved);
-      location.reload();
+      if (!answer.ok) { submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label; showError(plain(answer.message) || text.failed); return; }
+      const channel = (config.channels as [string, string][]).find(([id]) => id === channelId)?.[1] ?? '';
+      const done = state.feedId ? text.updated.replace('{name}', state.account.name) : text.followed.replace('{name}', state.account.name).replace('{platform}', config.platforms[state.platform].name).replace('{channel}', `#${channel}`);
+      closeWindow();
+      submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label;
+      await refresh(done);
     }
 
     // The window lives in <body> once opened: its events are caught on the document. A page swapped in again binds again, so the listeners
@@ -426,8 +507,10 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     on('click', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      if (target.closest('[data-find-btn]')) { void find(field<HTMLInputElement>('[data-account-input]').value); return; }
-      if (target.closest('[data-change-account]')) { state.account = null; showFound(); schedule(); field<HTMLInputElement>('[data-account-input]').focus(); return; }
+      const picked = target.closest<HTMLElement>('[data-pick]');
+      if (picked) { pick(Number(picked.dataset.pick)); return; }
+      if (target.closest('[data-change-account]')) { state.account = null; showFound(); const input = field<HTMLInputElement>('[data-account-input]'); input.value = ''; hideResults(); schedule(); input.focus(); return; }
+      if (!target.closest('[data-combo]')) { const box = $<HTMLElement>('[data-results]', modal() ?? document); if (box && !box.hidden && target.closest('#fd-modal')) hideResults(); }
       const variable = target.closest<HTMLElement>('[data-var]');
       if (variable) {
         const area = field<HTMLTextAreaElement>('[data-message]');
@@ -443,7 +526,12 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     });
     on('keydown', (event) => {
       const input = event.target as HTMLElement | null;
-      if (event.key === 'Enter' && input?.matches('[data-account-input]')) { event.preventDefault(); void find((input as HTMLInputElement).value); }
+      if (!input?.matches('[data-account-input]')) return;
+      const count = state.results.length;
+      if (event.key === 'ArrowDown' && count) { event.preventDefault(); state.active = (state.active + 1) % count; markActive(); }
+      else if (event.key === 'ArrowUp' && count) { event.preventDefault(); state.active = (state.active - 1 + count) % count; markActive(); }
+      else if (event.key === 'Enter') { event.preventDefault(); if (state.active >= 0) pick(state.active); else { window.clearTimeout(state.searchTimer); void runSearch((input as HTMLInputElement).value); } }
+      else if (event.key === 'Escape' && !resultsBox().hidden) { event.stopPropagation(); hideResults(); }
     });
     on('change', (event) => {
       const target = event.target as HTMLElement | null;
@@ -455,7 +543,21 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       }
       schedule();
     });
-    on('input', (event) => { if ((event.target as HTMLElement | null)?.closest('[data-feed-form]')) schedule(); });
+    on('input', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || !target.closest('[data-feed-form]')) return;
+      // Typing in the search looks for accounts (a moment after the last key); every other field only redraws the preview when it is open.
+      if (target.matches('[data-account-input]')) {
+        window.clearTimeout(state.searchTimer);
+        const value = (target as HTMLInputElement).value;
+        if (value.trim().length < 2) { state.searchRun += 1; spin(false); hideResults(); return; }
+        spin(true);
+        state.searchTimer = window.setTimeout(() => void runSearch(value), 380);
+        return;
+      }
+      schedule();
+    });
+    on('toggle', (event) => { if ((event.target as HTMLElement | null)?.matches?.('[data-preview-details]') && previewOpen()) { renderTabs(); void drawPreview(); } }, );
 
     // ---- The buttons of the page ----
     root.addEventListener('click', async (event) => {
@@ -475,7 +577,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (button.dataset.feedToggle) {
         button.disabled = true;
         const answer = await call('update', { id: Number(button.dataset.feedToggle), enabled: !button.dataset.on });
-        if (answer.ok) { location.reload(); return; }
+        if (answer.ok) { await refresh(button.dataset.on ? text.paused : text.resumed); return; }
         button.disabled = false; flash(answer.message || text.failed, false);
         return;
       }
@@ -483,7 +585,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         if (!confirm(text.deleteAsk.replace('{name}', button.dataset.name ?? ''))) return;
         button.disabled = true;
         const answer = await call('delete', { id: Number(button.dataset.feedDelete) });
-        if (answer.ok) { location.reload(); return; }
+        if (answer.ok) { await refresh(text.removed.replace('{name}', button.dataset.name ?? '')); return; }
         button.disabled = false; flash(answer.message || text.failed, false);
       }
     });
@@ -569,35 +671,69 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-hint { font-size: 13px; color: var(--text-dim); }
   .fd-hint[hidden] { display: none; }
 
-  #fd-modal .mdl-box { width: min(940px, 100%); }
+  #fd-modal .mdl-box { width: min(480px, 100%); }
   #fd-modal .mdl-ico { background: var(--fd-c, var(--accent)); color: var(--fd-ink, #fff); }
-  .fd-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
-  .fd-fields { display: grid; gap: 18px; min-width: 0; }
-  .fd-field { display: grid; gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; }
+  .fd-form { display: grid; gap: 14px; min-width: 0; }
+  .fd-sub { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+  .fd-sub:empty { display: none; }
+  .fd-field { display: grid; gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; position: relative; }
   .fd-field[hidden] { display: none; }
   .fd-field > label, .fd-set legend { font-size: 12.5px; font-weight: 600; color: var(--text); padding: 0; letter-spacing: .01em; }
   .fd-set legend { margin-bottom: 8px; float: left; width: 100%; }
   .fd-set legend + * { clear: both; }
   .fd-field small { font-weight: 400; color: var(--text-dim); }
-  .fd-field :is(input[type="text"], select, textarea), .fd-find :is(input[type="text"], select) { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background-color: var(--bg-soft, var(--card)); color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.4; min-width: 0; }
-  .fd-field select, .fd-find select { appearance: none; padding-right: 34px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath fill='%23999' d='M213.7 101.7l-80 80a8 8 0 0 1-11.4 0l-80-80a8 8 0 0 1 11.4-11.4L128 164.7l74.3-74.4a8 8 0 0 1 11.4 11.4Z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
-  .fd-field textarea { resize: vertical; min-height: 84px; }
-  .fd-field :is(input[type="text"], select, textarea):focus-visible, .fd-find :is(input[type="text"], select):focus-visible { outline: none; border-color: var(--fd-c, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fd-c, var(--accent)) 22%, transparent); }
-  .fd-find .btn { flex: none; }
+  .fd-field :is(input[type="text"], select, textarea) { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background-color: var(--bg-soft, var(--card)); color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.4; min-width: 0; }
+  .fd-field select { appearance: none; padding-right: 34px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath fill='%23999' d='M213.7 101.7l-80 80a8 8 0 0 1-11.4 0l-80-80a8 8 0 0 1 11.4-11.4L128 164.7l74.3-74.4a8 8 0 0 1 11.4 11.4Z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+  .fd-field textarea { resize: vertical; min-height: 72px; }
+  .fd-field :is(input[type="text"], select, textarea):focus-visible { outline: none; border-color: var(--fd-c, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fd-c, var(--accent)) 22%, transparent); }
   .fd-help { font-size: 12px; color: var(--text-dim); }
-  .fd-find { display: flex; gap: 8px; align-items: center; }
-  .fd-find[hidden] { display: none; }
-  .fd-find input, .fd-find select { flex: 1; min-width: 0; }
-  .fd-found { display: flex; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--green) 50%, var(--border)); background: var(--green-soft); border-radius: 10px; padding: 8px 10px; }
+  .fd-help:empty { display: none; }
+
+  /* The search while typing: a box with a magnifier, a spinner and the list of accounts under it. */
+  .fd-combo { position: relative; }
+  .fd-combo[hidden] { display: none; }
+  .fd-search-box { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft, var(--card)); padding: 0 12px; color: var(--text-dim); transition: border-color .15s ease, box-shadow .15s ease; }
+  .fd-search-box:focus-within { border-color: var(--fd-c, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fd-c, var(--accent)) 22%, transparent); }
+  .fd-search-box input[type="text"] { flex: 1; border: 0 !important; box-shadow: none !important; background: none !important; padding: 10px 0 !important; border-radius: 0 !important; }
+  .fd-spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--fd-c, var(--accent)) 25%, transparent); border-top-color: var(--fd-c, var(--accent)); animation: fd-turn .7s linear infinite; flex: none; }
+  .fd-spin[hidden] { display: none; }
+  @keyframes fd-turn { to { transform: rotate(360deg); } }
+  .fd-results { list-style: none; margin: 6px 0 0; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); max-height: 248px; overflow-y: auto; display: grid; gap: 2px; }
+  .fd-results[hidden] { display: none; }
+  .fd-res { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; cursor: pointer; }
+  .fd-res:hover, .fd-res-on { background: var(--card-hover); }
+  .fd-res-text { display: grid; min-width: 0; gap: 1px; }
+  .fd-res-text b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fd-res-text small { font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fd-res-note { padding: 12px; font-size: 13px; color: var(--text-dim); text-align: center; }
+  .fd-res-bad { color: var(--red, #f87171); }
+  .fd-pic { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex: none; background: var(--bg-soft, var(--card-hover)); }
+  .fd-res-skel .fd-pic { animation: fd-pulse 1.1s ease-in-out infinite; }
+  .fd-res-skel b, .fd-res-skel small { display: block; height: 10px; border-radius: 5px; background: var(--bg-soft, var(--card-hover)); animation: fd-pulse 1.1s ease-in-out infinite; }
+  .fd-res-skel b { width: 120px; margin-bottom: 5px; }
+  .fd-res-skel small { width: 80px; height: 8px; }
+  @keyframes fd-pulse { 50% { opacity: .45; } }
+  .fd-found { display: flex; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--fd-c, var(--accent)) 50%, var(--border)); background: color-mix(in srgb, var(--fd-c, var(--accent)) 8%, transparent); border-radius: 10px; padding: 8px 10px; }
   .fd-found[hidden] { display: none; }
-  .fd-found img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
-  .fd-found b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; }
+  .fd-found-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .fd-found-text b { font-size: 13.5px; overflow-wrap: anywhere; }
+  .fd-found-text small { font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fd-types { display: flex; flex-wrap: wrap; gap: 8px; }
   .fd-type-pick { cursor: pointer; }
   .fd-type-pick input { position: absolute; opacity: 0; pointer-events: none; }
-  .fd-type-pick span { display: inline-flex; align-items: center; font-size: 13px; border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; color: var(--text-muted); transition: all .15s ease; }
+  .fd-type-pick span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; color: var(--text-muted); transition: all .15s ease; }
+  .fd-emo { width: 16px; height: 16px; }
   .fd-type-pick input:checked + span { background: var(--fd-c, var(--accent)); border-color: var(--fd-c, var(--accent)); color: var(--fd-ink, #fff); }
   .fd-type-pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fd-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; cursor: pointer; color: var(--text); }
+  .fd-switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .fd-switch i { width: 36px; height: 20px; border-radius: 999px; background: var(--border); position: relative; flex: none; transition: background .2s ease; }
+  .fd-switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s var(--m-out, ease); }
+  .fd-switch input:checked + i { background: var(--fd-c, var(--accent)); }
+  .fd-switch input:checked + i::after { transform: translateX(16px); }
+  .fd-switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fd-saving { position: relative; pointer-events: none; }
+  .fd-saving::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: fd-turn .6s linear infinite; }
   .fd-chips, .fd-roles { display: flex; flex-wrap: wrap; gap: 6px; }
   .fd-chip { font: inherit; font-size: 11.5px; font-family: var(--mono); color: var(--text-muted); background: none; border: 1px dashed var(--border); border-radius: 999px; padding: 3px 10px; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
   .fd-chip:hover { color: var(--text); border-color: var(--fd-c, var(--accent)); background: color-mix(in srgb, var(--fd-c, var(--accent)) 10%, transparent); }
@@ -613,7 +749,6 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-more[open] { display: grid; gap: 0; }
   .fd-more[open] > :not(summary) + :not(summary) { margin-top: -2px; }
   .fd-more[open] { gap: 14px; }
-  .fd-preview { position: sticky; top: 0; display: grid; gap: 10px; min-width: 0; align-content: start; }
   .fd-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
   .fd-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .fd-tabs[hidden] { display: none; }
@@ -621,12 +756,13 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-tab-on { background: var(--fd-c, var(--accent)); border-color: var(--fd-c, var(--accent)); color: var(--fd-ink, #fff); }
   .fd-preview-box { min-height: 120px; font-size: 13px; color: var(--text-dim); }
   .fd-preview-box .dp-msg { max-width: none; }
+  .fd-preview-box .dp-sub { font-size: 12px; color: #b5bac1; }
+  .fd-preview-box .dp-emoji { width: 1.25em; height: 1.25em; vertical-align: -0.25em; display: inline-block; }
+  .fd-prev .fd-tabs { margin-bottom: 8px; }
   .fd-error { margin: 0; font-size: 13px; color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red, #f87171) 45%, transparent); border-radius: 10px; padding: 9px 12px; }
   .fd-error[hidden] { display: none; }
   .fd-foot { display: flex; justify-content: flex-end; gap: 8px; }
   @media (max-width: 760px) {
-    .fd-cols { grid-template-columns: minmax(0, 1fr); }
-    .fd-preview { position: static; order: -1; }
     .fd-row { grid-template-columns: auto minmax(0, 1fr); }
     .fd-status { grid-column: 2; justify-self: start; }
     .fd-actions { grid-column: 1 / -1; justify-content: flex-end; }
