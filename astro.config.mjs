@@ -67,7 +67,7 @@ export default defineConfig({
           'speaker-slash-fill', 'spinner-gap', 'squares-four-fill', 'star-fill', 'stop-circle-fill', 'sun-fill',
           'stack-fill', 'tag-fill', 'terminal-window-fill', 'ticket', 'timer-fill', 'trash-fill', 'trophy-fill', 'flask-fill',
           'upload-simple-bold', 'user-fill', 'user-gear-fill', 'lock-key-fill', 'user-minus-fill', 'user-plus-fill', 'users-three-fill',
-          'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-bold', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill', 'music-notes-fill', 'game-controller-fill'],
+          'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-bold', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill', 'music-notes-fill', 'game-controller-fill', 'cat-fill', 'paw-print-fill', 'camera-fill'],
         'simple-icons': [
           'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epicgames', 'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
           'googlegemini', 'nodedotjs', 'npm', 'phosphoricons', 'postgresql', 'simpleicons',

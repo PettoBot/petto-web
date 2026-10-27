@@ -460,6 +460,7 @@ const feedOf = (message, extra = {}) => ({ message, ping_roles: [UPDATES_ROLE], 
 const DUCK = 'http://localhost:4399/assets/duck-purple.png';
 const feedShot = (id, channel, build, typed = null) => shot(id, channel, { build: async (lang) => build(lang), names: feedNames, ...(typed ? { typed } : {}) });
 const feedBot = (feed, item, lang) => feedCard.buildFeedMessage(feed, item, { lang });
+const feedPayload = (feed, item, lang) => feedCard.buildFeedPayload(feed, item, { lang });
 
 const mkbhd = await feedYoutube.fetchChannel('UCBJycsmduvYEL83R_U4JriQ');
 const mkbhdAvatar = (/og:image" content="([^"]+)"/.exec(await (await realFetch('https://www.youtube.com/channel/UCBJycsmduvYEL83R_U4JriQ', { headers: { 'User-Agent': 'Mozilla/5.0' } })).text()) ?? [])[1] ?? null;
@@ -494,11 +495,11 @@ const feedSocial = load('src/feeds/providers/social.js');
 const feedEpic = load('src/feeds/providers/epic.js');
 const daftPunk = await feedMusic.deezerResolve('27');
 const daftRelease = (await feedMusic.deezerReleases(daftPunk, Date.now()))[0];
-await feedShot('feed-deezer-release', 'music', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...daftRelease, platform: 'deezer', avatar: daftPunk.avatar, publishedAt: NOW - 3 * 3600000 }, lang));
-await feedShot('feed-spotify-release', 'music', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...daftRelease, platform: 'spotify', avatar: daftPunk.avatar, url: 'https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa', authorUrl: 'https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi', extra: 'ALBUM · 13 tracks', publishedAt: NOW - 3 * 3600000 }, lang));
+await feedShot('feed-deezer-release', 'music', async (lang) => feedPayload(feedOf('', { ping_roles: [] }), { ...daftRelease, platform: 'deezer', avatar: daftPunk.avatar, publishedAt: NOW - 3 * 3600000 }, lang));
+await feedShot('feed-spotify-release', 'music', async (lang) => feedPayload(feedOf('', { ping_roles: [] }), { ...daftRelease, platform: 'spotify', avatar: daftPunk.avatar, url: 'https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa', authorUrl: 'https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi', extra: 'ALBUM · 13 tracks', publishedAt: NOW - 3 * 3600000 }, lang));
 const appleArtist = await feedMusic.appleResolve('5468295');
 const appleRelease = (await feedMusic.appleReleases(appleArtist))[0];
-await feedShot('feed-applemusic-release', 'music', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...appleRelease, avatar: appleArtist.avatar, publishedAt: NOW - 3 * 3600000 }, lang));
+await feedShot('feed-applemusic-release', 'music', async (lang) => feedPayload(feedOf('', { ping_roles: [] }), { ...appleRelease, avatar: appleArtist.avatar, publishedAt: NOW - 3 * 3600000 }, lang));
 const epicGame = (await feedEpic.freeGames('en'))[0];
 await feedShot('feed-epic-game', 'free-games', (lang) => feedBot(feedOf('', { ping_roles: [] }), { platform: 'epic', type: 'game', id: epicGame.id, title: epicGame.title, url: epicGame.url, description: epicGame.description, image: epicGame.image, avatar: epicGame.thumb, author: 'Epic Games', authorUrl: 'https://store.epicgames.com/free-games', publishedAt: NOW - 3 * 3600000, extra: { en: 'Free until this Thursday', es: 'Gratis hasta este jueves', 'pt-BR': 'Grátis até esta quinta' }[lang] }, lang));
 const mastodonAccount = await feedSocial.resolveMastodon('@Gargron@mastodon.social');
@@ -510,6 +511,10 @@ await feedShot('feed-tumblr-post', 'social', (lang) => feedBot(feedOf('', { ping
 const letterboxdAccount = await feedSocial.resolveLetterboxd('davidehrlich');
 const letterboxdEntry = (await feedSocial.readLetterboxd('davidehrlich')).entries.find((entry) => entry.image);
 await feedShot('feed-letterboxd-post', 'movies', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...feedSocial.toItem('letterboxd', 'post', letterboxdEntry, letterboxdAccount), publishedAt: NOW - 3 * 3600000 }, lang));
+const catPicture = await load('src/feeds/providers/animals.js').pictureOf('cat', 'shot');
+const foxPicture = await load('src/feeds/providers/animals.js').pictureOf('fox', 'shot');
+await feedShot('feed-cat-photo', 'gatitos', (lang) => feedBot(feedOf('', { ping_roles: [] }), load('src/feeds/providers/animals.js').toItem('cat', catPicture, { id: 'shot', at: NOW - 600000, lang }), lang));
+await feedShot('feed-fox-photo', 'gatitos', (lang) => feedBot(feedOf('', { ping_roles: [] }), load('src/feeds/providers/animals.js').toItem('fox', foxPicture, { id: 'shot', at: NOW - 600000, lang }), lang));
 // A Kick notice that went out before the picture of the stream existed: the stand-in picture of Kick.
 await feedShot('feed-kick-live', 'kick', (lang) => feedBot(feedOf('', { ping_roles: [] }), {
   platform: 'kick', type: 'live', id: 'k1', title: { en: 'Just chatting and building something new', es: 'Charlando y construyendo algo nuevo', 'pt-BR': 'Conversando e construindo algo novo' }[lang], url: 'https://kick.com/petto',

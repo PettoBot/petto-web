@@ -80,8 +80,8 @@ const en: FeaturesCopy = {
     {
       id: 'feeds', icon: 'ph:bell-ringing-fill', color: 'red', title: 'Notifications from everywhere',
       desc: 'Petto posts in a channel what an account of another service publishes: videos, live streams, music, posts and new versions. We are working hard to bring more services every week.',
-      points: ['Live streams and videos: YouTube, Twitch and Kick, with the real start time and the picture of the stream', 'Music and podcasts: Spotify, Deezer and Apple Music, with each new release', 'Social: Bluesky, Mastodon, Reddit, Tumblr, Pinterest and Letterboxd, and any website with an RSS feed', 'Code and games: GitHub, npm, PyPI, Modrinth, Steam, AniList and the free games of Epic Games', 'The Pokémon, an article of Wikipedia or a chess puzzle every 15 minutes up to once a day, as you choose', 'Up to 3 accounts of each platform on Free servers and 25 on Premium, a preview of the real card and a test button'],
-      commands: ['!feed add', '!feed list', '!feed test'], shots: ['feed-youtube-live', 'feed-kick-live', 'feed-spotify-release', 'feed-epic-game', 'feed-mastodon-post', 'feed-pokemon'],
+      points: ['Live streams and videos: YouTube, Twitch and Kick, with the real start time and the picture of the stream', 'Music and podcasts: Spotify, Deezer and Apple Music, with each new release', 'Social: Bluesky, Mastodon, Reddit, Tumblr, Pinterest and Letterboxd, and any website with an RSS feed', 'Code and games: GitHub, npm, PyPI, Modrinth, Steam, AniList and the free games of Epic Games', 'The Pokémon, an article of Wikipedia, a chess puzzle, or a cat or a fox, every 15 minutes up to once a day, as you choose', 'Up to 3 accounts of each platform on Free servers and 25 on Premium, a preview of the real card and a test button'],
+      commands: ['!feed add', '!feed list', '!feed test'], shots: ['feed-youtube-live', 'feed-kick-live', 'feed-spotify-release', 'feed-epic-game', 'feed-cat-photo', 'feed-mastodon-post'],
     },
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'A community that feels alive',
@@ -154,8 +154,8 @@ const es: FeaturesCopy = {
     {
       id: 'feeds', icon: 'ph:bell-ringing-fill', color: 'red', title: 'Notificaciones de todos lados',
       desc: 'Petto publica en un canal lo que una cuenta de otro servicio sube: videos, directos, música, publicaciones y versiones nuevas. Estamos trabajando duro para traer más servicios cada semana.',
-      points: ['Directos y videos: YouTube, Twitch y Kick, con la hora real de inicio y la imagen del directo', 'Música y podcasts: Spotify, Deezer y Apple Music, con cada lanzamiento nuevo', 'Social: Bluesky, Mastodon, Reddit, Tumblr, Pinterest y Letterboxd, y cualquier sitio con feed RSS', 'Código y juegos: GitHub, npm, PyPI, Modrinth, Steam, AniList y los juegos gratis de Epic Games', 'El Pokémon, un artículo de Wikipedia o un puzle de ajedrez cada 15 minutos hasta una vez al día, como elijas', 'Hasta 3 cuentas de cada plataforma en servidores Free y 25 en Premium, vista previa de la tarjeta real y botón de prueba'],
-      commands: ['!feed add', '!feed list', '!feed test'], shots: ['feed-youtube-live', 'feed-kick-live', 'feed-spotify-release', 'feed-epic-game', 'feed-mastodon-post', 'feed-pokemon'],
+      points: ['Directos y videos: YouTube, Twitch y Kick, con la hora real de inicio y la imagen del directo', 'Música y podcasts: Spotify, Deezer y Apple Music, con cada lanzamiento nuevo', 'Social: Bluesky, Mastodon, Reddit, Tumblr, Pinterest y Letterboxd, y cualquier sitio con feed RSS', 'Código y juegos: GitHub, npm, PyPI, Modrinth, Steam, AniList y los juegos gratis de Epic Games', 'El Pokémon, un artículo de Wikipedia, un puzle de ajedrez, o un gatito o un zorrito, cada 15 minutos hasta una vez al día, como elijas', 'Hasta 3 cuentas de cada plataforma en servidores Free y 25 en Premium, vista previa de la tarjeta real y botón de prueba'],
+      commands: ['!feed add', '!feed list', '!feed test'], shots: ['feed-youtube-live', 'feed-kick-live', 'feed-spotify-release', 'feed-epic-game', 'feed-cat-photo', 'feed-mastodon-post'],
     },
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'Una comunidad que se siente viva',
@@ -228,8 +228,8 @@ const ptBR: FeaturesCopy = {
     {
       id: 'feeds', icon: 'ph:bell-ringing-fill', color: 'red', title: 'Notificações de todo lugar',
       desc: 'O Petto publica em um canal o que uma conta de outro serviço posta: vídeos, lives, música, publicações e versões novas. Estamos trabalhando duro para trazer mais serviços toda semana.',
-      points: ['Lives e vídeos: YouTube, Twitch e Kick, com o horário real de início e a imagem da live', 'Música e podcasts: Spotify, Deezer e Apple Music, com cada lançamento novo', 'Social: Bluesky, Mastodon, Reddit, Tumblr, Pinterest e Letterboxd, e qualquer site com feed RSS', 'Código e jogos: GitHub, npm, PyPI, Modrinth, Steam, AniList e os jogos grátis da Epic Games', 'O Pokémon, um artigo da Wikipédia ou um puzzle de xadrez a cada 15 minutos até uma vez por dia, como você escolher', 'Até 3 contas de cada plataforma em servidores Free e 25 no Premium, prévia do cartão real e botão de teste'],
-      commands: ['!feed add', '!feed list', '!feed test'], shots: ['feed-youtube-live', 'feed-kick-live', 'feed-spotify-release', 'feed-epic-game', 'feed-mastodon-post', 'feed-pokemon'],
+      points: ['Lives e vídeos: YouTube, Twitch e Kick, com o horário real de início e a imagem da live', 'Música e podcasts: Spotify, Deezer e Apple Music, com cada lançamento novo', 'Social: Bluesky, Mastodon, Reddit, Tumblr, Pinterest e Letterboxd, e qualquer site com feed RSS', 'Código e jogos: GitHub, npm, PyPI, Modrinth, Steam, AniList e os jogos grátis da Epic Games', 'O Pokémon, um artigo da Wikipédia, um puzzle de xadrez, ou um gatinho ou uma raposinha, a cada 15 minutos até uma vez por dia, como você escolher', 'Até 3 contas de cada plataforma em servidores Free e 25 no Premium, prévia do cartão real e botão de teste'],
+      commands: ['!feed add', '!feed list', '!feed test'], shots: ['feed-youtube-live', 'feed-kick-live', 'feed-spotify-release', 'feed-epic-game', 'feed-cat-photo', 'feed-mastodon-post'],
     },
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'Uma comunidade que parece viva',

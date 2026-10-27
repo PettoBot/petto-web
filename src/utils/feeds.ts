@@ -3,7 +3,7 @@
 /** Whether the Premium page talks about the feeds. Turn it on together with FEEDS_PUBLIC=true (bot and dashboard) when the feeds open to every server. */
 export const FEEDS_ON_PREMIUM_PAGE = false;
 
-export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'game' | 'daily';
+export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'game' | 'photo' | 'daily';
 
 export interface FeedPlatform {
   id: string;
@@ -64,6 +64,8 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
   { id: 'rss', name: 'RSS', color: '#f26522', ink: '#ffffff', icon: 'simple-icons:rss', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Website or feed', placeholder: 'https://example.com/feed.xml', help: 'Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.' } },
   { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
+  { id: 'cat', name: 'Cats', color: '#f5a524', ink: '#1a1100', icon: 'ph:cat-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
+  { id: 'fox', name: 'Foxes', color: '#ff7a1a', ink: '#1a0d00', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
   { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
   { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
 ];
@@ -103,6 +105,7 @@ export const FEED_TYPES: Record<FeedType, { label: string; icon: string }> = {
   episode: { label: 'New episodes', icon: 'ph:television-fill' },
   release: { label: 'New releases', icon: 'ph:music-notes-fill' },
   game: { label: 'Free games', icon: 'ph:game-controller-fill' },
+  photo: { label: 'Photos', icon: 'ph:camera-fill' },
   daily: { label: 'Of the day', icon: 'ph:star-fill' },
 };
 

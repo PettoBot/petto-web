@@ -4744,6 +4744,7 @@ export const dashEs: Record<string, string> = {
   "Search an artist or paste its Apple Music link. Its new albums and singles are posted.": "Busca un artista o pega su enlace de Apple Music. Se publican sus álbumes y sencillos nuevos.",
   "Letterboxd user": "Usuario de Letterboxd",
   "Write the user name or paste the link of the profile. What they watch and write is posted.": "Escribe el nombre de usuario o pega el enlace del perfil. Se publica lo que ve y escribe.",
+  "Photos": "Fotos",
   "Search accounts": "Buscar cuentas",
   "Send a test notice": "Enviar un aviso de prueba",
   "Skip it if the title has one of these words": "Omitirlo si el título tiene alguna de estas palabras",
