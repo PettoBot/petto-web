@@ -3,7 +3,7 @@
 /** Whether the Premium page talks about the feeds. The feeds are open to every server, so it is on. */
 export const FEEDS_ON_PREMIUM_PAGE = true;
 
-export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'track' | 'game' | 'photo' | 'daily';
+export type FeedType = 'video' | 'short' | 'live' | 'clip' | 'post' | 'pin' | 'update' | 'episode' | 'release' | 'track' | 'project' | 'game' | 'photo' | 'daily';
 
 export interface FeedPlatform {
   id: string;
@@ -20,6 +20,12 @@ export interface FeedPlatform {
   account: { label: string; placeholder: string; help: string } | null;
   /** An auto feed (the Pokémon, Wikipedia, Chess.com): instead of an account it asks how often to post. */
   pace?: boolean;
+  /** What an auto feed asks for besides the pace: which animals (`kinds`) or a few tags (`tags`). */
+  extra?: 'kinds' | 'tags';
+  /** A line under the title of the window of an auto feed (English, passed through dt()). */
+  intro?: string;
+  /** Kept so the feeds that already exist can be shown and changed, but no longer offered (the animals are one platform now). */
+  hidden?: boolean;
   soon?: boolean;
 }
 
@@ -40,10 +46,11 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
     account: { label: 'Tumblr blog', placeholder: 'name.tumblr.com', help: 'Write the name of the blog (name.tumblr.com) or paste its link. Each new post of the blog is shared.' } },
   { id: 'steam', name: 'Steam', color: '#66c0f4', ink: '#0b1d2a', icon: 'simple-icons:steam', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Steam game or list', placeholder: 'https://store.steampowered.com/app/730', help: 'Search a game or paste the link of its Steam store page to follow its news. Or type "new" for the new releases of the store, "top" for the top sellers, or "coming soon". Those lists can be busy.' } },
-  { id: 'epic', name: 'Epic Games', color: '#ffffff', ink: '#101010', icon: 'simple-icons:epicgames', types: ['game'], defaultTypes: ['game'], account: null },
+  { id: 'epic', name: 'Epic Games', color: '#ffffff', ink: '#101010', icon: 'simple-icons:epicgames', types: ['game'], defaultTypes: ['game'], account: null,
+    intro: 'Tells you when Epic Games gives a game for free, and when the next one comes.' },
   { id: 'github', name: 'GitHub', color: '#8b949e', ink: '#101010', icon: 'simple-icons:github', types: ['update'], defaultTypes: ['update'],
     account: { label: 'GitHub repository', placeholder: 'owner/repository', help: 'Paste the link of the repository or write owner/name. Its new releases are posted.' } },
-  { id: 'modrinth', name: 'Modrinth', color: '#1bd96a', ink: '#0b2a18', icon: 'simple-icons:modrinth', types: ['update'], defaultTypes: ['update'],
+  { id: 'modrinth', name: 'Modrinth', color: '#1bd96a', ink: '#0b2a18', icon: 'simple-icons:modrinth', types: ['update', 'project'], defaultTypes: ['update', 'project'],
     account: { label: 'Modrinth project or list', placeholder: 'https://modrinth.com/mod/name', help: 'Search a project or paste the link of the mod, plugin or pack to follow its versions. Or type "new" (or "new mods", "new shaders"…) for the newest projects of Modrinth. That list can be busy.' } },
   { id: 'npm', name: 'npm', color: '#cb3837', ink: '#ffffff', icon: 'simple-icons:npm', types: ['update'], defaultTypes: ['update'],
     account: { label: 'npm package', placeholder: 'discord.js', help: 'Write the name of the package or paste its link.' } },
@@ -63,18 +70,25 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
     account: { label: 'Artist or top', placeholder: 'https://music.apple.com/…', help: 'Search an artist, or paste an Apple Music link of an artist, a song or an album (Petto follows its artist). Type "top" for the charts of a country, like "top colombia". Apple does not let bots follow playlists.' } },
   { id: 'rss', name: 'RSS', color: '#f26522', ink: '#ffffff', icon: 'simple-icons:rss', types: ['post'], defaultTypes: ['post'],
     account: { label: 'Website or feed', placeholder: 'https://example.com/feed.xml', help: 'Paste the link of a blog, a news site or its RSS feed. Petto finds the feed.' } },
-  { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
-  { id: 'cat', name: 'Cats', color: '#f5a524', ink: '#1a1100', icon: 'ph:cat-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'dog', name: 'Dogs', color: '#b7791f', ink: '#1a1100', icon: 'ph:dog-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'fox', name: 'Foxes', color: '#ff7a1a', ink: '#1a0d00', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'bird', name: 'Birds', color: '#38bdf8', ink: '#041824', icon: 'ph:bird-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'duck', name: 'Ducks', color: '#facc15', ink: '#1f1700', icon: 'ph:feather-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'capybara', name: 'Capybaras', color: '#a16207', ink: '#ffffff', icon: 'ph:leaf-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'bunny', name: 'Bunnies', color: '#f9a8d4', ink: '#2a0a18', icon: 'ph:rabbit-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'animals', name: 'Animals', color: '#9b7bff', ink: '#10062b', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true },
-  { id: 'randommusic', name: 'Random music', color: '#a238ff', ink: '#ffffff', icon: 'ph:shuffle-fill', types: ['track'], defaultTypes: ['track'], account: null, pace: true },
-  { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
-  { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true },
+  { id: 'wikipedia', name: 'Wikipedia', color: '#636466', ink: '#ffffff', icon: 'simple-icons:wikipedia', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true,
+    intro: 'The featured article of Wikipedia, every so often.' },
+  { id: 'cat', name: 'Cats', color: '#f5a524', ink: '#1a1100', icon: 'ph:cat-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'dog', name: 'Dogs', color: '#b7791f', ink: '#1a1100', icon: 'ph:dog-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'fox', name: 'Foxes', color: '#ff7a1a', ink: '#1a0d00', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'bird', name: 'Birds', color: '#38bdf8', ink: '#041824', icon: 'ph:bird-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'duck', name: 'Ducks', color: '#facc15', ink: '#1f1700', icon: 'ph:feather-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'capybara', name: 'Capybaras', color: '#a16207', ink: '#ffffff', icon: 'ph:leaf-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'bunny', name: 'Bunnies', color: '#f9a8d4', ink: '#2a0a18', icon: 'ph:rabbit-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, hidden: true },
+  { id: 'animals', name: 'Animals', color: '#9b7bff', ink: '#10062b', icon: 'ph:paw-print-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, extra: 'kinds',
+    intro: 'A picture of an animal every so often. Pick which ones, or leave them all.' },
+  { id: 'randommusic', name: 'Random music', color: '#a238ff', ink: '#ffffff', icon: 'ph:shuffle-fill', types: ['track'], defaultTypes: ['track'], account: null, pace: true,
+    intro: 'A song picked at random from Deezer, Apple Music and Spotify, every so often.' },
+  { id: 'pictures', name: 'Pictures', color: '#ff6fa5', ink: '#2a0a18', icon: 'ph:image-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, extra: 'tags',
+    intro: 'A picture of what you write in the tags (a color, a thing, a mood), every so often. Pinterest has no public search, so the pictures come from the public tags of Flickr.' },
+  { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true,
+    intro: 'The daily chess puzzle of Chess.com, every so often.' },
+  { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true,
+    intro: 'A Pokémon from the Pokédex, every so often.' },
 ];
 
 /**
@@ -94,7 +108,18 @@ export const FEED_PACES: { minutes: number; label: string }[] = [
   { minutes: 60, label: 'Every hour' }, { minutes: 30, label: 'Every 30 minutes' }, { minutes: 15, label: 'Every 15 minutes' }, { minutes: 5, label: 'Every 5 minutes' },
 ];
 /** The pace written in the account of an auto feed (`every:15`, or the old names for once a day). */
-export const paceOf = (accountId: string): number => { const match = /^every:(\d+)$/.exec(accountId); return match ? Number(match[1]) : 1440; };
+export const paceOf = (accountId: string): number => { const match = /^every:(\d+)(?::[a-z0-9+_-]*)?$/.exec(accountId); return match ? Number(match[1]) : 1440; };
+
+/** The animals an account of the animals asks for (`every:15:cat+dog`), none meaning all of them. */
+export const ANIMAL_KINDS: { id: string; label: string; icon: string }[] = [
+  { id: 'cat', label: 'Cats', icon: 'ph:cat-fill' }, { id: 'dog', label: 'Dogs', icon: 'ph:dog-fill' }, { id: 'fox', label: 'Foxes', icon: 'ph:paw-print-fill' },
+  { id: 'bird', label: 'Birds', icon: 'ph:bird-fill' }, { id: 'duck', label: 'Ducks', icon: 'ph:feather-fill' }, { id: 'capybara', label: 'Capybaras', icon: 'ph:leaf-fill' }, { id: 'bunny', label: 'Bunnies', icon: 'ph:rabbit-fill' },
+];
+/** The part of an account of an auto feed after the pace (`cat+dog`, `pink`), as a list. */
+export const extraOf = (accountId: string): string[] => (/^every:\d+:([a-z0-9+_-]+)$/.exec(accountId)?.[1] ?? '').split('+').filter(Boolean);
+/** The platforms whose feeds are shown together on one page: the animals that were one platform each are shown with the one of the animals. */
+export const ANIMAL_PLATFORM_IDS = ['animals', ...ANIMAL_KINDS.map((kind) => kind.id)];
+export const platformGroup = (id: string): string[] => (id === 'animals' ? ANIMAL_PLATFORM_IDS : [id]);
 
 export const platformById = (id: string) => FEED_PLATFORMS.find((platform) => platform.id === id) ?? null;
 /** The platforms that work now (the others are shown as coming soon). */
@@ -112,6 +137,7 @@ export const FEED_TYPES: Record<FeedType, { label: string; icon: string }> = {
   episode: { label: 'New episodes', icon: 'ph:television-fill' },
   release: { label: 'New releases', icon: 'ph:music-notes-fill' },
   track: { label: 'Random songs', icon: 'ph:shuffle-fill' },
+  project: { label: 'New projects', icon: 'ph:package-fill' },
   game: { label: 'Free games', icon: 'ph:game-controller-fill' },
   photo: { label: 'Photos', icon: 'ph:camera-fill' },
   daily: { label: 'Of the day', icon: 'ph:star-fill' },
@@ -139,7 +165,7 @@ export interface FeedRow {
   message: string;
   pingRoles: string[];
   pingEveryone: boolean;
-  options: { image?: boolean; button?: boolean };
+  options: { image?: boolean; button?: boolean; player?: boolean };
   filters: { include: string[]; exclude: string[] };
   enabled: boolean;
   ready: boolean;
