@@ -32,7 +32,7 @@ export const FREE_LIMITS: Readonly<PlanLimits> = Object.freeze({
   componentPanels: 50,
   counters: 25,
   paginationMessages: 25,
-  feeds: 3,
+  feeds: 5,
 });
 
 export const PREMIUM_LIMITS: Readonly<PlanLimits> = Object.freeze({
