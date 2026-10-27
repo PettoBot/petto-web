@@ -488,6 +488,34 @@ await feedShot('feed-pinterest', 'inspo', (lang) => feedBot(feedOf('', { ping_ro
   image: DUCK, avatar: DUCK, author: 'pettodesigns', publishedAt: NOW - 3600000,
 }, lang));
 
+// The music, social and game platforms (real public data where the service allows it without a key; Spotify has no sample of its own, so it shows a release of Deezer under its name).
+const feedMusic = load('src/feeds/providers/music.js');
+const feedSocial = load('src/feeds/providers/social.js');
+const feedEpic = load('src/feeds/providers/epic.js');
+const daftPunk = await feedMusic.deezerResolve('27');
+const daftRelease = (await feedMusic.deezerReleases(daftPunk, Date.now()))[0];
+await feedShot('feed-deezer-release', 'music', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...daftRelease, platform: 'deezer', avatar: daftPunk.avatar, publishedAt: NOW - 3 * 3600000 }, lang));
+await feedShot('feed-spotify-release', 'music', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...daftRelease, platform: 'spotify', avatar: daftPunk.avatar, url: 'https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa', authorUrl: 'https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi', extra: 'ALBUM · 13 tracks', publishedAt: NOW - 3 * 3600000 }, lang));
+const appleArtist = await feedMusic.appleResolve('5468295');
+const appleRelease = (await feedMusic.appleReleases(appleArtist))[0];
+await feedShot('feed-applemusic-release', 'music', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...appleRelease, avatar: appleArtist.avatar, publishedAt: NOW - 3 * 3600000 }, lang));
+const epicGame = (await feedEpic.freeGames('en'))[0];
+await feedShot('feed-epic-game', 'free-games', (lang) => feedBot(feedOf('', { ping_roles: [] }), { platform: 'epic', type: 'game', id: epicGame.id, title: epicGame.title, url: epicGame.url, description: epicGame.description, image: epicGame.image, avatar: epicGame.thumb, author: 'Epic Games', authorUrl: 'https://store.epicgames.com/free-games', publishedAt: NOW - 3 * 3600000, extra: { en: 'Free until this Thursday', es: 'Gratis hasta este jueves', 'pt-BR': 'Grátis até esta quinta' }[lang] }, lang));
+const mastodonAccount = await feedSocial.resolveMastodon('@Gargron@mastodon.social');
+const mastodonEntry = (await feedSocial.readMastodon(mastodonAccount.id)).entries.find((entry) => entry.summary && entry.summary.length > 60);
+await feedShot('feed-mastodon-post', 'social', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...feedSocial.toItem('mastodon', 'post', mastodonEntry, mastodonAccount, { keepTitle: false }), publishedAt: NOW - 3 * 3600000 }, lang));
+const tumblrAccount = await feedSocial.resolveTumblr('staff');
+const tumblrEntry = (await feedSocial.readTumblr('staff')).entries.find((entry) => entry.image);
+await feedShot('feed-tumblr-post', 'social', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...feedSocial.toItem('tumblr', 'post', tumblrEntry, tumblrAccount), publishedAt: NOW - 3 * 3600000 }, lang));
+const letterboxdAccount = await feedSocial.resolveLetterboxd('davidehrlich');
+const letterboxdEntry = (await feedSocial.readLetterboxd('davidehrlich')).entries.find((entry) => entry.image);
+await feedShot('feed-letterboxd-post', 'movies', (lang) => feedBot(feedOf('', { ping_roles: [] }), { ...feedSocial.toItem('letterboxd', 'post', letterboxdEntry, letterboxdAccount), publishedAt: NOW - 3 * 3600000 }, lang));
+// A Kick notice that went out before the picture of the stream existed: the stand-in picture of Kick.
+await feedShot('feed-kick-live', 'kick', (lang) => feedBot(feedOf('', { ping_roles: [] }), {
+  platform: 'kick', type: 'live', id: 'k1', title: { en: 'Just chatting and building something new', es: 'Charlando y construyendo algo nuevo', 'pt-BR': 'Conversando e construindo algo novo' }[lang], url: 'https://kick.com/petto',
+  description: '', image: 'http://localhost:4399/assets/feeds/kick-live.png', avatar: 'http://localhost:4399/assets/feeds/kick.png', author: 'Petto Studio', authorUrl: 'https://kick.com/petto', publishedAt: NOW - 3 * 3600000, extra: '🎮 Just Chatting · 👁 214',
+}, lang));
+
 await saveEmoji(shots);
 fs.writeFileSync(path.join(SHOT_DIR, 'core.json'), `${JSON.stringify(shots, null, 1)}\n`);
 console.log(`Wrote ${Object.keys(shots).length} screenshots of the systems`);
