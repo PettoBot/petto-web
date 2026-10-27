@@ -6,7 +6,7 @@ import { getDashLang } from '../../../../i18n/dash';
 import { canUseFeeds } from '../../../../utils/feedsAccess';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
-const ROUTES: FeedsRoute[] = ['resolve', 'create', 'update', 'delete', 'test', 'preview'];
+const ROUTES: FeedsRoute[] = ['resolve', 'search', 'create', 'update', 'delete', 'test', 'preview'];
 
 /** What the Feeds page asks while it is open: look up an account, follow it, change or stop a feed, a test notice and the card preview. The bot does the real checks. */
 export const POST: APIRoute = async (astro) => {

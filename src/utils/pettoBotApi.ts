@@ -536,12 +536,12 @@ export async function callPettoCounters(context: AstroContext, guildId: string, 
 
 // Feeds from the dashboard (petto-bot src/web/feedRoutes.js): look up an account, follow it, change a feed, stop following, post a test
 // notice, and the card as it will be posted. The list of feeds itself is read by the page from the database.
-export type FeedsRoute = 'resolve' | 'create' | 'update' | 'delete' | 'test' | 'preview';
+export type FeedsRoute = 'resolve' | 'search' | 'create' | 'update' | 'delete' | 'test' | 'preview';
 export async function callPettoFeeds(context: AstroContext, guildId: string, userId: string, route: FeedsRoute, body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; message: string; data: any }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, status: 503, message: '', data: null };
   try {
-    const grant = await roleGrant(context, guildId, 'feeds', route !== 'resolve' && route !== 'preview');
+    const grant = await roleGrant(context, guildId, 'feeds', route !== 'resolve' && route !== 'search' && route !== 'preview');
     const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/feeds/${route}`, {
       method: 'POST', signal: AbortSignal.timeout(route === 'create' || route === 'test' ? 25_000 : 12_000),
       headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
