@@ -548,11 +548,14 @@ export const ui = {
             { title: 'Open source bot', desc: 'The bot\'s code is public on GitHub under the AGPL-3.0 license.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },
             { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '/dash' },
-            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and roleplay also work as slash commands.', href: '/commands' },          ],
+            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and roleplay also work as slash commands.', href: '/commands' },
+            { title: 'Social notifications', desc: 'Notices in your server when there is something new on YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify and more, with a card for each notice.', href: '/changelog' },
+          ],
         },
         {
           key: 'testing', label: 'In testing', items: [
             { title: 'A YouTube channel', desc: 'Feature walkthroughs and updates on video. The channel is being set up and the first tutorials are not uploaded yet.', href: '' },
+            { title: 'Music', desc: 'Songs in your voice channel from a name or a link of Spotify, YouTube or SoundCloud, with a card and buttons. Being tested with the team, not open to every server yet.', href: '' },
           ],
         },
         {
@@ -563,7 +566,6 @@ export const ui = {
         },
         {
           key: 'considering', label: 'Under consideration', items: [
-            { title: 'Social notifications', desc: 'Notifications in your server when there is something new on X, YouTube, Instagram and more.', href: '' },
           ],
         },
       ],
@@ -1953,11 +1955,13 @@ export const ui = {
             { title: 'Tablero de feedback', desc: 'Escribe ideas, comentarios y errores, vota con me gusta y no me gusta, comenta y mira qué planea el equipo. También en el servidor de Petto, donde las reacciones cuentan como votos.', href: '/feedback' },
             { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '/dash' },
             { title: 'Comandos slash', desc: 'Los comandos de uso diario (/help, /ban, /ticket, /embed...) y los de roleplay también funcionan como comandos slash.', href: '/commands' },
+            { title: 'Notificaciones de redes', desc: 'Avisos en tu servidor cuando hay algo nuevo en YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify y más, con una tarjeta para cada aviso.', href: '/changelog' },
           ],
         },
         {
           key: 'testing', label: 'En pruebas', items: [
             { title: 'Un canal de YouTube', desc: 'Recorridos de funciones y novedades en video. El canal se está preparando y los primeros tutoriales todavía no están subidos.', href: '' },
+            { title: 'Música', desc: 'Canciones en tu canal de voz desde un nombre o un enlace de Spotify, YouTube o SoundCloud, con tarjeta y botones. En pruebas con el equipo, todavía no está abierta a todos los servidores.', href: '' },
           ],
         },
         {
@@ -1968,7 +1972,6 @@ export const ui = {
         },
         {
           key: 'considering', label: 'En evaluación', items: [
-            { title: 'Notificaciones de redes', desc: 'Avisos en tu servidor cuando hay algo nuevo en X, YouTube, Instagram y más.', href: '' },
           ],
         },
       ],
@@ -3358,11 +3361,13 @@ export const ui = {
             { title: 'Quadro de feedback', desc: 'Escreva ideias, comentários e bugs, vote com curtir e não curtir, comente e veja o que a equipe planeja. Também no servidor do Petto, onde as reações contam como votos.', href: '/feedback' },
             { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '/dash' },
             { title: 'Comandos slash', desc: 'Os comandos do dia a dia (/help, /ban, /ticket, /embed...) e os de roleplay também funcionam como comandos slash.', href: '/commands' },
+            { title: 'Notificações de redes', desc: 'Avisos no seu servidor quando há novidades no YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify e mais, com um cartão para cada aviso.', href: '/changelog' },
           ],
         },
         {
           key: 'testing', label: 'Em teste', items: [
             { title: 'Um canal do YouTube', desc: 'Demonstrações de recursos e novidades em vídeo. O canal está sendo preparado e os primeiros tutoriais ainda não foram enviados.', href: '' },
+            { title: 'Música', desc: 'Músicas no seu canal de voz a partir de um nome ou de um link do Spotify, YouTube ou SoundCloud, com cartão e botões. Em teste com a equipe, ainda não está aberta a todos os servidores.', href: '' },
           ],
         },
         {
@@ -3373,7 +3378,6 @@ export const ui = {
         },
         {
           key: 'considering', label: 'Em avaliação', items: [
-            { title: 'Notificações de redes', desc: 'Avisos no seu servidor quando há novidades no X, YouTube, Instagram e mais.', href: '' },
           ],
         },
       ],
