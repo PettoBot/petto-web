@@ -20,7 +20,7 @@ export interface PreviewEmbed {
 export interface PreviewMessage {
   content?: string;
   embeds?: PreviewEmbed[];
-  buttons?: { label?: string; emoji?: string }[][];
+  buttons?: { label?: string; emoji?: string; style?: string }[][];
 }
 
 export interface PreviewContext {
@@ -149,7 +149,7 @@ export function renderMessage(message: PreviewMessage, ctx: PreviewContext = def
   const content = message.content ? `<div class="dp-content">${renderMarkdown(message.content, ctx)}</div>` : '';
   const embeds = (message.embeds ?? []).map((e) => renderEmbed(e, ctx)).join('');
   const buttons = (message.buttons ?? []).map((row) => row.filter((b) => b.label)).filter((row) => row.length)
-    .map((row) => `<div class="dp-btn-row">${row.map((b) => `<span class="dp-btn">${b.emoji ? `<span>${escapeHtml(b.emoji)}</span> ` : ''}${escapeHtml(b.label ?? '')}</span>`).join('')}</div>`).join('');
+    .map((row) => `<div class="dp-btn-row">${row.map((b) => `<span class="dp-btn${b.style ? ` dp-btn-${escapeHtml(b.style)}` : ''}">${b.emoji ? `<span>${escapeHtml(b.emoji)}</span> ` : ''}${escapeHtml(b.label ?? '')}</span>`).join('')}</div>`).join('');
   const empty = !content && !embeds && !buttons ? `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>` : '';
   return `<div class="dp-msg"><img class="dp-avatar" src="${safeUrl(ctx.botIcon)}" alt=""><div class="dp-body"><div class="dp-head"><span class="dp-name">${escapeHtml(ctx.botName)}</span><span class="dp-tag">${escapeHtml(tr(ctx, 'APP'))}</span><span class="dp-time">${escapeHtml(tr(ctx, 'Today at 12:00 PM'))}</span></div>${content}${embeds}${buttons}${empty}</div></div>`;
 }

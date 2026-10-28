@@ -1,4 +1,4 @@
-import { emptyEmbed, validateTemplate, type TemplateData, type EmbedData } from './embedSchema';
+import { emptyEmbed, validateTemplate, BUTTON_EMBED_MODES, MAX_BUTTON_ACTIONS, type TemplateData, type EmbedData, type LinkButton, type ButtonAction, type ButtonEmbedMode } from './embedSchema';
 
 // The one-line message code used by several Discord bots: `{embed}$v{title: Hello}$v{description: ...}`.
 // Text before `{embed}` is the message content, each `{key: value}` block sets one part of the embed, the
@@ -9,7 +9,8 @@ import { emptyEmbed, validateTemplate, type TemplateData, type EmbedData } from 
 //   {color: #8399ff}            {thumbnail: https://...}      {image: https://...}
 //   {author: name && icon && url}   {footer: text && icon}    {timestamp}
 //   {field: name && value}  or  {field: name && value && inline}
-//   {button: link && label && url}  (link buttons only)       {message: text}  (same as text before {embed})
+//   {button: link && label && url}                            {message: text}  (same as text before {embed})
+//   {button: green && label && role:@Role}  (a button that gives or takes a role, or shows a saved embed: embed:name:dm)
 //
 // The code is written as one line with the blocks glued together: line breaks in a text are written {newline},
 // which the bot turns back into a line break, and the message text is written as {message: ...} so that nothing
@@ -73,13 +74,34 @@ function parseColor(value: string): number | null {
   return null;
 }
 
+const STYLE_NAMES: Record<string, LinkButton['style']> = { blurple: 'blurple', primary: 'blurple', green: 'green', success: 'green', grey: 'grey', gray: 'grey', secondary: 'grey', red: 'red', danger: 'red' };
+const ACTION_RE = /^(role|addrole|removerole|embed)\s*:\s*(.+)$/i;
+
+/** `role:@Members` or `embed:rules:dm` as an action, or null when the text is not one. */
+function parseAction(text: string): ButtonAction | null {
+  const found = ACTION_RE.exec(text.trim());
+  if (!found) return null;
+  const type = found[1].toLowerCase() as ButtonAction['type'];
+  const value = found[2].trim();
+  if (type !== 'embed') return { type, ref: value };
+  const [name, mode = 'ephemeral'] = value.split(':').map((part) => part.trim().toLowerCase());
+  const modes: Record<string, ButtonEmbedMode> = { ephemeral: 'ephemeral', private: 'ephemeral', public: 'public', channel: 'public', dm: 'dm' };
+  if (!/^[a-z0-9_-]{1,32}$/.test(name ?? '') || !modes[mode] || !BUTTON_EMBED_MODES.includes(modes[mode])) return null;
+  return { type, ref: name, mode: modes[mode] };
+}
+
+/** The text of an action as it is written in a code. */
+function writeAction(action: ButtonAction): string {
+  return action.type === 'embed' ? `embed:${action.ref}:${action.mode ?? 'ephemeral'}` : `${action.type}:${action.ref}`;
+}
+
 /** Reads a message code. It never throws: what cannot be read is left out and reported in `warnings`. */
 export function parseEmbedScript(code: string): ScriptParse {
   const warnings: string[] = [];
   const embed: EmbedData = { ...emptyEmbed(), color: null };
   let content: string;
   let hasEmbed = false;
-  const buttons: { label: string; url: string; emoji: string; disabled: boolean }[] = [];
+  const buttons: LinkButton[] = [];
 
   const tokens = tokenize(code.trim());
   if (tokens.error) warnings.push(tokens.error);
@@ -128,18 +150,32 @@ export function parseEmbedScript(code: string): ScriptParse {
         break;
       }
       case 'button': {
-        // {button: link && label && url}, or just {button: label && url}. Only link buttons can be saved.
+        // {button: link && label && url}, or just {button: label && url}; with actions: {button: green && label && role:@Role}.
         let [first, ...rest] = parts(value);
-        const kind = first?.toLowerCase();
-        if (['link', 'blurple', 'green', 'grey', 'gray', 'red', 'primary', 'success', 'secondary', 'danger'].includes(kind ?? '')) {
-          if (kind !== 'link') warnings.push(`Only link buttons can be saved, the ${kind} button was turned into a link button.`);
-        } else {
-          rest = [first ?? '', ...rest];
+        const kind = first?.toLowerCase() ?? '';
+        const styled = ['link', 'blurple', 'green', 'grey', 'gray', 'red', 'primary', 'success', 'secondary', 'danger'].includes(kind);
+        if (!styled) rest = [first ?? '', ...rest];
+        const actions: ButtonAction[] = [];
+        const plain: string[] = [];
+        let disabled = false;
+        let emoji = '';
+        for (const piece of rest.slice(1)) {
+          const action = parseAction(piece);
+          if (action) { if (actions.length < MAX_BUTTON_ACTIONS) actions.push(action); else warnings.push(`A button can have up to ${MAX_BUTTON_ACTIONS} actions, the rest were ignored.`); }
+          else if (/^disabled$/i.test(piece)) disabled = true;
+          else if (/^emoji\s*:/i.test(piece)) emoji = piece.replace(/^emoji\s*:\s*/i, '');
+          else plain.push(piece);
         }
-        const disabled = rest.length > 2 && /^disabled$/i.test(rest[rest.length - 1] ?? '');
-        const [label, url] = rest;
+        const label = rest[0];
+        if (actions.length) {
+          if (!label) { warnings.push('A button needs a label: {button: green && label && role:@Role}.'); break; }
+          buttons.push({ label, url: '', emoji, disabled, style: STYLE_NAMES[kind] ?? 'grey', actions });
+          break;
+        }
+        if (styled && kind !== 'link') warnings.push(`A color only applies to buttons with an action (such as role:@Role), the ${kind} button was turned into a link button.`);
+        const url = plain[0];
         if (!label || !url) { warnings.push('A button needs a label and a link: {button: link && label && https://...}.'); break; }
-        buttons.push({ label, url, emoji: '', disabled });
+        buttons.push({ label, url, emoji, disabled });
         break;
       }
       default:
@@ -183,6 +219,12 @@ export function toEmbedScript(raw: TemplateData, separator: Separator = '&v'): s
     for (const field of embed.fields) blocks.push(`{field: ${toScript(field.name)} && ${toScript(field.value)}${field.inline ? ' && inline' : ''}}`);
     if (embed.timestamp) blocks.push('{timestamp}');
   }
-  for (const row of data.buttons) for (const button of row) if (button.label && button.url) blocks.push(`{button: link && ${button.label} && ${button.url}${button.disabled ? ' && disabled' : ''}}`);
+  for (const row of data.buttons) {
+    for (const button of row) {
+      const tail = `${button.emoji ? ` && emoji:${button.emoji}` : ''}${button.disabled ? ' && disabled' : ''}`;
+      if (button.label && button.actions?.length) blocks.push(`{button: ${button.style ?? 'grey'} && ${button.label} && ${button.actions.map(writeAction).join(' && ')}${tail}}`);
+      else if (button.label && button.url) blocks.push(`{button: link && ${button.label} && ${button.url}${tail}}`);
+    }
+  }
   return blocks.join(separator);
 }
