@@ -184,9 +184,31 @@ function renderMessage(msg: Message, o: PreviewOptions) {
   return `<div class="dc-msg${msg.ephemeral ? ' ephemeral' : ''}${msg.deleted ? ' deleted' : ''}">${inner}</div>`;
 }
 
+/** One part of a form as a box: what people would see before they fill it in (a menu shows its options, radio buttons and checkboxes list theirs). */
+function renderModalPart(f: any) {
+  const labels = (list: any) => (Array.isArray(list) ? list : []).map((option: any) => esc(option?.label ?? option?.value ?? ''));
+  if (f?.type === 'display') return `<div class="dc-modal-text">${esc(f.content ?? '')}</div>`;
+  const star = f?.required === false || f?.type === 'check' ? '' : ' <i>*</i>';
+  const hint = f?.description ? `<small>${esc(f.description)}</small>` : '';
+  let box: string;
+  switch (f?.type) {
+    case 'radio': box = `<div class="dc-modal-options">${labels(f.options).map((label: string) => `<div>◯ ${label}</div>`).join('')}</div>`; break;
+    case 'checks': box = `<div class="dc-modal-options">${labels(f.options).map((label: string) => `<div>☐ ${label}</div>`).join('')}</div>`; break;
+    case 'check': box = `<div class="dc-modal-options"><div>${f.default ? '☑' : '☐'} ${esc(f.label ?? '')}</div></div>`; break;
+    case 'menu': box = `<div class="dc-modal-input">▾ ${esc(f.placeholder ?? '') || labels(f.options).join(' · ')}</div>`; break;
+    case 'users': box = `<div class="dc-modal-input">▾ 👤 ${esc(f.placeholder ?? '')}</div>`; break;
+    case 'roles': box = `<div class="dc-modal-input">▾ @ ${esc(f.placeholder ?? '')}</div>`; break;
+    case 'mentions': box = `<div class="dc-modal-input">▾ 👤 @ ${esc(f.placeholder ?? '')}</div>`; break;
+    case 'channels': box = `<div class="dc-modal-input">▾ # ${esc(f.placeholder ?? '')}</div>`; break;
+    case 'file': box = `<div class="dc-modal-input">📎 ${esc(f.min ?? 0)}–${esc(f.max ?? 1)}</div>`; break;
+    default: box = `<div class="dc-modal-input${f?.style === 2 || f?.style === 'paragraph' ? ' tall' : ''}">${esc(f?.value ?? f?.placeholder ?? '')}</div>`;
+  }
+  return `<div class="dc-modal-field"><span>${f?.type === 'check' ? '' : `${esc(f?.label ?? '')}${star}`}</span>${hint}${box}</div>`;
+}
+
 function renderModal(modal: any, o: PreviewOptions) {
   const fields = Array.isArray(modal?.fields) ? modal.fields : [];
-  return `<div class="dc-modal" role="group" aria-label="${esc(o.t.form)}"><div class="dc-modal-title">${esc(modal?.title ?? o.t.form)}</div><div class="dc-modal-body">${fields.map((f: any) => `<div class="dc-modal-field"><span>${esc(f?.label ?? '')}${f?.required === false ? '' : ' <i>*</i>'}</span><div class="dc-modal-input${f?.style === 2 || f?.style === 'paragraph' ? ' tall' : ''}">${esc(f?.value ?? f?.placeholder ?? '')}</div></div>`).join('')}</div><div class="dc-modal-foot"><span>${esc(o.t.cancel)}</span><span class="go">${esc(o.t.submit)}</span></div></div>`;
+  return `<div class="dc-modal" role="group" aria-label="${esc(o.t.form)}"><div class="dc-modal-title">${esc(modal?.title ?? o.t.form)}</div><div class="dc-modal-body">${fields.map(renderModalPart).join('')}</div><div class="dc-modal-foot"><span>${esc(o.t.cancel)}</span><span class="go">${esc(o.t.submit)}</span></div></div>`;
 }
 
 /**

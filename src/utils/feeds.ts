@@ -84,7 +84,7 @@ export const FEED_PLATFORMS: FeedPlatform[] = [
   { id: 'randommusic', name: 'Random music', color: '#a238ff', ink: '#ffffff', icon: 'ph:shuffle-fill', types: ['track'], defaultTypes: ['track'], account: null, pace: true,
     intro: 'A song picked at random from Deezer, Apple Music and Spotify, every so often.' },
   { id: 'pictures', name: 'Pictures', color: '#ff6fa5', ink: '#2a0a18', icon: 'ph:image-fill', types: ['photo'], defaultTypes: ['photo'], account: null, pace: true, extra: 'tags',
-    intro: 'A picture of what you write in the tags (a color, a thing, a mood), every so often. Pinterest has no public search, so the pictures come from the public tags of Flickr.' },
+    intro: 'A picture of what you write (a color, a thing, a mood, anime roses), every so often. Pinterest has no public search, so Petto searches several places for safe pictures: Wallhaven and Safebooru for anime, Google, Pixabay, Pexels and Unsplash when the bot has their keys, Openverse and Flickr.' },
   { id: 'chess', name: 'Chess.com', color: '#81b64c', ink: '#101010', icon: 'simple-icons:chessdotcom', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true,
     intro: 'The daily chess puzzle of Chess.com, every so often.' },
   { id: 'pokemon', name: 'Pokémon', color: '#ffcb05', ink: '#1a1a1a', icon: 'simple-icons:pokemon', types: ['daily'], defaultTypes: ['daily'], account: null, pace: true,

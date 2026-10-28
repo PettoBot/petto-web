@@ -70,6 +70,27 @@ export function snippets(lang: CatalogLang): Snippet[] {
 `,
     },
     {
+      id: 'modalAll',
+      code: `{{ if eq .Trigger "command" }}
+  {{ sendMessage nil (complexMessage "content" "${w('Tell us about you', 'Cuéntanos de ti', 'Conte sobre você')}" "components" (cslice (crow (cbutton "label" "${w('Open the form', 'Abrir el formulario', 'Abrir o formulário')}" "id" "open" "style" "primary")))) }}
+{{ return }}{{ end }}
+
+{{ if eq .Trigger "button" }}
+  {{ showModal (cmodal "id" "about" "title" "${w('About you', 'Sobre ti', 'Sobre você')}" "fields" (cslice
+    (cdisplay "${w('Answer what you want, it only takes a minute.', 'Responde lo que quieras, solo tarda un minuto.', 'Responda o que quiser, leva só um minuto.')}")
+    (ctext "id" "name" "label" "${w('Name', 'Nombre', 'Nome')}" "description" "${w('How we call you', 'Cómo te llamamos', 'Como chamamos você')}")
+    (cmenu "id" "color" "label" "${w('Favorite color', 'Color favorito', 'Cor favorita')}" "options" (cslice (cslice "Pink" "pink") (cslice "Blue" "blue") (cslice "Green" "green")))
+    (cusers "id" "friends" "label" "${w('Friends', 'Amigos', 'Amigos')}" "max" 3 "required" false)
+    (ccheck "id" "agree" "label" "${w('I accept the rules', 'Acepto las reglas', 'Aceito as regras')}"))) }}
+{{ return }}{{ end }}
+
+{{ if eq .Trigger "modal" }}
+  {{ sendMessage nil (cembed "title" (index .FieldText "name") "description" (print "${w('Color', 'Color', 'Cor')}: " (index .FieldText "color") "\\n${w('Friends', 'Amigos', 'Amigos')}: " (or (index .FieldText "friends") "-")) "color" "#ff91c2") }}
+  {{ respond "${w('Thanks!', '¡Gracias!', 'Obrigado!')}" true }}
+{{ return }}{{ end }}
+`,
+    },
+    {
       id: 'reaction',
       code: `{{ if eq .Trigger "command" }}
   {{ sendMessage nil (complexMessage "content" "${w('React with 🎀 to get an answer', 'Reacciona con 🎀 para recibir una respuesta', 'Reaja com 🎀 para receber uma resposta')}" "reactions" (cslice "🎀")) }}
