@@ -68,6 +68,7 @@ const p = t.toolsPage.embedCode;
               <h2>{p.buttonsTitle}</h2>
               <div id="ecButtons"></div>
               <button type="button" class="btn btn-ghost btn-sm" id="ecAddButton">{p.addButton}</button>
+              <p class="ec-note">{p.btnActionsHint}</p>
             </div>
 
             <div class="ec-group">
@@ -116,13 +117,14 @@ const p = t.toolsPage.embedCode;
   import { renderMessage, renderV2Message, defaultContext } from '../utils/discordPreview';
   import { bindColorPickers } from '../scripts/color-picker.js';
   import { parseEmbedScript, toEmbedScript } from '../utils/embedScript';
-  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, cleanV2, countV2, type TemplateData, type V2Doc } from '../utils/embedSchema';
+  import { emptyEmbed, validateTemplate, encodeShareCode, decodeShareCode, cleanV2, countV2, BUTTON_STYLES as ACTION_COLORS, MAX_BUTTON_ACTIONS, type TemplateData, type V2Doc, type LinkButton, type ButtonAction } from '../utils/embedSchema';
 
   const root = document.getElementById('ecRoot')!;
   const text = JSON.parse(root.dataset.i18n || '{}') as Record<string, string>;
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const fields: { name: string; value: string; inline: boolean }[] = [];
-  const buttons: { label: string; url: string }[] = [];
+  // A button is a link (`url`) or has actions (`actions` and a `style`); without actions it is a link.
+  const buttons: { label: string; url: string; emoji?: string; style?: LinkButton['style']; actions?: ButtonAction[] }[] = [];
   let format: 'script' | 'petto' = 'script';
   let notes: string[] = [];
 
@@ -143,7 +145,13 @@ const p = t.toolsPage.embedCode;
       fields: fields.filter((f) => f.name && f.value).map((f) => ({ ...f })),
     };
     const hasEmbed = Boolean(embed.title || embed.description || embed.author.name || embed.footer.text || embed.fields.length || embed.image || embed.thumbnail || embed.url);
-    const row = buttons.filter((b) => b.label && b.url).map((b) => ({ label: b.label, url: b.url, emoji: '', disabled: false }));
+    const row: LinkButton[] = buttons.flatMap((b) => {
+      if (b.actions) {
+        const actions = b.actions.filter((a) => a.ref.trim());
+        return b.label && actions.length ? [{ label: b.label, url: '', emoji: (b.emoji ?? '').trim(), disabled: false, style: b.style ?? 'grey', actions }] : [];
+      }
+      return b.label && b.url ? [{ label: b.label, url: b.url, emoji: (b.emoji ?? '').trim(), disabled: false }] : [];
+    });
     return { content: $<HTMLTextAreaElement>('ecContent').value, embeds: hasEmbed ? [embed] : [], buttons: row.length ? [row.slice(0, 5)] : [] };
   }
 
@@ -411,10 +419,64 @@ const p = t.toolsPage.embedCode;
     const buttonBox = $('ecButtons');
     buttonBox.innerHTML = '';
     buttons.forEach((button, index) => {
-      listRow(buttonBox, [
+      const box = document.createElement('div');
+      box.className = 'ec-btn-box';
+      const select = (options: [string, string][], value: string, onPick: (v: string) => void) => {
+        const el = document.createElement('select');
+        for (const [v, label] of options) { const o = document.createElement('option'); o.value = v; o.textContent = label; o.selected = v === value; el.appendChild(o); }
+        el.addEventListener('change', () => { onPick(el.value); });
+        return el;
+      };
+      const kind = select([['link', text.btnKindLink], ['action', text.btnKindAction]], button.actions ? 'action' : 'link', (v) => {
+        if (v === 'action') { button.actions = [{ type: 'role', ref: '' }]; button.style = 'grey'; button.url = ''; } else { delete button.actions; delete button.style; }
+        drawLists(); render();
+      });
+      const style = button.actions ? select(ACTION_COLORS.map((v): [string, string] => [v, text[`btnColor_${v}`]]), button.style ?? 'grey', (v) => { button.style = v as LinkButton['style']; render(); }) : null;
+      listRow(box, [
         { placeholder: text.buttonLabel, key: 'label', value: button.label, max: 80 },
-        { placeholder: text.buttonUrl, key: 'url', value: button.url, max: 512 },
-      ], null, (key, value) => { (button as Record<string, string>)[key] = value; }, () => buttons.splice(index, 1));
+        ...(button.actions ? [] : [{ placeholder: text.buttonUrl, key: 'url', value: button.url, max: 512 }]),
+        { placeholder: text.btnEmoji, key: 'emoji', value: button.emoji ?? '', max: 64 },
+      ], null, (key, value) => { (button as unknown as Record<string, string>)[key] = value; }, () => buttons.splice(index, 1));
+      const head = box.querySelector('.ec-list-row')!;
+      head.prepend(kind);
+      if (style) head.insertBefore(style, head.querySelector('.ec-remove'));
+      if (button.actions) {
+        const list = document.createElement('div');
+        list.className = 'ec-btn-actions';
+        button.actions.forEach((action, ai) => {
+          const row = document.createElement('div');
+          row.className = 'ec-list-row';
+          const types: [string, string][] = [['role', text.btnActRole], ['addrole', text.btnActAddRole], ['removerole', text.btnActRemoveRole], ['embed', text.btnActEmbed]];
+          row.appendChild(select(types, action.type, (v) => { action.type = v as ButtonAction['type']; action.ref = ''; action.mode = v === 'embed' ? 'ephemeral' : undefined; drawLists(); render(); }));
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.maxLength = 100;
+          input.placeholder = action.type === 'embed' ? text.btnEmbedPlaceholder : text.btnRolePlaceholder;
+          input.value = action.ref;
+          input.addEventListener('input', () => { action.ref = input.value; render(); });
+          row.appendChild(input);
+          if (action.type === 'embed') row.appendChild(select([['ephemeral', text.btnModeEphemeral], ['public', text.btnModePublic], ['dm', text.btnModeDm]], action.mode ?? 'ephemeral', (v) => { action.mode = v as ButtonAction['mode']; render(); }));
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'ec-remove';
+          remove.textContent = '×';
+          remove.title = text.removeLabel;
+          remove.setAttribute('aria-label', text.removeLabel);
+          remove.addEventListener('click', () => { button.actions!.splice(ai, 1); if (!button.actions!.length) { delete button.actions; delete button.style; } drawLists(); render(); });
+          row.appendChild(remove);
+          list.appendChild(row);
+        });
+        if (button.actions.length < MAX_BUTTON_ACTIONS) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'btn btn-ghost btn-sm';
+          more.textContent = `+ ${text.btnAddAction}`;
+          more.addEventListener('click', () => { button.actions!.push({ type: 'role', ref: '' }); drawLists(); });
+          list.appendChild(more);
+        }
+        box.appendChild(list);
+      }
+      buttonBox.appendChild(box);
     });
     $<HTMLButtonElement>('ecAddField').disabled = fields.length >= 25;
     $<HTMLButtonElement>('ecAddButton').disabled = buttons.length >= 5;
@@ -438,7 +500,7 @@ const p = t.toolsPage.embedCode;
     $<HTMLInputElement>('ecFooterText').value = embed?.footer.text ?? '';
     $<HTMLInputElement>('ecFooterIcon').value = embed?.footer.icon ?? '';
     fields.splice(0, fields.length, ...(embed?.fields ?? []).map((f) => ({ ...f })));
-    buttons.splice(0, buttons.length, ...data.buttons.flat().map((b) => ({ label: b.label, url: b.url })));
+    buttons.splice(0, buttons.length, ...data.buttons.flat().map((b) => (b.actions?.length ? { label: b.label, url: '', emoji: b.emoji ?? '', style: b.style ?? 'grey', actions: b.actions.map((a) => ({ ...a })) } : { label: b.label, url: b.url, emoji: b.emoji ?? '' })));
     drawLists();
   }
 
@@ -500,6 +562,9 @@ const p = t.toolsPage.embedCode;
   .ec-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-muted); }
   .ec-group { border: 1px solid var(--border-soft); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; background: var(--card); }
   .ec-list-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .ec-btn-box { margin-bottom: 10px; }
+  .ec-btn-actions { margin: 0 0 8px 14px; padding-left: 10px; border-left: 2px solid var(--border-soft); }
+  .ec-list-row select { border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 12.5px; min-width: 0; }
   .ec-list-row input[type='text'] { flex: 1 1 140px; min-width: 0; }
   .ec-inline { flex: 0 0 auto; }
   .ec-remove { border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text-dim); width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1; }
@@ -584,6 +649,7 @@ const p = t.toolsPage.embedCode;
   .dp-embed-footer img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
   .dp-btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
   .dp-btn { display: inline-flex; align-items: center; gap: 5px; background: #4e5058; color: #fff; border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 500; }
+  .dp-btn-blurple { background: #5865f2; } .dp-btn-green { background: #248046; } .dp-btn-red { background: #da373c; }
   .dp-var { font-family: var(--mono); color: var(--accent); background: var(--accent-soft); padding: 0 4px; border-radius: 3px; font-size: .9em; }
   .dp-mention { color: #c9cdfb; background: rgba(88, 101, 242, .3); border-radius: 3px; padding: 0 2px; font-weight: 500; }
   .dp-spoiler { background: #1a1a1e; color: #1a1a1e; border-radius: 3px; padding: 0 2px; }

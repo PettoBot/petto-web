@@ -6,7 +6,17 @@ export interface EmbedData {
   thumbnail: string; image: string; timestamp: boolean;
   author: EmbedAuthor; footer: EmbedFooter; fields: EmbedField[];
 }
-export interface LinkButton { label: string; url: string; emoji: string; disabled: boolean }
+/** What a button does when it is clicked: toggle, give or take a role, or answer with a saved embed (`ref` is the role's name, mention or ID, or the embed's name). */
+export type ButtonActionType = 'role' | 'addrole' | 'removerole' | 'embed';
+export type ButtonEmbedMode = 'ephemeral' | 'public' | 'dm';
+export interface ButtonAction { type: ButtonActionType; ref: string; mode?: ButtonEmbedMode }
+export type ButtonStyleName = 'blurple' | 'green' | 'grey' | 'red';
+/** A link button (`url`) or a button with actions (`actions` and a `style`). */
+export interface LinkButton { label: string; url: string; emoji: string; disabled: boolean; style?: ButtonStyleName; actions?: ButtonAction[] }
+export const BUTTON_ACTION_TYPES: ButtonActionType[] = ['role', 'addrole', 'removerole', 'embed'];
+export const BUTTON_STYLES: ButtonStyleName[] = ['blurple', 'green', 'grey', 'red'];
+export const BUTTON_EMBED_MODES: ButtonEmbedMode[] = ['ephemeral', 'public', 'dm'];
+export const MAX_BUTTON_ACTIONS = 4;
 export type CardPlacement = 'default' | 'embed' | 'attachment';
 /** An image card (made in the Image cards editor) sent with the message. */
 export interface CardRef { name: string; placement: CardPlacement }
@@ -35,6 +45,9 @@ export function emptyEmbed(): EmbedData {
 }
 export function emptyButton(): LinkButton {
   return { label: '', url: '', emoji: '', disabled: false };
+}
+export function emptyAction(): ButtonAction {
+  return { type: 'role', ref: '' };
 }
 export function emptyTemplate(): TemplateData {
   return { content: '', embeds: [], buttons: [] };
@@ -90,6 +103,23 @@ export const EMBED_LIMITS = {
 const trim = (value: unknown, max: number) => String(value ?? '').slice(0, max);
 // Image and link fields accept web addresses, or one of the avatar tokens the bot fills in.
 const TOKEN_URLS = new Set(['{user.avatar}', '{user_avatar}', '{user.display_avatar}', '{guild.icon}', '{server_icon}']);
+/** The actions of a button, kept only when they are well formed: a role is named, a saved embed has a valid name. */
+function cleanActions(button: LinkButton): Pick<LinkButton, 'style' | 'actions'> | Record<string, never> {
+  const actions: ButtonAction[] = [];
+  for (const raw of Array.isArray(button.actions) ? button.actions : []) {
+    if (actions.length >= MAX_BUTTON_ACTIONS || !raw || !BUTTON_ACTION_TYPES.includes(raw.type)) continue;
+    if (raw.type === 'embed') {
+      const ref = String(raw.ref ?? '').trim().toLowerCase().replace(/\s+/g, '-');
+      if (/^[a-z0-9_-]{1,32}$/.test(ref) && !actions.some((a) => a.type === 'embed')) actions.push({ type: 'embed', ref, mode: BUTTON_EMBED_MODES.includes(raw.mode as ButtonEmbedMode) ? raw.mode : 'ephemeral' });
+    } else {
+      const ref = trim(raw.ref, 100).trim();
+      if (ref) actions.push({ type: raw.type, ref });
+    }
+  }
+  if (!actions.length) return {};
+  return { style: BUTTON_STYLES.includes(button.style as ButtonStyleName) ? button.style : 'grey', actions };
+}
+
 const cleanUrl = (value: unknown) => {
   const text = trim(value, EMBED_LIMITS.url).trim();
   return text === '' || TOKEN_URLS.has(text) || /^https?:\/\/\S+$/i.test(text) ? text : '';
@@ -118,7 +148,8 @@ export function validateTemplate(raw: unknown): TemplateCheck {
       fields: (e.fields ?? []).slice(0, EMBED_LIMITS.fields).map((f) => ({ name: trim(f.name, EMBED_LIMITS.fieldName), value: trim(f.value, EMBED_LIMITS.fieldValue), inline: Boolean(f.inline) })),
     })),
     buttons: (source.buttons ?? []).slice(0, EMBED_LIMITS.buttonRows).map((row) => row.slice(0, EMBED_LIMITS.buttonsPerRow).map((b) => ({
-      label: trim(b.label, EMBED_LIMITS.buttonLabel), url: cleanUrl(b.url), emoji: trim(b.emoji, 8), disabled: Boolean(b.disabled),
+      label: trim(b.label, EMBED_LIMITS.buttonLabel), url: cleanUrl(b.url), emoji: trim(b.emoji, 64), disabled: Boolean(b.disabled),
+      ...cleanActions(b),
     }))).filter((row) => row.length > 0),
     ...(source.card ? { card: source.card } : {}),
     ...(reactions.length ? { reactions } : {}),
