@@ -163,6 +163,7 @@ export const ui = {
           name: 'Donut',
           date: "October 29, 2026",
           items: [
+            "Dashboard: saving Customize (the bot's name, avatar, banner or description) from the Spanish and Portuguese addresses (/es and /pt-br) answered 404 Not found; a form with files is now sent to the real address of the page and the page keeps its language",
             "Feeds of pictures, every word counts: `flor rosa anime` only gives drawings of pink flowers. Every word has to be in the tags, the title or the description of a picture (a color can also be the color filter of the place it comes from), and a word such as `anime` only asks the places of anime pictures, so no photo, mountain or pink car comes in. Spanish and Portuguese words are turned into the English tags the places use",
             "Feeds of pictures, a word with more than one meaning is asked about: `!feed add pictures 30m rosa` asks whether you mean the flower, the color or the mountain (Monte Rosa), with a button for each, and the feed is saved with what you pick; the other words also say it (`flor rosa` is a pink flower, `rosa roja` a red rose). The same happens for `naranja`, `lima`, `violeta`, `llama`, `vela`, `mono`, `sierra`, `jaguar`, `mouse` and a few more",
             "Feeds of pictures say what they search: the feed and each picture show it (\"Searching: pink · flower · anime style · Wallhaven\") instead of the title the picture had on its site",
@@ -1653,6 +1654,7 @@ export const ui = {
           name: 'Donut',
           date: "29 de octubre de 2026",
           items: [
+            "Dashboard: guardar Personalizar (el nombre, el avatar, el banner o la descripción del bot) desde las direcciones en español y portugués (/es y /pt-br) daba 404 Not found; un formulario con archivos ahora se envía a la dirección real de la página y la página conserva su idioma",
             "Feeds de imágenes, cuenta cada palabra: `flor rosa anime` solo da dibujos de flores rosas. Cada palabra tiene que estar en las etiquetas, el título o la descripción de una imagen (un color también puede ser el filtro de color del sitio de donde viene), y una palabra como `anime` solo le pregunta a los sitios de imágenes de anime, así que no entra ninguna foto, montaña ni carro rosa. Las palabras en español y portugués se convierten en las etiquetas en inglés que usan los sitios",
             "Feeds de imágenes, una palabra con más de un significado se pregunta: `!feed add pictures 30m rosa` pregunta si te refieres a la flor, al color o a la montaña (Monte Rosa), con un botón para cada uno, y el feed se guarda con lo que elijas; las otras palabras también lo dicen (`flor rosa` es una flor rosa, `rosa roja` una rosa roja). Lo mismo pasa con `naranja`, `lima`, `violeta`, `llama`, `vela`, `mono`, `sierra`, `jaguar`, `mouse` y algunas más",
             "Los feeds de imágenes dicen qué buscan: el feed y cada imagen lo muestran (\"Buscando: rosa · flor · estilo anime · Wallhaven\") en vez del título que la imagen tenía en su sitio",
@@ -3143,6 +3145,7 @@ export const ui = {
           name: 'Donut',
           date: "29 de outubro de 2026",
           items: [
+            "Dashboard: salvar Personalizar (o nome, o avatar, o banner ou a descrição do bot) pelos endereços em espanhol e português (/es e /pt-br) dava 404 Not found; um formulário com arquivos agora é enviado ao endereço real da página e a página mantém o idioma",
             "Feeds de imagens, toda palavra conta: `flor rosa anime` só traz desenhos de flores rosa. Toda palavra tem que estar nas tags, no título ou na descrição de uma imagem (uma cor também pode ser o filtro de cor do site de onde ela vem), e uma palavra como `anime` só pergunta aos sites de imagens de anime, então não entra nenhuma foto, montanha ou carro rosa. As palavras em espanhol e português viram as tags em inglês que os sites usam",
             "Feeds de imagens, uma palavra com mais de um significado é perguntada: `!feed add pictures 30m rosa` pergunta se você quer dizer a flor, a cor ou a montanha (Monte Rosa), com um botão para cada um, e o feed é salvo com o que você escolher; as outras palavras também dizem isso (`flor rosa` é uma flor rosa, `rosa roja` uma rosa vermelha). O mesmo acontece com `naranja`, `lima`, `violeta`, `llama`, `vela`, `mono`, `sierra`, `jaguar`, `mouse` e mais algumas",
             "Os feeds de imagens dizem o que buscam: o feed e cada imagem mostram isso (\"Buscando: rosa · flor · estilo anime · Wallhaven\") em vez do título que a imagem tinha no seu site",
