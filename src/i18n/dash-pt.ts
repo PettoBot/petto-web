@@ -4857,4 +4857,13 @@ export const dashPt: Record<string, string> = {
   "Take a role": "Tirar um cargo",
   "Show a saved embed": "Mostrar um embed salvo",
   "Form with every kind of part": "Formulário com todos os tipos de parte",
+  "Petto cannot post in that channel.": "O Petto não pode postar nesse canal.",
+  "The channel no longer exists.": "O canal não existe mais.",
+  "The last notice could not be sent.": "O último aviso não pôde ser enviado.",
+  "The account no longer exists.": "A conta não existe mais.",
+  "The address is a web page, not a feed. Use the link of the RSS or Atom feed itself.": "O endereço é uma página web, não um feed. Use o link do próprio feed RSS ou Atom.",
+  "The site asks Petto to wait. It will try again by itself.": "O site pede ao Petto para esperar. Ele vai tentar de novo sozinho.",
+  "The account cannot be read right now. Petto keeps trying.": "A conta não pode ser lida agora. O Petto continua tentando.",
+  "Which “{word}” do you mean?": "Qual “{word}” você quer dizer?",
+  "Pick one and the feed is saved with it, or add a word that says it.": "Escolha um e o feed é salvo com ele, ou adicione uma palavra que diga isso.",
 };

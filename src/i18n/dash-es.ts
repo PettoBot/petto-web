@@ -4857,4 +4857,13 @@ export const dashEs: Record<string, string> = {
   "Take a role": "Quitar un rol",
   "Show a saved embed": "Mostrar un embed guardado",
   "Form with every kind of part": "Formulario con todos los tipos de parte",
+  "Petto cannot post in that channel.": "Petto no puede publicar en ese canal.",
+  "The channel no longer exists.": "El canal ya no existe.",
+  "The last notice could not be sent.": "El último aviso no se pudo enviar.",
+  "The account no longer exists.": "La cuenta ya no existe.",
+  "The address is a web page, not a feed. Use the link of the RSS or Atom feed itself.": "La dirección es una página web, no un feed. Usa el enlace del feed RSS o Atom.",
+  "The site asks Petto to wait. It will try again by itself.": "El sitio le pide a Petto que espere. Lo intentará de nuevo solo.",
+  "The account cannot be read right now. Petto keeps trying.": "La cuenta no se puede leer ahora. Petto lo sigue intentando.",
+  "Which “{word}” do you mean?": "¿Qué “{word}” quieres decir?",
+  "Pick one and the feed is saved with it, or add a word that says it.": "Elige uno y el feed se guarda con él, o añade una palabra que lo diga.",
 };

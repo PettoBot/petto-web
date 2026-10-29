@@ -31,6 +31,11 @@ const cases = [
   ['feedback sign-in is answered where it is asked', { method: 'GET', pathname: '/feedback/login', search: '?next=/feedback', headers: h(nav), lang: 'es' }, null],
   ['feedback list read by the board script', { method: 'GET', pathname: '/feedback', search: '?kind=bug', headers: h({ accept: 'text/html', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }), lang: 'es' }, null],
   ['the feedback API is not a page', { method: 'POST', pathname: '/api/feedback', search: '', headers: h(nav), lang: 'es' }, null],
+  // The RSS feeds of the changelog answer where they are asked, in every language and whatever the saved language (feed readers and bots).
+  ['changelog feed, saved language Spanish', { method: 'GET', pathname: '/changelog/rss.xml', search: '', headers: h({ accept: 'application/rss+xml, application/xml, text/html' }), lang: 'es' }, null],
+  ['changelog feed opened in a browser tab', { method: 'GET', pathname: '/changelog/rss.xml', search: '', headers: h(nav), lang: 'pt-BR' }, null],
+  ['Spanish changelog feed', { method: 'GET', pathname: '/es/changelog/rss.xml', search: '', headers: h(nav), lang: 'en' }, null],
+  ['Portuguese changelog feed', { method: 'GET', pathname: '/pt-br/changelog/rss.xml', search: '', headers: h(nav), lang: 'es' }, null],
   ['already prefixed is not touched here', { method: 'GET', pathname: '/es/dash/manage', search: '', headers: h(nav), lang: 'es' }, null],
 ];
 let failed = 0;
