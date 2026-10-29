@@ -156,7 +156,7 @@ export function renderMessage(message: PreviewMessage, ctx: PreviewContext = def
 
 // ---- Components V2 -------------------------------------------------------------------------------------------------
 
-type V2PreviewNode = { type: number; content?: string; divider?: boolean; spacing?: number; accent_color?: number | null; spoiler?: boolean; media?: { url?: string }; description?: string; items?: { media?: { url?: string }; description?: string }[]; components?: V2PreviewNode[]; accessory?: V2PreviewNode; label?: string; url?: string; emoji?: { name?: string; id?: string; animated?: boolean } };
+type V2PreviewNode = { type: number; content?: string; divider?: boolean; spacing?: number; accent_color?: number | null; spoiler?: boolean; media?: { url?: string }; description?: string; items?: { media?: { url?: string }; description?: string }[]; components?: V2PreviewNode[]; accessory?: V2PreviewNode; label?: string; url?: string; style?: number; actions?: unknown[]; emoji?: { name?: string; id?: string; animated?: boolean } };
 
 function previewImage(value: string | undefined, ctx: PreviewContext): string {
   const raw = (value ?? '').trim();
@@ -170,7 +170,10 @@ function previewImage(value: string | undefined, ctx: PreviewContext): string {
 function renderV2Button(node: V2PreviewNode, ctx: PreviewContext): string {
   const label = node.label ? renderMarkdown(node.label, ctx).replace(/<br>/g, ' ') : '';
   const emoji = node.emoji?.id ? `<img class="dp-emoji" src="https://cdn.discordapp.com/emojis/${escapeHtml(node.emoji.id)}.${node.emoji.animated ? 'gif' : 'png'}?size=32" alt="">` : node.emoji?.name ? `<span>${escapeHtml(node.emoji.name)}</span>` : '';
-  return `<span class="dp-btn">${emoji}${emoji && label ? ' ' : ''}${label}<span class="dp-v2-link" aria-hidden="true">↗</span></span>`;
+  // Buttons with actions and plain display buttons have a colour; only the ones with a link carry the arrow.
+  const colour = ({ 1: 'blurple', 2: 'grey', 3: 'green', 4: 'red' } as Record<number, string>)[node.style ?? 5];
+  const isLink = !colour;
+  return `<span class="dp-btn${colour ? ` dp-btn-${colour}` : ''}">${emoji}${emoji && label ? ' ' : ''}${label}${isLink ? '<span class="dp-v2-link" aria-hidden="true">↗</span>' : ''}</span>`;
 }
 
 function renderV2Node(node: V2PreviewNode, ctx: PreviewContext): string {

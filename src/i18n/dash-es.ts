@@ -2225,6 +2225,8 @@ export const dashEs: Record<string, string> = {
   "+ Pictures": "+ Imágenes",
   "+ Section": "+ Sección",
   "+ Text": "+ Texto",
+  "A button": "Un botón",
+  "A button is a link or an action (roles, a saved message). A button with no label, or a link with no address, is left out.": "Un botón es un enlace o una acción (roles, un mensaje guardado). Un botón sin texto, o un enlace sin dirección, se omite.",
   "A link button": "Un botón de enlace",
   "A section without its picture or button is sent as plain text.": "Una sección sin su imagen o botón se envía como texto normal.",
   "A small picture": "Una imagen pequeña",

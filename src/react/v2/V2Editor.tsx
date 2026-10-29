@@ -3,9 +3,11 @@ import FormatToolbar from '../embeds/FormatToolbar';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import { countV2, V2_LIMITS } from '../embeds/types';
 import type { V2Doc, V2Node, V2Child, V2Button, V2Section, V2Gallery, V2Row, V2Text, V2Container } from '../embeds/types';
+import ButtonActions from '../embeds/ButtonActions';
+import { emptyAction } from '../embeds/types';
 import { t } from '../embeds/t';
 
-interface DocProps { doc: V2Doc; onChange: (doc: V2Doc) => void }
+interface DocProps { doc: V2Doc; onChange: (doc: V2Doc) => void; /** The saved messages a button can show. */ names?: string[] }
 
 const newText = (): V2Text => ({ type: 10, content: '' });
 const newSeparator = (): V2Child => ({ type: 14, divider: true, spacing: 1 });
@@ -35,18 +37,49 @@ function TextBox({ value, onChange, rows = 4, max = V2_LIMITS.text }: { value: s
   );
 }
 
-function ButtonEditor({ button, onChange, onRemove }: { button: V2Button; onChange: (button: V2Button) => void; onRemove?: () => void }) {
+const STYLE_OPTIONS: [number, string][] = [[1, 'Blurple'], [3, 'Green'], [2, 'Grey'], [4, 'Red']];
+
+/** A button is a link, or it does something when it is pressed (roles, a saved message) and then it has a colour. */
+function ButtonEditor({ button, names, onChange, onRemove }: { button: V2Button; names: string[]; onChange: (button: V2Button) => void; onRemove?: () => void }) {
+  const isAction = Boolean(button.actions?.length);
+  const setKind = (kind: string) => {
+    const { actions: _a, custom_id: _c, ...rest } = button;
+    onChange(kind === 'action' ? { ...rest, style: 2, url: undefined, actions: [emptyAction()] } : { ...rest, style: 5, url: '' });
+  };
   return (
-    <div className="ebr-btn-edit">
-      <input type="text" placeholder={t('Label')} maxLength={V2_LIMITS.buttonLabel} value={button.label} onChange={(ev) => onChange({ ...button, label: ev.target.value })} />
-      <input type="text" placeholder="https://..." value={button.url} onChange={(ev) => onChange({ ...button, url: ev.target.value })} />
-      <input type="text" placeholder={t('Emoji')} maxLength={4} className="ebr-btn-emoji" value={button.emoji?.id ? '' : (button.emoji?.name ?? '')} onChange={(ev) => onChange({ ...button, emoji: ev.target.value ? { name: ev.target.value } : undefined })} />
-      {onRemove && <button type="button" className="ebr-del" onClick={onRemove}>×</button>}
+    <div className="ebr-btn-box">
+      <div className="ebr-btn-edit">
+        <select value={isAction ? 'action' : 'link'} onChange={(ev) => setKind(ev.target.value)} aria-label={t('Type')}>
+          <option value="link">{t('Link')}</option>
+          <option value="action">{t('Action')}</option>
+        </select>
+        <input type="text" placeholder={t('Label')} maxLength={V2_LIMITS.buttonLabel} value={button.label} onChange={(ev) => onChange({ ...button, label: ev.target.value })} />
+        {isAction ? (
+          <select value={button.style} onChange={(ev) => onChange({ ...button, style: Number(ev.target.value) as V2Button['style'] })} aria-label={t('Color')}>
+            {STYLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
+          </select>
+        ) : (
+          <input type="text" placeholder="https://..." value={button.url ?? ''} onChange={(ev) => onChange({ ...button, url: ev.target.value })} />
+        )}
+        <input type="text" placeholder={t('Emoji')} maxLength={4} className="ebr-btn-emoji" value={button.emoji?.id ? '' : (button.emoji?.name ?? '')} onChange={(ev) => onChange({ ...button, emoji: ev.target.value ? { name: ev.target.value } : undefined })} />
+        {onRemove && <button type="button" className="ebr-del" onClick={onRemove}>×</button>}
+      </div>
+      {isAction && (
+        <ButtonActions
+          actions={button.actions ?? []}
+          names={names}
+          onChange={(actions) => {
+            if (actions.length) return onChange({ ...button, actions });
+            const { actions: _a, ...rest } = button;
+            onChange({ ...rest, style: 5, url: '' });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function NodeBody({ node, onChange }: { node: V2Node; onChange: (node: V2Node) => void }) {
+function NodeBody({ node, names, onChange }: { node: V2Node; names: string[]; onChange: (node: V2Node) => void }) {
   switch (node.type) {
     case 10:
       return <TextBox value={node.content} onChange={(content) => onChange({ ...node, content })} />;
@@ -76,9 +109,9 @@ function NodeBody({ node, onChange }: { node: V2Node; onChange: (node: V2Node) =
     case 1:
       return (
         <div className="v2e-stack">
-          {node.components.map((button, i) => <ButtonEditor key={i} button={button} onChange={(next) => onChange({ ...node, components: node.components.map((x, j) => (j === i ? next : x)) })} onRemove={() => onChange({ ...node, components: node.components.filter((_, j) => j !== i) })} />)}
+          {node.components.map((button, i) => <ButtonEditor key={i} button={button} names={names} onChange={(next) => onChange({ ...node, components: node.components.map((x, j) => (j === i ? next : x)) })} onRemove={() => onChange({ ...node, components: node.components.filter((_, j) => j !== i) })} />)}
           {node.components.length < V2_LIMITS.rowButtons && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange({ ...node, components: [...node.components, newButton()] })}>{t('+ Button')}</button>}
-          <p className="v2e-note">{t('Buttons are links. A button with no label or no link is left out.')}</p>
+          <p className="v2e-note">{t('A button is a link or an action (roles, a saved message). A button with no label, or a link with no address, is left out.')}</p>
         </div>
       );
     case 9: {
@@ -103,11 +136,11 @@ function NodeBody({ node, onChange }: { node: V2Node; onChange: (node: V2Node) =
             }}>
               <option value="none">{t('Nothing')}</option>
               <option value="thumbnail">{t('A small picture')}</option>
-              <option value="button">{t('A link button')}</option>
+              <option value="button">{t('A button')}</option>
             </select>
           </div>
           {node.accessory?.type === 11 && <input type="text" placeholder={t('https://... or {quest.reward_image}')} value={node.accessory.media.url} onChange={(ev) => onChange({ ...node, accessory: { type: 11, media: { url: ev.target.value } } })} />}
-          {node.accessory?.type === 2 && <ButtonEditor button={node.accessory} onChange={(button) => onChange({ ...node, accessory: button })} />}
+          {node.accessory?.type === 2 && <ButtonEditor button={node.accessory} names={names} onChange={(button) => onChange({ ...node, accessory: button })} />}
           <p className="v2e-note">{t('A section without its picture or button is sent as plain text.')}</p>
         </div>
       );
@@ -130,7 +163,7 @@ function AddBar({ allowContainer, onAdd }: { allowContainer: boolean; onAdd: (no
   );
 }
 
-function NodeList({ nodes, onChange, allowContainer }: { nodes: V2Node[]; onChange: (nodes: V2Node[]) => void; allowContainer: boolean }) {
+function NodeList({ nodes, names, onChange, allowContainer }: { nodes: V2Node[]; names: string[]; onChange: (nodes: V2Node[]) => void; allowContainer: boolean }) {
   return (
     <div className="v2e-list">
       {nodes.map((node, i) => (
@@ -150,10 +183,10 @@ function NodeList({ nodes, onChange, allowContainer }: { nodes: V2Node[]; onChan
                 <EmbedColorPicker value={node.accent_color} onChange={(color) => onChange(nodes.map((x, j) => (j === i ? { ...node, accent_color: color } : x)))} />
                 <label className="ebr-check"><input type="checkbox" checked={Boolean(node.spoiler)} onChange={(ev) => onChange(nodes.map((x, j) => (j === i ? { ...node, spoiler: ev.target.checked } : x)))} />{t('Spoiler')}</label>
               </div>
-              <NodeList nodes={node.components} allowContainer={false} onChange={(children) => onChange(nodes.map((x, j) => (j === i ? { ...node, components: children as V2Child[] } : x)))} />
+              <NodeList nodes={node.components} names={names} allowContainer={false} onChange={(children) => onChange(nodes.map((x, j) => (j === i ? { ...node, components: children as V2Child[] } : x)))} />
             </div>
           ) : (
-            <NodeBody node={node} onChange={(next) => onChange(nodes.map((x, j) => (j === i ? next : x)))} />
+            <NodeBody node={node} names={names} onChange={(next) => onChange(nodes.map((x, j) => (j === i ? next : x)))} />
           )}
         </div>
       ))}
@@ -162,8 +195,8 @@ function NodeList({ nodes, onChange, allowContainer }: { nodes: V2Node[]; onChan
   );
 }
 
-/** The editor of a Components V2 message: containers with text, pictures, sections, dividers and rows of link buttons. */
-export default function V2Editor({ doc, onChange }: DocProps) {
+/** The editor of a Components V2 message: containers with text, pictures, sections, dividers and rows of buttons. */
+export default function V2Editor({ doc, onChange, names = [] }: DocProps) {
   const counts = countV2(doc);
   const over = counts.components > V2_LIMITS.components || counts.chars > V2_LIMITS.text;
   return (
@@ -172,7 +205,7 @@ export default function V2Editor({ doc, onChange }: DocProps) {
         {t('{a} of {b} components', { a: counts.components, b: V2_LIMITS.components })} · {t('{a} of {b} characters', { a: counts.chars, b: V2_LIMITS.text })}
         {over && <span> · {t('Over the limit: the last parts are cut when it is saved.')}</span>}
       </div>
-      <NodeList nodes={doc.components} allowContainer onChange={(components) => onChange({ components })} />
+      <NodeList nodes={doc.components} names={names} allowContainer onChange={(components) => onChange({ components })} />
     </div>
   );
 }
