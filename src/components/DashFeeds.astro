@@ -36,11 +36,23 @@ const used = current ? feeds.filter((feed) => feed.platform === current.id).leng
 const full = current ? used >= limit : false;
 const countOf = (id: string) => feeds.filter((feed) => feed.platform === id).length;
 
+// What the bot writes in last_error (petto-bot src/feeds/engine.js), in words. A failed look at an account (noFeed, rateLimited, unavailable) does not
+// count as a failure: the feed stays on and says why until a look works again.
+const ERROR_TEXT: Record<string, string> = {
+  permission: dt('Petto cannot post in that channel.'),
+  channelGone: dt('The channel no longer exists.'),
+  send: dt('The last notice could not be sent.'),
+  accountGone: dt('The account no longer exists.'),
+  noFeed: dt('The address is a web page, not a feed. Use the link of the RSS or Atom feed itself.'),
+  rateLimited: dt('The site asks Petto to wait. It will try again by itself.'),
+  unavailable: dt('The account cannot be read right now. Petto keeps trying.'),
+};
+const errorText = (code: string | null): string => (code ? ERROR_TEXT[code] ?? code : '');
 const statusOf = (feed: FeedRow): { key: string; label: string; detail: string } => {
-  if (!feed.enabled && feed.failures >= 5) return { key: 'off', label: dt('Turned off'), detail: feed.lastError ?? '' };
-  if (!feed.enabled) return { key: 'paused', label: dt('Paused'), detail: '' };
+  if (!feed.enabled && feed.failures >= 5) return { key: 'off', label: dt('Turned off'), detail: errorText(feed.lastError) };
+  if (!feed.enabled) return { key: 'paused', label: dt('Paused'), detail: errorText(feed.lastError) };
   if (!feed.ready) return { key: 'wait', label: dt('Getting ready'), detail: '' };
-  if (feed.failures > 0 && feed.lastError) return { key: 'warn', label: dt('Having trouble'), detail: feed.lastError };
+  if (feed.lastError) return { key: 'warn', label: dt('Having trouble'), detail: errorText(feed.lastError) };
   return { key: 'ok', label: dt('Active'), detail: '' };
 };
 
@@ -53,6 +65,7 @@ const text = {
   searchName: dt('Search {name} or paste a link'), noResults: dt('No results. Try another name or paste the link.'),
   followed: dt('Now following {name} on {platform} in {channel}. Nothing from the past is posted: the next notice will be new.'), updated: dt('Saved the changes to {name}.'),
   pickTags: dt('Write one to four words first.'), tagsPlaceholder: dt('pink, cats aesthetic…'),
+  whichMeaning: dt('Which “{word}” do you mean?'), meaningHelp: dt('Pick one and the feed is saved with it, or add a word that says it.'),
   paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'), everyN: dt('Every {n} minutes'),
 };
 const config = {
@@ -238,6 +251,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         <p class="fd-help">{dt('This is an example. The real notice has the title, picture and link of what was published.')}</p>
       </details>
 
+      <div class="fd-senses" data-senses hidden role="group"></div>
       <p class="fd-error" data-error hidden role="alert"></p>
       <div class="fd-foot">
         <button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button>
@@ -256,6 +270,11 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   };
   type Account = { id: string; name: string; avatar: string | null; url: string | null };
   type Result = { value: string; name: string; avatar: string | null; url: string | null; detail: string };
+  // A word with several meanings (the bot answers 409 `ambiguous`): each choice is sent again as the account (or `every`) of the feed.
+  type Choice = { key: string; label: string; account: string };
+  const choicesOf = (data: any): Choice[] => (data?.error === 'ambiguous' && Array.isArray(data.choices) ? data.choices : [])
+    .filter((choice: any) => choice && typeof choice.account === 'string' && choice.account.trim())
+    .map((choice: any) => ({ key: String(choice.key ?? ''), label: String(choice.label || choice.account), account: String(choice.account) }));
 
   function initFeeds() {
     const root = document.querySelector<HTMLElement>('[data-feeds]');
@@ -362,6 +381,20 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     };
     const checkedTypes = () => [...form().querySelectorAll<HTMLInputElement>('[data-types] input:checked')].map((input) => input.value);
     const showError = (message: string) => { const box = field<HTMLElement>('[data-error]'); box.hidden = !message; box.textContent = message; };
+    const hideSenses = () => { const box = field<HTMLElement>('[data-senses]'); box.hidden = true; box.replaceChildren(); };
+    // The question of a word with several meanings: a button for each one; the one pressed saves the feed with it.
+    const showSenses = (word: string, choices: Choice[]) => {
+      const box = field<HTMLElement>('[data-senses]');
+      const buttons = el('div', 'fd-senses-list');
+      buttons.append(...choices.map((choice) => {
+        const button = el('button', 'btn btn-ghost btn-sm fd-sense', choice.label);
+        button.type = 'button'; button.dataset.sense = choice.account;
+        return button;
+      }));
+      box.replaceChildren(el('b', '', text.whichMeaning.replace('{word}', word)), buttons, el('small', 'fd-help', text.meaningHelp));
+      box.hidden = false;
+      box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
 
     // The account chosen: a card with its picture, in place of the search.
     const showFound = () => {
@@ -414,6 +447,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const answer = link ? await call('resolve', { platform: state.platform, account: query }) : await call('search', { platform: state.platform, query });
       if (run !== state.searchRun) return; // a newer search took its place
       spin(false);
+      const senses = choicesOf(answer.data);
+      if (!answer.ok && senses.length) { renderResults(senses.map((choice) => ({ value: choice.account, name: choice.label, avatar: null, url: null, detail: choice.account }))); return; }
       if (!answer.ok) { note(answer.message || text.failed, true); return; }
       renderResults(link ? [{ value: query, name: answer.data.account.name, avatar: answer.data.account.avatar, url: answer.data.account.url, detail: '' }] : (answer.data.results as Result[]));
     }
@@ -533,7 +568,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       field<HTMLDetailsElement>('[data-preview-details]').open = false;
       box.querySelectorAll<HTMLDetailsElement>('.fd-more:not(.fd-prev)').forEach((details) => { details.open = false; });
       field<HTMLElement>('[data-preview]').dataset.html = '';
-      showError(''); spin(false); hideResults(); showFound(); fillRoles(); renderTabs();
+      showError(''); hideSenses(); spin(false); hideResults(); showFound(); fillRoles(); renderTabs();
       field<HTMLButtonElement>('[data-submit]').disabled = false;
       // Opening goes through the common window code (it moves the window to <body> and focuses it).
       const opener = el('button');
@@ -551,8 +586,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 
     const closeWindow = () => { const closer = el('button'); closer.type = 'button'; closer.dataset.modalClose = '1'; closer.hidden = true; modal()?.appendChild(closer); closer.click(); closer.remove(); };
 
-    async function save(event: Event) {
-      event.preventDefault();
+    async function save(event: Event | null, forced = '') {
+      event?.preventDefault();
       const types = checkedTypes();
       const channelId = field<HTMLSelectElement>('[data-channel]').value;
       if (!state.account) { showError(text.pickAccount); return; }
@@ -563,7 +598,8 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const extra = chosen.extra === 'kinds' ? [...field<HTMLElement>('[data-kinds]').querySelectorAll<HTMLInputElement>('input:checked')].map((box) => box.value).join(' ')
         : chosen.extra === 'tags' ? field<HTMLInputElement>('[data-tags]').value.trim() : '';
       if (chosen.extra === 'tags' && !extra) { showError(text.pickTags); return; }
-      const paceText = [state.input, extra].filter(Boolean).join(' ');
+      // A meaning picked for a word with several (`forced`) is what the bot is sent, as it gave it.
+      const paceText = forced || [state.input, extra].filter(Boolean).join(' ');
       const image = field<HTMLSelectElement>('[data-image]').value;
       const body = {
         channel_id: channelId, types, message: field<HTMLTextAreaElement>('[data-message]').value, ping_roles: state.roles, ping_everyone: field<HTMLInputElement>('[data-everyone]').checked,
@@ -571,11 +607,17 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         filters: { include: words(field<HTMLInputElement>('[data-include]').value), exclude: words(field<HTMLInputElement>('[data-exclude]').value) },
       };
       const submit = field<HTMLButtonElement>('[data-submit]');
-      submit.disabled = true; submit.classList.add('fd-saving'); const label = submit.textContent; submit.textContent = text.saving; showError('');
+      submit.disabled = true; submit.classList.add('fd-saving'); const label = submit.textContent; submit.textContent = text.saving; showError(''); hideSenses();
       const answer = state.feedId
         ? await call('update', { id: state.feedId, ...body, ...(config.platforms[state.platform].pace ? { every: paceText } : {}) })
-        : await call('create', { platform: state.platform, account: config.platforms[state.platform].pace ? paceText : state.input || state.account.url || state.account.id, ...body });
-      if (!answer.ok) { submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label; showError(plain(answer.message) || text.failed); return; }
+        : await call('create', { platform: state.platform, account: config.platforms[state.platform].pace ? paceText : forced || state.input || state.account.url || state.account.id, ...body });
+      if (!answer.ok) {
+        submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label;
+        const senses = choicesOf(answer.data);
+        if (senses.length) { showSenses(String(answer.data?.word ?? ''), senses); return; }
+        showError(plain(answer.message) || text.failed);
+        return;
+      }
       const channel = (config.channels as [string, string][]).find(([id]) => id === channelId)?.[1] ?? '';
       const done = state.feedId ? text.updated.replace('{name}', state.account.name) : text.followed.replace('{name}', state.account.name).replace('{platform}', config.platforms[state.platform].name).replace('{channel}', `#${channel}`);
       closeWindow();
@@ -593,6 +635,15 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     on('click', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
+      const sense = target.closest<HTMLElement>('[data-sense]');
+      if (sense && sense.closest('[data-feed-form]')) {
+        const account = sense.dataset.sense ?? '';
+        // The words of the feed show the meaning picked (`rose-flower` for the flower), so saving again keeps it.
+        const tags = field<HTMLInputElement>('[data-tags]');
+        if (config.platforms[state.platform]?.extra === 'tags') tags.value = account.split(/\s+/).filter((word) => !/^(?:every:)?\d{1,4}\s*(?:m|min|mins|minutes?|h|hrs?|hours?|d|days?)?$/i.test(word)).join(' ');
+        void save(null, account);
+        return;
+      }
       const picked = target.closest<HTMLElement>('[data-pick]');
       if (picked) { pick(Number(picked.dataset.pick)); return; }
       if (target.closest('[data-change-account]')) { state.account = null; showFound(); const input = field<HTMLInputElement>('[data-account-input]'); input.value = ''; hideResults(); schedule(); input.focus(); return; }
@@ -633,6 +684,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     on('input', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target || !target.closest('[data-feed-form]')) return;
+      if (target.matches('[data-tags]')) hideSenses();
       // Typing in the search looks for accounts (a moment after the last key); every other field only redraws the preview when it is open.
       if (target.matches('[data-account-input]')) {
         window.clearTimeout(state.searchTimer);
@@ -745,7 +797,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-meta { display: flex; flex-wrap: wrap; gap: 5px; }
   .fd-chans, .fd-type { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-soft, var(--card-hover)); border-radius: 6px; padding: 2px 7px; }
   .fd-last { font-size: 12px; color: var(--text-dim); }
-  .fd-err { font-size: 12px; color: var(--red, #f87171); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fd-err { font-size: 12px; line-height: 1.45; color: var(--red, #f87171); overflow-wrap: anywhere; }
   .fd-status { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; border: 1px solid var(--border); color: var(--text-muted); }
   .fd-status-ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); }
   .fd-status-warn, .fd-status-wait { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
@@ -854,6 +906,10 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-prev-wait { display: flex; align-items: center; gap: 10px; padding: 18px 4px; font-size: 13px; color: var(--text-dim); }
   .fd-prev-wait:first-child:not(:last-child) { padding-bottom: 8px; }
   .fd-prev-wait::before { content: ''; width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--fd-c, var(--accent)) 25%, transparent); border-top-color: var(--fd-c, var(--accent)); animation: fd-turn .7s linear infinite; flex: none; }
+  .fd-senses { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--fd-c, var(--accent)) 45%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--fd-c, var(--accent)) 8%, transparent); }
+  .fd-senses[hidden] { display: none; }
+  .fd-senses b { font-size: 13.5px; }
+  .fd-senses-list { display: flex; flex-wrap: wrap; gap: 6px; }
   .fd-error { margin: 0; font-size: 13px; color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red, #f87171) 45%, transparent); border-radius: 10px; padding: 9px 12px; }
   .fd-error[hidden] { display: none; }
   .fd-foot { display: flex; justify-content: flex-end; gap: 8px; }

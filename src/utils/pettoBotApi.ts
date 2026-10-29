@@ -602,6 +602,11 @@ export async function callPettoInvites(context: AstroContext, guildId: string, u
   return callPettoAction(context, guildId, userId, 'stats', `invites/${action}`, body, lang);
 }
 
+/** "Send now" of a timer (Automation, Timers), like `!timer run`: the bot sends it at once and its schedule does not change. */
+export async function callPettoTimerRun(context: AstroContext, guildId: string, userId: string, timerId: string, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
+  return callPettoAction(context, guildId, userId, 'automation', `timers/${encodeURIComponent(timerId)}/run`, {}, lang);
+}
+
 /** The case log of Moderation: a new reason for a case, or delete it, like `/case edit` and `/case delete` (written to the sanctions log). */
 export async function callPettoCases(context: AstroContext, guildId: string, userId: string, action: 'edit' | 'delete', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
   return callPettoAction(context, guildId, userId, 'moderation', `cases/${action}`, body, lang);

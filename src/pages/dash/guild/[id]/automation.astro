@@ -17,6 +17,7 @@ import { noteGuildWrite } from '../../../../utils/guildSnapshots';
 import { readCommandNames, MAX_COMMANDS_AT_ONCE, MAX_CHANNELS_AT_ONCE } from '../../../../utils/disabledCommands';
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
+import { callPettoTimerRun } from '../../../../utils/pettoBotApi';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
 const dt = makeT(getDashLang(Astro));
 
@@ -46,6 +47,7 @@ const apiHeaders = {
 let saved = false;
 let reactionRoleError: string | null = null;
 let error: string | null = null;
+let notice: string | null = null;
 
 async function deleteDiscordMessage(channelId: string | null, messageId: string | null) {
   if (!channelId || !messageId) return true;
@@ -570,10 +572,16 @@ if (Astro.request.method === 'POST') {
       saved = res.ok;
       if (!res.ok) error = scheduled && res.status !== 409 ? dt('The bot could not save the schedule. It may need to be updated first.') : dt('That channel may already have a timer.');
     }
+  } else if (action === 'run_timer') {
+    // "Send now": the bot sends the timer at once (its schedule does not change) and says what Discord answered.
+    const result = await callPettoTimerRun(Astro, id, String(session.userId), String(form.get('id') ?? ''), getDashLang(Astro));
+    if (result.ok) notice = result.message || dt('Sent.');
+    else error = result.message || dt('The bot could not send the timer. It may need to be updated first.');
   } else if (action === 'edit_timer') {
     const intervalMs = timerIntervalMs(form);
     const message = String(form.get('message') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000);
     const deletePrevious = form.get('delete_previous') === 'on';
+    const paused = form.get('paused') === 'on';
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
     const scheduled = timerScheduleFields(form);
     // Back to an interval from a schedule: the schedule is taken off (only then, so a bot without the schedule columns still saves).
@@ -586,11 +594,18 @@ if (Astro.request.method === 'POST') {
       const moved = /^\d{15,25}$/.test(channelId) && channelId !== String(form.get('old_channel_id') ?? '');
       const patch = { interval_ms: intervalMs, message, next_run_at: new Date(Date.now() + intervalMs).toISOString(), ...unschedule, ...(scheduled ?? {}), ...(moved ? { channel_id: channelId } : {}) };
       const send = (body: object) => fetch(patchUrl, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
-      // delete_previous and embed_template arrive with a database update: before it, the rest is still saved.
-      let res = await send({ ...patch, delete_previous: deletePrevious, embed_template: embedTemplate, ...(moved ? { last_message_id: null } : {}) });
-      if (!res.ok) res = await send(patch);
-      saved = res.ok;
-      if (!res.ok && scheduled) error = dt('The bot could not save the schedule. It may need to be updated first.');
+      // delete_previous, embed_template and paused arrive with database updates: before them, the rest is still saved. A failed write
+      // (or one that throws) is said on the page, never left as a failed request the save bar can only call "Something went wrong".
+      try {
+        let res = await send({ ...patch, delete_previous: deletePrevious, embed_template: embedTemplate, ...(moved ? { last_message_id: null } : {}), ...(form.has('paused_field') ? { paused } : {}) });
+        if (!res.ok) res = await send({ ...patch, delete_previous: deletePrevious, embed_template: embedTemplate });
+        if (!res.ok) res = await send(patch);
+        saved = res.ok;
+        if (!res.ok) error = res.status === 409 ? dt('That channel may already have a timer.') : scheduled ? dt('The bot could not save the schedule. It may need to be updated first.') : dt('The timer could not be saved. Try again.');
+      } catch (err) {
+        console.error('[timers] edit failed:', err);
+        error = dt('The timer could not be saved. Try again.');
+      }
     }
   } else if (action === 'save_sticky_roles') {
     const res = await fetch(`${apiUrl}/rest/v1/sticky_roles_config?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, enabled: form.get('enabled') === 'on' }) });
@@ -732,7 +747,7 @@ const reactionMessages = reactionMessagesRes?.ok ? (await reactionMessagesRes.js
 const disabledCommands = disabledRes?.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
 const autoThreads = autoThreadsRes?.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
 const aliases = aliasesRes?.ok ? (await aliasesRes.json()).map((a: any) => ({ id: a.id, name: a.name, command: a.command })) : [];
-const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at, deletePrevious: t.delete_previous ?? false, embedTemplate: t.embed_template ?? '', schedule: t.schedule === 'daily' || t.schedule === 'weekly' ? t.schedule : 'interval', atTime: t.at_time ?? '', timezone: t.timezone ?? 'UTC', weekday: t.weekday == null ? null : Number(t.weekday) })) : [];
+const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at, deletePrevious: t.delete_previous ?? false, embedTemplate: t.embed_template ?? '', schedule: t.schedule === 'daily' || t.schedule === 'weekly' ? t.schedule : 'interval', atTime: t.at_time ?? '', timezone: t.timezone ?? 'UTC', weekday: t.weekday == null ? null : Number(t.weekday), number: t.number == null ? null : Number(t.number), lastError: t.last_error ? String(t.last_error) : '', paused: Boolean(t.paused) })) : [];
 const starboardRows = starboardRes?.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
 const monkeyboardRows = monkeyboardRes?.ok ? await monkeyboardRes.json() : [];
@@ -781,6 +796,7 @@ const customEmojis = await customEmojisPromise;
   error={error}
   aliases={aliases}
   timers={timers}
+  notice={notice}
   starboard={starboard}
   monkeyboard={monkeyboard}
   stickyRolesEnabled={stickyRolesEnabled}

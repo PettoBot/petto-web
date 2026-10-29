@@ -131,6 +131,10 @@ export const POST: APIRoute = async (astro) => {
 
     const guild = await getGuildDetails(id, botToken);
     const userId = String(session.userId);
+    // The buttons that give a role or show a saved embed are answered by the bot in this server: they go to a channel of it, never to a DM.
+    const rolesRes = toDm ? null : await getGuildList(astro, id, botToken, 'roles');
+    const rolesJson = rolesRes?.ok ? await rolesRes.json() : null;
+    const roles = Array.isArray(rolesJson) ? rolesJson.map((r: any) => ({ id: String(r.id), name: String(r.name ?? '') })) : null;
     const message = buildDiscordMessage(checked.data, {
       userId,
       userName: String(session.username ?? 'you'),
@@ -139,7 +143,7 @@ export const POST: APIRoute = async (astro) => {
     }, {
       userAvatar: session.avatar ?? null,
       serverIcon: guild?.icon ? `https://cdn.discordapp.com/icons/${id}/${guild.icon}.png?size=256` : null,
-    });
+    }, roles);
     // A template that points at an image card is sent with the card drawn for the person testing.
     let file: { name: string; bytes: ArrayBuffer } | undefined;
     const card = checked.data.card;

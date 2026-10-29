@@ -20,5 +20,14 @@ export const POST: APIRoute = async (astro) => {
   const { action: _action, user_id: _user, ...rest } = body as Record<string, unknown>;
   const answer = await callPettoFeeds(astro, id, auth.session.userId, route, rest, getDashLang(astro));
   if (!answer.data) return json({ ok: false, error: 'bot_unavailable', message: '' }, 502);
+  // A word with several meanings (a feed of pictures: `rosa` is a flower, a color or a mountain). resolve and create answer 409, update 400: the page
+  // always gets 409 with the choices to show, and sends the one picked again as the account (create) or `every` (update).
+  if (answer.data.error === 'ambiguous') {
+    const choices = (Array.isArray(answer.data.choices) ? answer.data.choices : [])
+      .filter((choice: any) => choice && typeof choice.account === 'string' && choice.account.trim())
+      .slice(0, 10)
+      .map((choice: any) => ({ key: String(choice.key ?? '').slice(0, 40), label: String(choice.label || choice.account).slice(0, 100), account: String(choice.account).slice(0, 200) }));
+    return json({ ok: false, error: 'ambiguous', word: String(answer.data.word ?? '').slice(0, 40), choices, message: typeof answer.data.message === 'string' ? answer.data.message : '' }, 409);
+  }
   return json(answer.data, answer.status || (answer.ok ? 200 : 502));
 };
