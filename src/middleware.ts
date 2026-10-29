@@ -174,6 +174,15 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
     (locals as Record<string, unknown>).dashLang = lang;
     return rewrite(`${board[2]}${url.search}`);
   }
+  // A save sent to a prefixed address reaches /dash/... directly (server.mjs takes the prefix off, Astro's rewrite lost some saves) and
+  // says which prefix it had: it is answered in that language, with the prefix kept on its links and redirects.
+  const sentPrefix = (request.headers.get('x-petto-dash-prefix') ?? '').toLowerCase().replace(/^\//, '');
+  if (prefixes[sentPrefix] && !['GET', 'HEAD'].includes(request.method.toUpperCase()) && /^\/dash(?:\/|$)/.test(url.pathname)) {
+    const { lang, path } = prefixes[sentPrefix];
+    cookies.set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax', secure: url.protocol === 'https:' });
+    (locals as Record<string, unknown>).dashLang = lang;
+    return keepPrefix(await next(), path, url.origin);
+  }
   const match = url.pathname.match(/^\/(es|pt-br)(\/dash(?:\/.*)?)$/i);
   if (!match || /^\/dash\/lang(?:[/?#]|$)/.test(match[2])) return next();
   const { lang, path } = prefixes[match[1].toLowerCase()];
@@ -186,11 +195,14 @@ async function handle({ url, cookies, locals, rewrite, request }: APIContext, ne
   }
   cookies.set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax', secure: url.protocol === 'https:' });
   (locals as Record<string, unknown>).dashLang = lang;
-  const response = await rewrite(`${match[2]}${url.search}`);
+  return keepPrefix(await rewrite(`${match[2]}${url.search}`), path, url.origin);
+}
 
+/** The answer of a dashboard route asked through /es or /pt-br: its redirects and its links keep the prefix. */
+function keepPrefix(response: Response, path: string, origin: string): Response {
   let location = response.headers.get('location');
   // A redirect written with the full address of this site keeps the prefix too.
-  if (location && location.startsWith(`${url.origin}/dash`)) location = location.slice(url.origin.length);
+  if (location && location.startsWith(`${origin}/dash`)) location = location.slice(origin.length);
   if (location && /^\/dash(?:[/?#]|$)/.test(location)) {
     const headers = new Headers(response.headers);
     headers.set('location', `${path}${location}`);
