@@ -3,10 +3,11 @@ import './embeds.css';
 import FormatToolbar from './FormatToolbar';
 import Preview from './Preview';
 import V2Editor from '../v2/V2Editor';
+import ButtonActions from './ButtonActions';
 import V2Preview from '../v2/V2Preview';
 import VariablesPanel from './VariablesPanel';
 import EmbedColorPicker from './EmbedColorPicker';
-import { type EmbedData, type LinkButton, type ButtonAction, type TemplateData, BUTTON_STYLES, MAX_BUTTON_ACTIONS, emptyEmbed, emptyButton, emptyAction, emptyTemplate, emptyV2, normalizeTemplateData, encodeShareCode, decodeShareCode, readReactions } from './types';
+import { type EmbedData, type LinkButton, type TemplateData, BUTTON_STYLES, emptyEmbed, emptyButton, emptyAction, emptyTemplate, emptyV2, normalizeTemplateData, encodeShareCode, decodeShareCode, readReactions } from './types';
 import { questStarterV2 } from '../../utils/questTemplate';
 import { t } from './t';
 import { toast } from './toast';
@@ -43,7 +44,6 @@ async function api(guildId: string, apiPath: string, path: string, init?: Reques
 }
 
 const STYLE_LABELS: Record<string, string> = { blurple: 'Blurple', green: 'Green', grey: 'Grey', red: 'Red' };
-const ACTION_TYPES: [ButtonAction['type'], string][] = [['role', 'Toggle a role'], ['addrole', 'Give a role'], ['removerole', 'Take a role'], ['embed', 'Show a saved embed']];
 
 export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups, apiPath = 'embeds-api', maxEmbeds = 10, allowTestSend = true, allowButtonEmoji = true, maxTemplates, testSendNote }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
@@ -252,19 +252,6 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   function setButtonKind(ri: number, bi: number, kind: 'link' | 'action') {
     updateButton(ri, bi, kind === 'link' ? { actions: undefined, style: undefined } : { url: '', style: 'grey', actions: [emptyAction()] });
   }
-  function updateAction(ri: number, bi: number, ai: number, patch: Partial<ButtonAction>) {
-    const actions = (data.buttons[ri]?.[bi]?.actions ?? []).map((a, i) => (i === ai ? { ...a, ...patch } : a));
-    updateButton(ri, bi, { actions });
-  }
-  function addAction(ri: number, bi: number) {
-    const actions = data.buttons[ri]?.[bi]?.actions ?? [];
-    if (actions.length < MAX_BUTTON_ACTIONS) updateButton(ri, bi, { actions: [...actions, emptyAction()] });
-  }
-  function removeAction(ri: number, bi: number, ai: number) {
-    const actions = (data.buttons[ri]?.[bi]?.actions ?? []).filter((_, i) => i !== ai);
-    // Without actions the button goes back to being a link.
-    updateButton(ri, bi, actions.length ? { actions } : { actions: undefined, style: undefined });
-  }
   function removeButton(ri: number, bi: number) {
     update({ buttons: data.buttons.map((row, i) => (i !== ri ? row : row.filter((_, j) => j !== bi))).filter((row) => row.length > 0) });
   }
@@ -351,7 +338,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm(t('Replace this design with the Petto quest alert design?'))) update({ v2: questStarterV2() }); }}>{t('Use the quest alert design')}</button>
                   </div>
                   {cardField}
-                  <V2Editor doc={data.v2} onChange={(v2) => update({ v2 })} />
+                  <V2Editor doc={data.v2} names={names} onChange={(v2) => update({ v2 })} />
                 </>
               ) : (
               <>
@@ -453,34 +440,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                             {allowButtonEmoji && <input type="text" placeholder={t('Emoji')} maxLength={4} className="ebr-btn-emoji" value={b.emoji} onChange={(ev) => updateButton(ri, bi, { emoji: ev.target.value })} />}
                             <button type="button" className="ebr-del" onClick={() => removeButton(ri, bi)}>×</button>
                           </div>
-                          {isAction && (
-                            <div className="ebr-btn-actions">
-                              {(b.actions ?? []).map((action, ai) => (
-                                <div key={ai} className="ebr-btn-edit">
-                                  <select value={action.type} onChange={(ev) => updateAction(ri, bi, ai, { type: ev.target.value as ButtonAction['type'], ref: '', mode: ev.target.value === 'embed' ? 'ephemeral' : undefined })} aria-label={t('Action')}>
-                                    {ACTION_TYPES.map(([type, label]) => <option key={type} value={type}>{t(label)}</option>)}
-                                  </select>
-                                  {action.type === 'embed' ? (
-                                    <>
-                                      <select value={action.ref} onChange={(ev) => updateAction(ri, bi, ai, { ref: ev.target.value })} aria-label={t('Saved embed')}>
-                                        <option value="">{t('Choose a saved embed')}</option>
-                                        {names.map((n) => <option key={n} value={n}>{n}</option>)}
-                                      </select>
-                                      <select value={action.mode ?? 'ephemeral'} onChange={(ev) => updateAction(ri, bi, ai, { mode: ev.target.value as ButtonAction['mode'] })} aria-label={t('Where it is shown')}>
-                                        <option value="ephemeral">{t('Only to who clicked')}</option>
-                                        <option value="public">{t('In the channel')}</option>
-                                        <option value="dm">{t('In their DMs')}</option>
-                                      </select>
-                                    </>
-                                  ) : (
-                                    <input type="text" placeholder={t('Role name or ID')} maxLength={100} value={action.ref} onChange={(ev) => updateAction(ri, bi, ai, { ref: ev.target.value })} />
-                                  )}
-                                  <button type="button" className="ebr-del" onClick={() => removeAction(ri, bi, ai)}>×</button>
-                                </div>
-                              ))}
-                              {(b.actions?.length ?? 0) < MAX_BUTTON_ACTIONS && <button type="button" className="btn btn-ghost btn-sm" onClick={() => addAction(ri, bi)}>{t('+ Action')}</button>}
-                            </div>
-                          )}
+                          {isAction && <ButtonActions actions={b.actions ?? []} names={names} onChange={(actions) => (actions.length ? updateButton(ri, bi, { actions }) : updateButton(ri, bi, { actions: undefined, style: undefined }))} />}
                         </div>
                       );
                     })}

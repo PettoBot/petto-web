@@ -25,7 +25,7 @@ export interface TemplateData { content: string; embeds: EmbedData[]; buttons: L
 // A Components V2 message: containers, text, pictures, sections, dividers and rows of link buttons. It follows Discord's
 // own component JSON, so the bot and the Embed Builder read it as it is. It has no message text and no embeds.
 export interface V2Emoji { name: string; id?: string; animated?: boolean }
-export interface V2Button { type: 2; style: 1 | 2 | 3 | 4 | 5; label: string; url?: string; custom_id?: string; emoji?: V2Emoji; disabled?: boolean }
+export interface V2Button { type: 2; style: 1 | 2 | 3 | 4 | 5; label: string; url?: string; custom_id?: string; emoji?: V2Emoji; disabled?: boolean; actions?: ButtonAction[] }
 export interface V2Text { type: 10; content: string }
 export interface V2Separator { type: 14; divider: boolean; spacing: 1 | 2 }
 export interface V2Thumbnail { type: 11; media: { url: string }; description?: string; spoiler?: boolean }
@@ -217,6 +217,9 @@ function cleanButton(raw: any): V2Button | null {
   // A button that is not a link only shows something (such as the change of a rollout in its label): it does nothing when pressed (the bot answers
   // it without a message), so it looks active. Its label and its emoji can hold variables.
   const style = Number(raw.style);
+  // A button with actions (roles, a saved embed) is kept with them; the bot turns them into the button's custom id.
+  const { actions } = cleanActions({ actions: raw.actions } as LinkButton);
+  if (actions) return { type: 2, style: ([1, 2, 3, 4].includes(style) ? style : 2) as 1 | 2 | 3 | 4, label: clip(raw.label, V2_LIMITS.buttonLabel), actions, ...(emoji ? { emoji } : {}) };
   if ([1, 2, 3, 4].includes(style)) return { type: 2, style: style as 1 | 2 | 3 | 4, label: clip(raw.label, V2_LIMITS.buttonLabel), custom_id: clip(raw.custom_id, 100) || 'display', ...(emoji ? { emoji } : {}) };
   return { type: 2, style: 5, label: clip(raw.label, V2_LIMITS.buttonLabel), url: cleanV2Url(raw.url), ...(emoji ? { emoji } : {}), ...(raw.disabled ? { disabled: true } : {}) };
 }

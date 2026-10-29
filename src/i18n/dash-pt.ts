@@ -2225,6 +2225,8 @@ export const dashPt: Record<string, string> = {
   "+ Pictures": "+ Imagens",
   "+ Section": "+ Seção",
   "+ Text": "+ Texto",
+  "A button": "Um botão",
+  "A button is a link or an action (roles, a saved message). A button with no label, or a link with no address, is left out.": "Um botão é um link ou uma ação (cargos, uma mensagem salva). Um botão sem texto, ou um link sem endereço, é omitido.",
   "A link button": "Um botão de link",
   "A section without its picture or button is sent as plain text.": "Uma seção sem sua imagem ou botão é enviada como texto normal.",
   "A small picture": "Uma imagem pequena",
