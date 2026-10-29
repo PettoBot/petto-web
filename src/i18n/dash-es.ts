@@ -4879,4 +4879,13 @@ export const dashEs: Record<string, string> = {
   "Write the time as HH:MM and choose a valid time zone (e.g. America/Bogota or UTC-5).": "Escribe la hora como HH:MM y elige una zona horaria válida (p. ej., America/Bogota o UTC-5).",
   "The bot could not save the schedule. It may need to be updated first.": "El bot no pudo guardar el horario. Puede que primero haya que actualizarlo.",
   "Daily and weekly timers post at a time of day in the time zone you choose, and keep that time when the clocks change.": "Los temporizadores diarios y semanales publican a una hora del día en la zona horaria que elijas, y mantienen esa hora cuando cambia el horario de verano.",
+  "Sent.": "Enviado.",
+  "The bot could not send the timer. It may need to be updated first.": "El bot no pudo enviar el temporizador. Puede que primero haya que actualizarlo.",
+  "The timer could not be saved. Try again.": "No se pudo guardar el temporizador. Inténtalo de nuevo.",
+  "Timer number (the one the commands use)": "Número del temporizador (el que usan los comandos)",
+  "Timer {a}": "Temporizador {a}",
+  "Send now (the schedule does not change)": "Enviar ahora (el horario no cambia)",
+  "Send now": "Enviar ahora",
+  "Last send failed: {a}": "El último envío falló: {a}",
+  "Paused (sends nothing until it is turned off)": "En pausa (no envía nada hasta que lo desactives)",
 };

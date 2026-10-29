@@ -173,6 +173,9 @@ export const ui = {
             "The join DM (`!dmonjoin`) no longer has buttons with actions, which only work in a server; its link buttons stay",
             "A Petto Code form whose menu or checkboxes start with more choices selected than its `max` is told as a mistake instead of being refused by Discord",
             "Website: this changelog has an RSS feed (petto.sbs/changelog/rss.xml, also in Spanish and Portuguese), so it can be followed with `!feed add rss`. The Feeds page of the dashboard asks which meaning of a word you want with a button for each, and always says why a feed is having trouble",
+            "Timers at a time of day: a timer can post every day or every week at a time, in a time zone (`!timer add #news daily 18:00 America/Bogota Hello`). Each server numbers its own timers 1, 2, 3, and `!timer` has new subcommands: `run 1` sends a timer now without moving its schedule, `edit 1 daily 07:00 America/Bogota` (or `edit 1 2h`) changes when it posts, `message 1 <text>`, `channel 1 #channel`, `pause 1` and `resume 1`",
+            "A timer with a Components V2 saved embed never posted: its text (even a lone `.`) was sent next to the design, Discord refused the whole message, and the timer moved on to the next day without a word. A V2 design never gets that text as content now (it goes in as the first text of the design when it says something), and a send that fails is kept and shown in `!timer view`, `!timer list` and the dashboard",
+            "Website: the Timers page shows each timer's number, why its last send failed, a \"Send now\" button and a \"Paused\" switch, and a save that fails says why. A saved embed sent from the embed builder keeps its buttons that give a role or show a saved embed (they were left out)",
           ],
         },
         {
@@ -1660,6 +1663,9 @@ export const ui = {
             "El DM de bienvenida (`!dmonjoin`) ya no tiene botones con acción, que solo funcionan en un servidor; sus botones de enlace se quedan",
             "Un formulario de Petto Code cuyo menú o casillas empiezan con más opciones marcadas que su `max` se avisa como un error en vez de que Discord lo rechace",
             "Sitio web: este changelog tiene un feed RSS (petto.sbs/es/changelog/rss.xml, también en inglés y portugués), así que se puede seguir con `!feed add rss`. La página Feeds del dashboard pregunta qué significado de una palabra quieres con un botón para cada uno, y siempre dice por qué un feed tiene problemas",
+            "Temporizadores a una hora del día: un temporizador puede publicar cada día o cada semana a una hora, en una zona horaria (`!timer add #noticias daily 18:00 America/Bogota Hola`). Cada servidor numera sus temporizadores 1, 2, 3, y `!timer` tiene subcomandos nuevos: `run 1` envía un temporizador ahora sin mover su horario, `edit 1 daily 07:00 America/Bogota` (o `edit 1 2h`) cambia cuándo publica, `message 1 <texto>`, `channel 1 #canal`, `pause 1` y `resume 1`",
+            "Un temporizador con un embed guardado de Components V2 nunca publicaba: su texto (aunque fuera solo un `.`) se enviaba junto al diseño, Discord rechazaba todo el mensaje y el temporizador pasaba al día siguiente sin avisar. Un diseño V2 ya no recibe ese texto como contenido (entra como el primer texto del diseño cuando dice algo), y un envío que falla se guarda y se ve en `!timer view`, `!timer list` y el dashboard",
+            "Sitio web: la página Temporizadores muestra el número de cada temporizador, por qué falló su último envío, un botón \"Enviar ahora\" y un interruptor \"En pausa\", y un guardado que falla dice por qué. Un embed guardado enviado desde el editor de embeds conserva sus botones que dan un rol o muestran un embed guardado (se quedaban fuera)",
           ],
         },
         {
@@ -3147,6 +3153,9 @@ export const ui = {
             "A DM de entrada (`!dmonjoin`) não tem mais botões com ação, que só funcionam em um servidor; os botões de link continuam",
             "Um formulário do Petto Code cujo menu ou caixas começam com mais opções marcadas do que o seu `max` é avisado como um erro em vez de ser recusado pelo Discord",
             "Site: este changelog tem um feed RSS (petto.sbs/pt-br/changelog/rss.xml, também em inglês e espanhol), então pode ser seguido com `!feed add rss`. A página Feeds do dashboard pergunta qual significado de uma palavra você quer, com um botão para cada um, e sempre diz por que um feed está com problemas",
+            "Temporizadores em um horário do dia: um temporizador pode publicar todo dia ou toda semana em um horário, em um fuso (`!timer add #avisos daily 18:00 America/Sao_Paulo Olá`). Cada servidor numera os seus temporizadores 1, 2, 3, e o `!timer` tem subcomandos novos: `run 1` envia um temporizador agora sem mudar o horário, `edit 1 daily 07:00 America/Sao_Paulo` (ou `edit 1 2h`) muda quando ele publica, `message 1 <texto>`, `channel 1 #canal`, `pause 1` e `resume 1`",
+            "Um temporizador com um embed salvo de Components V2 nunca publicava: o texto dele (mesmo um `.` sozinho) ia junto com o design, o Discord recusava a mensagem inteira e o temporizador passava para o dia seguinte sem avisar. Um design V2 não recebe mais esse texto como conteúdo (ele entra como o primeiro texto do design quando diz algo), e um envio que falha fica guardado e aparece no `!timer view`, no `!timer list` e no dashboard",
+            "Site: a página Temporizadores mostra o número de cada temporizador, por que o último envio falhou, um botão \"Enviar agora\" e um botão \"Pausado\", e um salvamento que falha diz o porquê. Um embed salvo enviado pelo editor de embeds mantém os botões que dão um cargo ou mostram um embed salvo (eles ficavam de fora)",
           ],
         },
         {

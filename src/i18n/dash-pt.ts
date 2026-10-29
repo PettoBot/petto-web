@@ -4879,4 +4879,13 @@ export const dashPt: Record<string, string> = {
   "Write the time as HH:MM and choose a valid time zone (e.g. America/Bogota or UTC-5).": "Escreva a hora como HH:MM e escolha um fuso horário válido (ex.: America/Sao_Paulo ou UTC-3).",
   "The bot could not save the schedule. It may need to be updated first.": "O bot não conseguiu salvar o horário. Talvez ele precise ser atualizado primeiro.",
   "Daily and weekly timers post at a time of day in the time zone you choose, and keep that time when the clocks change.": "Os temporizadores diários e semanais publicam em uma hora do dia no fuso horário que você escolher, e mantêm essa hora quando muda o horário de verão.",
+  "Sent.": "Enviado.",
+  "The bot could not send the timer. It may need to be updated first.": "O bot não conseguiu enviar o temporizador. Talvez ele precise ser atualizado primeiro.",
+  "The timer could not be saved. Try again.": "Não foi possível salvar o temporizador. Tente de novo.",
+  "Timer number (the one the commands use)": "Número do temporizador (o que os comandos usam)",
+  "Timer {a}": "Temporizador {a}",
+  "Send now (the schedule does not change)": "Enviar agora (o horário não muda)",
+  "Send now": "Enviar agora",
+  "Last send failed: {a}": "O último envio falhou: {a}",
+  "Paused (sends nothing until it is turned off)": "Pausado (não envia nada até você desativar)",
 };
