@@ -5,6 +5,7 @@ import { redrawPanelsInServerLanguage } from '../../../../utils/panelLanguage';
 import DashAutomation from '../../../../components/DashAutomation.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { timerIntervalMs } from '../../../../utils/timerInterval';
+import { timerScheduleFields } from '../../../../utils/timerSchedule';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { validateTemplate } from '../../../../utils/embedSchema';
@@ -560,27 +561,36 @@ if (Astro.request.method === 'POST') {
     const message = String(form.get('message') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000);
     const deletePrevious = form.get('delete_previous') === 'on';
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
-    if (channelId && (message || embedTemplate)) {
-      const res = await fetch(`${apiUrl}/rest/v1/auto_messages`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, interval_ms: intervalMs, message, ...(deletePrevious ? { delete_previous: true } : {}), ...(embedTemplate ? { embed_template: embedTemplate } : {}), next_run_at: new Date(Date.now() + intervalMs).toISOString() }) });
+    // Every day or week at a time: the schedule fields go only with such a timer, so an interval timer is written as before.
+    const scheduled = timerScheduleFields(form);
+    if (scheduled && 'error' in scheduled) error = dt('Write the time as HH:MM and choose a valid time zone (e.g. America/Bogota or UTC-5).');
+    else if (channelId && (message || embedTemplate)) {
+      const timing = scheduled ?? { interval_ms: intervalMs, next_run_at: new Date(Date.now() + intervalMs).toISOString() };
+      const res = await fetch(`${apiUrl}/rest/v1/auto_messages`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, channel_id: channelId, message, ...(deletePrevious ? { delete_previous: true } : {}), ...(embedTemplate ? { embed_template: embedTemplate } : {}), ...timing }) });
       saved = res.ok;
-      if (!res.ok) error = dt('That channel may already have a timer.');
+      if (!res.ok) error = scheduled && res.status !== 409 ? dt('The bot could not save the schedule. It may need to be updated first.') : dt('That channel may already have a timer.');
     }
   } else if (action === 'edit_timer') {
     const intervalMs = timerIntervalMs(form);
     const message = String(form.get('message') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000);
     const deletePrevious = form.get('delete_previous') === 'on';
     const embedTemplate = String(form.get('embed_template') ?? '').trim() || null;
-    if (message || embedTemplate) {
+    const scheduled = timerScheduleFields(form);
+    // Back to an interval from a schedule: the schedule is taken off (only then, so a bot without the schedule columns still saves).
+    const unschedule = !scheduled && ['daily', 'weekly'].includes(String(form.get('old_schedule') ?? '')) ? { schedule: 'interval', at_time: null, weekday: null } : {};
+    if (scheduled && 'error' in scheduled) error = dt('Write the time as HH:MM and choose a valid time zone (e.g. America/Bogota or UTC-5).');
+    else if (message || embedTemplate) {
       const patchUrl = `${apiUrl}/rest/v1/auto_messages?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`;
       // The channel can be changed here: the message of the time before lives in the old one, so it is forgotten.
       const channelId = String(form.get('channel_id') ?? '');
       const moved = /^\d{15,25}$/.test(channelId) && channelId !== String(form.get('old_channel_id') ?? '');
-      const patch = { interval_ms: intervalMs, message, next_run_at: new Date(Date.now() + intervalMs).toISOString(), ...(moved ? { channel_id: channelId } : {}) };
+      const patch = { interval_ms: intervalMs, message, next_run_at: new Date(Date.now() + intervalMs).toISOString(), ...unschedule, ...(scheduled ?? {}), ...(moved ? { channel_id: channelId } : {}) };
       const send = (body: object) => fetch(patchUrl, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
       // delete_previous and embed_template arrive with a database update: before it, the rest is still saved.
       let res = await send({ ...patch, delete_previous: deletePrevious, embed_template: embedTemplate, ...(moved ? { last_message_id: null } : {}) });
       if (!res.ok) res = await send(patch);
       saved = res.ok;
+      if (!res.ok && scheduled) error = dt('The bot could not save the schedule. It may need to be updated first.');
     }
   } else if (action === 'save_sticky_roles') {
     const res = await fetch(`${apiUrl}/rest/v1/sticky_roles_config?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, enabled: form.get('enabled') === 'on' }) });
@@ -722,7 +732,7 @@ const reactionMessages = reactionMessagesRes?.ok ? (await reactionMessagesRes.js
 const disabledCommands = disabledRes?.ok ? (await disabledRes.json()).map((d: any) => ({ id: d.id, command: d.command, channelId: d.channel_id })) : [];
 const autoThreads = autoThreadsRes?.ok ? (await autoThreadsRes.json()).map((t: any) => ({ channelId: t.channel_id, nameTemplate: t.name_template, messageText: t.message_text, embedTemplate: t.embed_template, archiveMinutes: t.archive_minutes })) : [];
 const aliases = aliasesRes?.ok ? (await aliasesRes.json()).map((a: any) => ({ id: a.id, name: a.name, command: a.command })) : [];
-const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at, deletePrevious: t.delete_previous ?? false, embedTemplate: t.embed_template ?? '' })) : [];
+const timers = timersRes?.ok ? (await timersRes.json()).map((t: any) => ({ id: t.id, channelId: t.channel_id, intervalMs: Number(t.interval_ms), message: t.message, nextRunAt: t.next_run_at, deletePrevious: t.delete_previous ?? false, embedTemplate: t.embed_template ?? '', schedule: t.schedule === 'daily' || t.schedule === 'weekly' ? t.schedule : 'interval', atTime: t.at_time ?? '', timezone: t.timezone ?? 'UTC', weekday: t.weekday == null ? null : Number(t.weekday) })) : [];
 const starboardRows = starboardRes?.ok ? await starboardRes.json() : [];
 const starboard = starboardRows[0] ? { ...starboardRows[0], ignoredChannelIds: starboardRows[0].ignored_channel_ids ?? [], ignoredRoleIds: starboardRows[0].ignored_role_ids ?? [], ignoredUserIds: starboardRows[0].ignored_user_ids ?? [] } : null;
 const monkeyboardRows = monkeyboardRes?.ok ? await monkeyboardRes.json() : [];

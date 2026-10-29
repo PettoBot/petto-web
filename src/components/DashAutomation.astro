@@ -7,6 +7,7 @@ import MultiSelect from './MultiSelect.astro';
 import MultiSelectOptions from './MultiSelectOptions.astro';
 import { groupRules, disableableCommands } from '../utils/disabledCommands';
 import { TIMER_UNITS, splitInterval } from '../utils/timerInterval';
+import { timeZoneList, weekdayName } from '../utils/timerSchedule';
 import ColorPicker from './ColorPicker.astro';
 import EmojiPicker from './EmojiPicker.astro';
 import LiveTextPreview from './LiveTextPreview.astro';
@@ -33,7 +34,7 @@ interface ManagedWebhook { id: number; name: string; channelId: string; webhookI
 interface ServerCounter { id: number; channelId: string; option: string; type: string; nameTemplate: string; prefix: string; suffix: string; parentId: string | null; intervalSeconds: number; enabled: boolean; }
 interface AutoThread { channelId: string; nameTemplate: string; messageText: string | null; embedTemplate: string | null; archiveMinutes: number; }
 interface CommandAlias { id: number; name: string; command: string; }
-interface AutoTimer { id: number; channelId: string; intervalMs: number; message: string; nextRunAt: string; deletePrevious?: boolean; embedTemplate?: string; }
+interface AutoTimer { id: number; channelId: string; intervalMs: number; message: string; nextRunAt: string; deletePrevious?: boolean; embedTemplate?: string; schedule?: string; atTime?: string; timezone?: string; weekday?: number | null; }
 interface StarboardSettings { channel_id: string | null; threshold: number; emoji: string; color?: number | null; selfstar: boolean; timestamp: boolean; jumpurl: boolean; attachments: boolean; embed_template?: string | null; ignoredChannelIds: string[]; ignoredRoleIds: string[]; ignoredUserIds: string[]; }
 interface VoiceMasterSettings { creatorChannelId: string; panelChannelId: string; panelMessageId: string | null; categoryId: string | null; defaultLimit: number; defaultName: string; syncCategoryPermissions?: boolean; accessRoleIds?: string[]; privacyMode?: string; ownerPermissions?: string[]; }
 
@@ -115,6 +116,11 @@ const responderLimit = planLimits(premiumActive).autoResponders;
 const timerUnitLabel: Record<string, string> = { seconds: dt('Seconds'), minutes: dt('Minutes'), hours: dt('Hours'), days: dt('Days'), weeks: dt('Weeks'), months: dt('Months'), years: dt('Years') };
 const timerUnitOne: Record<string, string> = { seconds: dt('1 second'), minutes: dt('1 minute'), hours: dt('1 hour'), days: dt('1 day'), weeks: dt('1 week'), months: dt('1 month'), years: dt('1 year') };
 const intervalText = (ms: number) => { const { value, unit } = splitInterval(ms); return value === 1 ? timerUnitOne[unit] : `${value} ${timerUnitLabel[unit].toLowerCase()}`; };
+// Timers at a time of day: the text of the schedule, the weekdays (Monday first) and the time zones of the zone field.
+const timerWhen = (t: AutoTimer) => t.schedule === 'daily' ? dt('Every day at {a} ({b})', { a: t.atTime ?? '', b: t.timezone ?? 'UTC' }) : t.schedule === 'weekly' ? dt('Every {a} at {b} ({c})', { a: weekdayName(Number(t.weekday ?? 0), dashLang), b: t.atTime ?? '', c: t.timezone ?? 'UTC' }) : intervalText(t.intervalMs);
+const timerWeekdays = [1, 2, 3, 4, 5, 6, 0].map((day) => ({ day, name: weekdayName(day, dashLang) }));
+const timerZones = selectedSection === 'timers' ? timeZoneList() : [];
+const timerNextText = (iso: string) => { const at = Date.parse(iso); return Number.isFinite(at) ? new Date(at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : ''; };
 const sectionIcons: Record<string, string> = {
   'custom-commands': 'ph:chat-circle-dots-fill', autoresponders: 'ph:robot-fill', 'sticky-messages': 'ph:push-pin-fill',
   'reaction-roles': 'ph:smiley-fill', 'reaction-triggers': 'ph:smiley-fill', 'reaction-messages': 'ph:chat-circle-dots-fill',
@@ -384,11 +390,11 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
     <div class="am-list dgl-stagger">
       {timers.map((t) => (
         <details class="am-ar am-card dgl-rc">
-          <summary class="am-card-sum"><span class="am-card-head"><span class="am-card-main"><span class="am-row-key">#{channelName(t.channelId)}</span><span class="am-row-mode">{intervalText(t.intervalMs)}</span>{t.deletePrevious && <span class="am-row-mode" title={dt('Deletes the message of the time before')}><Icon name="ph:arrows-clockwise-bold" width="10" height="10" /></span>}</span><span class="am-card-acts"><span class="am-act" aria-hidden="true"><Icon name="ph:pencil-simple-fill" width="12" height="12" /><span class="am-act-t"><span class="am-t-edit">{dt('Edit')}</span><span class="am-t-close">{dt('Close')}</span></span></span><button type="submit" form={`am-del-timer-${t.id}`} class="am-act am-act-del" title={dt('Delete')} aria-label={dt('Delete')} data-confirm={dt('Delete this? This cannot be undone.')}><Icon name="ph:trash-fill" width="12" height="12" /></button></span></span><span class="am-chat"><span class="am-msg"><img class="am-av" src="/assets/mascot-icon.webp" alt="" width="22" height="22" loading="lazy" decoding="async" /><span class="am-msg-body" data-cp data-cp-text={t.message} data-cp-template={t.embedTemplate ?? ''}><span class="am-msg-name am-msg-bot">Petto<span class="am-msg-tag">{dt('APP')}</span></span>{t.embedTemplate && <span class="am-msg-embed" style="--ec:var(--border)"><span class="am-msg-embed-title">{t.embedTemplate}</span></span>}{t.message ? <span class="am-msg-text am-msg-clamp" title={t.message}>{t.message}</span> : !t.embedTemplate && <span class="am-msg-text am-msg-none">{dt('No reply text')}</span>}</span></span></span></summary>
-          <form method="POST" class="am-add am-add-wide am-ar-edit">
+          <summary class="am-card-sum"><span class="am-card-head"><span class="am-card-main"><span class="am-row-key">#{channelName(t.channelId)}</span><span class="am-row-mode">{timerWhen(t)}</span>{t.nextRunAt && <span class="am-row-mode" title={dt('Next run')}><Icon name="ph:clock-fill" width="10" height="10" /><time datetime={t.nextRunAt} data-tm-next>{dt('Next: {a}', { a: timerNextText(t.nextRunAt) })}</time></span>}{t.deletePrevious && <span class="am-row-mode" title={dt('Deletes the message of the time before')}><Icon name="ph:arrows-clockwise-bold" width="10" height="10" /></span>}</span><span class="am-card-acts"><span class="am-act" aria-hidden="true"><Icon name="ph:pencil-simple-fill" width="12" height="12" /><span class="am-act-t"><span class="am-t-edit">{dt('Edit')}</span><span class="am-t-close">{dt('Close')}</span></span></span><button type="submit" form={`am-del-timer-${t.id}`} class="am-act am-act-del" title={dt('Delete')} aria-label={dt('Delete')} data-confirm={dt('Delete this? This cannot be undone.')}><Icon name="ph:trash-fill" width="12" height="12" /></button></span></span><span class="am-chat"><span class="am-msg"><img class="am-av" src="/assets/mascot-icon.webp" alt="" width="22" height="22" loading="lazy" decoding="async" /><span class="am-msg-body" data-cp data-cp-text={t.message} data-cp-template={t.embedTemplate ?? ''}><span class="am-msg-name am-msg-bot">Petto<span class="am-msg-tag">{dt('APP')}</span></span>{t.embedTemplate && <span class="am-msg-embed" style="--ec:var(--border)"><span class="am-msg-embed-title">{t.embedTemplate}</span></span>}{t.message ? <span class="am-msg-text am-msg-clamp" title={t.message}>{t.message}</span> : !t.embedTemplate && <span class="am-msg-text am-msg-none">{dt('No reply text')}</span>}</span></span></span></summary>
+          <form method="POST" class="am-add am-add-wide am-ar-edit am-tm-form">
             <input type="hidden" name="action" value="edit_timer" /><input type="hidden" name="id" value={t.id} /><input type="hidden" name="old_channel_id" value={t.channelId} />
             <select name="channel_id" required aria-label={dt('Channel')}>{!channels.some((c) => c.id === t.channelId) && <option value={t.channelId} selected>#{channelName(t.channelId)}</option>}{channels.map((c) => <option value={c.id} selected={c.id === t.channelId}>#{c.name}</option>)}</select>
-            <div class="am-add-row"><input type="number" name="interval_value" min="1" step="any" value={splitInterval(t.intervalMs).value} aria-label={dt('Repeat every')} required /><select name="interval_unit" aria-label={dt('Unit')}>{TIMER_UNITS.map((u) => <option value={u.id} selected={u.id === splitInterval(t.intervalMs).unit}>{timerUnitLabel[u.id]}</option>)}</select></div>
+            <div class="am-add-row am-tm-repeat"><input type="hidden" name="old_schedule" value={t.schedule ?? 'interval'} /><label class="am-tm-label">{dt('Repeat')}<select name="schedule" aria-label={dt('Repeat')}><option value="interval" selected={(t.schedule ?? 'interval') === 'interval'}>{dt('Every interval')}</option><option value="daily" selected={(t.schedule ?? 'interval') === 'daily'}>{dt('Every day')}</option><option value="weekly" selected={(t.schedule ?? 'interval') === 'weekly'}>{dt('Every week')}</option></select></label></div><div class="am-add-row am-tm-sched"><input type="time" name="at_time" value={t.atTime ?? ''} aria-label={dt('Time')} /><select name="weekday" class="am-tm-week" aria-label={dt('Day of the week')}>{timerWeekdays.map((d) => <option value={d.day} selected={d.day === Number(t.weekday ?? 1)}>{d.name}</option>)}</select><input type="text" name="timezone" list="am-tm-zones" value={t.timezone ?? 'UTC'} autocomplete="off" spellcheck="false" maxlength="64" placeholder={dt('Search a time zone (e.g. America/Bogota)')} aria-label={dt('Time zone')} /></div><div class="am-add-row am-tm-int"><input type="number" name="interval_value" min="1" step="any" value={splitInterval(t.intervalMs).value} aria-label={dt('Repeat every')} required /><select name="interval_unit" aria-label={dt('Unit')}>{TIMER_UNITS.map((u) => <option value={u.id} selected={u.id === splitInterval(t.intervalMs).unit}>{timerUnitLabel[u.id]}</option>)}</select></div>
             <textarea class="dgl-autogrow" rows="2" name="message" data-ac maxlength="2000" required={!embedTemplateNames.length}>{t.message}</textarea>
             {embedTemplateNames.length > 0 && <select name="embed_template" aria-label={dt('Saved embed')}><option value="">{dt('No saved embed')}</option>{embedTemplateNames.map((name) => <option value={name} selected={name === t.embedTemplate}>{name}</option>)}</select>}
             <label class="am-check"><input type="checkbox" name="delete_previous" checked={t.deletePrevious} />{dt('Delete the message of the time before (the bot needs Manage Messages)')}</label>
@@ -398,14 +404,35 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
         </details>
       ))}
     </div>
-    <form method="POST" class="am-add am-add-wide" data-no-dirty>
-      <input type="hidden" name="action" value="add_timer" /><div class="am-add-row"><select name="channel_id" required><option value="" disabled selected>{dt('Channel')}</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select><input type="number" name="interval_value" min="1" step="any" value="10" aria-label={dt('Repeat every')} required /><select name="interval_unit" aria-label={dt('Unit')}>{TIMER_UNITS.map((u) => <option value={u.id} selected={u.id === 'minutes'}>{timerUnitLabel[u.id]}</option>)}</select></div>
+    <form method="POST" class="am-add am-add-wide am-tm-form" data-no-dirty>
+      <input type="hidden" name="action" value="add_timer" /><div class="am-add-row"><select name="channel_id" required><option value="" disabled selected>{dt('Channel')}</option>{channels.map((c) => <option value={c.id}>#{c.name}</option>)}</select></div><div class="am-add-row am-tm-repeat"><label class="am-tm-label">{dt('Repeat')}<select name="schedule" aria-label={dt('Repeat')}><option value="interval" selected>{dt('Every interval')}</option><option value="daily" >{dt('Every day')}</option><option value="weekly" >{dt('Every week')}</option></select></label></div><div class="am-add-row am-tm-sched"><input type="time" name="at_time" value="18:00" aria-label={dt('Time')} /><select name="weekday" class="am-tm-week" aria-label={dt('Day of the week')}>{timerWeekdays.map((d) => <option value={d.day} selected={d.day === 1}>{d.name}</option>)}</select><input type="text" name="timezone" list="am-tm-zones" value="UTC" autocomplete="off" spellcheck="false" maxlength="64" placeholder={dt('Search a time zone (e.g. America/Bogota)')} aria-label={dt('Time zone')} data-tm-zone-default /></div><div class="am-add-row am-tm-int"><input type="number" name="interval_value" min="1" step="any" value="10" aria-label={dt('Repeat every')} required /><select name="interval_unit" aria-label={dt('Unit')}>{TIMER_UNITS.map((u) => <option value={u.id} selected={u.id === 'minutes'}>{timerUnitLabel[u.id]}</option>)}</select></div>
       <textarea class="dgl-autogrow" rows="2" name="message" data-ac placeholder={dt('Message to send repeatedly')} maxlength="2000" required={!embedTemplateNames.length}></textarea>
       {embedTemplateNames.length > 0 && <select name="embed_template" aria-label={dt('Saved embed')}><option value="">{dt('No saved embed')}</option>{embedTemplateNames.map((name) => <option value={name}>{name}</option>)}</select>}
       <label class="am-check"><input type="checkbox" name="delete_previous" />{dt('Delete the message of the time before (the bot needs Manage Messages)')}</label>
       <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add timer')}</button>
     </form>
-    <p class="am-hint">{dt('Minimum interval: 10 minutes (600 seconds), up to 10 years. One timer per channel.')}{embedTemplateNames.length > 0 && <> {dt('With a saved embed, the message is optional and goes above it.')}</>}</p>
+    <datalist id="am-tm-zones">{timerZones.map((zone) => <option value={zone} />)}</datalist>
+    <script is:inline define:vars={{ tmNext: dt('Next: {a}') }}>
+      // Timers: the zone of a new timer starts as the browser's, and the next runs show in the viewer's own time. Runs on every visit
+      // of the page (it only fills fields of this page); the window flag keeps the function from being defined again.
+      if (!window.__amTimerZone) {
+        window.__amTimerZone = function (nextLabel) {
+          var zone = '';
+          try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+          document.querySelectorAll('#dgl-content input[data-tm-zone-default]').forEach(function (el) {
+            if (zone && el.value === 'UTC' && !el.hasAttribute('data-tm-zone-set')) el.value = zone;
+            el.setAttribute('data-tm-zone-set', '');
+          });
+          document.querySelectorAll('#dgl-content time[data-tm-next]').forEach(function (el) {
+            var at = Date.parse(el.getAttribute('datetime') || '');
+            if (!isFinite(at)) return;
+            try { el.textContent = nextLabel.replace('{a}', new Date(at).toLocaleString(document.documentElement.lang || undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })); } catch (e) {}
+          });
+        };
+      }
+      window.__amTimerZone(tmNext);
+    </script>
+    <p class="am-hint">{dt('Minimum interval: 10 minutes (600 seconds), up to 10 years. One timer per channel.')} {dt('Daily and weekly timers post at a time of day in the time zone you choose, and keep that time when the clocks change.')}{embedTemplateNames.length > 0 && <> {dt('With a saved embed, the message is optional and goes above it.')}</>}</p>
   </div>
   )}
 
@@ -1205,6 +1232,12 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   .am-card[open] .am-t-close { display: inline; }
   .am-card-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .am-row-key { font-family: var(--mono); color: var(--accent); font-weight: 600; background: var(--accent-soft); padding: 2px 8px; border-radius: 5px; flex-shrink: 0; }
+  .am-tm-label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .am-tm-form:has(select[name="schedule"] option[value="interval"]:checked) .am-tm-sched { display: none; }
+  .am-tm-form:has(select[name="schedule"] option[value="daily"]:checked) .am-tm-int,
+  .am-tm-form:has(select[name="schedule"] option[value="weekly"]:checked) .am-tm-int { display: none; }
+  .am-tm-form:has(select[name="schedule"] option[value="daily"]:checked) .am-tm-week { display: none; }
+  .am-tm-sched input[name="timezone"] { flex: 1 1 180px; min-width: 0; }
   .am-row-mode { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-dim); background: var(--bg-raise); border: 1px solid var(--border-soft); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; text-decoration: none; }
   .am-row-val { color: var(--text-muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .am-card-line > .am-row-val { flex: 1; }
