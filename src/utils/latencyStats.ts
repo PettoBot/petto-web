@@ -5,7 +5,7 @@
  * The Worker build and `astro dev` have no server.mjs, so there is nothing to show there.
  */
 
-export interface LatencyEntry { p: string; m: string; s: number; t: number; st: string; at: number }
+export interface LatencyEntry { p: string; u?: string; m: string; s: number; t: number; st: string; at: number }
 interface Store { entries: LatencyEntry[]; max: number; total: number; restored?: boolean }
 
 const REDIS_KEY = 'petto:web:latency';
@@ -67,7 +67,8 @@ function percentile(sorted: number[], p: number): number {
 }
 
 export interface LatencyGroup { path: string; count: number; avg: number; p50: number; p95: number; max: number; notModified: number; parts: Record<string, number> }
-export interface LatencyReport { available: boolean; count: number; since: number | null; overall: LatencyGroup | null; slowest: LatencyGroup[]; pages: LatencyGroup[]; partNames: readonly string[] }
+export interface RecentRequest { at: number; method: string; status: number; path: string; ms: number }
+export interface LatencyReport { available: boolean; count: number; since: number | null; overall: LatencyGroup | null; slowest: LatencyGroup[]; pages: LatencyGroup[]; partNames: readonly string[]; failures: RecentRequest[]; changes: RecentRequest[] }
 
 function group(path: string, entries: LatencyEntry[]): LatencyGroup {
   const times = entries.map((entry) => entry.t).sort((a, b) => a - b);
@@ -96,7 +97,7 @@ function group(path: string, entries: LatencyEntry[]): LatencyGroup {
 /** The numbers of the health page: all requests together, the ten slowest paths (by p95) and every path. */
 export function latencyReport(): LatencyReport {
   const kept = store();
-  if (!kept) return { available: false, count: 0, since: null, overall: null, slowest: [], pages: [], partNames: PARTS };
+  if (!kept) return { available: false, count: 0, since: null, overall: null, slowest: [], pages: [], partNames: PARTS, failures: [], changes: [] };
   const entries = kept.entries.slice();
   const byPath = new Map<string, LatencyEntry[]>();
   for (const entry of entries) {
@@ -106,5 +107,10 @@ export function latencyReport(): LatencyReport {
   }
   const pages = [...byPath].map(([path, list]) => group(path, list)).sort((a, b) => b.count - a.count);
   const slowest = [...pages].sort((a, b) => b.p95 - a.p95 || b.avg - a.avg).slice(0, 10);
-  return { available: true, count: entries.length, since: entries[0]?.at ?? null, overall: entries.length ? group('*', entries) : null, slowest, pages, partNames: PARTS };
+  // The last requests that failed (4xx, 5xx) and the last that changed something (a save), with the address as it was asked (the language
+  // prefix and the server id are kept: that is what tells a failure of /es apart from one of the address without prefix).
+  const recent = (entry: LatencyEntry): RecentRequest => ({ at: entry.at, method: entry.m, status: entry.s, path: entry.u ?? entry.p, ms: entry.t });
+  const failures = entries.filter((entry) => entry.s >= 400).slice(-40).reverse().map(recent);
+  const changes = entries.filter((entry) => !['GET', 'HEAD'].includes(entry.m)).slice(-25).reverse().map(recent);
+  return { available: true, count: entries.length, since: entries[0]?.at ?? null, overall: entries.length ? group('*', entries) : null, slowest, pages, partNames: PARTS, failures, changes };
 }
