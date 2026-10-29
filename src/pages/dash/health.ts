@@ -5,7 +5,7 @@ import { isPettoOwner } from '../../utils/premiumAdmin';
 import { getEnv } from '../../utils/env';
 import { buildInfo } from '../../utils/buildInfo';
 import { readGuildSnapshot } from '../../utils/guildSnapshots';
-import { latencyReport, type LatencyGroup, type LatencyReport } from '../../utils/latencyStats';
+import { latencyReport, type LatencyGroup, type LatencyReport, type RecentRequest } from '../../utils/latencyStats';
 import { liveListenerCount } from '../../utils/guildVersion';
 import { liveClientStats, type LiveClient } from '../../utils/liveClients';
 import { getDashLang } from '../../i18n/dash';
@@ -101,7 +101,7 @@ const WORDS: Record<string, Record<string, string>> = {
     'stream': 'en vivo', 'polling': 'consultando', 'silent': 'el proxy retiene la conexión', 'error': 'la conexión falló', 'unsupported': 'el navegador no la admite',
     'Open pages hear about changes through a live stream, or ask every 12 seconds when it is held back (a proxy that buffers it) or fails.': 'Las páginas abiertas se enteran de los cambios por una conexión en vivo, o preguntan cada 12 segundos cuando esta se retiene (un proxy que la acumula) o falla.',
     'Dashboard health': 'Estado del panel', 'Latency': 'Latencia', 'Last {n} dashboard requests, measured on this server from the first byte in to the last byte out.': 'Últimas {n} peticiones del panel, medidas en este servidor desde el primer byte que entra hasta el último que sale.',
-    'Requests': 'Peticiones', 'Average': 'Media', 'Slowest': 'Máximo', 'Not modified (304)': 'Sin cambios (304)', 'Open live pages': 'Páginas abiertas en vivo',
+    'Saves and changes (newest first)': 'Guardados y cambios (lo más nuevo primero)', 'Every request that is not a plain page read, with the address as it was asked. A save that never shows here did not reach this server.': 'Toda petición que no es solo leer una página, con la dirección tal como se pidió. Un guardado que no sale aquí no llegó a este servidor.', 'Failed requests (4xx and 5xx)': 'Peticiones que fallaron (4xx y 5xx)', 'When': 'Cuándo', 'Method': 'Método', 'Status': 'Estado', 'Nothing yet.': 'Todavía nada.', 'Requests': 'Peticiones', 'Average': 'Media', 'Slowest': 'Máximo', 'Not modified (304)': 'Sin cambios (304)', 'Open live pages': 'Páginas abiertas en vivo',
     'Average of each part (ms)': 'Media de cada parte (ms)', 'The 10 slowest paths': 'Las 10 rutas más lentas', 'Every page': 'Todas las páginas', 'Path': 'Ruta',
     'Nothing measured yet.': 'Aún no hay medidas.', 'Measured only on the Node server (Discloud).': 'Solo se mide en el servidor Node (Discloud).', 'Since': 'Desde',
     'Checks': 'Comprobaciones', 'Everything as JSON': 'Todo en JSON', 'auth: session and access check · db: tables · discord: Discord API · bot: bot API · layout: menu data · render: until the page starts': 'auth: sesión y acceso · db: tablas · discord: API de Discord · bot: API del bot · layout: datos del menú · render: hasta que empieza la página',
@@ -115,7 +115,7 @@ const WORDS: Record<string, Record<string, string>> = {
     'stream': 'ao vivo', 'polling': 'consultando', 'silent': 'o proxy segura a conexão', 'error': 'a conexão falhou', 'unsupported': 'o navegador não suporta',
     'Open pages hear about changes through a live stream, or ask every 12 seconds when it is held back (a proxy that buffers it) or fails.': 'As páginas abertas ficam sabendo das mudanças por uma conexão ao vivo, ou perguntam a cada 12 segundos quando ela é segurada (um proxy que a acumula) ou falha.',
     'Dashboard health': 'Saúde do painel', 'Latency': 'Latência', 'Last {n} dashboard requests, measured on this server from the first byte in to the last byte out.': 'Últimas {n} requisições do painel, medidas neste servidor do primeiro byte que entra ao último que sai.',
-    'Requests': 'Requisições', 'Average': 'Média', 'Slowest': 'Máximo', 'Not modified (304)': 'Sem mudanças (304)', 'Open live pages': 'Páginas abertas ao vivo',
+    'Saves and changes (newest first)': 'Salvamentos e mudanças (mais novo primeiro)', 'Every request that is not a plain page read, with the address as it was asked. A save that never shows here did not reach this server.': 'Toda requisição que não é só ler uma página, com o endereço como foi pedido. Um salvamento que não aparece aqui não chegou a este servidor.', 'Failed requests (4xx and 5xx)': 'Requisições que falharam (4xx e 5xx)', 'When': 'Quando', 'Method': 'Método', 'Status': 'Status', 'Nothing yet.': 'Ainda nada.', 'Requests': 'Requisições', 'Average': 'Média', 'Slowest': 'Máximo', 'Not modified (304)': 'Sem mudanças (304)', 'Open live pages': 'Páginas abertas ao vivo',
     'Average of each part (ms)': 'Média de cada parte (ms)', 'The 10 slowest paths': 'As 10 rotas mais lentas', 'Every page': 'Todas as páginas', 'Path': 'Rota',
     'Nothing measured yet.': 'Nada medido ainda.', 'Measured only on the Node server (Discloud).': 'Medido só no servidor Node (Discloud).', 'Since': 'Desde',
     'Checks': 'Verificações', 'Everything as JSON': 'Tudo em JSON', 'auth: session and access check · db: tables · discord: Discord API · bot: bot API · layout: menu data · render: until the page starts': 'auth: sessão e acesso · db: tabelas · discord: API do Discord · bot: API do bot · layout: dados do menu · render: até a página começar',
@@ -132,6 +132,9 @@ function healthPage(report: Record<string, unknown>, latency: LatencyReport, lan
   const t = (text: string, values: Record<string, unknown> = {}) => (WORDS[lang]?.[text] ?? text).replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
   const ms = (value: number) => `${value} ms`;
   const row = (entry: LatencyGroup) => `<tr><td class="path">${escape(entry.path)}</td><td>${entry.count}</td><td>${entry.avg}</td><td>${entry.p50}</td><td>${entry.p95}</td><td>${entry.max}</td>${latency.partNames.map((name) => `<td class="part">${entry.parts[name] ?? 0}</td>`).join('')}</tr>`;
+  const recentTable = (list: RecentRequest[]) => list.length
+    ? `<div class="scroll"><table><tr><th>${t('When')}</th><th>${t('Method')}</th><th>${t('Status')}</th><th>${t('Path')}</th><th>ms</th></tr>${list.map((entry) => `<tr><td>${escape(new Date(entry.at).toISOString().replace('T', ' ').slice(0, 19))}</td><td>${escape(entry.method)}</td><td>${entry.status}</td><td class="path">${escape(entry.path)}</td><td>${entry.ms}</td></tr>`).join('')}</table></div>`
+    : `<p class="muted">${t('Nothing yet.')}</p>`;
   const head = `<tr><th>${t('Path')}</th><th>n</th><th>avg</th><th>p50</th><th>p95</th><th>max</th>${latency.partNames.map((name) => `<th class="part">${name}</th>`).join('')}</tr>`;
   const overall = latency.overall;
   const body = !latency.available
@@ -153,7 +156,12 @@ function healthPage(report: Record<string, unknown>, latency: LatencyReport, lan
 <h3>${t('The 10 slowest paths')}</h3>
 <div class="scroll"><table>${head}${latency.slowest.map(row).join('')}</table></div>
 <h3>${t('Every page')}</h3>
-<div class="scroll"><table>${head}${latency.pages.map(row).join('')}</table></div>`;
+<div class="scroll"><table>${head}${latency.pages.map(row).join('')}</table></div>
+<h3>${t('Saves and changes (newest first)')}</h3>
+<p class="muted small">${t('Every request that is not a plain page read, with the address as it was asked. A save that never shows here did not reach this server.')}</p>
+${recentTable(latency.changes)}
+<h3>${t('Failed requests (4xx and 5xx)')}</h3>
+${recentTable(latency.failures)}`;
   const live = report.live as { streams: number; polling: number; pollingReasons: Record<string, number> };
   const reasons = Object.entries(live.pollingReasons).map(([reason, count]) => `${escape(t(reason))}: ${count}`).join(' · ');
   const ago = (at: number) => `${Math.max(0, Math.round((Date.now() - at) / 1000))} s`;
