@@ -35,7 +35,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   await directDatabase;
   configureSnapshots({ locals: context.locals });
   // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
-  if (DASH_PATH.test(context.url.pathname)) return withFreshDash(await timed(context, () => handle(context, (payload?: any) => (payload ? next(payload) : guildPage(context, next)))));
+  if (DASH_PATH.test(context.url.pathname)) {
+    const response = withFreshDash(await timed(context, () => handle(context, (payload?: any) => (payload ? next(payload) : guildPage(context, next)))));
+    // A change answered "not found" is said in the log with where it came from, to tell a page that said it from a route that was not found.
+    if (response.status === 404 && !['GET', 'HEAD'].includes(context.request.method.toUpperCase())) {
+      console.warn(`[web] the dashboard answered 404 to ${context.request.method} ${context.url.pathname} (route ${(context as any).routePattern ?? 'unknown'}, reroute ${response.headers.get('x-astro-reroute') ?? 'none'})`);
+    }
+    return response;
+  }
   return handle(context, next);
 });
 

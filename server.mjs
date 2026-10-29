@@ -182,7 +182,7 @@ const withLatency = (listener) => (req, res) => {
   if (!DASH_REQUEST.test(url) || NOT_A_PAGE.test(url.split('?')[0]) || req.headers['user-agent'] === WARMUP_AGENT) return listener(req, res);
   const started = performance.now();
   res.once('finish', () => {
-    const entry = { p: latencyPath(url), u: url.split('?')[0], m: req.method, s: res.statusCode, t: Math.round(performance.now() - started), st: String(res.getHeader('server-timing') ?? ''), at: Date.now() };
+    const entry = { p: latencyPath(url), u: url.split('?')[0], cl: Number(req.headers['content-length'] ?? -1), m: req.method, s: res.statusCode, t: Math.round(performance.now() - started), st: String(res.getHeader('server-timing') ?? ''), at: Date.now() };
     // A failed dashboard request, or any change that was not answered with a page or a redirect, is said in the log of the host: the page
     // that was asked, the status and what the browser sent (a size and a kind of body, never what was in it).
     if (entry.s >= 400 || (!['GET', 'HEAD'].includes(String(req.method)) && entry.s >= 300 && entry.s < 400)) {
