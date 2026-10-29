@@ -182,7 +182,7 @@ const withLatency = (listener) => (req, res) => {
   if (!DASH_REQUEST.test(url) || NOT_A_PAGE.test(url.split('?')[0]) || req.headers['user-agent'] === WARMUP_AGENT) return listener(req, res);
   const started = performance.now();
   res.once('finish', () => {
-    const entry = { p: latencyPath(url), u: url.split('?')[0], m: req.method, s: res.statusCode, t: Math.round(performance.now() - started), st: String(res.getHeader('server-timing') ?? ''), at: Date.now() };
+    const entry = { p: latencyPath(url), u: url.split('?')[0], cl: Number(req.headers['content-length'] ?? -1), m: req.method, s: res.statusCode, t: Math.round(performance.now() - started), st: String(res.getHeader('server-timing') ?? ''), at: Date.now() };
     // A failed dashboard request, or any change that was not answered with a page or a redirect, is said in the log of the host: the page
     // that was asked, the status and what the browser sent (a size and a kind of body, never what was in it).
     if (entry.s >= 400 || (!['GET', 'HEAD'].includes(String(req.method)) && entry.s >= 300 && entry.s < 400)) {
@@ -195,13 +195,34 @@ const withLatency = (listener) => (req, res) => {
   return listener(req, res);
 };
 
+// A save sent to /es/dash/... or /pt-br/dash/... (a form posts to the address of its page) goes straight to the real /dash/... route here.
+// Astro's rewrite of the prefix answered some of those saves "404 Not found" in about 5 ms on the host (Customize and the timers lost
+// their changes), while the same save without the prefix always worked. The language is already in the cookie the prefixed page set,
+// so the answer comes in the same language; its redirects go to /dash/..., which sends the browser back to the prefixed address.
+// Reading pages (GET, HEAD) keeps going through the prefix, so the address bar keeps saying the language. Logging out keeps its own path.
+const PREFIXED_DASH_CHANGE = /^\/(?:es|pt-br)(\/dash(?:[/?#]|$).*)$/i;
+const withUnprefixedChanges = (listener) => (req, res) => {
+  const method = String(req.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const match = PREFIXED_DASH_CHANGE.exec(req.url ?? '');
+    if (match && !/^\/dash\/(?:logout|lang)(?:[/?#]|$)/i.test(match[1])) {
+      // The prefix it had goes along, so the answer keeps the language on its links and redirects (src/middleware.ts).
+      req.headers['x-petto-dash-prefix'] = req.url.slice(0, req.url.length - match[1].length);
+      req.url = match[1];
+    } else {
+      delete req.headers['x-petto-dash-prefix'];
+    }
+  }
+  return listener(req, res);
+};
+
 // The proxy in front of the site (Caddy, behind Cloudflare) keeps connections open and reuses them. Node closes an idle connection after 5 seconds
 // by default, so a request sent on a connection that was just closed can hang until something gives up. Keeping the connections open longer than
 // the proxy does avoids that. This is set on the server that Astro creates, which is not reachable from here, so the creation is wrapped.
 const createServer = http.createServer.bind(http);
 http.createServer = (...args) => {
   const index = args.findIndex((arg) => typeof arg === 'function');
-  if (index !== -1) args[index] = withLatency(withCompression(withStaticCache(args[index])));
+  if (index !== -1) args[index] = withLatency(withUnprefixedChanges(withCompression(withStaticCache(args[index]))));
   const server = createServer(...args);
   server.keepAliveTimeout = 75_000;
   server.headersTimeout = 80_000;
