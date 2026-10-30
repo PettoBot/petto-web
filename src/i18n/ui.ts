@@ -171,6 +171,7 @@ export const ui = {
             "`!act` was a short word for `!activity`; `!act` now belongs to `/act` (`!activity` still works)",
             "Disabled commands: `!disablecommand hug` (or the dashboard's Disabled commands page, which now takes the interaction words such as `hug` and `hf`) turns off that action for `!hug` and for `/act love hug`, and a rule on one channel only refuses there; `act` turns off all of them",
             "Website: the Commands page lists each interaction with `!hug [user]` and the slash form `/act love hug` next to it, with the other words that reach it, and the new commands (`!uwu`, `!coinflip`, `!wouldyourather`, `!neverhaveiever`, `!truthordare`) are in the same list",
+            "Website: the Commands page lists each subcommand on its own row (`!ticket open`, `!ticket close`, `!ticket add`...), with its own description, arguments and other ways to type it, and the search finds `ticket close`; a command with subcommands used to be one row",
           ],
         },
         {
@@ -1704,6 +1705,7 @@ export const ui = {
             "`!act` era una palabra corta de `!activity`; ahora `!act` es de `/act` (`!activity` sigue funcionando)",
             "Comandos bloqueados: `!disablecommand hug` (o la página Comandos bloqueados del dashboard, que ahora acepta las palabras de interacción como `hug` y `hf`) apaga esa acción para `!hug` y para `/act love hug`, y una regla de un solo canal solo rechaza ahí; `act` las apaga todas",
             "Sitio web: la página de Comandos muestra cada interacción con `!hug [user]` y, al lado, la forma slash `/act love hug`, con las otras palabras que llegan a ella, y los comandos nuevos (`!uwu`, `!coinflip`, `!wouldyourather`, `!neverhaveiever`, `!truthordare`) están en la misma lista",
+            "Sitio web: la página de Comandos muestra cada subcomando en su propia fila (`!ticket open`, `!ticket close`, `!ticket add`...), con su descripción, sus argumentos y sus otras formas de escribirlo, y la búsqueda encuentra `ticket close`; antes un comando con subcomandos era una sola fila",
           ],
         },
         {
@@ -3237,6 +3239,7 @@ export const ui = {
             "`!act` era uma palavra curta de `!activity`; agora `!act` é do `/act` (`!activity` continua funcionando)",
             "Comandos desativados: `!disablecommand hug` (ou a página Comandos desativados do dashboard, que agora aceita as palavras de interação como `hug` e `hf`) desliga essa ação para `!hug` e para `/act love hug`, e uma regra de um só canal só recusa ali; `act` desliga todas",
             "Site: a página de Comandos mostra cada interação com `!hug [user]` e, ao lado, a forma slash `/act love hug`, com as outras palavras que chegam a ela, e os comandos novos (`!uwu`, `!coinflip`, `!wouldyourather`, `!neverhaveiever`, `!truthordare`) estão na mesma lista",
+            "Site: a página de Comandos mostra cada subcomando na sua própria linha (`!ticket open`, `!ticket close`, `!ticket add`...), com a descrição, os argumentos e as outras formas de digitá-lo, e a busca encontra `ticket close`; antes um comando com subcomandos era uma única linha",
           ],
         },
         {

@@ -4,6 +4,17 @@ import { commandText } from './commandText';
 export type CommandRow = readonly [name: string, syntax: string, description: string];
 type CatalogLocale = 'en' | 'es' | 'pt-BR';
 
+/** One subcommand: `path` is [subcommand] or [group, subcommand]; `words` and `groupWords` are other words typed in place of them with the prefix. */
+interface GeneratedLeaf {
+  path: string[];
+  desc: Record<CatalogLocale, string>;
+  args: { name: string; required: boolean }[];
+  words: string[];
+  groupWords: string[];
+  shortcuts: string[];
+  permissions: string | null;
+}
+
 interface GeneratedCommand {
   name: string;
   category: string;
@@ -13,6 +24,8 @@ interface GeneratedCommand {
   description: string;
   subcommands: string[];
   args: { name: string; required: boolean }[];
+  // A command with subcommands: one entry for each subcommand (and each subcommand of a group), so the page can list each one on its own row.
+  leaves?: GeneratedLeaf[];
   // Only /act: its actions with their group, the words that reach them with the prefix and their description in each language.
   actions?: { name: string; group: string; aliases: string[]; desc: Record<CatalogLocale, string> }[];
 }
@@ -43,18 +56,40 @@ const commands = (generated as GeneratedCommand[]).filter((c) => !hidden.has(c.n
 const byName = new Map(commands.map((c) => [c.name, c]));
 
 const localeIndex: Record<CatalogLocale, 0 | 1 | 2> = { en: 0, es: 1, 'pt-BR': 2 };
-const MAX_SUBCOMMANDS_SHOWN = 6;
+const MAX_ARGS_SHOWN = 6;
+const MAX_ALSO_SHOWN = 6;
+
+const argsText = (args: { name: string; required: boolean }[]) => {
+  const shown = args.slice(0, MAX_ARGS_SHOWN).map((a) => (a.required ? `<${a.name}>` : `[${a.name}]`));
+  return [...shown, ...(args.length > MAX_ARGS_SHOWN ? ['...'] : [])].join(' ');
+};
 
 // Most commands are prefix commands (shown with the default prefix !); only the ones registered with Discord are shown with /.
+// A command with subcommands has no entry of its own: each subcommand is a row (`leafRows`).
 function syntaxOf(cmd: GeneratedCommand): string {
   const mark = cmd.slash ? '/' : '!';
-  if (cmd.subcommands.length > 0) {
-    const shown = cmd.subcommands.slice(0, MAX_SUBCOMMANDS_SHOWN).join('|');
-    const more = cmd.subcommands.length > MAX_SUBCOMMANDS_SHOWN ? '|...' : '';
-    return `${mark}${cmd.name} <${shown}${more}>`;
-  }
-  const args = cmd.args.map((a) => (a.required ? `<${a.name}>` : `[${a.name}]`)).join(' ');
+  const args = argsText(cmd.args);
   return args ? `${mark}${cmd.name} ${args}` : `${mark}${cmd.name}`;
+}
+
+/**
+ * One row for each subcommand of a command, and for each subcommand of a group (`!ticket panel create`): its full name, its own arguments and description,
+ * and the other ways to type it: the slash form when the command is a slash command, the short commands that reach it (`!lock`), the aliases of the command
+ * (`!tk close`) and the words typed in place of the subcommand. The name is what the search of the page looks at.
+ */
+function leafRows(cmd: GeneratedCommand, lang: CatalogLocale): (readonly [string, string, string, string[]])[] {
+  return (cmd.leaves ?? []).map((leaf) => {
+    const path = leaf.path.join(' ');
+    const also = [
+      ...(cmd.slash ? [`/${cmd.name} ${path}`] : []),
+      ...leaf.shortcuts.map((alias) => `!${alias}`),
+      ...cmd.aliases.map((alias) => `!${alias} ${path}`),
+      ...leaf.words.map((word) => `!${cmd.name} ${word}`),
+      ...leaf.groupWords.map((word) => `!${cmd.name} ${word} ${leaf.path[leaf.path.length - 1]}`),
+    ].filter((value, index, list) => list.indexOf(value) === index).slice(0, MAX_ALSO_SHOWN);
+    const args = argsText(leaf.args);
+    return [`${cmd.name} ${path}`, `!${cmd.name} ${path}${args ? ` ${args}` : ''}`, leaf.desc[lang] ?? leaf.desc.en, also] as const;
+  });
 }
 
 /**
@@ -76,6 +111,7 @@ export function commandRows(categoryId: string, lang: CatalogLocale): CommandRow
     if (cmd?.actions) return actionRows(cmd, lang) as unknown as CommandRow[];
     // The services of the Integrations category have a section each (data/integrationSections.ts), not a row in Info.
     if (!cmd || (cmd as GeneratedCommand & { integration?: unknown }).integration) return [];
+    if (cmd.leaves?.length) return leafRows(cmd, lang) as unknown as CommandRow[];
     const text = commandText[name]?.[localeIndex[lang]] ?? cmd.description;
     return [[name, syntaxOf(cmd), text] as const];
   });
@@ -87,6 +123,10 @@ export function catalogProblems(): string[] {
   for (const cmd of commands) {
     if (!listed.has(cmd.name)) problems.push(`"${cmd.name}" exists in the bot but has no category`);
     if (!commandText[cmd.name]) problems.push(`"${cmd.name}" has no translated description`);
+    for (const leaf of cmd.leaves ?? []) {
+      if (!leaf.path.length || leaf.path.length > 2) problems.push(`"${cmd.name}" has a subcommand with a path of ${leaf.path.length} words`);
+      for (const lang of Object.keys(localeIndex) as CatalogLocale[]) if (!leaf.desc?.[lang]) problems.push(`"${cmd.name} ${leaf.path.join(' ')}" has no description in ${lang}`);
+    }
   }
   for (const name of listed) if (!byName.has(name)) problems.push(`"${name}" is listed but no longer exists in the bot`);
   return problems;

@@ -33,6 +33,17 @@ const ui = lang === 'es'
     ? { copy: 'Copiar comando', copied: 'Copiado', top: 'Voltar ao topo', commands: 'comandos', also: 'Também:' }
     : { copy: 'Copy command', copied: 'Copied', top: 'Back to top', commands: 'commands', also: 'Also:' };
 
+// Every row has an anchor (`#cmd-ticket-close`), so a command can be linked. The name of a row is the whole command (`ticket close`).
+const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const usedIds = new Set<string>();
+function rowId(name: string) {
+  const base = `cmd-${slug(name) || 'command'}`;
+  let id = base;
+  for (let n = 2; usedIds.has(id); n += 1) id = `${base}-${n}`;
+  usedIds.add(id);
+  return id;
+}
+
 const catIcon: Record<string, string> = {
   moderation: 'ph:shield-check-fill',
   tickets: 'ph:ticket',
@@ -105,7 +116,7 @@ const catIcon: Record<string, string> = {
 
         <div class="cmd-cols">
           {(c.categories as unknown as Cat[]).map((cat) => (
-            <div class="cat reveal" id={cat.id} data-cat>
+            <div class="cat reveal" id={cat.id} data-cat data-group={cat.group ?? undefined}>
               <h2><Icon name={cat.icon ?? catIcon[cat.id] ?? 'ph:terminal-window-fill'} class="cat-ic" />{cat.title}<span class="cat-count">{cat.cmds.length} {ui.commands}</span></h2>
               {cat.desc && <p class="cat-desc">{cat.desc}</p>}
               {cat.examples && (
@@ -116,7 +127,7 @@ const catIcon: Record<string, string> = {
               )}
               <div class="cat-list">
                 {cat.cmds.map(([name, syntax, desc, also]) => (
-                  <div class="cmd-row" data-name={name.toLowerCase()} data-desc={desc.toLowerCase()}>
+                  <div class="cmd-row" id={rowId(name)} data-cmd={name.split(' ')[0].toLowerCase()} data-name={name.toLowerCase()} data-desc={desc.toLowerCase()} data-also={(also ?? []).join(' | ').toLowerCase()}>
                     <div class="cmd-top">
                       <div class="cmd-syntax">
                         {renderSyntax(prefixSyntax(syntax)).map((p) => (
@@ -191,7 +202,35 @@ const catIcon: Record<string, string> = {
     }
   }
   cols?.classList.add('tabs');
-  activate(ids.includes(location.hash.slice(1)) ? location.hash.slice(1) : ids[0], { scroll: false, hash: false });
+
+  // What a `#...` can point at: a category (`#moderation`), the Integrations as a whole (`#integrations`, the first of its sections), a row of one
+  // command (`#cmd-ticket-close`, also written `#ticket-close`), or a command that has rows for each of its subcommands (`#ticket`: its first row).
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('.cmd-row'));
+  function resolveHash(raw: string): { cat: string; row: HTMLElement | null; alias?: boolean } | null {
+    let hash = raw.replace(/^#/, '');
+    try { hash = decodeURIComponent(hash); } catch {}
+    hash = hash.trim().toLowerCase();
+    if (!hash) return null;
+    if (ids.includes(hash)) return { cat: hash, row: null };
+    if (hash === 'integrations') {
+      const first = cats.find((cat) => cat.dataset.group);
+      if (first) return { cat: first.id, row: null, alias: true };
+    }
+    const row = document.getElementById(hash.startsWith('cmd-') ? hash : `cmd-${hash}`) ?? rows.find((item) => item.dataset.cmd === hash || item.dataset.name === hash) ?? null;
+    const cat = row?.closest<HTMLElement>('[data-cat]');
+    return row && cat ? { cat: cat.id, row } : null;
+  }
+  function show(target: { cat: string; row: HTMLElement | null; alias?: boolean }, options: { scroll: boolean }) {
+    activate(target.cat, { scroll: (options.scroll || Boolean(target.alias)) && !target.row, hash: false });
+    const row = target.row;
+    if (!row) return;
+    const top = row.getBoundingClientRect().top + window.scrollY - stickyOffset() - 12;
+    window.scrollTo({ top: Math.max(0, top), behavior: options.scroll ? 'smooth' : 'auto' });
+    row.classList.add('flash');
+    setTimeout(() => row.classList.remove('flash'), 1800);
+  }
+  const landing = resolveHash(location.hash);
+  if (landing) show(landing, { scroll: false }); else activate(ids[0], { scroll: false, hash: false });
 
   tocLinks.forEach((link) => {
     link.addEventListener('click', (event) => {
@@ -201,28 +240,38 @@ const catIcon: Record<string, string> = {
     });
   });
   window.addEventListener('hashchange', () => {
-    const id = location.hash.slice(1);
-    if (ids.includes(id) && id !== current) activate(id, { scroll: true, hash: false });
+    const target = resolveHash(location.hash);
+    if (!target) return;
+    if (target.row || target.cat !== current) show(target, { scroll: true });
   });
 
   // Searching looks through every category, and typing nothing goes back to the chosen one.
+  // Every word of the search has to be somewhere in the name (`ticket close`), the description or the other ways to type the command; a `!` or `/`
+  // in front of a word is the prefix and is left out, so `!ticket close` and `/ticket close` find the same row.
   function runSearch() {
     const q = (input?.value ?? '').trim().toLowerCase();
+    const words = q.split(/\s+/).map((word) => word.replace(/^[!/]+/, '')).filter(Boolean);
     let visible = 0;
-    cols?.classList.toggle('searching', Boolean(q));
+    cols?.classList.toggle('searching', words.length > 0);
     cats.forEach((cat) => {
       let catVisible = 0;
       cat.querySelectorAll<HTMLElement>('.cmd-row').forEach((el) => {
-        const match = !q || el.dataset.name?.includes(q) || el.dataset.desc?.includes(q);
+        const name = el.dataset.name ?? '';
+        const also = el.dataset.also ?? '';
+        const named = `${name} ${also}`;
+        const match = !words.length || words.every((word) => `${named} ${el.dataset.desc ?? ''}`.includes(word));
         el.style.display = match ? '' : 'none';
+        // The rows whose name is what was typed come first in their category: `ticket close` before the rows that only mention it.
+        const phrase = words.join(' ');
+        el.style.order = !words.length ? '' : name === phrase ? '0' : name.startsWith(phrase) || also.includes(phrase) ? '1' : words.every((word) => named.includes(word)) ? '2' : '3';
         if (match) catVisible++;
       });
-      cat.style.display = catVisible === 0 && q ? 'none' : '';
-      tocLinks.find((a) => a.dataset.toc === cat.id)?.toggleAttribute('hidden', catVisible === 0 && Boolean(q));
+      cat.style.display = catVisible === 0 && words.length ? 'none' : '';
+      tocLinks.find((a) => a.dataset.toc === cat.id)?.toggleAttribute('hidden', catVisible === 0 && words.length > 0);
       visible += catVisible;
     });
-    if (q && visible === 0) tocLinks.forEach((a) => a.removeAttribute('hidden'));
-    if (noResults) noResults.style.display = q && visible === 0 ? 'block' : 'none';
+    if (words.length && visible === 0) tocLinks.forEach((a) => a.removeAttribute('hidden'));
+    if (noResults) noResults.style.display = words.length && visible === 0 ? 'block' : 'none';
   }
   input?.addEventListener('input', runSearch);
 
@@ -311,6 +360,8 @@ const catIcon: Record<string, string> = {
   .cat-list { display: flex; flex-direction: column; gap: 10px; }
   .cmd-row { border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px 13px 16px; background: var(--bg-raise); min-width: 0; }
   .cmd-row:hover { border-color: var(--border); }
+  .cmd-row { scroll-margin-top: calc(var(--cmd-sticky-top) + 12px); }
+  .cmd-row.flash { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .cmd-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
   .cmd-syntax { display: flex; flex-wrap: wrap; gap: 2px 7px; min-width: 0; flex: 1; padding-top: 5px; }
   .cmd-syntax :global(code) { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
@@ -352,6 +403,7 @@ const catIcon: Record<string, string> = {
     .toc-links a:hover { border-color: var(--text-dim); }
     .toc-links a.active { border-color: var(--accent); background: var(--accent-soft); }
     .cat { scroll-margin-top: calc(var(--cmd-sticky-top) + 118px); }
+    .cmd-row { scroll-margin-top: calc(var(--cmd-sticky-top) + 118px); }
     .cat h2 { font-size: 21px; }
     .cat-count { width: 100%; margin-left: 0; }
     .cmd-cols { gap: 40px; }
