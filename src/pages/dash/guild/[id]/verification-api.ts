@@ -32,5 +32,8 @@ export const POST: APIRoute = async (astro) => {
     }
   }
   const result = await callPettoVerification(astro, id, String(auth.session.userId), action as 'setup' | 'panel' | 'enable' | 'disable');
+  // The bot never answered: the card (scripts/bot-wait.js) tries again for a few seconds, then says Petto may be restarting. It only asks again
+  // when the request never reached the bot (`retry`), so a setup is never started twice.
+  if (result.down) return json({ ok: false, error: 'bot_unavailable', message: '', retry: Boolean(result.retrySafe) }, 502);
   return json(result, result.ok ? (result.status === 'running' ? 202 : 200) : 400);
 };

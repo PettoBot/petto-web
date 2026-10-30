@@ -342,10 +342,10 @@ function targetLabel(target: string) {
         if (step) step.textContent = job.status === 'running' ? stepText(job) : '';
         msg.hidden = true;
       }
+      // The bot can be away for some seconds after an update: the shared wait (scripts/bot-wait.js) asks again by itself before this gives up.
       function status() {
-        return fetch('/dash/guild/' + guild + '/verification-status', { headers: { Accept: 'application/json' }, cache: 'no-store' })
-          .then(function (r) { return r.json(); })
-          .catch(function () { return { ok: false }; });
+        return window.__dglBotWait.request('/dash/guild/' + guild + '/verification-status', null, { method: 'GET', idempotent: true, limit: 9000 })
+          .then(function (r) { return r.data && !r.unreachable ? r.data : { ok: false }; });
       }
       function showLink(link) {
         if (!warn || !link) return;
@@ -390,14 +390,25 @@ function targetLabel(target: string) {
         }
         setTimeout(tick, 1000);
       }
+      // The line of the card says what is going on while Petto answers (and that it is trying again); a bot that stays away says so, with Try again.
       function call(action, extra) {
-        return fetch('/dash/guild/' + guild + '/verification-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action: action }, extra || {})) })
-          .then(function (r) { return r.json().catch(function () { return { ok: false, message: words.failed }; }); })
-          .catch(function () { return { ok: false, message: words.failed }; });
+        return window.__dglBotWait.request('/dash/guild/' + guild + '/verification-api', Object.assign({ action: action }, extra || {}), { onStatus: function (words) { say(words, true); }, limit: 12000 })
+          .then(function (r) { return r.unreachable ? { ok: false, unreachable: true } : r.data && typeof r.data === 'object' ? r.data : { ok: false, message: words.failed }; });
       }
-      function answer(result, action) {
+      function answer(result, action, again) {
         if (result && result.ok && result.status === 'running' && result.job) { follow(result.job); return; }
         busy(false);
+        if (result && result.unreachable) {
+          if (toggle && action === 'enable') toggle.checked = false;
+          if (toggle && action === 'disable') toggle.checked = true;
+          say(window.__dglBotWait.text('notAnswering'), false);
+          var retry = document.createElement('button');
+          retry.type = 'button'; retry.className = 'btn btn-ghost btn-sm'; retry.style.marginLeft = '10px';
+          retry.textContent = window.__dglBotWait.text('again');
+          retry.addEventListener('click', again);
+          msg.append(retry);
+          return;
+        }
         if (toggle && action === 'enable' && !result.ok) toggle.checked = false;
         if (toggle && action === 'disable' && !result.ok) toggle.checked = true;
         say(result.message || words.failed, !!result.ok);
@@ -408,9 +419,12 @@ function targetLabel(target: string) {
         button.addEventListener('click', function () {
           if (following) return;
           var action = button.getAttribute('data-vf-action');
-          busy(true); say(words.working, true);
           var select = document.querySelector('select[name="panel_channel_id"]');
-          call(action, action === 'panel' && select ? { channel_id: select.value } : {}).then(function (result) { answer(result, action); });
+          var run = function () {
+            busy(true); say(words.working, true);
+            call(action, action === 'panel' && select ? { channel_id: select.value } : {}).then(function (result) { answer(result, action, run); });
+          };
+          run();
         });
       });
       // The switch acts at once (it does not wait for Save), so it is kept out of the form's unsaved changes.
@@ -419,8 +433,12 @@ function targetLabel(target: string) {
         e.stopPropagation();
         if (following) return;
         var on = toggle.checked;
-        busy(true); say(words.working, true);
-        call(on ? 'enable' : 'disable').then(function (result) { answer(result, on ? 'enable' : 'disable'); });
+        var run = function () {
+          toggle.checked = on;
+          busy(true); say(words.working, true);
+          call(on ? 'enable' : 'disable').then(function (result) { answer(result, on ? 'enable' : 'disable', run); });
+        };
+        run();
       });
       // Once per visit of the card: a setup still running (started before leaving the page) and whether members can get a link.
       var checked = false;

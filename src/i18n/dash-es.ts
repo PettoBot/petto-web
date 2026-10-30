@@ -4955,4 +4955,11 @@ export const dashEs: Record<string, string> = {
   "Send now": "Enviar ahora",
   "Last send failed: {a}": "El último envío falló: {a}",
   "Paused (sends nothing until it is turned off)": "En pausa (no envía nada hasta que lo desactives)",
+  "Asking Petto…": "Preguntando a Petto…",
+  "Petto is asking {name}…": "Petto está preguntando a {name}…",
+  "Petto is taking longer than usual, trying again…": "Petto tarda más de lo normal, intentando de nuevo…",
+  "{name} is slow to answer…": "{name} tarda en responder…",
+  "Petto is slow to answer…": "Petto tarda en responder…",
+  "Still waiting for the answer. This can take a little longer…": "Seguimos esperando la respuesta. Puede tardar un poco más…",
+  "Petto is not answering. It may be restarting after an update. Try again in a few seconds.": "Petto no responde. Puede estar reiniciándose tras una actualización. Inténtalo de nuevo en unos segundos.",
 };

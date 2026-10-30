@@ -14,5 +14,6 @@ export const GET: APIRoute = async (astro) => {
   const auth = await getGuildSession(astro, id);
   if ('redirect' in auth) return json({ ok: false, error: 'unauthorized' }, 401);
   const result = await callPettoVerificationJob(astro, id, String(auth.session.userId));
+  if (result.down) return json({ ok: false, error: 'bot_unavailable', message: '', retry: true }, 502);
   return json(result, result.ok ? 200 : 502);
 };

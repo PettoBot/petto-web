@@ -4955,4 +4955,11 @@ export const dashPt: Record<string, string> = {
   "Send now": "Enviar agora",
   "Last send failed: {a}": "O último envio falhou: {a}",
   "Paused (sends nothing until it is turned off)": "Pausado (não envia nada até você desativar)",
+  "Asking Petto…": "Perguntando ao Petto…",
+  "Petto is asking {name}…": "O Petto está perguntando ao {name}…",
+  "Petto is taking longer than usual, trying again…": "O Petto está demorando mais que o normal, tentando de novo…",
+  "{name} is slow to answer…": "{name} está demorando para responder…",
+  "Petto is slow to answer…": "O Petto está demorando para responder…",
+  "Still waiting for the answer. This can take a little longer…": "Ainda esperando a resposta. Pode demorar um pouco mais…",
+  "Petto is not answering. It may be restarting after an update. Try again in a few seconds.": "O Petto não está respondendo. Ele pode estar reiniciando após uma atualização. Tente de novo em alguns segundos.",
 };
