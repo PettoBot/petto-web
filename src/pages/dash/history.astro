@@ -15,12 +15,10 @@ const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const headers = apiKey ? { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } : null;
 const ID = /^\d{15,25}$/;
-const PAGE = 24;
 
 const asked = (Astro.url.searchParams.get('id') ?? '').trim().replace(/[<@!>]/g, '');
 const own = !asked || asked === session.userId;
 const targetId = own ? session.userId : asked;
-const page = Math.max(1, Math.floor(Number(Astro.url.searchParams.get('page'))) || 1);
 const invalid = Boolean(asked) && !ID.test(asked);
 let flash = '';
 
@@ -28,7 +26,7 @@ let flash = '';
 if (Astro.request.method === 'POST' && own && headers && apiUrl) {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
-  const kinds: Record<string, string | null> = { clear_avatars: 'avatar', clear_names: 'name', clear_nicknames: 'nickname', clear_all: null };
+  const kinds: Record<string, string | null> = { clear_names: 'name', clear_nicknames: 'nickname', clear_all: null };
   if (action in kinds) {
     const filter = kinds[action] ? `&kind=eq.${kinds[action]}` : '';
     const res = await fetch(`${apiUrl}/rest/v1/identity_history?user_id=eq.${session.userId}${filter}`, { method: 'DELETE', headers: { ...headers, Prefer: 'return=minimal' } });
@@ -44,34 +42,21 @@ if (Astro.request.method === 'POST' && own && headers && apiUrl) {
 let ready = Boolean(headers && apiUrl);
 let hidden = false; // somebody else who turned their history off
 let optedOut = false;
-let avatars: any[] = [];
 let names: any[] = [];
 let nicknames: any[] = [];
-let avatarTotal = 0;
-// The avatars Petto kept a copy of (Discord stops serving an old avatar soon after it is changed): those are shown from the copy.
-let stored: string[] = [];
 if (ready && !invalid) {
   const get = async (path: string) => { try { const res = await fetch(`${apiUrl}/rest/v1/${path}`, { headers: headers! }); return res.ok ? await res.json() : null; } catch { return null; } };
-  const [opt, av, nm, nk] = await Promise.all([
+  const [opt, nm, nk] = await Promise.all([
     get(`identity_history_optout?user_id=eq.${targetId}&select=user_id`),
-    get(`identity_history?user_id=eq.${targetId}&kind=eq.avatar&select=value,seen_at&order=seen_at.desc&limit=200`),
     get(`identity_history?user_id=eq.${targetId}&kind=eq.name&select=value,seen_at&order=seen_at.desc&limit=200`),
     get(`identity_history?user_id=eq.${targetId}&kind=eq.nickname&select=value,guild_id,seen_at&order=seen_at.desc&limit=200`),
   ]);
-  if (opt === null || av === null || nm === null || nk === null) ready = false;
+  if (opt === null || nm === null || nk === null) ready = false;
   optedOut = Array.isArray(opt) && opt.length > 0;
   hidden = optedOut && !own;
   if (!hidden) {
-    avatarTotal = (av ?? []).length;
-    avatars = (av ?? []).slice((page - 1) * PAGE, page * PAGE);
     names = nm ?? [];
     nicknames = nk ?? [];
-    // Only the hashes, of the avatars of this page. Before the bot has the table this is null, and the page shows Discord's links as before.
-    const hashes = avatars.map((entry) => String(entry.value)).filter((value) => /^(a_)?[0-9a-f]{32}$/.test(value));
-    if (hashes.length) {
-      const kept = await get(`profile_history_images?user_id=eq.${targetId}&size=gt.0&hash=in.(${hashes.join(',')})&select=hash`);
-      stored = Array.isArray(kept) ? kept.map((row: any) => String(row.hash)) : [];
-    }
   }
 }
 
@@ -88,4 +73,4 @@ if (!own && !invalid && botToken) {
 }
 const createdMs = ID.test(targetId) ? Number((BigInt(targetId) >> 22n) + 1420070400000n) : null;
 ---
-<DashHistory user={session} profile={profile} own={own} invalid={invalid} ready={ready} hidden={hidden} optedOut={optedOut} avatars={avatars} stored={stored} avatarTotal={avatarTotal} names={names} nicknames={nicknames} page={page} pageSize={PAGE} createdMs={createdMs} flash={flash} />
+<DashHistory user={session} profile={profile} own={own} invalid={invalid} ready={ready} hidden={hidden} optedOut={optedOut} names={names} nicknames={nicknames} createdMs={createdMs} flash={flash} />

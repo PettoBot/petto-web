@@ -16,7 +16,7 @@ const cases = [
   ['partial read by AJAX', { method: 'GET', pathname: '/dash/guild/1/general', search: '', headers: h({ ...nav, 'x-dash-partial': '1' }), lang: 'es' }, null],
   ['fetch of an API', { method: 'GET', pathname: '/dash/guild/1/ac-data', search: '', headers: h({ accept: 'application/json', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }), lang: 'es' }, null],
   ['event stream', { method: 'GET', pathname: '/dash/guild/1/events', search: '', headers: h({ accept: 'text/event-stream', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }), lang: 'es' }, null],
-  ['image proxy in an <img>', { method: 'GET', pathname: '/dash/history/avatar/1/a', search: '', headers: h({ accept: 'image/avif,*/*', 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' }), lang: 'es' }, null],
+  ['image proxy in an <img>', { method: 'GET', pathname: '/dash/guild/1/picture/a', search: '', headers: h({ accept: 'image/avif,*/*', 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' }), lang: 'es' }, null],
   ['language switch', { method: 'GET', pathname: '/dash/lang', search: '?to=en&next=/dash', headers: h(nav), lang: 'es' }, null],
   ['login callback', { method: 'GET', pathname: '/dash/callback', search: '?code=x', headers: h(nav), lang: 'es' }, null],
   ['logout', { method: 'GET', pathname: '/dash/logout', search: '', headers: h(nav), lang: 'es' }, null],
