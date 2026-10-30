@@ -167,7 +167,7 @@ const withCompression = (listener) => (req, res) => {
 const LATENCY_KEEP = 500;
 const latency = (globalThis.__pettoLatency ??= { entries: [], max: LATENCY_KEEP, total: 0 });
 const DASH_REQUEST = /^\/(?:(?:es|pt-br)\/)?dash(?:\/|$)/i;
-const NOT_A_PAGE = /\/(?:events|version|health|verification-status|tickets-live)\/?$/;
+const NOT_A_PAGE = /\/(?:events|version|health|bot-ping|verification-status|tickets-live)\/?$/;
 const latencyPath = (url) => {
   const [rawPath, query = ''] = url.split('?');
   const path = rawPath.replace(/^\/(?:es|pt-br)(?=\/dash)/i, '').replace(/\/\d{5,25}(?=\/|$)/g, '/:id').replace(/\/+$/, '') || '/';

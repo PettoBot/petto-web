@@ -54,7 +54,8 @@ if (Astro.request.method === 'POST') {
     return json({ ok: true, message: dt('Counter saved. Its name changes as soon as Discord allows.') });
   }
   await ensureGuildRow(apiUrl, apiHeaders, id);
-  const botFailed = () => dt('Petto did not answer. Try again in a moment.');
+  // `down`: the bot never answered, not even after waiting a few seconds for it (pettoBotApi.ts): it may be restarting.
+  const botFailed = (result?: { down?: boolean }) => (result?.down ? dt('Petto is not answering. It may be restarting after an update. Try again in a few seconds.') : dt('Petto did not answer. Try again in a moment.'));
   const goalOf = (value: FormDataEntryValue | null) => { const n = Math.trunc(Number(String(value ?? '').replace(/[.,\s]/g, ''))); return Number.isFinite(n) && n > 0 ? Math.min(2_000_000_000, n) : null; };
 
   if (action === 'create') {
@@ -70,15 +71,15 @@ if (Astro.request.method === 'POST') {
         category_id: snowflake(form.get('category_id')), channel_id: form.get('use') === 'existing' ? snowflake(form.get('channel_id')) : null,
         role_id: snowflake(form.get('role_id')), goal: goalOf(form.get('goal')), timezone: zone || null,
       }, dashLang);
-      message = result.ok ? { kind: 'ok', text: result.message || dt('Counter created.') } : { kind: 'err', text: result.message || botFailed() };
+      message = result.ok ? { kind: 'ok', text: result.message || dt('Counter created.') } : { kind: 'err', text: result.message || botFailed(result) };
     }
   } else if (action === 'setup') {
     const preset = String(form.get('preset') ?? '');
     const result = await callPettoCounters(Astro, id, session.userId, 'setup', ['basic', 'boosts', 'online', 'goal', 'clock'].includes(preset) ? { preset } : {}, dashLang);
-    message = result.ok ? { kind: 'ok', text: result.message || dt('Server stats are ready.') } : { kind: 'err', text: result.message || botFailed() };
+    message = result.ok ? { kind: 'ok', text: result.message || dt('Server stats are ready.') } : { kind: 'err', text: result.message || botFailed(result) };
   } else if (action === 'refresh') {
     const result = await callPettoCounters(Astro, id, session.userId, 'refresh', { channel_id: snowflake(form.get('channel_id')) }, dashLang);
-    message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed() };
+    message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed(result) };
   } else if (action === 'delete') {
     const channelId = snowflake(form.get('channel_id'));
     const result = channelId ? await callPettoCounters(Astro, id, session.userId, 'delete', { channel_id: channelId, delete_channel: form.get('delete_channel') === 'on' }, dashLang) : { ok: false, message: '' };
@@ -86,7 +87,7 @@ if (Astro.request.method === 'POST') {
       // The bot is away: the counter is still stopped, the channel stays.
       const res = await fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&channel_id=eq.${channelId}`, { method: 'DELETE', headers: apiHeaders });
       message = res.ok ? { kind: 'ok', text: dt('Counter stopped. The channel was kept.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
-    } else message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed() };
+    } else message = result.ok ? { kind: 'ok', text: result.message } : { kind: 'err', text: result.message || botFailed(result) };
   } else if (action === 'announce' || action === 'announce_test') {
     const every = text(form.get('every'), 12).replace(/[.,\s]/g, '');
     const body = {
@@ -103,7 +104,7 @@ if (Astro.request.method === 'POST') {
         message = res.ok ? { kind: 'ok', text: dt('Announcements saved.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
       } else if (saved.ok && action === 'announce_test') {
         const test = await callPettoCounters(Astro, id, session.userId, 'announce', { test: true }, dashLang);
-        message = { kind: test.ok ? 'ok' : 'err', text: test.message || botFailed() };
+        message = { kind: test.ok ? 'ok' : 'err', text: test.message || botFailed(test) };
       } else message = saved.ok ? { kind: 'ok', text: saved.message || dt('Announcements saved.') } : { kind: 'err', text: saved.message };
     }
   } else if (action === 'save') {

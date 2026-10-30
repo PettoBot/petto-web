@@ -3,6 +3,7 @@
 // {variable} tokens with sample values so a preview reads like the message members will see.
 
 import { findSample, sampleContext, tokenValues } from './variableSamples';
+import { silentMentions } from './silentMention';
 
 export interface PreviewEmbed {
   title?: string;
@@ -64,6 +65,12 @@ function inline(html: string, ctx: PreviewContext): string {
   const samples = { ...tokenValues({ userId: sampleContext.userId, userName: ctx.userName, serverName: ctx.serverName, memberCount: sampleContext.memberCount }), ...(ctx.samples ?? {}) };
   let out = html;
   out = out.replace(/`([^`\n]+)`/g, (_m, code) => `<code class="dp-code">${code}</code>`);
+  // A silent mention (`!@everyone`, `!@Role`, `!<@&id>`, `!{user.mention}`) is drawn as the normal pill, without the `!`; `\!@everyone` shows the text.
+  out = silentMentions(out, {
+    pill: (label) => `<span class="dp-mention">${label}</span>`,
+    id: (kind) => (kind === 'channel' ? 'channel' : kind === 'role' ? 'role' : 'user'),
+    variable: (token) => { const sample = findSample(samples, token); return sample?.mention ? `<span class="dp-mention">${sample.text}</span>` : null; },
+  });
   out = out.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (m, token) => {
     if (token.toLowerCase() === 'newline') return '<br>';
     // {imgcard:name}: the bot draws that image card in the message, so the preview shows a marker where it goes.

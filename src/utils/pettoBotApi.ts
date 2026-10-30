@@ -22,6 +22,75 @@ async function roleGrant(context: AstroContext, guildId: string, page: string, w
 
 type AstroContext = { locals?: any };
 
+// ---- Waiting for the bot ----
+// The bot restarts after each update and is away for some seconds. A request that finds it away is repeated once, quickly, here; the
+// dashboard page repeats it again for a few seconds more (scripts/bot-wait.js) and only then says Petto is not answering.
+// What is safe to repeat depends on whether the bot could have done it already:
+//  - mode 'read' (a look-up, a preview, a status: nothing changes): repeated after a connection failure or an answer that cannot be read.
+//  - mode 'change' (follow, test, send now...): repeated only when the request never reached the bot (connection refused, no such host), or when
+//    the proxy in front of it says it is down (502, 503 or 530 with a page of its own, not an answer of the bot). Never after a timeout: the bot
+//    may be doing it. (Following the same account twice is refused by the database, but a test notice or a message would be sent twice.)
+const NEVER_REACHED = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']);
+function neverReached(error: any): boolean {
+  const codes = [error?.code, error?.cause?.code, ...(Array.isArray(error?.cause?.errors) ? error.cause.errors.map((e: any) => e?.code) : [])];
+  return codes.some((code) => typeof code === 'string' && NEVER_REACHED.has(code));
+}
+const isTimeout = (error: any) => error?.name === 'TimeoutError' || error?.name === 'AbortError';
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The pauses of a page that is posted (no script of its own to wait): repeats at about 1, 2.5 and 4.2 seconds after the first try. */
+const PATIENT_RETRY = [1000, 1500, 1700];
+
+export interface BotCall {
+  response: Response | null;
+  /** The JSON the bot answered, or null when there was none (or it could not be read). */
+  data: any;
+  /** The bot did not answer: no connection, a proxy saying it is down, or no readable answer. */
+  down: boolean;
+  /** Asking again cannot do it twice (see above). The page uses it to decide on its own retries. */
+  retrySafe: boolean;
+  tries: number;
+}
+
+/**
+ * One request to the bot with a quick repeat. `retryAt`: the pauses (ms) before each repeat (default one of 250 ms); a repeat only starts while
+ * the first failure came fast, and never takes longer than `timeoutMs` in all, so a slow bot is not asked twice for the same wait.
+ */
+export async function botFetch(url: string, init: RequestInit, opts: { timeoutMs: number; mode: 'read' | 'change'; retryAt?: number[] }): Promise<BotCall> {
+  const started = Date.now();
+  const pauses = opts.retryAt ?? [250];
+  for (let tries = 1; ; tries++) {
+    const tryStarted = Date.now();
+    let call: BotCall;
+    try {
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(Math.max(1000, opts.timeoutMs - (tryStarted - started))) });
+      const data: any = await response.json().catch(() => null);
+      const proxyDown = data === null && [502, 503, 530].includes(response.status);
+      const unreadable = data === null && (response.ok || proxyDown || response.status === 504);
+      call = { response, data, down: unreadable, retrySafe: unreadable && (opts.mode === 'read' || proxyDown), tries };
+    } catch (error) {
+      call = { response: null, data: null, down: true, retrySafe: opts.mode === 'read' || (!isTimeout(error) && neverReached(error)), tries };
+      if (isTimeout(error)) return call;
+    }
+    const pause = pauses[tries - 1];
+    // Only a failure that came fast is repeated (a bot that took seconds to fail is not asked again), and only while the time is not used up.
+    if (!call.down || !call.retrySafe || pause === undefined || Date.now() - tryStarted > 2000 || Date.now() - started + pause >= opts.timeoutMs) return call;
+    await sleep(pause);
+  }
+}
+
+/** Is the bot there at all? A cheap look at its home page (no key, nothing read), for the dashboard to tell "slow" from "away". */
+export async function pingPettoBot(context: AstroContext): Promise<boolean> {
+  const { baseUrl } = apiConfig(context);
+  if (!baseUrl) return false;
+  try {
+    const response = await fetch(`${baseUrl}/`, { method: 'HEAD', signal: AbortSignal.timeout(1100) });
+    return response.status < 500;
+  } catch {
+    return false;
+  }
+}
+
 function apiConfig(context: AstroContext) {
   const baseUrl = getEnv(context, 'PETTO_BOT_API_URL')?.replace(/\/$/, '');
   const secret = getEnv(context, 'PETTO_BOT_API_SECRET');
@@ -206,7 +275,7 @@ export async function callPettoQuestMethod(context: AstroContext, guildId: strin
 /** Sets the verification up, posts its panel or switches it, now, through the bot, as the person who manages the server. */
 /** How far a verification job of the bot is (setting it up edits every channel of the server, which can take a while). */
 export interface VerificationJob { id: string; action: string; status: 'running' | 'done' | 'failed'; phase: string; done: number; total: number; percent: number; ok: boolean | null; message: string | null }
-export interface VerificationAnswer { ok: boolean; message: string; status?: string; job?: VerificationJob | null }
+export interface VerificationAnswer { ok: boolean; message: string; status?: string; job?: VerificationJob | null; down?: boolean; retrySafe?: boolean }
 
 /**
  * The buttons of the verification card. The bot answers within a moment and never waits for the long work: a quick action comes back
@@ -215,39 +284,32 @@ export interface VerificationAnswer { ok: boolean; message: string; status?: str
 export async function callPettoVerification(context: AstroContext, guildId: string, userId: string, action: 'setup' | 'panel' | 'enable' | 'disable'): Promise<VerificationAnswer> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: 'The dashboard is not connected to the bot.' };
-  try {
-    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/${action}`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(8_000),
-      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId }),
-    });
-    const payload: any = await response.json().catch(() => null);
-    return {
-      ok: Boolean(response.ok && payload?.ok),
-      message: typeof payload?.message === 'string' ? payload.message : response.ok ? 'Done.' : 'The bot could not do it.',
-      status: typeof payload?.status === 'string' ? payload.status : undefined,
-      job: payload?.job ?? null,
-    };
-  } catch {
-    return { ok: false, message: 'The bot did not answer in time.' };
-  }
+  // `down`: the bot never answered (the card says Petto may be restarting instead of "could not do it"). A bot never reached is asked again (botFetch).
+  const call = await botFetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/${action}`, {
+    method: 'POST',
+    headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  }, { timeoutMs: 8_000, mode: 'change' }).catch(() => null);
+  if (!call || !call.response || call.down) return { ok: false, message: 'The bot did not answer in time.', down: true, retrySafe: call?.retrySafe ?? false };
+  const payload: any = call.data;
+  return {
+    ok: Boolean(call.response.ok && payload?.ok),
+    message: typeof payload?.message === 'string' ? payload.message : call.response.ok ? 'Done.' : 'The bot could not do it.',
+    status: typeof payload?.status === 'string' ? payload.status : undefined,
+    job: payload?.job ?? null,
+  };
 }
 
 /** The verification job of a server (or null when there is none), and whether members can get a verification link. */
-export async function callPettoVerificationJob(context: AstroContext, guildId: string, userId: string): Promise<{ ok: boolean; job: VerificationJob | null; link: { ok: boolean; problem: string | null; lettersInstead: boolean } | null }> {
+export async function callPettoVerificationJob(context: AstroContext, guildId: string, userId: string): Promise<{ ok: boolean; job: VerificationJob | null; link: { ok: boolean; problem: string | null; lettersInstead: boolean } | null; down?: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, job: null, link: null };
-  try {
-    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/job?user_id=${encodeURIComponent(userId)}`, {
-      signal: AbortSignal.timeout(5_000),
-      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json' },
-    });
-    const payload: any = await response.json().catch(() => null);
-    return { ok: Boolean(response.ok && payload?.ok), job: payload?.job ?? null, link: payload?.link ?? null };
-  } catch {
-    return { ok: false, job: null, link: null };
-  }
+  const call = await botFetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/verification/job?user_id=${encodeURIComponent(userId)}`, {
+    headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json' },
+  }, { timeoutMs: 5_000, mode: 'read' }).catch(() => null);
+  if (!call || !call.response || call.down) return { ok: false, job: null, link: null, down: true };
+  const payload: any = call.data;
+  return { ok: Boolean(call.response.ok && payload?.ok), job: payload?.job ?? null, link: payload?.link ?? null };
 }
 
 /** Posts (or updates) the panel of the confessions of a server in a channel. */
@@ -518,40 +580,45 @@ export async function callPettoForms(context: AstroContext, guildId: string, use
 
 // Live counters from the dashboard: the values for the previews, create, quick setup, refresh now and delete. The saved settings
 // of a counter are changed by the dashboard straight in the database; these need the bot (Discord channels and the rename budget).
-export async function callPettoCounters(context: AstroContext, guildId: string, userId: string, route: 'preview' | 'create' | 'setup' | 'refresh' | 'delete' | 'announce' | 'reorder', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; data?: any }> {
+export async function callPettoCounters(context: AstroContext, guildId: string, userId: string, route: 'preview' | 'create' | 'setup' | 'refresh' | 'delete' | 'announce' | 'reorder', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; data?: any; down?: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: '' };
   try {
     const grant = await roleGrant(context, guildId, 'counters', route !== 'preview');
-    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/counters/${route}`, {
-      method: 'POST', signal: AbortSignal.timeout(route === 'preview' ? 6_000 : 25_000),
+    // A page that is posted waits a few seconds for a bot that is restarting (it only repeats when the bot was never reached, so nothing is done twice).
+    const call = await botFetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/counters/${route}`, {
+      method: 'POST',
       headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, user_id: userId }),
-    });
-    const payload: any = await response.json().catch(() => null);
-    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', data: payload };
+    }, { timeoutMs: route === 'preview' ? 6_000 : 25_000, mode: route === 'preview' || route === 'refresh' ? 'read' : 'change', retryAt: route === 'preview' ? undefined : PATIENT_RETRY });
+    if (!call.response || call.down) return { ok: false, message: '', down: true };
+    const payload = call.data;
+    return { ok: Boolean(call.response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', data: payload };
   } catch {
-    return { ok: false, message: '' };
+    return { ok: false, message: '', down: true };
   }
 }
 
 // Feeds from the dashboard (petto-bot src/web/feedRoutes.js): look up an account, follow it, change a feed, stop following, post a test
 // notice, and the card as it will be posted. The list of feeds itself is read by the page from the database.
 export type FeedsRoute = 'resolve' | 'search' | 'create' | 'update' | 'delete' | 'test' | 'preview';
-export async function callPettoFeeds(context: AstroContext, guildId: string, userId: string, route: FeedsRoute, body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; message: string; data: any }> {
+export async function callPettoFeeds(context: AstroContext, guildId: string, userId: string, route: FeedsRoute, body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; status: number; message: string; data: any; down?: boolean; retrySafe?: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, status: 503, message: '', data: null };
   try {
     const grant = await roleGrant(context, guildId, 'feeds', route !== 'resolve' && route !== 'search' && route !== 'preview');
-    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/feeds/${route}`, {
-      method: 'POST', signal: AbortSignal.timeout(route === 'create' || route === 'test' ? 25_000 : 12_000),
+    // A look-up or a preview changes nothing and can be asked again; following, changing, stopping and the test notice are repeated only when the
+    // bot was never reached (botFetch). The page does the longer waiting (scripts/bot-wait.js), so this stays short.
+    const call = await botFetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/feeds/${route}`, {
+      method: 'POST',
       headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, user_id: userId }),
-    });
-    const data: any = await response.json().catch(() => null);
-    return { ok: Boolean(response.ok && data?.ok), status: response.status, message: typeof data?.message === 'string' ? data.message : '', data };
+    }, { timeoutMs: route === 'create' || route === 'test' ? 25_000 : 12_000, mode: route === 'resolve' || route === 'search' || route === 'preview' ? 'read' : 'change' });
+    if (!call.response || call.down) return { ok: false, status: 502, message: '', data: null, down: true, retrySafe: call.retrySafe };
+    const data = call.data;
+    return { ok: Boolean(call.response.ok && data?.ok), status: call.response.status, message: typeof data?.message === 'string' ? data.message : '', data };
   } catch {
-    return { ok: false, status: 502, message: '', data: null };
+    return { ok: false, status: 502, message: '', data: null, down: true, retrySafe: false };
   }
 }
 
@@ -604,7 +671,7 @@ export async function callPettoInvites(context: AstroContext, guildId: string, u
 }
 
 /** "Send now" of a timer (Automation, Timers), like `!timer run`: the bot sends it at once and its schedule does not change. */
-export async function callPettoTimerRun(context: AstroContext, guildId: string, userId: string, timerId: string, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
+export async function callPettoTimerRun(context: AstroContext, guildId: string, userId: string, timerId: string, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string; down?: boolean }> {
   return callPettoAction(context, guildId, userId, 'automation', `timers/${encodeURIComponent(timerId)}/run`, {}, lang);
 }
 
@@ -621,20 +688,23 @@ export async function callPettoPagination(context: AstroContext, guildId: string
   return callPettoAction(context, guildId, userId, 'embeds', `pagination/${action}`, body, lang);
 }
 
-async function callPettoAction(context: AstroContext, guildId: string, userId: string, page: string, route: string, body: Record<string, unknown>, lang: string): Promise<{ ok: boolean; message: string; code?: string }> {
+async function callPettoAction(context: AstroContext, guildId: string, userId: string, page: string, route: string, body: Record<string, unknown>, lang: string): Promise<{ ok: boolean; message: string; code?: string; down?: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, message: '' };
   try {
     const grant = await roleGrant(context, guildId, page, true);
-    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/${route}`, {
-      method: 'POST', signal: AbortSignal.timeout(20_000),
+    // `down`: the bot never answered (it may be restarting), so the page says that and not that the action failed. A bot that was never reached is
+    // asked again for a few seconds (botFetch), which cannot do the action twice.
+    const call = await botFetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/${route}`, {
+      method: 'POST',
       headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, user_id: userId }),
-    });
-    const payload: any = await response.json().catch(() => null);
-    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', code: typeof payload?.code === 'string' ? payload.code : payload?.error };
+    }, { timeoutMs: 20_000, mode: 'change', retryAt: PATIENT_RETRY });
+    if (!call.response || call.down) return { ok: false, message: '', down: true };
+    const payload: any = call.data;
+    return { ok: Boolean(call.response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', code: typeof payload?.code === 'string' ? payload.code : payload?.error };
   } catch {
-    return { ok: false, message: '' };
+    return { ok: false, message: '', down: true };
   }
 }
 

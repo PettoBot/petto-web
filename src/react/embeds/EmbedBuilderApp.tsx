@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './embeds.css';
 import FormatToolbar from './FormatToolbar';
+import SilentHint from './SilentHint';
 import Preview from './Preview';
 import V2Editor from '../v2/V2Editor';
 import ButtonActions from './ButtonActions';
@@ -346,6 +347,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                 <div className="ebr-field-head"><label>{t('Message content')}</label></div>
                 <textarea ref={contentRef} data-ac="" rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
                 <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
+                <SilentHint />
               </div>
 
               {cardField}

@@ -1,101 +1,378 @@
 ---
 import { Icon } from 'astro-icon/components';
 import { getDashLang, makeT } from '../i18n/dash';
+import { TICKET_FORM_LIMITS, editorFields, type TicketField } from '../utils/ticketForm';
 const dt = makeT(getDashLang(Astro));
-interface Field { type: string; id: string; label: string; placeholder?: string; required?: boolean }
-interface Props { fields?: Field[] }
+interface Props { fields?: unknown[] }
 const { fields } = Astro.props;
-const rows: Field[] = fields && fields.length ? fields : [{ type: 'long_text', id: '', label: '', placeholder: '', required: true }];
-// The value sent when the form is saved. The script keeps it up to date as the rows change; starting from the saved fields means
-// that a form saved before the script runs (or without it) still sends the fields it already has.
-const clean = (value: string) => String(value ?? '').replace(/[|;]/g, ' ').replace(/\s+/g, ' ').trim();
-const spec = (fields ?? []).filter((f) => clean(f.label)).slice(0, 5).map((f) => [f.type, f.id, clean(f.label), clean(f.placeholder ?? ''), f.required === false ? 'optional' : 'required'].join('|')).join(';');
+// What the form starts with: the saved questions (cut down to what the bot can use), or one empty paragraph question.
+const saved: TicketField[] = editorFields(fields ?? []);
+const rows: TicketField[] = saved.length ? saved : [{ id: '', type: 'long_text', label: '', required: true }];
+const CHOICE_TYPES = ['select', 'radio', 'checkboxes'];
+const PICKERS = ['user', 'role', 'channel'];
+// What each part of a row is for: the types that show it.
+const SHOWS: Record<string, string[]> = {
+  desc: ['short_text', 'long_text', 'select', 'radio', 'checkboxes', 'check', 'file', 'user', 'role', 'channel'],
+  hint: ['short_text', 'long_text', 'select', 'user', 'role', 'channel'],
+  options: CHOICE_TYPES,
+  multi: ['select'],
+  file: ['file'],
+  picks: PICKERS,
+  content: ['display'],
+  required: ['short_text', 'long_text', 'select', 'radio', 'checkboxes', 'check', 'file', 'user', 'role', 'channel'],
+  label: ['short_text', 'long_text', 'select', 'radio', 'checkboxes', 'check', 'file', 'user', 'role', 'channel'],
+};
+const shows = (part: string, type: string) => SHOWS[part].includes(type);
+const words = {
+  required: dt('Required'),
+  tick: dt('Must be ticked'),
+  empty: dt('Add a question to see the form.'),
+  select: dt('Select an option'),
+  user: dt('Select a member'),
+  role: dt('Select a role'),
+  channel: dt('Select a channel'),
+  file: dt('Upload a file'),
+  images: dt('Pictures only'),
+  anyFile: dt('Any file'),
+  upTo: dt('Up to {a}', { a: '{a}' }),
+  textOnly: dt('Text only, members just read it'),
+  needChoices: dt('Add one choice on each line.'),
+  needTwo: dt('Radio buttons need at least 2 choices.'),
+  tooMany: dt('Too many choices for this kind of question.'),
+  needText: dt('Write the text members will read.'),
+  needLabel: dt('Write the question.'),
+  title: dt('Ticket details'),
+};
+const isHidden = (part: string, type: string) => !shows(part, type);
 ---
-<div class="ff" data-ff>
-  <input type="hidden" name="form_fields" value={spec} />
+<div class="ff" data-ff data-max={TICKET_FORM_LIMITS.questions} data-t={JSON.stringify(words)}>
+  <input type="hidden" name="form_fields_json" value={JSON.stringify(saved)} data-ff-json />
   <div class="ff-list" data-ff-list>
     {rows.map((f) => (
-      <div class="ff-row" data-ff-row data-id={f.id}>
-        <select data-ff-type aria-label={dt('Type')}>
-          <option value="short_text" selected={f.type === 'short_text'}>{dt('Short answer')}</option>
-          <option value="long_text" selected={f.type === 'long_text'}>{dt('Paragraph')}</option>
-        </select>
-        <input type="text" autocomplete="off" data-ff-label placeholder={dt('Question')} maxlength="45" value={f.label} />
-        <input type="text" autocomplete="off" data-ff-hint placeholder={dt('Hint text (optional)')} maxlength="100" value={f.placeholder ?? ''} />
-        <label class="ff-req"><input type="checkbox" data-ff-required checked={f.required !== false} />{dt('Required')}</label>
-        <button type="button" class="ff-del" data-ff-del aria-label={dt('Remove')}><Icon name="ph:x-bold" width="13" height="13" /></button>
+      <div class="ff-row" data-ff-row data-id={f.id} data-type={f.type}>
+        <div class="ff-top">
+          <select data-ff-type aria-label={dt('Type')}>
+            <optgroup label={dt('Text')}>
+              <option value="short_text" selected={f.type === 'short_text'}>{dt('Short answer')}</option>
+              <option value="long_text" selected={f.type === 'long_text'}>{dt('Paragraph')}</option>
+            </optgroup>
+            <optgroup label={dt('Choices')}>
+              <option value="select" selected={f.type === 'select'}>{dt('Dropdown menu')}</option>
+              <option value="radio" selected={f.type === 'radio'}>{dt('Radio buttons')}</option>
+              <option value="checkboxes" selected={f.type === 'checkboxes'}>{dt('Checkboxes')}</option>
+              <option value="check" selected={f.type === 'check'}>{dt('One checkbox')}</option>
+            </optgroup>
+            <optgroup label={dt('Pictures and files')}>
+              <option value="file" selected={f.type === 'file'}>{dt('File upload')}</option>
+            </optgroup>
+            <optgroup label={dt('Pickers')}>
+              <option value="user" selected={f.type === 'user'}>{dt('Member picker')}</option>
+              <option value="role" selected={f.type === 'role'}>{dt('Role picker')}</option>
+              <option value="channel" selected={f.type === 'channel'}>{dt('Channel picker')}</option>
+            </optgroup>
+            <optgroup label={dt('Other')}>
+              <option value="display" selected={f.type === 'display'}>{dt('Text only (no answer)')}</option>
+            </optgroup>
+          </select>
+          <span class="ff-move">
+            <button type="button" class="ff-icon" data-ff-up aria-label={dt('Move up')} title={dt('Move up')}><Icon name="ph:caret-up-bold" width="13" height="13" /></button>
+            <button type="button" class="ff-icon" data-ff-down aria-label={dt('Move down')} title={dt('Move down')}><Icon name="ph:caret-down-bold" width="13" height="13" /></button>
+            <button type="button" class="ff-icon ff-del" data-ff-del aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:x-bold" width="13" height="13" /></button>
+          </span>
+        </div>
+        <div class="ff-body">
+          <input type="text" autocomplete="off" data-ff-label data-part="label" placeholder={dt('Question')} maxlength={TICKET_FORM_LIMITS.label} value={f.type === 'display' ? '' : f.label} hidden={isHidden('label', f.type)} />
+          <textarea data-ff-content data-part="content" rows="3" placeholder={dt('Text members read (Markdown works)')} maxlength={TICKET_FORM_LIMITS.content} hidden={isHidden('content', f.type)}>{f.content ?? ''}</textarea>
+          <input type="text" autocomplete="off" data-ff-desc data-part="desc" placeholder={dt('Help text under the question (optional)')} maxlength={TICKET_FORM_LIMITS.description} value={f.description ?? ''} hidden={isHidden('desc', f.type)} />
+          <input type="text" autocomplete="off" data-ff-hint data-part="hint" placeholder={dt('Hint text (optional)')} maxlength={TICKET_FORM_LIMITS.placeholder} value={f.placeholder ?? ''} hidden={isHidden('hint', f.type)} />
+          <div class="ff-field" data-part="options" hidden={isHidden('options', f.type)}>
+            <textarea data-ff-options rows="4" placeholder={dt('One choice per line')} aria-label={dt('Choices')}>{(f.options ?? []).join('\n')}</textarea>
+            <span class="ff-count" data-ff-count></span>
+          </div>
+          <label class="ff-inline" data-part="multi" hidden={isHidden('multi', f.type)}><input type="checkbox" data-ff-multi checked={f.type === 'select' && (f.max ?? 1) > 1} />{dt('Members can pick more than one choice')}</label>
+          <div class="ff-pair" data-part="file" hidden={isHidden('file', f.type)}>
+            <label>{dt('Members can upload')}
+              <select data-ff-accept>
+                <option value="images" selected={f.accept === 'images'}>{dt('Pictures only (PNG, JPG, GIF, WebP)')}</option>
+                <option value="any" selected={f.accept !== 'images'}>{dt('Any file')}</option>
+              </select>
+            </label>
+            <label>{dt('How many files')}
+              <select data-ff-files>
+                {[1, 2, 3, 4, 5].map((n) => <option value={n} selected={(f.max ?? 1) === n}>{n}</option>)}
+              </select>
+            </label>
+          </div>
+          <label class="ff-inline ff-picks" data-part="picks" hidden={isHidden('picks', f.type)}>{dt('Members can pick up to')}<input type="number" min="1" max={TICKET_FORM_LIMITS.picks} data-ff-picks value={PICKERS.includes(f.type) ? (f.max ?? 1) : 1} /></label>
+          <label class="ff-inline ff-req" data-part="required" hidden={isHidden('required', f.type)}><input type="checkbox" data-ff-required checked={f.type === 'check' ? f.required === true : f.required !== false} /><span data-ff-req-text>{f.type === 'check' ? dt('Must be ticked') : dt('Required')}</span></label>
+          <p class="ff-warn" data-ff-warn hidden role="status"></p>
+        </div>
       </div>
     ))}
   </div>
-  <button type="button" class="btn btn-ghost btn-sm" data-ff-add><Icon name="ph:plus-bold" width="13" height="13" />{dt('Add field')}</button>
-  <span class="ff-note">{dt('Up to 5 fields.')}</span>
+  <button type="button" class="btn btn-ghost btn-sm" data-ff-add><Icon name="ph:plus-bold" width="13" height="13" />{dt('Add question')}</button>
+  <span class="ff-note">{dt('Up to 5 parts in a form (Discord\'s limit), and at least one that members answer.')}</span>
+  <details class="ff-preview" data-ff-previewbox open>
+    <summary>{dt('Preview of the form')}</summary>
+    <div class="ff-modal" data-ff-preview aria-live="polite"></div>
+    <p class="ff-note">{dt('How the window looks in Discord. Members fill it in when they press the panel button.')}</p>
+  </details>
 </div>
 
 <style>
-  .ff { display: flex; flex-direction: column; gap: 8px; width: 100%; align-items: flex-start; }
-  .ff-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+  .ff { display: flex; flex-direction: column; gap: 10px; width: 100%; align-items: flex-start; }
+  .ff-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .ff-row { box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); min-width: 0; }
   .ff-row > * { min-width: 0; }
-  .ff-row { box-sizing: border-box; display: grid; grid-template-columns: 130px minmax(0, 1.2fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
-  .ff-row input[type="text"], .ff-row select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg, transparent); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; width: 100%; }
-  .ff-req { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted, inherit); white-space: nowrap; }
-  .ff-del { border: 0; background: transparent; color: var(--muted, inherit); cursor: pointer; padding: 6px; border-radius: 8px; display: inline-flex; }
+  .ff-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ff-top select { flex: 1 1 auto; max-width: 260px; }
+  .ff-body { display: flex; flex-direction: column; gap: 8px; }
+  .ff-body [hidden] { display: none !important; }
+  .ff-row input[type="text"], .ff-row input[type="number"], .ff-row select, .ff-row textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg, transparent); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; width: 100%; box-sizing: border-box; }
+  .ff-row textarea { resize: vertical; line-height: 1.4; }
+  .ff-move { display: inline-flex; gap: 2px; flex: 0 0 auto; }
+  .ff-icon { border: 0; background: transparent; color: var(--muted, inherit); cursor: pointer; padding: 7px; border-radius: 8px; display: inline-flex; }
+  .ff-icon:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
   .ff-del:hover { color: #ff6b6b; }
+  .ff-icon[disabled] { opacity: .3; cursor: default; }
+  .ff-field { display: flex; flex-direction: column; gap: 4px; }
+  .ff-count { font-size: 12px; opacity: .65; }
+  .ff-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted, inherit); }
+  .ff-inline input[type="number"] { width: 72px; }
+  .ff-pair { display: grid; grid-template-columns: 1fr 110px; gap: 8px; }
+  .ff-pair label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted, inherit); }
   .ff-note { font-size: 12px; opacity: .65; }
-  @media (max-width: 720px) {
-    .ff-row { grid-template-columns: 1fr auto; }
-    .ff-row select, .ff-row input[type="text"] { grid-column: 1 / -1; }
+  .ff-warn { margin: 0; font-size: 12.5px; color: #ff6b6b; }
+  .ff-preview { width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--card); box-sizing: border-box; }
+  .ff-preview summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+  .ff-modal { margin: 10px auto 6px; width: 100%; max-width: 460px; box-sizing: border-box; background: #313338; color: #dbdee1; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; font-family: var(--sans); font-size: 14px; text-align: left; }
+  .ff-modal :global(h4) { margin: 0; font-size: 18px; font-weight: 700; color: #f2f3f5; }
+  .ff-modal :global(.ff-pv-label) { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: #b5bac1; margin-bottom: 4px; display: block; overflow-wrap: anywhere; }
+  .ff-modal :global(.ff-pv-label i) { color: #f23f42; font-style: normal; }
+  .ff-modal :global(.ff-pv-desc) { font-size: 12.5px; color: #949ba4; margin: -2px 0 6px; overflow-wrap: anywhere; }
+  .ff-modal :global(.ff-pv-box) { background: #1e1f22; border-radius: 4px; padding: 9px 10px; color: #949ba4; min-height: 20px; display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+  .ff-modal :global(.ff-pv-box.tall) { min-height: 62px; align-items: flex-start; }
+  .ff-modal :global(.ff-pv-file) { border: 1px dashed #4e5058; background: #1e1f22; border-radius: 6px; padding: 14px 10px; text-align: center; color: #b5bac1; }
+  .ff-modal :global(.ff-pv-file small) { display: block; color: #949ba4; margin-top: 2px; }
+  .ff-modal :global(.ff-pv-opt) { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: #dbdee1; overflow-wrap: anywhere; }
+  .ff-modal :global(.ff-pv-opt::before) { content: ''; flex: 0 0 16px; height: 16px; border: 2px solid #80848e; box-sizing: border-box; border-radius: 50%; }
+  .ff-modal :global(.ff-pv-opt.sq::before) { border-radius: 4px; }
+  .ff-modal :global(.ff-pv-info) { color: #dbdee1; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; }
+  .ff-modal :global(.ff-pv-empty) { color: #949ba4; }
+  @media (max-width: 560px) {
+    .ff-top select { max-width: none; }
+    .ff-pair { grid-template-columns: 1fr; }
+    .ff-modal { padding: 12px; }
   }
 </style>
 
 <script is:inline>
   if (!window.__ffBound) {
     window.__ffBound = true;
-    var clean = function (v) { return String(v || '').replace(/[|;]/g, ' ').replace(/\s+/g, ' ').trim(); };
+    var NS = {
+      label: ['short_text', 'long_text', 'select', 'radio', 'checkboxes', 'check', 'file', 'user', 'role', 'channel'],
+      desc: ['short_text', 'long_text', 'select', 'radio', 'checkboxes', 'check', 'file', 'user', 'role', 'channel'],
+      hint: ['short_text', 'long_text', 'select', 'user', 'role', 'channel'],
+      options: ['select', 'radio', 'checkboxes'],
+      multi: ['select'],
+      file: ['file'],
+      picks: ['user', 'role', 'channel'],
+      content: ['display'],
+      required: ['short_text', 'long_text', 'select', 'radio', 'checkboxes', 'check', 'file', 'user', 'role', 'channel']
+    };
+    var OPTION_RANGE = { select: [1, 25], radio: [2, 10], checkboxes: [1, 10] };
+    var text = function (box, key) { try { return JSON.parse(box.getAttribute('data-t') || '{}')[key] || ''; } catch (e) { return ''; } };
+    var clean = function (v) { return String(v || '').replace(/\u0000/g, '').trim(); };
+    var lines = function (v) {
+      var seen = {}; var out = [];
+      String(v || '').split(/\r?\n/).forEach(function (line) { var o = clean(line).slice(0, 100); if (o && !seen[o]) { seen[o] = 1; out.push(o); } });
+      return out;
+    };
+    var el = function (tag, cls, content) { var n = document.createElement(tag); if (cls) n.className = cls; if (content != null) n.textContent = content; return n; };
+
+    // One row of the editor as the question the bot stores.
+    var readRow = function (row) {
+      var type = row.querySelector('[data-ff-type]').value;
+      var q = { type: type, id: row.getAttribute('data-id') || '' };
+      if (type === 'display') { q.content = clean(row.querySelector('[data-ff-content]').value).slice(0, 1000); return q; }
+      q.label = clean(row.querySelector('[data-ff-label]').value).slice(0, 45);
+      var desc = clean(row.querySelector('[data-ff-desc]').value).slice(0, 100);
+      if (desc) q.description = desc;
+      var req = row.querySelector('[data-ff-required]').checked;
+      if (type === 'short_text' || type === 'long_text') {
+        q.placeholder = clean(row.querySelector('[data-ff-hint]').value).slice(0, 100) || undefined;
+        q.required = req;
+        return q;
+      }
+      if (type === 'check') { if (req) q.required = true; return q; }
+      q.required = req;
+      var hint = clean(row.querySelector('[data-ff-hint]').value).slice(0, 150);
+      if (OPTION_RANGE[type]) {
+        q.options = lines(row.querySelector('[data-ff-options]').value);
+        if (type === 'select') { q.max = row.querySelector('[data-ff-multi]').checked ? Math.max(1, Math.min(25, q.options.length)) : 1; if (hint) q.placeholder = hint; }
+        if (type === 'checkboxes') q.max = Math.max(1, q.options.length);
+      } else if (type === 'file') {
+        q.accept = row.querySelector('[data-ff-accept]').value === 'images' ? 'images' : 'any';
+        q.max = Math.max(1, Math.min(5, Number(row.querySelector('[data-ff-files]').value) || 1));
+      } else {
+        q.max = Math.max(1, Math.min(25, Math.trunc(Number(row.querySelector('[data-ff-picks]').value)) || 1));
+        if (hint) q.placeholder = hint;
+      }
+      return q;
+    };
+
+    // The parts of a row that its type uses; the rest are hidden.
+    var shape = function (row) {
+      var type = row.querySelector('[data-ff-type]').value;
+      row.setAttribute('data-type', type);
+      Object.keys(NS).forEach(function (part) {
+        var node = row.querySelector('[data-part="' + part + '"]');
+        if (node) node.hidden = NS[part].indexOf(type) < 0;
+      });
+      var reqText = row.querySelector('[data-ff-req-text]');
+      var box = row.closest('[data-ff]');
+      if (reqText && box) reqText.textContent = text(box, type === 'check' ? 'tick' : 'required');
+    };
+
+    // What is wrong with a row, said under it ('' when nothing).
+    var problem = function (box, q) {
+      if (q.type === 'display') return q.content ? '' : text(box, 'needText');
+      if (!q.label) return (q.description || q.placeholder || (q.options || []).length) ? text(box, 'needLabel') : '';
+      var range = OPTION_RANGE[q.type];
+      if (range) {
+        var n = (q.options || []).length;
+        if (n > range[1]) return text(box, 'tooMany');
+        if (n < range[0]) return q.type === 'radio' ? text(box, 'needTwo') : text(box, 'needChoices');
+      }
+      return '';
+    };
+
+    var previewOf = function (box, questions) {
+      var host = box.querySelector('[data-ff-preview]');
+      if (!host) return;
+      host.textContent = '';
+      var form = box.closest('form');
+      var titleInput = form && form.querySelector('[name="form_title"]');
+      host.appendChild(el('h4', null, (titleInput && clean(titleInput.value)) || text(box, 'title')));
+      var shown = 0;
+      questions.forEach(function (q) {
+        if (q.type === 'display') {
+          if (!q.content) return;
+          shown += 1;
+          host.appendChild(el('div', 'ff-pv-info', q.content));
+          return;
+        }
+        if (!q.label) return;
+        shown += 1;
+        var part = el('div');
+        var label = el('span', 'ff-pv-label', q.label);
+        var asked = q.type === 'check' ? q.required === true : q.required !== false;
+        if (asked) { label.appendChild(document.createTextNode(' ')); label.appendChild(el('i', null, '*')); }
+        if (q.type !== 'check') part.appendChild(label);
+        if (q.description) part.appendChild(el('div', 'ff-pv-desc', q.description));
+        var t = q.type;
+        if (t === 'short_text' || t === 'long_text') {
+          part.appendChild(el('div', 'ff-pv-box' + (t === 'long_text' ? ' tall' : ''), q.placeholder || ''));
+        } else if (t === 'select') {
+          var menu = el('div', 'ff-pv-box');
+          menu.appendChild(el('span', null, q.placeholder || (q.max > 1 ? text(box, 'upTo').replace('{a}', String(q.max)) : text(box, 'select'))));
+          menu.appendChild(el('span', null, '⌄'));
+          part.appendChild(menu);
+        } else if (t === 'radio' || t === 'checkboxes') {
+          (q.options || []).forEach(function (o) { part.appendChild(el('div', 'ff-pv-opt' + (t === 'checkboxes' ? ' sq' : ''), o)); });
+        } else if (t === 'check') {
+          var one = el('div', 'ff-pv-opt sq', q.label);
+          if (asked) { one.appendChild(document.createTextNode(' ')); one.appendChild(el('i', null, '*')); one.lastChild.style.color = '#f23f42'; one.lastChild.style.fontStyle = 'normal'; }
+          part.appendChild(one);
+        } else if (t === 'file') {
+          var drop = el('div', 'ff-pv-file', text(box, 'file'));
+          drop.appendChild(el('small', null, (q.accept === 'images' ? text(box, 'images') : text(box, 'anyFile')) + ' · ' + text(box, 'upTo').replace('{a}', String(q.max || 1))));
+          part.appendChild(drop);
+        } else {
+          var pick = el('div', 'ff-pv-box');
+          pick.appendChild(el('span', null, q.placeholder || text(box, t)));
+          pick.appendChild(el('span', null, '⌄'));
+          part.appendChild(pick);
+        }
+        host.appendChild(part);
+      });
+      if (!shown) host.appendChild(el('div', 'ff-pv-empty', text(box, 'empty')));
+    };
+
     var sync = function (box) {
+      // A builder still being put in the page (the dashboard swaps its content in piece by piece) is drawn once it is complete.
+      if (!box.querySelector('[data-ff-json]') || !box.querySelector('[data-ff-add]') || !box.querySelector('[data-ff-preview]')) return;
       var rows = box.querySelectorAll('[data-ff-row]');
       var used = {};
-      var parts = [];
+      var list = [];
       rows.forEach(function (row, i) {
-        var label = clean(row.querySelector('[data-ff-label]').value);
-        if (!label) return;
+        if (!row.querySelector('[data-ff-hint]') || !row.querySelector('[data-ff-picks]')) return;
+        shape(row);
+        var q = readRow(row);
         var id = row.getAttribute('data-id') || '';
         if (!id || used[id]) { id = 'field_' + (i + 1); while (used[id]) id += 'x'; }
         used[id] = 1;
         row.setAttribute('data-id', id);
-        parts.push([
-          row.querySelector('[data-ff-type]').value, id, label,
-          clean(row.querySelector('[data-ff-hint]').value),
-          row.querySelector('[data-ff-required]').checked ? 'required' : 'optional'
-        ].join('|'));
+        q.id = id;
+        var warn = row.querySelector('[data-ff-warn]');
+        var said = problem(box, q);
+        if (warn) { warn.textContent = said; warn.hidden = !said; }
+        var count = row.querySelector('[data-ff-count]');
+        if (count) { var range = OPTION_RANGE[q.type]; count.textContent = range ? (q.options || []).length + ' / ' + range[1] : ''; }
+        var up = row.querySelector('[data-ff-up]'); var down = row.querySelector('[data-ff-down]');
+        if (up) up.disabled = i === 0;
+        if (down) down.disabled = i === rows.length - 1;
+        list.push(q);
       });
-      box.querySelector('input[name="form_fields"]').value = parts.slice(0, 5).join(';');
+      // A row with nothing written yet is not sent (as before: a form with no question is refused by the page).
+      var sent = list.filter(function (q) { return q.type === 'display' ? q.content : q.label; });
+      box.querySelector('[data-ff-json]').value = JSON.stringify(sent.slice(0, Number(box.getAttribute('data-max')) || 5));
       var add = box.querySelector('[data-ff-add]');
-      if (add) add.style.display = rows.length >= 5 ? 'none' : '';
+      if (add) add.style.display = rows.length >= (Number(box.getAttribute('data-max')) || 5) ? 'none' : '';
+      previewOf(box, list);
     };
     var syncAll = function () { document.querySelectorAll('[data-ff]').forEach(sync); };
-    document.addEventListener('input', function (e) { var b = e.target.closest && e.target.closest('[data-ff]'); if (b) sync(b); });
+    document.addEventListener('input', function (e) {
+      var b = e.target.closest && e.target.closest('[data-ff]');
+      if (b) { sync(b); return; }
+      // The title of the window is in the form around the builder and is part of the preview.
+      if (e.target.name === 'form_title') { var f = e.target.closest('form'); var inside = f && f.querySelector('[data-ff]'); if (inside) sync(inside); }
+    });
     document.addEventListener('change', function (e) { var b = e.target.closest && e.target.closest('[data-ff]'); if (b) sync(b); });
     document.addEventListener('click', function (e) {
-      var t = e.target.closest && e.target.closest('[data-ff-add],[data-ff-del]');
+      var t = e.target.closest && e.target.closest('[data-ff-add],[data-ff-del],[data-ff-up],[data-ff-down]');
       if (!t) return;
       var box = t.closest('[data-ff]');
       var list = box.querySelector('[data-ff-list]');
+      var max = Number(box.getAttribute('data-max')) || 5;
       if (t.hasAttribute('data-ff-add')) {
         var rows = list.querySelectorAll('[data-ff-row]');
-        if (rows.length >= 5) return;
+        if (rows.length >= max) return;
         var copy = rows[0].cloneNode(true);
         copy.removeAttribute('data-id');
-        copy.querySelector('[data-ff-label]').value = '';
-        copy.querySelector('[data-ff-hint]').value = '';
+        copy.querySelector('[data-ff-type]').value = 'short_text';
+        ['[data-ff-label]', '[data-ff-desc]', '[data-ff-hint]', '[data-ff-content]', '[data-ff-options]'].forEach(function (s) { var n = copy.querySelector(s); if (n) n.value = ''; });
         copy.querySelector('[data-ff-required]').checked = true;
+        copy.querySelector('[data-ff-multi]').checked = false;
+        copy.querySelector('[data-ff-accept]').value = 'images';
+        copy.querySelector('[data-ff-files]').value = '1';
+        copy.querySelector('[data-ff-picks]').value = '1';
         list.appendChild(copy);
+        sync(box);
         copy.querySelector('[data-ff-label]').focus();
-      } else {
-        var all = list.querySelectorAll('[data-ff-row]');
-        var row = t.closest('[data-ff-row]');
-        if (all.length <= 1) { row.querySelector('[data-ff-label]').value = ''; row.querySelector('[data-ff-hint]').value = ''; }
-        else row.remove();
+        return;
       }
+      var row = t.closest('[data-ff-row]');
+      if (t.hasAttribute('data-ff-up') && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+      else if (t.hasAttribute('data-ff-down') && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+      else if (t.hasAttribute('data-ff-del')) {
+        var all = list.querySelectorAll('[data-ff-row]');
+        if (all.length <= 1) {
+          ['[data-ff-label]', '[data-ff-desc]', '[data-ff-hint]', '[data-ff-content]', '[data-ff-options]'].forEach(function (s) { var n = row.querySelector(s); if (n) n.value = ''; });
+        } else row.remove();
+      }
+      // Changing the order or removing a row is a change the page has to see (it keeps track of unsaved changes).
+      box.dispatchEvent(new Event('input', { bubbles: true }));
       sync(box);
     });
     document.addEventListener('submit', function (e) { var b = e.target.querySelector && e.target.querySelector('[data-ff]'); if (b) sync(b); }, true);
@@ -107,8 +384,8 @@ const spec = (fields ?? []).filter((f) => clean(f.label)).slice(0, 5).map((f) =>
           for (var j = 0; j < records[i].addedNodes.length; j += 1) {
             var node = records[i].addedNodes[j];
             if (node.nodeType !== 1) continue;
-            if (node.matches && node.matches('[data-ff]')) sync(node);
-            else if (node.querySelectorAll) node.querySelectorAll('[data-ff]').forEach(sync);
+            if (node.matches && node.matches('[data-ff]')) setTimeout(function (n) { return function () { sync(n); }; }(node), 0);
+            else if (node.querySelectorAll) node.querySelectorAll('[data-ff]').forEach(function (n) { setTimeout(function () { sync(n); }, 0); });
           }
         }
       }).observe(document.body, { childList: true, subtree: true });

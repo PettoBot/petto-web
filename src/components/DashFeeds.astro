@@ -3,6 +3,7 @@
 // publishes in a channel. The list is read from the database by the page; looking up an account, following it, the test notice and the
 // preview of the card go through the bot (feeds-api.ts). The preview is the real card of the bot drawn with the same renderer as the
 // Embed Builder.
+import SilentMentionHint from './SilentMentionHint.astro';
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
@@ -65,7 +66,7 @@ const text = {
   save: dt('Save feed'), create: dt('Follow this account'), saving: dt('Saving…'), saved: dt('Saved.'), newFeed: dt('New feed'), editFeed: dt('Edit feed'),
   pickChannel: dt('Pick the channel for the notices.'), pickAccount: dt('Find the account first.'), pickType: dt('Pick at least one kind of notice.'),
   failed: dt('Petto did not answer. Try again in a moment.'), deleteAsk: dt('Stop following {name}? The channel keeps what was already posted.'),
-  previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'), loadingPreview: dt('Drawing the preview…'), retry: dt('Try again'),
+  previewFail: dt('The preview is not available right now.'), removeRole: dt('Remove'), retry: dt('Try again'),
   searchName: dt('Search {name} or paste a link'), noResults: dt('No results. Try another name or paste the link.'),
   followed: dt('Now following {name} on {platform} in {channel}. Nothing from the past is posted: the next notice will be new.'), updated: dt('Saved the changes to {name}.'),
   pickTags: dt('Write one to four words first.'), tagsPlaceholder: dt('pink flower anime -character'),
@@ -182,6 +183,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   <Modal id="fd-modal" title={dt('New feed')} icon="ph:bell-ringing-fill">
     <form class="fd-form" data-feed-form data-no-dirty autocomplete="off" novalidate>
       <p class="fd-sub" data-sub></p>
+      <div class="fd-wait" data-auto-wait hidden></div>
 
       <div class="fd-field" data-step="account">
         <div class="fd-combo" data-combo>
@@ -223,7 +225,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 
       <div class="fd-field">
         <label for="fd-message">{dt('Message above the notice')} <small>({dt('optional')})</small></label>
-        <textarea id="fd-message" data-message data-ac="vars,emojis,roles" rows="3" maxlength="1500" placeholder={dt('{feed.author} just posted!')}></textarea>
+        <textarea id="fd-message" data-message data-ac="vars,emojis,roles" rows="3" maxlength="1500" placeholder={dt('{feed.author} just posted!')}></textarea><SilentMentionHint />
         <div class="fd-chips" data-var-chips>{FEED_VARIABLES.slice(0, 4).map((variable) => <button type="button" class="fd-chip" data-var={variable.tok} title={dt(variable.desc)}>{variable.tok}</button>)}</div>
       </div>
 
@@ -258,6 +260,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       </details>
 
       <div class="fd-senses" data-senses hidden role="group"></div>
+      <div class="fd-wait" data-wait hidden></div>
       <p class="fd-error" data-error hidden role="alert"></p>
       <div class="fd-foot">
         <button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button>
@@ -305,14 +308,20 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); img.replaceWith(svg); } else img.remove();
     }, true);
 
-    const call = async (action: string, body: Record<string, unknown> = {}) => {
-      try {
-        const res = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ action, ...body }) });
-        const data = await res.json().catch(() => null);
-        return { ok: Boolean(res.ok && data?.ok), data, message: typeof data?.message === 'string' && data.message ? data.message : '' };
-      } catch {
-        return { ok: false, data: null, message: '' };
-      }
+    // Every call goes through the shared "waiting for Petto" state (scripts/bot-wait.js, in the dashboard layout): a skeleton and one line of status while
+    // it is out, automatic retries for a few seconds when the bot is away, and the error with Try again when it still is. `wait` says where it is shown.
+    type Wait = { host?: HTMLElement; skeleton?: string; ui?: BotWaitUi; again?: () => void };
+    type BotWaitUi = { status(words: string): void; clear(): void; fail(again?: () => void): void };
+    const botWait = () => (window as unknown as { __dglBotWait: { request: (url: string, payload: unknown, o: Record<string, unknown>) => Promise<any> & { cancel(): void }; ui: (host: HTMLElement, o: Record<string, unknown>) => BotWaitUi } }).__dglBotWait;
+    const waitUi = (host: HTMLElement, skeleton: string) => botWait().ui(host, { skeleton, hold: root });
+    const call = (action: string, body: Record<string, unknown> = {}, wait: Wait = {}) => {
+      const platform = ['resolve', 'search', 'create'].includes(action) ? config.platforms[String(body.platform ?? '')]?.name : undefined; // the platform Petto asks
+      const pending = botWait().request(api, { action, ...body }, {
+        ...wait, hold: root, service: platform, idempotent: ['resolve', 'search', 'preview'].includes(action), limit: action === 'create' || action === 'test' ? 30_000 : 14_000,
+      });
+      const answer = pending.then((r: any) => ({ ok: Boolean(r.ok && r.data?.ok), data: r.data, message: r.message || '', unreachable: Boolean(r.unreachable) })) as Promise<{ ok: boolean; data: any; message: string; unreachable: boolean }> & { cancel(): void };
+      answer.cancel = () => pending.cancel();
+      return answer;
     };
     // The bot writes its answers for Discord (**bold**, `code`, commands to type): here they are shown as plain words.
     const plain = (message: string) => message.replace(/\s*(Pru[eé]balo|Try it|Teste)[^.]*`[^`]*`\.?/i, '').replace(/\s*\(feed `#\d+`\)/i, '').replace(/[*`]/g, '').trim();
@@ -355,7 +364,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     // ---- The window to follow an account or to change a feed ----
     // The page is swapped in again after each save, while a window can already be open for the next account: the state is kept across swaps, so the window
     // carries on with the platform it was opened for (a new empty state made the search ask for a platform without a name).
-    const shared = window as unknown as { __fdState?: { platform: string; feedId: number; input: string; account: Account | null; type: string; roles: string[]; timer: number; run: number; searchTimer: number; searchRun: number; results: Result[]; active: number } };
+    const shared = window as unknown as { __fdState?: { platform: string; feedId: number; input: string; account: Account | null; type: string; roles: string[]; timer: number; run: number; searchTimer: number; searchRun: number; results: Result[]; active: number; cancelSearch?: () => void } };
     const state = (shared.__fdState ??= { platform: '', feedId: 0, input: '', account: null as Account | null, type: '', roles: [] as string[], timer: 0, run: 0, searchTimer: 0, searchRun: 0, results: [] as Result[], active: -1 });
     // A window left in <body> by the page before is the one in use: the copy that came with the new page goes.
     const copies = [...document.querySelectorAll<HTMLElement>('#fd-modal')];
@@ -423,7 +432,9 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const spin = (on: boolean) => { field<HTMLElement>('[data-spin]').hidden = !on; };
     const hideResults = () => { const box = resultsBox(); box.hidden = true; box.replaceChildren(); state.results = []; state.active = -1; field<HTMLInputElement>('[data-account-input]').setAttribute('aria-expanded', 'false'); };
     const showRows = (rowsList: HTMLElement[]) => { const box = resultsBox(); box.replaceChildren(...rowsList); box.hidden = false; field<HTMLInputElement>('[data-account-input]').setAttribute('aria-expanded', 'true'); };
-    const skeleton = () => showRows([0, 1, 2].map(() => { const row = el('li', 'fd-res fd-res-skel'); row.append(el('span', 'fd-pic'), (() => { const t = el('div', 'fd-res-text'); t.append(el('b'), el('small')); return t; })()); return row; }));
+    // What is still on its way is not wanted any more (a newer search, a pick, the window opened for another account).
+    const dropSearch = () => { state.searchRun += 1; state.cancelSearch?.(); state.cancelSearch = undefined; };
+    const waitRow = () => { const row = el('li', 'fd-res-wait'); showRows([row]); return row; };
     const note = (message: string, bad = false) => showRows([el('li', `fd-res-note${bad ? ' fd-res-bad' : ''}`, message)]);
     const markActive = () => resultsBox().querySelectorAll<HTMLElement>('[data-pick]').forEach((row, i) => row.classList.toggle('fd-res-on', i === state.active));
 
@@ -443,16 +454,23 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     };
 
     async function runSearch(raw: string) {
-      const run = ++state.searchRun;
+      dropSearch();
+      const run = state.searchRun;
       const query = raw.trim();
       if (query.length < 2) { spin(false); hideResults(); return; }
-      spin(true); skeleton();
+      spin(true);
       // A link (or an @name) points at one account: it is looked up as it is.
       if (!state.platform) { spin(false); hideResults(); return; }
       const link = /^https?:\/\//i.test(query) || (state.platform === 'youtube' && query.startsWith('@'));
-      const answer = link ? await call('resolve', { platform: state.platform, account: query }) : await call('search', { platform: state.platform, query });
+      // The list is replaced by the wait (rows for a search, the card of the account for a link) until the answer comes.
+      const pending = link
+        ? call('resolve', { platform: state.platform, account: query }, { host: waitRow(), skeleton: 'card', again: () => void runSearch(raw) })
+        : call('search', { platform: state.platform, query }, { host: waitRow(), skeleton: 'rows', again: () => void runSearch(raw) });
+      state.cancelSearch = pending.cancel;
+      const answer = await pending;
       if (run !== state.searchRun) return; // a newer search took its place
       spin(false);
+      if (answer.unreachable) return; // Petto is not answering: the list says so, with Try again
       const senses = choicesOf(answer.data);
       if (!answer.ok && senses.length) { renderResults(senses.map((choice) => ({ value: choice.account, name: choice.label, avatar: null, url: null, detail: choice.account }))); return; }
       if (!answer.ok) { note(answer.message || text.failed, true); return; }
@@ -464,7 +482,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (!result) return;
       state.account = { id: result.value, name: result.name, avatar: result.avatar, url: result.url };
       state.input = result.value;
-      state.searchRun += 1; // what is still on its way is not wanted any more
+      dropSearch(); // what is still on its way is not wanted any more
       spin(false); hideResults(); showError(''); showFound(); schedule();
     };
 
@@ -500,8 +518,10 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (!previewOpen()) return;
       const run = ++state.run;
       const box = field<HTMLElement>('[data-preview]');
-      // Nothing drawn yet (or the last try failed): a placeholder while the card comes, so the box is never empty.
-      if (!box.dataset.html) box.replaceChildren(el('div', 'fd-prev-wait', text.loadingPreview));
+      // Nothing drawn yet (or the last try failed): the skeleton of the card and the status of the wait while it comes, so the box is never empty. A card
+      // that is already there is redrawn without it (it stays until the new one is ready).
+      const wait = box.dataset.html ? null : waitUi(box, 'card');
+      const asking = wait ? { ui: wait, again: () => { box.dataset.html = ''; void drawPreview(); } } : {};
       const image = field<HTMLSelectElement>('[data-image]').value;
       // An auto feed (pictures, animals) has no account to choose: the bot reads the pace and the tags, and gives the account that is then used to draw a real picture, not a made-up one.
       let account: Account | null = state.account;
@@ -513,17 +533,25 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         if (!asked || (chosen.extra === 'tags' && !extra)) account = null;
         else {
           const known = previewAccounts.get(`${state.platform}|${asked}`);
-          const found = known !== undefined ? known : ((await call('resolve', { platform: state.platform, account: asked })).data?.account as Account | undefined) ?? null;
+          let found: Account | null;
+          if (known !== undefined) found = known;
+          else {
+            const looked = await call('resolve', { platform: state.platform, account: asked }, asking);
+            if (looked.unreachable && wait) return; // Petto is not answering: the box says so, with Try again
+            found = (looked.data?.account as Account | undefined) ?? null;
+          }
           if (known === undefined) { if (previewAccounts.size > 40) previewAccounts.clear(); previewAccounts.set(`${state.platform}|${asked}`, found); }
           account = found ?? state.account;
         }
-        if (run !== state.run) return;
+        if (run !== state.run) { wait?.clear(); return; }
       }
       const answer = await call('preview', {
         platform: state.platform, type: state.type, message: field<HTMLTextAreaElement>('[data-message]').value, ping_roles: state.roles, ping_everyone: field<HTMLInputElement>('[data-everyone]').checked,
         account: account ? { id: account.id, name: account.name, avatar: account.avatar, url: account.url } : '', options: { ...(image ? { image: image === 'on' } : {}), button: field<HTMLInputElement>('[data-button]').checked, ...(state.platform === 'youtube' && field<HTMLInputElement>('[data-player]').checked ? { player: true } : {}) },
-      });
-      if (run !== state.run) return;
+      }, asking);
+      if (answer.unreachable && wait) return; // the box says Petto is not answering, with Try again
+      if (run !== state.run) { wait?.clear(); return; }
+      wait?.clear();
       const doc = answer.data?.messages?.[0];
       if (!answer.ok || !doc) {
         const retry = el('button', 'btn btn-ghost btn-sm', text.retry);
@@ -548,7 +576,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       const box = modal();
       if (!platform || !box) return;
       Object.assign(state, { platform: platformId, feedId: feed?.id ?? 0, input: '', account: feed ? { id: feed.accountId, name: feed.accountName, avatar: feed.accountAvatar, url: feed.accountUrl } : null, roles: feed ? [...feed.pingRoles] : [], type: '', results: [], active: -1 });
-      state.searchRun += 1;
+      dropSearch();
       box.style.setProperty('--fd-c', platform.color);
       box.style.setProperty('--fd-ink', platform.ink);
       const head = box.querySelector('.mdl-head h2')!;
@@ -604,6 +632,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       box.querySelectorAll<HTMLDetailsElement>('.fd-more:not(.fd-prev)').forEach((details) => { details.open = false; });
       field<HTMLElement>('[data-preview]').dataset.html = '';
       showError(''); hideSenses(); spin(false); hideResults(); showFound(); fillRoles(); renderTabs();
+      for (const wait of [field<HTMLElement>('[data-wait]'), field<HTMLElement>('[data-auto-wait]')]) { wait.hidden = true; wait.replaceChildren(); }
       field<HTMLButtonElement>('[data-submit]').disabled = false;
       // Opening goes through the common window code (it moves the window to <body> and focuses it).
       const opener = el('button');
@@ -613,7 +642,13 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     };
 
     async function autoResolve() {
-      const answer = await call('resolve', { platform: state.platform, account: '' });
+      const box = field<HTMLElement>('[data-auto-wait]');
+      box.hidden = false;
+      const platformId = state.platform;
+      const answer = await call('resolve', { platform: platformId, account: '' }, { ui: waitUi(box, 'card'), again: () => void autoResolve() });
+      if (answer.unreachable) return; // the window says Petto is not answering, with Try again
+      if (platformId !== state.platform) return; // the window was opened for another platform meanwhile
+      box.hidden = true; box.replaceChildren();
       if (!answer.ok) { showError(answer.message || text.failed); return; }
       state.account = answer.data.account as Account; state.input = '';
       schedule();
@@ -643,9 +678,15 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       };
       const submit = field<HTMLButtonElement>('[data-submit]');
       submit.disabled = true; submit.classList.add('fd-saving'); const label = submit.textContent; submit.textContent = text.saving; showError(''); hideSenses();
+      // The wait under the form: the shape of the feed that is coming and what Petto is doing. Following (create) is asked again only when the bot was never reached.
+      const waitBox = field<HTMLElement>('[data-wait]');
+      waitBox.hidden = false;
+      const wait = { ui: waitUi(waitBox, state.feedId ? 'lines' : 'card'), again: () => void save(null, forced) };
       const answer = state.feedId
-        ? await call('update', { id: state.feedId, ...body, ...(config.platforms[state.platform].pace ? { every: paceText } : {}) })
-        : await call('create', { platform: state.platform, account: config.platforms[state.platform].pace ? paceText : forced || state.input || state.account.url || state.account.id, ...body });
+        ? await call('update', { id: state.feedId, ...body, ...(config.platforms[state.platform].pace ? { every: paceText } : {}) }, wait)
+        : await call('create', { platform: state.platform, account: config.platforms[state.platform].pace ? paceText : forced || state.input || state.account.url || state.account.id, ...body }, wait);
+      if (answer.unreachable) { submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label; return; } // Petto is not answering: the wait box says so, with Try again
+      waitBox.hidden = true; waitBox.replaceChildren();
       if (!answer.ok) {
         submit.disabled = false; submit.classList.remove('fd-saving'); submit.textContent = label;
         const senses = choicesOf(answer.data);
@@ -727,7 +768,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         const value = (target as HTMLInputElement).value;
         // A name of YouTube costs the bot a search of a hundred units, so it waits for a whole second without typing (and three letters); a link or an @name is cheap.
         const slow = state.platform === 'youtube' && !/^@|youtube\.com|youtu\.be|^UC[\w-]{22}$/.test(value.trim());
-        if (value.trim().length < (slow ? 3 : 2)) { state.searchRun += 1; spin(false); hideResults(); return; }
+        if (value.trim().length < (slow ? 3 : 2)) { dropSearch(); spin(false); hideResults(); return; }
         spin(true);
         state.searchTimer = window.setTimeout(() => void runSearch(value), slow ? 1000 : 380);
         return;
@@ -745,26 +786,36 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       if (button.dataset.feedNew) { open(button.dataset.feedNew); return; }
       const feed = (id: string | undefined) => (config.feeds as Record<string, Feed>)[id ?? ''];
       if (button.dataset.feedEdit) { const f = feed(button.dataset.feedEdit); if (f) open(f.platform, f); return; }
+      // The action of a row of the list waits in the box at the top of the page (flashBox) and, if Petto does not answer, says so there with Try again.
+      const waitInFlash = () => {
+        flashBox.hidden = false; flashBox.className = 'fd-flash fd-flash-wait';
+        flashBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return { ui: waitUi(flashBox, 'lines'), again: () => { button.dataset.confirmed = '1'; button.click(); } }; // Try again does not ask the question twice
+      };
       if (button.dataset.feedTest) {
         button.disabled = true;
-        const answer = await call('test', { id: Number(button.dataset.feedTest) });
+        const answer = await call('test', { id: Number(button.dataset.feedTest) }, waitInFlash());
         button.disabled = false;
+        if (answer.unreachable) return;
         flash(answer.message || (answer.ok ? text.saved : text.failed), answer.ok);
         return;
       }
       if (button.dataset.feedToggle) {
         button.disabled = true;
-        const answer = await call('update', { id: Number(button.dataset.feedToggle), enabled: !button.dataset.on });
+        const answer = await call('update', { id: Number(button.dataset.feedToggle), enabled: !button.dataset.on }, waitInFlash());
         if (answer.ok) { await refresh(button.dataset.on ? text.paused : text.resumed); return; }
-        button.disabled = false; flash(answer.message || text.failed, false);
+        button.disabled = false;
+        if (!answer.unreachable) flash(answer.message || text.failed, false);
         return;
       }
       if (button.dataset.feedDelete) {
-        if (!confirm(text.deleteAsk.replace('{name}', button.dataset.name ?? ''))) return;
+        const asked = button.dataset.confirmed === '1'; delete button.dataset.confirmed;
+        if (!asked && !confirm(text.deleteAsk.replace('{name}', button.dataset.name ?? ''))) return;
         button.disabled = true;
-        const answer = await call('delete', { id: Number(button.dataset.feedDelete) });
+        const answer = await call('delete', { id: Number(button.dataset.feedDelete) }, waitInFlash());
         if (answer.ok) { await refresh(text.removed.replace('{name}', button.dataset.name ?? '')); return; }
-        button.disabled = false; flash(answer.message || text.failed, false);
+        button.disabled = false;
+        if (!answer.unreachable) flash(answer.message || text.failed, false);
       }
     });
 
@@ -887,11 +938,10 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-res-note { padding: 12px; font-size: 13px; color: var(--text-dim); text-align: center; }
   .fd-res-bad { color: var(--red, #f87171); }
   .fd-pic { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex: none; background: var(--bg-soft, var(--card-hover)); }
-  .fd-res-skel .fd-pic { animation: fd-pulse 1.1s ease-in-out infinite; }
-  .fd-res-skel b, .fd-res-skel small { display: block; height: 10px; border-radius: 5px; background: var(--bg-soft, var(--card-hover)); animation: fd-pulse 1.1s ease-in-out infinite; }
-  .fd-res-skel b { width: 120px; margin-bottom: 5px; }
-  .fd-res-skel small { width: 80px; height: 8px; }
-  @keyframes fd-pulse { 50% { opacity: .45; } }
+  .fd-res-wait { list-style: none; padding: 4px 8px; }
+  .fd-wait { min-width: 0; }
+  .fd-wait[hidden] { display: none; }
+  .fd-flash-wait { display: block; background: var(--card); }
   .fd-found { display: flex; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--fd-c, var(--accent)) 50%, var(--border)); background: color-mix(in srgb, var(--fd-c, var(--accent)) 8%, transparent); border-radius: 10px; padding: 8px 10px; }
   .fd-found[hidden] { display: none; }
   .fd-found-text { flex: 1; min-width: 0; display: grid; gap: 1px; }

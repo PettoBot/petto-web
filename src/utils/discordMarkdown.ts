@@ -2,6 +2,8 @@
 // [links](url), ### headings, -# small text, - lists, code blocks, mentions, custom emoji and timestamps. Everything is escaped first, so a fixture can
 // never put a tag in the page.
 
+import { silentMentions } from './silentMention';
+
 const esc = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** A timestamp as Discord shows it, from a fixed "now" so that "3 minutes ago" does not drift as the site ages. */
@@ -32,6 +34,11 @@ function inline(text: string, context: MarkdownContext): string {
   html = html.replace(/`([^`]+)`/g, (_, code) => keep(`<code>${code}</code>`));
   html = html.replace(/&lt;t:(\d+)(?::([a-zA-Z]))?&gt;/g, (_, seconds, style) => keep(`<span class="ds-time">${esc(timestamp(Number(seconds), style ?? 'f', now, locale))}</span>`));
   html = html.replace(/&lt;(a?):([\w]+):(\d+)&gt;/g, (_, animated, name, id) => keep(`<img class="ds-emoji" src="${emojiUrl(id, animated === 'a')}" alt=":${name}:" title=":${name}:" loading="lazy" />`));
+  // A silent mention (`!@everyone`, `!@Role`, `!<@id>`) is the normal pill without the `!`; `\!@everyone` stays as text.
+  html = silentMentions(html, {
+    pill: (label) => keep(`<span class="ds-mention">${label}</span>`),
+    id: (kind, id) => esc(names[id] ?? (kind === 'channel' ? 'channel' : kind === 'role' ? 'role' : 'member')),
+  });
   html = html.replace(/&lt;@(?:!|&amp;)?(\d+)&gt;/g, (_, id) => keep(`<span class="ds-mention">@${esc(names[id] ?? 'member')}</span>`));
   html = html.replace(/&lt;#(\d+)&gt;/g, (_, id) => keep(`<span class="ds-mention">#${esc(names[id] ?? 'channel')}</span>`));
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => keep(`<a class="ds-link" href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`));

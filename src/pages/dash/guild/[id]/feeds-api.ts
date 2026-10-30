@@ -19,7 +19,8 @@ export const POST: APIRoute = async (astro) => {
   if (!body || !ROUTES.includes(route)) return json({ ok: false, error: 'unknown_action' }, 400);
   const { action: _action, user_id: _user, ...rest } = body as Record<string, unknown>;
   const answer = await callPettoFeeds(astro, id, auth.session.userId, route, rest, getDashLang(astro));
-  if (!answer.data) return json({ ok: false, error: 'bot_unavailable', message: '' }, 502);
+  // `retry`: asking again cannot do it twice (the bot was never reached, or it was only a look-up); the page retries for a few seconds only when it is true.
+  if (!answer.data) return json({ ok: false, error: 'bot_unavailable', message: '', retry: Boolean(answer.down && answer.retrySafe) }, 502);
   // A word with several meanings (a feed of pictures: `rosa` is a flower, a color or a mountain). resolve and create answer 409, update 400: the page
   // always gets 409 with the choices to show, and sends the one picked again as the account (create) or `every` (update).
   if (answer.data.error === 'ambiguous') {

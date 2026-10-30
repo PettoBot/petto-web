@@ -13,6 +13,7 @@ import { hasPremiumForGuild } from '../../../../utils/premium';
 import { summarizeTickets } from '../../../../utils/ticketStats';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { getDashLang, makeT } from '../../../../i18n/dash';
+import { cleanTicketFields, editorFields, type TicketFieldsError } from '../../../../utils/ticketForm';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
 import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
 import { withinBudget } from '../../../../utils/liveCall';
@@ -36,6 +37,16 @@ function parseTicketEmoji(raw: string): { value: string | null; invalid: boolean
   const custom = /^<a?:\w{2,32}:\d{15,25}>$/.test(text);
   const unicode = /^(?:\p{Extended_Pictographic}(?:[\u{FE0F}\u{1F3FB}-\u{1F3FF}]|\u{200D}\p{Extended_Pictographic})*|[0-9#*]\u{FE0F}?\u{20E3}|\p{Regional_Indicator}{2})$/u.test(text);
   return custom || unicode ? { value: text.slice(0, 64), invalid: false } : { value: null, invalid: true };
+}
+
+/** What is wrong with the questions a form was sent with, in the language of the dashboard. */
+function ticketFieldsMessage(code: TicketFieldsError): string {
+  if (code === 'count') return dt('A form needs 1 to 5 questions.');
+  if (code === 'input') return dt('A form needs at least one question that members answer, not only texts.');
+  if (code === 'label') return dt('Every question needs its text.');
+  if (code === 'text') return dt('A text that only informs needs its text.');
+  if (code === 'options') return dt('Check the choices: a dropdown takes 1 to 25, radio buttons 2 to 10 and checkboxes 1 to 10.');
+  return dt('A question has a type that is not known.');
 }
 
 function parseTicketFormFields(spec: string) {
@@ -223,9 +234,21 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'create_ticket_form' || action === 'update_ticket_form') {
     const name = String(form.get('form_name') ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 50);
     const title = String(form.get('form_title') ?? dt('Ticket details')).trim().slice(0, 45) || dt('Ticket details');
-    const fields = parseTicketFormFields(String(form.get('form_fields') ?? ''));
+    // The questions come as JSON from the editor (every kind of question); the old `type|id|label|placeholder|required;...` text still works.
+    let fields: unknown[] | null = null;
+    let fieldsError: string | null = null;
+    const json = String(form.get('form_fields_json') ?? '').trim();
+    if (json) {
+      let parsed: unknown = null;
+      try { parsed = JSON.parse(json); } catch { parsed = null; }
+      const checked = cleanTicketFields(parsed);
+      if ('fields' in checked) fields = checked.fields;
+      else fieldsError = ticketFieldsMessage(checked.error);
+    } else {
+      fields = parseTicketFormFields(String(form.get('form_fields') ?? ''));
+    }
     if (!name || !fields) {
-      error = 'Use 1–5 valid fields: type|id|label|placeholder|required;...';
+      error = fieldsError ?? dt('Use 1 to 5 questions, and at least one that members answer.');
     } else {
       const formPayload = { guild_id: id, name, title, fields };
       const endpoint = action === 'create_ticket_form'
@@ -618,7 +641,7 @@ const panels = rawPanels.map((p: any) => ({
 }));
 
 const embedTemplateNames: string[] = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
-const forms = ticketFormsRes?.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? dt('Ticket details'), fields: f.fields ?? [] })) : [];
+const forms = ticketFormsRes?.ok ? (await ticketFormsRes.json()).map((f: any) => ({ id: f.id, name: f.name, title: f.title ?? dt('Ticket details'), fields: editorFields(f.fields) })) : [];
 const rawBlacklist: any[] = ticketBlacklistRes?.ok ? await ticketBlacklistRes.json() : [];
 
 const settingsRows = settingsRes?.ok ? await settingsRes.json() : [];
