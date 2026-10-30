@@ -1,6 +1,8 @@
 ---
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import DashChartTip from './DashChartTip.astro';
+import { chartTipJson } from '../utils/chartTip';
 import { COUNTER_FORMATS, PRESENCE_TYPES, renderCounterName, shownName, timeValue } from '../utils/counters';
 import DashAcData from './DashAcData.astro';
 import { getDashLang, makeT } from '../i18n/dash';
@@ -141,15 +143,16 @@ const badgeText: Record<string, string> = {
       <figure class="cn-stat cn-spark" data-spark aria-label={dt('Members, last 30 days')}>
         <figcaption><span>{dt('Members, last 30 days')}</span>{spark && <b class:list={['cn-spark-change', { up: spark.change > 0, down: spark.change < 0 }]}>{spark.change > 0 ? '+' : ''}{spark.change.toLocaleString(dashLang)}</b>}</figcaption>
         {spark ? (
-          <div class="cn-spark-plot">
+          <div class="cn-spark-plot" data-ct data-ct-place="above" tabindex="0" role="group" aria-label={dt('Members, last 30 days')}>
             <svg viewBox={`0 0 ${spark.W} ${spark.H}`} preserveAspectRatio="none" role="img" aria-label={dt('From {a} on {b} to {c} on {d}', { a: spark.first.members.toLocaleString(dashLang), b: dayLabel(spark.first.day), c: spark.last.members.toLocaleString(dashLang), d: dayLabel(spark.last.day) })}>
               <polygon points={spark.area} class="cn-spark-area" />
               <polyline points={spark.line} class="cn-spark-line" vector-effect="non-scaling-stroke" />
-              <line class="cn-spark-cross" x1="0" x2="0" y1="0" y2={spark.H} vector-effect="non-scaling-stroke" data-spark-cross style="visibility: hidden" />
             </svg>
-            <span class="cn-spark-dot" data-spark-dot hidden></span>
-            <span class="cn-spark-tip" data-spark-tip hidden></span>
-            <script type="application/json" data-spark-points set:html={JSON.stringify(spark.points.map((pt) => ({ x: pt.x / spark.W, y: pt.y / spark.H, label: `${dayLabel(pt.day)}: ${pt.members.toLocaleString(dashLang)}` })))} />
+            <i class="ct-guide" data-ct-guide></i>
+            <i class="ct-dot" data-ct-dot style="--ct-c:var(--accent)"></i>
+            <div class="ct-tip cn-spark-tip" data-ct-box><span data-ct-f="label"></span></div>
+                        <script type="application/json" data-ct-data set:html={chartTipJson(spark.points.map((pt) => ({ x: pt.x / spark.W, y: [pt.y / spark.H], f: { label: `${dayLabel(pt.day)}: ${pt.members.toLocaleString(dashLang)}` } })))}></script>
+            <DashChartTip />
           </div>
         ) : <p class="cn-hint">{dt('Petto saves the members once a day; the line shows up after the second day.')}</p>}
         {spark && (
@@ -601,31 +604,6 @@ const badgeText: Record<string, string> = {
       });
       input.addEventListener('blur', () => { setTimeout(() => { if (!box.hidden && document.activeElement !== input) close(); }, 150); });
     });
-    // The line of members: the day under the pointer.
-    root.querySelectorAll<HTMLElement>('[data-spark]').forEach((fig) => {
-      const plot = fig.querySelector<HTMLElement>('.cn-spark-plot');
-      const pts = JSON.parse(fig.querySelector('[data-spark-points]')?.textContent ?? '[]') as { x: number; y: number; label: string }[];
-      const tip = fig.querySelector<HTMLElement>('[data-spark-tip]');
-      const dot = fig.querySelector<HTMLElement>('[data-spark-dot]');
-      const cross = fig.querySelector<SVGLineElement>('[data-spark-cross]');
-      if (!plot || !pts.length || !tip || !dot || !cross) return;
-      const show = (clientX: number) => {
-        const box = plot.getBoundingClientRect();
-        const rel = (clientX - box.left) / box.width;
-        const pt = pts.reduce((best, p) => (Math.abs(p.x - rel) < Math.abs(best.x - rel) ? p : best), pts[0]);
-        tip.textContent = pt.label;
-        tip.hidden = false; dot.hidden = false; cross.style.visibility = 'visible';
-        const left = pt.x * box.width;
-        tip.style.left = `${Math.min(Math.max(left, 50), box.width - 50)}px`;
-        dot.style.left = `${left}px`; dot.style.top = `${pt.y * box.height}px`;
-        const vx = String(pt.x * 300);
-        cross.setAttribute('x1', vx); cross.setAttribute('x2', vx);
-      };
-      const hide = () => { tip.hidden = true; dot.hidden = true; cross.style.visibility = 'hidden'; };
-      plot.addEventListener('pointermove', (e) => show(e.clientX));
-      plot.addEventListener('pointerdown', (e) => show(e.clientX));
-      plot.addEventListener('pointerleave', hide);
-    });
     // "Waiting for Discord" turns into how long is left.
     const label = root.dataset.waiting ?? '{a}';
     const tick = () => {
@@ -726,13 +704,11 @@ const badgeText: Record<string, string> = {
   .cn-spark-change { font-size: 13px !important; font-weight: 600; color: var(--text-muted); }
   .cn-spark-change.up { color: var(--green); }
   .cn-spark-change.down { color: var(--red, #f87171); }
-  .cn-spark-plot { position: relative; height: 56px; cursor: crosshair; touch-action: pan-y; }
+  .cn-spark-plot { height: 56px; }
   .cn-spark-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .cn-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .cn-spark-area { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: none; }
-  .cn-spark-cross { stroke: var(--border); stroke-width: 1; }
-  .cn-spark-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card); pointer-events: none; }
-  .cn-spark-tip { position: absolute; top: -30px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--card); border: 1px solid var(--border); color: var(--text); pointer-events: none; box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .5); }
+  .cn-spark-tip { width: auto; min-width: 0; white-space: nowrap; font-size: 12px; padding: 3px 8px; border-radius: 6px; box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .5); }
   .cn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   button.cn-name { border: 0; background: transparent; padding: 0; text-align: left; cursor: text; font-family: inherit; max-width: 100%; border-bottom: 1px dashed transparent; }
   button.cn-name:hover, button.cn-name:focus-visible { border-bottom-color: var(--text-dim); }

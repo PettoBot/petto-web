@@ -183,6 +183,7 @@ export const ui = {
             "Dashboard: in Spanish and Portuguese, the buttons of the verification page (\"Set it up for me\", \"Send the panel now\"), the AutoMod templates and the Anti-Nuke page failed with a 401 because they read the server from the wrong part of the address (the language came first); and a date with a time from 19:00 to 23:59 (Colombia), such as `!remind 2026-10-12 21:00`, was not understood",
             "Feeds: the Feeds page of the dashboard says whether Petto can post in the channel you pick (it marks the channels where it cannot, and warns on a feed whose channel stopped allowing it)",
             "Ping on join and the other channel lists of Onboarding (welcome, leave, boosts, verification, bumps) mark the channels where Petto cannot post, and Ping on join warns when a picked channel does not allow it",
+            "Dashboard: the charts (Overview, Statistics and the members line of Counters) now show their tooltip with a simple tap on a phone and while you drag a finger over them, it glides between points and stays on screen, a tap outside closes it, a long press no longer opens the system menu, scrolling the page from the chart still works, and the keyboard (arrows) and reduced motion are respected",
           ],
         },
         {
@@ -1680,6 +1681,7 @@ export const ui = {
             "Dashboard: en español y portugués, los botones de la página de verificación (\"Configurarlo por mí\", \"Enviar el panel ahora\"), las plantillas de AutoMod y la página de Anti-Nuke fallaban con un 401 porque leían el servidor de la parte equivocada de la dirección (el idioma iba primero); y una fecha con hora de 19:00 a 23:59 (Colombia), como `!remind 2026-10-12 21:00`, no se entendía",
             "Feeds: la página de Feeds del dashboard dice si Petto puede publicar en el canal que eliges (marca los canales donde no puede y avisa en un feed cuyo canal dejó de permitirlo)",
             "Ping al entrar y las demás listas de canales de Bienvenida (bienvenida, despedida, boosts, verificación, bumps) marcan los canales donde Petto no puede publicar, y Ping al entrar avisa cuando un canal elegido no lo permite",
+            "Dashboard: los gráficos (Resumen, Estadísticas y la línea de miembros de Contadores) ahora muestran su información con un simple toque en el celular y mientras arrastras el dedo, se desliza entre puntos y se queda dentro de la pantalla, un toque fuera la cierra, una pulsación larga ya no abre el menú del sistema, desplazar la página desde el gráfico sigue funcionando, y se respetan el teclado (flechas) y el movimiento reducido",
           ],
         },
         {
@@ -3177,6 +3179,7 @@ export const ui = {
             "Dashboard: em espanhol e português, os botões da página de verificação (\"Configurar para mim\", \"Enviar o painel agora\"), os modelos do AutoMod e a página de Anti-Nuke falhavam com 401 porque liam o servidor da parte errada do endereço (o idioma vinha primeiro); e uma data com hora das 19:00 às 23:59 (Colômbia), como `!remind 2026-10-12 21:00`, não era entendida",
             "Feeds: a página de Feeds do dashboard diz se o Petto pode publicar no canal que você escolhe (marca os canais onde não pode e avisa em um feed cujo canal deixou de permitir)",
             "Ping ao entrar e as demais listas de canais de Boas-vindas (boas-vindas, saída, boosts, verificação, bumps) marcam os canais onde o Petto não pode publicar, e Ping ao entrar avisa quando um canal escolhido não permite",
+            "Dashboard: os gráficos (Visão geral, Estatísticas e a linha de membros de Contadores) agora mostram a informação com um simples toque no celular e enquanto você arrasta o dedo, ela desliza entre os pontos e fica dentro da tela, um toque fora fecha, um toque longo não abre mais o menu do sistema, rolar a página a partir do gráfico continua funcionando, e o teclado (setas) e o movimento reduzido são respeitados",
           ],
         },
         {
