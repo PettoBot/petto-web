@@ -1,6 +1,8 @@
 ---
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import DashChartTip from './DashChartTip.astro';
+import { chartTipJson } from '../utils/chartTip';
 import { dashLocale, getDashLang, makeT } from '../i18n/dash';
 import { STAT_TABS, BOT_TIME_LABEL, type StatsData } from '../utils/activityStats';
 import { FREE_STAT_DAYS, PREMIUM_STAT_DAYS } from '../utils/planLimits';
@@ -101,6 +103,14 @@ function chart(values: number[], labels: string[], color: string, format: (v: nu
   const baseline = top + plotH;
   const area = points.length > 1 ? `${line} L${points[points.length - 1].x},${baseline} L${points[0].x},${baseline} Z` : '';
   return { W, H, left, plotW, bottom, grid, bars, ticks, color, format, highlight, kind, points, line, area, empty: values.every((v) => v === 0) };
+}
+
+// The tooltip data of a chart (scripts/chart-tip.js): one point per bar, or per marker of a line.
+function tipFor(ch: ReturnType<typeof chart>) {
+  const pts = ch.kind === 'line'
+    ? ch.points.map((pt) => ({ x: pt.x, y: pt.y, label: pt.label, value: pt.value }))
+    : ch.bars.map((b, i) => ({ x: b.x + b.w / 2, y: b.y, label: b.label || `${String(i).padStart(2, '0')}:00`, value: b.value }));
+  return chartTipJson(pts.map((pt) => ({ x: pt.x / ch.W, y: [pt.y / ch.H], f: { label: pt.label, value: ch.format(pt.value) } })));
 }
 
 const dailyLabels = stats.days.map(dayLabel);
@@ -212,22 +222,32 @@ const bestMessage = bestDayOf(stats.daily.messages);
           <article class="st-card" style={`--i:${ci}`}>
             <h2>{dt(c.title)}</h2>
             <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(BOT_TIME_LABEL) || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
+            <div class="st-plot" {...(c.chart.empty ? {} : { 'data-ct': '', 'data-ct-place': 'side', tabindex: 0, role: 'group', 'aria-label': dt(c.title) })}>
             <svg viewBox={`0 0 ${c.chart.W} ${c.chart.H}`} role="img" aria-label={dt(c.title)} class="st-svg">
               {c.chart.grid.map((g) => (
                 <g><line x1={c.chart.left} x2={c.chart.left + c.chart.plotW} y1={g.y} y2={g.y} class="st-grid" /><text x={c.chart.left - 8} y={g.y + 4} text-anchor="end" class="st-axis">{g.label}</text></g>
               ))}
               {c.chart.kind === 'bars' && c.chart.bars.map((b, i) => (
-                <rect x={b.x} y={b.y} width={b.w} height={Math.max(0, b.h)} rx="5" class:list={['st-bar', { 'st-bar-lit': b.lit, 'st-bar-dim': c.chart.highlight !== -1 && !b.lit }]} style={`--c:${c.chart.color};--d:${b.delay}ms`}><title>{b.label || `${String(i).padStart(2, '0')}:00`} · {c.chart.format(b.value)}</title></rect>
+                <rect x={b.x} y={b.y} width={b.w} height={Math.max(0, b.h)} rx="5" class:list={['st-bar', { 'st-bar-lit': b.lit, 'st-bar-dim': c.chart.highlight !== -1 && !b.lit }]} style={`--c:${c.chart.color};--d:${b.delay}ms`} />
               ))}
               {c.chart.kind === 'line' && (
                 <g style={`--c:${c.chart.color}`}>
                   {c.chart.area && <path d={c.chart.area} class="st-area" />}
                   <path d={c.chart.line} pathLength="1" class="st-line" />
-                  {c.chart.points.map((pt, i) => <circle cx={pt.x} cy={pt.y} r="3.2" class="st-dot" style={`animation-delay:${0.45 + i * 0.03}s`}><title>{pt.label} · {c.chart.format(pt.value)}</title></circle>)}
+                  {c.chart.points.map((pt, i) => <circle cx={pt.x} cy={pt.y} r="3.2" class="st-dot" style={`animation-delay:${0.45 + i * 0.03}s`} />)}
                 </g>
               )}
               {c.chart.ticks.filter((t) => t.show && t.label).map((t) => <text x={t.x} y={c.chart.H - 6} text-anchor="middle" class="st-axis">{t.label}</text>)}
             </svg>
+            {!c.chart.empty && (
+              <Fragment>
+                <i class="ct-guide" data-ct-guide></i>
+                <i class="ct-dot" data-ct-dot style="--ct-c:var(--accent)"></i>
+                <div class="ct-tip st-tip" data-ct-box><b data-ct-f="label"></b><span data-ct-f="value"></span></div>
+                <script type="application/json" data-ct-data set:html={tipFor(c.chart)}></script>
+              </Fragment>
+            )}
+            </div>
             {c.chart.empty && <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
           </article>
         ))}
@@ -384,6 +404,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
       )}
     </section>
   ))}
+  <DashChartTip />
   <script is:inline>
     // Switching section: the new one slides in and the address keeps the section. This is an inline script inside the page
     // content, so it also runs when the dashboard opens this page without reloading it. The links of the period show a loading
@@ -498,6 +519,9 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-card-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 4px; }
   .st-lit { color: var(--tab); }
   .st-svg { width: 100%; height: auto; display: block; }
+  .st-tip { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; font-size: 12.5px; min-width: 0; }
+  .st-tip b { font-weight: 600; color: var(--text); }
+  .st-tip span { color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .st-grid { stroke: var(--border); stroke-dasharray: 3 5; }
   .st-axis { fill: var(--text-dim); font-size: 11.5px; font-family: var(--mono); }
   .st-bar { fill: var(--c); transform-box: fill-box; transform-origin: bottom; animation: st-grow .6s cubic-bezier(.2, .8, .2, 1) both; animation-delay: var(--d); }

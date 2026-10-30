@@ -5,6 +5,7 @@ import VariableHelp from './VariableHelp.astro';
 import SelectSource from './SelectSource.astro';
 import SelectChosen from './SelectChosen.astro';
 import DashAcData from './DashAcData.astro';
+import { withPostNotes, type PostableChannel } from '../utils/channelPost';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -41,26 +42,27 @@ interface Props {
   pingOnJoin: PingOnJoin;
   joinRoles: JoinRole[];
   roles: { id: string; name: string }[];
-  channels: { id: string; name: string; canPost?: boolean }[];
+  channels: PostableChannel[];
   embedTemplateNames: string[];
   saved: boolean;
 }
 const { user, guildId, guildName, guildIcon, memberEvents, verification, bump, dmJoin, pingOnJoin, joinRoles, roles, embedTemplateNames, saved } = Astro.props;
 // A channel where Petto cannot see or write says so in every list of this page (the welcome, the ping on join, the verification panel...), because nothing would arrive there.
-const channels = Astro.props.channels.map((c) => (c.canPost === false ? { ...c, name: `${c.name} (${dt('Petto cannot post here')})` } : c));
-const closedPings = Astro.props.channels.filter((c) => c.canPost === false && pingOnJoin.channelIds.includes(c.id)).map((c) => `#${c.name}`);
+// The name stays as it is; the note (utils/channelPost.ts) goes under it, in red.
+const channels = withPostNotes(dt, Astro.props.channels);
+const closedPings = channels.filter((c) => c.note && pingOnJoin.channelIds.includes(c.id));
 
 function roleName(id: string) {
   return roles.find((r) => r.id === id)?.name ?? id;
 }
-const pingRowsJson = JSON.stringify(channels.map((c) => [c.id, c.name, pingOnJoin.channelIds.includes(c.id) ? 1 : 0, pingOnJoin.delaysSeconds[c.id] ?? 5])).replace(/</g, '\\u003c');
+const pingRowsJson = JSON.stringify(channels.map((c) => [c.id, c.name, pingOnJoin.channelIds.includes(c.id) ? 1 : 0, pingOnJoin.delaysSeconds[c.id] ?? 5, c.note ?? ''])).replace(/</g, '\\u003c');
 function targetLabel(target: string) {
   return target === 'humans' ? dt('Humans only') : target === 'bots' ? dt('Bots only') : dt('Everyone');
 }
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="onboarding" pageTitle="Onboarding">
   <h1>{dt('Onboarding')}</h1>
-  <DashAcData roles={roles} channels={channels} />
+  <DashAcData roles={roles} channels={channels.map((c) => ({ id: c.id, name: c.name }))} />
 
   {saved && <div class="ob-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
 
@@ -213,7 +215,13 @@ function targetLabel(target: string) {
           <label class="ob-switch"><input type="checkbox" name="enabled" checked={pingOnJoin.enabled} /><span></span></label>
         </div>
         <p class="ob-card-desc">{dt('Mentions new members in these channels, then cleans the ping up after the delay below (default 5s).')}</p>
-        {closedPings.length > 0 && <p class="ob-card-desc ob-warn">{dt('Petto cannot post in {channels}: the ping will not arrive there. Give it View Channel and Send Messages in those channels, or pick others.').replace('{channels}', closedPings.join(', '))}</p>}
+        {closedPings.length > 0 && (
+          <div class="ob-card-desc ob-warn" role="alert">
+            <strong>{dt('The ping will not arrive in these channels:')}</strong>
+            <ul class="ob-warn-list">{closedPings.map((c) => <li><span class="ob-warn-name">#{c.name}</span> <span class="ob-warn-why">{c.note}</span></li>)}</ul>
+            <span>{dt('Give Petto View Channel and Send Messages in them, or pick other channels.')}</span>
+          </div>
+        )}
         <div class="ob-row" data-filterable>
           <label>{dt('Channels')}</label>
           <input type="text" class="dgl-filter-input" placeholder={dt('Search channels...')} data-filter-input />
@@ -244,7 +252,11 @@ function targetLabel(target: string) {
                 var box = make('input', 'ob-poj-check');
                 box.type = 'checkbox'; box.name = 'channel_ids'; box.value = row[0]; box.defaultChecked = !!row[2];
                 top.appendChild(box);
-                top.appendChild(make('span', 'ob-poj-name', '#' + row[1]));
+                // The name wraps and, when Petto cannot post there, says why under it.
+                var text = make('span', 'ob-poj-text');
+                text.appendChild(make('span', 'ob-poj-name', '#' + row[1]));
+                if (row[4]) text.appendChild(make('span', 'ob-poj-note', row[4]));
+                top.appendChild(text);
                 var bottom = make('span', 'ob-poj-bottom');
                 bottom.appendChild(make('span', 'ob-poj-delay-label', labels[0]));
                 var delay = make('input', 'ob-poj-delay');
@@ -287,7 +299,7 @@ function targetLabel(target: string) {
       </div>
     </section>
   </div>
-  <SelectSource name="ob-ch" items={channels.map((c) => ({ id: c.id, name: c.name }))} prefix="#" />
+  <SelectSource name="ob-ch" items={channels.map((c) => ({ id: c.id, name: c.name, note: c.note }))} prefix="#" />
   <SelectSource name="ob-roles" items={roles.map((r) => ({ id: r.id, name: r.name }))} />
 
   <script is:inline>
@@ -557,12 +569,19 @@ function targetLabel(target: string) {
   .ob-role-item:hover { background: var(--card-hover); color: var(--text); }
   .ob-role-item input { flex-shrink: 0; accent-color: var(--accent); }
 
-  .ob-warn { color: #ff7a7a; }
+  .ob-warn { color: #ff7a7a; overflow-wrap: anywhere; }
+  .ob-warn strong { display: block; }
+  .ob-warn-list { margin: 6px 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 4px; }
+  .ob-warn-name { font-weight: 600; }
+  .ob-warn-why { display: block; font-size: 11.5px; opacity: .85; }
   .ob-poj-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 7px; border-radius: 6px; }
   .ob-poj-item:hover { background: var(--card-hover); }
-  .ob-poj-top { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .ob-row input.ob-poj-check { width: 14px; height: 14px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
-  .ob-poj-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
+  .ob-poj-top { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; min-width: 0; }
+  .ob-row input.ob-poj-check { width: 14px; height: 14px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
+  /* The name of a channel is never cut: it wraps (on a phone too), and the reason Petto cannot post there sits under it. */
+  .ob-poj-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+  .ob-poj-name { white-space: normal; overflow-wrap: anywhere; color: var(--text-muted); font-size: 12px; line-height: 1.35; }
+  .ob-poj-note { color: #ff7a7a; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
   .ob-poj-bottom { display: flex; align-items: center; gap: 6px; margin-left: 22px; cursor: default; }
   .ob-poj-delay-label { font-size: 10.5px; color: var(--text-dim); }
   .ob-row input.ob-poj-delay { width: 44px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; padding: 2px 5px; background: var(--card); color: var(--text); font-size: 11.5px; text-align: right; }

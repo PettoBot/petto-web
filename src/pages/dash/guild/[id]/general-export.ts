@@ -11,6 +11,7 @@ const TABLES = [
   'custom_commands', 'auto_responders', 'sticky_messages', 'reaction_roles', 'reaction_triggers', 'reaction_message_configs', 'disabled_commands',
   'report_config', 'booster_role_config', 'member_events_config', 'verification_config',
   'bump_reminders', 'poj_config', 'poj_channels',
+  'auto_messages', 'feeds', 'server_counters', 'embed_templates', 'image_cards',
 ];
 
 export const GET: APIRoute = async (context) => {

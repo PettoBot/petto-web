@@ -8,6 +8,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
 import Modal from './Modal.astro';
 import { getDashLang, makeT } from '../i18n/dash';
+import { postProblemText, type PostableChannel } from '../utils/channelPost';
 import { ANIMAL_KINDS, FEED_PACES, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, paceOf, platformById, platformGroup, type FeedRow } from '../utils/feeds';
 
 const dashLang = getDashLang(Astro);
@@ -19,7 +20,7 @@ interface Props {
   guildIcon: string;
   platform: string | null;
   feeds: FeedRow[];
-  channels: { id: string; name: string; canPost: boolean }[];
+  channels: PostableChannel[];
   roles: { id: string; name: string; color: number }[];
   limit: number;
   premium: boolean;
@@ -31,7 +32,8 @@ const { user, guildId, guildName, guildIcon, platform, feeds, channels, roles, l
 const current = platform ? platformById(platform) : null;
 const shown = current ? feeds.filter((feed) => platformGroup(current.id).includes(feed.platform)) : feeds; // the animals that were a platform each are shown with the animals
 const channelName = new Map(channels.map((channel) => [channel.id, channel.name]));
-const channelClosed = new Set(channels.filter((channel) => !channel.canPost).map((channel) => channel.id)); // where Petto cannot see or write (it says so, the notices would not arrive)
+// Where Petto cannot see or write (it says so, the notices would not arrive): the reason is told under the name (utils/channelPost.ts), never inside it.
+const channelClosed = new Map(channels.filter((channel) => channel.problem).map((channel) => [channel.id, postProblemText(dt, channel.problem)]));
 // The limit is for each platform (3 of YouTube, 3 of Twitch... on Free; 25 of each on Premium).
 const used = current ? feeds.filter((feed) => feed.platform === current.id).length : feeds.length;
 const full = current ? used >= limit : false;
@@ -41,7 +43,7 @@ const countOf = (id: string) => feeds.filter((feed) => feed.platform === id).len
 // count as a failure: the feed stays on and says why until a look works again.
 const ERROR_TEXT: Record<string, string> = {
   permission: dt('Petto cannot post in that channel.'),
-  canPostHere: dt('Petto can post in #{channel}.'), cannotPostHere: dt('Petto cannot post in #{channel}. Give it View Channel and Send Messages there, or pick another channel, or nothing will arrive.'), cannotPostFeed: dt('Petto cannot post in #{channel}: give it View Channel and Send Messages there, or edit the feed and pick another channel.'),
+  canPostHere: dt('Petto can post in #{channel}.'), cannotPostHere: dt('Give Petto the permission there, or pick another channel, or nothing will arrive.'),
   channelGone: dt('The channel no longer exists.'),
   send: dt('The last notice could not be sent.'),
   accountGone: dt('The account no longer exists.'),
@@ -74,7 +76,7 @@ const config = {
   guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, pace: Boolean(p.pace), extra: p.extra ?? null, intro: p.intro ? dt(p.intro) : '', account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
   types: Object.fromEntries(Object.entries(FEED_TYPES).map(([id, type]) => [id, dt(type.label)])),
   paces: FEED_PACES.map((pace) => [pace.minutes, dt(pace.label)]),
-  roles: roles.map((role) => [role.id, role.name]), channels: channels.map((channel) => [channel.id, channel.name, channel.canPost]), text,
+  roles: roles.map((role) => [role.id, role.name]), channels: channels.map((channel) => [channel.id, channel.name, channel.canPost, channelClosed.get(channel.id) ?? '']), text,
   feeds: Object.fromEntries(feeds.map((feed) => [feed.id, feed])),
 };
 const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
@@ -153,7 +155,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
                 </div>
                 <div class="fd-last">{feed.lastSentAt ? <>{dt('Last notice')}: <time datetime={feed.lastSentAt} data-when></time></> : dt('Nothing posted yet')}</div>
                 {status.detail && <div class="fd-err" title={status.detail}>{status.detail}</div>}
-                {channelClosed.has(feed.channelId) && <div class="fd-err">{dt('Petto cannot post in #{channel}: give it View Channel and Send Messages there, or edit the feed and pick another channel.').replace('{channel}', channelName.get(feed.channelId) ?? '')}</div>}
+                {channelClosed.has(feed.channelId) && <div class="fd-err"><strong>#{channelName.get(feed.channelId)}</strong>: {channelClosed.get(feed.channelId)}<span class="fd-err-fix">{dt('Give Petto the permission there, or edit the feed and pick another channel.')}</span></div>}
               </div>
               <span class={`fd-status fd-status-${status.key}`}>{status.label}</span>
               <div class="fd-actions">
@@ -215,7 +217,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 
       <div class="fd-field">
         <label for="fd-channel">{dt('Channel')}</label>
-        <select id="fd-channel" data-channel><option value="">{dt('Pick a channel')}</option>{channels.map((channel) => <option value={channel.id}>#{channel.name}{channel.canPost ? '' : ` (${dt('Petto cannot post here')})`}</option>)}</select>
+        <select id="fd-channel" data-channel><option value="">{dt('Pick a channel')}</option>{channels.map((channel) => <option value={channel.id}>#{channel.name}</option>)}</select>
         <span class="fd-help fd-chan-note" data-chan-note hidden></span>
       </div>
 
@@ -486,10 +488,11 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     const showChannelNote = () => {
       const note = field<HTMLElement>('[data-chan-note]');
       const id = field<HTMLSelectElement>('[data-channel]').value;
-      const found = (config.channels as [string, string, boolean][]).find(([channelId]) => channelId === id);
+      const found = (config.channels as [string, string, boolean, string][]).find(([channelId]) => channelId === id);
       note.hidden = !found;
       if (!found) { note.textContent = ''; return; }
-      note.textContent = (found[2] ? text.canPostHere : text.cannotPostHere).replace('{channel}', found[1]);
+      // Blocked: the reason Petto cannot post there, and what to do about it, one under the other.
+      note.textContent = found[2] ? text.canPostHere.replace('{channel}', found[1]) : `${found[3]}\n${text.cannotPostHere}`;
       note.dataset.state = found[2] ? 'ok' : 'blocked';
     };
     const previewAccounts = new Map<string, Account | null>(); // `platform|pace and tags` -> the account the bot gave for it
@@ -831,6 +834,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-chans, .fd-type { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-soft, var(--card-hover)); border-radius: 6px; padding: 2px 7px; }
   .fd-last { font-size: 12px; color: var(--text-dim); }
   .fd-err { font-size: 12px; line-height: 1.45; color: var(--red, #f87171); overflow-wrap: anywhere; }
+  .fd-err-fix { display: block; opacity: .85; }
   .fd-status { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; border: 1px solid var(--border); color: var(--text-muted); }
   .fd-status-ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); }
   .fd-status-warn, .fd-status-wait { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
@@ -932,7 +936,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-tab { font: inherit; font-size: 12.5px; border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
   .fd-tab-on { background: var(--fd-c, var(--accent)); border-color: var(--fd-c, var(--accent)); color: var(--fd-ink, #fff); }
   .fd-chan-note[data-state="ok"] { color: #57c97a; }
-  .fd-chan-note[data-state="blocked"] { color: #ff7a7a; }
+  .fd-chan-note[data-state="blocked"] { color: #ff7a7a; white-space: pre-line; }
   .fd-preview-box { min-height: 120px; font-size: 13px; color: var(--text-dim); }
   .fd-preview-box .dp-msg { max-width: none; }
   .fd-preview-box .dp-sub { font-size: 12px; color: #b5bac1; }

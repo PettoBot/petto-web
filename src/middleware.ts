@@ -10,6 +10,7 @@ import { getDashLang } from './i18n/dash';
 import { dashLangRedirect } from './utils/dashPrefix.mjs';
 import { buildInfo } from './utils/buildInfo';
 import { startLatencyKeeping } from './utils/latencyStats';
+import { recordSupportEdit, supportRefusal, type SupportEditNote } from './utils/supportEdit';
 
 // On Discloud the site can read tables straight from PostgreSQL when PETTO_DATABASE_URL is set (see utils/directDb.ts).
 const directDatabase = __DIRECT_DB__ ? import('./utils/directDb').then((module) => module.installDirectDatabase()).catch(() => {}) : null;
@@ -69,6 +70,12 @@ async function guildPage(context: APIContext, next: MiddlewareNext): Promise<Res
     locals.dashVersion = await guildVersion(guildId);
     const response = await next();
     const type = response.headers.get('content-type') ?? '';
+    // Support mode (supportEdit.ts): the Petto owner changed a setting of a server he does not manage. The change leaves its trace for the
+    // admins of the server (who, when, the page and the action, never a value), once, and only when the page did not fail.
+    const supportNote = locals.supportEdit as SupportEditNote | undefined;
+    if (supportNote && response.status < 400) await recordSupportEdit(context, supportNote, response.status);
+    // A JSON route says "sign in again" to a write the gate refused: Support mode says what happened instead.
+    if (locals.supportRefused && type.includes('json')) return supportRefusal(context);
     const answered = response.status < 400 && (type.includes('text/html') || (response.status >= 300 && response.status < 400));
     const changed = new Set(requestGuildChanges());
     if (answered) changed.add(guildId);

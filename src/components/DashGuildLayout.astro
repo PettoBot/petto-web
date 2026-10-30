@@ -23,6 +23,7 @@ import { canUseRollouts } from '../utils/rolloutAccess';
 import { canUseCodeCommands } from '../utils/codeAccess';
 import { canUseTicketAi } from '../utils/ticketAiAccess';
 import { pageDecision, pageOf } from '../utils/dashAccess';
+import { supportLabels, supportPageOf, supportPolicyFor } from '../utils/supportEdit';
 import { backupsUnderMaintenance } from '../utils/maintenance';
 
 import { dashLocale, getDashLang, makeT } from '../i18n/dash';
@@ -47,7 +48,7 @@ const { discordGuilds, botGuildIds: activeBotGuildIds, botIdentity, premiumGuild
 // subscription is canceled, expires, or loses its server assignment.
 const resolvedPremiumActive = premiumGuildIds.has(guildId);
 const pageAccess = roleAccess ? pageDecision(roleAccess, pageOf(Astro.url.pathname, guildId)) : null;
-const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('This is a read-only view of the server.') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
+const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('Support mode: this setting is not editable on other servers') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
 const roleBlockLabels = JSON.stringify({ everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') });
 
 // Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
@@ -66,6 +67,13 @@ if (discordGuilds) {
       .sort((a: SwitcherGuild, b: SwitcherGuild) => (b.members ?? -1) - (a.members ?? -1) || a.name.localeCompare(b.name));
   }
 }
+
+// Support mode (utils/supportEdit.ts): what the Petto owner may change on this server he does not manage, drawn as a banner and as
+// read-only forms. The policy of the page travels with the banner as JSON, so the script judges a form with the same list the server uses.
+const supportPolicy = devView ? supportPolicyFor(supportPageOf(Astro.url.pathname, guildId)) : null;
+const supportEditable = Boolean(supportPolicy && supportPolicy.groups.length);
+const supportParts = devView ? supportLabels().map((label) => dt(label)).join(', ') : '';
+const supportJson = JSON.stringify({ ...(supportPolicy ?? {}), denied: dt('Support mode: this setting is not editable on other servers') }).replace(/</g, '\\u003c');
 
 const t = useTranslations('en');
 const categories = t.commandsPage.categories.filter((c) => c.id !== 'info');
@@ -339,8 +347,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         </div>
       )}
       {devView && (
-        <div class="dgl-dev-banner" data-dev-view>
-          <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('Developer view')}</strong><span>{dt('Read only. You are not a manager of this server, so nothing can be changed here.')}</span></div></div>
+        <div class="dgl-dev-banner dgl-support" data-dev-view data-support-mode data-support-editable={supportEditable ? '1' : '0'}>
+          <div class="dgl-dev-text"><Icon name="ph:wrench-fill" width="16" height="16" /><div><strong>{dt('Support mode')}</strong><span>{dt('You are looking at a server you do not manage. You can change the settings that fix errors (channels, messages and delays). Everything else is read-only, and every change you make is recorded for the admins of the server.')}</span><span>{supportEditable ? dt('You can save the editable parts of this page.') : dt('This page is read-only in Support mode.')}</span><span>{dt('Editable in Support mode: {list}.', { list: supportParts })}</span></div></div>
+          <script type="application/json" data-support-policy set:html={supportJson}></script>
           <div class="dgl-dev-actions">
             <a class="btn btn-ghost btn-sm" href="/dash/admin/servers"><Icon name="ph:hard-drives-fill" width="13" height="13" /> {dt('All servers')}</a>
             <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName}>
@@ -607,8 +616,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               </div>
             )}
             {devView && (
-              <div class="dgl-dev-banner" data-dev-view>
-                <div class="dgl-dev-text"><Icon name="ph:eye-fill" width="16" height="16" /><div><strong>{dt('Developer view')}</strong><span>{dt('Read only. You are not a manager of this server, so nothing can be changed here.')}</span></div></div>
+              <div class="dgl-dev-banner dgl-support" data-dev-view data-support-mode data-support-editable={supportEditable ? '1' : '0'}>
+                <div class="dgl-dev-text"><Icon name="ph:wrench-fill" width="16" height="16" /><div><strong>{dt('Support mode')}</strong><span>{dt('You are looking at a server you do not manage. You can change the settings that fix errors (channels, messages and delays). Everything else is read-only, and every change you make is recorded for the admins of the server.')}</span><span>{supportEditable ? dt('You can save the editable parts of this page.') : dt('This page is read-only in Support mode.')}</span><span>{dt('Editable in Support mode: {list}.', { list: supportParts })}</span></div></div>
+                <script type="application/json" data-support-policy set:html={supportJson}></script>
                 <div class="dgl-dev-actions">
                   <a class="btn btn-ghost btn-sm" href="/dash/admin/servers"><Icon name="ph:hard-drives-fill" width="13" height="13" /> {dt('All servers')}</a>
                   <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName}>
@@ -689,18 +699,60 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   });
 
 
-  // Developer view: block every form except the banner's own remove button, and confirm removal.
+  // Support mode (the Petto owner on a server he does not manage, utils/supportEdit.ts). The banner carries the policy of the page: the
+  // actions its forms may send (per tab). A form that sends anything else is not sent (the server refuses it too, this is only the
+  // courtesy), and the banner's own remove button asks before it leaves the server.
+  function supportPolicy() {
+    var holder = document.querySelector('[data-support-policy]');
+    if (!holder) return null;
+    try { return JSON.parse(holder.textContent || '{}'); } catch (e) { return { groups: [], denied: '' }; }
+  }
+  function supportAllows(policy, actions) {
+    var section = new URLSearchParams(window.location.search).get('section') || '';
+    return actions.every(function (action) {
+      return (policy.groups || []).some(function (group) {
+        return group.actions.indexOf(action) !== -1 && (!group.sections || group.sections.indexOf(section) !== -1);
+      });
+    });
+  }
+  // The action(s) a form sends: the button pressed when it has one, otherwise the form's own action field ('' when it has none).
+  function supportActionsOf(form, submitter) {
+    if (submitter && submitter.name === 'action') return [submitter.value];
+    var named = Array.prototype.map.call(form.querySelectorAll('input[name="action"], select[name="action"]'), function (field) { return field.value; });
+    return named.length ? named : [''];
+  }
   document.addEventListener('submit', function (event) {
-    if (!document.querySelector('[data-dev-view]')) return;
+    var policy = supportPolicy();
+    if (!policy) return;
     var form = event.target;
     if (form && form.hasAttribute && form.hasAttribute('data-dev-leave')) {
       if (!window.confirm(cdt('Remove Petto from {name}? The bot will leave the server.', { name: form.getAttribute('data-guild-name') || cdt('this server') }))) event.preventDefault();
       return;
     }
+    if (supportAllows(policy, supportActionsOf(form, event.submitter))) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    window.alert(cdt('Developer view is read only. Changes are disabled on servers you do not manage.'));
+    window.alert(policy.denied || '');
   }, true);
+  // The read-only look: a form Support mode cannot save has its fields locked and its buttons hidden; a button of an editable form that
+  // carries a forbidden action (Delete next to Save) is hidden alone. Drawn again after each change of the content.
+  window.dglSupportReadOnly = function (root) {
+    var policy = supportPolicy();
+    if (!policy) return;
+    root.querySelectorAll('form[method="POST" i]').forEach(function (form) {
+      if (form.hasAttribute('data-dev-leave') || form.hasAttribute('data-support-ro')) return;
+      form.querySelectorAll('button[name="action"], input[type="submit"][name="action"]').forEach(function (button) {
+        if (!supportAllows(policy, [button.value])) { button.hidden = true; button.disabled = true; }
+      });
+      if (supportAllows(policy, supportActionsOf(form, null))) return;
+      form.setAttribute('data-support-ro', '');
+      form.querySelectorAll('input:not([type="hidden"]), select, textarea, button').forEach(function (field) {
+        var type = (field.getAttribute('type') || '').toLowerCase();
+        if (field.tagName === 'TEXTAREA' || (field.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)?$/.test(type))) field.readOnly = true;
+        else if (field.tagName !== 'BUTTON' || /^(submit|)$/.test(field.getAttribute('type') || '')) field.disabled = true;
+      });
+    });
+  };
 
 
   (function () {
@@ -2777,6 +2829,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       bindColorPickers(root);
       bindDirtyTracking(root);
       bindConfigPreview(root);
+      if (window.dglSelectNotes) window.dglSelectNotes(root);
+      if (window.dglSupportReadOnly) window.dglSupportReadOnly(root);
       if (window.dashAppealsInit) window.dashAppealsInit(root);
     }
 
@@ -3193,4 +3247,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     .dgl-content .dgo-top-cols { font-size: 9px; }
     .dgl-content .dgo-top-row { font-size: 11.5px; }
   }
+
+  /* Support mode (the Petto owner on a server he does not manage): a form that cannot be saved there looks read-only, with no save button. */
+  .dgl-support .dgl-dev-text span + span { margin-top: 4px; }
+  form[data-support-ro] button[type="submit"], form[data-support-ro] button:not([type]) { display: none; }
+  form[data-support-ro] input:disabled, form[data-support-ro] select:disabled, form[data-support-ro] textarea { opacity: .75; cursor: default; }
 </style>
