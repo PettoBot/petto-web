@@ -40,7 +40,7 @@ export async function buildConfigYaml(id: string, botToken: string, apiUrl: stri
     ticketCatRes, giveawayConfigRes, giveawayActiveRes, giveawayPresetsRes,
     logEntriesRes, commandsRes, respondersRes, stickyRes, reactionRolesRes, disabledRes,
     reportRes, boosterRes, memberEventsRes, verificationRes, bumpRes, pojRes,
-    silentChannelsRes, escalationRes,
+    silentChannelsRes, escalationRes, timersRes, feedsRes, countersRes, templatesRes, cardsRes,
   ] = await runBatched([
     () => fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id,bot_nickname,bot_avatar_url,bot_banner_url,bot_description,updated_at`, { headers: apiHeaders }),
     () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
@@ -65,6 +65,11 @@ export async function buildConfigYaml(id: string, botToken: string, apiUrl: stri
     () => fetch(`${apiUrl}/rest/v1/poj_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
     () => fetch(`${apiUrl}/rest/v1/automod_silent_channels?guild_id=eq.${id}&select=channel_id`, { headers: countHeaders }),
     () => fetch(`${apiUrl}/rest/v1/warn_escalation_rules?guild_id=eq.${id}&select=warn_count`, { headers: countHeaders }),
+    () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${apiUrl}/rest/v1/feeds?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${apiUrl}/rest/v1/server_counters?guild_id=eq.${id}&select=id`, { headers: countHeaders }),
+    () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name`, { headers: countHeaders }),
+    () => fetch(`${apiUrl}/rest/v1/image_cards?guild_id=eq.${id}&select=name`, { headers: countHeaders }),
   ], 6);
 
   async function firstRow(res: Response) {
@@ -95,8 +100,8 @@ export async function buildConfigYaml(id: string, botToken: string, apiUrl: stri
 
   return `${BANNER}
 #
-#   This is the configuration file for the server: ${guildInfo.name}. Editing it here saves it
-#   straight to Petto, no need to paste it anywhere. Anything not set yet shows its real default
+#   This is a read-only snapshot of the configuration of the server: ${guildInfo.name}. To change
+#   a setting, use its own page of the dashboard. Anything not set yet shows its real default
 #   (0, false, null, or []), nothing here is hidden or skipped.
 #
 
@@ -172,6 +177,13 @@ automation:
   sticky_messages_count: ${y(rowCount(stickyRes))}
   reaction_roles_count: ${y(rowCount(reactionRolesRes))}
   disabled_commands_count: ${y(rowCount(disabledRes))}
+  timers_count: ${y(rowCount(timersRes))}
+  feeds_count: ${y(rowCount(feedsRes))}
+  counters_count: ${y(rowCount(countersRes))}
+
+design:
+  embed_templates_count: ${y(rowCount(templatesRes))}
+  image_cards_count: ${y(rowCount(cardsRes))}
 
 logging:
   routed_events_count: ${y(rowCount(logEntriesRes))}

@@ -420,7 +420,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
           <div className="ebr-editor">
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
-              <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}` }}>
+              <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}`, ['--crd-ar' as string]: draft.width / draft.height }}>
                 {live ? <canvas ref={canvasRef} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
                 {!live && previewFailed && (
                   <div className="crd-stage-empty crd-stage-failed">
