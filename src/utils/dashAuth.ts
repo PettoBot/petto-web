@@ -7,6 +7,7 @@ import { memoPerRequest } from './requestMemo';
 import { isPettoOwner } from './premiumAdmin';
 import { markTiming } from './serverTiming';
 import { getRoleAccess, pageDecision, pageOf, type RoleAccess } from './dashAccess';
+import { supportGate } from './supportEdit';
 
 export type GuildAuth = { session: Session; devView?: boolean; access?: RoleAccess } | { redirect: string };
 
@@ -115,11 +116,15 @@ async function checkGuildSession(astro: any, guildId: string): Promise<GuildAuth
     }
   }
   if (!target || !canManageGuild(target)) {
-    // The Petto owner can open any server the bot is in, but only to look. Every write
-    // (any non-GET request) is refused here, so no dashboard page can change a foreign server.
+    // The Petto owner can open any server the bot is in, to look and, in Support mode, to change the few settings that fix errors. Every
+    // write (any non-GET request) goes through supportEdit.ts, the one list of what may be changed: a page, a route or an action that is not
+    // in it is refused here, so no dashboard page can change an essential setting of a foreign server, even with a forged form.
     if (isPettoOwner(astro, session.userId)) {
       const method = String(astro.request?.method ?? 'GET').toUpperCase();
-      if (method !== 'GET' && method !== 'HEAD') return { redirect: `/dash/guild/${guildId}/overview?error=dev_readonly` };
+      if (method !== 'GET' && method !== 'HEAD') {
+        const decision = await supportGate(astro, guildId, String(session.userId));
+        if (!decision.allowed) return { redirect: `/dash/guild/${guildId}/overview?error=dev_readonly` };
+      }
       return { session, devView: true };
     }
     return { redirect: '/dash/manage?error=no_access' };
