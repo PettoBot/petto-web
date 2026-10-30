@@ -4859,6 +4859,7 @@ export const dashEs: Record<string, string> = {
   "Form with every kind of part": "Formulario con todos los tipos de parte",
   "Petto cannot post in that channel.": "Petto no puede publicar en ese canal.",
   "Petto cannot post here": "Petto no puede publicar aquí",
+  "Petto cannot post in {channels}: the ping will not arrive there. Give it View Channel and Send Messages in those channels, or pick others.": "Petto no puede publicar en {channels}: el ping no llegará ahí. Dale «Ver canal» y «Enviar mensajes» en esos canales, o elige otros.",
   "Petto can post in #{channel}.": "Petto puede publicar en #{channel}.",
   "Petto cannot post in #{channel}. Give it View Channel and Send Messages there, or pick another channel, or nothing will arrive.": "Petto no puede publicar en #{channel}. Dale «Ver canal» y «Enviar mensajes» ahí, o elige otro canal; si no, no llegará nada.",
   "Petto cannot post in #{channel}: give it View Channel and Send Messages there, or edit the feed and pick another channel.": "Petto no puede publicar en #{channel}: dale «Ver canal» y «Enviar mensajes» ahí, o edita el feed y elige otro canal.",

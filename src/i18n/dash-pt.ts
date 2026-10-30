@@ -4859,6 +4859,7 @@ export const dashPt: Record<string, string> = {
   "Form with every kind of part": "Formulário com todos os tipos de parte",
   "Petto cannot post in that channel.": "O Petto não pode postar nesse canal.",
   "Petto cannot post here": "O Petto não pode publicar aqui",
+  "Petto cannot post in {channels}: the ping will not arrive there. Give it View Channel and Send Messages in those channels, or pick others.": "O Petto não pode publicar em {channels}: o ping não vai chegar lá. Dê a ele «Ver canal» e «Enviar mensagens» nesses canais, ou escolha outros.",
   "Petto can post in #{channel}.": "O Petto pode publicar em #{channel}.",
   "Petto cannot post in #{channel}. Give it View Channel and Send Messages there, or pick another channel, or nothing will arrive.": "O Petto não pode publicar em #{channel}. Dê a ele «Ver canal» e «Enviar mensagens» lá, ou escolha outro canal; senão, nada vai chegar.",
   "Petto cannot post in #{channel}: give it View Channel and Send Messages there, or edit the feed and pick another channel.": "O Petto não pode publicar em #{channel}: dê a ele «Ver canal» e «Enviar mensagens» lá, ou edite o feed e escolha outro canal.",
