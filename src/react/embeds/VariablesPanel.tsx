@@ -28,6 +28,7 @@ export default function VariablesPanel({ groups }: Props) {
       {open && (
         <div className="ebr-varpanel-body">
           <p className="ebr-varpanel-hint">{t('Click one to copy it, then paste it into whichever field needs it.')}</p>
+          <p className="ebr-varpanel-hint">{t('Silent mention: write ! right before a mention (!@everyone, !@Role, !{user.mention}) and it shows without notifying anyone.')}</p>
           {shown.map((g) => (
             <div key={g.label}>
               <div className="ebr-varpanel-group">{g.label}</div>

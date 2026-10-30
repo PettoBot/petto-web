@@ -4962,4 +4962,6 @@ export const dashEs: Record<string, string> = {
   "Petto is slow to answer…": "Petto tarda en responder…",
   "Still waiting for the answer. This can take a little longer…": "Seguimos esperando la respuesta. Puede tardar un poco más…",
   "Petto is not answering. It may be restarting after an update. Try again in a few seconds.": "Petto no responde. Puede estar reiniciándose tras una actualización. Inténtalo de nuevo en unos segundos.",
+  "Tip: put `!` before a mention (`!@everyone`, `!@Role`) to show it without notifying anyone.": "Consejo: pon `!` antes de una mención (`!@everyone`, `!@Rol`) para mostrarla sin avisar a nadie.",
+  "Silent mention: write ! right before a mention (!@everyone, !@Role, !{user.mention}) and it shows without notifying anyone.": "Mención silenciosa: escribe ! justo antes de una mención (!@everyone, !@Rol, !{user.mention}) y se ve sin avisar a nadie.",
 };

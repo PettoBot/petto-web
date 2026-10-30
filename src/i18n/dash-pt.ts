@@ -4962,4 +4962,6 @@ export const dashPt: Record<string, string> = {
   "Petto is slow to answer…": "O Petto está demorando para responder…",
   "Still waiting for the answer. This can take a little longer…": "Ainda esperando a resposta. Pode demorar um pouco mais…",
   "Petto is not answering. It may be restarting after an update. Try again in a few seconds.": "O Petto não está respondendo. Ele pode estar reiniciando após uma atualização. Tente de novo em alguns segundos.",
+  "Tip: put `!` before a mention (`!@everyone`, `!@Role`) to show it without notifying anyone.": "Dica: coloque `!` antes de uma menção (`!@everyone`, `!@Cargo`) para mostrá-la sem notificar ninguém.",
+  "Silent mention: write ! right before a mention (!@everyone, !@Role, !{user.mention}) and it shows without notifying anyone.": "Menção silenciosa: escreva ! logo antes de uma menção (!@everyone, !@Cargo, !{user.mention}) e ela aparece sem notificar ninguém.",
 };

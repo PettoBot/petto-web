@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import FormatToolbar from '../embeds/FormatToolbar';
+import SilentHint from '../embeds/SilentHint';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import { countV2, V2_LIMITS } from '../embeds/types';
 import type { V2Doc, V2Node, V2Child, V2Button, V2Section, V2Gallery, V2Row, V2Text, V2Container } from '../embeds/types';
@@ -33,6 +34,7 @@ function TextBox({ value, onChange, rows = 4, max = V2_LIMITS.text }: { value: s
     <div className="v2e-textbox">
       <textarea ref={ref} data-ac="" rows={rows} maxLength={max} value={value} onChange={(ev) => onChange(ev.target.value)} />
       <FormatToolbar targetRef={ref} onChange={onChange} />
+      <SilentHint />
     </div>
   );
 }
