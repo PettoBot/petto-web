@@ -510,17 +510,6 @@ export async function callPettoAppealFile(
   try { return await fetch(`${baseUrl}${path}`, { method: init.method ?? 'GET', headers, body: init.body, signal: AbortSignal.timeout(30_000) }); } catch { return null; }
 }
 
-/**
- * The kept copy of an avatar of the profile history (/dash/history). `viewerId` is the person looking, from the login: the bot shows your
- * own history and somebody else's unless they turned it off, the same rules as the page. A 404 means there is no copy (yet, or ever).
- */
-export async function callPettoHistoryAvatar(context: AstroContext, userId: string, hash: string, viewerId: string): Promise<Response | null> {
-  const { baseUrl, secret } = apiConfig(context);
-  if (!baseUrl || !secret) return null;
-  const path = `/api/dashboard/history/avatar/${encodeURIComponent(userId)}/${encodeURIComponent(hash)}?viewer_id=${encodeURIComponent(viewerId)}`;
-  try { return await fetch(`${baseUrl}${path}`, { headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'image/*' }, signal: AbortSignal.timeout(15_000) }); } catch { return null; }
-}
-
 /** Makes the bot save its copy of the server (roles, channels) now, so the lists in the dashboard show what was just made in Discord. */
 export async function callPettoResync(context: AstroContext, guildId: string, userId: string): Promise<{ ok: boolean; message?: string }> {
   const { baseUrl, secret } = apiConfig(context);
