@@ -3,7 +3,7 @@
 // command in lower case (never an alias), `channel_id` null for the whole server, each rule once.
 import generated from '../data/commands.generated.json';
 
-interface GeneratedCommand { name: string; contextMenu: boolean; aliases: string[] }
+interface GeneratedCommand { name: string; contextMenu: boolean; aliases: string[]; actions?: { name: string; aliases: string[] }[] }
 
 // Turned off, nobody could turn anything back on or find out how (the bot refuses them too).
 export const PROTECTED_COMMANDS = new Set(['disablecommand', 'help']);
@@ -15,6 +15,19 @@ const realNames = new Map<string, string>();
 for (const command of generated as GeneratedCommand[]) {
   if (command.contextMenu) continue;
   realNames.set(command.name.toLowerCase(), command.name.toLowerCase());
+}
+// The interaction actions (hug, pat...) are subcommands of /act, but a rule is saved under the name of the action (`hug`), the same as the
+// bot's `!disablecommand hug` does, so only that action is turned off; `act` turns off all of them. An action word (`hf`) is its action.
+for (const command of generated as GeneratedCommand[]) {
+  for (const action of command.actions ?? []) {
+    const name = action.name.toLowerCase();
+    if (!realNames.has(name)) realNames.set(name, name);
+  }
+}
+for (const command of generated as GeneratedCommand[]) {
+  for (const action of command.actions ?? []) {
+    for (const alias of action.aliases) if (!realNames.has(alias.toLowerCase())) realNames.set(alias.toLowerCase(), action.name.toLowerCase());
+  }
 }
 for (const command of generated as GeneratedCommand[]) {
   if (command.contextMenu) continue;
