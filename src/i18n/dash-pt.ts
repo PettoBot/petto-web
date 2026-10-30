@@ -5007,4 +5007,8 @@ export const dashPt: Record<string, string> = {
   "A question has a type that is not known.": "Uma pergunta tem um tipo que não é conhecido.",
   "Panel picture": "Imagem do painel",
   "An optional picture at the top of the panel. The link has to start with https. Save, then press Send the panel now to change a panel that is already posted.": "Uma imagem opcional no topo do painel. O link precisa começar com https. Salve e aperte Enviar o painel agora para mudar um painel que já foi publicado.",
+  "Message link embeds": "Embeds de links de mensagens",
+  "When a member posts the link of a message of this server, Petto shows it in an embed. Also <code>{p}messagelinks</code>. Off until you turn it on.": "Quando um membro posta o link de uma mensagem deste servidor, o Petto o mostra em um embed. Também com <code>{p}messagelinks</code>. Desligado até você ligar.",
+  "Links posted in these channels, and messages that live in them, are never shown in embeds.": "Os links postados nesses canais, e as mensagens que vivem neles, nunca são mostrados em embeds.",
+  "It only shows messages the member who posted the link can already see: links to other servers, and to NSFW channels from a channel that is not NSFW, are left alone.": "Só mostra mensagens que o membro que postou o link já pode ver: links para outros servidores, e para canais NSFW a partir de um canal que não é NSFW, são deixados quietos.",
 };

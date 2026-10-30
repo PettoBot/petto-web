@@ -5007,4 +5007,8 @@ export const dashEs: Record<string, string> = {
   "A question has a type that is not known.": "Una pregunta tiene un tipo que no se conoce.",
   "Panel picture": "Imagen del panel",
   "An optional picture at the top of the panel. The link has to start with https. Save, then press Send the panel now to change a panel that is already posted.": "Una imagen opcional en la parte de arriba del panel. El enlace tiene que empezar por https. Guarda y pulsa Enviar el panel ahora para cambiar un panel que ya está publicado.",
+  "Message link embeds": "Embeds de enlaces de mensajes",
+  "When a member posts the link of a message of this server, Petto shows it in an embed. Also <code>{p}messagelinks</code>. Off until you turn it on.": "Cuando un miembro publica el enlace de un mensaje de este servidor, Petto lo muestra en un embed. También con <code>{p}messagelinks</code>. Apagado hasta que lo actives.",
+  "Links posted in these channels, and messages that live in them, are never shown in embeds.": "Los enlaces publicados en estos canales, y los mensajes que viven en ellos, nunca se muestran en embeds.",
+  "It only shows messages the member who posted the link can already see: links to other servers, and to NSFW channels from a channel that is not NSFW, are left alone.": "Solo muestra mensajes que el miembro que publicó el enlace ya puede ver: los enlaces a otros servidores, y a canales NSFW desde un canal que no es NSFW, se dejan quietos.",
 };
