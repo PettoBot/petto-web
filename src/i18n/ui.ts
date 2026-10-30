@@ -158,6 +158,21 @@ export const ui = {
       rssDescription: 'Every version of Petto, the Discord bot: what changed and when.',
       entries: [
         {
+          version: '0.7.9-2',
+          display: '0.7.9~2',
+          name: 'Donut',
+          date: "October 30, 2026",
+          items: [
+            "Interactions, one slash command: the 36 interaction commands (`hug`, `pat`, `slap`...) were 36 slash commands; they are now the subcommands of `/act`, in five groups (`love`, `play`, `fight`, `feel`, `react`), shown in Spanish as `/accion` and in Portuguese as `/acao`. With the prefix nothing changes: `!hug @member`, `!hf`, `!lol` and every other word work and run the same code, and `!disablecommand hug` turns off that action only. Petto registers 30 commands with Discord instead of 65",
+            "43 new interactions with their gif, response button and counter: `baka`, `bored`, `celebrate`, `cheers`, `clap`, `confused`, `cool`, `drool`, `evillaugh`, `facepalm`, `handshake`, `headbang`, `love`, `lurk`, `mad`, `nervous`, `nod`, `nuzzle`, `nyah`, `peck`, `peek`, `pinch`, `pout`, `scared`, `shout`, `shrug`, `shy`, `sigh`, `sip`, `sleep`, `slowclap`, `smack`, `sneeze`, `sorry`, `stare`, `surprised`, `sweat`, `think`, `thumbsup`, `tired`, `woah`, `yawn` and `yay`, in English, Spanish and Portuguese",
+            "Interaction messages name the people by where you typed them: `/act love hug user:@Ana` mentions both people (nobody is notified), and `!hug @Ana` uses names because the message you typed already shows the mention. A bot target gets no response button, and a gif that cannot be loaded is told in the footer; a source that fails is skipped for a minute and the last pictures are kept for an hour",
+            "`!uwu` (also `!uwuify`) turns a text, or the message you reply to, into uwu speak without breaking mentions, links, code, custom emojis or Markdown, and nobody can be pinged. In Spanish and Portuguese it only softens a final `r` and `n` before a vowel, so the text stays readable",
+            "Four small games: `!coinflip`, `!wouldyourather` (a question, or your own two options, voted with two reactions), `!neverhaveiever` and `!truthordare [truth|dare]`, in English, Spanish and Portuguese",
+            "`!act` was a short word for `!activity`; `!act` now belongs to `/act` (`!activity` still works)",
+            "Website: the Commands page lists each interaction with `!hug [user]` and the slash form `/act love hug` next to it, with the other words that reach it, and the new commands (`!uwu`, `!coinflip`, `!wouldyourather`, `!neverhaveiever`, `!truthordare`) are in the same list",
+          ],
+        },
+        {
           version: '0.7.9-1',
           display: '0.7.9~1',
           name: 'Donut',
@@ -629,7 +644,7 @@ export const ui = {
             { title: 'Open source bot', desc: 'The bot\'s code is public on GitHub under the AGPL-3.0 license.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },
             { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '/dash' },
-            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and roleplay also work as slash commands.', href: '/commands' },
+            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and the interaction commands (all in /act) also work as slash commands.', href: '/commands' },
             { title: 'Social notifications', desc: 'Notices in your server when there is something new on YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify and more, with a card for each notice.', href: '/changelog' },
           ],
         },
@@ -658,7 +673,7 @@ export const ui = {
       items: [
         { q: 'Is Petto free?', a: 'Yes. Petto keeps its core moderation, leveling, tickets, giveaways, embeds, and dashboard useful for every server. Premium adds higher limits and server-level extras; payment is handled securely through Polar.' },
         { q: 'How do I add Petto to my server?', a: 'The "Add to Discord" button at the top of the home page. You need the Manage Server permission on the server you\'re adding it to.' },
-        { q: 'Prefix or slash commands?', a: 'Prefix for almost everything. Every command uses the server\'s configured prefix (the default is `!`). Slash commands (`/`) exist only for the interaction and roleplay commands (such as `/hug` and `/pat`), for `/setup` and for reports (`/report`).' },
+        { q: 'Prefix or slash commands?', a: 'Prefix for almost everything. Every command uses the server\'s configured prefix (the default is `!`). Slash commands (`/`) exist only for the interaction and roleplay commands (all of them are subcommands of `/act`, such as `/act love hug`), for `/setup` and for reports (`/report`).' },
         { q: 'Is my server\'s data safe?', a: 'Data lives in a real Postgres database behind Petto\'s private API, not a spreadsheet or a JSON file. See the Privacy Policy for exactly what is and isn\'t stored.' },
         { q: 'What happened to blibot?', a: "It moved 100% to Petto: every system blibot had, rebuilt from the ground up. Read the full announcement on the Blog." },
         { q: 'What are Nelu and AM?', a: 'Two separate bots built by the same team: Nelu (anime-only) and AM (AI-powered automoderation). Both are planned and neither is public yet.' },
@@ -1038,7 +1053,7 @@ export const ui = {
           guide: {
             intro: 'Roleplay is a set of light, friendly actions members can send to each other.',
             steps: [
-              'Run a command like !hug @member to send the action.',
+              'Run a command like !hug @member, or /act love hug, to send the action.',
               'Petto replies with a themed message and an animated image.',
               'Every action is playful and safe for work.',
             ],
@@ -1675,6 +1690,21 @@ export const ui = {
       rssDescription: 'Cada versión de Petto, el bot de Discord: qué cambió y cuándo.',
       entries: [
         {
+          version: '0.7.9-2',
+          display: '0.7.9~2',
+          name: 'Donut',
+          date: "30 de octubre de 2026",
+          items: [
+            "Interacciones, un solo comando slash: los 36 comandos de interacción (`hug`, `pat`, `slap`...) eran 36 comandos slash; ahora son los subcomandos de `/act`, en cinco grupos (`love`, `play`, `fight`, `feel`, `react`), que en español se ve como `/accion` y en portugués como `/acao`. Con el prefijo nada cambia: `!hug @miembro`, `!hf`, `!lol` y cada palabra siguen funcionando con el mismo código, y `!disablecommand hug` apaga solo esa acción. Petto registra 30 comandos en Discord en lugar de 65",
+            "43 interacciones nuevas con su gif, botón de respuesta y contador: `baka`, `bored`, `celebrate`, `cheers`, `clap`, `confused`, `cool`, `drool`, `evillaugh`, `facepalm`, `handshake`, `headbang`, `love`, `lurk`, `mad`, `nervous`, `nod`, `nuzzle`, `nyah`, `peck`, `peek`, `pinch`, `pout`, `scared`, `shout`, `shrug`, `shy`, `sigh`, `sip`, `sleep`, `slowclap`, `smack`, `sneeze`, `sorry`, `stare`, `surprised`, `sweat`, `think`, `thumbsup`, `tired`, `woah`, `yawn` y `yay`, en español, inglés y portugués",
+            "Los mensajes de interacción nombran a las personas según dónde escribiste el comando: `/act love hug user:@Ana` menciona a las dos personas (nadie recibe aviso), y `!hug @Ana` usa nombres porque el mensaje que escribiste ya muestra la mención. Un bot como objetivo no tiene botón de respuesta, y un gif que no carga se avisa en el pie del mensaje; una fuente que falla se salta durante un minuto y las últimas imágenes se guardan una hora",
+            "`!uwu` (también `!uwuify`) convierte un texto, o el mensaje al que respondes, en habla uwu sin romper menciones, enlaces, código, emojis personalizados ni Markdown, y nadie puede recibir un ping. En español y portugués solo suaviza una `r` final y la `n` antes de una vocal, para que el texto se siga leyendo bien",
+            "Cuatro juegos pequeños: `!coinflip`, `!wouldyourather` (una pregunta, o tus dos opciones, que se vota con dos reacciones), `!neverhaveiever` y `!truthordare [truth|dare]`, en español, inglés y portugués",
+            "`!act` era una palabra corta de `!activity`; ahora `!act` es de `/act` (`!activity` sigue funcionando)",
+            "Sitio web: la página de Comandos muestra cada interacción con `!hug [user]` y, al lado, la forma slash `/act love hug`, con las otras palabras que llegan a ella, y los comandos nuevos (`!uwu`, `!coinflip`, `!wouldyourather`, `!neverhaveiever`, `!truthordare`) están en la misma lista",
+          ],
+        },
+        {
           version: '0.7.9-1',
           display: '0.7.9~1',
           name: 'Donut',
@@ -2146,7 +2176,7 @@ export const ui = {
             { title: 'Bot de código abierto', desc: 'El código del bot es público en GitHub con licencia AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Tablero de feedback', desc: 'Escribe ideas, comentarios y errores, vota con me gusta y no me gusta, comenta y mira qué planea el equipo. También en el servidor de Petto, donde las reacciones cuentan como votos.', href: '/feedback' },
             { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '/dash' },
-            { title: 'Comandos slash', desc: 'Los comandos de uso diario (/help, /ban, /ticket, /embed...) y los de roleplay también funcionan como comandos slash.', href: '/commands' },
+            { title: 'Comandos slash', desc: 'Los comandos de uso diario (/help, /ban, /ticket, /embed...) y los de interacción (todos en /act) también funcionan como comandos slash.', href: '/commands' },
             { title: 'Notificaciones de redes', desc: 'Avisos en tu servidor cuando hay algo nuevo en YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify y más, con una tarjeta para cada aviso.', href: '/changelog' },
           ],
         },
@@ -2175,7 +2205,7 @@ export const ui = {
       items: [
         { q: '¿Petto es gratis?', a: 'Sí. Petto mantiene gratis y útil para todos sus sistemas principales: moderación, leveling, tickets, sorteos, embeds y dashboard. Premium suma límites más altos y extras por server; el pago se gestiona de forma segura con Polar.' },
         { q: '¿Cómo agrego Petto a mi servidor?', a: 'El botón "Agregar a Discord" arriba en la página de inicio. Necesitas el permiso de Administrar servidor en el servidor donde lo agregas.' },
-        { q: '¿Prefijo o comandos slash?', a: 'Prefijo para casi todo. Todos los comandos usan el prefijo configurado del servidor (por defecto `!`). Los comandos slash (`/`) existen solo para los comandos de interacción y roleplay (como `/hug` y `/pat`), para `/setup` y para los reportes (`/report`).' },
+        { q: '¿Prefijo o comandos slash?', a: 'Prefijo para casi todo. Todos los comandos usan el prefijo configurado del servidor (por defecto `!`). Los comandos slash (`/`) existen solo para los comandos de interacción y roleplay (todos son subcomandos de `/act`, como `/act love hug`), para `/setup` y para los reportes (`/report`).' },
         { q: '¿Mis datos están seguros?', a: 'Los datos viven en una base de datos Postgres real detrás de la API privada de Petto, no en una planilla ni un archivo JSON. Revisa la Política de privacidad para ver exactamente qué se guarda y qué no.' },
         { q: '¿Qué pasó con blibot?', a: 'Se mudó 100% a Petto: cada sistema que tenía blibot, reconstruido desde cero. Lee el anuncio completo en el Blog.' },
         { q: '¿Qué son Nelu y AM?', a: 'Dos bots separados hechos por el mismo equipo: Nelu (solo de anime) y AM (automoderación con IA). Los dos están planeados y ninguno es público todavía.' },
@@ -2555,7 +2585,7 @@ export const ui = {
           guide: {
             intro: 'Roleplay es un conjunto de acciones ligeras y amistosas que los miembros pueden enviarse entre sí.',
             steps: [
-              'Usa un comando como !hug @miembro para enviar la acción.',
+              'Usa un comando como !hug @miembro, o /act love hug, para enviar la acción.',
               'Petto responde con un mensaje temático y una imagen animada.',
               'Todas las acciones son juguetonas y aptas para todo público.',
             ],
@@ -3192,6 +3222,21 @@ export const ui = {
       rssDescription: 'Cada versão do Petto, o bot do Discord: o que mudou e quando.',
       entries: [
         {
+          version: '0.7.9-2',
+          display: '0.7.9~2',
+          name: 'Donut',
+          date: "30 de outubro de 2026",
+          items: [
+            "Interações, um só comando slash: os 36 comandos de interação (`hug`, `pat`, `slap`...) eram 36 comandos slash; agora são os subcomandos de `/act`, em cinco grupos (`love`, `play`, `fight`, `feel`, `react`), que em espanhol aparece como `/accion` e em português como `/acao`. Com o prefixo nada muda: `!hug @membro`, `!hf`, `!lol` e cada palavra continuam funcionando com o mesmo código, e `!disablecommand hug` desliga só essa ação. O Petto registra 30 comandos no Discord em vez de 65",
+            "43 interações novas com gif, botão de resposta e contador: `baka`, `bored`, `celebrate`, `cheers`, `clap`, `confused`, `cool`, `drool`, `evillaugh`, `facepalm`, `handshake`, `headbang`, `love`, `lurk`, `mad`, `nervous`, `nod`, `nuzzle`, `nyah`, `peck`, `peek`, `pinch`, `pout`, `scared`, `shout`, `shrug`, `shy`, `sigh`, `sip`, `sleep`, `slowclap`, `smack`, `sneeze`, `sorry`, `stare`, `surprised`, `sweat`, `think`, `thumbsup`, `tired`, `woah`, `yawn` e `yay`, em português, inglês e espanhol",
+            "As mensagens de interação nomeiam as pessoas conforme onde você digitou o comando: `/act love hug user:@Ana` menciona as duas pessoas (ninguém é notificado), e `!hug @Ana` usa nomes porque a mensagem que você digitou já mostra a menção. Um bot como alvo não tem botão de resposta, e um gif que não carrega é avisado no rodapé; uma fonte que falha é pulada por um minuto e as últimas imagens ficam guardadas por uma hora",
+            "`!uwu` (também `!uwuify`) transforma um texto, ou a mensagem que você responde, em fala uwu sem quebrar menções, links, código, emojis personalizados nem Markdown, e ninguém pode ser marcado com um ping. Em português e espanhol ele só suaviza um `r` final e o `n` antes de uma vogal, para o texto continuar legível",
+            "Quatro joguinhos: `!coinflip`, `!wouldyourather` (uma pergunta, ou as suas duas opções, votada com duas reações), `!neverhaveiever` e `!truthordare [truth|dare]`, em português, inglês e espanhol",
+            "`!act` era uma palavra curta de `!activity`; agora `!act` é do `/act` (`!activity` continua funcionando)",
+            "Site: a página de Comandos mostra cada interação com `!hug [user]` e, ao lado, a forma slash `/act love hug`, com as outras palavras que chegam a ela, e os comandos novos (`!uwu`, `!coinflip`, `!wouldyourather`, `!neverhaveiever`, `!truthordare`) estão na mesma lista",
+          ],
+        },
+        {
           version: '0.7.9-1',
           display: '0.7.9~1',
           name: 'Donut',
@@ -3663,7 +3708,7 @@ export const ui = {
             { title: 'Bot de código aberto', desc: 'O código do bot é público no GitHub com licença AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Quadro de feedback', desc: 'Escreva ideias, comentários e bugs, vote com curtir e não curtir, comente e veja o que a equipe planeja. Também no servidor do Petto, onde as reações contam como votos.', href: '/feedback' },
             { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '/dash' },
-            { title: 'Comandos slash', desc: 'Os comandos do dia a dia (/help, /ban, /ticket, /embed...) e os de roleplay também funcionam como comandos slash.', href: '/commands' },
+            { title: 'Comandos slash', desc: 'Os comandos do dia a dia (/help, /ban, /ticket, /embed...) e os de interação (todos em /act) também funcionam como comandos slash.', href: '/commands' },
             { title: 'Notificações de redes', desc: 'Avisos no seu servidor quando há novidades no YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify e mais, com um cartão para cada aviso.', href: '/changelog' },
           ],
         },
@@ -3692,7 +3737,7 @@ export const ui = {
       items: [
         { q: 'O Petto é gratuito?', a: 'Sim. O Petto mantém grátis e útil para todos os sistemas principais: moderação, leveling, tickets, sorteios, embeds e dashboard. O Premium adiciona limites maiores e extras por server; o pagamento é gerenciado com segurança pela Polar.' },
         { q: 'Como adiciono o Petto ao meu servidor?', a: 'O botão "Adicionar ao Discord" no topo da página inicial. Você precisa da permissão Gerenciar Servidor no servidor onde está adicionando.' },
-        { q: 'Prefixo ou comandos slash?', a: 'Prefixo para quase tudo. Todos os comandos usam o prefixo configurável do servidor (o padrão é `!`). Os comandos slash (`/`) existem apenas para os comandos de interação e roleplay (como `/hug` e `/pat`), para `/setup` e para denúncias (`/report`).' },
+        { q: 'Prefixo ou comandos slash?', a: 'Prefixo para quase tudo. Todos os comandos usam o prefixo configurável do servidor (o padrão é `!`). Os comandos slash (`/`) existem apenas para os comandos de interação e roleplay (todos são subcomandos de `/act`, como `/act love hug`), para `/setup` e para denúncias (`/report`).' },
         { q: 'Os dados do meu servidor estão seguros?', a: 'Os dados vivem em um banco de dados Postgres de verdade atrás da API privada do Petto, não em uma planilha ou um arquivo JSON. Veja a Política de privacidade para saber exatamente o que é guardado e o que não é.' },
         { q: 'O que aconteceu com o blibot?', a: 'Ele migrou 100% para o Petto: cada sistema que o blibot tinha, reconstruído do zero. Leia o anúncio completo no Blog.' },
         { q: 'O que são o Nelu e o AM?', a: 'Dois bots separados feitos pela mesma equipe: o Nelu (só de anime) e o AM (automoderação com IA). Os dois estão planejados e nenhum é público ainda.' },
@@ -4072,7 +4117,7 @@ export const ui = {
           guide: {
             intro: 'Roleplay é um conjunto de ações leves e amigáveis que os membros podem enviar uns aos outros.',
             steps: [
-              'Use um comando como !hug @membro para enviar a ação.',
+              'Use um comando como !hug @membro, ou /act love hug, para enviar a ação.',
               'O Petto responde com uma mensagem temática e uma imagem animada.',
               'Todas as ações são divertidas e seguras para qualquer público.',
             ],

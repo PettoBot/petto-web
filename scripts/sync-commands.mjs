@@ -51,6 +51,13 @@ function integrationOf(cmd, json) {
   }));
   return { desc: describe(`${base}.desc`, json.description), args: argsOf(json.options), subs };
 }
+const { ACTIONS } = require(path.join(botRoot, 'src', 'utils', 'actions.js'));
+function actionsOf(json) {
+  return json.options.flatMap((group) => (group.options ?? []).map((sub) => {
+    const action = ACTIONS.find((each) => each.name === sub.name);
+    return { name: sub.name, group: group.name, aliases: action?.aliases ?? [], desc: describe(`cmd.roleplay.act.${group.name}.${sub.name}.desc`, sub.description) };
+  }));
+}
 const commands = [];
 const seen = new Set();
 for (const cmd of client.commands.values()) {
@@ -62,11 +69,14 @@ for (const cmd of client.commands.values()) {
     category: cmd.category ?? 'misc',
     contextMenu: json.type === 3 || json.type === 2,
     // Registered with Discord as a slash command (the same rule as the bot's collectCommandData); the rest are prefix commands only.
-    slash: (json.type ?? 1) !== 1 || Boolean(cmd.slashOnly || cmd.registerSlash) || cmd.category === 'roleplay',
+    slash: (json.type ?? 1) !== 1 || Boolean(!cmd.prefixOnly && (cmd.slashOnly || cmd.registerSlash || cmd.category === 'roleplay')),
     aliases: cmd.aliases ?? [],
     description: json.description ?? '',
     subcommands: (json.options ?? []).filter((o) => optionTypes[o.type]).map((o) => o.name),
     args: (json.options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) })),
+    // The interaction actions are the subcommands of /act: each one in its group, with the words that reach it with the prefix and its
+    // description in the three languages (from the bot's own catalogs).
+    ...(json.name === 'act' ? { actions: actionsOf(json) } : {}),
     // The Discord permission the bot asks for before the command runs (its default_member_permissions), for the Permissions page.
     permissions: json.default_member_permissions ?? null,
     ...(cmd.category === 'integrations' ? { integration: integrationOf(cmd, json) } : {}),

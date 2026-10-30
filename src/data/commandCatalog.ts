@@ -13,6 +13,8 @@ interface GeneratedCommand {
   description: string;
   subcommands: string[];
   args: { name: string; required: boolean }[];
+  // Only /act: its actions with their group, the words that reach them with the prefix and their description in each language.
+  actions?: { name: string; group: string; aliases: string[]; desc: Record<CatalogLocale, string> }[];
 }
 
 const categoryOf: Record<string, string[]> = {
@@ -26,7 +28,8 @@ const categoryOf: Record<string, string[]> = {
   logging: ['logs'],
   info: ['activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll'],
   setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed', 'send', 'pagination'],
-  roleplay: ['airkiss', 'angry', 'angrystare', 'bite', 'bleh', 'blush', 'boop', 'brofist', 'bye', 'cry', 'cuddle', 'dance', 'glomp', 'handhold', 'happy', 'hi', 'highfive', 'hug', 'kill', 'kiss', 'laugh', 'lick', 'no', 'nom', 'pat', 'poke', 'punch', 'sad', 'slap', 'smile', 'smug', 'tickle', 'wave', 'wink', 'yeet', 'yes', '8ball', 'rps', 'ship', 'quote', 'image'],
+  // `act` stands for every interaction action (hug, pat, slap...): they are the subcommands of /act, and each gets its own row below.
+  roleplay: ['act', '8ball', 'rps', 'ship', 'quote', 'image', 'uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare'],
 };
 
 // Owner-only support tools and the message context menu are not part of the public reference.
@@ -54,9 +57,23 @@ function syntaxOf(cmd: GeneratedCommand): string {
   return args ? `${mark}${cmd.name} ${args}` : `${mark}${cmd.name}`;
 }
 
+/**
+ * The rows of the actions of /act: `!hug [user]` with the slash form (`/act love hug`) and the other words that reach it (`!hf`) next
+ * to it. The curated text of an action (commandText) wins over the one of the bot's catalog.
+ */
+function actionRows(cmd: GeneratedCommand, lang: CatalogLocale): (readonly [string, string, string, string[]])[] {
+  return (cmd.actions ?? []).map((action) => [
+    action.name,
+    `!${action.name} [user]`,
+    commandText[action.name]?.[localeIndex[lang]] ?? action.desc[lang] ?? action.desc.en,
+    [`/${cmd.name} ${action.group} ${action.name}`, ...action.aliases.map((alias) => `!${alias}`)],
+  ] as const);
+}
+
 export function commandRows(categoryId: string, lang: CatalogLocale): CommandRow[] {
   return (categoryOf[categoryId] ?? []).flatMap((name) => {
     const cmd = byName.get(name);
+    if (cmd?.actions) return actionRows(cmd, lang) as unknown as CommandRow[];
     // The services of the Integrations category have a section each (data/integrationSections.ts), not a row in Info.
     if (!cmd || (cmd as GeneratedCommand & { integration?: unknown }).integration) return [];
     const text = commandText[name]?.[localeIndex[lang]] ?? cmd.description;
