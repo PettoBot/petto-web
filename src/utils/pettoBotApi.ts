@@ -28,7 +28,8 @@ function apiConfig(context: AstroContext) {
   return { baseUrl, secret };
 }
 
-export async function syncPettoPrefix(context: AstroContext, guildId: string, prefix: string) {
+/** Tells the bot the whole list of prefixes of a server (it validates and saves it too, and uses it at once). */
+export async function syncPettoPrefix(context: AstroContext, guildId: string, prefixes: string | string[]) {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, error: 'not_configured' as const, payload: null };
 
@@ -39,7 +40,7 @@ export async function syncPettoPrefix(context: AstroContext, guildId: string, pr
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prefix }),
+    body: JSON.stringify(Array.isArray(prefixes) ? { prefixes } : { prefix: prefixes }),
   });
   let payload: any = null;
   try { payload = await response.json(); } catch { /* Keep the original HTTP status. */ }

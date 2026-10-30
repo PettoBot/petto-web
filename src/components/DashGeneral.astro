@@ -1,6 +1,8 @@
 ---
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import Modal from './Modal.astro';
+import { MAX_PREFIXES, MAX_PREFIX_LENGTH } from '../utils/guildPrefixes';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -12,6 +14,8 @@ interface Props {
   guildName: string;
   guildIcon: string;
   prefix: string;
+  prefixes?: string[];
+  prefixError?: string;
   muteRoleId: string | null;
   globalStatsVisible?: boolean;
   language?: string;
@@ -20,7 +24,7 @@ interface Props {
   reset: boolean;
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, prefix, muteRoleId, globalStatsVisible = true, language = 'en', roles, saved, reset, section } = Astro.props;
+const { user, guildId, guildName, guildIcon, prefix, prefixes = [prefix], prefixError = '', muteRoleId, globalStatsVisible = true, language = 'en', roles, saved, reset, section } = Astro.props;
 const sectionMeta: Record<string, string> = { settings: dt('Server settings'), management: dt('Configuration management') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
@@ -32,6 +36,12 @@ const selectedTitle = sectionMeta[selectedSection];
     <div class="dg-success">
       <Icon name="ph:check-circle-fill" width="15" height="15" />
       {dt('Saved. Petto picks this up right away, no restart needed.')}
+    </div>
+  )}
+  {prefixError && (
+    <div class="dg-warn" role="alert">
+      <Icon name="ph:warning-fill" width="15" height="15" />
+      {prefixError}
     </div>
   )}
   {reset && (
@@ -48,8 +58,11 @@ const selectedTitle = sectionMeta[selectedSection];
     <form method="POST" class="dg-form">
       <input type="hidden" name="action" value="save" />
       <div class="dg-field">
-        <label for="prefix">{dt('Command prefix')}</label>
-        <input id="prefix" type="text" name="prefix" value={prefix} maxlength="5" required />
+        <label>{dt('Command Prefixes')}</label>
+        <div class="pf-view">
+          {prefixes.map((p, i) => <code class:list={['pf-view-chip', { main: i === 0 }]} title={i === 0 ? dt('Main prefix') : undefined}>{p}</code>)}
+        </div>
+        <div><button type="button" class="btn btn-ghost btn-sm" data-modal-open="pf-modal" data-pf-open><Icon name="ph:terminal-window-fill" width="14" height="14" /> {dt('Manage prefixes')}</button></div>
         <p class="dg-hint"><Fragment set:html={dth('Used for text commands, e.g. <code>{a}ban</code>. Slash commands work no matter what this is set to.', { a: (prefix) })} /></p>
       </div>
 
@@ -86,6 +99,141 @@ const selectedTitle = sectionMeta[selectedSection];
     </form>
   </div>
 
+  <Modal id="pf-modal" title={dt('Manage Command Prefixes')} icon="ph:terminal-window-fill">
+    <form method="POST" class="pf-form" data-no-dirty data-pf-form
+      data-saved={JSON.stringify(prefixes)} data-max={MAX_PREFIXES} data-len={MAX_PREFIX_LENGTH}
+      data-e-empty={dt('Write a prefix first.')} data-e-long={dt('A prefix has at most {n} characters.', { n: MAX_PREFIX_LENGTH })}
+      data-e-space={dt('A prefix cannot have spaces.')} data-e-chars={dt('A prefix cannot have @ or backticks.')}
+      data-e-dup={dt('{p} is already in the list.')} data-e-max={dt('A server can have up to {n} prefixes.', { n: MAX_PREFIXES })}
+      data-e-none={dt('Keep at least one prefix.')} data-l-remove={dt('Remove {p}')} data-l-main={dt('Main prefix')}>
+      <input type="hidden" name="action" value="prefixes" />
+      <input type="hidden" name="prefixes" value={JSON.stringify(prefixes)} data-pf-value />
+      <p class="pf-lede">{dt('Petto answers to every prefix in this list. The first one is the main one, the one shown in its messages.')}</p>
+      <div class="pf-add">
+        <input type="text" class="pf-input" data-pf-input maxlength="40" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder={dt('Add a prefix')} aria-label={dt('Add a prefix')} />
+        <button type="button" class="btn btn-accent btn-sm pf-plus" data-pf-add aria-label={dt('Add prefix')} title={dt('Add prefix')}><Icon name="ph:plus-bold" width="16" height="16" /></button>
+      </div>
+      <p class="pf-error" role="alert" data-pf-error hidden></p>
+      <div class="pf-chips" data-pf-chips aria-live="polite">
+        {prefixes.map((p, i) => (
+          <span class:list={['pf-chip', { main: i === 0 }]} data-p={p}><code>{p}</code><button type="button" class="pf-x" data-pf-remove aria-label={dt('Remove {p}', { p })}>×</button></span>
+        ))}
+      </div>
+      <p class="pf-hint">{dt('A symbol is typed attached to the command (!help). A word like petto is not case sensitive and needs a space (petto help). Up to {n} prefixes of {m} characters, no spaces, no @ or backticks.', { n: MAX_PREFIXES, m: MAX_PREFIX_LENGTH })}</p>
+      <footer><button type="button" class="btn btn-ghost btn-sm" data-modal-close>{dt('Cancel')}</button><button type="submit" class="btn btn-accent btn-sm" data-keep>{dt('Save')}</button></footer>
+    </form>
+  </Modal>
+
+  <script is:inline>
+    // The Manage prefixes window: bound once to the document, so it keeps working after the page content is swapped.
+    if (!window.__pfBound) {
+      window.__pfBound = true;
+      var pfScope = function (el) { return el && el.closest ? el.closest('[data-pf-form]') : null; };
+      var pfList = function (form) {
+        return Array.prototype.map.call(form.querySelectorAll('[data-pf-chips] .pf-chip'), function (c) { return c.getAttribute('data-p'); });
+      };
+      var pfError = function (form, text) {
+        var box = form.querySelector('[data-pf-error]');
+        if (!box) return;
+        box.textContent = text || '';
+        box.hidden = !text;
+      };
+      var pfRender = function (form, list) {
+        var holder = form.querySelector('[data-pf-chips]');
+        holder.textContent = '';
+        list.forEach(function (p, i) {
+          var chip = document.createElement('span');
+          chip.className = 'pf-chip' + (i === 0 ? ' main' : '');
+          chip.setAttribute('data-p', p);
+          if (i === 0) chip.title = form.getAttribute('data-l-main') || '';
+          var code = document.createElement('code');
+          code.textContent = p;
+          var x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'pf-x';
+          x.setAttribute('data-pf-remove', '');
+          x.setAttribute('aria-label', (form.getAttribute('data-l-remove') || 'Remove {p}').replace('{p}', p));
+          x.textContent = '\u00d7';
+          chip.appendChild(code);
+          chip.appendChild(x);
+          holder.appendChild(chip);
+        });
+        form.querySelector('[data-pf-value]').value = JSON.stringify(list);
+      };
+      var pfAdd = function (form) {
+        var input = form.querySelector('[data-pf-input]');
+        var value = (input.value || '').trim();
+        var list = pfList(form);
+        var max = Number(form.getAttribute('data-max')) || 10;
+        var len = Number(form.getAttribute('data-len')) || 12;
+        var problem = '';
+        if (!value) problem = form.getAttribute('data-e-empty');
+        else if (value.length > len) problem = form.getAttribute('data-e-long');
+        else if (/\s/.test(value)) problem = form.getAttribute('data-e-space');
+        else if (value.indexOf('@') !== -1 || value.indexOf('`') !== -1) problem = form.getAttribute('data-e-chars');
+        else if (list.some(function (p) { return p.toLowerCase() === value.toLowerCase(); })) problem = (form.getAttribute('data-e-dup') || '').replace('{p}', value);
+        else if (list.length >= max) problem = form.getAttribute('data-e-max');
+        pfError(form, problem);
+        if (problem) { input.focus(); return; }
+        list.push(value);
+        pfRender(form, list);
+        input.value = '';
+        input.focus();
+      };
+      document.addEventListener('click', function (event) {
+        var t = event.target;
+        if (!t || !t.closest) return;
+        var opener = t.closest('[data-pf-open]');
+        if (opener) {
+          // Opening again starts from what is saved: a window closed with Cancel leaves nothing behind.
+          document.querySelectorAll('[data-pf-form]').forEach(function (form) {
+            try { pfRender(form, JSON.parse(form.getAttribute('data-saved') || '[]')); } catch (e) {}
+            pfError(form, '');
+            var input = form.querySelector('[data-pf-input]');
+            if (input) input.value = '';
+          });
+          return;
+        }
+        var add = t.closest('[data-pf-add]');
+        if (add) { var f = pfScope(add); if (f) pfAdd(f); return; }
+        var rm = t.closest('[data-pf-remove]');
+        if (rm) {
+          var form = pfScope(rm);
+          if (!form) return;
+          var chip = rm.closest('.pf-chip');
+          var list = pfList(form).filter(function (p) { return p !== chip.getAttribute('data-p'); });
+          pfError(form, '');
+          pfRender(form, list);
+        }
+      });
+      document.addEventListener('keydown', function (event) {
+        var t = event.target;
+        if (event.key !== 'Enter' || !t || !t.hasAttribute || !t.hasAttribute('data-pf-input')) return;
+        event.preventDefault();
+        var form = pfScope(t);
+        if (form) pfAdd(form);
+      });
+      // Capture phase, before the dashboard's own saving: a list that is not valid is never sent.
+      document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!form || !form.hasAttribute || !form.hasAttribute('data-pf-form')) return;
+        var list = pfList(form);
+        var max = Number(form.getAttribute('data-max')) || 10;
+        var problem = !list.length ? form.getAttribute('data-e-none') : list.length > max ? form.getAttribute('data-e-max') : '';
+        if (problem) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          pfError(form, problem);
+          return;
+        }
+        form.querySelector('[data-pf-value]').value = JSON.stringify(list);
+        // The window closes now; the page shows the answer when the save is done.
+        var win = form.closest('.mdl');
+        if (win) { win.hidden = true; document.body.classList.remove('mdl-lock'); }
+      }, true);
+    }
+  </script>
+
   <div class:list={['dg-card', { 'dg-section-hidden': selectedSection !== 'management' }]}>
     <h2><span class="dg-h2-icon" style="--c:#a5ea7a"><Icon name="ph:file-code-fill" width="14" height="14" /></span>{dt('Configuration management')}</h2>
     <p class="dg-card-desc">{dt('Back up or reset what\'s on this page and Petto\'s look in this server.')}</p>
@@ -118,6 +266,10 @@ const selectedTitle = sectionMeta[selectedSection];
 
   .dg-success { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
 
+  .dg-warn { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--red); background: var(--red-soft); border: 1px solid var(--red); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .pf-view { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pf-view-chip { font-family: var(--mono); font-size: 13px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raise); color: var(--text); }
+  .pf-view-chip.main { border-color: var(--accent); color: var(--accent); }
   .dg-card { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--card); }
   .dg-section-hidden { display: none; }
   .dg-card + .dg-card { margin-top: 14px; }
@@ -146,4 +298,24 @@ const selectedTitle = sectionMeta[selectedSection];
   .dg-code { background: var(--bg-raise); border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 0; max-height: 260px; overflow-y: auto; }
   .dg-code :global(code){ font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--accent); white-space: pre; }
   .dg-code-note { font-size: 11.5px; color: var(--text-dim); margin: 8px 0 0; }
+</style>
+
+<style is:global>
+  .pf-form { display: grid; gap: 14px; }
+  .pf-lede, .pf-hint { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+  .pf-hint { font-size: 12px; }
+  .pf-add { display: flex; gap: 8px; align-items: stretch; }
+  .pf-input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; background: var(--bg-raise); color: var(--text); font-family: var(--mono); font-size: 14px; }
+  .pf-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .pf-plus { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; padding: 0 12px; }
+  .pf-error { margin: 0; font-size: 12.5px; color: var(--red); background: var(--red-soft); border: 1px solid var(--red); border-radius: 8px; padding: 8px 10px; }
+  .pf-error[hidden] { display: none; }
+  .pf-chips { display: flex; flex-wrap: wrap; gap: 8px; min-height: 36px; }
+  .pf-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 4px 4px 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-raise); color: var(--text); }
+  .pf-chip.main { border-color: var(--accent); }
+  .pf-chip code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  .pf-x { width: 24px; height: 24px; border-radius: 50%; border: 0; background: none; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+  .pf-x:hover { background: var(--red-soft); color: var(--red); }
+  .pf-form footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+  @media (max-width: 560px) { .pf-form footer .btn { flex: 1; } }
 </style>
