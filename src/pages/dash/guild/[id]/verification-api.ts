@@ -28,7 +28,9 @@ export const POST: APIRoute = async (astro) => {
     if (apiUrl && apiKey) {
       const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
       await ensureGuildRow(apiUrl, headers, id);
-      await fetch(`${apiUrl}/rest/v1/verification_config?on_conflict=guild_id`, { method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, panel_channel_id: channelId, updated_at: new Date().toISOString() }) }).catch(() => null);
+      // The picture on the screen goes with it (an https link, or none), so the panel that is posted is the one the page shows.
+      const image = typeof body?.panel_image_url === 'string' ? (/^https:\/\/\S+$/i.test(body.panel_image_url.trim()) ? body.panel_image_url.trim().slice(0, 500) : null) : undefined;
+      await fetch(`${apiUrl}/rest/v1/verification_config?on_conflict=guild_id`, { method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, panel_channel_id: channelId, ...(image === undefined ? {} : { panel_image_url: image }), updated_at: new Date().toISOString() }) }).catch(() => null);
     }
   }
   const result = await callPettoVerification(astro, id, String(auth.session.userId), action as 'setup' | 'panel' | 'enable' | 'disable');
