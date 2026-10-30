@@ -6,6 +6,8 @@ import { getEnv } from '../../../../utils/env';
 import { noteGuildWrite } from '../../../../utils/guildSnapshots';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { syncPettoLanguage, syncPettoPrefix } from '../../../../utils/pettoBotApi';
+import { checkPrefixList, prefixesFromRows, DEFAULT_PREFIXES } from '../../../../utils/guildPrefixes';
+import { getDashLang, makeT } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
 const section = Astro.url.searchParams.get('section') ?? 'settings';
@@ -27,10 +29,12 @@ const apiHeaders = {
 
 let saved = false;
 let reset = false;
+let prefixError = '';
+const dt = makeT(getDashLang(Astro));
 
-async function syncPrefix(prefix: string) {
+async function syncPrefix(prefixes: string | string[]) {
   try {
-    const result = await syncPettoPrefix(Astro, id, prefix);
+    const result = await syncPettoPrefix(Astro, id, prefixes);
     if (!result.ok) console.warn(`Could not sync prefix with Petto bot for guild ${id}: ${result.error ?? 'unknown_error'}`);
   } catch (err) {
     console.warn(`Could not sync prefix with Petto bot for guild ${id}:`, err);
@@ -48,12 +52,18 @@ if (Astro.request.method === 'POST') {
       method: 'POST',
       headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
-        guild_id: id, prefix: '!', mute_role_id: null,
+        guild_id: id, prefix: DEFAULT_PREFIXES[0], mute_role_id: null,
         bot_nickname: null, bot_avatar_url: null, bot_banner_url: null, bot_description: null,
         updated_at: new Date().toISOString(),
       }),
     });
-    await syncPrefix('!');
+    // The list goes apart from the rest, so a database that does not have the column yet still resets everything else.
+    await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ guild_id: id, prefixes: DEFAULT_PREFIXES }),
+    }).catch(() => {});
+    await syncPrefix(DEFAULT_PREFIXES);
     if (botToken) {
       await fetch(`https://discord.com/api/guilds/${id}/members/@me`, {
         method: 'PATCH',
@@ -63,16 +73,32 @@ if (Astro.request.method === 'POST') {
       noteGuildWrite(id);
     }
     reset = true;
+  } else if (action === 'prefixes') {
+    // The Manage prefixes window: the whole list. The first prefix is the main one and goes in the old column too.
+    let raw: unknown = null;
+    try { raw = JSON.parse(String(form.get('prefixes') ?? '[]')); } catch { /* checked below */ }
+    const checked = checkPrefixList(raw);
+    if (checked.problem) {
+      prefixError = dt(checked.problem.key, checked.problem.vars);
+    } else {
+      const list = checked.prefixes;
+      const res = await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
+        method: 'POST',
+        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, prefix: list[0], prefixes: list, updated_at: new Date().toISOString() }),
+      }).catch(() => null);
+      await syncPrefix(list);
+      if (res && res.ok) saved = true;
+      else prefixError = dt('Could not save the prefixes, try again.');
+    }
   } else {
-    const prefix = (String(form.get('prefix') ?? '!').trim() || '!').slice(0, 5);
     const muteRoleId = String(form.get('mute_role_id') ?? '').trim() || null;
 
     await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
       method: 'POST',
       headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ guild_id: id, prefix, mute_role_id: muteRoleId, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ guild_id: id, mute_role_id: muteRoleId, updated_at: new Date().toISOString() }),
     });
-    await syncPrefix(prefix);
     // Apart from the rest, so a database that does not have this column yet still saves the prefix and the mute role.
     await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
       method: 'POST',
@@ -99,12 +125,13 @@ if (Astro.request.method === 'POST') {
 const optional = (column: string) => fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=${column}`, { headers: apiHeaders })
   .then(async (res) => (res.ok ? (await res.json())?.[0] : undefined))
   .catch(() => undefined);
-const [guildInfo, rolesRes, guildsRes, visibleRow, languageRow] = await Promise.all([
+const [guildInfo, rolesRes, guildsRes, visibleRow, languageRow, prefixesRow] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'roles'),
   fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix,mute_role_id`, { headers: apiHeaders }),
   optional('global_stats_hidden'),
   optional('language'),
+  optional('prefixes'),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -123,7 +150,8 @@ const roles = allRoles
 
 const guildsRows = guildsRes.ok ? await guildsRes.json() : [];
 const g = guildsRows[0] ?? {};
-const config = { prefix: g.prefix ?? '!', mute_role_id: g.mute_role_id ?? null };
+const prefixes = prefixesFromRows(prefixesRow?.prefixes, g.prefix);
+const config = { prefix: prefixes[0], mute_role_id: g.mute_role_id ?? null };
 ---
 <DashGeneral
   user={session}
@@ -131,6 +159,8 @@ const config = { prefix: g.prefix ?? '!', mute_role_id: g.mute_role_id ?? null }
   guildName={guildInfo.name}
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   prefix={config.prefix}
+  prefixes={prefixes}
+  prefixError={prefixError}
   muteRoleId={config.mute_role_id}
   globalStatsVisible={globalStatsVisible}
   language={language}
