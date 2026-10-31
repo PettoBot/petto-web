@@ -680,7 +680,7 @@ export async function callPettoHoneypot(context: AstroContext, guildId: string, 
  * join is fake. The bot checks the same as `/invites` (the roles it and the member can give, Administrator for a reset) and answers in
  * the dashboard's language.
  */
-export async function callPettoInvites(context: AstroContext, guildId: string, userId: string, action: 'reward' | 'unreward' | 'bonus' | 'reset' | 'fake_days', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
+export async function callPettoInvites(context: AstroContext, guildId: string, userId: string, action: 'reward' | 'unreward' | 'bonus' | 'reset' | 'fake_days' | 'settings', body: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; code?: string }> {
   return callPettoAction(context, guildId, userId, 'stats', `invites/${action}`, body, lang);
 }
 
