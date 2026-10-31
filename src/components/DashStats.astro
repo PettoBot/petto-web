@@ -23,19 +23,27 @@ interface Props {
   tab: string;
   channelNames: Record<string, string>;
   memberNames: Record<string, string>;
-  inviters: { id: string; joins: number; leaves: number; net: number }[];
+  inviters: { id: string; joins: number; leaves: number; fake?: number; bonus?: number; net: number }[];
   hasFlow: boolean;
   premium?: boolean;
   inviteRoles?: { id: string; name: string; color: number }[];
-  inviteSettings?: { fakeDays: number; rewards: { roleId: string; invites: number; name: string | null; color: number }[] };
+  inviteSettings?: { fakeDays: number; quickLeaveMinutes?: number; ignoreBots?: boolean; subtractLeaves?: boolean; extended?: boolean; rewards: { roleId: string; invites: number; name: string | null; color: number }[] };
+  invitePeriod?: 'all' | 'week' | 'month';
+  inviteMember?: { id: string; joins: number; leaves: number; fake: number; bonus: number; total: number; invitedBy: { id: string | null; code: string | null; source: string; fake: boolean; joinedAt: string | null } | null; codes: { code: string; joins: number; left: number; fake: number }[] } | null;
   inviteMessage?: { kind: 'ok' | 'err'; text: string } | null;
   analysis: Analysis;
   rules: StatsRules;
   dataMessage?: { kind: 'ok' | 'err'; text: string } | null;
 }
-const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, inviteMessage = null, analysis, rules, dataMessage = null } = Astro.props;
+const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, invitePeriod = 'all', inviteMember = null, inviteMessage = null, analysis, rules, dataMessage = null } = Astro.props;
 const roleColor = (color: number) => (color ? `#${color.toString(16).padStart(6, '0')}` : 'var(--text-dim)');
 const rewardIds = new Set(inviteSettings.rewards.map((reward) => reward.roleId));
+// The three newer settings are shown only when the bot knows them (it is updated before the site).
+const extended = Boolean(inviteSettings.extended);
+const periodLinks: { value: 'all' | 'week' | 'month'; label: string }[] = [{ value: 'all', label: dt('All time') }, { value: 'week', label: dt('This week') }, { value: 'month', label: dt('This month') }];
+const sourceText = (source: string) => source === 'vanity' ? dt('the server link') : source === 'bot' ? dt('a bot account') : source === 'unknown' ? dt('a link Petto could not identify') : dt('an invite');
+const whenText = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(numLocale, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
+const inviterLine = (row: { joins: number; leaves: number; bonus?: number }) => row.bonus ? dt('{a} joined, {b} left, {c} bonus', { a: n(row.joins), b: n(row.leaves), c: (row.bonus > 0 ? '+' : '') + n(row.bonus) }) : dt('{a} joined, {b} left', { a: n(row.joins), b: n(row.leaves) });
 
 const tabs: Record<string, { label: string; icon: string; color: string }> = {
   overview: { label: 'Overview', icon: 'ph:squares-four-fill', color: '#f0a88f' },
@@ -296,10 +304,47 @@ const bestMessage = bestDayOf(stats.daily.messages);
           </article>
         )}
         {id === 'invites' && (
-          <article class="st-card st-list">
-            <h2>{dt('Top inviters')}</h2>
-            {inviters.length ? <ol>{inviters.map((row, i) => <li><span>{i + 1}</span><b>{memberName(row.id)}</b><em>{n(row.net)}</em></li>)}</ol> : <p class="st-empty">{dt('No tracked invites yet.')}</p>}
-          </article>
+          <Fragment>
+            <article class="st-card st-list st-inv-top">
+              <h2>{dt('Top inviters')}</h2>
+              <div class="st-inv-periods" role="group" aria-label={dt('Period')}>
+                {periodLinks.map((link) => <a href={`/dash/guild/${guildId}/stats?days=${days}&tab=invites&ip=${link.value}`} class:list={['st-range-link', { current: link.value === invitePeriod }]} data-keep-tab aria-current={link.value === invitePeriod ? 'true' : undefined}>{link.label}</a>)}
+              </div>
+              {inviters.length ? <ol>{inviters.map((row, i) => <li><span>{i + 1}</span><b><a href={`/dash/guild/${guildId}/stats?days=${days}&tab=invites&ip=${invitePeriod}&member=${row.id}`} data-keep-tab title={dt('Look up a member')}>{memberName(row.id)}</a><small>{inviterLine(row)}</small></b><em>{n(row.net)}</em></li>)}</ol> : <p class="st-empty">{dt('No tracked invites yet.')}</p>}
+              {invitePeriod !== 'all' && <p class="st-inv-note">{dt('A week or a month counts the members brought in during it. Fake joins and bonus invites are left out.')}</p>}
+            </article>
+            <article class="st-card st-inv-member">
+              <h2>{dt('Look up a member')}</h2>
+              <form method="GET" class="st-inv-form st-inv-find" data-no-dirty role="search">
+                <input type="hidden" name="days" value={days} /><input type="hidden" name="tab" value="invites" /><input type="hidden" name="ip" value={invitePeriod} />
+                <div class="st-inv-field st-inv-grow"><span>{dt('Member')}</span><DashMemberPick guildId={guildId} name="member" /></div>
+                <button type="submit" class="btn btn-accent btn-sm">{dt('Look up')}</button>
+              </form>
+              {inviteMember ? (
+                <div class="st-inv-found">
+                  <p class="st-inv-who"><b>{memberName(inviteMember.id)}</b><a href={`/dash/guild/${guildId}/stats?days=${days}&tab=invites&ip=${invitePeriod}`} data-keep-tab>{dt('Clear')}</a></p>
+                  <dl class="st-inv-numbers">
+                    <div><dt>{dt('Joined')}</dt><dd>{n(inviteMember.joins)}</dd></div>
+                    <div><dt>{dt('Left')}</dt><dd>{n(inviteMember.leaves)}</dd></div>
+                    <div><dt>{dt('Fake')}</dt><dd>{n(inviteMember.fake)}</dd></div>
+                    <div><dt>{dt('Bonus')}</dt><dd>{n(inviteMember.bonus)}</dd></div>
+                    <div class="st-inv-total"><dt>{dt('Total')}</dt><dd>{n(inviteMember.total)}</dd></div>
+                  </dl>
+                  <h3>{dt('Invited by')}</h3>
+                  {inviteMember.invitedBy ? (
+                    <p class="st-inv-note st-inv-by">
+                      <b>{inviteMember.invitedBy.id ? memberName(inviteMember.invitedBy.id) : dt('Unknown')}</b>
+                      {' '}{dt('through {a}', { a: sourceText(inviteMember.invitedBy.source) })}{inviteMember.invitedBy.code ? <> · <code>{inviteMember.invitedBy.code}</code></> : null}
+                      {inviteMember.invitedBy.joinedAt ? <> · {whenText(inviteMember.invitedBy.joinedAt)}</> : null}
+                      {inviteMember.invitedBy.fake ? <> · {dt('counted as a fake join')}</> : null}
+                    </p>
+                  ) : <p class="st-inv-note">{dt('Petto has no record of who invited this member.')}</p>}
+                  <h3>{dt('Codes used to bring people in')}</h3>
+                  {inviteMember.codes.length ? <ul class="st-inv-codes">{inviteMember.codes.map((row) => <li><code>{row.code}</code><em>{dt('{a} joined, {b} left, {c} fake', { a: n(row.joins), b: n(row.left), c: n(row.fake) })}</em></li>)}</ul> : <p class="st-inv-note">{dt('This member has not brought anybody in with a link.')}</p>}
+                </div>
+              ) : <p class="st-inv-note">{dt('Search a member to see their invites, who invited them and the codes they used.')}</p>}
+            </article>
+          </Fragment>
         )}
         {id === 'sanctions' && (
           <Fragment>
@@ -376,14 +421,25 @@ const bestMessage = bestDayOf(stats.daily.messages);
               <p class="st-inv-note">{dt('The role must be below the highest role of Petto. Members who already have enough invites get it right away.')}</p>
             </article>
 
-            <article class="st-card st-inv-card">
-              <h3><Icon name="ph:user-circle-dashed-fill" width="15" height="15" />{dt('Fake joins')}</h3>
+            <article class="st-card st-inv-card st-inv-settings">
+              <h3><Icon name="ph:gear-six-fill" width="15" height="15" />{dt('Settings')}</h3>
               <p class="st-inv-note">{dt('A join from a very new account, or from someone who had already been in the server, does not count as an invite.')}</p>
-              <form method="POST" class="st-inv-form" data-no-dirty>
-                <label class="st-inv-field st-inv-grow"><span>{dt('Accounts younger than (days)')}</span><input type="number" name="days" min="0" max="365" value={inviteSettings.fakeDays} required /></label>
-                <button type="submit" name="action" value="invite_fake_days" class="btn btn-accent btn-sm">{dt('Save')}</button>
+              <form method="POST" class="st-inv-stack" data-no-dirty>
+                {extended && <input type="hidden" name="extended" value="1" />}
+                <label class="st-inv-field"><span>{dt('Accounts younger than (days)')}</span><input type="number" name="days" min="0" max="365" step="1" inputmode="numeric" value={inviteSettings.fakeDays} required /></label>
+                <p class="st-inv-note">{inviteSettings.fakeDays ? dt('Now: accounts younger than {a} days are fake joins.', { a: inviteSettings.fakeDays }) : dt('Now: only members who come back are fake joins.')} {dt('With 0, a new account counts like any other.')}</p>
+                {extended && (
+                  <Fragment>
+                    <label class="st-inv-field"><span>{dt('Leaves quickly (minutes)')}</span><input type="number" name="quick_leave_minutes" min="0" max="1440" step="1" inputmode="numeric" value={inviteSettings.quickLeaveMinutes ?? 0} required /></label>
+                    <p class="st-inv-note">{dt('A member who leaves within this many minutes of joining counts as a fake join, so the invite is not credited. 0 turns it off.')}</p>
+                    <label class="st-inv-check"><input type="checkbox" name="ignore_bots" checked={Boolean(inviteSettings.ignoreBots)} /><span>{dt('Ignore bot accounts')}</span></label>
+                    <p class="st-inv-note">{dt('Bot accounts are written down but never credited to anybody.')}</p>
+                    <label class="st-inv-check"><input type="checkbox" name="subtract_leaves" checked={inviteSettings.subtractLeaves !== false} /><span>{dt('Take away members who left')}</span></label>
+                    <p class="st-inv-note">{dt('The total is the members who joined, minus those who left, plus the bonus. Turn it off to keep them in the total.')}</p>
+                  </Fragment>
+                )}
+                <div class="st-inv-actions"><button type="submit" name="action" value="invite_settings" class="btn btn-accent btn-sm">{dt('Save settings')}</button></div>
               </form>
-              <p class="st-inv-note">{inviteSettings.fakeDays ? dt('Now: accounts younger than {a} days are fake joins.', { a: inviteSettings.fakeDays }) : dt('Now: only members who come back are fake joins.')} {dt('With 0, a new account counts like any other.')}</p>
             </article>
 
             <article class="st-card st-inv-card">
@@ -559,6 +615,40 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-inv-num { flex: 0 0 96px; }
   .st-inv-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .st-inv-note { font-size: 11.5px; line-height: 1.45; color: var(--text-dim); margin: 0; }
+  .st-inv-periods { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+  .st-inv-periods .st-range-link { border: 1px solid var(--border); }
+  .st-inv-top li b small { display: block; font-weight: 400; font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st-inv-top li b a { color: inherit; text-decoration: none; }
+  .st-inv-top li b a:hover { color: var(--tab); text-decoration: underline; }
+  .st-inv-member { display: flex; flex-direction: column; gap: 10px; }
+  .st-inv-member h3 { font-size: 13px; margin: 4px 0 0; }
+  .st-inv-find { margin: 4px 0 0; }
+  .st-inv-found { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .st-inv-who { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; font-size: 14px; min-width: 0; }
+  .st-inv-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st-inv-who a { flex: none; font-size: 12px; color: var(--text-dim); }
+  .st-inv-numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 6px; margin: 0; }
+  .st-inv-numbers div { border: 1px solid var(--border); border-radius: 10px; padding: 7px 9px; min-width: 0; }
+  .st-inv-numbers dt { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); font-family: var(--mono); }
+  .st-inv-numbers dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .st-inv-total { border-color: var(--tab) !important; }
+  .st-inv-by { overflow-wrap: anywhere; }
+  .st-inv-by code, .st-inv-codes code { font-family: var(--mono); font-size: 12px; }
+  .st-inv-codes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .st-inv-codes li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 5px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+  .st-inv-codes li:first-child { border-top: 0; }
+  .st-inv-codes em { font-style: normal; color: var(--text-muted); }
+  .st-inv-stack { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+  .st-inv-check { display: flex; align-items: flex-start; gap: 9px; font-size: 13.5px; cursor: pointer; }
+  .st-inv-check input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
+  .st-inv-check span { min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 520px) {
+    .st-inv-form { flex-direction: column; align-items: stretch; }
+    .st-inv-form .st-inv-num, .st-inv-form .st-inv-grow { flex: 1 1 auto; width: 100%; }
+    .st-inv-form .btn, .st-inv-actions .btn { flex: 1 1 auto; }
+    .st-inv-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .st-inv-list li { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+  }
   .st-list ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
   .st-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 2px; border-top: 1px solid var(--border); font-size: 13px; }
   .st-list li:first-child { border-top: 0; }

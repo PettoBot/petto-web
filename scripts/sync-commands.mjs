@@ -108,6 +108,9 @@ for (const cmd of client.commands.values()) {
     ...(json.name === 'act' ? { actions: actionsOf(json) } : {}),
     // One entry for each subcommand (and subcommand of a group); the services of the Integrations and the actions of /act have their own sections.
     ...(json.name !== 'act' && cmd.category !== 'integrations' && (json.options ?? []).some((o) => optionTypes[o.type]) ? { leaves: leavesOf(cmd, json) } : {}),
+    // An umbrella (`/server`, `/user`) names the rule of each subcommand: the command it wraps (`serverinfo` for `/server info`) or a key of its own
+    // (`servericon`, with the words that reach it, `!servericon`). The dashboard saves the same names the bot reads (Disabled commands).
+    ...(cmd.ruleKeys ? { ruleKeys: Object.entries(cmd.ruleKeys).map(([subcommand, name]) => ({ subcommand, name, aliases: DEFAULT_PREFIX_ROUTES.filter((route) => route.command === json.name && route.disableName === name).map((route) => route.alias) })) } : {}),
     // The Discord permission the bot asks for before the command runs (its default_member_permissions), for the Permissions page.
     permissions: json.default_member_permissions ?? null,
     ...(cmd.category === 'integrations' ? { integration: integrationOf(cmd, json) } : {}),

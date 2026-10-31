@@ -3,7 +3,7 @@
 // command in lower case (never an alias), `channel_id` null for the whole server, each rule once.
 import generated from '../data/commands.generated.json';
 
-interface GeneratedCommand { name: string; contextMenu: boolean; aliases: string[]; actions?: { name: string; aliases: string[] }[] }
+interface GeneratedCommand { name: string; contextMenu: boolean; aliases: string[]; actions?: { name: string; aliases: string[] }[]; ruleKeys?: { subcommand: string; name: string; aliases: string[] }[] }
 
 // Turned off, nobody could turn anything back on or find out how (the bot refuses them too).
 export const PROTECTED_COMMANDS = new Set(['disablecommand', 'help']);
@@ -27,6 +27,15 @@ for (const command of generated as GeneratedCommand[]) {
 for (const command of generated as GeneratedCommand[]) {
   for (const action of command.actions ?? []) {
     for (const alias of action.aliases) if (!realNames.has(alias.toLowerCase())) realNames.set(alias.toLowerCase(), action.name.toLowerCase());
+  }
+}
+// An umbrella (`/server`, `/user`) turns off one subcommand under the name of the command it wraps (`serverinfo` for `/server info`, already a command
+// of its own) or under a key of its own (`servericon`, also `!servericon`), the same as the bot; `server` turns off all of it.
+for (const command of generated as GeneratedCommand[]) {
+  for (const key of command.ruleKeys ?? []) {
+    const name = key.name.toLowerCase();
+    if (!realNames.has(name)) realNames.set(name, name);
+    for (const alias of key.aliases) if (!realNames.has(alias.toLowerCase())) realNames.set(alias.toLowerCase(), name);
   }
 }
 for (const command of generated as GeneratedCommand[]) {

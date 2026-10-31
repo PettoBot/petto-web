@@ -13,6 +13,7 @@ import { hasPremiumForGuild } from '../../../../utils/premium';
 import { FREE_STAT_DAYS, PREMIUM_STAT_DAYS } from '../../../../utils/planLimits';
 import { callPettoInvites } from '../../../../utils/pettoBotApi';
 import { getDashLang, makeT } from '../../../../i18n/dash';
+import { parseInvitePeriod, periodStart, rankInviters, rankPeriod, codeStats, inviteTotal, groupPeriod, groupCodes, readInviteSettings } from '../../../../utils/inviteStats';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -29,7 +30,10 @@ const premium = await hasPremiumForGuild(Astro, session.userId, id);
 const askedDays = Number(Astro.url.searchParams.get('days'));
 const days = (FREE_STAT_DAYS as readonly number[]).includes(askedDays) || (premium && (PREMIUM_STAT_DAYS as readonly number[]).includes(askedDays)) ? askedDays : 7;
 const requestedTab = Astro.url.searchParams.get('tab') ?? 'overview';
-let tab = (STAT_TABS as readonly string[]).includes(requestedTab) ? requestedTab : 'overview';
+// The period of the invite leaderboard and the member searched on the Invites tab come in the address (a plain link and a plain search form).
+const invitePeriod = parseInvitePeriod(Astro.url.searchParams.get('ip'));
+const searchedMember = /^\d{15,25}$/.test(String(Astro.url.searchParams.get('member') ?? '')) ? String(Astro.url.searchParams.get('member')) : '';
+let tab = (STAT_TABS as readonly string[]).includes(requestedTab) ? requestedTab : searchedMember || Astro.url.searchParams.has('ip') ? 'invites' : 'overview';
 
 const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
 
@@ -44,10 +48,20 @@ if (Astro.request.method === 'POST') {
   const action = String(form.get('action') ?? '');
   const snowflake = (name: string) => (/^\d{15,25}$/.test(String(form.get(name) ?? '')) ? String(form.get(name)) : '');
   const whole = (name: string) => Math.trunc(Number(form.get(name) ?? NaN));
+  // For the settings: a number that is not one is sent as text so the bot refuses it, instead of being left out as if it was not there.
+  const whole2 = (name: string) => { const value = Math.trunc(Number(form.get(name) ?? NaN)); return Number.isFinite(value) ? value : 'invalid'; };
   let result: { ok: boolean; message: string } | null = null;
   if (action === 'invite_reward') result = await callPettoInvites(Astro, id, session.userId, 'reward', { role_id: snowflake('role_id'), invites: whole('invites') }, dashLang);
   else if (action === 'invite_unreward') result = await callPettoInvites(Astro, id, session.userId, 'unreward', { role_id: snowflake('role_id') }, dashLang);
   else if (action === 'invite_fake_days') result = await callPettoInvites(Astro, id, session.userId, 'fake_days', { days: whole('days') }, dashLang);
+  else if (action === 'invite_settings') {
+    // The three new settings are in the form only when the bot knows them (its columns exist); an older bot only gets the days.
+    const extended = String(form.get('extended') ?? '') === '1';
+    result = await callPettoInvites(Astro, id, session.userId, 'settings', {
+      fake_days: whole2('days'),
+      ...(extended ? { quick_leave_minutes: whole2('quick_leave_minutes'), ignore_bots: form.get('ignore_bots') === 'on', subtract_leaves: form.get('subtract_leaves') === 'on' } : {}),
+    }, dashLang);
+  }
   else if (action === 'invite_bonus') result = await callPettoInvites(Astro, id, session.userId, 'bonus', { member_id: snowflake('member_id'), amount: whole('amount') }, dashLang);
   else if (action === 'invite_reset') result = await callPettoInvites(Astro, id, session.userId, 'reset', { member_id: snowflake('member_id') }, dashLang);
   if (result) tab = 'invites';
@@ -97,7 +111,20 @@ async function rows(table: string, select: string, extra = ''): Promise<any[]> {
   }
 }
 
-const [guildInfo, channelsRes, channelRowsAll, hourlyRows, flowRowsAll, memberRows, caseRows, inviterRows, rolesRes, inviteConfigRows, rewardRows, contentRows, lifespanRows, ruleRows] = await Promise.all([
+// The invite settings: asked with the three new columns first. A bot that has not run the new schema answers with an error, and then only
+// the days are read and the new fields stay out of the page (the bot is updated before the site, so this is for a short time only).
+async function inviteConfig(): Promise<{ row: Record<string, unknown> | undefined; extended: boolean }> {
+  try {
+    const res = await fetch(`${apiUrl}/rest/v1/invite_config?guild_id=eq.${id}&select=fake_days,quick_leave_minutes,ignore_bots,subtract_leaves`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      return { row: Array.isArray(data) ? data[0] : undefined, extended: true };
+    }
+  } catch { /* the days are asked below */ }
+  return { row: (await rows('invite_config', 'fake_days'))[0], extended: false };
+}
+
+const [guildInfo, channelsRes, channelRowsAll, hourlyRows, flowRowsAll, memberRows, caseRows, inviterRows, rolesRes, inviteConfigResult, rewardRows, contentRows, lifespanRows, ruleRows] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'channels').catch(() => null),
   rows('activity_stats', 'channel_id,day,messages,reactions,voice_seconds', `&day=gte.${sincePrevious}`),
@@ -110,9 +137,9 @@ const [guildInfo, channelsRes, channelRowsAll, hourlyRows, flowRowsAll, memberRo
     ? directQuery(`SELECT "user_id", SUM("messages") AS "messages", SUM("voice_seconds") AS "voice_seconds", $3::text AS "day" FROM "public"."activity_members" WHERE "guild_id" = $1 AND "day" >= $2 GROUP BY "user_id" ORDER BY MIN("day"), "user_id"`, [id, since, since])
     : Promise.resolve(null)).then((summed) => summed ?? rows('activity_members', 'day,user_id,messages,voice_seconds', `&day=gte.${since}`)),
   rows('mod_actions', 'type,source,moderator_id,user_id,created_at', `&created_at=gte.${sinceInstant}&limit=20000`),
-  rows('invite_uses', 'inviter_id,joins,leaves,bonus', '&order=joins.desc&limit=50'),
+  rows('invite_uses', 'inviter_id,joins,leaves,fake,bonus', '&order=joins.desc&limit=200'),
   getGuildList(Astro, id, botToken, 'roles').catch(() => null),
-  rows('invite_config', 'fake_days'),
+  inviteConfig(),
   rows('invite_rewards', 'role_id,invites', '&order=invites.asc'),
   rows('activity_content', 'day,links,attachments,replies,mentions', `&day=gte.${sincePrevious}`),
   rows('member_lifespan', 'day,bucket,members', `&day=gte.${since}`),
@@ -131,14 +158,37 @@ const stats = buildStats({ days, channelRows, hourlyRows, flowRows, memberRows, 
 const channels: any[] = channelsRes && channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
 const channelNames: Record<string, string> = Object.fromEntries(channels.map((c: any) => [c.id, c.name]));
 
-const inviters = inviterRows
-  .map((row) => ({ id: String(row.inviter_id), joins: Number(row.joins) || 0, leaves: Number(row.leaves) || 0, net: (Number(row.joins) || 0) - (Number(row.leaves) || 0) + (Number(row.bonus) || 0) }))
-  .filter((row) => row.joins || row.leaves || row.net)
-  .sort((a, b) => b.net - a.net)
-  .slice(0, 5);
+const inviteValues = readInviteSettings(inviteConfigResult.row);
+// The leaderboard of the Invites tab: all time from the counters, or a week or month from the members brought in during it. Read here, from
+// the database, like the other tabs; the bot is not asked.
+// A period is counted by the database when the site can reach it (one row per inviter); otherwise the rows (the bot's API gives 1000 at most) are counted here.
+const periodRows = invitePeriod === 'all' ? [] : (directQuery
+  ? await directQuery(`SELECT "inviter_id", COUNT(*)::int AS "joins", (COUNT(*) FILTER (WHERE "left_at" IS NOT NULL))::int AS "leaves" FROM "public"."member_invites" WHERE "guild_id" = $1 AND "inviter_id" IS NOT NULL AND NOT "fake" AND "joined_at" >= $2 GROUP BY "inviter_id" ORDER BY COUNT(*) DESC LIMIT 200`, [id, periodStart(invitePeriod)]).catch(() => null)
+  : null) ?? groupPeriod(await rows('member_invites', 'inviter_id,left_at', `&fake=eq.false&inviter_id=not.is.null&joined_at=gte.${periodStart(invitePeriod)}&limit=1000`));
+const inviters = invitePeriod === 'all' ? rankInviters(inviterRows, inviteValues.subtractLeaves, 10) : rankPeriod(periodRows, inviteValues.subtractLeaves, 10);
+
+// The member searched: their counters, who brought them in and the codes they brought people in with.
+const [memberCountRows, memberJoinRows, memberCodeRows] = searchedMember
+  ? await Promise.all([
+    rows('invite_uses', 'joins,leaves,fake,bonus', `&inviter_id=eq.${searchedMember}`),
+    rows('member_invites', 'inviter_id,invite_code,source,fake,joined_at,left_at', `&user_id=eq.${searchedMember}`),
+    (directQuery
+      ? directQuery(`SELECT "invite_code" AS "code", (COUNT(*) FILTER (WHERE NOT "fake"))::int AS "joins", (COUNT(*) FILTER (WHERE NOT "fake" AND "left_at" IS NOT NULL))::int AS "left", (COUNT(*) FILTER (WHERE "fake"))::int AS "fake" FROM "public"."member_invites" WHERE "guild_id" = $1 AND "inviter_id" = $2 AND "invite_code" IS NOT NULL GROUP BY "invite_code" ORDER BY COUNT(*) DESC LIMIT 8`, [id, searchedMember]).catch(() => null)
+      : Promise.resolve(null)).then(async (grouped) => grouped ?? groupCodes(await rows('member_invites', 'invite_code,fake,left_at', `&inviter_id=eq.${searchedMember}&limit=1000`))),
+  ])
+  : [[], [], []];
+const memberCounts = { joins: Number(memberCountRows[0]?.joins) || 0, leaves: Number(memberCountRows[0]?.leaves) || 0, fake: Number(memberCountRows[0]?.fake) || 0, bonus: Number(memberCountRows[0]?.bonus) || 0 };
+const invitedBy = memberJoinRows[0] ?? null;
+const inviteMember = searchedMember ? {
+  id: searchedMember,
+  ...memberCounts,
+  total: inviteTotal(memberCounts, inviteValues.subtractLeaves),
+  invitedBy: invitedBy ? { id: invitedBy.inviter_id ? String(invitedBy.inviter_id) : null, code: invitedBy.invite_code ? String(invitedBy.invite_code) : null, source: String(invitedBy.source ?? 'invite'), fake: Boolean(invitedBy.fake), joinedAt: invitedBy.joined_at ? String(invitedBy.joined_at) : null } : null,
+  codes: codeStats(memberCodeRows, 8),
+} : null;
 
 // Names of the members that are named on the page. A user that cannot be read is shown by its ID.
-const wanted = [...new Set([...stats.topMembers.messages, ...stats.topMembers.voice, ...stats.sanctions.topModerators, ...stats.sanctions.topUsers].map((m) => m.id).concat(inviters.map((i) => i.id)))].slice(0, 30);
+const wanted = [...new Set([...stats.topMembers.messages, ...stats.topMembers.voice, ...stats.sanctions.topModerators, ...stats.sanctions.topUsers].map((m) => m.id).concat(inviters.map((i) => i.id), inviteMember ? [inviteMember.id, ...(inviteMember.invitedBy?.id ? [inviteMember.invitedBy.id] : [])] : []))].slice(0, 30);
 const memberNames: Record<string, string> = {};
 // One call to the bot for all of them (kept for a while); people who left are read from Discord's global profile, as before.
 const profiles = await getMemberProfiles(Astro, id, wanted, botToken, { fallback: 'user', userId: session.userId });
@@ -153,7 +203,8 @@ const inviteRoles = allRoles
   .sort((a: any, b: any) => b.position - a.position)
   .map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color) || 0 }));
 const inviteSettings = {
-  fakeDays: inviteConfigRows.length ? Math.max(0, Number(inviteConfigRows[0].fake_days) || 0) : 3,
+  ...inviteValues,
+  extended: inviteConfigResult.extended,
   rewards: rewardRows.map((row) => {
     const role: any = roleById.get(String(row.role_id));
     return { roleId: String(row.role_id), invites: Number(row.invites) || 0, name: role ? String(role.name) : null, color: role ? Number(role.color) || 0 : 0 };
@@ -175,6 +226,8 @@ const inviteSettings = {
   premium={premium}
   inviteRoles={inviteRoles}
   inviteSettings={inviteSettings}
+  invitePeriod={invitePeriod}
+  inviteMember={inviteMember}
   inviteMessage={inviteMessage}
   analysis={analysis}
   rules={rules}
