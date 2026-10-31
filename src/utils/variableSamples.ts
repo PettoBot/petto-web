@@ -102,6 +102,7 @@ export function tokenValues(ctx: TokenContext): Record<string, TokenValue> {
     server_boostlevel: { text: '2' }, 'guild.boost_tier': { text: '2' }, server_boostcount: { text: '14' }, 'guild.boost_count': { text: '14' },
     server_nextboostlevel: { text: '3' }, server_nextboostlevel_required: { text: '14' }, server_nextboostlevel_until_required: { text: '0' },
     'guild.vanity': { text: 'petto' }, 'guild.region': { text: 'us-east' },
+    'user.account_age': { text: '6 years' }, 'user.account_age_days': { text: '2300' }, 'user.joined_age': { text: '3 months' },
     'user.boost_since': { text: 'Jul 1, 2026' }, user_boostsince: { text: 'Jul 1, 2026' }, 'user.joined_at': { text: 'Jul 1, 2026' }, 'user.created_at': { text: 'Jul 1, 2020' },
     'user.color': { text: '#8399ff' }, 'user.role_list': { text: '@Member @Booster' }, user_discrim: { text: '' },
     'channel.mention': { text: '#general', mention: true }, 'channel.id': { text: '1498210265458675853' }, channel_name: { text: 'general' }, 'channel.topic': { text: 'Say hi' },

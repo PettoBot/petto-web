@@ -567,6 +567,30 @@ export async function callPettoForms(context: AstroContext, guildId: string, use
   }
 }
 
+/**
+ * Forum support, from the dashboard: the forums with their tags and what Petto is missing (`channels`), the posts (`posts`), post the panel
+ * (`panel`) and lock, close or solve a post (`action`). `ping` only asks whether the bot knows these routes (an older bot does not). The
+ * setups themselves are saved by the dashboard straight in the database.
+ */
+export async function callPettoForums(context: AstroContext, guildId: string, userId: string, route: 'ping' | 'channels' | 'posts' | 'panel' | 'action', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; url?: string | null; data?: any; down?: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '' };
+  try {
+    const write = route === 'panel' || route === 'action';
+    const grant = await roleGrant(context, guildId, 'forums', write);
+    const call = await botFetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/forums/${route}`, {
+      method: 'POST',
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, user_id: userId }),
+    }, { timeoutMs: write ? 25_000 : 6_000, mode: write ? 'change' : 'read', retryAt: write ? PATIENT_RETRY : undefined });
+    if (!call.response || call.down) return { ok: false, message: '', down: true };
+    const payload: any = await call.response.json().catch(() => null);
+    return { ok: Boolean(call.response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', url: payload?.url ?? null, data: payload };
+  } catch {
+    return { ok: false, message: '' };
+  }
+}
+
 // Live counters from the dashboard: the values for the previews, create, quick setup, refresh now and delete. The saved settings
 // of a counter are changed by the dashboard straight in the database; these need the bot (Discord channels and the rename budget).
 export async function callPettoCounters(context: AstroContext, guildId: string, userId: string, route: 'preview' | 'create' | 'setup' | 'refresh' | 'delete' | 'announce' | 'reorder', body: Record<string, unknown> = {}, lang = 'en'): Promise<{ ok: boolean; message: string; data?: any; down?: boolean }> {

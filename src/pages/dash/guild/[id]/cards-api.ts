@@ -27,7 +27,16 @@ export const GET: APIRoute = async (astro) => {
   const { id } = astro.params as { id: string };
   const user = await session(astro, id);
   if (!user) return json({ ok: false, error: 'unauthorized' }, 401);
-  const asset = new URL(astro.request.url).searchParams.get('asset');
+  const params = new URL(astro.request.url).searchParams;
+  // The designs that come with Petto: the list, and the small picture or the full one of each (they are the bot's own files).
+  if (params.has('designs')) return relay(await callPettoCards(astro, id, String(user.userId), '/designs'));
+  const design = params.get('design');
+  if (design) {
+    const size = params.get('size') === 'full' ? 'full' : 'thumb';
+    if (!/^[a-z0-9-]{3,30}$/.test(design)) return json({ ok: false, error: 'not_found' }, 404);
+    return relay(await callPettoCards(astro, id, String(user.userId), `/designs/${design}/${size}`));
+  }
+  const asset = params.get('asset');
   if (asset) {
     if (!/^\d{1,18}$/.test(asset)) return json({ ok: false, error: 'not_found' }, 404);
     return relay(await callPettoCards(astro, id, String(user.userId), `/assets/${asset}`));

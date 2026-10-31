@@ -1,0 +1,388 @@
+---
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import MultiSelect from './MultiSelect.astro';
+import DashAcData from './DashAcData.astro';
+import ColorPicker from './ColorPicker.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { LIMITS, NEW_SETUP, STATUSES, intToHex } from '../utils/forums';
+
+// Forum support: the setups of the forums (list, editor with a live preview of the panel and of the first message), and the posts with their
+// lock, close and solved buttons. The look of the page: the classes start with fo-. Its script lives inside #dgl-content and binds once.
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+interface Props {
+  user: { username: string; avatar: string | null }; guildId: string; guildName: string; guildIcon: string; section: string; ready: boolean;
+  setups: any[]; forums: any[]; botDown: boolean; posts: { rows: any[]; total: number; open: number; page: number; limit: number } | null;
+  roles: { id: string; name: string }[]; channels: { id: string; name: string }[]; templates: string[]; editing: any;
+  statusFilter: string; setupFilter: string; maxSetups: number; message: { kind: 'ok' | 'err' | 'warn'; text: string } | null;
+}
+const { user, guildId, guildName, guildIcon, section, ready, setups, forums, botDown, posts, roles, channels, templates, editing, statusFilter, setupFilter, maxSetups, message } = Astro.props;
+const base = `/dash/guild/${guildId}/forums`;
+const isNew = editing === 'new';
+const s: any = isNew ? { ...NEW_SETUP } : editing;
+const titles: Record<string, string> = { setups: dt('Forums'), posts: dt('Forum posts') };
+const when = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
+const forumById = (fid: string) => forums.find((f) => f.id === fid);
+const forumName = (fid: string) => forumById(fid)?.name ?? fid;
+const statusNames: Record<string, string> = { open: dt('Open'), solved: dt('Solved'), locked: dt('Locked'), closed: dt('Closed'), all: dt('All') };
+const styleNames: Record<string, string> = { primary: dt('Blurple'), secondary: dt('Grey'), success: dt('Green'), danger: dt('Red') };
+const questions: any[] = Array.isArray(s?.extra_fields) ? s.extra_fields : [];
+const permissionNote = (f: any) => (f && !f.can_post ? dt('Petto cannot post here: it needs {a}', { a: (f.missing ?? []).join(', ') }) : '');
+const atLimit = setups.length >= maxSetups;
+const logNames: Record<string, string> = { opened: dt('Posts opened'), locked: dt('Posts locked'), closed: dt('Posts closed'), solved: dt('Posts solved') };
+const defaultTexts = {
+  title: dt('Open A Post'),
+  text: dt('Once you have read the guidelines, click "Open post" to create a post in the forum.\n\nYou will be prompted to fill in the post name and description, describe your issue or question as clearly as possible. Then, select the type of inquiry that best represents your issue or question. Image attaching is not supported when filling out the modal, you may do so when the post is open instead.'),
+  button: dt('Open post'),
+  first: dt('Post opened by {user} - {title}\n\n{description}'),
+};
+const pageHref = (over: Record<string, string>) => {
+  const params = new URLSearchParams({ section: 'posts', status: statusFilter, ...(setupFilter ? { s: setupFilter } : {}), ...over });
+  for (const [key, value] of [...params]) if (!value) params.delete(key);
+  return `${base}?${params}`;
+};
+const checked = (value: unknown) => value !== false && Boolean(value);
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={section === 'posts' ? 'forums-posts' : 'forums'} pageTitle={titles[section]}>
+  <h1>{titles[section]}</h1>
+  {message && <div class:list={['fo-flash', message.kind]} role={message.kind === 'err' ? 'alert' : 'status'}><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
+  {!ready && <div class="fo-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+  {ready && botDown && <div class="fo-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto is not answering right now, so the forum list and the posts may be missing. Try again in a moment.')}</div>}
+
+  {ready && section === 'setups' && !s && (
+    <>
+      <div class="fo-row">
+        <span class="fo-hint">{dt('{a} of {b} forum setups', { a: setups.length, b: maxSetups })}</span>
+        {atLimit ? <span class="btn btn-ghost btn-sm" aria-disabled="true">{dt('Limit reached')}</span> : <a class="btn btn-accent btn-sm" href={`${base}?setup=new`}><Icon name="ph:plus-bold" width="12" height="12" />{dt('New forum setup')}</a>}
+      </div>
+      {setups.length === 0 && (
+        <div class="fo-card fo-empty">
+          <Icon name="ph:chats-circle-fill" width="28" height="28" />
+          <p>{dt('No forum is set up yet. Pick a forum channel and members will open posts with a button.')}</p>
+          <p class="fo-hint">{dt('In Discord: !forum setup #forum')}</p>
+        </div>
+      )}
+      <div class="fo-grid-cards dgl-stagger">
+        {setups.map((x) => {
+          const f = forumById(x.forum_channel_id);
+          return (
+            <div class="fo-card dgl-card">
+              <div class="fo-row"><h3><i class="fo-dot"></i>{x.name}</h3><span class:list={['fo-chip', x.enabled ? 'open' : 'closed']}>{x.enabled ? dt('On') : dt('Off')}</span></div>
+              <p class="fo-hint">#{forumName(x.forum_channel_id)}{f && !f.can_post && <> · <span class="fo-warn">{permissionNote(f)}</span></>}{forums.length > 0 && !f && <> · <span class="fo-warn">{dt('This forum was deleted or is not a forum any more.')}</span></>}</p>
+              <p class="fo-hint">{dt('Panel')}: {x.panel_message_id ? <a href={`https://discord.com/channels/${guildId}/${x.panel_channel_id}/${x.panel_message_id}`} target="_blank" rel="noopener">{dt('Open the panel')}</a> : dt('not posted yet')} · <a href={`${base}?section=posts&s=${x.id}`}>{dt('Posts')}</a></p>
+              <div class="fo-actions">
+                <a class="btn btn-ghost btn-sm" href={`${base}?setup=${x.id}`}><Icon name="ph:pencil-simple-bold" width="12" height="12" />{dt('Edit')}</a>
+                <form method="POST" data-no-dirty><input type="hidden" name="action" value="toggle_setup" /><input type="hidden" name="setup_id" value={x.id} /><button type="submit" class="btn btn-ghost btn-sm">{x.enabled ? dt('Turn off') : dt('Turn on')}</button></form>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  )}
+
+  {ready && section === 'setups' && s && (
+    <>
+      <DashAcData roles={roles} channels={channels} vars={[{ tok: '{user}', desc: dt('Mention of the member') }, { tok: '{username}', desc: dt('Name of the member') }, { tok: '{title}', desc: dt('Title of the post') }, { tok: '{description}', desc: dt('What the member wrote') }, { tok: '{tag}', desc: dt('The tags picked') }, { tok: '{server}', desc: dt('Name of the server') }, { tok: '{forum}', desc: dt('Mention of the forum') }]} />
+      <a class="fo-back" href={base}>← {dt('All forum setups')}</a>
+      <div class="fo-editor-wrap">
+        <form method="POST" class="fo-editor" data-forums-editor>
+          {!isNew && <input type="hidden" name="setup_id" value={s.id} />}
+          <div class="fo-card">
+            <h2>{dt('Forum')}</h2>
+            <div class="fo-grid">
+              <label class="fo-field"><span>{dt('Forum channel')}</span>
+                <select name="forum_channel_id" required data-forum-select>
+                  <option value="">{dt('Pick a forum')}</option>
+                  {forums.map((f) => <option value={f.id} selected={f.id === s.forum_channel_id} data-tags={JSON.stringify(f.tags)} data-note={permissionNote(f)}>#{f.name}{permissionNote(f) ? ` · ${permissionNote(f)}` : ''}</option>)}
+                  {s.forum_channel_id && !forumById(s.forum_channel_id) && <option value={s.forum_channel_id} selected>{s.forum_channel_id}</option>}
+                </select>
+                <em class="fo-warn" data-forum-note hidden></em>
+                {forums.length === 0 && <em>{dt('Petto sees no forum channel. Make one in Discord first.')}</em>}
+              </label>
+              <label class="fo-field"><span>{dt('Short name')}</span><input type="text" name="name" value={s.name} maxlength="32" pattern={'[A-Za-z0-9][A-Za-z0-9_\\-]{0,31}'} autocomplete="off" spellcheck="false" /><em>{dt('For commands, like !forum status --setup support. Empty uses the name of the forum.')}</em></label>
+              <label class="fo-check fo-wide"><input type="checkbox" name="enabled" checked={checked(s.enabled)} />{dt('Members can open posts with the panel')}</label>
+            </div>
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('Panel')}</h2>
+            <p class="fo-hint">{dt('The message with the button that opens the form. Posting it again edits the message that is there.')}</p>
+            <div class="fo-grid">
+              <label class="fo-field"><span>{dt('Channel of the panel')}</span><select name="panel_channel_id"><option value="">{dt('Pick a channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === s.panel_channel_id}>#{c.name}</option>)}</select></label>
+              <label class="fo-field"><span>{dt('Saved design')}</span><select name="panel_template" data-pv-design><option value="">{dt('None: use the card below')}</option>{templates.map((n) => <option value={n} selected={n === s.panel_template}>{n}</option>)}</select><em>{dt('A saved design replaces the card; the button goes under it.')}</em></label>
+              <label class="fo-field"><span>{dt('Title')}</span><input type="text" name="panel_title" value={s.panel_title ?? ''} maxlength={LIMITS.panelTitle} placeholder={defaultTexts.title} data-pv-title /></label>
+              <div class="fo-field"><span>{dt('Color')}</span><ColorPicker name="panel_color" value={intToHex(s.panel_color)} label={dt('Color')} allowNone /></div>
+              <label class="fo-field fo-wide"><span>{dt('Text')}</span><textarea name="panel_description" rows="4" maxlength={LIMITS.panelText} data-ac data-pv-text placeholder={defaultTexts.text}>{s.panel_description ?? ''}</textarea><em>{dt('Empty uses the usual text, which also says that pictures can only be added once the post is open (unless the form asks for them).')}</em></label>
+              <label class="fo-field"><span>{dt('Picture (https link)')}</span><input type="text" inputmode="url" name="panel_image" value={s.panel_image ?? ''} maxlength="500" placeholder="https://…/banner.png" autocomplete="off" spellcheck="false" data-pv-image /></label>
+              <label class="fo-field"><span>{dt('Small text under the card')}</span><input type="text" name="panel_footer" value={s.panel_footer ?? ''} maxlength={LIMITS.panelFooter} data-pv-footer /></label>
+              <label class="fo-field"><span>{dt('Button text')}</span><input type="text" name="button_label" value={s.button_label ?? ''} maxlength={LIMITS.button} placeholder={defaultTexts.button} data-pv-button /></label>
+              <label class="fo-field"><span>{dt('Button emoji')}</span><input type="text" name="button_emoji" value={s.button_emoji ?? ''} maxlength="100" placeholder="➕" autocomplete="off" data-pv-emoji /></label>
+              <label class="fo-field"><span>{dt('Button color')}</span><select name="button_style" data-pv-style>{['success', 'primary', 'secondary', 'danger'].map((b) => <option value={b} selected={b === (s.button_style ?? 'success')}>{styleNames[b]}</option>)}</select></label>
+            </div>
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('Form')}</h2>
+            <p class="fo-hint">{dt('Members fill in a title and a description, then pick the tag. You can add up to 3 more questions (2 if pictures are asked for).')}</p>
+            <div class="fo-grid">
+              <label class="fo-field"><span>{dt('Title of the window')}</span><input type="text" name="modal_title" value={s.modal_title ?? ''} maxlength={LIMITS.label} placeholder={dt('Open a post')} /></label>
+              <label class="fo-field"><span>{dt('Label of the title')}</span><input type="text" name="title_label" value={s.title_label ?? ''} maxlength={LIMITS.label} placeholder={dt('Title')} /></label>
+              <label class="fo-field"><span>{dt('Label of the description')}</span><input type="text" name="description_label" value={s.description_label ?? ''} maxlength={LIMITS.label} placeholder={dt('Description')} /></label>
+              <label class="fo-check"><input type="checkbox" name="ask_images" checked={Boolean(s.ask_images)} />{dt('Let members add pictures in the form')}</label>
+            </div>
+            {[1, 2, 3].map((n) => {
+              const q = questions[n - 1] ?? {};
+              return (
+                <div class="fo-question">
+                  <b>{dt('Question {a}', { a: n })}</b>
+                  <div class="fo-grid">
+                    <label class="fo-field"><span>{dt('Question (45 characters)')}</span><input type="text" name={`q_label_${n}`} value={q.label ?? ''} maxlength={LIMITS.label} /></label>
+                    <label class="fo-field"><span>{dt('Kind')}</span><select name={`q_type_${n}`}><option value="short_text" selected={(q.type ?? 'short_text') === 'short_text'}>{dt('Short text')}</option><option value="long_text" selected={q.type === 'long_text'}>{dt('Paragraph')}</option><option value="select" selected={q.type === 'select'}>{dt('Menu of choices')}</option></select></label>
+                    <label class="fo-field fo-wide"><span>{dt('Choices, one per line (menu only)')}</span><textarea name={`q_options_${n}`} rows="2">{(q.options ?? []).join('\n')}</textarea></label>
+                    <label class="fo-check"><input type="checkbox" name={`q_required_${n}`} checked={q.required !== false} />{dt('Required')}</label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('Tags')}</h2>
+            <div class="fo-grid">
+              <label class="fo-check fo-wide"><input type="checkbox" name="require_tag" checked={Boolean(s.require_tag)} />{dt('A tag is required (the step is skipped when the forum has no tags)')}</label>
+              <label class="fo-field"><span>{dt('Tags a post can have')}</span><input type="number" name="max_tags" min="1" max="5" value={s.max_tags ?? 1} /></label>
+              <label class="fo-field"><span>{dt('Tag that means solved')}</span>
+                <select name="solved_tag_id" data-solved-select><option value="">{dt('The one called Solved (made if missing)')}</option>{(forumById(s.forum_channel_id)?.tags ?? []).map((tag: any) => <option value={tag.id} selected={tag.id === s.solved_tag_id}>{tag.name}</option>)}</select>
+              </label>
+              <div class="fo-field fo-wide"><span>{dt('Tags members can pick')}</span>
+                <div class="fo-tags" data-tag-list data-selected={JSON.stringify(s.tag_ids ?? [])}>
+                  {(forumById(s.forum_channel_id)?.tags ?? []).map((tag: any) => <label class="fo-check"><input type="checkbox" name="tag_ids" value={tag.id} checked={(s.tag_ids ?? []).includes(tag.id)} />{tag.name}{tag.moderated ? ` · ${dt('staff only')}` : ''}</label>)}
+                </div>
+                <em>{dt('None checked: members can pick any tag of the forum (never the staff-only ones or the solved one). Pick the forum and save to see its tags.')}</em>
+              </div>
+            </div>
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('The post')}</h2>
+            <p class="fo-hint">{dt('Variables:')} {['{user}', '{username}', '{title}', '{description}', '{tag}', '{server}', '{forum}'].map((v) => <code class="fo-var">{v}</code>)}</p>
+            <div class="fo-grid">
+              <label class="fo-field"><span>{dt('First message')}</span><select name="first_message_style" data-pv-style-first><option value="plain" selected={s.first_message_style !== 'card'}>{dt('Plain text with the description')}</option><option value="card" selected={s.first_message_style === 'card'}>{dt('A line, and the description in a card')}</option></select></label>
+              <label class="fo-field"><span>{dt('Slowmode of the post (seconds)')}</span><input type="number" name="slowmode_seconds" min="0" max="21600" value={s.slowmode_seconds ?? 0} /></label>
+              <label class="fo-field fo-wide"><span>{dt('Text of the first message')}</span><textarea name="first_message" rows="3" maxlength={LIMITS.firstMessage} data-ac data-pv-first placeholder={defaultTexts.first}>{s.first_message ?? ''}</textarea></label>
+              <label class="fo-field fo-wide"><span>{dt('Guidelines')}</span><textarea name="guidelines" rows="3" maxlength={LIMITS.guidelines} data-ac data-pv-guidelines>{s.guidelines ?? ''}</textarea><em>{dt('Shown in a card under the first message, with the roles to ping.')}</em></label>
+              <div class="fo-field fo-wide"><span>{dt('Roles to ping')}</span><MultiSelect lazy name="ping_role_ids" options={roles} selected={s.ping_role_ids ?? []} placeholder={dt('No roles')} /></div>
+            </div>
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('Who can do what')}</h2>
+            <div class="fo-grid">
+              <div class="fo-field fo-wide"><span>{dt('Staff roles')}</span><MultiSelect lazy name="staff_role_ids" options={roles} selected={s.staff_role_ids ?? []} placeholder={dt('Only members who manage threads')} /><em>{dt('They can lock, close, solve, tag and claim any post of this forum. Members with Manage Threads always can.')}</em></div>
+              <div class="fo-field fo-wide"><span>{dt('Needs one of these roles to open a post')}</span><MultiSelect lazy name="required_role_ids" options={roles} selected={s.required_role_ids ?? []} placeholder={dt('Anyone')} /></div>
+              <div class="fo-field fo-wide"><span>{dt('Blocked roles')}</span><MultiSelect lazy name="blocked_role_ids" options={roles} selected={s.blocked_role_ids ?? []} placeholder={dt('No roles')} /></div>
+              <label class="fo-field fo-wide"><span>{dt('Blocked members (IDs, one per line or separated by spaces)')}</span><textarea name="blocked_user_ids" rows="2">{(s.blocked_user_ids ?? []).join('\n')}</textarea></label>
+              <label class="fo-field"><span>{dt('Open posts per member')}</span><input type="number" name="max_open_per_user" min="0" max="50" value={s.max_open_per_user ?? 3} /><em>{dt('0 is no limit.')}</em></label>
+              <label class="fo-field"><span>{dt('Wait between two posts (seconds)')}</span><input type="number" name="cooldown_seconds" min="0" max="86400" value={s.cooldown_seconds ?? 30} /></label>
+              <label class="fo-check"><input type="checkbox" name="author_can_close" checked={checked(s.author_can_close)} />{dt('The author can close their post')}</label>
+              <label class="fo-check"><input type="checkbox" name="author_can_solve" checked={checked(s.author_can_solve)} />{dt('The author can mark it solved')}</label>
+              <label class="fo-check"><input type="checkbox" name="author_can_rename" checked={checked(s.author_can_rename)} />{dt('The author can change the title')}</label>
+            </div>
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('Automation')}</h2>
+            <p class="fo-hint">{dt('One check every minute that only looks at the posts that are due.')}</p>
+            <div class="fo-grid">
+              <label class="fo-field"><span>{dt('Quiet posts: after how many days (0 is off)')}</span><input type="number" name="inactive_days" min="0" max="365" value={s.inactive_days ?? 0} /></label>
+              <label class="fo-field"><span>{dt('Then')}</span><select name="inactive_action"><option value="close" selected={s.inactive_action !== 'lock'}>{dt('Close the post')}</option><option value="lock" selected={s.inactive_action === 'lock'}>{dt('Lock the post')}</option></select></label>
+              <label class="fo-field"><span>{dt('Solved posts')}</span><select name="solved_action"><option value="none" selected={(s.solved_action ?? 'none') === 'none'}>{dt('Do nothing')}</option><option value="lock" selected={s.solved_action === 'lock'}>{dt('Lock the post')}</option><option value="close" selected={s.solved_action === 'close'}>{dt('Close the post')}</option></select></label>
+              <label class="fo-field"><span>{dt('Hours after it was solved')}</span><input type="number" name="solved_delay_hours" min="0" max="720" value={s.solved_delay_hours ?? 24} /></label>
+              <label class="fo-check fo-wide"><input type="checkbox" name="adopt" checked={Boolean(s.adopt)} />{dt('Also keep the posts made by hand in the forum (they get the guidelines, the tools and the tag rule)')}</label>
+              <label class="fo-field"><span>{dt('Minutes to choose a tag (posts made by hand)')}</span><input type="number" name="tag_wait_minutes" min="1" max="1440" value={s.tag_wait_minutes ?? 10} /></label>
+            </div>
+          </div>
+
+          <div class="fo-card">
+            <h2>{dt('Log')}</h2>
+            <p class="fo-hint">{dt('The log category Forums (Logging page) chooses the channel. Here you choose what is told.')}</p>
+            <div class="fo-grid">
+              {['opened', 'locked', 'closed', 'solved'].map((e) => <label class="fo-check"><input type="checkbox" name="log_events" value={e} checked={(s.log_events ?? []).includes(e)} />{logNames[e]}</label>)}
+            </div>
+          </div>
+
+          <div class="fo-bar">
+            <button type="submit" name="action" value="save_setup" class="btn btn-accent">{dt('Save')}</button>
+            <button type="submit" name="action" value="save_and_post" class="btn btn-ghost" title={dt('Saves and posts the panel, or edits it if it is already there')}>{isNew || !s.panel_message_id ? dt('Save and post the panel') : dt('Save and update the panel')}</button>
+            {!isNew && <button type="submit" name="action" value="delete_setup" class="btn btn-ghost fo-danger" formnovalidate data-confirm={dt('Remove this setup? The posts stay in the forum.')}>{dt('Delete')}</button>}
+          </div>
+        </form>
+
+        <aside class="fo-preview-col">
+          <div class="fo-card">
+            <h2>{dt('Preview')}</h2>
+            <div class="fo-discord">
+              <div class="fo-embed" data-pv-card>
+                <img data-pv-img alt="" hidden referrerpolicy="no-referrer" />
+                <b data-pv-heading>{s.panel_title || defaultTexts.title}</b>
+                <span data-pv-body>{s.panel_description || defaultTexts.text}</span>
+                <small data-pv-foot hidden></small>
+              </div>
+              <span class="fo-btn" data-pv-btn data-style={s.button_style ?? 'success'}><i data-pv-btn-emoji>{s.button_emoji || '➕'}</i><span data-pv-btn-label>{s.button_label || defaultTexts.button}</span></span>
+            </div>
+            <p class="fo-hint">{dt('A saved design is drawn by Discord; this is the card.')}</p>
+          </div>
+          <div class="fo-card">
+            <h2>{dt('First message of a post')}</h2>
+            <div class="fo-discord"><div class="fo-msg" data-pv-first-msg>{s.first_message || defaultTexts.first}</div></div>
+          </div>
+        </aside>
+      </div>
+    </>
+  )}
+
+  {ready && section === 'posts' && (
+    <>
+      <div class="fo-row">
+        <div class="fo-tabs">{['open', 'solved', 'locked', 'closed', 'all'].map((st) => <a class:list={['fo-tab', { on: statusFilter === st }]} href={pageHref({ status: st, p: '' })}>{statusNames[st]}</a>)}</div>
+        {setups.length > 1 && (
+          <div class="fo-tabs"><a class:list={['fo-tab', { on: !setupFilter }]} href={pageHref({ s: '', p: '' })}>{dt('All forums')}</a>{setups.map((x) => <a class:list={['fo-tab', { on: setupFilter === String(x.id) }]} href={pageHref({ s: String(x.id), p: '' })}>{x.name}</a>)}</div>
+        )}
+      </div>
+      {posts && posts.rows.length === 0 && <div class="fo-card fo-empty"><Icon name="ph:chats-circle-fill" width="28" height="28" /><p>{dt('There are no posts to show.')}</p></div>}
+      {posts && posts.rows.length > 0 && (
+        <div class="fo-card fo-table-card">
+          <p class="fo-hint">{dt('{a} posts', { a: posts.total })} · {dt('{a} open', { a: posts.open })}</p>
+          <div class="fo-table">
+            {posts.rows.map((p) => (
+              <div class="fo-post">
+                <div class="fo-post-main">
+                  <a href={p.url} target="_blank" rel="noopener" class="fo-post-title">{p.title}</a>
+                  <span class="fo-hint">{p.author.name} · {when(p.opened_at)}{p.claimed_by ? ` · ${dt('handled by {a}', { a: p.claimed_by })}` : ''}{p.source !== 'panel' ? ` · ${p.source === 'moved' ? dt('moved') : dt('made by hand')}` : ''}</span>
+                </div>
+                <span class:list={['fo-chip', p.status]}>{statusNames[p.status] ?? p.status}</span>
+                <div class="fo-actions">
+                  {[
+                    ...(p.status === 'locked' ? [['unlock', dt('Unlock')]] : p.status === 'closed' ? [] : [['lock', dt('Lock')]]),
+                    ...(p.status === 'closed' || p.status === 'locked' ? [['reopen', dt('Reopen')]] : [['close', dt('Close')]]),
+                    ...(p.solved_at ? [['unsolved', dt('Not solved')]] : [['solved', dt('Solved')]]),
+                  ].map(([act, label]) => (
+                    <form method="POST" data-no-dirty><input type="hidden" name="action" value="post_action" /><input type="hidden" name="thread_id" value={p.thread_id} /><input type="hidden" name="post_action" value={act} /><button type="submit" class="btn btn-ghost btn-sm">{label}</button></form>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div class="fo-row">
+            {posts.page > 0 ? <a class="btn btn-ghost btn-sm" href={pageHref({ p: String(posts.page - 1) })}>← {dt('Newer')}</a> : <span></span>}
+            {(posts.page + 1) * posts.limit < posts.total && <a class="btn btn-ghost btn-sm" href={pageHref({ p: String(posts.page + 1) })}>{dt('Older')} →</a>}
+          </div>
+        </div>
+      )}
+      {!posts && !botDown && <div class="fo-card fo-empty"><p>{dt('The posts could not be read. Try again in a moment.')}</p></div>}
+    </>
+  )}
+
+  <script is:inline>
+    // The preview of the panel and of the first message, drawn from the fields. It binds once (the dashboard swaps pages without reloading).
+    (function () {
+      var root = document.querySelector('[data-forums-editor]');
+      if (!root || root.dataset.bound) return;
+      root.dataset.bound = '1';
+      var pv = document.querySelector('[data-pv-card]');
+      var q = function (sel) { return root.querySelector(sel); };
+      var vars = { '{user}': '@member', '{username}': 'member', '{title}': 'Cannot log in', '{description}': 'It fails with error 42.', '{tag}': 'Bug', '{server}': document.title.split('·')[1] || 'Server', '{forum}': '#support' };
+      var fill = function (text) { return String(text).replace(/\{[a-z]+\}/g, function (m) { return vars[m] || m; }); };
+      var emojiBox = document.querySelector('[data-pv-btn-emoji]');
+      function text(sel, fallback) { var el = q(sel); return el && el.value.trim() ? el.value.trim() : fallback; }
+      function draw() {
+        var d = document.querySelector('[data-pv-heading]'); if (!d) return;
+        d.textContent = text('[data-pv-title]', d.dataset.def || d.textContent);
+        document.querySelector('[data-pv-body]').textContent = text('[data-pv-text]', document.querySelector('[data-pv-text]').placeholder);
+        var img = document.querySelector('[data-pv-img]'); var url = text('[data-pv-image]', '');
+        if (/^https:\/\//i.test(url)) { img.src = url; img.hidden = false; } else { img.hidden = true; img.removeAttribute('src'); }
+        var foot = document.querySelector('[data-pv-foot]'); var f = text('[data-pv-footer]', ''); foot.textContent = f; foot.hidden = !f;
+        document.querySelector('[data-pv-btn-label]').textContent = text('[data-pv-button]', document.querySelector('[data-pv-button]').placeholder);
+        emojiBox.textContent = text('[data-pv-emoji]', '➕');
+        document.querySelector('[data-pv-btn]').dataset.style = q('[data-pv-style]').value;
+        var color = q('input[name="panel_color"]'); pv.style.borderLeftColor = color && /^#[0-9a-f]{6}$/i.test(color.value) ? color.value : '';
+        var first = document.querySelector('[data-pv-first-msg]');
+        var cardStyle = q('[data-pv-style-first]').value === 'card';
+        var template = text('[data-pv-first]', q('[data-pv-first]').placeholder);
+        first.textContent = fill(cardStyle ? template.split('\n')[0] : template);
+      }
+      var title = document.querySelector('[data-pv-heading]'); if (title) title.dataset.def = title.textContent;
+      root.addEventListener('input', draw); root.addEventListener('change', draw); draw();
+      var select = q('[data-forum-select]'); var note = q('[data-forum-note]');
+      function forumNote() { var o = select.options[select.selectedIndex]; var n = o && o.dataset.note; note.textContent = n || ''; note.hidden = !n; }
+      if (select) { select.addEventListener('change', forumNote); forumNote(); }
+      root.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!window.confirm(b.dataset.confirm)) e.preventDefault(); }); });
+    })();
+  </script>
+</DashGuildLayout>
+
+<style is:global>
+  .fo-flash { display: flex; align-items: center; gap: 8px; font-size: 13px; border-radius: 9px; padding: 9px 13px; margin-bottom: 16px; max-width: fit-content; }
+  .fo-flash.ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
+  .fo-flash.err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
+  .fo-flash.warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid var(--yellow); }
+  .fo-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; min-width: 0; }
+  .fo-card p { margin: 0; }
+  .fo-card h2 { font-size: 16px; margin: 0; }
+  .fo-card h3 { font-size: 14.5px; margin: 0; display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+  .fo-hint, .fo-field em { font-size: 12px; color: var(--text-dim); font-style: normal; }
+  .fo-hint a { color: var(--accent); }
+  .fo-warn { color: var(--yellow); }
+  .fo-var { font-size: 11.5px; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+  .fo-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .fo-card .fo-row { margin-bottom: 0; }
+  .fo-empty { align-items: center; text-align: center; color: var(--text-muted); padding: 28px; }
+  .fo-grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; max-width: 1100px; }
+  .fo-grid-cards .fo-card { margin: 0; }
+  .fo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+  .fo-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .fo-actions form { display: contents; }
+  .fo-chip { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); text-transform: uppercase; white-space: nowrap; }
+  .fo-chip.open { color: var(--green); border-color: transparent; background: var(--green-soft); }
+  .fo-chip.solved { color: var(--accent); border-color: transparent; background: var(--accent-soft); }
+  .fo-chip.locked { color: var(--yellow); border-color: transparent; background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .fo-back { font-size: 13px; color: var(--text-muted); text-decoration: none; margin-bottom: 10px; display: inline-block; }
+  .fo-editor-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; max-width: 1280px; }
+  .fo-editor { display: flex; flex-direction: column; min-width: 0; }
+  .fo-preview-col { position: sticky; top: 76px; min-width: 0; }
+  .fo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .fo-wide { grid-column: 1 / -1; }
+  .fo-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .fo-field em[hidden] { display: none; }
+  .fo-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .fo-tags { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .fo-question { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .fo-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .fo-danger { color: var(--red); }
+  .fo-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fo-tab { font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); text-decoration: none; }
+  .fo-tab.on { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+  .fo-table { display: flex; flex-direction: column; }
+  .fo-post { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--border); }
+  .fo-post-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
+  .fo-post-title { font-weight: 600; overflow-wrap: anywhere; color: var(--text); text-decoration: none; }
+  .fo-discord { background: #313338; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; color: #dbdee1; }
+  .fo-embed { border-left: 4px solid #a5ea7a; background: #2b2d31; border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  .fo-embed img { max-width: 100%; border-radius: 4px; }
+  .fo-embed b { font-size: 15px; color: #f2f3f5; }
+  .fo-embed span { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fo-embed small { color: #949ba4; }
+  .fo-btn { align-self: flex-start; display: inline-flex; gap: 6px; align-items: center; padding: 7px 14px; border-radius: 4px; font-size: 13px; font-weight: 600; color: #fff; background: #248046; }
+  .fo-btn[data-style="primary"] { background: #5865f2; }
+  .fo-btn[data-style="secondary"] { background: #4e5058; }
+  .fo-btn[data-style="danger"] { background: #da373c; }
+  .fo-btn i { font-style: normal; }
+  .fo-msg { font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  @media (max-width: 900px) {
+    .fo-editor-wrap { grid-template-columns: minmax(0, 1fr); }
+    .fo-preview-col { position: static; order: -1; }
+    .fo-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
