@@ -37,4 +37,24 @@ assert.equal(realCommandName('nothing-like-this'), null, 'a word that is no comm
 assert.deepEqual(readCommandNames('hug hf !pat, rank banana'), { names: ['hug', 'highfive', 'pat', 'rank'], unknown: ['banana'], refused: [] });
 assert.deepEqual(readCommandNames('hug, hello').names, ['hug', 'hi'], 'an alias of an action is the action');
 assert.deepEqual(readCommandNames('help disablecommand').refused.sort(), ['disablecommand', 'help'], 'the protected commands are still refused');
+// The umbrellas /server and /user: a rule is saved under the name of the command a subcommand wraps, or under the key of a new one, the same
+// keys the bot reads (src/commands/info/server.js, user.js: `ruleKeys`), and the name of the umbrella turns off all of it.
+const umbrellas = { server: { info: 'serverinfo', icon: 'servericon', banner: 'serverbanner', splash: 'serversplash', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo' },
+  user: { info: 'userinfo', avatar: 'avatar', banner: 'banner', cosmetics: 'usercosmetics', permissions: 'permissions', id: 'snowflake', 'first-message': 'firstmessage', activity: 'activity' } };
+for (const [name, keys] of Object.entries(umbrellas)) {
+  const command = generated.find((each) => each.name === name);
+  assert.ok(command, `/${name} is in the generated list`);
+  assert.deepEqual(Object.fromEntries(command.ruleKeys.map((key) => [key.subcommand, key.name])), keys, `/${name} brings the keys of its rules`);
+  assert.deepEqual(command.subcommands, Object.keys(keys), `/${name} brings its subcommands`);
+  assert.equal(realCommandName(name), name, `the whole /${name} can be turned off`);
+  assert.ok(disableableCommands.includes(name));
+  for (const key of Object.values(keys)) {
+    assert.equal(realCommandName(key), key, `${key} is a name a rule can have`);
+    assert.ok(disableableCommands.includes(key), `${key} is in the suggestions`);
+  }
+}
+for (const key of ['servericon', 'serverbanner', 'serversplash']) assert.equal(realCommandName(`!${key}`), key, `!${key} is the key of its subcommand`);
+assert.deepEqual(readCommandNames('server serverinfo servericon user').names, ['server', 'serverinfo', 'servericon', 'user']);
+assert.equal(realCommandName('si'), 'serverinfo', 'si is still serverinfo');
+assert.equal(generated.find((command) => command.name === 'serverinfo').aliases.includes('server'), false, '`server` is the umbrella now, not a word of serverinfo');
 console.log(`check-disabled-commands: ${act.actions.length} actions can be named by a rule, with the same keys as the bot`);
