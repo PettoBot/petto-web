@@ -4,35 +4,70 @@ import DashPremiumAdmin from '../../components/DashPremiumAdmin.astro';
 import { getDashboardSession } from '../../utils/dashAuth';
 import { forgetPremiumSnapshots } from '../../utils/premium';
 import { postActivePremium } from '../../utils/polarWebhook';
-import { grantManualPremium, isPettoOwner, listManualPremium, revokeManualPremium } from '../../utils/premiumAdmin';
+import { confirmManualPremium, extendManualPremium, grantState, grantTarget, isLiveEntitlement, isPettoOwner, listManualPremium, previewManualPremium, resolveGrantNames, revokeManualPremium, type PlanInput, type PreviewResult } from '../../utils/premiumAdmin';
 
 const session = await getDashboardSession(Astro);
 if (!session) return Astro.redirect('/dash');
 if (!isPettoOwner(Astro, session.userId)) return Astro.redirect('/dash/manage?error=forbidden');
 
+// What the form shows: the values of the last try, or the ones the "Switch" link brings (the ID is kept, the choice flips).
+const query = Astro.url.searchParams;
+const form = {
+  targetType: query.get('target_type') === 'server' ? 'server' : 'user',
+  targetId: (query.get('target_id') ?? '').replace(/\D/g, '').slice(0, 22),
+  duration: query.get('duration') ?? 'permanent',
+  until: /^\d{4}-\d{2}-\d{2}$/.test(query.get('until') ?? '') ? query.get('until')! : '',
+  slots: ['1', '3', '5', '10', '25'].includes(query.get('slot_limit') ?? '') ? query.get('slot_limit')! : '1',
+};
+
 let actionError: string | undefined;
+let preview: Extract<PreviewResult, { ok: true }> | null = null;
+let flip: { type: 'user' | 'server'; name: string | null; image: string | null; known: boolean } | null = null;
+let editedId: number | null = null;
+
 if (Astro.request.method.toUpperCase() === 'POST') {
   const origin = Astro.request.headers.get('origin');
   if (origin && origin !== Astro.url.origin) {
     actionError = 'invalid';
   } else {
-    const form = await Astro.request.formData();
-    const action = String(form.get('action') ?? '');
-    if (action === 'grant') {
-      const result = await grantManualPremium(Astro, session.userId, {
-        targetType: String(form.get('target_type') ?? ''),
-        userId: String(form.get('user_id') ?? ''),
-        guildId: String(form.get('guild_id') ?? ''),
-        slotLimit: Number(form.get('slot_limit') ?? 0),
-      });
+    const data = await Astro.request.formData();
+    const action = String(data.get('action') ?? '');
+    const text = (name: string) => String(data.get(name) ?? '');
+    if (action === 'preview' || action === 'edit_preview') {
+      const input: PlanInput = action === 'preview'
+        ? { mode: 'grant', targetType: text('target_type'), targetId: text('target_id'), duration: text('duration'), date: text('until'), slotLimit: Number(text('slot_limit') || 1) }
+        : { mode: 'edit', entitlementId: Number(text('entitlement_id')), duration: text('duration'), date: text('until'), slotLimit: text('slot_limit') === '' ? undefined : Number(text('slot_limit')) };
+      if (action === 'preview') {
+        form.targetType = text('target_type') === 'server' ? 'server' : 'user';
+        form.targetId = text('target_id').replace(/\D/g, '').slice(0, 22);
+        form.duration = text('duration');
+        form.until = text('until');
+        form.slots = text('slot_limit') || '1';
+      } else {
+        editedId = Number(text('entitlement_id')) || null;
+      }
+      const result = await previewManualPremium(Astro, session.userId, input);
+      if ('token' in result) {
+        preview = result;
+      } else {
+        actionError = result.code;
+        if ('flip' in result && result.flip && result.target) flip = { type: result.flip, name: result.target.name, image: result.target.image, known: result.target.known };
+      }
+    } else if (action === 'confirm') {
+      const result = await confirmManualPremium(Astro, session.userId, text('token'), text('ack') === '1');
       // Premium changed for someone: the kept Premium states are read again.
       forgetPremiumSnapshots();
-      if (result.ok) return Astro.redirect('/dash/admin?saved=1');
+      if (result.ok) return Astro.redirect(`/dash/admin?saved=${text('kind') === 'edit' ? 'edit' : 'grant'}`);
+      actionError = 'code' in result ? result.code : 'database';
+    } else if (action === 'extend') {
+      const result = await extendManualPremium(Astro, session.userId, Number(text('entitlement_id')), text('by'));
+      forgetPremiumSnapshots();
+      if (result.ok) return Astro.redirect('/dash/admin?saved=extend');
       actionError = 'code' in result ? result.code : 'database';
     } else if (action === 'revoke') {
-      const ok = await revokeManualPremium(Astro, session.userId, Number(form.get('entitlement_id') ?? 0));
+      const ok = await revokeManualPremium(Astro, session.userId, Number(text('entitlement_id')));
       forgetPremiumSnapshots();
-      if (ok) return Astro.redirect('/dash/admin?saved=1');
+      if (ok) return Astro.redirect('/dash/admin?saved=revoke');
       actionError = 'database';
     } else if (action === 'premium_log') {
       const result = await postActivePremium(Astro);
@@ -44,11 +79,24 @@ if (Astro.request.method.toUpperCase() === 'POST') {
   }
 }
 
-const error = actionError;
-const saved = Astro.url.searchParams.get('saved') === '1';
-const loggedParam = Astro.url.searchParams.get('logged');
+const savedParam = query.get('saved');
+const saved = savedParam && ['1', 'grant', 'edit', 'extend', 'revoke'].includes(savedParam) ? savedParam : null;
+const loggedParam = query.get('logged');
 const logged = loggedParam !== null && /^\d{1,4}$/.test(loggedParam) ? Number(loggedParam) : null;
-const grants = await listManualPremium(Astro);
+const filter = ['users', 'servers', 'live', 'expired'].includes(query.get('filter') ?? '') ? query.get('filter')! : 'all';
+
+// The list: who each grant is for (with the name when known), its state, live ones first, then the filter.
+const all = await listManualPremium(Astro);
+const now = Date.now();
+const targets = all.map((grant) => grantTarget(grant));
+const names = await resolveGrantNames(Astro, targets);
+const rows = all.map((grant, index) => {
+  const target = targets[index];
+  const known = names.get(`${target.type}:${target.id}`);
+  return { grant, target, name: known?.name ?? null, image: known?.image ?? null, state: grantState(grant, now), live: isLiveEntitlement(grant, now) };
+}).sort((a, b) => Number(b.live) - Number(a.live));
+const counts = { all: rows.length, users: rows.filter((r) => r.target.type === 'user').length, servers: rows.filter((r) => r.target.type === 'server').length, live: rows.filter((r) => r.live).length, expired: rows.filter((r) => !r.live).length };
+const shown = rows.filter((r) => filter === 'users' ? r.target.type === 'user' : filter === 'servers' ? r.target.type === 'server' : filter === 'live' ? r.live : filter === 'expired' ? !r.live : true);
 ---
 
-<DashPremiumAdmin user={session} grants={grants} error={error} saved={saved} logged={logged} />
+<DashPremiumAdmin user={session} rows={shown} counts={counts} filter={filter} form={form} preview={preview} flip={flip} editedId={editedId} error={actionError} saved={saved} logged={logged} ownerId={session.userId} />
