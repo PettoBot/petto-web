@@ -5151,4 +5151,12 @@ export const dashPt: Record<string, string> = {
   "That is not a post.": "Isso não é uma postagem.",
   "Saved, but the panel could not be posted: {a}": "Salvo, mas não foi possível postar o painel: {a}",
   "Setup removed. The posts stay in the forum.": "Configuração removida. As postagens ficam no fórum.",
+  "View Channel": "Ver canal",
+  "Send Messages": "Enviar mensagens",
+  "Send Messages in Threads": "Enviar mensagens em tópicos",
+  "Create Public Threads": "Criar tópicos públicos",
+  "Attach Files": "Anexar arquivos",
+  "a staff member": "um membro da equipe",
+  "The forum list could not be read. Try again in a moment.": "Não foi possível ler a lista de fóruns. Tente de novo em um momento.",
+  "Forum posts opened, locked, closed and solved": "Postagens de fóruns abertas, bloqueadas, fechadas e resolvidas",
 };

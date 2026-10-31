@@ -8,6 +8,8 @@ import { runBatched } from '../../../../utils/concurrency';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoForums } from '../../../../utils/pettoBotApi';
 import { forumsReady } from '../../../../utils/forumsReady';
+import { getMemberProfiles } from '../../../../utils/memberNames';
+import { withinBudget } from '../../../../utils/liveCall';
 import { MAX_SETUPS, STATUSES, SNOWFLAKE, setupFromForm } from '../../../../utils/forums';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
@@ -122,8 +124,14 @@ if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const setups: any[] = setupsRes?.ok ? await setupsRes.json() : [];
 const forums: any[] = forumsAnswer?.ok ? forumsAnswer.data?.forums ?? [] : [];
-const botDown = Boolean(ready && forumsAnswer && !forumsAnswer.ok);
-const posts = postsAnswer?.ok ? { rows: postsAnswer.data.posts ?? [], total: Number(postsAnswer.data.total ?? 0), open: Number(postsAnswer.data.open ?? 0), page: Number(postsAnswer.data.page ?? 0), limit: Number(postsAnswer.data.limit ?? 25) } : null;
+// "Not answering" only when the bot did not answer (no connection, no readable answer). A bot that answered with a refusal says why instead.
+const botDown = Boolean(ready && forumsAnswer && !forumsAnswer.ok && forumsAnswer.down);
+const forumsError = ready && forumsAnswer && !forumsAnswer.ok && !forumsAnswer.down ? forumsAnswer.message || dt('The forum list could not be read. Try again in a moment.') : '';
+const postRows: any[] = postsAnswer?.ok ? postsAnswer.data.posts ?? [] : [];
+// The bot sends the member who handles a post only as an id: the names come from the members route (kept for a few minutes).
+const handlerIds = [...new Set(postRows.map((p) => String(p.claimed_by ?? '')).filter((x) => /^\d{15,25}$/.test(x)))];
+const handlers = handlerIds.length ? (await withinBudget(getMemberProfiles(Astro, id, handlerIds, botToken, { fallback: 'user', userId: session.userId }), 1500))?.value ?? new Map() : new Map();
+const posts = postsAnswer?.ok ? { rows: postRows.map((p) => ({ ...p, claimed_name: handlers.get(String(p.claimed_by))?.displayName || null })), total: Number(postsAnswer.data.total ?? 0), open: Number(postsAnswer.data.open ?? 0), page: Number(postsAnswer.data.page ?? 0), limit: Number(postsAnswer.data.limit ?? 25) } : null;
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
 const templates: string[] = (templatesRes?.ok ? await templatesRes.json() : []).map((t: any) => t.name).filter(Boolean);
@@ -131,6 +139,6 @@ const editSetup = editing === 'new' ? 'new' : editing ? setups.find((s) => Strin
 ---
 <DashForums
   user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
-  section={section} ready={ready} setups={setups} forums={forums} botDown={botDown} posts={posts} roles={roles} channels={channels} templates={templates}
+  section={section} ready={ready} setups={setups} forums={forums} botDown={botDown} forumsError={forumsError} posts={posts} roles={roles} channels={channels} templates={templates}
   editing={editSetup} statusFilter={statusFilter} setupFilter={setupFilter} maxSetups={MAX_SETUPS} message={message}
 />

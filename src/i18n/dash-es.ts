@@ -5151,4 +5151,12 @@ export const dashEs: Record<string, string> = {
   "That is not a post.": "Eso no es una publicación.",
   "Saved, but the panel could not be posted: {a}": "Guardado, pero no se pudo publicar el panel: {a}",
   "Setup removed. The posts stay in the forum.": "Configuración quitada. Las publicaciones se quedan en el foro.",
+  "View Channel": "Ver el canal",
+  "Send Messages": "Enviar mensajes",
+  "Send Messages in Threads": "Enviar mensajes en hilos",
+  "Create Public Threads": "Crear hilos públicos",
+  "Attach Files": "Adjuntar archivos",
+  "a staff member": "un miembro del staff",
+  "The forum list could not be read. Try again in a moment.": "No se pudo leer la lista de foros. Inténtalo de nuevo en un momento.",
+  "Forum posts opened, locked, closed and solved": "Publicaciones de foros abiertas, bloqueadas, cerradas y resueltas",
 };
