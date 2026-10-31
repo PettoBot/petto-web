@@ -1,0 +1,136 @@
+---
+export const prerender = false;
+import DashForums from '../../../../components/DashForums.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { callPettoForums } from '../../../../utils/pettoBotApi';
+import { forumsReady } from '../../../../utils/forumsReady';
+import { MAX_SETUPS, STATUSES, SNOWFLAKE, setupFromForm } from '../../../../utils/forums';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+// Forum support: the setups of the forums (saved straight in the database, like the Forms page), the panel, and the posts with their lock, close and
+// solved buttons (the bot does those). The page stays hidden until the bot has its tables (forumsReady.ts).
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const rest = (path: string, init: RequestInit = {}) => fetch(`${apiUrl}/rest/v1/${path}`, { ...init, headers: { ...apiHeaders, ...(init.headers as Record<string, string> | undefined) } });
+const section = Astro.url.searchParams.get('section') === 'posts' ? 'posts' : 'setups';
+const setupParam = Astro.url.searchParams.get('setup');
+const statusParam = String(Astro.url.searchParams.get('status') ?? 'open');
+const statusFilter = [...STATUSES, 'all'].includes(statusParam as any) ? statusParam : 'open';
+const setupFilter = /^\d{1,15}$/.test(String(Astro.url.searchParams.get('s') ?? '')) ? String(Astro.url.searchParams.get('s')) : '';
+const pageNumber = Math.max(0, Math.trunc(Number(Astro.url.searchParams.get('p'))) || 0);
+
+const ready = await forumsReady(Astro, 3_000);
+let message: { kind: 'ok' | 'err' | 'warn'; text: string } | null = null;
+let redirectTo: string | null = null;
+
+if (ready && Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  await ensureGuildRow(apiUrl, apiHeaders, id);
+  const failed = () => { message = { kind: 'err', text: dt('It could not be saved, try again.') }; };
+  const setupId = /^\d{1,15}$/.test(String(form.get('setup_id') ?? '')) ? String(form.get('setup_id')) : '';
+  const asBot = (result: { ok: boolean; message: string; down?: boolean }) => (result.ok
+    ? { kind: 'ok' as const, text: result.message || dt('Done.') }
+    : { kind: 'err' as const, text: result.message || dt('The bot could not do it. Try again in a moment.') });
+
+  if (action === 'save_setup' || action === 'save_and_post') {
+    const channelsAnswer = await callPettoForums(Astro, id, session.userId, 'channels', {}, dashLang);
+    const known: any[] = channelsAnswer.ok ? channelsAnswer.data?.forums ?? [] : [];
+    const forumName = known.find((f) => f.id === String(form.get('forum_channel_id')))?.name ?? '';
+    const row = setupFromForm(form, forumName);
+    if (!row.forum_channel_id) message = { kind: 'err', text: dt('Pick the forum channel.') };
+    else if (channelsAnswer.ok && !known.some((f) => f.id === row.forum_channel_id)) message = { kind: 'err', text: dt('That channel is not a forum.') };
+    else {
+      let saved: any = null;
+      let conflict = false;
+      if (setupId) {
+        const res = await rest(`forum_setups?guild_id=eq.${id}&id=eq.${setupId}`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ ...row, updated_at: new Date().toISOString() }) });
+        conflict = res.status === 409;
+        saved = res.ok ? (await res.json())[0] : null;
+      } else {
+        const countRes = await rest(`forum_setups?guild_id=eq.${id}&select=id`);
+        const count = countRes.ok ? (await countRes.json()).length : 0;
+        if (count >= MAX_SETUPS) message = { kind: 'err', text: dt('You reached the limit of forum setups ({a}).', { a: MAX_SETUPS }) };
+        else {
+          const res = await rest('forum_setups', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, ...row }) });
+          conflict = res.status === 409;
+          saved = res.ok ? (await res.json())[0] : null;
+        }
+      }
+      if (conflict) message = { kind: 'err', text: dt('Another setup already uses that forum or that name.') };
+      else if (saved) {
+        if (action === 'save_and_post') {
+          const panel = await callPettoForums(Astro, id, session.userId, 'panel', { setup_id: saved.id, channel_id: row.panel_channel_id ?? '' }, dashLang);
+          message = asBot(panel);
+          redirectTo = `?setup=${saved.id}&saved=${panel.ok ? '1' : 'warn'}${panel.ok ? '' : `&w=${encodeURIComponent(panel.message || '')}`}`;
+        } else redirectTo = `?setup=${saved.id}&saved=1`;
+      } else if (!message) failed();
+    }
+  } else if (action === 'toggle_setup' && setupId) {
+    const res = await rest(`forum_setups?guild_id=eq.${id}&id=eq.${setupId}&select=enabled`);
+    const current = res.ok ? (await res.json())[0] : null;
+    if (!current) failed();
+    else {
+      const done = await rest(`forum_setups?guild_id=eq.${id}&id=eq.${setupId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ enabled: !current.enabled, updated_at: new Date().toISOString() }) });
+      // The button of the panel follows the switch: the bot draws the panel again (only when there is one).
+      if (done.ok) await callPettoForums(Astro, id, session.userId, 'panel', { setup_id: setupId, only_if_posted: true }, dashLang).catch(() => null);
+      message = done.ok ? { kind: 'ok', text: current.enabled ? dt('Setup turned off.') : dt('Setup turned on.') } : { kind: 'err', text: dt('It could not be saved, try again.') };
+    }
+  } else if (action === 'delete_setup' && setupId) {
+    const res = await rest(`forum_setups?guild_id=eq.${id}&id=eq.${setupId}`, { method: 'DELETE' });
+    if (res.ok) redirectTo = '?deleted=1'; else failed();
+  } else if (action === 'send_panel' && setupId) {
+    message = asBot(await callPettoForums(Astro, id, session.userId, 'panel', { setup_id: setupId, channel_id: String(form.get('channel_id') ?? '') }, dashLang));
+  } else if (action === 'post_action') {
+    const thread = String(form.get('thread_id') ?? '');
+    message = SNOWFLAKE.test(thread)
+      ? asBot(await callPettoForums(Astro, id, session.userId, 'action', { thread_id: thread, action: String(form.get('post_action') ?? ''), reason: String(form.get('reason') ?? '').slice(0, 300) }, dashLang))
+      : { kind: 'err', text: dt('That is not a post.') };
+  }
+}
+if (redirectTo) return Astro.redirect(`/dash/guild/${id}/forums${redirectTo}`);
+if (Astro.url.searchParams.get('saved') === '1') message = { kind: 'ok', text: dt('Saved.') };
+if (Astro.url.searchParams.get('saved') === 'warn') message = { kind: 'warn', text: dt('Saved, but the panel could not be posted: {a}', { a: String(Astro.url.searchParams.get('w') ?? '').slice(0, 300) }) };
+if (Astro.url.searchParams.get('deleted') === '1') message = { kind: 'ok', text: dt('Setup removed. The posts stay in the forum.') };
+
+const editing = section === 'setups' && setupParam ? setupParam : null;
+const [guildInfo, setupsRes, forumsAnswer, postsAnswer, rolesRes, channelsRes, templatesRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => (ready ? rest(`forum_setups?guild_id=eq.${id}&select=*&order=id.asc`) : Promise.resolve(null)),
+  () => (ready ? callPettoForums(Astro, id, session.userId, 'channels', {}, dashLang) : Promise.resolve(null)),
+  () => (ready && section === 'posts' ? callPettoForums(Astro, id, session.userId, 'posts', { status: statusFilter, setup_id: setupFilter || null, page: pageNumber, limit: 25 }, dashLang) : Promise.resolve(null)),
+  () => (ready && editing ? getGuildList(Astro, id, botToken, 'roles') : Promise.resolve(null)),
+  () => (ready && editing ? getGuildList(Astro, id, botToken, 'channels') : Promise.resolve(null)),
+  () => (ready && editing ? rest(`embed_templates?guild_id=eq.${id}&select=name&order=name.asc`) : Promise.resolve(null)),
+], 5);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+
+const setups: any[] = setupsRes?.ok ? await setupsRes.json() : [];
+const forums: any[] = forumsAnswer?.ok ? forumsAnswer.data?.forums ?? [] : [];
+const botDown = Boolean(ready && forumsAnswer && !forumsAnswer.ok);
+const posts = postsAnswer?.ok ? { rows: postsAnswer.data.posts ?? [], total: Number(postsAnswer.data.total ?? 0), open: Number(postsAnswer.data.open ?? 0), page: Number(postsAnswer.data.page ?? 0), limit: Number(postsAnswer.data.limit ?? 25) } : null;
+const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
+const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+const templates: string[] = (templatesRes?.ok ? await templatesRes.json() : []).map((t: any) => t.name).filter(Boolean);
+const editSetup = editing === 'new' ? 'new' : editing ? setups.find((s) => String(s.id) === editing) ?? null : null;
+---
+<DashForums
+  user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  section={section} ready={ready} setups={setups} forums={forums} botDown={botDown} posts={posts} roles={roles} channels={channels} templates={templates}
+  editing={editSetup} statusFilter={statusFilter} setupFilter={setupFilter} maxSetups={MAX_SETUPS} message={message}
+/>
