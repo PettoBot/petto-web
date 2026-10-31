@@ -13,11 +13,11 @@ const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 interface Props {
   user: { username: string; avatar: string | null }; guildId: string; guildName: string; guildIcon: string; section: string; ready: boolean;
-  setups: any[]; forums: any[]; botDown: boolean; posts: { rows: any[]; total: number; open: number; page: number; limit: number } | null;
+  setups: any[]; forums: any[]; botDown: boolean; forumsError?: string; posts: { rows: any[]; total: number; open: number; page: number; limit: number } | null;
   roles: { id: string; name: string }[]; channels: { id: string; name: string }[]; templates: string[]; editing: any;
   statusFilter: string; setupFilter: string; maxSetups: number; message: { kind: 'ok' | 'err' | 'warn'; text: string } | null;
 }
-const { user, guildId, guildName, guildIcon, section, ready, setups, forums, botDown, posts, roles, channels, templates, editing, statusFilter, setupFilter, maxSetups, message } = Astro.props;
+const { user, guildId, guildName, guildIcon, section, ready, setups, forums, botDown, forumsError, posts, roles, channels, templates, editing, statusFilter, setupFilter, maxSetups, message } = Astro.props;
 const base = `/dash/guild/${guildId}/forums`;
 const isNew = editing === 'new';
 const s: any = isNew ? { ...NEW_SETUP } : editing;
@@ -28,7 +28,13 @@ const forumName = (fid: string) => forumById(fid)?.name ?? fid;
 const statusNames: Record<string, string> = { open: dt('Open'), solved: dt('Solved'), locked: dt('Locked'), closed: dt('Closed'), all: dt('All') };
 const styleNames: Record<string, string> = { primary: dt('Blurple'), secondary: dt('Grey'), success: dt('Green'), danger: dt('Red') };
 const questions: any[] = Array.isArray(s?.extra_fields) ? s.extra_fields : [];
-const permissionNote = (f: any) => (f && !f.can_post ? dt('Petto cannot post here: it needs {a}', { a: (f.missing ?? []).join(', ') }) : '');
+// The bot names the missing permissions by their Discord flag (ManageThreads): shown with the readable, translated names.
+const permissionNames: Record<string, string> = {
+  ViewChannel: dt('View Channel'), SendMessages: dt('Send Messages'), SendMessagesInThreads: dt('Send Messages in Threads'), ManageThreads: dt('Manage Threads'),
+  CreatePublicThreads: dt('Create Public Threads'), AttachFiles: dt('Attach Files'), ManageChannels: dt('Manage Channels'),
+};
+const permissionName = (flag: string) => permissionNames[flag] ?? String(flag).replace(/([a-z])([A-Z])/g, '$1 $2');
+const permissionNote = (f: any) => (f && !f.can_post ? dt('Petto cannot post here: it needs {a}', { a: (f.missing ?? []).map(permissionName).join(', ') }) : '');
 const atLimit = setups.length >= maxSetups;
 const logNames: Record<string, string> = { opened: dt('Posts opened'), locked: dt('Posts locked'), closed: dt('Posts closed'), solved: dt('Posts solved') };
 const defaultTexts = {
@@ -43,12 +49,20 @@ const pageHref = (over: Record<string, string>) => {
   return `${base}?${params}`;
 };
 const checked = (value: unknown) => value !== false && Boolean(value);
+// The preview of the first message is drawn here with sample values (the script below redraws it as the fields change), so the page does not
+// change height when the script starts.
+const sampleVars: Record<string, string> = { '{user}': '@member', '{username}': 'member', '{title}': 'Cannot log in', '{description}': 'It fails with error 42.', '{tag}': 'Bug', '{server}': guildName, '{forum}': '#support' };
+const fillSample = (text: string) => String(text).replace(/\{[a-z]+\}/g, (m) => sampleVars[m] || m);
+const firstTemplate = (s?.first_message ?? '').trim() || defaultTexts.first;
+const firstPreview = fillSample(s?.first_message_style === 'card' ? firstTemplate.split('\n')[0] : firstTemplate);
+const selectedNote = s ? permissionNote(forumById(s.forum_channel_id)) : '';
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={section === 'posts' ? 'forums-posts' : 'forums'} pageTitle={titles[section]}>
   <h1>{titles[section]}</h1>
   {message && <div class:list={['fo-flash', message.kind]} role={message.kind === 'err' ? 'alert' : 'status'}><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
   {!ready && <div class="fo-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
   {ready && botDown && <div class="fo-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto is not answering right now, so the forum list and the posts may be missing. Try again in a moment.')}</div>}
+  {ready && !botDown && forumsError && <div class="fo-flash warn"><Icon name="ph:warning-fill" width="15" height="15" />{forumsError}</div>}
 
   {ready && section === 'setups' && !s && (
     <>
@@ -98,7 +112,7 @@ const checked = (value: unknown) => value !== false && Boolean(value);
                   {forums.map((f) => <option value={f.id} selected={f.id === s.forum_channel_id} data-tags={JSON.stringify(f.tags)} data-note={permissionNote(f)}>#{f.name}{permissionNote(f) ? ` · ${permissionNote(f)}` : ''}</option>)}
                   {s.forum_channel_id && !forumById(s.forum_channel_id) && <option value={s.forum_channel_id} selected>{s.forum_channel_id}</option>}
                 </select>
-                <em class="fo-warn" data-forum-note hidden></em>
+                <em class="fo-warn" data-forum-note hidden={!selectedNote}>{selectedNote}</em>
                 {forums.length === 0 && <em>{dt('Petto sees no forum channel. Make one in Discord first.')}</em>}
               </label>
               <label class="fo-field"><span>{dt('Short name')}</span><input type="text" name="name" value={s.name} maxlength="32" pattern={'[A-Za-z0-9][A-Za-z0-9_\\-]{0,31}'} autocomplete="off" spellcheck="false" /><em>{dt('For commands, like !forum status --setup support. Empty uses the name of the forum.')}</em></label>
@@ -112,12 +126,12 @@ const checked = (value: unknown) => value !== false && Boolean(value);
             <div class="fo-grid">
               <label class="fo-field"><span>{dt('Channel of the panel')}</span><select name="panel_channel_id"><option value="">{dt('Pick a channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === s.panel_channel_id}>#{c.name}</option>)}</select></label>
               <label class="fo-field"><span>{dt('Saved design')}</span><select name="panel_template" data-pv-design><option value="">{dt('None: use the card below')}</option>{templates.map((n) => <option value={n} selected={n === s.panel_template}>{n}</option>)}</select><em>{dt('A saved design replaces the card; the button goes under it.')}</em></label>
-              <label class="fo-field"><span>{dt('Title')}</span><input type="text" name="panel_title" value={s.panel_title ?? ''} maxlength={LIMITS.panelTitle} placeholder={defaultTexts.title} data-pv-title /></label>
+              <label class="fo-field"><span>{dt('Title')}</span><input type="text" autocomplete="off" name="panel_title" value={s.panel_title ?? ''} maxlength={LIMITS.panelTitle} placeholder={defaultTexts.title} data-pv-title /></label>
               <div class="fo-field"><span>{dt('Color')}</span><ColorPicker name="panel_color" value={intToHex(s.panel_color)} label={dt('Color')} allowNone /></div>
               <label class="fo-field fo-wide"><span>{dt('Text')}</span><textarea name="panel_description" rows="4" maxlength={LIMITS.panelText} data-ac data-pv-text placeholder={defaultTexts.text}>{s.panel_description ?? ''}</textarea><em>{dt('Empty uses the usual text, which also says that pictures can only be added once the post is open (unless the form asks for them).')}</em></label>
               <label class="fo-field"><span>{dt('Picture (https link)')}</span><input type="text" inputmode="url" name="panel_image" value={s.panel_image ?? ''} maxlength="500" placeholder="https://…/banner.png" autocomplete="off" spellcheck="false" data-pv-image /></label>
-              <label class="fo-field"><span>{dt('Small text under the card')}</span><input type="text" name="panel_footer" value={s.panel_footer ?? ''} maxlength={LIMITS.panelFooter} data-pv-footer /></label>
-              <label class="fo-field"><span>{dt('Button text')}</span><input type="text" name="button_label" value={s.button_label ?? ''} maxlength={LIMITS.button} placeholder={defaultTexts.button} data-pv-button /></label>
+              <label class="fo-field"><span>{dt('Small text under the card')}</span><input type="text" autocomplete="off" name="panel_footer" value={s.panel_footer ?? ''} maxlength={LIMITS.panelFooter} data-pv-footer /></label>
+              <label class="fo-field"><span>{dt('Button text')}</span><input type="text" autocomplete="off" name="button_label" value={s.button_label ?? ''} maxlength={LIMITS.button} placeholder={defaultTexts.button} data-pv-button /></label>
               <label class="fo-field"><span>{dt('Button emoji')}</span><input type="text" name="button_emoji" value={s.button_emoji ?? ''} maxlength="100" placeholder="➕" autocomplete="off" data-pv-emoji /></label>
               <label class="fo-field"><span>{dt('Button color')}</span><select name="button_style" data-pv-style>{['success', 'primary', 'secondary', 'danger'].map((b) => <option value={b} selected={b === (s.button_style ?? 'success')}>{styleNames[b]}</option>)}</select></label>
             </div>
@@ -127,9 +141,9 @@ const checked = (value: unknown) => value !== false && Boolean(value);
             <h2>{dt('Form')}</h2>
             <p class="fo-hint">{dt('Members fill in a title and a description, then pick the tag. You can add up to 3 more questions (2 if pictures are asked for).')}</p>
             <div class="fo-grid">
-              <label class="fo-field"><span>{dt('Title of the window')}</span><input type="text" name="modal_title" value={s.modal_title ?? ''} maxlength={LIMITS.label} placeholder={dt('Open a post')} /></label>
-              <label class="fo-field"><span>{dt('Label of the title')}</span><input type="text" name="title_label" value={s.title_label ?? ''} maxlength={LIMITS.label} placeholder={dt('Title')} /></label>
-              <label class="fo-field"><span>{dt('Label of the description')}</span><input type="text" name="description_label" value={s.description_label ?? ''} maxlength={LIMITS.label} placeholder={dt('Description')} /></label>
+              <label class="fo-field"><span>{dt('Title of the window')}</span><input type="text" autocomplete="off" name="modal_title" value={s.modal_title ?? ''} maxlength={LIMITS.label} placeholder={dt('Open a post')} /></label>
+              <label class="fo-field"><span>{dt('Label of the title')}</span><input type="text" autocomplete="off" name="title_label" value={s.title_label ?? ''} maxlength={LIMITS.label} placeholder={dt('Title')} /></label>
+              <label class="fo-field"><span>{dt('Label of the description')}</span><input type="text" autocomplete="off" name="description_label" value={s.description_label ?? ''} maxlength={LIMITS.label} placeholder={dt('Description')} /></label>
               <label class="fo-check"><input type="checkbox" name="ask_images" checked={Boolean(s.ask_images)} />{dt('Let members add pictures in the form')}</label>
             </div>
             {[1, 2, 3].map((n) => {
@@ -138,7 +152,7 @@ const checked = (value: unknown) => value !== false && Boolean(value);
                 <div class="fo-question">
                   <b>{dt('Question {a}', { a: n })}</b>
                   <div class="fo-grid">
-                    <label class="fo-field"><span>{dt('Question (45 characters)')}</span><input type="text" name={`q_label_${n}`} value={q.label ?? ''} maxlength={LIMITS.label} /></label>
+                    <label class="fo-field"><span>{dt('Question (45 characters)')}</span><input type="text" autocomplete="off" name={`q_label_${n}`} value={q.label ?? ''} maxlength={LIMITS.label} /></label>
                     <label class="fo-field"><span>{dt('Kind')}</span><select name={`q_type_${n}`}><option value="short_text" selected={(q.type ?? 'short_text') === 'short_text'}>{dt('Short text')}</option><option value="long_text" selected={q.type === 'long_text'}>{dt('Paragraph')}</option><option value="select" selected={q.type === 'select'}>{dt('Menu of choices')}</option></select></label>
                     <label class="fo-field fo-wide"><span>{dt('Choices, one per line (menu only)')}</span><textarea name={`q_options_${n}`} rows="2">{(q.options ?? []).join('\n')}</textarea></label>
                     <label class="fo-check"><input type="checkbox" name={`q_required_${n}`} checked={q.required !== false} />{dt('Required')}</label>
@@ -236,7 +250,7 @@ const checked = (value: unknown) => value !== false && Boolean(value);
           </div>
           <div class="fo-card">
             <h2>{dt('First message of a post')}</h2>
-            <div class="fo-discord"><div class="fo-msg" data-pv-first-msg>{s.first_message || defaultTexts.first}</div></div>
+            <div class="fo-discord"><div class="fo-msg" data-pv-first-msg>{firstPreview}</div></div>
           </div>
         </aside>
       </div>
@@ -260,7 +274,7 @@ const checked = (value: unknown) => value !== false && Boolean(value);
               <div class="fo-post">
                 <div class="fo-post-main">
                   <a href={p.url} target="_blank" rel="noopener" class="fo-post-title">{p.title}</a>
-                  <span class="fo-hint">{p.author.name} · {when(p.opened_at)}{p.claimed_by ? ` · ${dt('handled by {a}', { a: p.claimed_by })}` : ''}{p.source !== 'panel' ? ` · ${p.source === 'moved' ? dt('moved') : dt('made by hand')}` : ''}</span>
+                  <span class="fo-hint">{p.author.name} · {when(p.opened_at)}{p.claimed_by ? ` · ${dt('handled by {a}', { a: p.claimed_name || dt('a staff member') })}` : ''}{p.source !== 'panel' ? ` · ${p.source === 'moved' ? dt('moved') : dt('made by hand')}` : ''}</span>
                 </div>
                 <span class:list={['fo-chip', p.status]}>{statusNames[p.status] ?? p.status}</span>
                 <div class="fo-actions">
@@ -293,7 +307,7 @@ const checked = (value: unknown) => value !== false && Boolean(value);
       root.dataset.bound = '1';
       var pv = document.querySelector('[data-pv-card]');
       var q = function (sel) { return root.querySelector(sel); };
-      var vars = { '{user}': '@member', '{username}': 'member', '{title}': 'Cannot log in', '{description}': 'It fails with error 42.', '{tag}': 'Bug', '{server}': document.title.split('·')[1] || 'Server', '{forum}': '#support' };
+      var vars = { '{user}': '@member', '{username}': 'member', '{title}': 'Cannot log in', '{description}': 'It fails with error 42.', '{tag}': 'Bug', '{server}': (document.title.split('·')[1] || 'Server').trim(), '{forum}': '#support' };
       var fill = function (text) { return String(text).replace(/\{[a-z]+\}/g, function (m) { return vars[m] || m; }); };
       var emojiBox = document.querySelector('[data-pv-btn-emoji]');
       function text(sel, fallback) { var el = q(sel); return el && el.value.trim() ? el.value.trim() : fallback; }
@@ -324,7 +338,9 @@ const checked = (value: unknown) => value !== false && Boolean(value);
 </DashGuildLayout>
 
 <style is:global>
-  .fo-flash { display: flex; align-items: center; gap: 8px; font-size: 13px; border-radius: 9px; padding: 9px 13px; margin-bottom: 16px; max-width: fit-content; }
+  .fo-flash { display: flex; align-items: center; gap: 8px; font-size: 13px; border-radius: 9px; padding: 9px 13px; margin-bottom: 16px; max-width: fit-content; min-width: 0; overflow-wrap: anywhere; }
+  .fo-flash svg { flex: none; }
+  h1 + .fo-flash, h1 + .fo-row, h1 + .fo-back { margin-top: 14px; }
   .fo-flash.ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
   .fo-flash.err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
   .fo-flash.warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid var(--yellow); }
@@ -356,10 +372,19 @@ const checked = (value: unknown) => value !== false && Boolean(value);
   .fo-wide { grid-column: 1 / -1; }
   .fo-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
   .fo-field em[hidden] { display: none; }
+  /* The fields look like the ones of the Forms page: full width of their column, rounded, the select with its own arrow. */
+  .fo-field > input:not([type="checkbox"]), .fo-field > select, .fo-field > textarea {
+    display: block; box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--bg-raise); color: var(--text); font: inherit; font-size: 13px; }
+  .fo-field > textarea { resize: vertical; line-height: 1.45; }
+  .fo-field > select { appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer; text-overflow: ellipsis; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath fill='%23999' d='M213.7 101.7l-80 80a8 8 0 0 1-11.4 0l-80-80a8 8 0 0 1 11.4-11.4L128 164.7l74.3-74.4a8 8 0 0 1 11.4 11.4Z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+  .fo-field > select option { background: var(--card); color: var(--text); }
+  .fo-check { min-width: 0; overflow-wrap: anywhere; }
+  .fo-check input { flex: none; accent-color: var(--accent); }
   .fo-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .fo-tags { display: flex; flex-wrap: wrap; gap: 6px 16px; }
   .fo-question { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
   .fo-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .fo-post-main .fo-hint { overflow-wrap: anywhere; }
   .fo-danger { color: var(--red); }
   .fo-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .fo-tab { font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); text-decoration: none; }
@@ -368,7 +393,7 @@ const checked = (value: unknown) => value !== false && Boolean(value);
   .fo-post { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--border); }
   .fo-post-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
   .fo-post-title { font-weight: 600; overflow-wrap: anywhere; color: var(--text); text-decoration: none; }
-  .fo-discord { background: #313338; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; color: #dbdee1; }
+  .fo-discord { background: #313338; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; color: #dbdee1; min-width: 0; overflow: hidden; }
   .fo-embed { border-left: 4px solid #a5ea7a; background: #2b2d31; border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
   .fo-embed img { max-width: 100%; border-radius: 4px; }
   .fo-embed b { font-size: 15px; color: #f2f3f5; }
@@ -382,7 +407,13 @@ const checked = (value: unknown) => value !== false && Boolean(value);
   .fo-msg { font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (max-width: 900px) {
     .fo-editor-wrap { grid-template-columns: minmax(0, 1fr); }
-    .fo-preview-col { position: static; order: -1; }
+    /* The preview stays under the form: above it, every letter typed in a field moved the whole form down. */
+    .fo-preview-col { position: static; }
     .fo-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .fo-card { padding: 14px; }
+    .fo-bar .btn { flex: 1 1 100%; justify-content: center; }
+    .fo-post-main { flex-basis: 100%; }
   }
 </style>

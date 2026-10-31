@@ -11,7 +11,8 @@ const asking = new Map<string, Promise<boolean>>();
 
 type Context = { locals?: any };
 
-async function ask(context: Context): Promise<boolean> {
+/** true: the table answers; false: the bot answered without it (an older bot); null: no answer at all (the bot is restarting or slow). */
+async function ask(context: Context): Promise<boolean | null> {
   const apiUrl = getEnv(context as any, 'PETTO_BOT_API_URL');
   const apiKey = getEnv(context as any, 'PETTO_BOT_API_SECRET');
   if (!apiUrl || !apiKey) return false;
@@ -19,7 +20,7 @@ async function ask(context: Context): Promise<boolean> {
     const res = await fetch(`${apiUrl}/rest/v1/forum_setups?select=id&limit=1`, { headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(4_000) });
     return res.ok;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -30,9 +31,12 @@ export async function forumsReady(context: Context, waitMs = 600): Promise<boole
   if (hit && hit.until > Date.now()) return hit.ready;
   let pending = asking.get(key);
   if (!pending) {
-    pending = ask(context).then((ready) => {
+    pending = ask(context).then((answer) => {
+      // A bot that does not answer (a restart) keeps the last answer for a moment: the Forums entries must not vanish from the menu, and the
+      // page must not say "this arrives with the next update", because the bot is away for some seconds.
+      const ready = answer ?? hit?.ready ?? false;
       if (kept.size > MAX_KEPT) kept.clear();
-      kept.set(key, { ready, until: Date.now() + (ready ? YES_MS : NO_MS) });
+      kept.set(key, { ready, until: Date.now() + (ready ? (answer === null ? NO_MS : YES_MS) : NO_MS) });
       return ready;
     }).finally(() => { asking.delete(key); });
     asking.set(key, pending);

@@ -584,10 +584,11 @@ export async function callPettoForums(context: AstroContext, guildId: string, us
       body: JSON.stringify({ ...body, user_id: userId }),
     }, { timeoutMs: write ? 25_000 : 6_000, mode: write ? 'change' : 'read', retryAt: write ? PATIENT_RETRY : undefined });
     if (!call.response || call.down) return { ok: false, message: '', down: true };
-    const payload: any = await call.response.json().catch(() => null);
+    // botFetch already read the body once (a body can only be read once): its parsed answer is `call.data`.
+    const payload = call.data;
     return { ok: Boolean(call.response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', url: payload?.url ?? null, data: payload };
   } catch {
-    return { ok: false, message: '' };
+    return { ok: false, message: '', down: true };
   }
 }
 
