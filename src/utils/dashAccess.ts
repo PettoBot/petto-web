@@ -16,7 +16,7 @@ export const ACCESS_SECTIONS: { id: string; label: string; pages: string[] }[] =
   { id: 'security', label: 'Security', pages: ['onboarding', 'verification', 'security', 'permissions', 'audit', 'logging'] },
   { id: 'leveling', label: 'Leveling', pages: ['leveling'] },
   { id: 'automation', label: 'Automation', pages: ['automation', 'code', 'bulk-role', 'reaction-role', 'counters', 'boards'] },
-  { id: 'tickets', label: 'Tickets', pages: ['tickets'] },
+  { id: 'tickets', label: 'Tickets', pages: ['tickets', 'forums'] },
   { id: 'community', label: 'Community', pages: ['giveaways', 'community', 'birthdays', 'confessions', 'counting', 'media', 'partners', 'responders', 'senders', 'suggestions', 'tools', 'forms', 'feeds'] },
   { id: 'quests', label: 'Quests', pages: ['quests'] },
   { id: 'rollouts', label: 'Rollouts', pages: ['rollouts'] },
