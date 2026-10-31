@@ -31,6 +31,8 @@ export interface Basic {
   extra?: string; showExtra?: boolean;
   /** Only in the level-up layout: what Discord shows around the person. Each one is drawn only when the person has it. */
   showDecoration?: boolean; showNameplate?: boolean; animateDecoration?: boolean;
+  /** The tint and strength of the dark panel behind the text; a design sets them. */
+  panelColor?: string; panelOpacity?: number;
 }
 export interface Background {
   color: string;

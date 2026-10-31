@@ -5,6 +5,9 @@ import { t } from '../embeds/t';
 import { toast } from '../embeds/toast';
 import { drawCard } from './cardCanvas';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
+import DesignGallery, { type DesignInfo } from './DesignGallery';
+import { unknownVariables } from '../../utils/variableCheck';
+import { findSample, tokenValues, sampleContext } from '../../utils/variableSamples';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
   LEVELUP_HEIGHT, LEVELUP_TEXTS, RANK_DEFAULTS, RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
@@ -22,6 +25,10 @@ const ERRORS: Record<string, string> = {
   file_too_big: 'That picture is too big.',
   name_required: 'Give the card a name.',
   not_configured: 'The bot is not configured.',
+  rate_limited: 'Too many changes at once, wait a moment and try again.',
+  card_unavailable: 'Petto could not save the card right now, try again in a moment.',
+  unauthorized: 'Your session ended. Reload the page to sign in again.',
+  bad_request: 'The card could not be read, reload the page and try again.',
 };
 const errorText = (code?: string) => (code && ERRORS[code] ? t(ERRORS[code]) : t("Couldn't do that, try again."));
 
@@ -32,6 +39,33 @@ async function call(guildId: string, path: string, init?: RequestInit) {
 }
 async function post(guildId: string, body: unknown, path = '') {
   return call(guildId, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+/** Says which variables of a text the bot does not know (and the one that was probably meant), instead of leaving a typo to show up in the message. */
+function VariableHint({ text }: { text: string }) {
+  const unknown = unknownVariables(text);
+  if (!unknown.length) return null;
+  return (
+    <p className="ebr-tools-note crd-var-hint" role="status">
+      {unknown.map((item) => (item.suggestion ? t('Unknown variable {x}. Did you mean {y}?', { x: item.token, y: item.suggestion }) : t('Unknown variable {x}.', { x: item.token }))).join(' ')}
+    </p>
+  );
+}
+
+/** The variables a text can use: press one to copy it, and the tooltip shows what it gives in the preview. */
+function VariableChips({ list }: { list: string[] }) {
+  const values = useMemo(() => tokenValues(sampleContext), []);
+  const copy = async (token: string) => {
+    try { await navigator.clipboard.writeText(token); toast(t('Copied {x}', { x: token })); } catch { toast(t('Select it and copy it with Ctrl+C.'), 'info'); }
+  };
+  return (
+    <div className="crd-vars">
+      {list.map((token) => {
+        const sample = findSample(values, token.slice(1, -1))?.text;
+        return <button key={token} type="button" className="crd-var" title={sample ? `${token} → ${sample}` : token} onClick={() => void copy(token)}>{token}</button>;
+      })}
+    </div>
+  );
 }
 
 function Num({ value, onChange, min, max, step = 1 }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number }) {
@@ -208,6 +242,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       avatarUrl: userAvatarUrl,
       serverIconUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
+      designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
     }, () => seq === drawSeq.current);
   }, [draft, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
 
@@ -232,6 +267,15 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       }
       return { ...d, height, basic: b };
     });
+    setDirty(true);
+  }
+  // A design sets the background picture and, in the basic editor, the colors of the text and the tint of the panel behind it.
+  function pickDesign(design: DesignInfo) {
+    setDraft((d) => ({
+      ...d,
+      background: { color: design.color, gradient: null, image: { src: `petto:${design.id}`, fit: 'cover', blur: 0 }, overlay: null },
+      ...(d.basic ? { basic: { ...d.basic, textColor: design.textColor, accent: design.accent, panelColor: design.panel, ...(design.panelOpacity ? { panelOpacity: design.panelOpacity } : { panelOpacity: undefined }) } } : {}),
+    }));
     setDirty(true);
   }
   function editBackground(patch: Partial<Background>) { setDraft((d) => ({ ...d, background: { ...d.background, ...patch } })); setDirty(true); }
@@ -470,6 +514,11 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
               )}
 
               <div className="crd-section">
+                <h3>{t('Designs')}</h3>
+                <DesignGallery guildId={guildId} currentSrc={draft.background.image?.src ?? ''} onPick={pickDesign} />
+              </div>
+
+              <div className="crd-section">
                 <h3>{t('Size and background')}</h3>
                 <div className="ebr-row-pair">
                   <Field label={t('Width')}><Num value={draft.width} min={400} max={1600} onChange={(width) => edit({ width })} /></Field>
@@ -517,17 +566,21 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                   </div>
                   <div className="ebr-field">
                     <div className="ebr-field-head"><label>{t('Variables')}</label></div>
-                    <div className="crd-vars">{variableList.map((v) => <code key={v}>{v}</code>)}</div>
+                    <VariableChips list={variableList} />
                   </div>
                   <label className="ebr-check"><input type="checkbox" checked={basic.showTitle} onChange={(e) => editBasic({ showTitle: e.target.checked })} />{t('Title')}</label>
                   <input type="text" data-ac="vars" maxLength={60} value={basic.title} onChange={(e) => editBasic({ title: e.target.value })} />
+                  <VariableHint text={basic.title} />
                   <label className="ebr-check"><input type="checkbox" checked={basic.showName} onChange={(e) => editBasic({ showName: e.target.checked })} />{t('Name')}</label>
                   <input type="text" data-ac="vars" maxLength={80} value={basic.name} onChange={(e) => editBasic({ name: e.target.value })} />
+                  <VariableHint text={basic.name} />
                   <label className="ebr-check"><input type="checkbox" checked={basic.showSubtitle} onChange={(e) => editBasic({ showSubtitle: e.target.checked })} />{t('Subtitle')}</label>
                   <input type="text" data-ac="vars" maxLength={120} value={basic.subtitle} onChange={(e) => editBasic({ subtitle: e.target.value })} />
+                  <VariableHint text={basic.subtitle} />
                   {isRank && (<>
                     <label className="ebr-check"><input type="checkbox" checked={basic.showExtra !== false} onChange={(e) => editBasic({ showExtra: e.target.checked })} />{t('Rank text')}</label>
                     <input type="text" data-ac="vars" maxLength={40} value={basic.extra ?? ''} onChange={(e) => editBasic({ extra: e.target.value })} />
+                    <VariableHint text={basic.extra ?? ''} />
                   </>)}
                   {isRank && basic.preset === 'levelup' && (
                     <div className="crd-group">
@@ -548,6 +601,12 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                     <Field label={t('Text color')}><Color value={basic.textColor} onChange={(textColor) => editBasic({ textColor })} /></Field>
                     <Field label={t('Accent color')}><Color value={basic.accent} onChange={(accent) => editBasic({ accent })} /></Field>
                   </div>
+                  {basic.panelColor && (
+                    <div className="ebr-row-pair">
+                      <Field label={t('Panel color')}><Color value={basic.panelColor} onChange={(panelColor) => editBasic({ panelColor })} /></Field>
+                      <Field label={t('Panel strength')}><Num value={basic.panelOpacity ?? 0.5} min={0} max={0.9} step={0.05} onChange={(panelOpacity) => editBasic({ panelOpacity })} /></Field>
+                    </div>
+                  )}
                   <div className="ebr-row-pair">
                     <Field label={t('Font')}><select value={basic.font} onChange={(e) => editBasic({ font: e.target.value })}>{fontOptions}</select></Field>
                     <Field label={t('Avatar')}>
