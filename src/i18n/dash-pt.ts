@@ -5220,7 +5220,7 @@ export const dashPt: Record<string, string> = {
   "Nothing is charged: when that day passes, the grant simply stops.": "Nada é cobrado: quando esse dia passar, a concessão simplesmente termina.",
   "Nothing is saved until you confirm.": "Nada é salvo até você confirmar.",
   "Now": "Agora",
-  "Permanent grants last until revoked. Timed ones stop by themselves on their end date. Edit sets the end exactly; Extend adds time.": "As concessões permanentes duram até serem revogadas. As com prazo terminam sozinhas na data final. Editar define o fim exato; Estender soma tempo.",
+  "Permanent grants last until revoked. Timed ones stop by themselves on their end date. A revoked or ended grant is deleted automatically within minutes. Edit sets the end exactly; Extend adds time.": "As concessões permanentes duram até serem revogadas. As com prazo terminam sozinhas na data final. Uma concessão revogada ou terminada é apagada sozinha em poucos minutos. Editar define o fim exato; Estender soma tempo.",
   "Permanent": "Permanente",
   "Petto does not know this server": "O Petto não conhece este servidor",
   "Petto does not know this user yet": "O Petto ainda não conhece este usuário",

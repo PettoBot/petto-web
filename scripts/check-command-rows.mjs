@@ -67,6 +67,7 @@ for (const lang of ['en', 'es', 'pt-BR']) {
   // A row is a name nobody else has (the page gives each one its anchor).
   assert.equal(byName.size, rows.length, `${lang}: no row name is repeated`);
 }
+// Every command of the bot has a category and a description in the three languages, so it shows in the commands page and the home page counter (music has no category in this page yet, so it is the one exception).
 // The leaves of every command carry a description in the three languages (catalogProblems also lists commands nobody gave a category yet).
-assert.deepEqual(catalog.catalogProblems().filter((problem) => /has no description in|path of/.test(problem)), []);
+assert.deepEqual(catalog.catalogProblems().filter((problem) => /has no description in|path of|has no category|has no translated description/.test(problem) && !problem.startsWith('"music"')), []);
 console.log(`check-command-rows: ${categories.flatMap((id) => catalog.commandRows(id, 'en')).length} rows in the commands page`);
