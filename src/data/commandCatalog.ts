@@ -39,14 +39,14 @@ const categoryOf: Record<string, string[]> = {
   community: ['community', 'contrib', 'special', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
   onboarding: ['greet', 'welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
-  info: ['ai', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
+  info: ['ai', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'bots', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
   setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed', 'send', 'pagination'],
   // `act` stands for every interaction action (hug, pat, slap...): they are the subcommands of /act, and each gets its own row below.
   roleplay: ['act', 'game', '8ball', 'rps', 'ship', 'quote', 'image', 'uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare'],
 };
 
 // Owner-only support tools and the message context menu are not part of the public reference.
-const hidden = new Set(['guilddebug', 'guildsend', 'leaveguild', 'botstatus', 'bots', 'Report Message', 'Report User']);
+const hidden = new Set(['guilddebug', 'guildsend', 'leaveguild', 'botstatus', 'slots', 'bots', 'Report Message', 'Report User']);
 
 // Each module has a `!<module>config` card (and every other command a generated one); they are explained once in `!cmdconfig`, not one by one.
 const listedNames = new Set(Object.values(categoryOf).flat());

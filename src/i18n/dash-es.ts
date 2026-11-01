@@ -4812,6 +4812,7 @@ export const dashEs: Record<string, string> = {
   "words, separated by commas": "palabras, separadas por comas",
   "{count} followed": "{count} seguidas",
   "{feed.author} just posted!": "¡{feed.author} acaba de publicar!",
+  "Optional text above the card": "Texto opcional sobre la tarjeta",
   "{used} of {limit} accounts": "{used} de {limit} cuentas",
   "Shorts": "Shorts",
   "Live streams": "Directos",
