@@ -4813,6 +4813,7 @@ export const dashEs: Record<string, string> = {
   "{count} followed": "{count} seguidas",
   "{feed.author} just posted!": "¡{feed.author} acaba de publicar!",
   "Optional text above the card": "Texto opcional sobre la tarjeta",
+  "Deleted form": "Formulario borrado",
   "{used} of {limit} accounts": "{used} de {limit} cuentas",
   "Shorts": "Shorts",
   "Live streams": "Directos",
