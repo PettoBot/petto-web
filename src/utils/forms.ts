@@ -62,6 +62,8 @@ export interface Question {
 }
 export interface MessageSetting { text?: string; template?: string }
 export interface FormRow {
+  /** The number of the form in its server (1, 2, 3...): what people see. `id` is internal and shared by every server. */
+  number?: number;
   id?: number | string; public_id?: string; name: string; title: string; description: string | null; color: number | null; status: 'open' | 'closed'; questions: Question[];
   review_channel_id: string | null; reviewer_role_ids: string[]; ping_role_ids: string[]; auto_thread: boolean;
   required_role_ids: string[]; blocked_role_ids: string[]; min_account_days: number; min_member_days: number; one_pending: boolean;

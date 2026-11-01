@@ -4812,6 +4812,8 @@ export const dashPt: Record<string, string> = {
   "words, separated by commas": "palavras, separadas por vírgulas",
   "{count} followed": "{count} seguidas",
   "{feed.author} just posted!": "{feed.author} acabou de publicar!",
+  "Optional text above the card": "Texto opcional sobre o cartão",
+  "Deleted form": "Formulário apagado",
   "{used} of {limit} accounts": "{used} de {limit} contas",
   "Shorts": "Shorts",
   "Live streams": "Transmissões ao vivo",

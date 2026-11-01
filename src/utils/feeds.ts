@@ -29,6 +29,9 @@ export interface FeedPlatform {
   soon?: boolean;
 }
 
+/** The platforms that follow a creator or something followed by name: the bot puts its default line ("{feed.author} just posted!") above the card only for these (the same list as `ANNOUNCES` in the bot's src/feeds/card.js). The others (Reddit, Pinterest, RSS, the automatic feeds) send only the card, unless the feed has its own text. */
+export const ANNOUNCING_PLATFORMS = new Set(['youtube', 'twitch', 'kick', 'bluesky', 'modrinth', 'mastodon', 'tumblr', 'letterboxd', 'github', 'npm', 'pypi', 'steam', 'spotify', 'deezer', 'applemusic']);
+
 export const FEED_PLATFORMS: FeedPlatform[] = [
   { id: 'youtube', name: 'YouTube', color: '#ff0000', ink: '#ffffff', icon: 'simple-icons:youtube', types: ['video', 'short', 'live'], defaultTypes: ['video', 'short', 'live'],
     account: { label: 'YouTube channel', placeholder: 'https://www.youtube.com/@name', help: 'Paste the link of the channel or its @name.' } },
