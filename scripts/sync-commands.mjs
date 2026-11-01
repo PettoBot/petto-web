@@ -90,7 +90,7 @@ function actionsOf(json) {
 const commands = [];
 const seen = new Set();
 for (const cmd of client.commands.values()) {
-  if (!cmd?.data || !cmd.filePath || seen.has(cmd)) continue;
+  if (!cmd?.data || !cmd.filePath || seen.has(cmd) || cmd.hiddenEverywhere) continue;
   seen.add(cmd);
   const json = cmd.data.toJSON();
   commands.push({
