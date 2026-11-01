@@ -39,7 +39,7 @@ assert.deepEqual(readCommandNames('hug, hello').names, ['hug', 'hi'], 'an alias 
 assert.deepEqual(readCommandNames('help disablecommand').refused.sort(), ['disablecommand', 'help'], 'the protected commands are still refused');
 // The umbrellas /server and /user: a rule is saved under the name of the command a subcommand wraps, or under the key of a new one, the same
 // keys the bot reads (src/commands/info/server.js, user.js: `ruleKeys`), and the name of the umbrella turns off all of it.
-const umbrellas = { server: { info: 'serverinfo', icon: 'servericon', banner: 'serverbanner', splash: 'serversplash', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo' },
+const umbrellas = { server: { info: 'serverinfo', icon: 'servericon', banner: 'serverbanner', splash: 'serversplash', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo' , inrole: 'inrole', summary: 'summary', steal: 'steal' },
   user: { info: 'userinfo', avatar: 'avatar', banner: 'banner', cosmetics: 'usercosmetics', permissions: 'permissions', id: 'snowflake', 'first-message': 'firstmessage', activity: 'activity' } };
 for (const [name, keys] of Object.entries(umbrellas)) {
   const command = generated.find((each) => each.name === name);
