@@ -4,13 +4,12 @@ import DashBulkRole from '../../../../components/DashBulkRole.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
-import { getDashLang, makeT } from '../../../../i18n/dash';
-const dt = makeT(getDashLang(Astro));
+import { shapeJob, roleBlocks, dangerousPermissionsOf, parseDay, parseRoleCount, type BulkJob } from '../../../../utils/bulkRole';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
-  const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
-  const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
 
 const auth = await getGuildSession(Astro, id);
 if ('redirect' in auth) return Astro.redirect(auth.redirect);
@@ -23,100 +22,116 @@ const apiHeaders = {
   Authorization: `Bearer ${apiKey}`,
   'Content-Type': 'application/json',
 };
+const jobsUrl = `${apiUrl}/rest/v1/bulk_role_jobs`;
+const here = Astro.url.pathname;
 
-let error: string | null = null;
-let started = false;
-
-async function activeJobExists(): Promise<boolean> {
-  const res = await fetch(`${apiUrl}/rest/v1/bulk_role_jobs?guild_id=eq.${id}&status=in.(pending,running)&select=id&limit=1`, { headers: apiHeaders });
+async function activeJob(): Promise<any | null> {
+  const res = await fetch(`${jobsUrl}?guild_id=eq.${encodeURIComponent(id)}&status=in.(pending,running)&order=created_at.desc&limit=1`, { headers: apiHeaders });
   const rows = res.ok ? await res.json() : [];
-  return rows.length > 0;
+  return rows[0] ?? null;
 }
+
+// The page answers a form with a redirect (and a short word in the address), so reloading it never sends the form again.
+const back = (word: string, kind: 'ok' | 'error') => Astro.redirect(`${here}?${kind}=${word}`, 303);
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
 
-  if (action === 'cancel') {
-    await fetch(`${apiUrl}/rest/v1/bulk_role_jobs?guild_id=eq.${id}&status=in.(pending,running)`, {
+  if (action === 'cancel' || action === 'pause' || action === 'resume') {
+    const patch = action === 'cancel' ? { status: 'cancelled', finished_at: new Date().toISOString() } : { paused: action === 'pause' };
+    const res = await fetch(`${jobsUrl}?guild_id=eq.${encodeURIComponent(id)}&status=in.(pending,running)`, {
       method: 'PATCH',
       headers: { ...apiHeaders, Prefer: 'return=minimal' },
-      body: JSON.stringify({ status: 'cancelled', finished_at: new Date().toISOString() }),
+      body: JSON.stringify(patch),
     });
-  } else if (action === 'start') {
-    if (await activeJobExists()) {
-      error = dt('A bulk role job is already running for this server. Wait for it to finish or cancel it first.');
-    } else {
-      const targetRoleId = String(form.get('target_role_id') ?? '').trim();
-      const roleAction = String(form.get('role_action') ?? 'add') === 'remove' ? 'remove' : 'add';
-      const memberType = ['all', 'bots', 'humans'].includes(String(form.get('member_type'))) ? String(form.get('member_type')) : 'all';
-      const filterRoleIds = form.getAll('filter_role_ids').map(String);
-      const filterMode = String(form.get('filter_mode') ?? 'any') === 'all' ? 'all' : 'any';
-      const filterExclude = form.get('filter_exclude') === 'on';
-      const joinedAfterRaw = String(form.get('joined_after') ?? '').trim();
-      const joinedBeforeRaw = String(form.get('joined_before') ?? '').trim();
-      const notifyChannelId = String(form.get('notify_channel_id') ?? '').trim() || null;
+    return back(res.ok ? (action === 'cancel' ? 'cancelled' : action === 'pause' ? 'paused' : 'resumed') : 'save_failed', res.ok ? 'ok' : 'error');
+  }
 
-      if (!targetRoleId) {
-        error = dt('Pick a role first.');
-      } else {
-        const res = await fetch(`${apiUrl}/rest/v1/bulk_role_jobs`, {
-          method: 'POST',
-          headers: { ...apiHeaders, Prefer: 'return=minimal' },
-          body: JSON.stringify({
-            guild_id: id,
-            action: roleAction,
-            target_role_id: targetRoleId,
-            member_type: memberType,
-            filter_role_ids: filterRoleIds,
-            filter_mode: filterMode,
-            filter_exclude: filterExclude,
-            joined_after: joinedAfterRaw || null,
-            joined_before: joinedBeforeRaw || null,
-            notify_channel_id: notifyChannelId,
-            started_by: session.userId,
-          }),
-        });
-        if (res.ok) started = true;
-        else error = dt("Couldn't start the job, try again.");
-      }
+  if (action === 'start' || action === 'preview' || action === 'run_preview') {
+    if (await activeJob()) return back('busy', 'error');
+
+    // Real run of a preview: the same settings, written again as a job that changes things.
+    let row: Record<string, unknown>;
+    let targetRoleId: string;
+    let roleAction: 'add' | 'remove';
+    if (action === 'run_preview') {
+      const previewId = Number(form.get('preview_id'));
+      const res = Number.isInteger(previewId) ? await fetch(`${jobsUrl}?id=eq.${previewId}&guild_id=eq.${encodeURIComponent(id)}&dry_run=eq.true&limit=1`, { headers: apiHeaders }) : null;
+      const source = res?.ok ? (await res.json())[0] : null;
+      if (!source) return back('no_preview', 'error');
+      row = {
+        guild_id: id, action: source.action, target_role_id: source.target_role_id, member_type: source.member_type, filter_role_ids: source.filter_role_ids,
+        filter_mode: source.filter_mode, filter_exclude: source.filter_exclude, joined_after: source.joined_after, joined_before: source.joined_before,
+        min_roles: source.min_roles, max_roles: source.max_roles, skip_pending: source.skip_pending, reason: source.reason, notify_channel_id: source.notify_channel_id,
+        dry_run: false, started_by: session.userId, source: 'dashboard',
+      };
+      targetRoleId = String(source.target_role_id);
+      roleAction = source.action === 'remove' ? 'remove' : 'add';
+    } else {
+      targetRoleId = String(form.get('target_role_id') ?? '').trim();
+      roleAction = String(form.get('role_action') ?? 'add') === 'remove' ? 'remove' : 'add';
+      if (!/^\d{15,25}$/.test(targetRoleId)) return back('pick_role', 'error');
+      const memberType = ['all', 'bots', 'humans'].includes(String(form.get('member_type'))) ? String(form.get('member_type')) : 'all';
+      const filterRoleIds = [...new Set(form.getAll('filter_role_ids').map(String).filter((value) => /^\d{15,25}$/.test(value)))].slice(0, 25);
+      const joinedAfter = parseDay(form.get('joined_after'));
+      const joinedBefore = parseDay(form.get('joined_before'));
+      if (joinedAfter === undefined || joinedBefore === undefined) return back('bad_date', 'error');
+      if (joinedAfter && joinedBefore && joinedAfter > joinedBefore) return back('date_order', 'error');
+      const minRoles = parseRoleCount(form.get('min_roles'));
+      const maxRoles = parseRoleCount(form.get('max_roles'));
+      if (minRoles === undefined || maxRoles === undefined) return back('bad_count', 'error');
+      if (minRoles !== null && maxRoles !== null && minRoles > maxRoles) return back('count_order', 'error');
+      const reason = String(form.get('reason') ?? '').trim().slice(0, 300);
+      const notifyChannelId = /^\d{15,25}$/.test(String(form.get('notify_channel_id') ?? '')) ? String(form.get('notify_channel_id')) : null;
+      row = {
+        guild_id: id, action: roleAction, target_role_id: targetRoleId, member_type: memberType, filter_role_ids: filterRoleIds,
+        filter_mode: String(form.get('filter_mode') ?? 'any') === 'all' ? 'all' : 'any', filter_exclude: form.get('filter_exclude') === 'on',
+        joined_after: joinedAfter, joined_before: joinedBefore, min_roles: minRoles, max_roles: maxRoles, skip_pending: form.get('skip_pending') === 'on',
+        reason: reason || null, notify_channel_id: notifyChannelId, dry_run: action === 'preview', started_by: session.userId, source: 'dashboard',
+      };
     }
+
+    // The role is checked here as well as by the bot: the page says what is wrong at once instead of a job that fails a moment later.
+    const rolesRes = await getGuildList(Astro, id, botToken, 'roles');
+    const guildRoles: any[] = rolesRes.ok ? await rolesRes.json() : [];
+    const role = guildRoles.find((each) => String(each.id) === targetRoleId);
+    if (rolesRes.ok && !role) return back('role_gone', 'error');
+    const block = rolesRes.ok ? roleBlocks(guildRoles, id)[targetRoleId] : undefined;
+    if (block) return back(`role_${block}`, 'error');
+    if (action === 'start' && roleAction === 'add' && role && dangerousPermissionsOf(role.permissions).length && form.get('confirm_danger') !== 'on') return back('confirm_danger', 'error');
+    if (action === 'run_preview') row.dry_run = false;
+
+    const res = await fetch(jobsUrl, { method: 'POST', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify(row) });
+    return back(res.ok ? (action === 'preview' ? 'previewed' : 'started') : 'save_failed', res.ok ? 'ok' : 'error');
   }
 }
 
-const [guildInfo, rolesRes, channelsRes, jobRes] = await Promise.all([
+const [guildInfo, rolesRes, channelsRes, jobsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'roles'),
   getGuildList(Astro, id, botToken, 'channels'),
-  fetch(`${apiUrl}/rest/v1/bulk_role_jobs?guild_id=eq.${id}&order=created_at.desc&limit=1`, { headers: apiHeaders }),
+  fetch(`${jobsUrl}?guild_id=eq.${encodeURIComponent(id)}&order=created_at.desc&limit=8`, { headers: apiHeaders }),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
-const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const allRoles: any[] = rolesRes.ok ? await rolesRes.json() : [];
+const blocks = roleBlocks(allRoles, id);
 const roles = allRoles
   .filter((r: any) => r.name !== '@everyone')
   .sort((a: any, b: any) => b.position - a.position)
-  .map((r: any) => ({ id: r.id, name: r.name }));
+  .map((r: any) => ({ id: String(r.id), name: String(r.name), color: Number(r.color ?? 0), memberRisk: dangerousPermissionsOf(r.permissions), blocked: blocks[String(r.id)] ?? null }));
 
 const allChannels = channelsRes.ok ? await channelsRes.json() : [];
 const channels = allChannels
   .filter((c: any) => c.type === 0 || c.type === 5)
   .sort((a: any, b: any) => a.position - b.position)
-  .map((c: any) => ({ id: c.id, name: c.name }));
+  .map((c: any) => ({ id: String(c.id), name: String(c.name) }));
 
-const jobRows = jobRes.ok ? await jobRes.json() : [];
-const rawJob = jobRows[0] ?? null;
-const job = rawJob && {
-  id: rawJob.id,
-  action: rawJob.action,
-  targetRoleId: rawJob.target_role_id,
-  status: rawJob.status,
-  totalMembers: rawJob.total_members,
-  processedMembers: rawJob.processed_members,
-  successCount: rawJob.success_count,
-  errorCount: rawJob.error_count,
-  errorMessage: rawJob.error_message,
-};
+const jobRows: any[] = jobsRes.ok ? await jobsRes.json() : [];
+const jobs = jobRows.map((row) => shapeJob(row)).filter((job): job is BulkJob => Boolean(job));
+const flash = Astro.url.searchParams.get('ok') ?? null;
+const error = Astro.url.searchParams.get('error') ?? null;
 ---
 <DashBulkRole
   user={session}
@@ -125,7 +140,8 @@ const job = rawJob && {
   guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
   roles={roles}
   channels={channels}
-  job={job}
-  started={started}
+  jobs={jobs}
+  flash={flash}
   error={error}
+  today={new Date().toISOString().slice(0, 10)}
 />
