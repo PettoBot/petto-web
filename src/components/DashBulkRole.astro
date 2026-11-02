@@ -3,246 +3,509 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 
-import { getDashLang, makeT } from '../i18n/dash';
+import { getDashLang, makeT, dashLocale } from '../i18n/dash';
+import { etaSeconds, shortDuration, type BulkJob } from '../utils/bulkRole';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
-interface Job {
-  id: number;
-  action: 'add' | 'remove';
-  targetRoleId: string;
-  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
-  totalMembers: number;
-  processedMembers: number;
-  successCount: number;
-  errorCount: number;
-  errorMessage: string | null;
-}
 
+interface RoleOption { id: string; name: string; color: number; memberRisk: string[]; blocked: string | null }
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string;
   guildName: string;
   guildIcon: string;
-  roles: { id: string; name: string }[];
+  roles: RoleOption[];
   channels: { id: string; name: string }[];
-  job: Job | null;
-  started: boolean;
+  jobs: BulkJob[];
+  flash: string | null;
   error: string | null;
+  today: string;
 }
-const { user, guildId, guildName, guildIcon, roles, channels, job, started, error } = Astro.props;
+const { user, guildId, guildName, guildIcon, roles, channels, jobs, flash, error, today } = Astro.props;
+
+const job = jobs[0] ?? null;
+const history = jobs.slice(1);
+const jobActive = job ? ['pending', 'running'].includes(job.status) : false;
+const locale = dashLocale(dashLang);
 
 function roleName(id: string) {
   return roles.find((r) => r.id === id)?.name ?? id;
 }
+const when = (value: string | null) => (value ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '');
 
-const jobActive = job ? ['pending', 'running'].includes(job.status) : false;
 const statusLabel: Record<string, string> = {
-  pending: dt('Queued'), running: dt('Running'), completed: dt('Completed'), cancelled: dt('Cancelled'), failed: dt('Failed'),
+  pending: dt('Queued'), running: dt('Running'), completed: dt('Completed'), cancelled: dt('Cancelled'), failed: dt('Failed'), paused: dt('Paused'),
 };
+const flashText: Record<string, string> = {
+  started: dt('Job started, it\'ll process in the background.'),
+  previewed: dt('Preview started, the numbers show up below in a moment. Nothing is changed.'),
+  cancelled: dt('The job was cancelled.'),
+  paused: dt('The job is paused.'),
+  resumed: dt('The job goes on.'),
+};
+// What the page and the bot say when a job cannot run, by the same codes (the bot saves them in `error_code`).
+const errorText: Record<string, string> = {
+  busy: dt('A bulk role job is already running for this server. Wait for it to finish or cancel it first.'),
+  pick_role: dt('Pick a role first.'),
+  save_failed: dt("Couldn't start the job, try again."),
+  bad_date: dt('That date is not valid.'),
+  date_order: dt('"Joined after" has to be earlier than "joined before".'),
+  bad_count: dt('The number of roles has to be a whole number from 0 to 250.'),
+  count_order: dt('The minimum number of roles cannot be higher than the maximum.'),
+  role_gone: dt('That role no longer exists.'),
+  role_everyone: dt('@everyone cannot be given or taken away.'),
+  role_managed: dt('That role is managed by an integration, so Discord does not let anyone give it.'),
+  role_above_bot: dt("That role is above Petto's highest role. Move Petto's role above it and try again."),
+  confirm_danger: dt('This role gives powerful permissions. Tick the box to confirm you want to give it to many members.'),
+  no_preview: dt('That preview is not there any more. Run it again.'),
+  guild_gone: dt("Petto isn't in that server anymore."),
+  missing_permission: dt('Petto needs the Manage Roles permission to do this.'),
+  member_list: dt('Petto could not read the member list. Try again in a moment.'),
+  permission_lost: dt('Discord kept refusing, so the job stopped: Petto lost the permission, or the role moved above its own, while it was running.'),
+  crashed: dt('The job stopped because of an unexpected error. What was already done stays done.'),
+};
+const failureText = (j: BulkJob) => (j.errorCode && errorText[j.errorCode]) || j.errorMessage || '';
+const flashMessage = flash ? flashText[flash] ?? null : null;
+const errorMessage = error ? errorText[error] ?? null : null;
+
+const titleOf = (j: BulkJob) => (j.dryRun ? (j.action === 'add' ? dt('Preview of assigning') : dt('Preview of removing')) : j.action === 'add' ? dt('Assigning') : dt('Removing'));
+const stateOf = (j: BulkJob) => (j.status === 'running' && j.paused ? 'paused' : j.status);
+const colorOf = (state: string) => (state === 'pending' || state === 'running' || state === 'paused' ? '#fed53c' : state === 'completed' ? '#a5ea7a' : state === 'failed' ? '#fe6465' : '#8399ff');
+const percent = (j: BulkJob) => (j.totalMembers > 0 ? Math.min(100, Math.round((j.processedMembers / j.totalMembers) * 100)) : 0);
+const filtered = (j: BulkJob) => Math.max(0, j.processedMembers - j.successCount - j.skippedCount - j.errorCount);
+const left = job ? etaSeconds(job) : null;
+const took = job && job.startedAt && job.finishedAt ? Math.round((new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()) / 1000) : null;
+const state = job ? stateOf(job) : 'completed';
+
 // The words the page script writes while it follows a job, in the language of the dashboard.
-const jsWords = JSON.stringify({ labels: statusLabel, waiting: dt('Waiting to start...'), note: dt('{done} / {total} members processed, {ok} updated, {bad} failed.'), start: dt('Start'), busy: dt('A job is already running') });
+const jsWords = JSON.stringify({
+  labels: statusLabel,
+  titles: { add: dt('Assigning'), remove: dt('Removing'), previewAdd: dt('Preview of assigning'), previewRemove: dt('Preview of removing') },
+  note: dt('{done} / {total} members checked'),
+  waiting: dt('Waiting to start...'),
+  changed: dt('Changed'), wouldChange: dt('Would change'), failed: dt('Failed'), notMatching: dt('Not matching'),
+  timeLeft: dt('Time left'), took: dt('Took'),
+  errors: errorText,
+  start: dt('Start'), busy: dt('A job is already running'),
+  summary: {
+    assign: dt('Assign the role'), remove: dt('Remove the role'), noRole: dt('Choose a role'),
+    after: dt('joined after {date}'), before: dt('joined before {date}'), least: dt('at least {n} roles'), most: dt('at most {n} roles'),
+    filter: dt('with some of {n} chosen roles'), exclude: dt('without {n} chosen roles'), pending: dt('not counting members who have not accepted the rules'),
+  },
+});
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="bulk-role" pageTitle="Bulk Role">
   <h1>{dt('Bulk Role')}</h1>
+  <p class="br-lead">{dt('Give or take away one role for many members at once. Check how many members it would change first, then run it: you can pause or cancel it while it works.')}</p>
 
-  {started && <div class="br-flash br-flash-ok"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Job started, it\'ll process in the background.')}</div>}
-  {error && <div class="br-flash br-flash-err" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
+  {flashMessage && <div class="br-flash br-flash-ok" role="status"><Icon name="ph:check-circle-fill" width="15" height="15" />{flashMessage}</div>}
+  {(errorMessage || (error && !errorMessage)) && <div class="br-flash br-flash-err" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{errorMessage ?? dt("Couldn't start the job, try again.")}</div>}
 
   {job && (
-    <div class="br-card" id="br-status-card" data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-live={jobActive ? 'true' : 'false'}>
+    <section class="br-card" id="br-status-card" aria-labelledby="br-job-title" data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-live={jobActive ? 'true' : 'false'} data-job-id={job.id} data-state={state}>
       <div class="br-card-head">
-        <div class="br-card-icon" data-status-icon style={`--c:${jobActive ? '#fed53c' : job.status === 'completed' ? '#a5ea7a' : job.status === 'failed' ? '#fe6465' : '#8399ff'}`}>
-          <span data-job-icon="active" class:list={{ 'br-icon-hidden': !jobActive }}><Icon name="ph:spinner-gap" width="16" height="16" class={jobActive ? 'br-spin' : ''} /></span>
+        <div class="br-card-icon" data-status-icon style={`--c:${colorOf(state)}`}>
+          <span data-job-icon="active" class:list={{ 'br-icon-hidden': !(jobActive && !job.paused) }}><Icon name="ph:spinner-gap" width="16" height="16" class="br-spin" /></span>
+          <span data-job-icon="paused" class:list={{ 'br-icon-hidden': !(jobActive && job.paused) }}><Icon name="ph:pause-fill" width="16" height="16" /></span>
           <span data-job-icon="completed" class:list={{ 'br-icon-hidden': job.status !== 'completed' }}><Icon name="ph:check-fill" width="16" height="16" /></span>
           <span data-job-icon="failed" class:list={{ 'br-icon-hidden': job.status !== 'failed' }}><Icon name="ph:x-fill" width="16" height="16" /></span>
-          <span data-job-icon="other" class:list={{ 'br-icon-hidden': jobActive || job.status === 'completed' || job.status === 'failed' }}><Icon name="ph:prohibit-fill" width="16" height="16" /></span>
+          <span data-job-icon="other" class:list={{ 'br-icon-hidden': job.status !== 'cancelled' }}><Icon name="ph:prohibit-fill" width="16" height="16" /></span>
         </div>
-        <div class="br-card-title">
-          {job.action === 'add' ? dt('Assigning') : dt('Removing')} <span class="br-role-chip">{roleName(job.targetRoleId)}</span>
-          <span class="br-status-label" data-status-text>{statusLabel[job.status]}</span>
-        </div>
-        {jobActive && (
-          <form method="POST" data-no-dirty>
-            <input type="hidden" name="action" value="cancel" />
-            <button type="submit" class="btn btn-ghost btn-sm">{dt('Cancel')}</button>
-          </form>
-        )}
+        <h2 class="br-card-title" id="br-job-title">
+          <span data-job-title>{titleOf(job)}</span> <span class="br-role-chip">{roleName(job.targetRoleId)}</span>
+          <span class="br-status-label" data-status-text>{statusLabel[state]}</span>
+        </h2>
       </div>
 
-      <div class="br-progress-track"><div class="br-progress-fill" data-progress-fill style={`width:${job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0}%`}></div></div>
-      <p class="br-progress-note" data-progress-note>
-        {job.status === 'pending' ? dt('Waiting to start...') : dt('{done} / {total} members processed, {ok} updated, {bad} failed.',{done:job.processedMembers,total:job.totalMembers,ok:job.successCount,bad:job.errorCount})}
+      <div class="br-progress-track" role="progressbar" aria-label={dt('Progress')} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent(job)} data-progress-bar>
+        <div class="br-progress-fill" data-progress-fill style={`width:${percent(job)}%`}></div>
+      </div>
+      <p class="br-progress-note" data-progress-note aria-live="polite">
+        {job.status === 'pending' ? dt('Waiting to start...') : dt('{done} / {total} members checked', { done: job.processedMembers, total: Math.max(job.totalMembers, job.processedMembers) })}
       </p>
-      {job.errorMessage && <p class="br-error-note"><Icon name="ph:warning-fill" width="12" height="12" />{job.errorMessage}</p>}
-    </div>
+
+      <dl class="br-stats" data-stats>
+        <div><dt data-stat-label="changed">{job.dryRun ? dt('Would change') : dt('Changed')}</dt><dd data-stat="changed">{job.successCount}</dd></div>
+        <div><dt>{dt('Already fine')}</dt><dd data-stat="skipped">{job.skippedCount}</dd></div>
+        <div><dt data-stat-label="third">{job.dryRun ? dt('Not matching') : dt('Failed')}</dt><dd data-stat="third">{job.dryRun ? filtered(job) : job.errorCount}</dd></div>
+        <div><dt data-stat-label="time">{jobActive ? dt('Time left') : dt('Took')}</dt><dd data-stat="time">{jobActive ? (left !== null ? shortDuration(left) : '-') : took !== null ? shortDuration(took) : '-'}</dd></div>
+      </dl>
+
+      {job.reason && <p class="br-meta">{dt('Reason')}: {job.reason}</p>}
+      <p class="br-error-note" data-error-note hidden={job.status !== 'failed' || !failureText(job)} role="alert"><Icon name="ph:warning-fill" width="12" height="12" /><span data-error-text>{failureText(job)}</span></p>
+
+      <div class="br-actions" data-job-actions hidden={!jobActive}>
+        <form method="POST" data-no-dirty data-form-pause hidden={job.paused}>
+          <input type="hidden" name="action" value="pause" />
+          <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:pause-fill" width="13" height="13" />{dt('Pause')}</button>
+        </form>
+        <form method="POST" data-no-dirty data-form-resume hidden={!job.paused}>
+          <input type="hidden" name="action" value="resume" />
+          <button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:play-fill" width="13" height="13" />{dt('Resume')}</button>
+        </form>
+        <form method="POST" data-no-dirty>
+          <input type="hidden" name="action" value="cancel" />
+          <button type="submit" class="btn btn-ghost btn-sm">{dt('Cancel')}</button>
+        </form>
+      </div>
+
+      {job.dryRun && job.status === 'completed' && (
+        <form method="POST" class="br-actions br-run-preview" data-no-dirty>
+          <input type="hidden" name="action" value="run_preview" />
+          <input type="hidden" name="preview_id" value={job.id} />
+          <p class="br-meta">{dt('Nothing was changed. Run it for real with the same settings?')}</p>
+          <button type="submit" class="btn btn-accent btn-sm" disabled={job.successCount === 0}><Icon name="ph:play-fill" width="13" height="13" />{dt('Run it for real')}</button>
+        </form>
+      )}
+    </section>
   )}
 
-  {/* Start runs a job at once: it is not a setting, so the bar of unsaved changes leaves it alone. */}
-  <form method="POST" class="br-form" data-no-dirty data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-words={jsWords}>
-    <input type="hidden" name="action" value="start" />
+  {/* Start and Preview run a job at once: they are not settings, so the bar of unsaved changes leaves them alone. */}
+  <form method="POST" class="br-form" data-no-dirty data-status-url={`/dash/guild/${guildId}/bulk-role-status`} data-words={jsWords} data-today={today}>
     <div class="br-card">
       <div class="br-card-head">
         <div class="br-card-icon" style="--c:var(--accent)"><Icon name="ph:users-three-fill" width="16" height="16" /></div>
-        <div class="br-card-title">{dt('Configure')}</div>
+        <h2 class="br-card-title">{dt('Configure')}</h2>
       </div>
 
-      <div class="br-grid">
-        <div class="br-field">
-          <label>{dt('Role')}</label>
-          <select name="target_role_id" required disabled={jobActive} data-give-role>
-            <option value="" disabled selected>{dt('Choose a role')}</option>
-            {roles.map((r) => <option value={r.id}>{r.name}</option>)}
-          </select>
-        </div>
-        <div class="br-field">
-          <label>{dt('Action')}</label>
-          <select name="role_action" disabled={jobActive}>
-            <option value="add">{dt('Assign the role')}</option>
-            <option value="remove">{dt('Remove the role')}</option>
-          </select>
-        </div>
-        <div class="br-field">
-          <label>{dt('Members')}</label>
-          <select name="member_type" disabled={jobActive}>
-            <option value="all">{dt('All members')}</option>
-            <option value="humans">{dt('Humans only')}</option>
-            <option value="bots">{dt('Bots only')}</option>
-          </select>
-        </div>
-        <div class="br-field">
-          <label>{dt('Notify channel (optional)')}</label>
-          <select name="notify_channel_id" disabled={jobActive}>
-            <option value="">{dt('None')}</option>
-            {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
-          </select>
-        </div>
-        <div class="br-field">
-          <label>{dt('Joined after (optional)')}</label>
-          <input type="date" name="joined_after" disabled={jobActive} />
-        </div>
-        <div class="br-field">
-          <label>{dt('Joined before (optional)')}</label>
-          <input type="date" name="joined_before" disabled={jobActive} />
-        </div>
-
-        <div class="br-field br-field-wide">
-          <label>{dt('Filter by existing roles (optional)')}</label>
-          <MultiSelect lazy name="filter_role_ids" options={roles} selected={[]} placeholder={dt('Search roles...')} />
-          <div class="br-filter-opts">
-            <label class="br-inline-check"><input type="radio" name="filter_mode" value="any" checked disabled={jobActive} />{dt('Has any of these')}</label>
-            <label class="br-inline-check"><input type="radio" name="filter_mode" value="all" disabled={jobActive} />{dt('Has all of these')}</label>
-            <label class="br-inline-check"><input type="checkbox" name="filter_exclude" disabled={jobActive} />{dt('Invert (members WITHOUT them instead)')}</label>
+      <fieldset class="br-set" disabled={jobActive} data-config>
+        <legend class="br-legend">{dt('What to do')}</legend>
+        <div class="br-grid">
+          <div class="br-field">
+            <label for="br-role">{dt('Role')}</label>
+            <select id="br-role" name="target_role_id" required data-give-role data-role-select>
+              <option value="" disabled selected>{dt('Choose a role')}</option>
+              {roles.map((r) => <option value={r.id} data-risk={r.memberRisk.join(', ')}>{r.name}</option>)}
+            </select>
+          </div>
+          <div class="br-field">
+            <label for="br-action">{dt('Action')}</label>
+            <select id="br-action" name="role_action">
+              <option value="add">{dt('Assign the role')}</option>
+              <option value="remove">{dt('Remove the role')}</option>
+            </select>
           </div>
         </div>
-      </div>
+        <div class="br-danger" data-danger hidden role="group" aria-label={dt('Powerful permissions')}>
+          <p><Icon name="ph:warning-fill" width="14" height="14" /><span>{dt('This role gives powerful permissions:')} <strong data-danger-list></strong></span></p>
+          <label class="br-inline-check"><input type="checkbox" name="confirm_danger" />{dt('I understand, give it to every member that matches.')}</label>
+        </div>
+      </fieldset>
 
-      <button type="submit" class="btn btn-accent btn-sm" disabled={jobActive}>
-        <Icon name="ph:play-fill" width="13" height="13" />
-        <span data-start-label>{jobActive ? dt('A job is already running') : dt('Start')}</span>
-      </button>
-      <p class="br-hint">{dt('Runs once in the background, one job at a time per server. Large servers can take a few minutes, Discord\'s own rate limit paces it.')}</p>
+      <fieldset class="br-set" disabled={jobActive} data-config>
+        <legend class="br-legend">{dt('Who')}</legend>
+        <div class="br-grid">
+          <div class="br-field">
+            <label for="br-members">{dt('Members')}</label>
+            <select id="br-members" name="member_type">
+              <option value="all">{dt('All members')}</option>
+              <option value="humans">{dt('Humans only')}</option>
+              <option value="bots">{dt('Bots only')}</option>
+            </select>
+          </div>
+
+          <div class="br-field">
+            <label for="br-after">{dt('Joined after (optional)')}</label>
+            <div class="br-date" data-date data-empty="true">
+              <input id="br-after" type="date" name="joined_after" max={today} />
+              <span class="br-date-hint" aria-hidden="true">{dt('Any date')}</span>
+            </div>
+            <div class="br-chips" role="group" aria-label={dt('Joined after (optional)')}>
+              <button type="button" class="br-chip" data-after-days="7">{dt('Last 7 days')}</button>
+              <button type="button" class="br-chip" data-after-days="30">{dt('Last 30 days')}</button>
+              <button type="button" class="br-chip" data-after-days="90">{dt('Last 90 days')}</button>
+              <button type="button" class="br-chip" data-clear="joined_after">{dt('Clear')}</button>
+            </div>
+          </div>
+          <div class="br-field">
+            <label for="br-before">{dt('Joined before (optional)')}</label>
+            <div class="br-date" data-date data-empty="true">
+              <input id="br-before" type="date" name="joined_before" max={today} />
+              <span class="br-date-hint" aria-hidden="true">{dt('Any date')}</span>
+            </div>
+            <div class="br-chips" role="group" aria-label={dt('Joined before (optional)')}>
+              <button type="button" class="br-chip" data-before-days="30">{dt('Older than 30 days')}</button>
+              <button type="button" class="br-chip" data-before-days="90">{dt('Older than 90 days')}</button>
+              <button type="button" class="br-chip" data-before-days="365">{dt('Older than a year')}</button>
+              <button type="button" class="br-chip" data-clear="joined_before">{dt('Clear')}</button>
+            </div>
+          </div>
+
+          <div class="br-field">
+            <label for="br-min">{dt('At least this many roles (optional)')}</label>
+            <input id="br-min" class="br-input" type="number" name="min_roles" min="0" max="250" inputmode="numeric" placeholder="0" />
+          </div>
+          <div class="br-field">
+            <label for="br-max">{dt('At most this many roles (optional)')}</label>
+            <input id="br-max" class="br-input" type="number" name="max_roles" min="0" max="250" inputmode="numeric" placeholder="250" />
+          </div>
+          <p class="br-hint br-field-wide">{dt('@everyone does not count. Use 0 as the most to pick the members who have no roles.')}</p>
+
+          <div class="br-field br-field-wide">
+            <label id="br-filter-label">{dt('Filter by existing roles (optional)')}</label>
+            <MultiSelect lazy name="filter_role_ids" options={roles} selected={[]} placeholder={dt('Search roles...')} />
+            <div class="br-filter-opts">
+              <label class="br-inline-check"><input type="radio" name="filter_mode" value="any" checked />{dt('Has any of these')}</label>
+              <label class="br-inline-check"><input type="radio" name="filter_mode" value="all" />{dt('Has all of these')}</label>
+              <label class="br-inline-check"><input type="checkbox" name="filter_exclude" />{dt('Invert (members WITHOUT them instead)')}</label>
+            </div>
+          </div>
+
+          <label class="br-inline-check br-field-wide"><input type="checkbox" name="skip_pending" />{dt('Skip members who have not accepted the rules of the server yet')}</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="br-set" disabled={jobActive} data-config>
+        <legend class="br-legend">{dt('Details')}</legend>
+        <div class="br-grid">
+          <div class="br-field br-field-wide">
+            <label for="br-reason">{dt('Reason (optional)')}</label>
+            <input id="br-reason" class="br-input" type="text" name="reason" maxlength="300" autocomplete="off" />
+            <span class="br-hint">{dt('Shown in the audit log of Discord, with the number of the job.')}</span>
+          </div>
+          <div class="br-field br-field-wide">
+            <label for="br-notify">{dt('Notify channel (optional)')}</label>
+            <select id="br-notify" name="notify_channel_id">
+              <option value="">{dt('None')}</option>
+              {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <p class="br-summary" data-summary aria-live="polite"></p>
+
+      <div class="br-submit">
+        <button type="submit" name="action" value="preview" formnovalidate class="btn btn-ghost btn-sm" disabled={jobActive} data-submit-preview>
+          <Icon name="ph:eye-fill" width="13" height="13" />{dt('Preview')}
+        </button>
+        <button type="submit" name="action" value="start" class="btn btn-accent btn-sm" disabled={jobActive} data-submit-start>
+          <Icon name="ph:play-fill" width="13" height="13" />
+          <span data-start-label>{jobActive ? dt('A job is already running') : dt('Start')}</span>
+        </button>
+      </div>
+      <p class="br-hint">{dt('Preview counts how many members would change and touches nobody. A job runs in the background, one at a time per server, and goes on by itself if Petto restarts. Large servers can take a few minutes: Discord paces it.')}</p>
     </div>
   </form>
 
+  <section class="br-card br-history" aria-labelledby="br-history-title">
+    <div class="br-card-head">
+      <div class="br-card-icon" style="--c:#8399ff"><Icon name="ph:clock-counter-clockwise-fill" width="16" height="16" /></div>
+      <h2 class="br-card-title" id="br-history-title">{dt('Recent jobs')}</h2>
+    </div>
+    {history.length === 0 ? (
+      <p class="br-hint">{dt('No earlier jobs.')}</p>
+    ) : (
+      <ul class="br-history-list">
+        {history.map((j) => (
+          <li>
+            <div class="br-history-main">
+              <span class="br-history-title">{titleOf(j)}</span> <span class="br-role-chip">{roleName(j.targetRoleId)}</span>
+            </div>
+            <div class="br-history-meta">
+              <span class="br-badge" style={`--c:${colorOf(j.status)}`}>{statusLabel[j.status]}</span>
+              <span>{j.dryRun ? dt('{n} would change', { n: j.successCount }) : dt('{n} changed, {m} failed', { n: j.successCount, m: j.errorCount })}</span>
+              <span class="br-history-when">{when(j.finishedAt ?? j.createdAt)}</span>
+            </div>
+            {j.status === 'failed' && failureText(j) && <p class="br-error-note"><Icon name="ph:warning-fill" width="12" height="12" />{failureText(j)}</p>}
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+
   <script>
     (function () {
-      function renderJob(card, job) {
-        var active = job.status === 'pending' || job.status === 'running';
-        var state = active ? 'active' : job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : 'other';
-        var color = active ? '#fed53c' : state === 'completed' ? '#a5ea7a' : state === 'failed' ? '#fe6465' : '#8399ff';
-        var fill = card.querySelector('[data-progress-fill]');
-        var note = card.querySelector('[data-progress-note]');
-        var statusText = card.querySelector('[data-status-text]');
-        var icon = card.querySelector('[data-status-icon]');
-        var pct = job.totalMembers > 0 ? Math.round((job.processedMembers / job.totalMembers) * 100) : 0;
-        var words = { labels: {}, waiting: 'Waiting to start...', note: '{done} / {total} members processed, {ok} updated, {bad} failed.', start: 'Start', busy: 'A job is already running' };
-        try { words = Object.assign(words, JSON.parse((document.querySelector('.br-form') as HTMLElement | null)?.dataset.words || '{}')); } catch (e) { /* The English words stay. */ }
-        var labels = words.labels as Record<string, string>;
+      var form = document.querySelector('.br-form') as HTMLFormElement | null;
+      if (!form) return;
+      var words: any = { labels: {}, titles: {}, errors: {}, summary: {} };
+      try { words = JSON.parse(form.dataset.words || '{}'); } catch (e) { /* The English words stay empty and the server-rendered text is kept. */ }
 
-        if (fill) fill.style.width = pct + '%';
-        if (note) note.textContent = job.status === 'pending' ? words.waiting : words.note.replace('{done}', job.processedMembers).replace('{total}', job.totalMembers).replace('{ok}', job.successCount).replace('{bad}', job.errorCount);
-        if (statusText) statusText.textContent = labels[job.status] || job.status;
-        if (icon) {
-          icon.style.setProperty('--c', color);
-          icon.querySelectorAll('[data-job-icon]').forEach(function (item) {
-            item.classList.toggle('br-icon-hidden', item.getAttribute('data-job-icon') !== state);
-          });
-          var spinner = icon.querySelector('[data-job-icon="active"] svg');
-          if (spinner) spinner.classList.toggle('br-spin', active);
-        }
-        card.dataset.live = active ? 'true' : 'false';
-
-        var cancelForm = card.querySelector('form');
-        if (cancelForm) cancelForm.hidden = !active;
-        var startForm = document.querySelector('.br-form');
-        if (startForm) {
-          startForm.querySelectorAll('select, input').forEach(function (input) {
-            var control = input as HTMLInputElement | HTMLSelectElement;
-            if (control.type !== 'hidden') control.disabled = active;
-          });
-          var startButton = startForm.querySelector('button[type="submit"]') as HTMLButtonElement | null;
-          if (startButton) {
-            startButton.disabled = active;
-            var startLabel = startButton.querySelector('[data-start-label]');
-            if (startLabel) startLabel.textContent = active ? words.busy : words.start;
-          }
-        }
+      // The form answers with a redirect and a word in the address: the address goes back to the clean one, so a reload shows no old message.
+      if (window.location.search && /[?&](ok|error)=/.test(window.location.search)) {
+        try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* not important */ }
       }
 
-      // The page keeps itself up to date: every 2 seconds while a job runs, every 8 seconds otherwise (to notice a job that was
-      // started from Discord or from another tab), and it rests while the tab is hidden. A job that shows up when the page had
-      // none loads the page once, so its card appears.
-      var lastState = null;
-      var timer = null;
-      function schedule(ms) { clearTimeout(timer); timer = setTimeout(tick, ms); }
+      /* ---- the date fields: the hint is shown while one is empty (a phone draws an empty date as a blank box) and the chips fill it ---- */
+      function dayOffset(days: number) { return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10); }
+      function syncDate(box: Element) {
+        var input = box.querySelector('input') as HTMLInputElement | null;
+        if (input) (box as HTMLElement).dataset.empty = input.value ? 'false' : 'true';
+      }
+      form.querySelectorAll('[data-date]').forEach(function (box) {
+        var input = box.querySelector('input');
+        if (!input) return;
+        input.addEventListener('input', function () { syncDate(box); update(); });
+        input.addEventListener('change', function () { syncDate(box); update(); });
+      });
+      function setDate(name: string, value: string) {
+        var input = form!.querySelector('input[name="' + name + '"]') as HTMLInputElement | null;
+        if (!input) return;
+        input.value = value;
+        var box = input.closest('[data-date]');
+        if (box) syncDate(box);
+        update();
+      }
+      form.querySelectorAll('[data-after-days]').forEach(function (chip) {
+        chip.addEventListener('click', function () { setDate('joined_after', dayOffset(Number((chip as HTMLElement).dataset.afterDays))); });
+      });
+      form.querySelectorAll('[data-before-days]').forEach(function (chip) {
+        chip.addEventListener('click', function () { setDate('joined_before', dayOffset(Number((chip as HTMLElement).dataset.beforeDays))); });
+      });
+      form.querySelectorAll('[data-clear]').forEach(function (chip) {
+        chip.addEventListener('click', function () { setDate((chip as HTMLElement).dataset.clear || '', ''); });
+      });
+
+      /* ---- the powerful-permissions warning, and the sentence that says what the job will do ---- */
+      var roleSelect = form.querySelector('[data-role-select]') as HTMLSelectElement;
+      var actionSelect = form.querySelector('[name="role_action"]') as HTMLSelectElement;
+      var danger = form.querySelector('[data-danger]') as HTMLElement;
+      var summary = form.querySelector('[data-summary]') as HTMLElement;
+      function field(name: string) { return form!.querySelector('[name="' + name + '"]') as HTMLInputElement | HTMLSelectElement | null; }
+      function update() {
+        var option = roleSelect.selectedOptions[0];
+        var risk = (option && option.dataset.risk) || '';
+        var show = Boolean(risk) && actionSelect.value === 'add';
+        danger.hidden = !show;
+        var list = danger.querySelector('[data-danger-list]');
+        if (list) list.textContent = risk;
+        var confirm = danger.querySelector('input') as HTMLInputElement;
+        if (confirm) { confirm.required = show; if (!show) confirm.checked = false; }
+
+        var s = words.summary || {};
+        var parts: string[] = [];
+        var roleText = roleSelect.value && option ? option.textContent || '' : s.noRole;
+        parts.push((actionSelect.value === 'remove' ? s.remove : s.assign) + ': ' + roleText);
+        var members = field('member_type') as HTMLSelectElement;
+        if (members && members.value !== 'all') parts.push(members.selectedOptions[0].textContent || '');
+        var after = (field('joined_after') as HTMLInputElement).value;
+        var before = (field('joined_before') as HTMLInputElement).value;
+        var min = (field('min_roles') as HTMLInputElement).value;
+        var max = (field('max_roles') as HTMLInputElement).value;
+        if (after && s.after) parts.push(s.after.replace('{date}', after));
+        if (before && s.before) parts.push(s.before.replace('{date}', before));
+        if (min !== '' && s.least) parts.push(s.least.replace('{n}', min));
+        if (max !== '' && s.most) parts.push(s.most.replace('{n}', max));
+        var chosen = form!.querySelectorAll('input[name="filter_role_ids"]:checked').length;
+        if (chosen) {
+          var invert = (field('filter_exclude') as HTMLInputElement).checked;
+          parts.push((invert ? s.exclude : s.filter).replace('{n}', String(chosen)));
+        }
+        if ((field('skip_pending') as HTMLInputElement).checked && s.pending) parts.push(s.pending);
+        summary.textContent = parts.join(' · ');
+      }
+      form.addEventListener('input', update);
+      form.addEventListener('change', update);
+      update();
+
+      /* ---- the card of the job follows it while it runs ---- */
+      function render(card: HTMLElement, job: any, eta: number | null) {
+        var active = job.status === 'pending' || job.status === 'running';
+        var paused = active && job.paused;
+        var state = paused ? 'paused' : job.status;
+        var color = active ? '#fed53c' : state === 'completed' ? '#a5ea7a' : state === 'failed' ? '#fe6465' : '#8399ff';
+        var total = Math.max(job.totalMembers, job.processedMembers);
+        var pct = total > 0 ? Math.min(100, Math.round((job.processedMembers / total) * 100)) : 0;
+        var filtered = Math.max(0, job.processedMembers - job.successCount - job.skippedCount - job.errorCount);
+        function text(selector: string, value: string) { var node = card.querySelector(selector); if (node) node.textContent = value; }
+
+        var fill = card.querySelector('[data-progress-fill]') as HTMLElement | null;
+        if (fill) fill.style.width = pct + '%';
+        var bar = card.querySelector('[data-progress-bar]');
+        if (bar) bar.setAttribute('aria-valuenow', String(pct));
+        text('[data-progress-note]', job.status === 'pending' ? (words.waiting || '') : String(words.note || '').replace('{done}', String(job.processedMembers)).replace('{total}', String(total)));
+        text('[data-status-text]', (words.labels || {})[state] || state);
+        var titles = words.titles || {};
+        text('[data-job-title]', job.dryRun ? (job.action === 'add' ? titles.previewAdd : titles.previewRemove) : (job.action === 'add' ? titles.add : titles.remove));
+        text('[data-stat="changed"]', String(job.successCount));
+        text('[data-stat="skipped"]', String(job.skippedCount));
+        text('[data-stat="third"]', String(job.dryRun ? filtered : job.errorCount));
+        text('[data-stat-label="changed"]', job.dryRun ? words.wouldChange : words.changed);
+        text('[data-stat-label="third"]', job.dryRun ? words.notMatching : words.failed);
+        text('[data-stat-label="time"]', active ? words.timeLeft : words.took);
+        function span(seconds: number) { return seconds < 60 ? seconds + ' s' : seconds < 3600 ? Math.floor(seconds / 60) + ' min' + (seconds % 60 ? ' ' + (seconds % 60) + ' s' : '') : Math.floor(seconds / 3600) + ' h' + (Math.floor((seconds % 3600) / 60) ? ' ' + Math.floor((seconds % 3600) / 60) + ' min' : ''); }
+        var took = job.startedAt && job.finishedAt ? Math.round((new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()) / 1000) : null;
+        text('[data-stat="time"]', active ? (eta ? span(eta) : '-') : took !== null ? span(took) : '-');
+
+        var errorNote = card.querySelector('[data-error-note]') as HTMLElement | null;
+        if (errorNote) {
+          var message = (job.errorCode && (words.errors || {})[job.errorCode]) || job.errorMessage || '';
+          errorNote.hidden = job.status !== 'failed' || !message;
+          text('[data-error-text]', message);
+        }
+        var icon = card.querySelector('[data-status-icon]') as HTMLElement | null;
+        if (icon) {
+          icon.style.setProperty('--c', color);
+          var which = paused ? 'paused' : active ? 'active' : job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : 'other';
+          icon.querySelectorAll('[data-job-icon]').forEach(function (item) { item.classList.toggle('br-icon-hidden', item.getAttribute('data-job-icon') !== which); });
+        }
+        card.dataset.live = active ? 'true' : 'false';
+        var actions = card.querySelector('[data-job-actions]') as HTMLElement | null;
+        if (actions) {
+          actions.hidden = !active;
+          var pauseForm = actions.querySelector('[data-form-pause]') as HTMLElement | null;
+          var resumeForm = actions.querySelector('[data-form-resume]') as HTMLElement | null;
+          if (pauseForm) pauseForm.hidden = Boolean(job.paused);
+          if (resumeForm) resumeForm.hidden = !job.paused;
+        }
+        form!.querySelectorAll('[data-config]').forEach(function (set) { (set as HTMLFieldSetElement).disabled = active; });
+        form!.querySelectorAll('.br-submit button').forEach(function (button) { (button as HTMLButtonElement).disabled = active; });
+        var label = form!.querySelector('[data-start-label]');
+        if (label) label.textContent = active ? words.busy : words.start;
+      }
+
+      // Every 2 seconds while a job runs, every 8 otherwise (to notice a job started from Discord or from another tab), and it rests while the
+      // tab is hidden. A job that shows up when the page had none, or one that has just ended, loads the page once so the history is right.
+      var lastKey: string | null = null;
+      var timer: any = null;
+      function schedule(ms: number) { clearTimeout(timer); timer = setTimeout(tick, ms); }
       function tick() {
         if (document.hidden) { schedule(4000); return; }
         var card = document.getElementById('br-status-card');
-        var form = document.querySelector('.br-form') as HTMLElement | null;
-        var url = (card && (card as HTMLElement).dataset.statusUrl) || (form && form.dataset.statusUrl);
+        var url = (card && card.dataset.statusUrl) || form!.dataset.statusUrl;
         if (!url) return;
-        var cacheBust = (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
-        fetch(url + cacheBust, { cache: 'no-store', headers: { Accept: 'application/json' } })
+        fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now(), { cache: 'no-store', headers: { Accept: 'application/json' } })
           .then(function (res) { if (!res.ok) throw new Error('status request failed'); return res.json(); })
           .then(function (body) {
             var job = body.job;
             if (!job) { schedule(8000); return; }
             var key = job.id + ':' + job.status;
-            if (!card) {
-              // A job appeared and the page has no card for it yet.
-              if (lastState !== key) { lastState = key; window.location.reload(); }
+            if (!card || card.dataset.jobId !== String(job.id)) {
+              if (lastKey !== key) { lastKey = key; window.location.reload(); }
               return;
             }
-            renderJob(card, job);
             var active = job.status === 'pending' || job.status === 'running';
-            var wasActive = lastState !== null && /(pending|running)$/.test(lastState);
-            lastState = key;
-            if (wasActive && !active) card.classList.add('br-just-finished');
+            var wasActive = lastKey !== null ? /(pending|running)$/.test(lastKey) : card.dataset.live === 'true';
+            render(card, job, body.etaSeconds);
+            lastKey = key;
+            if (wasActive && !active) { card.classList.add('br-just-finished'); setTimeout(function () { window.location.reload(); }, 1200); return; }
             schedule(active ? 2000 : 8000);
           })
           .catch(function () { schedule(5000); });
       }
       document.addEventListener('visibilitychange', function () { if (!document.hidden) schedule(200); });
       var first = document.getElementById('br-status-card');
-      lastState = null;
-      schedule(first && (first as HTMLElement).dataset.live === 'true' ? 0 : 1500);
+      schedule(first && first.dataset.live === 'true' ? 0 : 1500);
     })();
   </script>
 </DashGuildLayout>
 
 <style>
-  h1 { font-size: 24px; margin: 0 0 20px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .br-lead { font-size: 13.5px; color: var(--text-dim); margin: 0 0 18px; max-width: 70ch; }
 
-  .br-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .br-flash { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 940px; box-sizing: border-box; }
+  .br-flash :global(svg) { flex-shrink: 0; margin-top: 2px; }
   .br-flash-ok { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
   .br-flash-err { color: var(--red); background: var(--red-soft); border: 1px solid var(--red); }
 
-  .br-card { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--card); max-width: 940px; }
-  .br-card + .br-card, .br-form { margin-top: 14px; }
+  .br-card { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--card); max-width: 940px; box-sizing: border-box; min-width: 0; }
+  .br-card + .br-card, .br-form, .br-history { margin-top: 14px; }
+  .br-form .br-card { margin-top: 0; }
   .br-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
   .br-card-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
   .br-icon-hidden { display: none; }
-  .br-card-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .br-card-title { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .br-role-chip { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
   .br-just-finished { animation: brPulse 1.2s ease-out 1; }
   @keyframes brPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
@@ -250,30 +513,73 @@ const jsWords = JSON.stringify({ labels: statusLabel, waiting: dt('Waiting to st
 
   .br-spin { animation: br-spin 1s linear infinite; }
   @keyframes br-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .br-spin, .br-just-finished { animation: none; } .br-progress-fill { transition: none; } }
 
-  .br-progress-track { height: 7px; border-radius: 5px; background: var(--bg-raise); overflow: hidden; margin-top: 12px; }
+  .br-progress-track { height: 8px; border-radius: 5px; background: var(--bg-raise); overflow: hidden; margin-top: 12px; }
   .br-progress-fill { height: 100%; background: var(--accent); border-radius: 5px; transition: width 0.3s ease; }
-  .br-progress-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
-  .br-error-note { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--red); margin: 8px 0 0; }
+  .br-progress-note { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; }
+  .br-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 0; }
+  .br-stats > div { background: var(--bg-raise); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; min-width: 0; }
+  .br-stats dt { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+  .br-stats dd { margin: 3px 0 0; font-size: 18px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .br-meta { font-size: 12.5px; color: var(--text-dim); margin: 10px 0 0; overflow-wrap: anywhere; }
+  .br-error-note { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; color: var(--red); margin: 10px 0 0; }
+  .br-error-note[hidden] { display: none; }
+  .br-error-note :global(svg) { flex-shrink: 0; margin-top: 2px; }
+  .br-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+  .br-actions[hidden], .br-actions form[hidden] { display: none; }
+  .br-actions .btn, .br-submit .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .br-run-preview .br-meta { flex: 1 1 100%; margin: 0; }
 
-  .br-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; width: 100%; margin: 16px 0 18px; }
-  .br-field { display: flex; flex-direction: column; gap: 6px; }
+  .br-set { border: 0; margin: 16px 0 0; padding: 0; min-width: 0; }
+  .br-set:disabled { opacity: 0.6; }
+  .br-legend { padding: 0; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 8px; }
+  .br-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 20px; width: 100%; }
+  .br-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .br-field-wide { grid-column: 1 / -1; }
-  .br-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .br-field input, .br-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13.5px; }
-  .br-field input:disabled, .br-field select:disabled { opacity: 0.55; }
+  .br-field > label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .br-field select, .br-input { width: 100%; box-sizing: border-box; min-height: 42px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 14px; }
 
-  .br-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 130px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
-  .br-role-item { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 5px 7px; border-radius: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
-  .br-role-item:hover { background: var(--card-hover); color: var(--text); }
-  .br-role-item input { flex-shrink: 0; accent-color: var(--accent); }
-  .br-filter-opts { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
-  .br-inline-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: normal; cursor: pointer; }
-  .br-inline-check input { accent-color: var(--accent); }
+  /* A date field: a phone draws an empty one as a blank box, so it gets a real height, no native frame and a hint that shows while it is empty. */
+  .br-date { position: relative; }
+  .br-date input { display: block; width: 100%; box-sizing: border-box; min-height: 42px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.3; -webkit-appearance: none; appearance: none; color-scheme: light dark; text-align: left; }
+  .br-date input::-webkit-date-and-time-value { text-align: left; min-height: 1.3em; }
+  .br-date input::-webkit-calendar-picker-indicator { opacity: 0.7; cursor: pointer; }
+  .br-date[data-empty="true"] input { color: transparent; }
+  .br-date[data-empty="true"] input:focus { color: var(--text); }
+  .br-date-hint { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-dim); font-size: 14px; }
+  .br-date[data-empty="false"] .br-date-hint, .br-date:focus-within .br-date-hint { display: none; }
+  .br-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .br-chip { border: 1px solid var(--border); background: var(--bg-raise); color: var(--text-muted); border-radius: 999px; padding: 6px 11px; min-height: 32px; font-family: var(--sans); font-size: 12px; cursor: pointer; }
+  .br-chip:hover { color: var(--text); border-color: var(--accent); }
 
-  .br-hint { font-size: 11.5px; color: var(--text-dim); margin: 10px 0 0; }
+  .br-filter-opts { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px; }
+  .br-inline-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: normal; cursor: pointer; min-height: 32px; }
+  .br-inline-check input { accent-color: var(--accent); width: 18px; height: 18px; flex-shrink: 0; }
+
+  .br-danger { margin-top: 12px; border: 1px solid var(--red); background: var(--red-soft); color: var(--text); border-radius: 10px; padding: 10px 12px; }
+  .br-danger[hidden] { display: none; }
+  .br-danger p { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 8px; font-size: 13px; }
+  .br-danger p :global(svg) { color: var(--red); flex-shrink: 0; margin-top: 2px; }
+
+  .br-summary { margin: 18px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--bg-raise); border: 1px dashed var(--border); font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+  .br-summary:empty { display: none; }
+  .br-submit { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .br-hint { font-size: 12px; color: var(--text-dim); margin: 10px 0 0; }
+
+  .br-history-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .br-history-list li { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg-raise); min-width: 0; }
+  .br-history-main { font-size: 13px; color: var(--text); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .br-history-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 12px; color: var(--text-dim); }
+  .br-badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); padding: 2px 8px; border-radius: 999px; }
+  .br-history-when { margin-left: auto; }
 
   @media (max-width: 620px) {
-    .br-grid { grid-template-columns: 1fr; }
+    .br-card { padding: 16px; }
+    .br-grid { grid-template-columns: minmax(0, 1fr); }
+    .br-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .br-submit .btn { flex: 1 1 100%; min-height: 44px; }
+    .br-actions .btn { min-height: 44px; }
+    .br-history-when { margin-left: 0; flex-basis: 100%; }
   }
 </style>
