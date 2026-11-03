@@ -207,6 +207,23 @@ export async function queryDirect<T = Record<string, unknown>>(text: string, val
   }
 }
 
+/**
+ * A real read straight from the database with the time it took, for the status page. `configured` is false when this build or host
+ * has no direct connection (the site then cannot judge the database on its own). A failure to connect also feeds the breaker above.
+ */
+export async function probeDirect(): Promise<{ configured: boolean; ok: boolean; ms: number; detail?: string }> {
+  const db = getPool();
+  if (!db) return { configured: false, ok: false, ms: 0 };
+  const started = Date.now();
+  try {
+    await db.query('select updated_at from bot_host limit 1');
+    return { configured: true, ok: true, ms: Date.now() - started };
+  } catch (error) {
+    if (isConnectionError(error)) markUnreachable(error);
+    return { configured: true, ok: false, ms: Date.now() - started, detail: String((error as { code?: unknown })?.code ?? (error as Error)?.message ?? 'error').slice(0, 40) };
+  }
+}
+
 // After a dashboard write, the bot drops its own short-lived copy of that table's settings for the server (petto:invalidate), and the
 // server's change stamp is raised (petto:ver:<id>, see guildVersion.ts).
 async function announceWrite(table: string, body: unknown, target: URL): Promise<void> {
