@@ -1,6 +1,6 @@
 // Checks the rows of the commands page (src/data/commandCatalog.ts): every subcommand of a command, and every subcommand of a group, is a row of its own
 // with its full name (`ticket close`, `ticket panel create`), its own description and arguments, and the slash form when there is one; a command without
-// subcommands is one row; the actions of /act stay one row each (`!hug [user]` with `/act love hug`); and no command that has subcommands is also a row of its own.
+// subcommands is one row; the actions of /action stay one row each (`!hug [user]` with `/action love hug`); and no command that has subcommands is also a row of its own.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import ts from 'typescript';
@@ -28,7 +28,7 @@ for (const lang of ['en', 'es', 'pt-BR']) {
 
   // Every command with subcommands is only its subcommands, and each one has its own row.
   const listed = new Set(catalog.catalogCommands(lang).map((command) => command.name));
-  const withLeaves = generated.filter((command) => listed.has(command.name) && command.leaves?.length && !command.integration && command.name !== 'act');
+  const withLeaves = generated.filter((command) => listed.has(command.name) && command.leaves?.length && !command.integration && command.name !== 'action');
   assert.ok(withLeaves.length > 90, 'many commands have subcommands');
   for (const command of withLeaves) {
     if (!byName.has(command.name) || command.leaves.every((leaf) => leaf.path.join(' ') !== command.name)) assert.ok(!byName.has(command.name), `${lang}: "${command.name}" has subcommands, so it is not a row of its own`);
@@ -54,15 +54,15 @@ for (const lang of ['en', 'es', 'pt-BR']) {
   assert.ok(plain.length > 20, `${lang}: commands without subcommands are one row each`);
   assert.ok(byName.has('rank') && /^[!/]rank/.test(byName.get('rank')[1]), 'rank is one row');
 
-  // The actions of /act: one row each, `!hug [user]`, with `/act love hug` next to it.
-  const act = generated.find((command) => command.name === 'act');
+  // The actions of /action: one row each, `!hug [user]`, with `/action love hug` next to it.
+  const act = generated.find((command) => command.name === 'action');
   for (const action of act.actions) {
     const row = byName.get(action.name);
     assert.ok(row, `${lang}: the action ${action.name} is a row`);
     assert.equal(row[1], `!${action.name} [user]`);
-    assert.ok(row[3].includes(`/act ${action.group} ${action.name}`), `${lang}: ${action.name} shows /act ${action.group} ${action.name}`);
+    assert.ok(row[3].includes(`/action ${action.group} ${action.name}`), `${lang}: ${action.name} shows /action ${action.group} ${action.name}`);
   }
-  assert.ok(![...byName.keys()].some((name) => name.startsWith('act ')), 'the groups of /act are not rows');
+  assert.ok(![...byName.keys()].some((name) => name.startsWith('action ')), 'the groups of /action are not rows');
 
   // A row is a name nobody else has (the page gives each one its anchor).
   assert.equal(byName.size, rows.length, `${lang}: no row name is repeated`);

@@ -1,5 +1,5 @@
 // Checks the names a rule of Disabled commands can take (src/utils/disabledCommands.ts): a command by its name or an alias, and every
-// interaction action of /act (`hug`, and `hf` for `highfive`) saved under the name of the action, the same key the bot's
+// interaction action of /action (`hug`, and `hf` for `highfive`) saved under the name of the action, the same key the bot's
 // `!disablecommand hug` saves, so the dashboard and the bot write and read the same rules.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -17,8 +17,8 @@ new Function('module', 'exports', 'require', outputText)(module, module.exports,
 });
 const { realCommandName, readCommandNames, disableableCommands } = module.exports;
 
-const act = generated.find((command) => command.name === 'act');
-assert.ok(act?.actions?.length >= 79, '/act brings its actions in the generated list');
+const act = generated.find((command) => command.name === 'action');
+assert.ok(act?.actions?.length >= 79, '/action brings its actions in the generated list');
 
 // Every action is a name a rule can have, and is in the suggestions.
 for (const action of act.actions) {
@@ -29,8 +29,9 @@ for (const action of act.actions) {
 }
 assert.equal(realCommandName('hf'), 'highfive');
 assert.equal(realCommandName('lol'), 'laugh');
-assert.equal(realCommandName('act'), 'act', 'the whole command can be turned off too');
-assert.ok(disableableCommands.includes('act'));
+assert.equal(realCommandName('action'), 'action', 'the whole command can be turned off too');
+assert.equal(realCommandName('act'), 'action', 'the old word `act` is the same command: a rule is saved under `action`');
+assert.ok(disableableCommands.includes('action'));
 assert.equal(realCommandName('nothing-like-this'), null, 'a word that is no command or action is unknown');
 
 // Reading what is typed: actions and commands together, without repeats, and the unknown ones told.
@@ -39,7 +40,7 @@ assert.deepEqual(readCommandNames('hug, hello').names, ['hug', 'hi'], 'an alias 
 assert.deepEqual(readCommandNames('help disablecommand').refused.sort(), ['disablecommand', 'help'], 'the protected commands are still refused');
 // The umbrellas /server and /user: a rule is saved under the name of the command a subcommand wraps, or under the key of a new one, the same
 // keys the bot reads (src/commands/info/server.js, user.js: `ruleKeys`), and the name of the umbrella turns off all of it.
-const umbrellas = { server: { info: 'serverinfo', icon: 'servericon', banner: 'serverbanner', splash: 'serversplash', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo' , inrole: 'inrole', bots: 'bots', summary: 'summary', steal: 'steal' },
+const umbrellas = { server: { info: 'serverinfo', icon: 'servericon', banner: 'serverbanner', splash: 'serversplash', roles: 'roles', channels: 'channels', emojis: 'emojis', boosters: 'boosters', channel: 'channelinfo', role: 'roleinfo', emoji: 'emojiinfo', invite: 'inviteinfo' , 'role-members': 'inrole', bots: 'bots', summary: 'summary', steal: 'steal' },
   user: { info: 'userinfo', avatar: 'avatar', banner: 'banner', cosmetics: 'usercosmetics', permissions: 'permissions', id: 'snowflake', 'first-message': 'firstmessage', activity: 'activity' } };
 for (const [name, keys] of Object.entries(umbrellas)) {
   const command = generated.find((each) => each.name === name);

@@ -26,23 +26,23 @@ interface GeneratedCommand {
   args: { name: string; required: boolean }[];
   // A command with subcommands: one entry for each subcommand (and each subcommand of a group), so the page can list each one on its own row.
   leaves?: GeneratedLeaf[];
-  // Only /act: its actions with their group, the words that reach them with the prefix and their description in each language.
+  // Only /action: its actions with their group, the words that reach them with the prefix and their description in each language.
   actions?: { name: string; group: string; aliases: string[]; desc: Record<CatalogLocale, string> }[];
 }
 
 const categoryOf: Record<string, string[]> = {
-  moderation: ['protect', 'mod', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
+  moderation: ['protect', 'mod', 'modtools', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
   tickets: ['ticket', 'quickreply', 'forum', 'forumconfig'],
-  leveling: ['level', 'rank', 'top', 'rep'],
+  leveling: ['levels', 'level', 'rank', 'top', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
-  automation: ['auto', 'message', 'automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'monkeyboard', 'clownboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity', 'feed', 'messagelinks'],
-  community: ['community', 'contrib', 'special', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
+  automation: ['automation', 'message', 'automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'monkeyboard', 'clownboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity', 'feed', 'messagelinks'],
+  community: ['community', 'social', 'contributions', 'specialchannels', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
   onboarding: ['greet', 'welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
   info: ['ai', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'bots', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
   setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed', 'send', 'pagination'],
-  // `act` stands for every interaction action (hug, pat, slap...): they are the subcommands of /act, and each gets its own row below.
-  roleplay: ['act', 'game', '8ball', 'rps', 'ship', 'quote', 'image', 'uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare'],
+  // `action` stands for every interaction action (hug, pat, slap...): they are the subcommands of /action, and each gets its own row below.
+  roleplay: ['action', 'game', '8ball', 'rps', 'ship', 'quote', 'image', 'uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare'],
 };
 
 // Owner-only support tools and the message context menu are not part of the public reference.
@@ -93,7 +93,7 @@ function leafRows(cmd: GeneratedCommand, lang: CatalogLocale): (readonly [string
 }
 
 /**
- * The rows of the actions of /act: `!hug [user]` with the slash form (`/act love hug`) and the other words that reach it (`!hf`) next
+ * The rows of the actions of /action: `!hug [user]` with the slash form (`/action love hug`) and the other words that reach it (`!hf`) next
  * to it. The curated text of an action (commandText) wins over the one of the bot's catalog.
  */
 function actionRows(cmd: GeneratedCommand, lang: CatalogLocale): (readonly [string, string, string, string[]])[] {

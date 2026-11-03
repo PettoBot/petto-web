@@ -103,11 +103,11 @@ for (const cmd of client.commands.values()) {
     description: json.description ?? '',
     subcommands: (json.options ?? []).filter((o) => optionTypes[o.type]).map((o) => o.name),
     args: (json.options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) })),
-    // The interaction actions are the subcommands of /act: each one in its group, with the words that reach it with the prefix and its
+    // The interaction actions are the subcommands of /action: each one in its group, with the words that reach it with the prefix and its
     // description in the three languages (from the bot's own catalogs).
-    ...(json.name === 'act' ? { actions: actionsOf(json) } : {}),
-    // One entry for each subcommand (and subcommand of a group); the services of the Integrations and the actions of /act have their own sections.
-    ...(json.name !== 'act' && cmd.category !== 'integrations' && (json.options ?? []).some((o) => optionTypes[o.type]) ? { leaves: leavesOf(cmd, json) } : {}),
+    ...(json.name === 'action' ? { actions: actionsOf(json) } : {}),
+    // One entry for each subcommand (and subcommand of a group); the services of the Integrations and the actions of /action have their own sections.
+    ...(json.name !== 'action' && cmd.category !== 'integrations' && (json.options ?? []).some((o) => optionTypes[o.type]) ? { leaves: leavesOf(cmd, json) } : {}),
     // An umbrella (`/server`, `/user`) names the rule of each subcommand: the command it wraps (`serverinfo` for `/server info`) or a key of its own
     // (`servericon`, with the words that reach it, `!servericon`). The dashboard saves the same names the bot reads (Disabled commands).
     ...(cmd.ruleKeys ? { ruleKeys: Object.entries(cmd.ruleKeys).map(([subcommand, name]) => ({ subcommand, name, aliases: DEFAULT_PREFIX_ROUTES.filter((route) => route.command === json.name && route.disableName === name).map((route) => route.alias) })) } : {}),
