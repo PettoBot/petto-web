@@ -16,7 +16,7 @@ for (const command of generated as GeneratedCommand[]) {
   if (command.contextMenu) continue;
   realNames.set(command.name.toLowerCase(), command.name.toLowerCase());
 }
-// The interaction actions (hug, pat...) are subcommands of /act, but a rule is saved under the name of the action (`hug`), the same as the
+// The interaction actions (hug, pat...) are subcommands of /action, but a rule is saved under the name of the action (`hug`), the same as the
 // bot's `!disablecommand hug` does, so only that action is turned off; `act` turns off all of them. An action word (`hf`) is its action.
 for (const command of generated as GeneratedCommand[]) {
   for (const action of command.actions ?? []) {

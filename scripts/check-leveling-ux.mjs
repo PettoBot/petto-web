@@ -284,7 +284,7 @@ check('the line at the top of a card', () => {
   assert.equal(s('settings', { enabled: false }), 'Off');
   assert.equal(s('settings', { notify_mode: 'off' }), 'On · 15-25 XP per message · level-ups are not announced');
   assert.equal(s('voice', { voice_enabled: true, voice_notify_mode: 'dm', voice_notify_embed_template: 't' }), 'On · 5 XP per voice minute · level-ups by direct message · template t');
-  assert.equal(s('rank', { rank_style: 'both', notify_card: 'fancy' }), '/rank answers with a card and an embed · level-up card fancy');
+  assert.equal(s('rank', { rank_style: 'both', notify_card: 'fancy' }), '/levels rank answers with a card and an embed · level-up card fancy');
   assert.equal(s('board', { leaderboard_public: true }), 'Public page on');
 });
 

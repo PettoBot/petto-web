@@ -676,7 +676,7 @@ export const ui = {
             { title: 'Open source bot', desc: 'The bot\'s code is public on GitHub under the AGPL-3.0 license.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Feedback board', desc: 'Write ideas, feedback and bugs, vote with like and dislike, comment, and see what the team plans. Also in the Petto server, where the reactions count as votes.', href: '/feedback' },
             { title: 'Bulk role management', desc: 'Assign or remove a role across many members at once, filtered by role, join date, or member type.', href: '/dash' },
-            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and the interaction commands (all in /act) also work as slash commands.', href: '/commands' },
+            { title: 'Slash commands', desc: 'The everyday commands (/help, /ban, /ticket, /embed...) and the interaction commands (all in /action) also work as slash commands.', href: '/commands' },
             { title: 'Social notifications', desc: 'Notices in your server when there is something new on YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify and more, with a card for each notice.', href: '/changelog' },
           ],
         },
@@ -705,7 +705,7 @@ export const ui = {
       items: [
         { q: 'Is Petto free?', a: 'Yes. Petto keeps its core moderation, leveling, tickets, giveaways, embeds, and dashboard useful for every server. Premium adds higher limits and server-level extras; payment is handled securely through Polar.' },
         { q: 'How do I add Petto to my server?', a: 'The "Add to Discord" button at the top of the home page. You need the Manage Server permission on the server you\'re adding it to.' },
-        { q: 'Prefix or slash commands?', a: 'Prefix for almost everything. Every command uses the server\'s configured prefix (the default is `!`). Slash commands (`/`) exist only for the interaction and roleplay commands (all of them are subcommands of `/act`, such as `/act love hug`), for `/setup` and for reports (`/report`).' },
+        { q: 'Prefix or slash commands?', a: 'Prefix for almost everything. Every command uses the server\'s configured prefix (the default is `!`). Slash commands (`/`) exist only for the interaction and roleplay commands (all of them are subcommands of `/action`, such as `/action love hug`), for `/setup` and for reports (`/report`).' },
         { q: 'Is my server\'s data safe?', a: 'Data lives in a real Postgres database behind Petto\'s private API, not a spreadsheet or a JSON file. See the Privacy Policy for exactly what is and isn\'t stored.' },
         { q: 'What happened to blibot?', a: "It moved 100% to Petto: every system blibot had, rebuilt from the ground up. Read the full announcement on the Blog." },
         { q: 'What are Nelu and AM?', a: 'Two separate bots built by the same team: Nelu (anime-only) and AM (AI-powered automoderation). Both are planned and neither is public yet.' },
@@ -991,7 +991,7 @@ export const ui = {
             steps: [
               'Set message or voice XP, curves, caps, announcements, and cooldowns from !level and the dashboard.',
               'Add role rewards at specific levels, and multipliers per role or channel.',
-              'Members check message progress with /rank, or add type:voice for voice rank and leaderboard data.',
+              'Members check message progress with /levels rank, or add type:voice for voice rank and leaderboard data.',
             ],
           },
           cmds: [] as CommandRow[],
@@ -1063,7 +1063,7 @@ export const ui = {
             steps: [
               "Check any member's account with /userinfo, or the server's with /serverinfo.",
               "Look up a role, channel, or emoji's details with !roleinfo, !channelinfo, or !emojiinfo.",
-              "Petto's own stats are public too, with /botinfo, /ping, and /uptime.",
+              "Petto's own stats are public too, with /bot info, /bot ping, and /uptime.",
             ],
           },
           cmds: [] as CommandRow[],
@@ -1085,7 +1085,7 @@ export const ui = {
           guide: {
             intro: 'Roleplay is a set of light, friendly actions members can send to each other.',
             steps: [
-              'Run a command like !hug @member, or /act love hug, to send the action.',
+              'Run a command like !hug @member, or /action love hug, to send the action.',
               'Petto replies with a themed message and an animated image.',
               'Every action is playful and safe for work.',
             ],
@@ -2240,7 +2240,7 @@ export const ui = {
             { title: 'Bot de código abierto', desc: 'El código del bot es público en GitHub con licencia AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Tablero de feedback', desc: 'Escribe ideas, comentarios y errores, vota con me gusta y no me gusta, comenta y mira qué planea el equipo. También en el servidor de Petto, donde las reacciones cuentan como votos.', href: '/feedback' },
             { title: 'Gestión masiva de roles', desc: 'Asignar o quitar un rol a muchos miembros a la vez, filtrado por rol, fecha de ingreso o tipo de miembro.', href: '/dash' },
-            { title: 'Comandos slash', desc: 'Los comandos de uso diario (/help, /ban, /ticket, /embed...) y los de interacción (todos en /act) también funcionan como comandos slash.', href: '/commands' },
+            { title: 'Comandos slash', desc: 'Los comandos de uso diario (/help, /ban, /ticket, /embed...) y los de interacción (todos en /action) también funcionan como comandos slash.', href: '/commands' },
             { title: 'Notificaciones de redes', desc: 'Avisos en tu servidor cuando hay algo nuevo en YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify y más, con una tarjeta para cada aviso.', href: '/changelog' },
           ],
         },
@@ -2269,7 +2269,7 @@ export const ui = {
       items: [
         { q: '¿Petto es gratis?', a: 'Sí. Petto mantiene gratis y útil para todos sus sistemas principales: moderación, leveling, tickets, sorteos, embeds y dashboard. Premium suma límites más altos y extras por server; el pago se gestiona de forma segura con Polar.' },
         { q: '¿Cómo agrego Petto a mi servidor?', a: 'El botón "Agregar a Discord" arriba en la página de inicio. Necesitas el permiso de Administrar servidor en el servidor donde lo agregas.' },
-        { q: '¿Prefijo o comandos slash?', a: 'Prefijo para casi todo. Todos los comandos usan el prefijo configurado del servidor (por defecto `!`). Los comandos slash (`/`) existen solo para los comandos de interacción y roleplay (todos son subcomandos de `/act`, como `/act love hug`), para `/setup` y para los reportes (`/report`).' },
+        { q: '¿Prefijo o comandos slash?', a: 'Prefijo para casi todo. Todos los comandos usan el prefijo configurado del servidor (por defecto `!`). Los comandos slash (`/`) existen solo para los comandos de interacción y roleplay (todos son subcomandos de `/action`, como `/action love hug`), para `/setup` y para los reportes (`/report`).' },
         { q: '¿Mis datos están seguros?', a: 'Los datos viven en una base de datos Postgres real detrás de la API privada de Petto, no en una planilla ni un archivo JSON. Revisa la Política de privacidad para ver exactamente qué se guarda y qué no.' },
         { q: '¿Qué pasó con blibot?', a: 'Se mudó 100% a Petto: cada sistema que tenía blibot, reconstruido desde cero. Lee el anuncio completo en el Blog.' },
         { q: '¿Qué son Nelu y AM?', a: 'Dos bots separados hechos por el mismo equipo: Nelu (solo de anime) y AM (automoderación con IA). Los dos están planeados y ninguno es público todavía.' },
@@ -2555,7 +2555,7 @@ export const ui = {
             steps: [
             'Define por separado el XP de mensajes y voz, sus curvas, límites, avisos y cooldowns desde !level y la dashboard.',
               'Agrega recompensas de rol en niveles específicos, y multiplicadores por rol o canal.',
-            'Los miembros revisan mensajes con /rank, o usan type:voice para consultar su rango y el leaderboard de voz.',
+            'Los miembros revisan mensajes con /levels rank, o usan type:voice para consultar su rango y el leaderboard de voz.',
             ],
           },
           cmds: [] as CommandRow[],
@@ -2627,7 +2627,7 @@ export const ui = {
             steps: [
               'Revisa la cuenta de cualquier miembro con /userinfo, o la del servidor con /serverinfo.',
               'Busca los detalles de un rol, canal, o emoji con !roleinfo, !channelinfo, o !emojiinfo.',
-              'Las estadísticas del propio Petto también son públicas, con /botinfo, /ping, y /uptime.',
+              'Las estadísticas del propio Petto también son públicas, con /bot info, /bot ping, y /uptime.',
             ],
           },
           cmds: [] as CommandRow[],
@@ -2649,7 +2649,7 @@ export const ui = {
           guide: {
             intro: 'Roleplay es un conjunto de acciones ligeras y amistosas que los miembros pueden enviarse entre sí.',
             steps: [
-              'Usa un comando como !hug @miembro, o /act love hug, para enviar la acción.',
+              'Usa un comando como !hug @miembro, o /action love hug, para enviar la acción.',
               'Petto responde con un mensaje temático y una imagen animada.',
               'Todas las acciones son juguetonas y aptas para todo público.',
             ],
@@ -3804,7 +3804,7 @@ export const ui = {
             { title: 'Bot de código aberto', desc: 'O código do bot é público no GitHub com licença AGPL-3.0.', href: 'https://github.com/PettoBot/petto-bot' },
             { title: 'Quadro de feedback', desc: 'Escreva ideias, comentários e bugs, vote com curtir e não curtir, comente e veja o que a equipe planeja. Também no servidor do Petto, onde as reações contam como votos.', href: '/feedback' },
             { title: 'Gestão em massa de cargos', desc: 'Atribuir ou remover um cargo de vários membros de uma vez, filtrado por cargo, data de entrada ou tipo de membro.', href: '/dash' },
-            { title: 'Comandos slash', desc: 'Os comandos do dia a dia (/help, /ban, /ticket, /embed...) e os de interação (todos em /act) também funcionam como comandos slash.', href: '/commands' },
+            { title: 'Comandos slash', desc: 'Os comandos do dia a dia (/help, /ban, /ticket, /embed...) e os de interação (todos em /action) também funcionam como comandos slash.', href: '/commands' },
             { title: 'Notificações de redes', desc: 'Avisos no seu servidor quando há novidades no YouTube, Twitch, Kick, Bluesky, Reddit, Steam, Spotify e mais, com um cartão para cada aviso.', href: '/changelog' },
           ],
         },
@@ -3833,7 +3833,7 @@ export const ui = {
       items: [
         { q: 'O Petto é gratuito?', a: 'Sim. O Petto mantém grátis e útil para todos os sistemas principais: moderação, leveling, tickets, sorteios, embeds e dashboard. O Premium adiciona limites maiores e extras por server; o pagamento é gerenciado com segurança pela Polar.' },
         { q: 'Como adiciono o Petto ao meu servidor?', a: 'O botão "Adicionar ao Discord" no topo da página inicial. Você precisa da permissão Gerenciar Servidor no servidor onde está adicionando.' },
-        { q: 'Prefixo ou comandos slash?', a: 'Prefixo para quase tudo. Todos os comandos usam o prefixo configurável do servidor (o padrão é `!`). Os comandos slash (`/`) existem apenas para os comandos de interação e roleplay (todos são subcomandos de `/act`, como `/act love hug`), para `/setup` e para denúncias (`/report`).' },
+        { q: 'Prefixo ou comandos slash?', a: 'Prefixo para quase tudo. Todos os comandos usam o prefixo configurável do servidor (o padrão é `!`). Os comandos slash (`/`) existem apenas para os comandos de interação e roleplay (todos são subcomandos de `/action`, como `/action love hug`), para `/setup` e para denúncias (`/report`).' },
         { q: 'Os dados do meu servidor estão seguros?', a: 'Os dados vivem em um banco de dados Postgres de verdade atrás da API privada do Petto, não em uma planilha ou um arquivo JSON. Veja a Política de privacidade para saber exatamente o que é guardado e o que não é.' },
         { q: 'O que aconteceu com o blibot?', a: 'Ele migrou 100% para o Petto: cada sistema que o blibot tinha, reconstruído do zero. Leia o anúncio completo no Blog.' },
         { q: 'O que são o Nelu e o AM?', a: 'Dois bots separados feitos pela mesma equipe: o Nelu (só de anime) e o AM (automoderação com IA). Os dois estão planejados e nenhum é público ainda.' },
@@ -4119,7 +4119,7 @@ export const ui = {
             steps: [
             'Defina separadamente o XP de mensagens e voz, suas curvas, limites, avisos e cooldowns em !level e no dashboard.',
               'Adicione recompensas de cargo em níveis específicos, e multiplicadores por cargo ou canal.',
-            'Os membros conferem mensagens com /rank, ou usam type:voice para consultar o rank e o ranking de voz.',
+            'Os membros conferem mensagens com /levels rank, ou usam type:voice para consultar o rank e o ranking de voz.',
             ],
           },
           cmds: [] as CommandRow[],
@@ -4191,7 +4191,7 @@ export const ui = {
             steps: [
               'Confira a conta de qualquer membro com /userinfo, ou a do servidor com /serverinfo.',
               'Busque os detalhes de um cargo, canal, ou emoji com !roleinfo, !channelinfo, ou !emojiinfo.',
-              'As próprias estatísticas do Petto também são públicas, com /botinfo, /ping, e /uptime.',
+              'As próprias estatísticas do Petto também são públicas, com /bot info, /bot ping, e /uptime.',
             ],
           },
           cmds: [] as CommandRow[],
@@ -4213,7 +4213,7 @@ export const ui = {
           guide: {
             intro: 'Roleplay é um conjunto de ações leves e amigáveis que os membros podem enviar uns aos outros.',
             steps: [
-              'Use um comando como !hug @membro, ou /act love hug, para enviar a ação.',
+              'Use um comando como !hug @membro, ou /action love hug, para enviar a ação.',
               'O Petto responde com uma mensagem temática e uma imagem animada.',
               'Todas as ações são divertidas e seguras para qualquer público.',
             ],
