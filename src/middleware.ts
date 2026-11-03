@@ -20,7 +20,8 @@ warmShared();
 // The owner's latency figures (/dash/health) survive a restart through Redis.
 startLatencyKeeping();
 
-const PUBLIC_SHARED_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:stats|status|team|credits|partners|lb\/[^/]+)\/?$/i;
+// The home page is drawn on request too (its link preview says how many servers and members Petto has), and kept a minute in front like the rest.
+const PUBLIC_SHARED_PAGE = /^(?:\/(?:es|pt-br))?\/?$|^\/(?:(?:es|pt-br)\/)?(?:stats|status|team|credits|partners|lb\/[^/]+)\/?$/i;
 const PUBLIC_SHARED_CACHE = 'public, s-maxage=60, stale-while-revalidate=600';
 // The partners, the team and the leaderboards are edited by their owners and checked right after saving, so the copy in front is kept shorter and never served stale.
 const PARTNERS_PAGE = /^\/(?:(?:es|pt-br)\/)?(?:partners|team|lb\/[^/]+)\/?$/i;
