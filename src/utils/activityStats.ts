@@ -5,6 +5,8 @@ export const STAT_TABS = ['overview', 'messages', 'voice', 'heatmap', 'joins', '
 // The time of Petto: GMT-5, Colombia (no daylight saving). Days and hours are counted in it.
 export const BOT_OFFSET_MS = -5 * 60 * 60 * 1000;
 export const BOT_TIME_LABEL = 'GMT-5';
+// The same time as a database zone (to group timestamps by the Colombian day in SQL).
+export const BOT_TIME_ZONE = 'America/Bogota';
 export const botDay = (date: Date | string | number = new Date()) => new Date(new Date(date).getTime() + BOT_OFFSET_MS).toISOString().slice(0, 10);
 
 const GROUPS: Record<string, string[]> = { bans: ['ban', 'hardban', 'tempban', 'softban'], mutes: ['mute', 'tempmute'], warns: ['warn'], kicks: ['kick'], jails: ['jail'] };
