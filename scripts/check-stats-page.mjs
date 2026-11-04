@@ -4,7 +4,7 @@
 // (src/data/globalStatsCopy.mjs).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BOT_OFFSET_MS, baseSince, botDay, changeSince, dailyRows, dayChanges, daysBefore, isApprox, nextDay, normalizeHistory, runsOf, seriesOf, smoothPath, summarize, withLiveToday, withinDays, zoomScale } from '../src/utils/globalStatsMath.mjs';
+import { BOT_OFFSET_MS, LONG_RANGE_DAYS, MAX_HISTORY_DAYS, RANGES, baseSince, botDay, changeSince, dailyRows, dayChanges, daysBefore, isApprox, monthTicks, nextDay, normalizeHistory, runsOf, seriesOf, smoothPath, summarize, withLiveToday, withinDays, zoomScale } from '../src/utils/globalStatsMath.mjs';
 import { COPY } from '../src/data/globalStatsCopy.mjs';
 
 // A day is a day in GMT-5: 03:00 UTC is still the day before.
@@ -45,7 +45,17 @@ assert.deepEqual(nulls, [
   { day: '2026-11-03', servers: 150, members: 4000, messages: 5, estimated: true },
   { day: '2026-11-04', servers: 151 },
 ]);
-assert.equal(normalizeHistory(Array.from({ length: 200 }, (_, i) => ({ day: daysBefore('2026-11-04', i), messages: i }))).length, 120);
+// Up to 400 days are kept, the newest ones, and the ranges of the chart go up to a year.
+assert.equal(MAX_HISTORY_DAYS, 400);
+assert.deepEqual(RANGES, [7, 30, 90, 365]);
+assert.ok(RANGES[RANGES.length - 1] < MAX_HISTORY_DAYS);
+const long = normalizeHistory(Array.from({ length: 500 }, (_, i) => ({ day: daysBefore('2026-11-04', i), members: 1000 + i, estimated: i > 4 })));
+assert.equal(long.length, 400);
+assert.equal(long[long.length - 1].day, '2026-11-04');
+assert.equal(long[0].day, daysBefore('2026-11-04', 399));
+assert.equal(withinDays(seriesOf(long, 'members', '2026-11-04'), 365).length, 365, 'a year is 365 points');
+assert.equal(withinDays(seriesOf(long, 'members', '2026-11-04'), 365)[0].day, daysBefore('2026-11-04', 364));
+assert.equal(seriesOf(long, 'members', '2026-11-04').filter((p) => p.estimated).length, 395, 'almost the whole line is estimated');
 
 // Today is the last point of every series. A level (servers, members) at today is a full point; a per-day number at today is partial
 // (the day is not over), and only those carry the flag. Days without the number are left out (the line breaks there).
@@ -156,12 +166,31 @@ assert.equal(rows[0].cells.messages.estimated, undefined);
 const gap = dailyRows(normalizeHistory([{ day: '2026-11-01', messages: 5 }, { day: '2026-11-03', messages: 9 }]), '2026-11-04', 14);
 assert.equal(gap[0].cells.messages.change, null);
 
+// The month labels of a long chart: the first of each month in the window, thinned from the newest one, the year on January and on the
+// oldest. Never more than asked for, so they do not touch on a phone.
+const yearTicks = monthTicks(daysBefore('2026-11-04', 364), '2026-11-04', 12);
+assert.equal(yearTicks.length, 12);
+assert.equal(yearTicks[yearTicks.length - 1].day, '2026-11-01');
+assert.equal(yearTicks[0].day, '2025-12-01');
+assert.deepEqual(yearTicks.filter((tick) => tick.year).map((tick) => tick.day), ['2025-12-01', '2026-01-01']);
+const phoneTicks = monthTicks(daysBefore('2026-11-04', 364), '2026-11-04', 3);
+assert.deepEqual(phoneTicks.map((tick) => tick.day), ['2026-03-01', '2026-07-01', '2026-11-01'], 'thinned, anchored to the newest month');
+assert.ok(phoneTicks.length <= 3);
+assert.deepEqual(monthTicks('2026-11-02', '2026-11-20', 4), [], 'no month starts inside a short window');
+assert.deepEqual(monthTicks('2026-11-01', '2026-11-20', 4).map((tick) => tick.day), ['2026-11-01']);
+assert.ok(LONG_RANGE_DAYS >= 90 && LONG_RANGE_DAYS < 365, 'a year labels months, 90 days labels days');
+
 // The zoomed scale: it fits the data (not zero) and has round ticks inside it; a flat series still gets a band; never below zero.
 const members = zoomScale([56_000, 56_300, 57_000, 56_800]);
 assert.ok(members.min > 50_000 && members.min < 56_000, 'zoomed, not from zero');
 assert.ok(members.max > 57_000 && members.max < 60_000);
 assert.ok(members.ticks.length >= 3 && members.ticks.every((tick) => tick >= members.min && tick <= members.max));
 assert.ok(members.ticks.every((tick) => tick % members.step === 0));
+// A big swing (340,000 members down to 57,800) still gets round ticks inside a zoomed scale.
+const swing = zoomScale([340_000, 270_000, 80_000, 57_800]);
+assert.ok(swing.min < 57_800 && swing.max > 340_000 && swing.min >= 0);
+assert.ok(swing.ticks.every((tick) => !Object.is(tick, -0)), 'no -0 tick');
+assert.ok(swing.ticks.length >= 3 && swing.ticks.length <= 8 && swing.ticks.every((tick) => tick >= swing.min && tick <= swing.max));
 const flat = zoomScale([180, 180, 180]);
 assert.ok(flat.min < 180 && flat.max > 180);
 assert.ok(zoomScale([0, 3, 1]).min >= 0);
@@ -181,14 +210,20 @@ for (const lang of Object.keys(COPY)) {
 }
 for (const lang of Object.keys(COPY)) {
   assert.ok(COPY[lang].estimatedNote.includes('{date}'), `${lang}.estimatedNote needs the date`);
+  assert.ok(COPY[lang].estimatedTableNote.includes('{date}'), `${lang}.estimatedTableNote needs the date`);
+  assert.ok(COPY[lang].range365.trim().length <= 3, `${lang}.range365 is a short label`);
+  // The note says where the numbers come from (the team's records of key dates, and the counters) and that the line is dashed.
+  assert.ok(!COPY[lang].estimatedNote.includes('<'), `${lang}.estimatedNote has no markup`);
   assert.ok(COPY[lang].todaySoFar !== COPY[lang].today, `${lang}.todaySoFar is its own text`);
 }
+assert.ok(COPY.en.estimatedNote.includes('key dates') && COPY.es.estimatedNote.includes('fechas clave') && COPY['pt-BR'].estimatedNote.includes('datas-chave'), 'the note names the team records as a source');
+assert.ok(COPY.en.estimatedNote.includes('dashed') && COPY.es.estimatedNote.includes('trazos') && COPY['pt-BR'].estimatedNote.includes('tracejado'), 'the note says the line is dashed');
 assert.ok(COPY.es.onlyDays.includes('{n}') && COPY['pt-BR'].onlyDays.includes('{n}') && COPY.en.onlyDays.includes('{n}'));
 
 // The page uses them: the tabs of servers and members stay with no history, with the message that it starts today, and the last
 // point of a per-day series is an open one named "Today, so far".
 const page = readFileSync(new URL('../src/components/GlobalStats.astro', import.meta.url), 'utf8');
-for (const needle of ["t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything"]) {
+for (const needle of ["t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
   assert.ok(page.includes(needle), `GlobalStats.astro lost ${needle}`);
 }
 
