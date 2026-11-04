@@ -23,6 +23,7 @@ for (const job of jobs) {
   const file = path.join(folder, `${job.name}.webp`);
   if (!existsSync(file)) { problems.push(`${job.name}: the file is missing (run npm run make:og)`); continue; }
   if (!manifest.cards[job.name]) problems.push(`${job.name}: it is not in the manifest (run npm run make:og)`);
+  else if (manifest.cards[job.name].version !== createHash('md5').update(readFileSync(file)).digest('hex').slice(0, 10)) problems.push(`${job.name}: the version in the manifest is not the one of the picture, so the address of the picture would not change (run npm run make:og)`);
   const bytes = readFileSync(file);
   if (bytes.subarray(0, 4).toString() !== 'RIFF' || bytes.subarray(8, 12).toString() !== 'WEBP') { problems.push(`${job.name}: it is not a WebP`); continue; }
   // The size is in the header of the first chunk: VP8 (lossy), VP8L or VP8X.
@@ -93,6 +94,7 @@ for (const pageKey of Object.keys(CARD_PATHS)) {
     const urls = [`https://petto.sbs/invite`, `https://petto.sbs/dash`, DOCS_URL[lang], SUPPORT_URL];
     const emoji = [EMOJI.invite, EMOJI.dashboard, EMOJI.docs, EMOJI.support];
     if (row.length !== 4 || row.some((button, i) => button.type !== 2 || button.style !== 5 || button.url !== urls[i] || button.emoji?.id !== emoji[i].id || !button.label)) problems.push(`${pagePath}: the card does not have its four link buttons with their emoji`);
+    if (!/\.webp\?v=[0-9a-f]{10}$/.test(pageImagePath(picture))) problems.push(`${pagePath}: the address of the picture has no version, so Discord would keep showing the old picture after it is drawn again`);
     if (new TextEncoder().encode(json).length > 3000) problems.push(`${pagePath}: the card is over 3,000 bytes`);
     if (SIZE_OF_THE_BOT.test(json)) problems.push(`${pagePath}: the card counts servers or members`);
     if (!/Petto/.test(embed.components.find((part) => part.type === 10).content.split('\n')[0])) problems.push(`${pagePath}: the title of the card does not carry the brand`);

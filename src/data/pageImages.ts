@@ -8,6 +8,8 @@ import manifest from './ogManifest.json';
 
 export interface PageImage {
   name: string;
+  /** The start of the hash of the picture: it goes in the address so Discord, X and the CDN fetch the picture again when it was drawn again. */
+  version: string;
   alt: string;
   tagline: string;
   /** The title the preview of the page has when the page is one of the cards (a page under a card, like a release, has its own). */
@@ -22,7 +24,7 @@ export interface PageImage {
   height: number;
 }
 
-const cards = manifest.cards as Record<string, { key: string; lang: string; tone: string; alt: string; tagline: string; embedTitle: string; description: string }>;
+const cards = manifest.cards as Record<string, { key: string; lang: string; tone: string; alt: string; tagline: string; embedTitle: string; description: string; version?: string }>;
 const drawn = new Set(Object.values(cards).map((card) => card.key));
 
 /** The picture of a page by its path (with or without the language prefix and a final slash). */
@@ -33,6 +35,7 @@ export function pageImage(pathname: string): PageImage {
   const card = cards[name];
   return {
     name,
+    version: card?.version ?? '',
     alt: card?.alt ?? 'Petto',
     tagline: card?.tagline ?? '',
     embedTitle: card?.embedTitle ?? 'Petto, a Discord bot',
@@ -44,4 +47,4 @@ export function pageImage(pathname: string): PageImage {
   };
 }
 
-export const pageImagePath = (image: PageImage) => `/assets/og/${image.name}.webp`;
+export const pageImagePath = (image: PageImage) => `/assets/og/${image.name}.webp${image.version ? `?v=${image.version}` : ''}`;
