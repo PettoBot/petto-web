@@ -9,7 +9,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { CARDS, LANGS, NEWS_PAGES, accentNumber, cardName, postKeyOf, postToneOf } from '../../src/data/ogCards.mjs';
+import { CARDS, LANGS, NEWS_PAGES, cardName, postKeyOf, postToneOf } from '../../src/data/ogCards.mjs';
+import { PREVIEW } from '../../src/data/previewText.mjs';
 import { cardHtml, HEIGHT, WIDTH } from './template.mjs';
 import { loadUi } from './load-copy.mjs';
 
@@ -36,19 +37,24 @@ const fileUrl = (assetPath) => `file://${publicDir}${assetPath}`;
 export async function planJobs() {
   const ui = await loadUi();
   const jobs = [];
-  const job = (key, lang, card, extra) => ({ name: cardName(key, lang), key, lang, card, title: card.title[lang], tagline: card.tagline[lang], extra });
+  const job = (key, lang, card, embed, extra) => ({ name: cardName(key, lang), key, lang, card, title: card.title[lang], tagline: card.tagline[lang], embed, extra });
   for (const lang of LANGS) {
-    for (const [key, card] of Object.entries(CARDS)) jobs.push(job(key, lang, card));
+    for (const [key, card] of Object.entries(CARDS)) {
+      const text = PREVIEW[key];
+      if (!text) throw new Error(`The card ${key} has no text for its link preview (src/data/previewText.mjs)`);
+      jobs.push(job(key, lang, card, { title: text.title[lang], description: text.description[lang] }));
+    }
     const t = ui.useTranslations(lang);
     // A post of the news: its own title is the headline (smaller, up to 4 lines) with the date in a chip, and its own banner on the card.
     for (const item of ui.sortedReleases(lang)) {
       if (!item.href || !item.banner) continue;
       const card = { tone: postToneOf(item.href), art: 'post', title: { [lang]: item.title }, tagline: { [lang]: clip(item.desc, 90) } };
-      jobs.push(job(postKeyOf(item.href), lang, card, { post: { banner: fileUrl(item.banner), date: item.date } }));
+      // The title of a post is its own plus the brand when it does not say it already; the description is the one of the post.
+      jobs.push(job(postKeyOf(item.href), lang, card, { title: /Petto/.test(item.title) ? item.title : `${item.title} · Petto`, description: item.desc }, { post: { banner: fileUrl(item.banner), date: item.date } }));
     }
     for (const page of NEWS_PAGES) {
       const card = { tone: page.tone, art: 'post', title: page.title, tagline: page.tagline };
-      jobs.push(job(postKeyOf(page.path), lang, card, { post: { banner: fileUrl(page.banner), date: t.newsPosts[page.post].date } }));
+      jobs.push(job(postKeyOf(page.path), lang, card, { title: page.embedTitle[lang], description: page.description[lang] }, { post: { banner: fileUrl(page.banner), date: t.newsPosts[page.post].date } }));
     }
   }
   return jobs;
@@ -59,7 +65,7 @@ export async function specHash(jobs) {
   for (const file of ['template.mjs', 'render.mjs']) hash.update(await readFile(path.join(here, file)));
   hash.update(await readFile(path.join(publicDir, 'assets/duck-plain.png')));
   // The banners of the posts are written as absolute file addresses: the folder of the checkout is not part of the look, so the hash does not depend on where the project is.
-  hash.update(JSON.stringify(jobs.map((job) => [job.name, job.card, job.title, job.tagline, job.extra ?? null])).split(`file://${publicDir}`).join('file://public'));
+  hash.update(JSON.stringify(jobs.map((job) => [job.name, job.card, job.title, job.tagline, job.embed, job.extra ?? null])).split(`file://${publicDir}`).join('file://public'));
   return hash.digest('hex').slice(0, 16);
 }
 
@@ -96,7 +102,7 @@ async function main() {
   await rm(tmp, { force: true });
   if (only) return; // a partial run leaves the manifest and the rest of the folder alone
   // The manifest: what exists, so the layout never points at a card that was not drawn; and a hash of what the cards were made from.
-  for (const job of jobs) files[job.name] = { key: job.key, lang: job.lang, alt: job.title, tagline: job.tagline, accent: accentNumber(job.card.tone) };
+  for (const job of jobs) files[job.name] = { key: job.key, lang: job.lang, tone: job.card.tone, alt: job.title, tagline: job.tagline, embedTitle: job.embed.title, description: job.embed.description };
   const present = new Set(jobs.map((job) => `${job.name}.webp`));
   for (const file of await readdir(outDir)) if (!present.has(file)) await rm(path.join(outDir, file));
   await writeFile(manifestFile, `${JSON.stringify({ width: WIDTH, height: HEIGHT, spec: await specHash(jobs), cards: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) }, null, 1)}\n`);

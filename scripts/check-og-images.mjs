@@ -1,12 +1,15 @@
 // Makes sure the preview cards of the site (src/data/ogCards.mjs, drawn by `npm run make:og`) are all there and good: every card in every language
 // exists as a WebP of 1200x630 that is not heavy, the manifest lists exactly what is in the folder, the files were drawn from the current data and
-// look (the hash in the manifest), the pages find their cards, and every card has its tone, its artwork and a headline that ends in a period.
+// look (the hash in the manifest), the pages find their cards, every card has its tone, its artwork and a headline that ends in a period, and the preview of every page
+// has a descriptive title with the brand, a description, four buttons and a bar of the color of its picture, with nothing about how many servers or members Petto has.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARDS, LANGS, TONES, cardName, ogCardFor, postKeyOf } from '../src/data/ogCards.mjs';
-import { ART_NAMES } from './og/template.mjs';
+import { CARDS, CARD_PATHS, LANGS, TONES, accentNumber, cardName, ogCardFor, postKeyOf } from '../src/data/ogCards.mjs';
+import { PREVIEW } from '../src/data/previewText.mjs';
+import { ART_NAMES, cardHtml } from './og/template.mjs';
+import { loadTs } from './og/load-copy.mjs';
 import { planJobs, specHash } from './og/render.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,8 +51,53 @@ for (const [key, card] of Object.entries(CARDS)) {
     if (/\bAI\b|\bIA\b/.test(`${title} ${tagline}`)) problems.push(`${key}: the card names something it should not (${lang})`);
   }
 }
-// Every card has the color of the accent bar of its Discord card.
-for (const [name, card] of Object.entries(manifest.cards)) if (!Number.isInteger(card.accent)) problems.push(`${name}: it has no accent color in the manifest`);
+// What every preview says (src/data/previewText.mjs, and the posts): a title that says what the page is and carries the brand (never a bare word), a description of
+// a sentence or two, and nothing about how many servers or members Petto has, in any language, in the title, the description or the picture's words.
+const SIZE_OF_THE_BOT = /\d[\d.,]*\s*(?:servers?|servidores?|members?|miembros?|membros?|guilds?|users?|usuarios?|usuários?)\b|looking after|cuidando\b|cuidar d[eo]\b/i;
+const BANNED = /\bAI\b|\bIA\b/;
+for (const key of Object.keys(CARDS)) if (!PREVIEW[key]) problems.push(`${key}: it has no text for its link preview (src/data/previewText.mjs)`);
+for (const key of Object.keys(PREVIEW)) if (!CARDS[key]) problems.push(`${key}: it has text for a link preview and no card`);
+for (const [name, card] of Object.entries(manifest.cards)) {
+  const { embedTitle: title, description, tagline, alt, tone } = card;
+  if (!TONES[tone]) problems.push(`${name}: the tone ${tone} does not exist`);
+  if (typeof title !== 'string' || typeof description !== 'string') { problems.push(`${name}: it has no title or description for its preview in the manifest`); continue; }
+  if (!/Petto/.test(title)) problems.push(`${name}: the title of the preview does not carry the brand: ${title}`);
+  if (title.trim().split(/\s+/).length < 3) problems.push(`${name}: the title of the preview is a bare word: ${title}`);
+  // About 70 characters keeps it on two lines in Discord; a post keeps its own title (with the brand) and may be a little longer.
+  if (title.length > (name.startsWith('post-') ? 90 : 72)) problems.push(`${name}: the title of the preview is too long (${title.length} characters): ${title}`);
+  if (description.length < 40 || description.length > 260) problems.push(`${name}: the description of the preview must be a sentence or two (${description.length} characters)`);
+  for (const [what, text] of [['title', title], ['description', description], ['headline', alt], ['tagline', tagline]]) {
+    if (SIZE_OF_THE_BOT.test(text)) problems.push(`${name}: the ${what} counts servers or members: ${text}`);
+    if (BANNED.test(text)) problems.push(`${name}: the ${what} names something it should not`);
+  }
+}
+
+// The Discord card of every page, built the way the layout builds it: four link buttons with an emoji, in the size Discord accepts, and a bar on its left that is the
+// SAME color as the background of the picture of the page (the table of tones is the one source: the picture is drawn with it and the bar is read from it).
+const { pageImage, pageImagePath } = await loadTs('src/data/pageImages.ts');
+const { discordEmbedJson, DOCS_URL, SUPPORT_URL, EMOJI } = await loadTs('src/data/discordEmbed.ts');
+const jobsByName = new Map(jobs.map((job) => [job.name, job]));
+for (const pageKey of Object.keys(CARD_PATHS)) {
+  const base = pageKey === '/lb' ? '/lb/a-server' : pageKey;
+  for (const [prefix, lang] of [['', 'en'], ['/es', 'es'], ['/pt-br', 'pt-BR']]) {
+    const pagePath = `${prefix}${base}`;
+    const picture = pageImage(pagePath);
+    const job = jobsByName.get(picture.name);
+    if (!job) { problems.push(`${pagePath}: its picture ${picture.name} is not a card`); continue; }
+    const json = discordEmbedJson(lang, { title: picture.embedTitle, description: picture.description, url: `https://petto.sbs${pagePath}`, image: { url: `https://petto.sbs${pageImagePath(picture)}`, alt: picture.alt }, accent: picture.accent });
+    const embed = JSON.parse(json.replace(/\\u003c/g, '<')).component;
+    const wanted = parseInt(TONES[job.card.tone].bg.slice(1), 16);
+    if (embed.accent_color !== wanted || picture.accent !== wanted || accentNumber(job.card.tone) !== wanted) problems.push(`${pagePath}: the bar of the card is not the background color of its picture`);
+    if (!cardHtml({ card: job.card, lang, title: job.title, tagline: job.tagline, extra: job.extra, assetsDir: path.join(root, 'scripts/og/assets'), publicDir: path.join(root, 'public') }).includes(`background: ${TONES[job.card.tone].bg}`)) problems.push(`${pagePath}: its picture is not drawn on the background of its tone`);
+    const row = embed.components.find((part) => part.type === 1)?.components ?? [];
+    const urls = [`https://petto.sbs/invite`, `https://petto.sbs/dash`, DOCS_URL[lang], SUPPORT_URL];
+    const emoji = [EMOJI.invite, EMOJI.dashboard, EMOJI.docs, EMOJI.support];
+    if (row.length !== 4 || row.some((button, i) => button.type !== 2 || button.style !== 5 || button.url !== urls[i] || button.emoji?.id !== emoji[i].id || !button.label)) problems.push(`${pagePath}: the card does not have its four link buttons with their emoji`);
+    if (new TextEncoder().encode(json).length > 3000) problems.push(`${pagePath}: the card is over 3,000 bytes`);
+    if (SIZE_OF_THE_BOT.test(json)) problems.push(`${pagePath}: the card counts servers or members`);
+    if (!/Petto/.test(embed.components.find((part) => part.type === 10).content.split('\n')[0])) problems.push(`${pagePath}: the title of the card does not carry the brand`);
+  }
+}
 
 // The pages find their cards, with the language prefix and the final slash, and a page nobody listed falls back to its parent and then to the home card.
 const has = (key) => Object.values(manifest.cards).some((card) => card.key === key);

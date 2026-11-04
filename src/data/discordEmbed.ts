@@ -1,48 +1,32 @@
 import type { Locale } from '../i18n/ui';
 
 const SITE = 'https://petto.sbs';
-// The icons of the two buttons are from Petto's colorless set (the server's own emojis), and the card has no accent color, so it is as
-// plain as the other cards in the chat.
-const EMOJI = {
+// The icons of the four buttons are from Petto's colorless set (grayscale, measured on the Discord CDN; the server's own emojis): the first two are the ones the
+// card always had, Docs is the round i of information (light like the other two; the page of notes, pe_notas, is grayscale too but too dark on the button) and Support the speech bubble. The color of the bar on the left of the card is the background of the picture of
+// the page (see data/ogCards.mjs), so the card and its picture are one color.
+export const EMOJI = {
   invite: { id: '1562517637668540456', name: 'pe_ticket_add' },
   dashboard: { id: '1533209778438934609', name: 'pe_config' },
+  docs: { id: '1533575563225337866', name: 'pe_info' },
+  support: { id: '1566294375053660160', name: 'pe_speech' },
 };
 const MAX_BYTES = 3000;
 
-// The card is kept small and plain, and it is about the page that was shared: the banner, the title of that page (a link to its own
-// address) with its one-line description, the address in small letters, and two buttons. It keeps the kinds of parts of the card that
-// Discord accepted before (banner, text, divider, text, buttons with emoji), because Discord drops the whole preview when something in
-// it is not to its liking and does not say what.
-// The picture is the card drawn for the page (a WebP of 1200x630, see data/ogCards.mjs and data/pageImages.ts): the files are made when the site
-// is built and served as they are (the server keeps them for a day), so Discord, which gives the whole preview 10 seconds, never waits for one to be
-// drawn. The home page's title says how many servers and members Petto has (homeEmbedTitle); if the numbers cannot be read, it is the plain title.
-const buttons: Record<Locale, { invite: string; dashboard: string }> = {
-  en: { invite: 'Add to Discord', dashboard: 'Dashboard' },
-  es: { invite: 'Agregar a Discord', dashboard: 'Dashboard' },
-  'pt-BR': { invite: 'Adicionar ao Discord', dashboard: 'Dashboard' },
+// The card is kept small and plain, and it is about the page that was shared: the picture, the title of that page (a link to its own address) with its
+// description, the address in small letters, and four buttons. It keeps the kinds of parts of the card that Discord accepted before (picture, text, divider,
+// text, buttons with emoji), because Discord drops the whole preview when something in it is not to its liking and does not say what.
+// The picture is the card drawn for the page (a WebP of 1200x630, see data/ogCards.mjs and data/pageImages.ts): the files are made when the site is built and
+// served as they are (the server keeps them for a day), so Discord, which gives the whole preview 10 seconds, never waits for one to be drawn.
+// What the card says never has a count of servers or members of the bot.
+const buttons: Record<Locale, { invite: string; dashboard: string; docs: string; support: string }> = {
+  en: { invite: 'Add to Discord', dashboard: 'Dashboard', docs: 'Docs', support: 'Support' },
+  es: { invite: 'Agregar a Discord', dashboard: 'Dashboard', docs: 'Docs', support: 'Soporte' },
+  'pt-BR': { invite: 'Adicionar ao Discord', dashboard: 'Dashboard', docs: 'Docs', support: 'Suporte' },
 };
-
-const NUMBER_SEPARATOR: Record<Locale, string> = { en: ',', es: '.', 'pt-BR': '.' };
-/** 56468 as `56,468` (English) or `56.468` (Spanish and Portuguese), whatever the browser or the server would do with 4 digits. */
-export const groupNumber = (value: number, lang: Locale) => String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, NUMBER_SEPARATOR[lang]);
-
-/**
- * The title of the link preview of the home page: Petto's own numbers when they are known ("Petto · Looking after 620 servers and 56,468
- * members"), only the servers when the members are not known, and the plain title when nothing is.
- */
-export function homeEmbedTitle(lang: Locale, plain: string, numbers: { servers: number; members: number | null } | null): string {
-  const servers = numbers && Number.isFinite(numbers.servers) && numbers.servers > 0 ? numbers.servers : 0;
-  if (!servers) return plain;
-  const members = numbers?.members && Number.isFinite(numbers.members) && numbers.members > 0 ? numbers.members : 0;
-  const s = groupNumber(servers, lang);
-  const m = groupNumber(members, lang);
-  const text = {
-    en: members ? `Looking after ${s} ${servers === 1 ? 'server' : 'servers'} and ${m} ${members === 1 ? 'member' : 'members'}` : `Looking after ${s} ${servers === 1 ? 'server' : 'servers'}`,
-    es: members ? `Cuidando ${s} ${servers === 1 ? 'servidor' : 'servidores'} y ${m} ${members === 1 ? 'miembro' : 'miembros'}` : `Cuidando ${s} ${servers === 1 ? 'servidor' : 'servidores'}`,
-    'pt-BR': members ? `Cuidando de ${s} ${servers === 1 ? 'servidor' : 'servidores'} e ${m} ${members === 1 ? 'membro' : 'membros'}` : `Cuidando de ${s} ${servers === 1 ? 'servidor' : 'servidores'}`,
-  }[lang];
-  return `Petto · ${text}`;
-}
+/** The wiki has its own pages in Spanish and Portuguese. */
+export const DOCS_URL: Record<Locale, string> = { en: 'https://wiki.petto.sbs', es: 'https://wiki.petto.sbs/es/overview/introduction', 'pt-BR': 'https://wiki.petto.sbs/pt-br/overview/introduction' };
+/** The support server of Petto: the address the site already uses (it sends people to the invite). */
+export const SUPPORT_URL = `${SITE}/support`;
 
 const linkButton = (label: string, emoji: { id: string; name: string }, url: string) => ({ type: 2, style: 5, label, emoji, url });
 const clip = (text: string, max: number) => {
@@ -64,14 +48,14 @@ export function discordEmbedJson(lang: Locale, page: { title: string; descriptio
   const payload = {
     component: {
       type: 17,
-      // The bar on the left of the card, in the tone of the page's picture (a darker tone of its pastel).
+      // The bar on the left of the card: the same color as the background of the picture of the page.
       ...(typeof page.accent === 'number' ? { accent_color: page.accent } : {}),
       components: [
         { type: 12, items: [{ media: { url: page.image?.url ?? `${SITE}/assets/petto-link-banner.webp` }, description: page.image?.alt ?? 'Petto, a moderation and community bot for Discord' }] },
-        { type: 10, content: `## [${clip(plain(page.title, true), 80) || 'Petto'}](${url})\n${clip(plain(page.description), 200)}` },
+        { type: 10, content: `## [${clip(plain(page.title, true), 90) || 'Petto'}](${url})\n${clip(plain(page.description), 220)}` },
         { type: 14, spacing: 1 },
         { type: 10, content: `-# ${address}` },
-        { type: 1, components: [linkButton(text.invite, EMOJI.invite, `${SITE}/invite`), linkButton(text.dashboard, EMOJI.dashboard, `${SITE}/dash`)] },
+        { type: 1, components: [linkButton(text.invite, EMOJI.invite, `${SITE}/invite`), linkButton(text.dashboard, EMOJI.dashboard, `${SITE}/dash`), linkButton(text.docs, EMOJI.docs, DOCS_URL[lang]), linkButton(text.support, EMOJI.support, SUPPORT_URL)] },
       ],
     },
   };
