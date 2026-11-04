@@ -1,6 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { encodeSession } from '../../utils/session';
+import { cosmeticsFromUser } from '../../utils/discordCosmetics.mjs';
 import { getEnv } from '../../utils/env';
 import { getDashLang, makeT } from '../../i18n/dash';
 import { withDashPrefix } from '../../utils/dashPrefix.mjs';
@@ -70,6 +71,7 @@ export const GET: APIRoute = async ({ url, redirect: plainRedirect, cookies, loc
       userId: user.id,
       username: user.global_name || user.username,
       avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64` : null,
+      ...cosmeticsFromUser(user),
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
       expiresAt: Date.now() + token.expires_in * 1000,
