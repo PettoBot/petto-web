@@ -3,7 +3,7 @@ import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import { useTranslations, localePath, type Locale } from '../i18n/ui';
 import { getEnv } from '../utils/env';
-import { getServiceStatus } from '../utils/serviceStatus';
+import { getStatusHistory, startedDay, type StatusHistory } from '../utils/statusHistory';
 
 interface Props {
   lang: Locale;
@@ -57,12 +57,39 @@ function formatUptime(totalSeconds: number) {
   return `${m}m`;
 }
 
-const live = await getServiceStatus(Astro).catch(() => null);
-const serviceNames: Record<string, string> = { website: s.svcWebsite, dashboard: s.svcDashboard, database: s.svcDatabase, discord: s.svcDiscord, commands: s.svcCommands };
-const serviceLabel: Record<string, string> = { operational: s.shardOperational, slow: s.stateSlow, down: s.stateDown, unknown: s.stateUnknown };
-const headingFor = (overall: string) => (overall === 'down' ? s.headingDown : overall === 'slow' ? s.headingSlow : s.heading);
-const servicesEndpoint = new URL('/api/status-services', Astro.url).pathname;
-
+// The history of every service (90 UTC days) and what each one is doing now: read from the database at most once a minute (statusHistory.ts).
+const history: StatusHistory = await getStatusHistory(Astro).catch(() => ({ available: false, generatedAt: new Date().toISOString(), startedAt: null, days: [], services: [], incidents: [] }));
+const historyEndpoint = new URL('/api/status-history', Astro.url).pathname;
+const serviceNames: Record<string, string> = { bot: s.svcBot, site: s.svcSite, database: s.svcDatabase };
+const nowLabel: Record<string, string> = { up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown };
+const overallOf = (h: StatusHistory) => {
+  const states = h.services.map((svc) => svc.now);
+  if (!h.available || !states.length || states.every((state) => state === 'unknown')) return 'unknown';
+  return states.includes('down') ? 'down' : states.includes('degraded') ? 'degraded' : 'up';
+};
+const overall = overallOf(history);
+const headingFor = (state: string) => (state === 'down' ? s.headingDown : state === 'degraded' ? s.headingDegraded : state === 'unknown' ? s.headingUnknown : s.heading);
+const dateLocale = lang === 'pt-BR' ? 'pt-BR' : lang;
+const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString(dateLocale, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
+const fill = (text: string, values: Record<string, string | number>) => text.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
+const started = startedDay(history);
+const barClass = (state: string) => (state === 'down' ? 'down' : state === 'warn' ? 'warn' : state === 'nodata' ? 'none' : 'up');
+const barTip = (mark: { d: string; s: string; c?: number; dm?: number; um?: number; gm?: number }) => {
+  const lines = [dayLabel(mark.d)];
+  if (mark.s === 'pre') lines.push(started ? fill(s.tipPre, { date: dayLabel(started) }) : s.startingNote);
+  else if (mark.s === 'nodata') lines.push(s.tipNone);
+  else if (mark.s === 'up') lines.push(s.tipUp);
+  else {
+    if (mark.dm) lines.push(fill(s.tipDown, { n: mark.dm }));
+    if (mark.um) lines.push(fill(s.tipUnconfirmed, { n: mark.um }));
+    if (mark.gm) lines.push(fill(s.tipGap, { n: mark.gm }));
+  }
+  if (mark.c) lines.push(fill(s.tipChecks, { n: mark.c }));
+  return lines.join('\n');
+};
+const incidentText = (inc: { kind: string; minutes: number; unconfirmed: number }) =>
+  inc.kind === 'down' ? fill(s.incDown, { n: inc.minutes }) : inc.kind === 'nodata' ? s.incNone : inc.minutes && !inc.unconfirmed ? fill(s.incGap, { n: inc.minutes }) : s.incWarn;
+const clientText = { up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown, tipPre: s.tipPre, startingNote: s.startingNote, tipNone: s.tipNone, tipUp: s.tipUp, tipDown: s.tipDown, tipUnconfirmed: s.tipUnconfirmed, tipGap: s.tipGap, tipChecks: s.tipChecks, daysAgo: s.daysAgo, today: s.today, headingOk: s.heading, headingDegraded: s.headingDegraded, headingDown: s.headingDown, headingUnknown: s.headingUnknown, startedNote: s.startedNote, incDown: s.incDown, incWarn: s.incWarn, incGap: s.incGap, incNone: s.incNone, incidentsNone: s.incidentsNone, unavailable: s.histUnavailable, svcBot: s.svcBot, svcSite: s.svcSite, svcDatabase: s.svcDatabase };
 const now = Date.now();
 const shardRows = await botApiGet('bot_status');
 const shards = shardRows
@@ -86,21 +113,51 @@ const stateLabel: Record<string, string> = {
     <section class="status-sec">
       <div class="wrap status-wrap">
         <div class="eyebrow">{s.pill}</div>
-        <h1 id="statusHeading" data-ok={s.heading} data-slow={s.headingSlow} data-down={s.headingDown}><span class:list={['status-hero-dot', live?.overall]}></span><span id="statusHeadingText">{headingFor(live?.overall ?? 'operational')}</span></h1>
+        <h1 id="statusHeading"><span class:list={['status-hero-dot', overall]}></span><span id="statusHeadingText">{headingFor(overall)}</span></h1>
         <p class="status-desc">{s.desc}</p>
 
-        <div class="status-block-label svc-label first">{s.servicesTitle}</div>
-        <div class="svc-grid" id="svcGrid" data-endpoint={servicesEndpoint} data-operational={s.shardOperational} data-slow={s.stateSlow} data-down={s.stateDown} data-unknown={s.stateUnknown}>
-          {(live?.services ?? []).map((svc) => (
-            <div class={`svc-card ${svc.state}`} data-svc={svc.id}>
-              <span class="svc-dot"></span>
-              <span class="svc-name">{serviceNames[svc.id]}</span>
-              <span class="svc-ms">{svc.ms ? `${svc.ms} ms` : ''}</span>
-              <span class={`status-pill ${svc.state === 'operational' ? 'ok' : ''}`}>{serviceLabel[svc.state]}</span>
-            </div>
-          ))}
+        <div class="hist" id="statusHistory" data-endpoint={historyEndpoint} data-locale={dateLocale} data-text={JSON.stringify(clientText)} data-period="90">
+          <div class="hist-head">
+            <h2 class="hist-title">{s.histTitle}</h2>
+            <label class="hist-period">
+              <span class="sr-only">{s.periodLabel}</span>
+              <select id="histPeriod" aria-label={s.periodLabel}>
+                <option value="90" selected>{s.period90}</option>
+                <option value="60">{s.period60}</option>
+                <option value="30">{s.period30}</option>
+              </select>
+            </label>
+          </div>
+          {!history.available && <p class="hist-problem" role="status">{s.histUnavailable}</p>}
+          <div class="hist-cards" id="histCards">
+            {history.services.map((svc) => (
+              <article class="hist-card" data-svc={svc.id}>
+                <header class="hist-card-head">
+                  <h3>{serviceNames[svc.id]}</h3>
+                  <span class={`hist-now ${svc.now}`}>{nowLabel[svc.now]}</span>
+                </header>
+                <div class="bars" role="img" aria-label={fill(s.serviceHistory, { n: 90 })}>
+                  {svc.marks.map((mark) => <i class={`b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`} data-d={mark.d} data-tip={barTip(mark)}></i>)}
+                </div>
+                <div class="bars-axis"><span data-axis-start>{fill(s.daysAgo, { n: 90 })}</span><span>{s.today}</span></div>
+              </article>
+            ))}
+          </div>
+          <div class="hist-tip" id="histTip" role="tooltip" hidden></div>
+          <ul class="hist-legend">
+            <li><i class="b up"></i>{s.legendUp}</li>
+            <li><i class="b warn"></i>{s.legendWarn}</li>
+            <li><i class="b down"></i>{s.legendDown}</li>
+            <li><i class="b none"></i>{s.legendNone}</li>
+          </ul>
+          <p class="hist-note">{s.histNote}</p>
+          <p class="hist-meta"><span>{s.everyTwo}</span>{history.available && <span id="histStarted"> · {started ? fill(s.startedNote, { date: dayLabel(started) }) : s.startingNote}</span>}</p>
+          <h2 class="hist-title hist-incidents-title">{s.incidentsTitle}</h2>
+          <ul class="hist-incidents" id="histIncidents">
+            {history.available && history.incidents.length === 0 && <li class="none">{s.incidentsNone}</li>}
+            {history.incidents.map((inc) => <li class={inc.kind}><i class={`b ${barClass(inc.kind)}`}></i><div><b>{dayLabel(inc.day)}</b><span>{serviceNames[inc.service]}</span></div><em>{incidentText(inc)}</em></li>)}
+          </ul>
         </div>
-        {live && <p class="svc-foot"><span id="svcChecked">{s.checkedLabel}</span> · {s.websiteUptime}: <b id="svcUptime">{formatUptime(live.website.uptimeSeconds)}</b> · v{live.website.version}</p>}
 
         <div
           id="statusBlock"
@@ -174,30 +231,125 @@ const stateLabel: Record<string, string> = {
 </Base>
 
 <script>
-  // The services block follows the real state: it asks again every 30 seconds and changes the dots, the times and the heading.
-  const grid = document.getElementById('svcGrid');
-  if (grid) {
-    const labels: Record<string, string> = { operational: grid.dataset.operational ?? '', slow: grid.dataset.slow ?? '', down: grid.dataset.down ?? '', unknown: grid.dataset.unknown ?? '' };
-    const heading = document.getElementById('statusHeading');
-    const headingText = document.getElementById('statusHeadingText');
-    const dot = heading?.querySelector('.status-hero-dot');
+  // The history follows the real state: it asks again every minute (the answer is kept a minute on the server), changes the cards, the bars,
+  // the heading and the incidents, and the period selector shows the last 30, 60 or 90 days. Everything is written as text, never as HTML.
+  const hist = document.getElementById('statusHistory');
+  if (hist) {
+    const text: Record<string, string> = JSON.parse(hist.dataset.text || '{}');
+    const locale = hist.dataset.locale || 'en';
+    const tip = document.getElementById('histTip')!;
+    const cards = document.getElementById('histCards')!;
+    const select = document.getElementById('histPeriod') as HTMLSelectElement;
+    const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
+    const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
+    const barClass = (state: string) => (state === 'down' ? 'down' : state === 'warn' ? 'warn' : state === 'nodata' ? 'none' : 'up');
+    let started: string | null = null;
+
+    function tipFor(mark: any) {
+      const lines = [dayLabel(mark.d)];
+      if (mark.s === 'pre') lines.push(started ? fill(text.tipPre, { date: dayLabel(started) }) : text.startingNote);
+      else if (mark.s === 'nodata') lines.push(text.tipNone);
+      else if (mark.s === 'up') lines.push(text.tipUp);
+      else {
+        if (mark.dm) lines.push(fill(text.tipDown, { n: mark.dm }));
+        if (mark.um) lines.push(fill(text.tipUnconfirmed, { n: mark.um }));
+        if (mark.gm) lines.push(fill(text.tipGap, { n: mark.gm }));
+      }
+      if (mark.c) lines.push(fill(text.tipChecks, { n: mark.c }));
+      return lines.join('\n');
+    }
+
+    function applyPeriod() {
+      const n = Number(select.value) || 90;
+      hist!.dataset.period = String(n);
+      cards.querySelectorAll('.bars').forEach((bars) => {
+        const items = Array.from(bars.children) as HTMLElement[];
+        items.forEach((bar, index) => { bar.hidden = index < items.length - n; });
+      });
+      cards.querySelectorAll('[data-axis-start]').forEach((label) => { label.textContent = fill(text.daysAgo, { n }); });
+    }
+
+    function render(data: any) {
+      if (!Array.isArray(data?.services)) return;
+      started = data.startedAt ? String(data.startedAt).slice(0, 10) : null;
+      const states: string[] = [];
+      for (const svc of data.services) {
+        const card = cards.querySelector<HTMLElement>(`[data-svc="${svc.id}"]`);
+        if (!card) continue;
+        states.push(svc.now);
+        const now = card.querySelector('.hist-now');
+        if (now) { now.className = `hist-now ${svc.now}`; now.textContent = text[svc.now] ?? ''; }
+        const bars = card.querySelector('.bars')!;
+        const fragment = document.createDocumentFragment();
+        for (const mark of svc.marks) {
+          const bar = document.createElement('i');
+          bar.className = `b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`;
+          bar.dataset.d = mark.d;
+          bar.dataset.tip = tipFor(mark);
+          fragment.appendChild(bar);
+        }
+        bars.replaceChildren(fragment);
+      }
+      const overall = !data.available || !states.length || states.every((state) => state === 'unknown') ? 'unknown' : states.includes('down') ? 'down' : states.includes('degraded') ? 'degraded' : 'up';
+      const headingText = document.getElementById('statusHeadingText');
+      const dot = document.querySelector('#statusHeading .status-hero-dot');
+      if (headingText) headingText.textContent = ({ up: text.headingOk, degraded: text.headingDegraded, down: text.headingDown, unknown: text.headingUnknown } as Record<string, string>)[overall] ?? '';
+      if (dot) dot.className = `status-hero-dot ${overall}`;
+      const startedNote = document.getElementById('histStarted');
+      if (startedNote) startedNote.textContent = data.available ? ` · ${started ? fill(text.startedNote, { date: dayLabel(started) }) : text.startingNote}` : '';
+      const list = document.getElementById('histIncidents');
+      if (list) {
+        const names: Record<string, string> = { bot: text.svcBot, site: text.svcSite, database: text.svcDatabase };
+        const items: HTMLElement[] = [];
+        if (data.available && !data.incidents.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = text.incidentsNone; items.push(li); }
+        for (const inc of data.incidents ?? []) {
+          const li = document.createElement('li');
+          li.className = inc.kind;
+          const dotEl = document.createElement('i'); dotEl.className = `b ${barClass(inc.kind)}`;
+          const day = document.createElement('b'); day.textContent = dayLabel(inc.day);
+          const name = document.createElement('span'); name.textContent = names[inc.service] ?? '';
+          const what = document.createElement('em');
+          what.textContent = inc.kind === 'down' ? fill(text.incDown, { n: inc.minutes }) : inc.kind === 'nodata' ? text.incNone : inc.minutes && !inc.unconfirmed ? fill(text.incGap, { n: inc.minutes }) : text.incWarn;
+          const main = document.createElement('div'); main.append(day, name);
+          li.append(dotEl, main, what);
+          items.push(li);
+        }
+        list.replaceChildren(...items);
+      }
+      applyPeriod();
+    }
+
+    let current: HTMLElement | null = null;
+    function showTip(bar: HTMLElement) {
+      if (!bar.dataset.tip) return;
+      current = bar;
+      tip.textContent = bar.dataset.tip;
+      tip.hidden = false;
+      tip.style.left = '0px'; tip.style.top = '0px';
+      const box = hist!.getBoundingClientRect();
+      const rect = bar.getBoundingClientRect();
+      const width = tip.offsetWidth;
+      const left = Math.min(Math.max(rect.left + rect.width / 2 - box.left - width / 2, 0), Math.max(0, box.width - width));
+      tip.style.left = `${left}px`;
+      tip.style.top = `${rect.top - box.top - tip.offsetHeight - 8}px`;
+    }
+    const hideTip = () => { tip.hidden = true; current = null; };
+    cards.addEventListener('pointerover', (event) => { const bar = (event.target as HTMLElement).closest<HTMLElement>('.b'); if (bar && (event as PointerEvent).pointerType !== 'touch') showTip(bar); });
+    cards.addEventListener('pointerleave', hideTip);
+    cards.addEventListener('click', (event) => { const bar = (event.target as HTMLElement).closest<HTMLElement>('.b'); if (!bar) return hideTip(); if (current === bar) hideTip(); else showTip(bar); });
+    document.addEventListener('click', (event) => { if (!(event.target as HTMLElement).closest('#histCards')) hideTip(); });
+    select.addEventListener('change', () => { hideTip(); applyPeriod(); });
+
     async function refresh() {
       try {
-        const response = await fetch(grid!.dataset.endpoint!, { cache: 'no-store', headers: { Accept: 'application/json' } });
-        const report = await response.json();
-        if (!response.ok || !Array.isArray(report?.services)) return;
-        for (const svc of report.services) {
-          const card = grid!.querySelector<HTMLElement>(`[data-svc="${svc.id}"]`);
-          if (!card) continue;
-          card.className = `svc-card ${svc.state}`;
-          const ms = card.querySelector('.svc-ms'); if (ms) ms.textContent = svc.ms ? `${svc.ms} ms` : '';
-          const pill = card.querySelector('.status-pill'); if (pill) { pill.textContent = labels[svc.state] ?? ''; pill.classList.toggle('ok', svc.state === 'operational'); }
-        }
-        if (headingText && heading) headingText.textContent = (report.overall === 'down' ? heading.dataset.down : report.overall === 'slow' ? heading.dataset.slow : heading.dataset.ok) ?? '';
-        if (dot) dot.className = `status-hero-dot ${report.overall}`;
+        const response = await fetch(hist!.dataset.endpoint!, { headers: { Accept: 'application/json' } });
+        if (response.ok) render(await response.json());
       } catch { /* the last values stay on the screen */ }
     }
-    window.setInterval(refresh, 30_000);
+    applyPeriod();
+    window.setInterval(refresh, 60_000);
+    // The server paints the first state; the tooltips of that first paint were written there with the date of the first check.
+    refresh();
   }
 </script>
 
@@ -352,23 +504,55 @@ const stateLabel: Record<string, string> = {
 <style>
   .svc-label { margin-top: 28px; }
   .svc-label.first { margin-top: 8px; }
-  .svc-card.slow .status-pill { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
-  .svc-card.down .status-pill { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
-  .svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
-  .svc-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 10px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--card); }
-  .svc-card .svc-name { font-size: 14px; font-weight: 600; }
-  .svc-card .svc-ms { grid-column: 2; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
-  .svc-card .status-pill { grid-column: 3; grid-row: 1 / span 2; }
-  .svc-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 20%, transparent); }
-  .svc-card.slow .svc-dot { background: var(--yellow); box-shadow: 0 0 0 4px color-mix(in srgb, var(--yellow) 20%, transparent); }
-  .svc-card.down .svc-dot { background: var(--red); box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 20%, transparent); }
-  .svc-card.unknown .svc-dot { background: var(--text-dim); box-shadow: none; }
-  .svc-foot { margin: 12px 2px 28px; font-size: 12.5px; color: var(--text-dim); }
-  .status-hero-dot.slow { background: var(--yellow); }
-  .status-hero-dot.down { background: var(--red); }
+  .status-hero-dot.degraded { background: var(--yellow); box-shadow: 0 0 0 5px var(--yellow-soft); }
+  .status-hero-dot.down { background: var(--red); box-shadow: 0 0 0 5px var(--red-soft); }
+  .status-hero-dot.unknown { background: var(--text-dim); box-shadow: 0 0 0 5px var(--border-soft); }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .hist { position: relative; margin: 6px 0 40px; }
+  .hist-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .hist-title { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: 0; }
+  .hist-period select { appearance: none; border: 1px solid var(--border); border-radius: 10px; background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2379756d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 12px center; color: var(--text); font: inherit; font-size: 13.5px; padding: 8px 32px 8px 12px; cursor: pointer; }
+  .hist-problem { margin: 0 0 12px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-muted); font-size: 13.5px; line-height: 1.5; }
+  .hist-cards { display: grid; gap: 12px; }
+  .hist-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; background: var(--card); }
+  .hist-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .hist-card-head h3 { font-size: 15px; font-weight: 650; margin: 0; line-height: 1.3; }
+  .hist-now { flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--green); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .hist-now::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
+  .hist-now.degraded { color: var(--yellow); }
+  .hist-now.down { color: var(--red); }
+  .hist-now.unknown { color: var(--text-dim); }
+  .bars { display: flex; gap: 2px; height: 34px; align-items: stretch; }
+  .hist :global(.b) { display: block; flex: 1 1 0; min-width: 0; border-radius: 2px; background: var(--border); cursor: default; transition: transform 0.12s ease, filter 0.12s ease; }
+  .bars :global(.b):hover { transform: scaleY(1.12); filter: brightness(1.15); }
+  .hist :global(.b.up) { background: var(--green); }
+  .hist :global(.b.pre) { opacity: 0.8; }
+  .hist :global(.b.warn) { background: var(--yellow); }
+  .hist :global(.b.down) { background: var(--red); }
+  .hist :global(.b.none) { background: color-mix(in srgb, var(--text-dim) 55%, var(--border)); }
+  .bars :global(.b[hidden]) { display: none; }
+  .bars-axis { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11.5px; color: var(--text-dim); }
+  .hist-tip { position: absolute; z-index: 5; width: max-content; max-width: min(260px, 100%); padding: 8px 11px; border-radius: 10px; background: var(--card-hover); border: 1px solid var(--border); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35); font-size: 12.5px; line-height: 1.45; white-space: pre-line; pointer-events: none; }
+  .hist-tip[hidden] { display: none; }
+  .hist-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 16px 2px 0; padding: 0; font-size: 12.5px; color: var(--text-muted); }
+  .hist-legend li { display: inline-flex; align-items: center; gap: 7px; }
+  .hist-legend :global(.b) { flex: none; width: 5px; height: 14px; }
+  .hist-note { margin: 12px 2px 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
+  .hist-meta { margin: 6px 2px 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
+  .hist-incidents-title { margin-top: 28px; }
+  .hist-incidents { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+  .hist-incidents :global(li) { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--card); font-size: 13.5px; }
+  .hist-incidents :global(li.none) { display: block; border-style: dashed; color: var(--text-dim); }
+  .hist-incidents :global(.b) { flex: none; width: 5px; height: 100%; min-height: 34px; grid-row: 1 / span 2; }
+  .hist-incidents :global(div) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+  .hist-incidents :global(b) { font-weight: 650; }
+  .hist-incidents :global(span) { color: var(--text-muted); }
+  .hist-incidents :global(em) { grid-column: 2; font-style: normal; color: var(--text-dim); font-size: 12.5px; }
+  @media (min-width: 560px) { .bars { gap: 3px; height: 40px; } }
 
   .status-sec { padding: 90px 0 120px; }
-  .status-wrap { max-width: 640px; }
+  .status-wrap { max-width: 760px; }
   .status-sec h1 { font-size: 30px; margin: 14px 0 12px; display: flex; align-items: center; gap: 12px; }
   .status-hero-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px var(--green-soft); flex-shrink: 0; }
   .status-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; max-width: 54ch; margin-bottom: 34px; }

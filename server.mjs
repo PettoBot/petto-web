@@ -255,3 +255,19 @@ setTimeout(async () => {
   for (const name of guildPages()) await touch(`/dash/guild/0/${name}`);
 }, 300).unref?.();
 setInterval(() => { touch('/api/warm'); }, 4 * 60_000).unref?.();
+
+// Every 2 minutes the site records its own status checks (the bot's heartbeat, the website, the database) for the status page's history:
+// the app does the work (/api/status-check, with the secret it shares with the bot), this only asks at the start of each window. A first
+// round soon after start fills in what a restart missed. The checks of the bot's side are written by the bot.
+const STATUS_WINDOW_MS = 2 * 60_000;
+const statusKey = process.env.PETTO_BOT_API_SECRET;
+if (statusKey) {
+  const checkNow = () => fetch(`${origin()}/api/status-check`, { method: 'POST', headers: { 'user-agent': WARMUP_AGENT, 'x-petto-status-key': statusKey } }).then((res) => res.arrayBuffer()).catch(() => {});
+  const scheduleCheck = () => {
+    const now = Date.now();
+    const next = Math.floor(now / STATUS_WINDOW_MS) * STATUS_WINDOW_MS + STATUS_WINDOW_MS + 50_000;
+    setTimeout(() => { checkNow().finally(scheduleCheck); }, next - now).unref?.();
+  };
+  setTimeout(checkNow, 20_000).unref?.();
+  scheduleCheck();
+}

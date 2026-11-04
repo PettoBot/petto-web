@@ -13,14 +13,36 @@ const MAX_BYTES = 3000;
 // address) with its one-line description, the address in small letters, and two buttons. It keeps the kinds of parts of the card that
 // Discord accepted before (banner, text, divider, text, buttons with emoji), because Discord drops the whole preview when something in
 // it is not to its liking and does not say what.
-// A page with a banner of its own (a blog post) shows that banner instead (a PNG, see data/pageImages.mjs).
-// The default banner is the same file as in that card (a plain WebP, not the smaller one with a colour profile): Discord already keeps a copy of it,
-// and a new image has to be fetched from the site within the 10 seconds Discord gives the whole preview.
+// The picture is the card drawn for the page (a WebP of 1200x630, see data/ogCards.mjs and data/pageImages.ts): the files are made when the site
+// is built and served as they are (the server keeps them for a day), so Discord, which gives the whole preview 10 seconds, never waits for one to be
+// drawn. The home page's title says how many servers and members Petto has (homeEmbedTitle); if the numbers cannot be read, it is the plain title.
 const buttons: Record<Locale, { invite: string; dashboard: string }> = {
   en: { invite: 'Add to Discord', dashboard: 'Dashboard' },
   es: { invite: 'Agregar a Discord', dashboard: 'Dashboard' },
   'pt-BR': { invite: 'Adicionar ao Discord', dashboard: 'Dashboard' },
 };
+
+const NUMBER_SEPARATOR: Record<Locale, string> = { en: ',', es: '.', 'pt-BR': '.' };
+/** 56468 as `56,468` (English) or `56.468` (Spanish and Portuguese), whatever the browser or the server would do with 4 digits. */
+export const groupNumber = (value: number, lang: Locale) => String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, NUMBER_SEPARATOR[lang]);
+
+/**
+ * The title of the link preview of the home page: Petto's own numbers when they are known ("Petto · Looking after 620 servers and 56,468
+ * members"), only the servers when the members are not known, and the plain title when nothing is.
+ */
+export function homeEmbedTitle(lang: Locale, plain: string, numbers: { servers: number; members: number | null } | null): string {
+  const servers = numbers && Number.isFinite(numbers.servers) && numbers.servers > 0 ? numbers.servers : 0;
+  if (!servers) return plain;
+  const members = numbers?.members && Number.isFinite(numbers.members) && numbers.members > 0 ? numbers.members : 0;
+  const s = groupNumber(servers, lang);
+  const m = groupNumber(members, lang);
+  const text = {
+    en: members ? `Looking after ${s} ${servers === 1 ? 'server' : 'servers'} and ${m} ${members === 1 ? 'member' : 'members'}` : `Looking after ${s} ${servers === 1 ? 'server' : 'servers'}`,
+    es: members ? `Cuidando ${s} ${servers === 1 ? 'servidor' : 'servidores'} y ${m} ${members === 1 ? 'miembro' : 'miembros'}` : `Cuidando ${s} ${servers === 1 ? 'servidor' : 'servidores'}`,
+    'pt-BR': members ? `Cuidando de ${s} ${servers === 1 ? 'servidor' : 'servidores'} e ${m} ${members === 1 ? 'membro' : 'membros'}` : `Cuidando de ${s} ${servers === 1 ? 'servidor' : 'servidores'}`,
+  }[lang];
+  return `Petto · ${text}`;
+}
 
 const linkButton = (label: string, emoji: { id: string; name: string }, url: string) => ({ type: 2, style: 5, label, emoji, url });
 const clip = (text: string, max: number) => {
@@ -35,13 +57,15 @@ const plain = (text: string, link = false) => text.replace(link ? /[\\*_~`|[\]()
  * shared (its title, description and address) in its language. Discord drops the whole preview when the payload is invalid or over
  * 3,000 bytes, so the size is checked while the site builds.
  */
-export function discordEmbedJson(lang: Locale, page: { title: string; description: string; url: string; image?: { url: string; alt: string } }): string {
+export function discordEmbedJson(lang: Locale, page: { title: string; description: string; url: string; image?: { url: string; alt: string }; accent?: number }): string {
   const text = buttons[lang];
   const url = page.url.startsWith(SITE) ? page.url : SITE;
   const address = url.replace(/^https:\/\//, '').replace(/\/$/, '');
   const payload = {
     component: {
       type: 17,
+      // The bar on the left of the card, in the tone of the page's picture (a darker tone of its pastel).
+      ...(typeof page.accent === 'number' ? { accent_color: page.accent } : {}),
       components: [
         { type: 12, items: [{ media: { url: page.image?.url ?? `${SITE}/assets/petto-link-banner.webp` }, description: page.image?.alt ?? 'Petto, a moderation and community bot for Discord' }] },
         { type: 10, content: `## [${clip(plain(page.title, true), 80) || 'Petto'}](${url})\n${clip(plain(page.description), 200)}` },
