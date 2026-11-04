@@ -46,7 +46,7 @@ const categoryOf: Record<string, string[]> = {
 };
 
 // Owner-only support tools and the message context menu are not part of the public reference.
-const hidden = new Set(['guilddebug', 'guildsend', 'leaveguild', 'botstatus', 'slots', 'bots', 'Report Message', 'Report User']);
+const hidden = new Set(['guilddebug', 'guildsend', 'leaveguild', 'botstatus', 'slots', 'perf', 'bots', 'Report Message', 'Report User']);
 
 // Each module has a `!<module>config` card (and every other command a generated one); they are explained once in `!cmdconfig`, not one by one.
 const listedNames = new Set(Object.values(categoryOf).flat());
