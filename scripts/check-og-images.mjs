@@ -1,17 +1,18 @@
 // Makes sure the preview cards of the site (src/data/ogCards.mjs, drawn by `npm run make:og`) are all there and good: every card in every language
 // exists as a WebP of 1200x630 that is not heavy, the manifest lists exactly what is in the folder, the files were drawn from the current data and
-// look (the hash in the manifest), the pages find their cards, and the link preview of a page fits in what Discord accepts.
+// look (the hash in the manifest), the pages find their cards, and every card has its tone, its artwork and a headline that ends in a period.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARDS, LANGS, cardName, ogCardFor, postKeyOf } from '../src/data/ogCards.mjs';
+import { CARDS, LANGS, TONES, cardName, ogCardFor, postKeyOf } from '../src/data/ogCards.mjs';
+import { ART_NAMES } from './og/template.mjs';
 import { planJobs, specHash } from './og/render.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const folder = path.join(root, 'public/assets/og');
 const manifest = JSON.parse(readFileSync(path.join(root, 'src/data/ogManifest.json'), 'utf8'));
-const MAX_BYTES = 150 * 1024;
+const MAX_BYTES = 80 * 1024;
 const problems = [];
 
 const jobs = await planJobs();
@@ -35,14 +36,20 @@ for (const file of readdirSync(folder)) if (!expected.has(file)) problems.push(`
 for (const name of Object.keys(manifest.cards)) if (!expected.has(`${name}.webp`)) problems.push(`${name}: it is in the manifest and no card makes it`);
 if (manifest.spec !== await specHash(jobs)) problems.push('the cards were drawn from other data or another look than the current ones (run npm run make:og)');
 
-// Every language of every card has a headline and a tagline, and the chips are short.
+// Every card has a tone and artwork that exist, and in every language a short headline that ends in a period (or a question mark) and a tagline for two lines.
 for (const [key, card] of Object.entries(CARDS)) {
+  if (!TONES[card.tone]) problems.push(`${key}: the tone ${card.tone} does not exist`);
+  if (!ART_NAMES.includes(card.art)) problems.push(`${key}: the artwork ${card.art} does not exist`);
   for (const lang of LANGS) {
-    if (!card.title?.[lang] || !card.tagline?.[lang]) problems.push(`${key}: the headline or the tagline is missing in ${lang}`);
-    if ((card.chips?.[lang] ?? []).some((chip) => chip.length > 18)) problems.push(`${key}: a chip is too long in ${lang}`);
-    if (/\bAI\b|\bIA\b/.test(`${card.title?.[lang]} ${card.tagline?.[lang]}`)) problems.push(`${key}: the card names something it should not (${lang})`);
+    const title = card.title?.[lang]; const tagline = card.tagline?.[lang];
+    if (!title || !tagline) { problems.push(`${key}: the headline or the tagline is missing in ${lang}`); continue; }
+    if (!/[.?]$/.test(title)) problems.push(`${key}: the headline must end in a period in ${lang}`);
+    if (tagline.length > 80) problems.push(`${key}: the tagline is over 80 characters in ${lang}`);
+    if (/\bAI\b|\bIA\b/.test(`${title} ${tagline}`)) problems.push(`${key}: the card names something it should not (${lang})`);
   }
 }
+// Every card has the color of the accent bar of its Discord card.
+for (const [name, card] of Object.entries(manifest.cards)) if (!Number.isInteger(card.accent)) problems.push(`${name}: it has no accent color in the manifest`);
 
 // The pages find their cards, with the language prefix and the final slash, and a page nobody listed falls back to its parent and then to the home card.
 const has = (key) => Object.values(manifest.cards).some((card) => card.key === key);

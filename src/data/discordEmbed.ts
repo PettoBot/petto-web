@@ -57,13 +57,15 @@ const plain = (text: string, link = false) => text.replace(link ? /[\\*_~`|[\]()
  * shared (its title, description and address) in its language. Discord drops the whole preview when the payload is invalid or over
  * 3,000 bytes, so the size is checked while the site builds.
  */
-export function discordEmbedJson(lang: Locale, page: { title: string; description: string; url: string; image?: { url: string; alt: string } }): string {
+export function discordEmbedJson(lang: Locale, page: { title: string; description: string; url: string; image?: { url: string; alt: string }; accent?: number }): string {
   const text = buttons[lang];
   const url = page.url.startsWith(SITE) ? page.url : SITE;
   const address = url.replace(/^https:\/\//, '').replace(/\/$/, '');
   const payload = {
     component: {
       type: 17,
+      // The bar on the left of the card, in the tone of the page's picture (a darker tone of its pastel).
+      ...(typeof page.accent === 'number' ? { accent_color: page.accent } : {}),
       components: [
         { type: 12, items: [{ media: { url: page.image?.url ?? `${SITE}/assets/petto-link-banner.webp` }, description: page.image?.alt ?? 'Petto, a moderation and community bot for Discord' }] },
         { type: 10, content: `## [${clip(plain(page.title, true), 80) || 'Petto'}](${url})\n${clip(plain(page.description), 200)}` },
