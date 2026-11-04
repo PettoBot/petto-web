@@ -58,7 +58,8 @@ export async function specHash(jobs) {
   const hash = createHash('sha1');
   for (const file of ['template.mjs', 'render.mjs']) hash.update(await readFile(path.join(here, file)));
   hash.update(await readFile(path.join(publicDir, 'assets/duck-plain.png')));
-  hash.update(JSON.stringify(jobs.map((job) => [job.name, job.card, job.title, job.tagline, job.extra ?? null])));
+  // The banners of the posts are written as absolute file addresses: the folder of the checkout is not part of the look, so the hash does not depend on where the project is.
+  hash.update(JSON.stringify(jobs.map((job) => [job.name, job.card, job.title, job.tagline, job.extra ?? null])).split(`file://${publicDir}`).join('file://public'));
   return hash.digest('hex').slice(0, 16);
 }
 
