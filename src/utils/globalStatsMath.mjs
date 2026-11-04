@@ -16,8 +16,10 @@ export const METRICS = [
   { key: 'voice', field: 'voiceSeconds', kind: 'flow' },
   { key: 'reactions', field: 'reactions', kind: 'flow' },
 ];
-export const MAX_HISTORY_DAYS = 120;
-export const RANGES = [7, 30, 90];
+export const MAX_HISTORY_DAYS = 400;
+export const RANGES = [7, 30, 90, 365];
+/** A chart that spans more days than this labels its axis by month instead of by day. */
+export const LONG_RANGE_DAYS = 120;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isDay = (value) => typeof value === 'string' && DAY_RE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
@@ -31,7 +33,7 @@ const LEVEL_FIELDS = METRICS.filter((info) => info.kind === 'level').map((info) 
 
 /**
  * What the bot saved (`{ days: [...] }`, or the list itself) as a clean list: oldest first, one row per day, only real numbers,
- * the last 120 days. Anything that is not a day or a number is dropped (`null` means "not known", never zero); a day with no number
+ * the last 400 days. Anything that is not a day or a number is dropped (`null` means "not known", never zero); a day with no number
  * at all is dropped too. `estimated: true` marks a day whose servers and members were rebuilt afterwards instead of stored.
  */
 export function normalizeHistory(raw) {
@@ -138,6 +140,24 @@ export const isApprox = (before, point) => Boolean(point.partial || point.estima
 /** The day `back` days before `day`. */
 export const daysBefore = (day, back) => new Date(Date.parse(`${day}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
 
+/**
+ * The month labels of a long chart: the first day of each month inside `first`..`last`, thinned (every 2nd, 3rd... month) so that
+ * at most `max` remain, always starting from the newest month so the labels stay put as the chart moves. Each has `year: true` for a
+ * January and for the oldest one shown, which are the ones that need the year.
+ */
+export function monthTicks(first, last, max) {
+  const months = [];
+  let [year, month] = [Number(first.slice(0, 4)), Number(first.slice(5, 7))];
+  const end = Number(last.slice(0, 4)) * 12 + Number(last.slice(5, 7));
+  for (; year * 12 + month <= end; month === 12 ? ((month = 1), (year += 1)) : (month += 1)) {
+    const day = `${year}-${String(month).padStart(2, '0')}-01`;
+    if (day >= first && day <= last) months.push(day);
+  }
+  const step = Math.max(1, Math.ceil(months.length / Math.max(1, max)));
+  const picked = months.filter((_, index) => (months.length - 1 - index) % step === 0);
+  return picked.map((day, index) => ({ day, year: day.slice(5, 7) === '01' || index === 0 }));
+}
+
 /** The points of the last `n` days counted back from the last point (the range chosen on the page). */
 export function withinDays(points, n) {
   if (!points.length) return [];
@@ -192,7 +212,7 @@ export function zoomScale(values, wantedTicks = 4, floorZero = true) {
   const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((candidate) => candidate >= raw) ?? raw;
   // The plot runs exactly from `lo` to `hi` (the data and a little air), so none of it is spent on empty space; the ticks are the round values inside.
   const ticks = [];
-  for (let value = Math.ceil(lo / step - 1e-9) * step; value <= hi + step / 1000; value += step) ticks.push(Math.round(value / step) * step);
+  for (let value = Math.ceil(lo / step - 1e-9) * step; value <= hi + step / 1000; value += step) ticks.push(Math.round(value / step) * step + 0); // + 0 turns -0 into 0, which would print as "-0"
   return { min: lo, max: hi, step, ticks };
 }
 
