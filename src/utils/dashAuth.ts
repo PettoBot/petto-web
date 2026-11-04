@@ -8,6 +8,7 @@ import { isPettoOwner } from './premiumAdmin';
 import { markTiming } from './serverTiming';
 import { getRoleAccess, pageDecision, pageOf, type RoleAccess } from './dashAccess';
 import { supportGate } from './supportEdit';
+import { cosmeticsFromUser } from './discordCosmetics.mjs';
 
 export type GuildAuth = { session: Session; devView?: boolean; access?: RoleAccess } | { redirect: string };
 
@@ -52,6 +53,29 @@ async function persistSessionCookie(astro: any, session: Session, clientSecret: 
   });
 }
 
+/**
+ * A session made before the user card kept the avatar decoration and the nameplate reads them once from Discord (best effort: a slow or
+ * failed answer leaves the session as it was and the card shows the plain avatar). Only for a page read, never for an API call or a write.
+ */
+async function withCosmetics(astro: any, session: Session, clientSecret: string): Promise<Session> {
+  if (session.decoration !== undefined && session.nameplate !== undefined) return session;
+  const request = astro.request as Request | undefined;
+  const method = String(request?.method ?? 'GET').toUpperCase();
+  if ((method !== 'GET' && method !== 'HEAD') || !/text\/html/i.test(request?.headers.get('accept') ?? '')) return session;
+  const next = await memoPerRequest(request, `dash-cosmetics:${session.userId}`, async () => {
+    try {
+      const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${session.accessToken}` }, signal: AbortSignal.timeout(2000) });
+      if (!res.ok) return null;
+      const updated: Session = { ...session, ...cosmeticsFromUser(await res.json()) };
+      await persistSessionCookie(astro, updated, clientSecret);
+      return updated;
+    } catch {
+      return null;
+    }
+  });
+  return next ?? session;
+}
+
 /** Reads the dashboard session and silently renews Discord OAuth tokens near expiry. */
 export async function getDashboardSession(astro: any): Promise<Session | null> {
   const clientId = getEnv(astro, 'DISCORD_CLIENT_ID');
@@ -64,7 +88,7 @@ export async function getDashboardSession(astro: any): Promise<Session | null> {
   if (!needsRefresh || !clientId || !clientSecret) {
     if (session.expiresAt <= Date.now()) return null;
     if (cookie && !cookie.startsWith('v1.') && clientSecret) await persistSessionCookie(astro, session, clientSecret);
-    return session;
+    return clientSecret ? withCosmetics(astro, session, clientSecret) : session;
   }
 
   const refreshed = await refreshSession(session, clientId, clientSecret);

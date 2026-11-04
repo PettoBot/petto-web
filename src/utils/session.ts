@@ -7,6 +7,10 @@ export interface Session {
   userId: string;
   username: string;
   avatar: string | null;
+  /** Asset of the Discord avatar decoration (null: has none; missing: not read yet). */
+  decoration?: string | null;
+  /** Asset folder and palette name of the Discord nameplate (null: has none; missing: not read yet). */
+  nameplate?: { asset: string; palette: string } | null;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
@@ -44,6 +48,8 @@ function isSession(value: unknown): value is Session {
   return typeof session.userId === 'string'
     && typeof session.username === 'string'
     && (session.avatar === null || typeof session.avatar === 'string')
+    && (session.decoration === undefined || session.decoration === null || typeof session.decoration === 'string')
+    && (session.nameplate === undefined || session.nameplate === null || (typeof session.nameplate === 'object' && typeof session.nameplate.asset === 'string' && typeof session.nameplate.palette === 'string'))
     && typeof session.accessToken === 'string'
     && typeof session.refreshToken === 'string'
     && typeof session.expiresAt === 'number';
