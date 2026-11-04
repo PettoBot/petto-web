@@ -9,19 +9,20 @@ export const LANGS = ['en', 'es', 'pt-BR'];
 const L = (en, es, pt) => ({ en, es, 'pt-BR': pt });
 
 /**
- * The pastel of each family of pages: the background, the darker tone of its doodles, and the color of the accent bar of the Discord card (a darker tone of the
- * same pastel, so the bar matches the picture). Lavender is not used on purpose.
+ * The pastel of each family of pages: the background of its picture (`bg`), and the color of the faint doodles on it (`doodle`). The bar on the left of the
+ * Discord card is the SAME color as the background of the picture (`accentNumber`), read from this table by the drawing and by the layout, so the two can
+ * never drift. Lavender is not used on purpose.
  */
 export const TONES = {
-  butter: { name: 'Butter', bg: '#FFEFB0', doodle: '#F4DB7A', accent: '#F5C518' },
-  peach: { name: 'Peach', bg: '#FFD8C6', doodle: '#F5BEA6', accent: '#F08A6C' },
-  mint: { name: 'Mint', bg: '#CDEFD9', doodle: '#ADDDBF', accent: '#4FB57A' },
-  sky: { name: 'Sky', bg: '#CFE6FA', doodle: '#ADD0EE', accent: '#5B9BE0' },
-  pink: { name: 'Pink', bg: '#FFD3E3', doodle: '#F5B6CD', accent: '#E8679A' },
-  cream: { name: 'Cream', bg: '#F8EFDD', doodle: '#E8DCC2', accent: '#C9A24B' },
+  butter: { name: 'Butter', bg: '#FFEFB0', doodle: '#F4DB7A' },
+  peach: { name: 'Peach', bg: '#FFD8C6', doodle: '#F5BEA6' },
+  mint: { name: 'Mint', bg: '#CDEFD9', doodle: '#ADDDBF' },
+  sky: { name: 'Sky', bg: '#CFE6FA', doodle: '#ADD0EE' },
+  pink: { name: 'Pink', bg: '#FFD3E3', doodle: '#F5B6CD' },
+  cream: { name: 'Cream', bg: '#F8EFDD', doodle: '#E8DCC2' },
 };
-/** The color of the accent bar as the number Discord asks for. */
-export const accentNumber = (tone) => parseInt((TONES[tone] ?? TONES.butter).accent.slice(1), 16);
+/** The color of the accent bar of the Discord card as the number Discord asks for: the background of the picture of the same family. */
+export const accentNumber = (tone) => parseInt((TONES[tone] ?? TONES.butter).bg.slice(1), 16);
 
 /**
  * @typedef {{ tone: keyof typeof TONES, art: string, title: Record<string,string>, tagline: Record<string,string> }} Card
@@ -29,7 +30,7 @@ export const accentNumber = (tone) => parseInt((TONES[tone] ?? TONES.butter).acc
 
 /** @type {Record<string, Card>} */
 export const CARDS = {
-  home: { tone: 'butter', art: 'home', title: L('Your server. Looked after.', 'Tu servidor. Bien cuidado.', 'Seu servidor. Bem cuidado.'), tagline: L('Moderation, tickets, levels and giveaways, with a dashboard you can preview.', 'Moderación, tickets, niveles y sorteos, con un dashboard con vista previa.', 'Moderação, tickets, níveis e sorteios, com um dashboard com prévia.') },
+  home: { tone: 'butter', art: 'home', title: L('Your server. Made easy.', 'Tu servidor. Más fácil.', 'Seu servidor. Mais fácil.'), tagline: L('Moderation, tickets, levels and giveaways, with a dashboard you can preview.', 'Moderación, tickets, niveles y sorteos, con un dashboard con vista previa.', 'Moderação, tickets, níveis e sorteios, com um dashboard com prévia.') },
   features: { tone: 'butter', art: 'home', title: L('All you need. One bot.', 'Todo lo que necesitas. Un bot.', 'Tudo que precisa. Um bot.'), tagline: L('Ten systems that work together, each with a live preview.', 'Diez sistemas que trabajan juntos, cada uno con vista previa.', 'Dez sistemas que trabalham juntos, cada um com prévia.') },
   'feature-moderation': { tone: 'peach', art: 'moderation', title: L('Every action. A case.', 'Cada acción. Un caso.', 'Cada ação. Um caso.'), tagline: L('Ban, kick, mute and warn, with the history kept.', 'Banea, expulsa, silencia y advierte, con el historial guardado.', 'Bana, expulsa, silencia e avisa, com o histórico guardado.') },
   'feature-protection': { tone: 'peach', art: 'protection', title: L('Protected while you sleep.', 'Protegido mientras duermes.', 'Protegido enquanto você dorme.'), tagline: L('Raids, nukes and scams are stopped and logged.', 'Raids, nukes y estafas se frenan y quedan registrados.', 'Raids, nukes e golpes são barrados e registrados.') },
@@ -61,7 +62,7 @@ export const CARDS = {
   timestamp: { tone: 'sky', art: 'clock', title: L('Time. For everyone.', 'La hora. Para todos.', 'A hora. Para todos.'), tagline: L('Pick a date and copy a time shown in each own time zone.', 'Elige una fecha y copia una hora que cada quien ve en su zona.', 'Escolha uma data e copie um horário que cada um vê no seu fuso.') },
   snowflake: { tone: 'sky', art: 'snowflake', title: L('Any ID. Its date.', 'Cualquier ID. Su fecha.', 'Qualquer ID. Sua data.'), tagline: L('Paste a Discord ID and see when it was created.', 'Pega un ID de Discord y mira cuándo se creó.', 'Cole um ID do Discord e veja quando foi criado.') },
   'embed-code': { tone: 'cream', art: 'code', title: L('Build it. Copy it.', 'Créalo. Cópialo.', 'Crie. Copie.'), tagline: L('Build a message and get the code that sends it.', 'Crea un mensaje y obtén el código que lo envía.', 'Crie uma mensagem e obtenha o código que a envia.') },
-  'linked-roles': { tone: 'mint', art: 'chain', title: L('Roles. Linked.', 'Roles. Vinculados.', 'Cargos. Vinculados.'), tagline: L('Give roles for what members do outside the server.', 'Da roles por lo que hacen los miembros fuera del servidor.', 'Dê cargos pelo que os membros fazem fora do servidor.') },
+  'linked-roles': { tone: 'mint', art: 'chain', title: L('Roles. Linked.', 'Roles. Vinculados.', 'Cargos. Vinculados.'), tagline: L('Connect your account and unlock Petto Verified.', 'Conecta tu cuenta y desbloquea Petto Verified.', 'Conecte sua conta e libere o Petto Verified.') },
   terms: { tone: 'cream', art: 'doc', title: L('The rules. In plain words.', 'Las reglas. En simple.', 'As regras. Em simples.'), tagline: L('The Terms of Service for using Petto.', 'Los términos del servicio para usar Petto.', 'Os termos de serviço para usar o Petto.') },
   privacy: { tone: 'cream', art: 'lock', title: L('Your data. Your call.', 'Tus datos. Tu decisión.', 'Seus dados. Sua decisão.'), tagline: L('What Petto stores, why, and how to have it removed.', 'Qué guarda Petto, por qué y cómo pedir que lo borre.', 'O que o Petto guarda, por quê e como pedir a remoção.') },
   cookies: { tone: 'cream', art: 'cookie', title: L('Few cookies. Clear ones.', 'Pocas cookies. Claras.', 'Poucos cookies. Claros.'), tagline: L('The cookies the site uses and what each one does.', 'Las cookies que usa el sitio y qué hace cada una.', 'Os cookies que o site usa e o que cada um faz.') },
@@ -74,13 +75,19 @@ export const CARDS = {
 export const NEWS_PAGES = [
   { path: '/nelu', post: 'nelu', banner: '/assets/nelu-banner.svg', tone: 'pink', category: L('News', 'Noticias', 'Notícias'),
     title: L('Nelu. The anime bot.', 'Nelu. El bot de anime.', 'Nelu. O bot de anime.'),
-    tagline: L('Characters, quotes and favorites, joining the Petto family.', 'Personajes, frases y favoritos, en la familia Petto.', 'Personagens, frases e favoritos, na família Petto.') },
+    tagline: L('Characters, quotes and favorites, joining the Petto family.', 'Personajes, frases y favoritos, en la familia Petto.', 'Personagens, frases e favoritos, na família Petto.'),
+    embedTitle: L('Nelu · The anime bot joining the Petto family', 'Nelu · El bot de anime que se une a la familia Petto', 'Nelu · O bot de anime que entra na família Petto'),
+    description: L('Nelu is a separate bot for anime and manga: character and series lookup, daily picks, quotes and favorites. It shares Petto infrastructure, not its commands.', 'Nelu es un bot aparte para anime y manga: búsqueda de personajes y series, selecciones diarias, frases y favoritos. Comparte la infraestructura de Petto, no sus comandos.', 'O Nelu é um bot à parte para anime e mangá: busca de personagens e séries, escolhas diárias, frases e favoritos. Ele divide a infraestrutura do Petto, não os comandos.') },
   { path: '/am', post: 'am', banner: '/assets/am-banner.svg', tone: 'mint', category: L('News', 'Noticias', 'Notícias'),
     title: L('AM. The automod bot.', 'AM. El bot de automoderación.', 'AM. O bot de automoderação.'),
-    tagline: L('Automatic moderation that looks at the context, not just words.', 'Moderación automática que mira el contexto, no solo palabras.', 'Moderação automática que olha o contexto, não só palavras.') },
+    tagline: L('Automatic moderation that looks at the context, not just words.', 'Moderación automática que mira el contexto, no solo palabras.', 'Moderação automática que olha o contexto, não só palavras.'),
+    embedTitle: L('AM · The automod bot joining the Petto family', 'AM · El bot de automoderación que se une a la familia Petto', 'AM · O bot de automoderação que entra na família Petto'),
+    description: L('AM is a separate automoderation bot that reads the context of a message instead of matching a fixed list of words, to catch spam and toxicity.', 'AM es un bot aparte de automoderación que lee el contexto de un mensaje en lugar de comparar una lista fija de palabras, para frenar spam y toxicidad.', 'O AM é um bot à parte de automoderação que lê o contexto de uma mensagem em vez de comparar uma lista fixa de palavras, para barrar spam e toxicidade.') },
   { path: '/embed-builder', post: 'embedBuilder', banner: '/assets/embed-builder-banner.webp', tone: 'cream', category: L('Tools', 'Herramientas', 'Ferramentas'),
     title: L('Build messages. Visually.', 'Crea mensajes. Visualmente.', 'Crie mensagens. Visualmente.'),
-    tagline: L('See them as Discord will, and send them in one click.', 'Míralos como los verá Discord y envíalos con un clic.', 'Veja como o Discord vai mostrar e envie com um clique.') },
+    tagline: L('See them as Discord will, and send them in one click.', 'Míralos como los verá Discord y envíalos con un clic.', 'Veja como o Discord vai mostrar e envie com um clique.'),
+    embedTitle: L('Embed Builder · Build Discord messages visually, by Petto', 'Embed Builder · Crea mensajes de Discord visualmente, por Petto', 'Embed Builder · Crie mensagens do Discord visualmente, pelo Petto'),
+    description: L('The visual builder for Discord embeds and Components V2 is now part of Petto: design a message, see it as Discord will draw it and send it.', 'El constructor visual de embeds y Components V2 de Discord ahora es parte de Petto: diseña un mensaje, míralo como lo dibujará Discord y envíalo.', 'O construtor visual de embeds e Components V2 do Discord agora faz parte do Petto: desenhe uma mensagem, veja como o Discord vai mostrá-la e envie.') },
 ];
 /** The tone of the card of a news post by its path: blog posts are peach, the news about Discord sky, the tools and the code cream. */
 export const postToneOf = (path) => (path.startsWith('/blog/') ? 'peach' : path.startsWith('/discord-') ? 'sky' : 'cream');
@@ -115,8 +122,8 @@ export const cleanPath = (pathname) => pathname.replace(/^\/(es|pt-br)(?=\/|$)/,
 export function ogCardFor(pathname, has = (key) => key in CARDS) {
   const clean = cleanPath(pathname);
   const lang = pathLang(pathname);
-  if (has(postKeyOf(clean))) return { key: postKeyOf(clean), lang };
-  if (CARD_PATHS[clean]) return { key: CARD_PATHS[clean], lang };
+  if (has(postKeyOf(clean))) return { key: postKeyOf(clean), lang, exact: true };
+  if (CARD_PATHS[clean]) return { key: CARD_PATHS[clean], lang, exact: true };
   const parents = Object.keys(CARD_PATHS).filter((path) => path !== '/' && clean.startsWith(`${path}/`)).sort((a, b) => b.length - a.length);
-  return { key: parents.length ? CARD_PATHS[parents[0]] : 'home', lang };
+  return { key: parents.length ? CARD_PATHS[parents[0]] : 'home', lang, exact: false };
 }
