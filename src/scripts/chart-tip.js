@@ -7,16 +7,61 @@
 //   script[data-ct-data]   JSON: { "points": [ { "x": 0-1, "y": [0-1, ...], "f": { name: text-or-number } } ] }
 // x and y are fractions of the plot box. Everything else (touch, mouse, keyboard, the glide, the edges) lives here, once.
 //
+// The box, the guide and the dots glide to the next point (a transform transition, see DashChartTip.astro, which has the same
+// numbers as TIMING below), the box fades in softly and, when the pointer leaves, waits a moment before it fades out, so a brief
+// jitter at the edge of the chart does not make it flicker. The pointer is read once per frame and snaps to the nearest point, with a
+// little hysteresis around the middle of two points so it does not flip back and forth there. prefers-reduced-motion: all instant.
+//
 // It binds ONCE to the document (window.__dglChartTips) and looks the chart up from the event, so a chart that a live redraw or the
 // dashboard's navigation put on the page is alive without any binding. While the tooltip is open the plot carries data-dash-hold, which
 // keeps the live redraw from replacing the chart under the finger or the pointer.
 (function () {
   if (window.__dglChartTips) return;
-  window.__dglChartTips = true;
+
+  // The numbers of the motion, in one place. The CSS in DashChartTip.astro (--ct-glide, --ct-in, --ct-out) must say the same;
+  // scripts/check-chart-tip.mjs compares them.
+  var TIMING = {
+    glideMs: 180, // the box, the guide and the dots move to the next point
+    fadeInMs: 120, // the box appears
+    fadeOutMs: 140, // the box goes away...
+    hideDelayMs: 100, // ...this long after the pointer left, so a brief jitter never flickers it
+    swapMs: 110, // the numbers in the box change with a very short cross-fade
+    hysteresis: 0.22, // share of the gap between two points around their middle where the pointer keeps the point it has
+  };
+
+  /** The index of the point nearest to `rel` (0-1) among `xs` (0-1, ascending), 0 when there is none. */
+  function nearestIndex(xs, rel) {
+    var best = 0;
+    var bestD = Infinity;
+    for (var i = 0; i < xs.length; i++) {
+      var d = Math.abs(xs[i] - rel);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  /**
+   * The point the pointer means. It is the nearest one, but it only leaves `current` (the point shown, -1 for none) when the new one is
+   * nearer by more than `margin` of the gap between the two, so a pointer resting around the middle of two points does not flip.
+   */
+  function pickIndex(xs, rel, current, margin) {
+    var best = nearestIndex(xs, rel);
+    if (current < 0 || current >= xs.length || best === current) return best;
+    var gap = Math.abs(xs[best] - xs[current]);
+    var advantage = Math.abs(xs[current] - rel) - Math.abs(xs[best] - rel);
+    return advantage > (margin == null ? TIMING.hysteresis : margin) * gap ? best : current;
+  }
+
+  window.__dglChartTips = { TIMING: TIMING, nearestIndex: nearestIndex, pickIndex: pickIndex };
+  var reduced = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function calm() { return Boolean(reduced && reduced.matches); }
 
   var states = new WeakMap();
   var active = null; // { s: state, mode: 'hover' | 'touch' | 'key' }
   var finger = null; // { id, plot } while a finger is down on a chart
+  var hideTimer = 0;
+  var frame = 0; // the pointer is read once per animation frame
+  var pending = null; // { s, x, mode } the last pointer position of this frame
   var lastType = 'mouse';
   var GAP = 12; // between the guide and the tooltip
   var PAD = 4;
@@ -40,7 +85,7 @@
       fields[name] = (tip && (tip.querySelector('[data-ct-f="' + name + '"]') || tip.querySelector('[id="' + name + '"]'))) || null;
     });
     s = {
-      plot: plot, pts: pts, idx: -1, shown: false, tip: tip, fields: fields,
+      plot: plot, pts: pts, xs: pts.map(function (p) { return p.x; }), idx: -1, shown: false, tip: tip, fields: fields,
       guide: plot.querySelector('[data-ct-guide]'),
       dots: Array.prototype.slice.call(plot.querySelectorAll('[data-ct-dot]')),
       place: plot.getAttribute('data-ct-place') || 'side',
@@ -53,23 +98,25 @@
   function nearest(s, clientX) {
     var rect = s.plot.getBoundingClientRect();
     if (!rect.width) return 0;
-    var rel = (clientX - rect.left) / rect.width;
-    var best = 0;
-    var bestD = Infinity;
-    for (var i = 0; i < s.pts.length; i++) {
-      var d = Math.abs(s.pts[i].x - rel);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    return best;
+    return pickIndex(s.xs, (clientX - rect.left) / rect.width, s.shown ? s.idx : -1);
   }
 
   function fill(s, p) {
     var lang = document.documentElement.lang || undefined;
+    var changed = [];
     Object.keys(s.fields).forEach(function (name) {
       var el = s.fields[name];
       var v = p.f ? p.f[name] : '';
-      if (el) el.textContent = typeof v === 'number' ? v.toLocaleString(lang) : String(v == null ? '' : v);
+      if (!el) return;
+      var text = typeof v === 'number' ? v.toLocaleString(lang) : String(v == null ? '' : v);
+      if (el.textContent !== text) { el.textContent = text; changed.push(el); }
     });
+    // A very short cross-fade, so new numbers do not flash in while the box is already moving. Not on the first show.
+    if (s.shown && !calm() && changed.length) {
+      changed.forEach(function (el) {
+        if (el.animate) el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: TIMING.swapMs, easing: 'ease-out' });
+      });
+    }
   }
 
   // Where the tooltip goes (px of the plot): beside the guide on the side that has room, never over the dots being read; on a plot too
@@ -139,13 +186,15 @@
   }
 
   function open(s, idx, mode, instant) {
+    clearTimeout(hideTimer);
     if (active && active.s !== s) close();
-    if (s.shown && s.idx === idx && !instant) { active = { s: s, mode: mode }; return; }
+    if (s.shown && s.idx === idx && !instant) { active = { s: s, mode: mode }; s.plot.classList.add('ct-on'); return; }
     render(s, idx, mode, instant);
     active = { s: s, mode: mode };
   }
 
   function close() {
+    clearTimeout(hideTimer);
     if (!active) return;
     var s = active.s;
     s.shown = false;
@@ -153,6 +202,28 @@
     s.plot.removeAttribute('data-dash-hold');
     if (s.live) s.live.textContent = '';
     active = null;
+  }
+
+  // The pointer left the chart: the box stays a moment and then fades, and coming back before that keeps it (and glides to the new point).
+  function closeSoon() {
+    if (!active) return;
+    if (calm() || !TIMING.hideDelayMs) { close(); return; }
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(close, TIMING.hideDelayMs);
+  }
+
+  // The pointer is read once per frame: the last position of the frame picks the point, so the box is not placed on every pixel.
+  function follow(s, x, mode) {
+    pending = { s: s, x: x, mode: mode };
+    if (frame) return;
+    var run = function () {
+      frame = 0;
+      var job = pending;
+      pending = null;
+      if (!job || !job.s.plot.isConnected) return;
+      open(job.s, nearest(job.s, job.x), job.mode);
+    };
+    frame = window.requestAnimationFrame ? window.requestAnimationFrame(run) : (run(), 0);
   }
 
   function alive() {
@@ -168,6 +239,7 @@
     lastType = e.pointerType || 'mouse';
     var plot = plotOf(e.target);
     if (active && (!plot || active.s.plot !== plot)) close();
+    pending = null;
     if (!plot || (e.pointerType === 'mouse' && e.button !== 0)) return;
     var s = stateOf(plot);
     if (!s) return;
@@ -183,13 +255,13 @@
       var plot = plotOf(e.target);
       if (plot) {
         var s = stateOf(plot);
-        if (s) open(s, nearest(s, e.clientX), 'hover');
-      } else if (active && active.mode === 'hover') close();
+        if (s) follow(s, e.clientX, 'hover');
+      } else if (active && active.mode === 'hover') { pending = null; closeSoon(); }
       return;
     }
     if (!finger || finger.id !== e.pointerId) return;
     var t = stateOf(finger.plot);
-    if (t) open(t, nearest(t, e.clientX), 'touch');
+    if (t) follow(t, e.clientX, 'touch');
   }, { capture: true, passive: true });
 
   function lift(e) {
@@ -202,7 +274,7 @@
   document.addEventListener('pointercancel', lift, { capture: true, passive: true });
   // The pointer left the window.
   document.addEventListener('pointerout', function (e) {
-    if (!e.relatedTarget && e.pointerType !== 'touch' && active && active.mode === 'hover') close();
+    if (!e.relatedTarget && e.pointerType !== 'touch' && active && active.mode === 'hover') { pending = null; closeSoon(); }
   }, { passive: true });
 
   // A long press must not open the system menu or select the text of the chart.

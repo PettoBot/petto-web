@@ -304,8 +304,12 @@ assert.ok(COPY.es.onlyDays.includes('{n}') && COPY['pt-BR'].onlyDays.includes('{
 // The page uses them: the tabs of servers and members stay with no history, with the message that it starts today, and the last
 // point of a per-day series is an open one named "Today, so far".
 const page = readFileSync(new URL('../src/components/GlobalStats.astro', import.meta.url), 'utf8');
-for (const needle of  ["'approxNote'", "t('approxNoteTable')", "metric === 'members' ? 'estimatedNote'", "t('histStarts')", "t('todaySoFar')", "'estimatedNote'", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
+for (const needle of  ["'approxNote'", "t('approxNoteTable')", "metric === 'members' ? 'estimatedNote'", "t('histStarts')", "t('todaySoFar')", "'estimatedNote'", "t('partialNote')", 'withLiveToday(', "info.kind === 'level' && anything", 'data-range="365"', 'lineChart(']) {
   assert.ok(page.includes(needle), `GlobalStats.astro lost ${needle}`);
 }
+// The chart itself is drawn by the builder both pages share (src/utils/statsChart.mjs): the open dot of today so far and the month labels of a year.
+const chart = readFileSync(new URL('../src/utils/statsChart.mjs', import.meta.url), 'utf8');
+for (const needle of ['sc-hollow', 'monthTicks(', 'LONG_RANGE_DAYS', 'sc-line-dash', 'text.todaySoFar']) assert.ok(chart.includes(needle), `statsChart.mjs lost ${needle}`);
+assert.ok(!page.includes('smoothPath(') && !page.includes('zoomScale('), 'GlobalStats.astro draws through the shared builder, not its own copy');
 
 console.log('Checked the stats page: history, today, partial day, estimated days, changes, scale and the three languages.');

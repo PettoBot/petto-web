@@ -38,3 +38,14 @@ The day is the GMT-5 one (`botDay`): a new day begins at 05:00 UTC, not at UTC m
 - the numbers above the chart: the **total includes** today so far, the **average per day, highest and lowest count full days only** (`summarize` in `src/utils/globalStatsMath.mjs`); the day shown for the highest and lowest is never today;
 - the tooltip of today has no "vs the day before" line, so it does not read as a drop;
 - servers and members are counts at a moment, not sums, so today's point is a full one and counts in the change, the highest and the lowest.
+
+## Shared with the dashboard's per-server statistics
+
+The dashboard (`/dash/guild/<id>/stats`) draws its time series with the same pieces:
+
+- `src/utils/statsCore.mjs`: the day of Petto (GMT-5), the change between two days, the zoomed scale, the smooth line, the runs of days, the numbers above a chart. `globalStatsMath.mjs` re-exports them, so this page's imports did not change.
+- `src/utils/statsChart.mjs` (`lineChart`, `barChart`) and `src/components/StatsChartStyle.astro`: the markup and the look of the charts, and the tooltip box that `src/scripts/chart-tip.js` moves. This page calls them in the browser; the dashboard on the server, at three widths per chart (the card shows the one that fits it).
+- `src/utils/dashStatsView.ts`: the dashboard's series (from `buildStats` and `buildAnalysis`, same counters and filters), the change of each day, and the change chips. A server that started counting a few days ago gets only those days, and its first day has no change.
+- The ranges of the dashboard stay `?days=` 7, 14 and 30 (every server) and 60 and 90 (Premium). A year is not offered: the counters are one row per channel and day, and a year plus the year before it would be a very large read.
+
+`scripts/check-dash-stats.mjs` and `scripts/check-chart-tip.mjs` (both in `npm run check`) test the series, the charts and the tooltip logic and timing.

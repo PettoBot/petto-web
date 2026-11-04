@@ -2,7 +2,9 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashChartTip from './DashChartTip.astro';
-import { chartTipJson } from '../utils/chartTip';
+import StatsChartStyle from './StatsChartStyle.astro';
+import { barChart, lineChart, tickLabels } from '../utils/statsChart.mjs';
+import { buildSeries, changeChip, dayRows, seriesSummary, type Series, type SeriesKey } from '../utils/dashStatsView';
 import { dashLocale, getDashLang, makeT } from '../i18n/dash';
 import { STAT_TABS, BOT_TIME_LABEL, BOT_TIME_ZONE, type StatsData } from '../utils/activityStats';
 import { FREE_STAT_DAYS, PREMIUM_STAT_DAYS } from '../utils/planLimits';
@@ -34,8 +36,10 @@ interface Props {
   analysis: Analysis;
   rules: StatsRules;
   dataMessage?: { kind: 'ok' | 'err'; text: string } | null;
+  /** Members now (what Discord says), to count the members line back from; null when it is not known. */
+  memberTotal?: number | null;
 }
-const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, invitePeriod = 'all', inviteMember = null, inviteMessage = null, analysis, rules, dataMessage = null } = Astro.props;
+const { user, guildId, guildName, guildIcon, stats, days, tab, channelNames, memberNames, inviters, hasFlow, premium = false, inviteRoles = [], inviteSettings = { fakeDays: 3, rewards: [] }, invitePeriod = 'all', inviteMember = null, inviteMessage = null, analysis, rules, dataMessage = null, memberTotal = null } = Astro.props;
 const roleColor = (color: number) => (color ? `#${color.toString(16).padStart(6, '0')}` : 'var(--text-dim)');
 const rewardIds = new Set(inviteSettings.rewards.map((reward) => reward.roleId));
 // The three newer settings are shown only when the bot knows them (it is updated before the site).
@@ -66,67 +70,74 @@ function hoursText(seconds: number) {
   return minutes >= 60 ? Math.floor(minutes / 60) + 'h ' + (minutes % 60) + 'm' : minutes + 'm';
 }
 const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString(numLocale, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const dayText = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00Z`).toLocaleDateString(numLocale, { ...opts, timeZone: 'UTC' });
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 const growth = stats.totals.joins - stats.totals.leaves;
+const num0 = new Intl.NumberFormat(numLocale, { maximumFractionDigits: 0 });
+const num1 = new Intl.NumberFormat(numLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtHours = (v: number) => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
+const signedOf = (format: (v: number) => string) => (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${format(Math.abs(v))}`;
+const colorOf = (name: string) => `var(--m-${name})`;
 
-function niceMax(value: number) {
-  const raw = Math.max(value, 4) / 4;
-  const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => candidate >= raw) ?? raw;
-  return step * 4;
-}
+// ── The charts: an SVG for a small card, one for a medium one and one for a large one (the card picks by its own width, so a phone gets a chart
+// drawn at its size, with text that stays readable). All come from src/utils/statsChart.mjs, the same builders as the public stats page. ──
+const SIZES = { s: { W: 340, H: 230 }, m: { W: 520, H: 250 }, l: { W: 760, H: 270 } };
+const chartText = { todaySoFar: dt('Today, so far'), estimatedTag: '', changeVsPrev: dt('vs the day before') };
+interface ChartDef { title: string; sub: string; chip?: { change: number | null; inverse: boolean } | null; summary?: { label: string; value: string; sub?: string }[]; html: { s: string; m: string; l: string } | null; message?: string; span?: boolean }
+const both = (make: (size: { W: number; H: number }) => string) => ({ s: make(SIZES.s), m: make(SIZES.m), l: make(SIZES.l) });
 
-// One chart as SVG: the grid and sparse labels, then bars (the busiest one lit) or, for the day-by-day charts, a line with its area
-// and markers that draw themselves like the ones of the overview.
-function chart(values: number[], labels: string[], color: string, format: (v: number) => string = n, highlight = -1, kind: 'bars' | 'line' = 'bars') {
-  const W = 640, H = 230, left = 44, bottom = 26, top = 8;
-  const plotW = W - left - 10, plotH = H - bottom - top;
-  const max = niceMax(Math.max(0, ...values));
-  const slot = plotW / Math.max(1, values.length);
-  const barW = Math.max(3, Math.min(34, slot * 0.7));
-  const every = Math.ceil(values.length / 10);
-  const grid = [0, 1, 2, 3, 4].map((i) => ({ y: top + plotH - (plotH * i) / 4, label: format((max * i) / 4) }));
-  const bars = values.map((value, i) => {
-    const h = (value / max) * plotH;
-    return { x: left + slot * i + (slot - barW) / 2, y: top + plotH - h, h, w: barW, label: labels[i], value, lit: i === highlight, delay: Math.min(i * 18, 500) };
-  });
-  // Every few days a date, and always the last one; a regular date too close to the last one is left out so the two never overlap.
-  let lastTick = labels.length - 1;
-  while (lastTick > 0 && !labels[lastTick]) lastTick--;
-  const ticks = labels.map((label, i) => ({ label, x: left + slot * i + slot / 2, show: i === lastTick || (i % every === 0 && lastTick - i >= every) }));
-  // The line goes through the middle of each slot; the curve is smoothed with Catmull-Rom and never leaves the range of its neighbours.
-  const points = values.map((value, i) => ({ x: left + slot * i + slot / 2, y: top + plotH - (value / max) * plotH, value, label: labels[i] }));
-  let line = '';
-  if (points.length === 1) line = `M${points[0].x},${points[0].y} L${points[0].x + 0.01},${points[0].y}`;
-  else if (points.length > 1) {
-    line = `M${points[0].x},${points[0].y}`;
-    for (let i = 0; i < points.length - 1; i += 1) {
-      const p0 = points[Math.max(0, i - 1)], p1 = points[i], p2 = points[i + 1], p3 = points[Math.min(points.length - 1, i + 2)];
-      const lo = Math.min(p1.y, p2.y), hi = Math.max(p1.y, p2.y);
-      const c1y = Math.max(lo, Math.min(hi, p1.y + (p2.y - p0.y) / 6));
-      const c2y = Math.max(lo, Math.min(hi, p2.y - (p3.y - p1.y) / 6));
-      line += ` C${p1.x + (p2.x - p0.x) / 6},${c1y} ${p2.x - (p3.x - p1.x) / 6},${c2y} ${p2.x},${p2.y}`;
+const series = buildSeries(stats, analysis, memberTotal);
+const VOICE = { format: (v: number) => `${fmtHours(v)}h`, ticks: (t: number[]) => tickLabels(t, { locale: numLocale, num: num0, num1, fractional: true }) };
+const COUNT = { format: (v: number) => n(v), ticks: (t: number[]) => tickLabels(t, { locale: numLocale, num: num0, num1, fractional: false }) };
+
+/** A chart of a series of days: a smooth line (messages, voice, reactions, members) or bars (joins, leaves, net...), with today so far as the last point. */
+function seriesChart(key: SeriesKey, o: { title: string; sub: string; color: string; shape: 'line' | 'bars'; hours?: boolean; floorZero?: boolean; chip?: ChartDef['chip']; summary?: boolean; span?: boolean }): ChartDef {
+  const source: Series = series[key];
+  const unit = o.hours ? VOICE : COUNT;
+  const scaleBy = o.hours ? 1 / 3600 : 1;
+  const points = source.points.map((point) => ({ ...point, value: point.value * scaleBy }));
+  const flat = points.every((point) => point.value === 0);
+  const def: ChartDef = { title: o.title, sub: o.sub, chip: o.chip, html: null, span: o.span };
+  if (!points.length || flat) { def.message = dt('Nothing counted yet for this period.'); return def; }
+  const single = points.length === 1;
+  const shared = { color: o.color, format: unit.format, tickLabels: unit.ticks, dayText, signed: signedOf(unit.format), text: chartText, fluid: true, animate: true, aria: o.title, svgLabel: o.title };
+  def.html = both((size) => (o.shape === 'line'
+    ? lineChart({ ...shared, ...size, H: single ? 170 : size.H, points, single, floorZero: o.floorZero ?? true }).html
+    : barChart({ ...shared, ...size, items: points.map((point) => ({ day: point.day, value: point.value, partial: point.partial })) }).html));
+  if (o.summary && !source.level) {
+    const sum = seriesSummary({ ...source, points });
+    if (sum.fullDays > 1 && sum.average !== null) {
+      const withDay = (point: typeof points[number] | null) => ({ value: point ? unit.format(point.value) : '–', sub: point ? dayLabel(point.day) : '' });
+      def.summary = [{ label: dt('Average per day'), value: unit.format(sum.average) }, { label: dt('Highest'), ...withDay(sum.high) }, { label: dt('Lowest'), ...withDay(sum.low) }];
     }
   }
-  const baseline = top + plotH;
-  const area = points.length > 1 ? `${line} L${points[points.length - 1].x},${baseline} L${points[0].x},${baseline} Z` : '';
-  return { W, H, left, plotW, bottom, grid, bars, ticks, color, format, highlight, kind, points, line, area, empty: values.every((v) => v === 0) };
+  if (single) def.message = dt('Only today is counted so far. The chart fills in as days pass.');
+  else if (points.length < stats.days.length) def.message = dt('Showing the {a} days counted so far.', { a: points.length });
+  return def;
 }
 
-// The tooltip data of a chart (scripts/chart-tip.js): one point per bar, or per marker of a line.
-function tipFor(ch: ReturnType<typeof chart>) {
-  const pts = ch.kind === 'line'
-    ? ch.points.map((pt) => ({ x: pt.x, y: pt.y, label: pt.label, value: pt.value }))
-    : ch.bars.map((b, i) => ({ x: b.x + b.w / 2, y: b.y, label: b.label || `${String(i).padStart(2, '0')}:00`, value: b.value }));
-  return chartTipJson(pts.map((pt) => ({ x: pt.x / ch.W, y: [pt.y / ch.H], f: { label: pt.label, value: ch.format(pt.value) } })));
+/** A chart of kinds, hours of the day or weekdays: bars from zero, the busiest one lit. */
+function categoryChart(o: { title: string; sub: string; color: string; values: number[]; labels: string[]; titles?: string[]; lit?: boolean; hours?: boolean }): ChartDef {
+  const unit = o.hours ? VOICE : COUNT;
+  const top = peakIndex(o.values);
+  const def: ChartDef = { title: o.title, sub: o.sub, html: null };
+  if (o.values.every((value) => value === 0)) { def.message = dt('Nothing counted yet for this period.'); return def; }
+  def.html = both((size) => barChart({
+    ...size, color: o.color, format: unit.format, tickLabels: unit.ticks, dayText, text: chartText, fluid: true, animate: true, aria: o.title, svgLabel: o.title,
+    items: o.values.map((value, i) => ({ label: o.labels[i], title: o.titles?.[i] ?? o.labels[i], value, lit: o.lit !== false && i === top, dim: o.lit !== false && top !== -1 && i !== top })),
+  }).html);
+  return def;
 }
-
-const dailyLabels = stats.days.map(dayLabel);
-const hourLabels = Array.from({ length: 24 }, (_, h) => (h % 3 === 0 ? String(h).padStart(2, '0') : ''));
 const peakIndex = (values: number[]) => { let b = -1; values.forEach((v, i) => { if (v > 0 && (b === -1 || v > values[b])) b = i; }); return b; };
-const voiceHours = stats.daily.voice.map((s) => s / 3600);
-const fmtHours = (v: number) => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
+const hourLabels = Array.from({ length: 24 }, (_, h) => (h % 3 === 0 ? String(h).padStart(2, '0') : ''));
+const hourTitles = Array.from({ length: 24 }, (_, h) => hourLabel(h));
+const voiceHours = (seconds: number[]) => seconds.map((s) => s / 3600);
 const bestDayOf = (values: number[]) => { const b = peakIndex(values); return b === -1 ? null : { day: stats.days[b], value: values[b] }; };
+const weekdayShort = WEEKDAYS.map((d) => dt(d));
+const weekdayFull = FULL_WEEKDAYS.map((d) => dt(d));
+const busiestOn = (values: number[]) => (peakIndex(values) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(values)])}`);
+const busiestAt = (peak: { hour: number } | null) => (peak ? `${dt('Busiest at')} ${hourLabel(peak.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'));
+const change = (key: keyof typeof analysis.change, inverse = false) => (analysis.hasPrevious ? { change: analysis.change[key], inverse } : null);
 
 const kindNames = ['Bans', 'Mutes', 'Warns', 'Kicks', 'Jails'];
 const kindValues = [stats.sanctions.byGroup.bans, stats.sanctions.byGroup.mutes, stats.sanctions.byGroup.warns, stats.sanctions.byGroup.kicks, stats.sanctions.byGroup.jails];
@@ -134,52 +145,74 @@ const kindPeak = peakIndex(kindValues);
 const sourceNames: Record<string, string> = { moderator: 'Moderators', automod: 'Automod', honeypot: 'Honeypot', escalation: 'Warn escalation', expiry: 'Automatic expiry', antinuke: 'Anti-nuke' };
 const sourceRows = Object.entries(stats.sanctions.bySource).filter(([, count]) => count > 0) as [string, number][];
 
-const panels: Record<string, { charts: { title: string; sub: string; chart: ReturnType<typeof chart> }[] }> = {
-  overview: { charts: [
-    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color, n, -1) },
-    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
-  ] },
+const messagesChart = () => seriesChart('messages', { title: dt('Messages per day'), sub: `${n(stats.totals.messages)} ${dt('in total')}`, color: colorOf('messages'), shape: 'line', chip: change('messages'), summary: true });
+const hoursChart = (voice: boolean) => categoryChart({
+  title: dt('Most active hours'), sub: busiestAt(voice ? stats.peakHour.voice : stats.peakHour.messages), color: colorOf(voice ? 'voice' : 'messages'),
+  values: voice ? voiceHours(stats.hours.voice) : stats.hours.messages, labels: hourLabels, titles: hourTitles, hours: voice,
+});
+const weekdayChart = (values: number[], color: string) => categoryChart({ title: dt('Best days of the week'), sub: busiestOn(values), color, values, labels: weekdayShort, titles: weekdayFull });
+const membersChart = () => seriesChart('members', { title: dt('Members'), sub: dt('Counted back from the members today'), color: colorOf('growth'), shape: 'line' });
+
+const panels: Record<string, { charts: ChartDef[]; columns?: SeriesKey[] }> = {
+  overview: { charts: [messagesChart(), hoursChart(false)], columns: ['messages', 'voice', 'joins', 'leaves'] },
   messages: { charts: [
-    { title: 'Messages per day', sub: `${n(stats.totals.messages)} ${dt('in total')}`, chart: chart(stats.daily.messages, dailyLabels, tabs.messages.color, n, -1) },
-    { title: 'Most active hours', sub: stats.peakHour.messages ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.messages.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.messages, hourLabels, tabs.messages.color, n, peakIndex(stats.hours.messages)) },
-  ] },
+    messagesChart(), hoursChart(false),
+    seriesChart('reactions', { title: dt('Reactions per day'), sub: `${n(stats.totals.reactions)} ${dt('in total')}`, color: colorOf('reactions'), shape: 'line', chip: change('reactions'), summary: true, span: true }),
+  ], columns: ['messages', 'reactions'] },
   voice: { charts: [
-    { title: 'Voice hours per day', sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, chart: chart(voiceHours, dailyLabels, tabs.voice.color, fmtHours, -1) },
-    { title: 'Most active hours', sub: stats.peakHour.voice ? `${dt('Busiest at')} ${hourLabel(stats.peakHour.voice.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'), chart: chart(stats.hours.voice.map((s) => s / 3600), hourLabels, tabs.voice.color, fmtHours, peakIndex(stats.hours.voice)) },
-  ] },
+    seriesChart('voice', { title: dt('Voice hours per day'), sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, color: colorOf('voice'), shape: 'line', hours: true, chip: change('voiceSeconds'), summary: true }),
+    hoursChart(true),
+  ], columns: ['voice'] },
   joins: { charts: [
-    { title: 'Members who joined per day', sub: `${n(stats.totals.joins)} ${dt('in total')}`, chart: chart(stats.daily.joins, dailyLabels, tabs.joins.color, n, -1) },
-    { title: 'Best days of the week', sub: peakIndex(stats.weekdays.joins) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.joins)])}`, chart: chart(stats.weekdays.joins, WEEKDAYS.map((d) => dt(d)), tabs.joins.color, n, peakIndex(stats.weekdays.joins)) },
-  ] },
+    seriesChart('joins', { title: dt('Members who joined per day'), sub: `${n(stats.totals.joins)} ${dt('in total')}`, color: colorOf('joins'), shape: 'bars', chip: change('joins'), summary: true }),
+    weekdayChart(stats.weekdays.joins, colorOf('joins')),
+  ], columns: ['joins'] },
   leaves: { charts: [
-    { title: 'Members who left per day', sub: `${n(stats.totals.leaves)} ${dt('in total')}`, chart: chart(stats.daily.leaves, dailyLabels, tabs.leaves.color, n, -1) },
-    { title: 'Best days of the week', sub: peakIndex(stats.weekdays.leaves) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.leaves)])}`, chart: chart(stats.weekdays.leaves, WEEKDAYS.map((d) => dt(d)), tabs.leaves.color, n, peakIndex(stats.weekdays.leaves)) },
-  ] },
+    seriesChart('leaves', { title: dt('Members who left per day'), sub: `${n(stats.totals.leaves)} ${dt('in total')}`, color: colorOf('leaves'), shape: 'bars', chip: change('leaves', true), summary: true }),
+    weekdayChart(stats.weekdays.leaves, colorOf('leaves')),
+  ], columns: ['leaves'] },
   sanctions: { charts: [
-    { title: 'Sanctions per day', sub: `${n(stats.sanctions.total)} ${dt('in total')}`, chart: chart(stats.sanctions.daily, dailyLabels, tabs.sanctions.color, n, -1) },
-    { title: 'Sanctions by kind', sub: kindPeak === -1 ? dt('Not enough data yet') : `${dt('Most')}: ${dt(kindNames[kindPeak])}`, chart: chart(kindValues, kindNames.map((k) => dt(k)), tabs.sanctions.color, n, kindPeak) },
-  ] },
+    seriesChart('sanctions', { title: dt('Sanctions per day'), sub: `${n(stats.sanctions.total)} ${dt('in total')}`, color: colorOf('sanctions'), shape: 'bars', summary: true }),
+    categoryChart({ title: dt('Sanctions by kind'), sub: kindPeak === -1 ? dt('Not enough data yet') : `${dt('Most')}: ${dt(kindNames[kindPeak])}`, color: colorOf('sanctions'), values: kindValues, labels: kindNames.map((k) => dt(k)) }),
+  ], columns: ['sanctions'] },
   heatmap: { charts: [] },
   compare: { charts: [] },
   data: { charts: [] },
   growth: { charts: [
-    { title: 'Net members gained per day', sub: `${growth >= 0 ? '+' : ''}${n(growth)} ${dt('in total')}`, chart: chart(analysis.netByDay.map((value) => Math.max(0, value)), dailyLabels, tabs.growth.color, n, -1, 'line') },
-    { title: 'How long members stayed before leaving', sub: analysis.lifespanTotal ? dt('{a}% left within a week', { a: Math.round((analysis.earlyLeaveShare ?? 0) * 100) }) : dt('Nobody left in this period, or it was not counted yet.'), chart: chart(analysis.lifespan, ['Under a day', 'Under a week', 'Under a month', '1 to 3 months', 'Over 3 months'].map((label) => dt(label)), tabs.growth.color, n, peakIndex(analysis.lifespan)) },
-  ] },
+    ...(series.members.points.length ? [membersChart()] : []),
+    categoryChart({ title: dt('How long members stayed before leaving'), sub: analysis.lifespanTotal ? dt('{a}% left within a week', { a: Math.round((analysis.earlyLeaveShare ?? 0) * 100) }) : dt('Nobody left in this period, or it was not counted yet.'), color: colorOf('growth'), values: analysis.lifespan, labels: ['Under a day', 'Under a week', 'Under a month', '1 to 3 months', 'Over 3 months'].map((label) => dt(label)) }),
+    seriesChart('net', { title: dt('Net members gained per day'), sub: `${growth >= 0 ? '+' : ''}${n(growth)} ${dt('in total')}`, color: colorOf('growth'), shape: 'bars', span: Boolean(series.members.points.length) }),
+  ], columns: ['joins', 'leaves', 'net', 'members'] },
   invites: { charts: [
-    { title: 'Joins through invites per day', sub: `${n(stats.totals.invited)} ${dt('in total')}`, chart: chart(stats.daily.invited, dailyLabels, tabs.invites.color, n, -1) },
-    { title: 'Best days of the week', sub: peakIndex(stats.weekdays.invited) === -1 ? dt('Not enough data yet') : `${dt('Busiest on')} ${dt(FULL_WEEKDAYS[peakIndex(stats.weekdays.invited)])}`, chart: chart(stats.weekdays.invited, WEEKDAYS.map((d) => dt(d)), tabs.invites.color, n, peakIndex(stats.weekdays.invited)) },
-  ] },
+    seriesChart('invited', { title: dt('Joins through invites per day'), sub: `${n(stats.totals.invited)} ${dt('in total')}`, color: colorOf('invites'), shape: 'bars', chip: change('invited'), summary: true }),
+    weekdayChart(stats.weekdays.invited, colorOf('invites')),
+  ], columns: ['invited', 'joins'] },
 };
 
-const tiles = [
-  { label: 'Messages', value: n(stats.totals.messages), count: stats.totals.messages, color: tabs.messages.color },
-  { label: 'Active members', value: n(stats.totals.activeMembers), count: stats.totals.activeMembers, color: '#f0a88f' },
-  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), count: null, color: tabs.voice.color },
-  { label: 'Joined', value: n(stats.totals.joins), count: stats.totals.joins, color: tabs.joins.color },
-  { label: 'Left', value: n(stats.totals.leaves), count: stats.totals.leaves, color: tabs.leaves.color },
-  { label: 'Through invites', value: n(stats.totals.invited), count: stats.totals.invited, color: tabs.invites.color },
+// ── The day by day table of the tabs that have a series: each value with its change from the day before in parentheses; today so far on top. ──
+const COLUMN_LABEL: Record<SeriesKey, string> = { messages: 'Messages', reactions: 'Reactions', voice: 'Voice', joins: 'Joined', leaves: 'Left', invited: 'Through invites', sanctions: 'Sanctions', net: 'Net', members: 'Members' };
+const COLUMN_COLOR: Record<SeriesKey, string> = { messages: 'messages', reactions: 'reactions', voice: 'voice', joins: 'joins', leaves: 'leaves', invited: 'invites', sanctions: 'sanctions', net: 'growth', members: 'growth' };
+// Which way a rise reads: more of these is good (up), bad (inverse) or just a count (neutral).
+const COLUMN_TONE: Record<SeriesKey, 'up' | 'inverse' | 'neutral'> = { messages: 'up', reactions: 'up', voice: 'up', joins: 'up', leaves: 'inverse', invited: 'up', sanctions: 'neutral', net: 'up', members: 'up' };
+const cellText = (key: SeriesKey, value: number) => (key === 'voice' ? `${fmtHours(value / 3600)}h` : n(value));
+const changeText = (key: SeriesKey, value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${cellText(key, Math.abs(value))}`;
+const toneOf = (key: SeriesKey, value: number) => (value === 0 || COLUMN_TONE[key] === 'neutral' ? 'flat' : (value > 0) === (COLUMN_TONE[key] === 'up') ? 'good' : 'bad');
+const TABLE_ROWS = 14;
+const tables = Object.fromEntries(Object.entries(panels).map(([id, panel]) => {
+  const columns = (panel.columns ?? []).filter((key) => series[key].points.length > 0);
+  const rows = columns.length ? dayRows(series, columns) : [];
+  return [id, { columns, rows }];
+}));
+
+const tiles: { label: string; value: string; count: number | null; color: string; change?: { value: number | null; inverse: boolean } }[] = [
+  { label: 'Messages', value: n(stats.totals.messages), count: stats.totals.messages, color: 'messages', change: { value: analysis.change.messages, inverse: false } },
+  { label: 'Active members', value: n(stats.totals.activeMembers), count: stats.totals.activeMembers, color: 'messages' },
+  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), count: null, color: 'voice', change: { value: analysis.change.voiceSeconds, inverse: false } },
+  { label: 'Joined', value: n(stats.totals.joins), count: stats.totals.joins, color: 'joins', change: { value: analysis.change.joins, inverse: false } },
+  { label: 'Left', value: n(stats.totals.leaves), count: stats.totals.leaves, color: 'leaves', change: { value: analysis.change.leaves, inverse: true } },
+  { label: 'Through invites', value: n(stats.totals.invited), count: stats.totals.invited, color: 'invites', change: { value: analysis.change.invited, inverse: false } },
 ];
+const chipOf = (value: number | null, inverse: boolean) => changeChip(value, inverse, numLocale, dt('new'));
 // A channel that is not in the server any more (deleted, or a temporary voice channel) has no name to show.
 const channelName = (id: string) => (channelNames[id] ? `#${channelNames[id]}` : dt('Deleted or temporary channel'));
 const memberName = (id: string) => memberNames[id] ?? id;
@@ -199,12 +232,12 @@ const bestMessage = bestDayOf(stats.daily.messages);
     </div>
     <nav class="st-range" aria-label={dt('Period')}>
       {FREE_STAT_DAYS.map((value) => (
-        <a href={`/dash/guild/${guildId}/stats?days=${value}&tab=${tab}`} class:list={['st-range-link', { current: value === days }]} data-keep-tab>{value} {dt('days')}</a>
+        <a href={`/dash/guild/${guildId}/stats?days=${value}&tab=${tab}`} class:list={['st-range-link', { current: value === days }]} data-keep-tab aria-label={`${value} ${dt('days')}`} aria-current={value === days ? 'true' : undefined}>{value}d</a>
       ))}
       {PREMIUM_STAT_DAYS.map((value) => premium ? (
-        <a href={`/dash/guild/${guildId}/stats?days=${value}&tab=${tab}`} class:list={['st-range-link', { current: value === days }]} data-keep-tab>{value} {dt('days')}</a>
+        <a href={`/dash/guild/${guildId}/stats?days=${value}&tab=${tab}`} class:list={['st-range-link', { current: value === days }]} data-keep-tab aria-label={`${value} ${dt('days')}`} aria-current={value === days ? 'true' : undefined}>{value}d</a>
       ) : (
-        <a href={`/dash/premium?guild_id=${guildId}`} class="st-range-link st-range-locked" title={dt('Longer history is a Premium touch')}><Icon name="ph:crown-fill" width="11" height="11" />{value} {dt('days')}</a>
+        <a href={`/dash/premium?guild_id=${guildId}`} class="st-range-link st-range-locked" title={dt('Longer history is a Premium touch')} aria-label={`${value} ${dt('days')}`}><Icon name="ph:crown-fill" width="11" height="11" />{value}d</a>
       ))}
     </nav>
   </div>
@@ -218,48 +251,73 @@ const bestMessage = bestDayOf(stats.daily.messages);
   </div>
 
   <div class="st-tiles">
-    {tiles.map((tile, i) => (
-      <div class="st-tile" style={`--tile:${tile.color};--i:${i}`}><i></i><span>{dt(tile.label)}</span><b data-count={tile.count ?? undefined}>{tile.value}</b></div>
-    ))}
+    {tiles.map((tile, i) => {
+      const chip = analysis.hasPrevious && tile.change ? chipOf(tile.change.value, tile.change.inverse) : null;
+      return (
+        <div class="st-tile" style={`--m:var(--m-${tile.color});--i:${i}`}>
+          <span class="st-tile-label"><i class="st-swatch"></i>{dt(tile.label)}</span>
+          <b data-count={tile.count ?? undefined}>{tile.value}</b>
+          <span class="st-chips">{chip && <Fragment><span class={`st-chip st-chip-${chip.tone}`}><b>{chip.arrow ? `${chip.arrow} ` : ''}{chip.text}</b></span><small>{dt('vs before')}</small></Fragment>}</span>
+        </div>
+      );
+    })}
   </div>
 
   {STAT_TABS.map((id) => (
     <section class:list={['st-panel', { 'st-panel-hidden': id !== tab }]} data-panel={id} role="tabpanel" style={`--tab:${tabs[id].color}`}>
-      <div class="st-charts">
-        {panels[id].charts.map((c, ci) => (
-          <article class="st-card" style={`--i:${ci}`}>
-            <h2>{dt(c.title)}</h2>
-            <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(BOT_TIME_LABEL) || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
-            <div class="st-plot" {...(c.chart.empty ? {} : { 'data-ct': '', 'data-ct-place': 'side', tabindex: 0, role: 'group', 'aria-label': dt(c.title) })}>
-            <svg viewBox={`0 0 ${c.chart.W} ${c.chart.H}`} role="img" aria-label={dt(c.title)} class="st-svg">
-              {c.chart.grid.map((g) => (
-                <g><line x1={c.chart.left} x2={c.chart.left + c.chart.plotW} y1={g.y} y2={g.y} class="st-grid" /><text x={c.chart.left - 8} y={g.y + 4} text-anchor="end" class="st-axis">{g.label}</text></g>
-              ))}
-              {c.chart.kind === 'bars' && c.chart.bars.map((b, i) => (
-                <rect x={b.x} y={b.y} width={b.w} height={Math.max(0, b.h)} rx="5" class:list={['st-bar', { 'st-bar-lit': b.lit, 'st-bar-dim': c.chart.highlight !== -1 && !b.lit }]} style={`--c:${c.chart.color};--d:${b.delay}ms`} />
-              ))}
-              {c.chart.kind === 'line' && (
-                <g style={`--c:${c.chart.color}`}>
-                  {c.chart.area && <path d={c.chart.area} class="st-area" />}
-                  <path d={c.chart.line} pathLength="1" class="st-line" />
-                  {c.chart.points.map((pt, i) => <circle cx={pt.x} cy={pt.y} r="3.2" class="st-dot" style={`animation-delay:${0.45 + i * 0.03}s`} />)}
-                </g>
-              )}
-              {c.chart.ticks.filter((t) => t.show && t.label).map((t) => <text x={t.x} y={c.chart.H - 6} text-anchor="middle" class="st-axis">{t.label}</text>)}
-            </svg>
-            {!c.chart.empty && (
-              <Fragment>
-                <i class="ct-guide" data-ct-guide></i>
-                <i class="ct-dot" data-ct-dot style="--ct-c:var(--accent)"></i>
-                <div class="ct-tip st-tip" data-ct-box><b data-ct-f="label"></b><span data-ct-f="value"></span></div>
-                <script type="application/json" data-ct-data set:html={tipFor(c.chart)}></script>
-              </Fragment>
-            )}
-            </div>
-            {c.chart.empty && <p class="st-empty">{dt('Nothing counted yet for this period.')}</p>}
-          </article>
-        ))}
-      </div>
+      {panels[id].charts.length > 0 && (
+        <div class="st-charts">
+          {panels[id].charts.map((c, ci) => {
+            const chip = c.chip ? chipOf(c.chip.change, c.chip.inverse) : null;
+            return (
+              <article class:list={['st-card', 'st-chart', { 'st-span': c.span }]} style={`--i:${ci}`}>
+                <div class="st-card-head">
+                  <div>
+                    <h2>{c.title}</h2>
+                    <p class:list={['st-card-sub', { 'st-lit': c.sub.includes(BOT_TIME_LABEL) || c.sub.includes(dt('Busiest on')) }]}>{c.sub}</p>
+                  </div>
+                  {chip && <span class={`st-chip st-chip-${chip.tone}`}><b>{chip.arrow ? `${chip.arrow} ` : ''}{chip.text}</b><em>{dt('vs previous period')}</em></span>}
+                </div>
+                {c.summary && <dl class="st-summary">{c.summary.map((cell) => <div><dt>{cell.label}</dt><dd>{cell.value}{cell.sub && <small>{cell.sub}</small>}</dd></div>)}</dl>}
+                {c.html && <Fragment><div class="st-var st-var-s" set:html={c.html.s}></div><div class="st-var st-var-m" set:html={c.html.m}></div><div class="st-var st-var-l" set:html={c.html.l}></div></Fragment>}
+                {c.message && <p class:list={['st-empty', { 'st-empty-box': !c.html }]}>{c.message}</p>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {tables[id].rows.length > 0 && (
+        <article class="st-card st-daily" data-st-daily>
+          <h2>{dt('Day by day')}</h2>
+          <div class:list={['st-table-scroll', { 'st-fit': tables[id].columns.length < 2 }]} tabindex="0" role="region" aria-label={dt('Day by day')}>
+            <table class="st-table">
+              <thead>
+                <tr>
+                  <th scope="col">{dt('Day')}</th>
+                  {tables[id].columns.map((key) => <th scope="col" style={`--m:var(--m-${COLUMN_COLOR[key]})`}><i class="st-swatch"></i>{dt(COLUMN_LABEL[key])}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {tables[id].rows.map((row, i) => (
+                  <tr class:list={{ 'st-today': row.today, 'st-extra': i >= TABLE_ROWS }}>
+                    {row.today
+                      ? <th scope="row">{dt('Today')}<small>{dt('so far')}</small></th>
+                      : <th scope="row">{dayText(row.day, { weekday: 'short', month: 'short', day: 'numeric' })}</th>}
+                    {tables[id].columns.map((key) => {
+                      const cell = row.cells[key];
+                      return cell
+                        ? <td><span class="st-v">{cellText(key, cell.value)}</span>{cell.change !== null && <span class={`st-d st-d-${toneOf(key, cell.change)}`}> ({changeText(key, cell.change)})</span>}</td>
+                        : <td class="st-none">–</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {tables[id].rows.length > TABLE_ROWS && <button type="button" class="st-more" data-st-more data-more={dt('Show all {a} days', { a: tables[id].rows.length })} data-less={dt('Show fewer days')}>{dt('Show all {a} days', { a: tables[id].rows.length })}</button>}
+        </article>
+      )}
 
       {(id === 'heatmap' || id === 'compare' || id === 'data') && <DashStatsAnalysis id={id} analysis={analysis} rules={rules} flash={dataMessage} />}
 
@@ -461,6 +519,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
     </section>
   ))}
   <DashChartTip />
+  <StatsChartStyle />
   <script is:inline>
     // Switching section: the new one slides in and the address keeps the section. This is an inline script inside the page
     // content, so it also runs when the dashboard opens this page without reloading it. The links of the period show a loading
@@ -511,6 +570,15 @@ const bestMessage = bestDayOf(stats.daily.messages);
         el.textContent = '0';
         requestAnimationFrame(step);
       });
+      // The day by day table shows the latest days; the button opens or closes the rest.
+      root.querySelectorAll('[data-st-more]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var card = button.closest('[data-st-daily]');
+          if (!card) return;
+          var open = card.classList.toggle('st-open');
+          button.textContent = open ? button.dataset.less : button.dataset.more;
+        });
+      });
       tabs.forEach(function (tab) { tab.addEventListener('click', function () { show(tab.dataset.tab || 'overview'); }); });
       root.querySelectorAll('a[data-keep-tab]').forEach(function (a) {
         a.addEventListener('click', function () { root.classList.add('st-loading'); });
@@ -542,11 +610,27 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-tab:hover { color: var(--text); }
   .st-tab:focus-visible { outline-offset: 1px; }
   .st-tab.current { color: var(--tab); border-color: var(--tab); background: color-mix(in srgb, var(--tab) 14%, transparent); font-weight: 600; }
+  /* One color for each number, used by the cards, the charts and the table: the dashboard's pastels, a deeper shade of each on the light theme. */
+  .st-root { --m-messages: #f0a88f; --m-reactions: #f5c26b; --m-voice: #9bd0f5; --m-joins: #8fdca8; --m-leaves: #f08fa0; --m-invites: #c6a8f5; --m-sanctions: #f5c26b; --m-growth: #8fdca8; }
+  :root[data-theme="light"] .st-root { --m-messages: #c4573a; --m-reactions: #b07a0c; --m-voice: #3a7fb8; --m-joins: #3c935f; --m-leaves: #c2415f; --m-invites: #7b55c4; --m-sanctions: #b07a0c; --m-growth: #3c935f; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .st-root { --m-messages: #c4573a; --m-reactions: #b07a0c; --m-voice: #3a7fb8; --m-joins: #3c935f; --m-leaves: #c2415f; --m-invites: #7b55c4; --m-sanctions: #b07a0c; --m-growth: #3c935f; }
+  }
+  .st-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 3px; background: var(--m, var(--accent)); flex: none; }
   .st-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-  .st-tile { position: relative; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .st-tile i { width: 20px; height: 3px; border-radius: 2px; background: var(--tile); margin-bottom: 4px; }
-  .st-tile span { font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .st-tile b { font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .st-tile { position: relative; border: 1px solid var(--border); border-radius: 14px; padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow: hidden;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--m) 9%, var(--card)), var(--card) 70%); }
+  .st-tile-label { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .01em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st-tile > b { font-family: var(--serif); white-space: nowrap; font-size: 23px; font-weight: 600; line-height: 1.1; font-variant-numeric: lining-nums tabular-nums; }
+  .st-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-height: 22px; }
+  .st-chips small { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+  .st-chip { display: inline-flex; align-items: baseline; gap: 5px; border-radius: 999px; padding: 2px 9px; font-size: 12px; line-height: 1.4; white-space: nowrap; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text-muted); max-width: 100%; }
+  .st-chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .st-chip em { font-style: normal; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+  .st-chip-good { background: var(--green-soft); }
+  .st-chip-good b { color: var(--green); }
+  .st-chip-bad { background: var(--red-soft); }
+  .st-chip-bad b { color: var(--red); }
   .st-root { position: relative; }
   @media (max-width: 760px) { .st-root { margin-bottom: -48px; } }
   .st-loadbar { position: absolute; left: 0; right: 0; top: -6px; height: 3px; border-radius: 2px; overflow: hidden; opacity: 0; transition: opacity .15s; pointer-events: none; }
@@ -554,14 +638,8 @@ const bestMessage = bestDayOf(stats.daily.messages);
   @keyframes st-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
   .st-loading .st-loadbar { opacity: 1; }
   .st-loading .st-tiles, .st-loading .st-panel { opacity: .45; filter: saturate(.7); transition: opacity .2s; pointer-events: none; }
-  .st-loading .st-tile b, .st-loading .st-card h2 { animation: st-pulse 1.1s ease-in-out infinite; }
+  .st-loading .st-tile > b, .st-loading .st-card h2 { animation: st-pulse 1.1s ease-in-out infinite; }
   @keyframes st-pulse { 50% { opacity: .5; } }
-  .st-line { fill: none; stroke: var(--c); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1s cubic-bezier(.16, 1, .3, 1) forwards; }
-  @keyframes st-draw { to { stroke-dashoffset: 0; } }
-  .st-area { fill: color-mix(in srgb, var(--c) 18%, transparent); opacity: 0; animation: st-fade .6s ease-out .3s forwards; }
-  @keyframes st-fade { to { opacity: 1; } }
-  .st-dot { fill: var(--c); opacity: 0; transform-box: fill-box; transform-origin: center; animation: st-pop .3s cubic-bezier(.34, 1.56, .64, 1) forwards; }
-  @keyframes st-pop { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
   .st-tile { animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(var(--i, 0) * var(--m-stagger)); }
   .st-card { animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(var(--m-fast) + var(--i, 0) * var(--m-stagger) * 2); }
   .st-panel-hidden { display: none; }
@@ -574,18 +652,48 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-card h2 { font-size: 16.5px; margin: 0 0 2px; }
   .st-card-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 4px; }
   .st-lit { color: var(--tab); }
-  .st-svg { width: 100%; height: auto; display: block; }
-  .st-tip { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; font-size: 12.5px; min-width: 0; }
-  .st-tip b { font-weight: 600; color: var(--text); }
-  .st-tip span { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-  .st-grid { stroke: var(--border); stroke-dasharray: 3 5; }
-  .st-axis { fill: var(--text-dim); font-size: 11.5px; font-family: var(--mono); }
-  .st-bar { fill: var(--c); transform-box: fill-box; transform-origin: bottom; animation: st-grow .6s cubic-bezier(.2, .8, .2, 1) both; animation-delay: var(--d); }
-  .st-bar-dim { fill: color-mix(in srgb, var(--c) 45%, transparent); }
-  .st-bar-lit { fill: var(--accent); }
-  .st-bar { transition: filter .15s, opacity .15s; }
-  .st-bar:hover { filter: brightness(1.18); }
-  @keyframes st-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .st-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+  .st-card-head > div { min-width: 0; }
+  .st-card-head .st-chip { flex: none; margin-top: 2px; }
+  @container (max-width: 429px) { .st-card-head .st-chip em { display: none; } }
+  .st-span { grid-column: 1 / -1; }
+  /* The card picks the chart drawn for its own width, so a phone gets text that stays readable. */
+  .st-chart { container-type: inline-size; }
+  .st-var { min-width: 0; }
+  @container (max-width: 429px) { .st-var-m, .st-var-l { display: none; } }
+  @container (min-width: 430px) and (max-width: 619px) { .st-var-s, .st-var-l { display: none; } }
+  @container (min-width: 620px) { .st-var-s, .st-var-m { display: none; } }
+  .st-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; margin: 6px 0 8px; }
+  .st-summary > div { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 2px; }
+  .st-summary dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); }
+  .st-summary dd { margin: 2px 0 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 7px; }
+  .st-summary small { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+  .st-empty-box { margin: 10px 0 4px; padding: 26px 10px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; line-height: 1.5; }
+  /* The day by day table keeps its own horizontal scroll, so the page never scrolls sideways; the day stays in view. */
+  .st-daily { margin-bottom: 10px; }
+  .st-table-scroll { overflow-x: auto; margin-top: 10px; border: 1px solid var(--border); border-radius: 12px; }
+  .st-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .st-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+  .st-fit { max-width: 480px; }
+  .st-table th, .st-table td { padding: 9px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .st-table tr:last-child > * { border-bottom: 0; }
+  .st-table thead th { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .st-table thead th .st-swatch { margin-right: 7px; }
+  .st-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 1; background: var(--card); font-weight: 500; color: var(--text); }
+  .st-table thead th:first-child { background: color-mix(in srgb, var(--text) 3%, var(--card)); color: var(--text-dim); }
+  .st-table tbody tr:hover > * { background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .st-v { color: var(--text); font-weight: 600; }
+  .st-d { font-size: 12px; }
+  .st-d-good { color: var(--green); }
+  .st-d-bad { color: var(--red); }
+  .st-d-flat, .st-none { color: var(--text-dim); }
+  .st-table .st-today > * { background: color-mix(in srgb, var(--accent) 7%, var(--card)); }
+  .st-table .st-today th small { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; }
+  .st-extra { display: none; }
+  .st-open .st-extra { display: table-row; }
+  .st-more { margin: 12px auto 2px; display: block; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); font: inherit; font-size: 13px; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+  .st-more:hover { color: var(--text); border-color: var(--text-dim); }
+  .st-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .st-empty { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; }
   .st-inv { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
   .st-inv-head h2 { font-size: 16px; margin: 0 0 4px; }
@@ -660,5 +768,5 @@ const bestMessage = bestDayOf(stats.daily.messages);
     .st-charts { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 520px) { .st-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (prefers-reduced-motion: reduce) { .st-bar, .st-panel, .st-enter, .st-loadbar::after, .st-loading .st-tile b, .st-loading .st-card h2, .st-tile, .st-card, .st-line, .st-area, .st-dot { animation: none; opacity: 1; stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce) { .st-panel, .st-enter, .st-loadbar::after, .st-loading .st-tile > b, .st-loading .st-card h2, .st-tile, .st-card { animation: none; opacity: 1; } }
 </style>
