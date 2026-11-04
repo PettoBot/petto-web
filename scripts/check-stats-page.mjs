@@ -253,20 +253,19 @@ for (const lang of Object.keys(COPY)) {
 }
 assert.ok(COPY.en.estimatedNote.includes('key dates') && COPY.es.estimatedNote.includes('fechas clave') && COPY['pt-BR'].estimatedNote.includes('datas-chave'), 'the note names the team records as a source');
 assert.ok(COPY.en.estimatedNote.includes('dashed') && COPY.es.estimatedNote.includes('trazos') && COPY['pt-BR'].estimatedNote.includes('tracejado'), 'the note says the line is dashed');
-// The credit of the servers (discord.watch) is in the three languages, in the chart and in the table, and says what the dashes are.
+// The page names no outside source and carries no note about the axis: the notes only say that the dashed stretches (and the values marked ~) are approximate.
 for (const lang of Object.keys(COPY)) {
-  assert.ok(COPY[lang].serversCredit.includes('discord.watch') && COPY[lang].serversCreditTable.includes('discord.watch'), `${lang} credits discord.watch`);
-  assert.ok(COPY[lang].serversCreditTable.includes('~'), `${lang}.serversCreditTable explains the ~`);
-  assert.notEqual(COPY[lang].serversCredit, COPY[lang].estimatedNote, `${lang}: the servers note is not the members note`);
-  assert.ok(!COPY[lang].estimatedNote.includes('discord.watch'), `${lang}: the members note does not credit discord.watch`);
+  for (const key of Object.keys(COPY[lang])) assert.ok(!/discord\.watch/i.test(COPY[lang][key]), `${lang}.${key} does not name discord.watch`);
+  assert.equal(COPY[lang].zoomNote, undefined, `${lang} has no note about the axis`);
+  assert.ok(COPY[lang].serversNote && COPY[lang].serversNoteTable.includes('~'), `${lang}.serversNoteTable explains the ~`);
+  assert.notEqual(COPY[lang].serversNote, COPY[lang].estimatedNote, `${lang}: the servers note is not the members note`);
 }
-assert.ok(COPY.es.serversCredit.startsWith('Los servidores de los días anteriores salen del conteo público diario de discord.watch'));
 assert.ok(COPY.es.onlyDays.includes('{n}') && COPY['pt-BR'].onlyDays.includes('{n}') && COPY.en.onlyDays.includes('{n}'));
 
 // The page uses them: the tabs of servers and members stay with no history, with the message that it starts today, and the last
 // point of a per-day series is an open one named "Today, so far".
 const page = readFileSync(new URL('../src/components/GlobalStats.astro', import.meta.url), 'utf8');
-for (const needle of  ["t('serversCredit')", "t('serversCreditTable')", "metric === 'servers'", "t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
+for (const needle of  ["t('serversNote')", "t('serversNoteTable')", "metric === 'servers'", "t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
   assert.ok(page.includes(needle), `GlobalStats.astro lost ${needle}`);
 }
 
