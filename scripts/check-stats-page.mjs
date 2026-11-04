@@ -45,6 +45,34 @@ assert.deepEqual(nulls, [
   { day: '2026-11-03', servers: 150, members: 4000, messages: 5, estimated: true },
   { day: '2026-11-04', servers: 151 },
 ]);
+// The two series have their own mark: `estimated` is the members', `estimatedServers` the servers'. They never mix.
+const flags = normalizeHistory({ days: [
+  { day: '2026-11-01', servers: 20, members: 5000, estimatedServers: true },
+  { day: '2026-11-02', servers: 21, members: 5100, estimated: true },
+  { day: '2026-11-03', servers: 22, members: 5200, estimated: true, estimatedServers: true },
+  { day: '2026-11-04', servers: 23, members: 5300, estimatedServers: 'yes', estimated: 1 },
+] });
+assert.deepEqual(flags.map((row) => [row.estimated === true, row.estimatedServers === true]), [[false, true], [true, false], [true, true], [false, false]], 'only a literal true is kept, each flag on its own');
+const flagServers = seriesOf(flags, 'servers', '2026-11-05');
+const flagMembers = seriesOf(flags, 'members', '2026-11-05');
+assert.deepEqual(flagServers.map((p) => Boolean(p.estimated)), [true, false, true, false], 'the servers series reads estimatedServers');
+assert.deepEqual(flagMembers.map((p) => Boolean(p.estimated)), [false, true, true, false], 'the members series reads estimated');
+// A stretch is dashed only between two interpolated days of that series; with a measured day at one end it is solid.
+assert.deepEqual(flagServers.slice(1).map((p, i) => isApprox(flagServers[i], p)), [false, false, false]);
+const gapServers = seriesOf(normalizeHistory([
+  { day: '2026-11-01', servers: 20 }, { day: '2026-11-02', servers: 21, estimatedServers: true }, { day: '2026-11-03', servers: 22, estimatedServers: true }, { day: '2026-11-04', servers: 23 },
+]), 'servers', '2026-11-05');
+assert.deepEqual(gapServers.slice(1).map((p, i) => isApprox(gapServers[i], p)), [false, true, false], 'dashed between two interpolated days, solid next to a measured one');
+// The change chips and the table follow the series' own mark.
+assert.equal(baseSince(flagServers, 3).estimated, true);
+assert.equal(baseSince(flagMembers, 3).estimated, undefined, 'the members of 2026-11-01 are measured, so a change from them is exact');
+const flagRows = dailyRows(flags, '2026-11-05', 14); // newest first: Nov 4, 3, 2, 1
+assert.deepEqual(flagRows.map((row) => row.cells.servers.estimated), ['change', 'value', 'change', 'value'], 'servers cells follow estimatedServers');
+assert.deepEqual(flagRows.map((row) => row.cells.members.estimated), ['change', 'value', 'value', undefined], 'members cells follow estimated');
+// Nulls in servers are a gap in the servers line only.
+const nullServers = normalizeHistory([{ day: '2026-11-01', servers: null, members: 100 }, { day: '2026-11-02', servers: 5, members: 110 }]);
+assert.deepEqual(seriesOf(nullServers, 'servers', '2026-11-05').map((p) => p.value), [5]);
+assert.deepEqual(seriesOf(nullServers, 'members', '2026-11-05').map((p) => p.value), [100, 110]);
 // Up to 400 days are kept, the newest ones, and the ranges of the chart go up to a year.
 assert.equal(MAX_HISTORY_DAYS, 400);
 assert.deepEqual(RANGES, [7, 30, 90, 365]);
@@ -99,8 +127,13 @@ assert.deepEqual([todayRow.servers, todayRow.members, todayRow.messages, todayRo
 assert.equal(seriesOf(live, 'servers', '2026-11-04').pop().value, 183, 'the last point of the chart is the number on the card');
 assert.equal(seriesOf(live, 'members', '2026-11-04').pop().value, 57_100);
 assert.equal(days.find((row) => row.day === '2026-11-04').servers, 182, 'the saved history is not changed');
-assert.equal(withLiveToday([{ day: '2026-11-02', servers: 5, estimated: true }], '2026-11-04', { servers: 7 }).length, 2, 'today is added when the history stops before it');
-assert.equal(withLiveToday([{ day: '2026-11-04', servers: 5, estimated: true }], '2026-11-04', { servers: 7 })[0].estimated, undefined, 'a live count is not an estimate');
+assert.equal(withLiveToday([{ day: '2026-11-02', servers: 5, estimatedServers: true }], '2026-11-04', { servers: 7 }).length, 2, 'today is added when the history stops before it');
+assert.equal(withLiveToday([{ day: '2026-11-04', servers: 5, estimatedServers: true }], '2026-11-04', { servers: 7 })[0].estimatedServers, undefined, 'a live count is not an estimate');
+// A live number only clears the mark of its own series.
+const liveMix = withLiveToday([{ day: '2026-11-04', servers: 5, members: 900, estimated: true, estimatedServers: true }], '2026-11-04', { servers: 7 })[0];
+assert.deepEqual([liveMix.estimatedServers, liveMix.estimated], [undefined, true], 'live servers clear only the servers mark');
+const liveMix2 = withLiveToday([{ day: '2026-11-04', servers: 5, members: 900, estimated: true, estimatedServers: true }], '2026-11-04', { members: 950 })[0];
+assert.deepEqual([liveMix2.estimatedServers, liveMix2.estimated], [true, undefined], 'live members clear only the members mark');
 assert.deepEqual(withLiveToday([], '2026-11-04', { servers: 0, members: NaN, messages: undefined }), [], 'nothing is made up');
 assert.deepEqual(withLiveToday([], '2026-11-04', {}), []);
 assert.equal(withLiveToday([], '2026-11-04', { messages: 0 })[0].messages, 0, 'a real zero of a per-day number stays');
@@ -220,12 +253,20 @@ for (const lang of Object.keys(COPY)) {
 }
 assert.ok(COPY.en.estimatedNote.includes('key dates') && COPY.es.estimatedNote.includes('fechas clave') && COPY['pt-BR'].estimatedNote.includes('datas-chave'), 'the note names the team records as a source');
 assert.ok(COPY.en.estimatedNote.includes('dashed') && COPY.es.estimatedNote.includes('trazos') && COPY['pt-BR'].estimatedNote.includes('tracejado'), 'the note says the line is dashed');
+// The credit of the servers (discord.watch) is in the three languages, in the chart and in the table, and says what the dashes are.
+for (const lang of Object.keys(COPY)) {
+  assert.ok(COPY[lang].serversCredit.includes('discord.watch') && COPY[lang].serversCreditTable.includes('discord.watch'), `${lang} credits discord.watch`);
+  assert.ok(COPY[lang].serversCreditTable.includes('~'), `${lang}.serversCreditTable explains the ~`);
+  assert.notEqual(COPY[lang].serversCredit, COPY[lang].estimatedNote, `${lang}: the servers note is not the members note`);
+  assert.ok(!COPY[lang].estimatedNote.includes('discord.watch'), `${lang}: the members note does not credit discord.watch`);
+}
+assert.ok(COPY.es.serversCredit.startsWith('Los servidores de los días anteriores salen del conteo público diario de discord.watch'));
 assert.ok(COPY.es.onlyDays.includes('{n}') && COPY['pt-BR'].onlyDays.includes('{n}') && COPY.en.onlyDays.includes('{n}'));
 
 // The page uses them: the tabs of servers and members stay with no history, with the message that it starts today, and the last
 // point of a per-day series is an open one named "Today, so far".
 const page = readFileSync(new URL('../src/components/GlobalStats.astro', import.meta.url), 'utf8');
-for (const needle of ["t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
+for (const needle of  ["t('serversCredit')", "t('serversCreditTable')", "metric === 'servers'", "t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
   assert.ok(page.includes(needle), `GlobalStats.astro lost ${needle}`);
 }
 
