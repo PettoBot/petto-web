@@ -1,6 +1,7 @@
 // Checks the login of the top bar (src/utils/navAccount.mjs, src/pages/api/session.ts, src/components/NavAccount.astro).
 // Run: node scripts/check-nav-account.mjs
 import { existsSync, readFileSync } from 'node:fs';
+import { LOGIN_HREF } from '../src/utils/dashLogin.mjs';
 import { accountEntries, accountState, cacheText, initialOf, loginHref, publicUser, readCache, sessionAnswer, SESSION_ENDPOINT, SUPPORT_URL } from '../src/utils/navAccount.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -101,7 +102,7 @@ for (const [name, text] of [['api/session.ts', endpoint], ['NavAccount.astro', c
 check('the bar asks the endpoint once and gives up', /fetch\(SESSION_ENDPOINT/.test(component) && /AbortController/.test(component) && (component.match(/fetch\(/g) ?? []).length === 1);
 
 // One login: the dashboard page and the Login of the bar build the same address.
-check('Login and the dashboard share the address', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && /dashAuthorizeUrl/.test(read('src/pages/dash/index.astro')));
+check('Login and the dashboard card share the route', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && LOGIN_HREF === loginHref('en') && /href=\{LOGIN_HREF\}/.test(read('src/components/DashLogin.astro')));
 check('Login goes to the callback of the dashboard', /\/dash\/callback/.test(read('src/utils/discordLogin.ts')) && /identify guilds/.test(read('src/utils/discordLogin.ts')));
 
 // The icons of the menu are drawn by InlineIcon.
