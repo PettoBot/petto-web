@@ -86,9 +86,12 @@ export async function probeBot(context: Context, now: number, databaseDown: bool
   }
 }
 
+// The Worker build leaves the database code out: the choice is made where the build can see it (a constant condition on the import itself, as in directQuery.ts).
+const loadProbe = __DIRECT_DB__ ? () => import('./directDb').then((module) => module.probeDirect) : null;
+
 async function probeDatabase() {
-  if (!__DIRECT_DB__) return null;
-  const { probeDirect } = await import('./directDb');
+  if (!loadProbe) return null;
+  const probeDirect = await loadProbe();
   const result = await probeDirect();
   return result.configured ? { ok: result.ok && result.ms < 4_000, ms: result.ms, detail: result.ok ? (result.ms < 4_000 ? null : 'slow') : result.detail ?? 'error' } : null;
 }
