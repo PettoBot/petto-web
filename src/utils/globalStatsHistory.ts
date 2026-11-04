@@ -1,7 +1,9 @@
 // The daily history the stats page draws (/stats, /es/stats, /pt-br/stats). Nothing here names a person or a server.
 //
 // 1. The bot may save one extra row, `global_stats` id `history`, with `{ days: [{ day, servers, members, messages, reactions,
-//    voiceSeconds }] }`: one row per day (GMT-5), oldest first. That is the only place with the servers and members of past days.
+//    voiceSeconds, estimated? }] }`: one row per day (GMT-5), oldest first, ending with today (still in progress). A number that is
+//    not known is `null`; `estimated: true` marks a day whose servers and members were rebuilt afterwards. That is the only place
+//    with the servers and members of past days.
 // 2. Without it, where the site has its own database connection (Discloud, `PETTO_DATABASE_URL`), the messages, reactions and voice
 //    time of every day are added up from `activity_stats`, which the bot already keeps. The Worker build leaves that code out.
 // 3. Without either, there is no history and the page says so.
@@ -11,7 +13,7 @@ import { getEnv } from './env';
 import { directQuery } from './directQuery';
 import { MAX_HISTORY_DAYS, botDay, normalizeHistory } from './globalStatsMath.mjs';
 
-export interface HistoryDay { day: string; servers?: number; members?: number; messages?: number; reactions?: number; voiceSeconds?: number }
+export interface HistoryDay { day: string; servers?: number; members?: number; messages?: number; reactions?: number; voiceSeconds?: number; estimated?: boolean }
 export interface GlobalHistory { days: HistoryDay[]; source: 'saved' | 'activity' | 'none' }
 
 const KEEP_MS = 5 * 60_000;
