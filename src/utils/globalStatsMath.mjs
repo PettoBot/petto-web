@@ -10,12 +10,13 @@ export const botDay = (now = Date.now()) => new Date(new Date(now).getTime() + B
 export const DAY_FIELDS = ['servers', 'members', 'messages', 'reactions', 'voiceSeconds'];
 /** The series the page can draw: `level` ones are a count at the end of the day (they are not added up), the others are per day. */
 export const METRICS = [
-  // `flag` is the mark of a day whose value was not measured: the two series have their own, they never share one.
+  // `flag` is the mark of a day whose value was not measured. Servers, members and the per-day numbers each have their own, they never share one.
   { key: 'servers', field: 'servers', kind: 'level', flag: 'estimatedServers' },
   { key: 'members', field: 'members', kind: 'level', flag: 'estimated' },
-  { key: 'messages', field: 'messages', kind: 'flow' },
-  { key: 'voice', field: 'voiceSeconds', kind: 'flow' },
-  { key: 'reactions', field: 'reactions', kind: 'flow' },
+  // The three per-day numbers share one mark: the days whose activity includes an approximate average, counted before an outage.
+  { key: 'messages', field: 'messages', kind: 'flow', flag: 'estimatedActivity' },
+  { key: 'voice', field: 'voiceSeconds', kind: 'flow', flag: 'estimatedActivity' },
+  { key: 'reactions', field: 'reactions', kind: 'flow', flag: 'estimatedActivity' },
 ];
 export const MAX_HISTORY_DAYS = 400;
 export const RANGES = [7, 30, 90, 365];
@@ -36,7 +37,8 @@ const LEVEL_FIELDS = METRICS.filter((info) => info.kind === 'level').map((info) 
  * What the bot saved (`{ days: [...] }`, or the list itself) as a clean list: oldest first, one row per day, only real numbers,
  * the last 400 days. Anything that is not a day or a number is dropped (`null` means "not known", never zero); a day with no number
  * at all is dropped too. `estimated: true` marks a day whose MEMBERS were rebuilt afterwards instead of stored, and `estimatedServers: true`
- * one whose SERVERS were interpolated between two days with a measured count; each flag is only about its own number.
+ * one whose SERVERS were interpolated between two days with a measured count, and `estimatedActivity: true` one whose messages,
+ * reactions and voice time include an approximate average; each flag is only about its own numbers.
  */
 export function normalizeHistory(raw) {
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.days) ? raw.days : [];
@@ -62,7 +64,7 @@ export const nextDay = (day) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400
  * The saved days with today's live numbers on top, oldest first. `live` has the current servers and members (a count at this moment,
  * a full point) and today's messages, reactions and voice seconds so far (a partial day); a number that is missing or not positive
  * (levels) is left as the history has it, never made up. Today's row is created only when it gets a number, and a live level takes
- * away the estimated mark of that number (servers or members) on that day, and only of that one. The cards and the last point of the chart read the same live numbers, so they agree.
+ * away the estimated mark of that number on that day (the one of its own series: servers, members or the per-day numbers), and only of that one. The cards and the last point of the chart read the same live numbers, so they agree.
  */
 export function withLiveToday(days, today, live) {
   const out = days.map((row) => ({ ...row }));
@@ -72,7 +74,7 @@ export function withLiveToday(days, today, live) {
     let row = out.find((entry) => entry.day === today);
     if (!row) { row = { day: today }; out.push(row); }
     row[info.field] = value;
-    if (info.kind === 'level') delete row[info.flag];
+    if (info.flag) delete row[info.flag];
   }
   return out.sort((a, b) => (a.day < b.day ? -1 : 1));
 }
@@ -80,7 +82,7 @@ export function withLiveToday(days, today, live) {
 /**
  * The points of one metric: `{ day, value }`, oldest first, with two flags. `partial` is the day still in progress (`today`) of a
  * per-day metric: it is only part of a day, so the page draws it apart and keeps it out of the average, highest and lowest. A level
- * (servers, members) at `today` is the live count, a full point. `estimated` marks a level that was not measured, by the flag of its own series.
+ * (servers, members) at `today` is the live count, a full point. `estimated` marks a point that was not measured, by the flag of its own series.
  * A day that lacks the number is left out; the page breaks the line there instead of joining its neighbours.
  */
 export function seriesOf(days, metric, today) {
@@ -91,7 +93,7 @@ export function seriesOf(days, metric, today) {
     .map((row) => {
       const point = { day: row.day, value: row[info.field] };
       if (info.kind === 'flow' && row.day === today) point.partial = true;
-      if (info.kind === 'level' && row[info.flag] === true) point.estimated = true;
+      if (info.flag && row[info.flag] === true) point.estimated = true;
       return point;
     });
 }
@@ -257,7 +259,7 @@ export function dailyRows(days, today, limit) {
       if (value === undefined) continue;
       const previous = before?.[info.field];
       const cell = { value, change: previous === undefined ? null : value - previous };
-      if (info.kind === 'level' && (row[info.flag] === true || before?.[info.flag] === true)) cell.estimated = row[info.flag] === true ? 'value' : 'change';
+      if (info.flag && (row[info.flag] === true || before?.[info.flag] === true)) cell.estimated = row[info.flag] === true ? 'value' : 'change';
       cells[info.key] = cell;
     }
     rows.push({ day: row.day, cells });

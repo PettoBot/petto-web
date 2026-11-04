@@ -69,6 +69,43 @@ assert.equal(baseSince(flagMembers, 3).estimated, undefined, 'the members of 202
 const flagRows = dailyRows(flags, '2026-11-05', 14); // newest first: Nov 4, 3, 2, 1
 assert.deepEqual(flagRows.map((row) => row.cells.servers.estimated), ['change', 'value', 'change', 'value'], 'servers cells follow estimatedServers');
 assert.deepEqual(flagRows.map((row) => row.cells.members.estimated), ['change', 'value', 'value', undefined], 'members cells follow estimated');
+// The per-day numbers (messages, hours in voice, reactions) have a third mark, `estimatedActivity`, that is not the servers' or the members'.
+const act = normalizeHistory({ days: [
+  { day: '2026-11-01', servers: 20, members: 5000, messages: 100, reactions: 10, voiceSeconds: 3600, estimatedActivity: true },
+  { day: '2026-11-02', servers: 21, members: 5100, messages: 100, reactions: 10, voiceSeconds: 3600, estimatedActivity: true, estimated: true },
+  { day: '2026-11-03', servers: 22, members: 5200, messages: 300, reactions: 30, voiceSeconds: 7200 },
+  { day: '2026-11-04', servers: 23, members: 5300, messages: 50, reactions: 5, voiceSeconds: 900, estimatedActivity: 'yes', estimatedServers: true },
+] });
+assert.deepEqual(act.map((row) => [row.estimatedActivity === true, row.estimated === true, row.estimatedServers === true]), [[true, false, false], [true, true, false], [false, false, false], [false, false, true]], 'three marks, each on its own, only a literal true is kept');
+for (const key of ['messages', 'voice', 'reactions']) {
+  assert.deepEqual(seriesOf(act, key, '2026-11-05').map((p) => Boolean(p.estimated)), [true, true, false, false], `${key} reads estimatedActivity`);
+}
+assert.deepEqual(seriesOf(act, 'servers', '2026-11-05').map((p) => Boolean(p.estimated)), [false, false, false, true], 'servers do not read the activity mark');
+assert.deepEqual(seriesOf(act, 'members', '2026-11-05').map((p) => Boolean(p.estimated)), [false, true, false, false], 'members do not read the activity mark');
+// Dashed only between two flagged days (or today so far); a real day at one end makes the stretch solid.
+const actMsgs = seriesOf(act, 'messages', '2026-11-05');
+assert.deepEqual(actMsgs.slice(1).map((p, i) => isApprox(actMsgs[i], p)), [true, false, false]);
+const actToday = seriesOf(act, 'messages', '2026-11-04');
+assert.equal(isApprox(actToday[2], actToday[3]), true, 'today so far is dashed');
+// The numbers above the chart count the flagged days as normal days: they are part of the sum.
+const actSum = summarize(actMsgs, 'flow');
+assert.deepEqual([actSum.total, actSum.average, actSum.high.value, actSum.low.value], [550, 137.5, 300, 50], 'flagged days are counted like any other');
+const actSumToday = summarize(actToday, 'flow');
+assert.deepEqual([actSumToday.total, actSumToday.average, actSumToday.low.value], [550, 166.66666666666666, 100], 'today so far stays out of the average and the lowest');
+// A live number only clears the mark of its own series (the activity mark is cleared by live per-day numbers).
+const liveAct = withLiveToday([{ day: '2026-11-04', servers: 5, members: 900, messages: 9, estimated: true, estimatedServers: true, estimatedActivity: true }], '2026-11-04', { messages: 20 })[0];
+assert.deepEqual([liveAct.estimatedActivity, liveAct.estimated, liveAct.estimatedServers], [undefined, true, true]);
+// The table: `~` before a flagged value, and in the change measured from a flagged day; the three marks do not mix in the cells.
+const actRows = dailyRows(act, '2026-11-05', 14); // newest first: Nov 4, 3, 2, 1
+assert.deepEqual(actRows.map((row) => row.cells.messages.estimated), [undefined, 'change', 'value', 'value'], 'flow cells follow estimatedActivity');
+assert.deepEqual(actRows.map((row) => row.cells.reactions.estimated), [undefined, 'change', 'value', 'value']);
+assert.deepEqual(actRows.map((row) => row.cells.voice.estimated), [undefined, 'change', 'value', 'value']);
+assert.deepEqual(actRows.map((row) => row.cells.servers.estimated), ['value', undefined, undefined, undefined], 'servers cells follow estimatedServers only');
+assert.deepEqual(actRows.map((row) => row.cells.members.estimated), [undefined, 'change', 'value', undefined], 'members cells follow estimated only');
+// Nulls in the activity are a gap in that series only.
+const nullAct = normalizeHistory([{ day: '2026-11-01', messages: null, servers: 9 }, { day: '2026-11-02', messages: 4, servers: 10, estimatedActivity: true }]);
+assert.deepEqual(seriesOf(nullAct, 'messages', '2026-11-05').map((p) => p.value), [4]);
+assert.deepEqual(seriesOf(nullAct, 'servers', '2026-11-05').map((p) => p.value), [9, 10]);
 // Nulls in servers are a gap in the servers line only.
 const nullServers = normalizeHistory([{ day: '2026-11-01', servers: null, members: 100 }, { day: '2026-11-02', servers: 5, members: 110 }]);
 assert.deepEqual(seriesOf(nullServers, 'servers', '2026-11-05').map((p) => p.value), [5]);
@@ -257,15 +294,17 @@ assert.ok(COPY.en.estimatedNote.includes('dashed') && COPY.es.estimatedNote.incl
 for (const lang of Object.keys(COPY)) {
   for (const key of Object.keys(COPY[lang])) assert.ok(!/discord\.watch/i.test(COPY[lang][key]), `${lang}.${key} does not name discord.watch`);
   assert.equal(COPY[lang].zoomNote, undefined, `${lang} has no note about the axis`);
-  assert.ok(COPY[lang].serversNote && COPY[lang].serversNoteTable.includes('~'), `${lang}.serversNoteTable explains the ~`);
-  assert.notEqual(COPY[lang].serversNote, COPY[lang].estimatedNote, `${lang}: the servers note is not the members note`);
+  assert.ok(COPY[lang].approxNote && COPY[lang].approxNoteTable.includes('~'), `${lang}.approxNoteTable explains the ~`);
+  assert.notEqual(COPY[lang].approxNote, COPY[lang].estimatedNote, `${lang}: the approximate note is not the members note`);
 }
+assert.deepEqual([COPY.en.approxNote, COPY.es.approxNote, COPY['pt-BR'].approxNote], ['The dashed stretches are approximate.', 'Los tramos a trazos son aproximados.', 'Os trechos tracejados são aproximados.'], 'the note of the volume charts is the shared approximate note');
+assert.deepEqual([COPY.en.approxNoteTable, COPY.es.approxNoteTable, COPY['pt-BR'].approxNoteTable], ['Values marked ~ are approximate.', 'Los valores marcados con ~ son aproximados.', 'Os valores marcados com ~ são aproximados.']);
 assert.ok(COPY.es.onlyDays.includes('{n}') && COPY['pt-BR'].onlyDays.includes('{n}') && COPY.en.onlyDays.includes('{n}'));
 
 // The page uses them: the tabs of servers and members stay with no history, with the message that it starts today, and the last
 // point of a per-day series is an open one named "Today, so far".
 const page = readFileSync(new URL('../src/components/GlobalStats.astro', import.meta.url), 'utf8');
-for (const needle of  ["t('serversNote')", "t('serversNoteTable')", "metric === 'servers'", "t('histStarts')", "t('todaySoFar')", "t('estimatedNote')", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
+for (const needle of  ["'approxNote'", "t('approxNoteTable')", "metric === 'members' ? 'estimatedNote'", "t('histStarts')", "t('todaySoFar')", "'estimatedNote'", "t('partialNote')", 'withLiveToday(', 'gs-hollow', "info.kind === 'level' && anything", 'monthMode', 'data-range="365"']) {
   assert.ok(page.includes(needle), `GlobalStats.astro lost ${needle}`);
 }
 
