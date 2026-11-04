@@ -1,52 +1,20 @@
 ---
 import Base from '../layouts/Base.astro';
+import DashChartTip from './DashChartTip.astro';
 import { localePath, type Locale } from '../i18n/ui';
 import { getEnv } from '../utils/env';
+import { loadGlobalHistory } from '../utils/globalStatsHistory';
+import { COPY } from '../data/globalStatsCopy.mjs';
 
 interface Props {
   lang: Locale;
 }
 const { lang } = Astro.props;
 const localeBase = localePath[lang] ?? '';
-
-const COPY = {
-  en: {
-    title: 'Petto in numbers', pill: 'Live', heading: 'Petto in numbers',
-    desc: 'What every server that uses Petto has done so far. The numbers move on their own. Click one to refresh it right now.',
-    messages: 'Messages', voice: 'Hours in voice', reactions: 'Reactions',
-    all: 'All time', today: 'Today', week: 'This week',
-    rankTitle: 'Server ranking', rankDesc: 'Every server is here by default, and each one can hide itself in its dashboard.',
-    rankEmpty: 'No server is in the ranking yet. The numbers appear as servers use Petto.',
-    hoursShort: 'h', updated: 'Updated', never: 'waiting for the first numbers', refresh: 'Click to refresh',
-    note: 'The counters start from when each server began to be counted, so they grow from there.',
-    unavailable: 'The numbers are not available right now. We will keep trying.',
-  },
-  es: {
-    title: 'Petto en números', pill: 'En vivo', heading: 'Petto en números',
-    desc: 'Lo que han hecho todos los servidores que usan Petto hasta ahora. Los números se mueven solos. Haz clic en uno para actualizarlo ya.',
-    messages: 'Mensajes', voice: 'Horas en voz', reactions: 'Reacciones',
-    all: 'Total', today: 'Hoy', week: 'Esta semana',
-    rankTitle: 'Ranking de servidores', rankDesc: 'Todos los servidores están aquí por defecto, y cada uno puede ocultarse en su dashboard.',
-    rankEmpty: 'Todavía no hay ningún servidor en el ranking. Los números aparecen cuando los servidores usan Petto.',
-    hoursShort: 'h', updated: 'Actualizado', never: 'esperando los primeros números', refresh: 'Clic para actualizar',
-    note: 'Los contadores empiezan desde que cada servidor comenzó a contarse, y crecen desde ahí.',
-    unavailable: 'Los números no están disponibles ahora. Seguiremos intentando.',
-  },
-  'pt-BR': {
-    title: 'Petto em números', pill: 'Ao vivo', heading: 'Petto em números',
-    desc: 'O que todos os servidores que usam o Petto já fizeram até agora. Os números se mexem sozinhos. Clique em um para atualizar agora.',
-    messages: 'Mensagens', voice: 'Horas em voz', reactions: 'Reações',
-    all: 'Total', today: 'Hoje', week: 'Esta semana',
-    rankTitle: 'Ranking de servidores', rankDesc: 'Todos os servidores estão aqui por padrão, e cada um pode se ocultar no dashboard.',
-    rankEmpty: 'Ainda não há nenhum servidor no ranking. Os números aparecem quando os servidores usam o Petto.',
-    hoursShort: 'h', updated: 'Atualizado', never: 'esperando os primeiros números', refresh: 'Clique para atualizar',
-    note: 'Os contadores começam de quando cada servidor passou a ser contado, e crescem a partir daí.',
-    unavailable: 'Os números não estão disponíveis agora. Vamos continuar tentando.',
-  },
-} as const;
 const c = COPY[lang] ?? COPY.en;
 
 const statsEndpoint = new URL('/api/stats', Astro.url).pathname;
+const historyEndpoint = new URL('/api/stats-history', Astro.url).pathname;
 
 // The first paint already has the numbers; the browser then keeps them moving.
 async function firstSnapshot() {
@@ -56,6 +24,7 @@ async function firstSnapshot() {
   try {
     const res = await fetch(`${url}/rest/v1/global_stats?id=eq.main&select=data,updated_at`, {
       headers: { apikey: key, Authorization: `Bearer ${key}`, 'X-Petto-Dashboard-Key': key },
+      signal: AbortSignal.timeout(6_000),
     });
     if (!res.ok) return null;
     const rows = await res.json();
@@ -65,96 +34,147 @@ async function firstSnapshot() {
     return null;
   }
 }
-const initial = await firstSnapshot();
-const COUNTERS = [
-  { key: 'messages', label: c.messages },
-  { key: 'voiceSeconds', label: c.voice },
-  { key: 'reactions', label: c.reactions },
+const [initial, history] = await Promise.all([firstSnapshot(), loadGlobalHistory(Astro).catch(() => ({ days: [], source: 'none' as const }))]);
+
+const CARDS = [
+  { key: 'servers', label: c.servers, level: true },
+  { key: 'members', label: c.members, level: true },
+  { key: 'messages', label: c.messages, level: false },
+  { key: 'voiceSeconds', label: c.voice, level: false },
+  { key: 'reactions', label: c.reactions, level: false },
 ];
 ---
 <Base title={`${c.title} · Petto`} lang={lang}>
   <main>
     <section class="gs-sec">
       <div class="wrap gs-wrap">
-        <div class="eyebrow">{c.pill}</div>
+        <div class="gs-top">
+          <div class="eyebrow">{c.pill}</div>
+          <span class="gs-live" id="gsLive"><span class="gs-live-dot"></span><span id="gsUpdated">{c.never}</span></span>
+        </div>
         <h1>{c.heading}</h1>
         <p class="gs-desc">{c.desc}</p>
 
         <div
           id="gs"
           data-endpoint={statsEndpoint}
+          data-history-endpoint={historyEndpoint}
           data-locale={lang}
           data-initial={initial ? JSON.stringify(initial) : ''}
-          data-hours={c.hoursShort}
-          data-updated={c.updated}
-          data-never={c.never}
-          data-empty={c.rankEmpty}
-          data-unavailable={c.unavailable}
+          data-history={JSON.stringify(history)}
+          data-copy={JSON.stringify(c)}
           data-guild-link={`${localeBase}/dash`}
         >
-          <div class="gs-periods" role="tablist" aria-label="Period">
-            <button type="button" class="gs-pill on" data-counter-period="all">{c.all}</button>
-            <button type="button" class="gs-pill" data-counter-period="today">{c.today}</button>
-            <button type="button" class="gs-pill" data-counter-period="week">{c.week}</button>
-            <span class="gs-live" id="gsLive"><span class="gs-live-dot"></span><span id="gsUpdated">{c.never}</span></span>
-          </div>
-
-          <div class="gs-counters">
-            {COUNTERS.map((counter) => (
-              <button type="button" class="gs-counter" data-metric={counter.key} title={c.refresh}>
-                <span class="gs-counter-label">{counter.label}</span>
-                <span class="gs-odo" data-odo aria-live="off">0</span>
+          <div class="gs-cards">
+            {CARDS.map((card) => (
+              <button type="button" class={`gs-card gs-card-${card.key}`} data-metric={card.key} title={c.refresh} hidden={card.level}>
+                <span class="gs-card-label"><i class="gs-swatch"></i>{card.label}</span>
+                <span class="gs-odo" data-odo aria-live="off">&ndash;</span>
+                <span class="gs-chips" data-chips></span>
               </button>
             ))}
           </div>
           <p class="gs-unavailable" id="gsUnavailable" hidden>{c.unavailable}</p>
 
-          <div class="gs-rank-head">
-            <div>
-              <h2>{c.rankTitle}</h2>
-              <p class="gs-rank-desc">{c.rankDesc}</p>
-            </div>
-            <div class="gs-rank-tabs">
-              <div class="gs-tabs" data-group="metric">
-                <button type="button" class="gs-pill on" data-metric-tab="messages">{c.messages}</button>
-                <button type="button" class="gs-pill" data-metric-tab="voiceSeconds">{c.voice}</button>
-                <button type="button" class="gs-pill" data-metric-tab="reactions">{c.reactions}</button>
+          <section class="gs-panel" aria-labelledby="gsHistTitle">
+            <div class="gs-panel-head">
+              <div>
+                <h2 id="gsHistTitle">{c.histTitle}</h2>
+                <p class="gs-panel-desc">{c.histDesc}</p>
               </div>
-              <div class="gs-tabs" data-group="period">
-                <button type="button" class="gs-pill on" data-rank-period="all">{c.all}</button>
-                <button type="button" class="gs-pill" data-rank-period="week">{c.week}</button>
+              <div class="gs-seg" role="group" aria-label={c.rangeLabel} id="gsRanges">
+                <button type="button" data-range="7" aria-pressed="false">{c.range7}</button>
+                <button type="button" data-range="30" aria-pressed="true">{c.range30}</button>
+                <button type="button" data-range="90" aria-pressed="false">{c.range90}</button>
               </div>
             </div>
-          </div>
-          <ol class="gs-rank" id="gsRank"></ol>
+            <div class="gs-metrics" role="group" aria-label={c.metricLabel} id="gsMetrics"></div>
+            <dl class="gs-summary" id="gsSummary"></dl>
+            <div class="gs-plot-host" id="gsPlotHost"></div>
+            <p class="gs-panel-note" id="gsChartNote"></p>
+          </section>
+
+          <section class="gs-panel" aria-labelledby="gsTableTitle" id="gsTablePanel">
+            <div class="gs-panel-head">
+              <div>
+                <h2 id="gsTableTitle">{c.tableTitle}</h2>
+                <p class="gs-panel-desc">{c.tableDesc}</p>
+              </div>
+            </div>
+            <div class="gs-table-scroll" id="gsTable" tabindex="0" role="region" aria-labelledby="gsTableTitle"></div>
+            <button type="button" class="gs-more" id="gsMore" hidden></button>
+          </section>
+
+          <section class="gs-panel" aria-labelledby="gsRankTitle">
+            <div class="gs-panel-head gs-rank-head">
+              <div>
+                <h2 id="gsRankTitle">{c.rankTitle}</h2>
+                <p class="gs-panel-desc">{c.rankDesc}</p>
+              </div>
+              <div class="gs-rank-tabs">
+                <div class="gs-seg" role="group" aria-label={c.rankFor} id="gsRankMetric">
+                  <button type="button" data-metric-tab="messages" aria-pressed="true">{c.messages}</button>
+                  <button type="button" data-metric-tab="voiceSeconds" aria-pressed="false">{c.voice}</button>
+                  <button type="button" data-metric-tab="reactions" aria-pressed="false">{c.reactions}</button>
+                </div>
+                <div class="gs-seg" role="group" aria-label={c.rankFor} id="gsRankPeriod">
+                  <button type="button" data-rank-period="all" aria-pressed="true">{c.all}</button>
+                  <button type="button" data-rank-period="week" aria-pressed="false">{c.week}</button>
+                </div>
+              </div>
+            </div>
+            <ol class="gs-rank" id="gsRank"></ol>
+          </section>
 
           <p class="gs-note">{c.note}</p>
         </div>
       </div>
     </section>
   </main>
+  <DashChartTip />
 </Base>
 
 <script>
+  import { METRICS, RANGES, botDay, changeShare, changeSince, dailyRows, dayChanges, normalizeHistory, seriesOf, smoothPath, withinDays, zoomScale } from '../utils/globalStatsMath.mjs';
+
   const root = document.getElementById('gs');
   if (root) {
     const locale = root.dataset.locale || 'en';
-    const hoursShort = root.dataset.hours || 'h';
     const refreshMs = 30_000;
+    const historyEveryMs = 10 * 60_000;
     const staleCapMs = 5 * 60_000; // the numbers are estimated for at most this long without a new snapshot
-    const odo = (el: Element) => el as HTMLElement;
+    const $ = (id: string) => document.getElementById(id) as HTMLElement;
+    let copy: Record<string, string> = {};
+    try { copy = JSON.parse(root.dataset.copy || '{}'); } catch { copy = {}; }
+    const t = (key: string) => copy[key] ?? '';
 
     let snapshot: any = null; // { data, updatedAt }
+    let history: { days: any[]; source: string } = { days: [], source: 'none' };
     let fetchedAt = Date.now();
-    let counterPeriod = 'all';
+    let metric = 'messages';
+    let range = 30;
+    let tableRows = 14;
     let rankMetric = 'messages';
     let rankPeriod = 'all';
 
     try { if (root.dataset.initial) snapshot = JSON.parse(root.dataset.initial); } catch { snapshot = null; }
+    try { const first = JSON.parse(root.dataset.history || '{}'); history = { days: normalizeHistory(first), source: first.source || 'none' }; } catch { /* no history */ }
 
-    // A number that rolls: each digit is a strip of 0 to 9 that slides to the new digit, up or down.
+    // Spanish does not group four digits by default; the page always does, so 4,099 and 27,339 look alike.
+    const GROUP = { useGrouping: 'always' } as Intl.NumberFormatOptions;
+    const num = new Intl.NumberFormat(locale, { maximumFractionDigits: 0, ...GROUP });
+    const num1 = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1, ...GROUP });
+    const pct = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 });
+    const hoursOf = (seconds: number) => seconds / 3600;
+    const fmt = (key: string, value: number) => (key === 'voice' || key === 'voiceSeconds' ? `${num1.format(value)} ${t('hoursShort')}` : num.format(Math.round(value)));
+    const signed = (key: string, value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${fmt(key, Math.abs(value))}`;
+    const dayText = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00Z`).toLocaleDateString(locale, { ...opts, timeZone: 'UTC' });
+    const tone = (value: number | null) => (value === null || value === 0 ? 'flat' : value > 0 ? 'up' : 'down');
+    const esc = (text: string) => text.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string));
+
+    // ── The rolling number: each digit is a strip of 0 to 9 that slides to the new digit, up or down. ──
     function setOdometer(el: HTMLElement, value: number, decimals: number) {
-      const text = Math.max(0, value).toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      const text = Math.max(0, value).toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals, ...({ useGrouping: 'always' } as Intl.NumberFormatOptions) });
       const shape = text.replace(/\d/g, '0');
       const fresh = el.dataset.shape !== shape;
       if (fresh) {
@@ -180,33 +200,264 @@ const COUNTERS = [
       el.setAttribute('aria-label', text);
       const digits = [...text].filter((char) => /\d/.test(char));
       const strips = el.querySelectorAll<HTMLElement>('.gs-strip');
-      const apply = () => strips.forEach((strip, i) => { strip.style.transform = `translateY(${-Number(digits[i])}em)`; });
+      const apply = () => strips.forEach((strip, i) => { strip.style.transform = `translateY(${-Number(digits[i]) * 1.18}em)`; });
       if (fresh) requestAnimationFrame(() => requestAnimationFrame(apply)); else apply();
     }
 
-    function estimate(metric: string) {
+    // The counters between two snapshots: the snapshot's number plus what the day's rate adds since then.
+    function estimate(key: string, period: 'all' | 'today' | 'week') {
       const data = snapshot?.data;
-      const base = data?.totals?.[counterPeriod]?.[metric] ?? 0;
-      const rate = data?.rates?.[metric] ?? 0;
-      const sinceSnapshot = Math.min(staleCapMs, Math.max(0, Date.now() - new Date(snapshot.updatedAt).getTime()));
-      return base + rate * (sinceSnapshot / 1000);
+      const base = data?.totals?.[period]?.[key] ?? 0;
+      const rate = data?.rates?.[key] ?? 0;
+      const since = Math.min(staleCapMs, Math.max(0, Date.now() - new Date(snapshot.updatedAt).getTime()));
+      return base + rate * (since / 1000);
     }
 
-    function renderCounters() {
+    // ── History: the days the bot saved, plus today's servers and members from the live numbers. ──
+    function allDays() {
+      const today = botDay();
+      const days = history.days.map((row) => ({ ...row }));
+      const data = snapshot?.data;
+      const servers = Number(data?.servers);
+      const members = Number(data?.members);
+      if (Number.isFinite(servers) || Number.isFinite(members)) {
+        let row = days.find((entry) => entry.day === today);
+        if (!row) { row = { day: today }; days.push(row); }
+        if (Number.isFinite(servers) && servers > 0) row.servers = servers;
+        if (Number.isFinite(members) && members > 0) row.members = members;
+        if (!METRICS.some((info) => row[info.field] !== undefined)) days.splice(days.indexOf(row), 1);
+      }
+      return days.sort((a, b) => (a.day < b.day ? -1 : 1));
+    }
+    function series(key: string) {
+      const points = seriesOf(allDays(), key, botDay());
+      return key === 'voice' ? points.map((p: any) => ({ ...p, value: hoursOf(p.value) })) : points;
+    }
+    const hasHistory = () => METRICS.some((info) => series(info.key).length >= 2);
+
+    // ── The five cards ──
+    function chipsFor(key: string) {
+      if (key === 'servers' || key === 'members') {
+        const points = series(key);
+        return [
+          { label: t('chip7'), change: changeSince(points, 7) },
+          { label: t('chip30'), change: changeSince(points, 30) },
+        ];
+      }
+      const unit = key === 'voiceSeconds' ? 'voice' : key;
+      const todayValue = estimate(key, 'today');
+      const weekValue = estimate(key, 'week');
+      const conv = (value: number) => (key === 'voiceSeconds' ? hoursOf(value) : value);
+      return [
+        { label: t('chipToday'), change: conv(todayValue), unit },
+        { label: t('chipWeek'), change: conv(weekValue), unit },
+      ];
+    }
+
+    function renderCards() {
       if (!snapshot) return;
-      root!.querySelectorAll<HTMLElement>('.gs-counter').forEach((card) => {
-        const metric = card.dataset.metric || 'messages';
-        const target = odo(card.querySelector('[data-odo]')!);
-        if (metric === 'voiceSeconds') setOdometer(target, estimate(metric) / 3600, 1);
-        else setOdometer(target, Math.floor(estimate(metric)), 0);
+      const data = snapshot.data;
+      root!.querySelectorAll<HTMLElement>('.gs-card').forEach((card) => {
+        const key = card.dataset.metric || 'messages';
+        const target = card.querySelector<HTMLElement>('[data-odo]')!;
+        if (key === 'servers' || key === 'members') {
+          const value = Number(data?.[key]);
+          card.hidden = !(Number.isFinite(value) && value > 0);
+          if (!card.hidden) setOdometer(target, value, 0);
+        } else if (key === 'voiceSeconds') setOdometer(target, hoursOf(estimate(key, 'all')), 1);
+        else setOdometer(target, Math.floor(estimate(key, 'all')), 0);
+        const holder = card.querySelector<HTMLElement>('[data-chips]')!;
+        const unit = key === 'voiceSeconds' ? 'voice' : key;
+        const html = chipsFor(key)
+          .filter((chip) => chip.change !== null)
+          .map((chip) => {
+            const change = chip.change as number;
+            const kind = tone(Math.round(change * 10) / 10);
+            const hint = key === 'servers' || key === 'members' ? ` title="${esc(`${t('chipHint')} ${chip.label}`)}"` : '';
+            return `<span class="gs-chip gs-${kind}"${hint}><i class="gs-arrow"></i><b>${esc(signed(unit, change))}</b><em>${esc(chip.label)}</em></span>`;
+          }).join('');
+        if (holder.dataset.html !== html) { holder.dataset.html = html; holder.innerHTML = html; }
       });
     }
 
-    function formatRankValue(metric: string, value: number) {
-      if (metric === 'voiceSeconds') return `${(value / 3600).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${hoursShort}`;
-      return value.toLocaleString(locale);
+    // ── The chart ──
+    const COLORS: Record<string, string> = { servers: 'var(--m-servers)', members: 'var(--m-members)', messages: 'var(--m-messages)', voice: 'var(--m-voice)', reactions: 'var(--m-reactions)' };
+
+    function tickLabels(ticks: number[], key: string) {
+      const plain = ticks.map((value) => (key === 'voice' ? num1.format(value) : num.format(value)));
+      if (Math.max(...ticks.map(Math.abs)) < 10_000) return key === 'voice' ? ticks.map((v) => (Number.isInteger(v) ? num.format(v) : num1.format(v))) : plain;
+      for (let digits = 0; digits <= 2; digits += 1) {
+        const formatter = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: digits });
+        const labels = ticks.map((value) => formatter.format(value));
+        if (new Set(labels).size === labels.length) return labels;
+      }
+      return plain;
     }
 
+    function renderMetricTabs() {
+      const holder = $('gsMetrics');
+      const available = METRICS.filter((info) => series(info.key).length >= 2);
+      const keys = available.map((info) => info.key);
+      if (!keys.includes(metric) && keys.length) metric = keys[0];
+      const html = available.map((info) => `<button type="button" data-chart-metric="${info.key}" aria-pressed="${info.key === metric}" style="--m:${COLORS[info.key]}"><i class="gs-swatch"></i>${esc(t(info.key === 'voice' ? 'voice' : info.key))}</button>`).join('');
+      if (holder.dataset.html !== html) {
+        holder.dataset.html = html;
+        holder.innerHTML = html;
+      }
+      holder.hidden = !available.length;
+    }
+
+    function renderSummary(points: { day: string; value: number }[], info: { key: string; kind: string }) {
+      const holder = $('gsSummary');
+      const values = points.map((p) => p.value);
+      const first = values[0];
+      const last = values[values.length - 1];
+      const hi = Math.max(...values);
+      const lo = Math.min(...values);
+      const cells: { label: string; value: string; sub?: string; kind?: string }[] = [];
+      if (info.kind === 'level') {
+        const change = last - first;
+        const share = changeShare(change, first);
+        cells.push({ label: t('summaryNow'), value: fmt(info.key, last) });
+        cells.push({ label: t('summaryChange'), value: signed(info.key, change), sub: share === null ? '' : `${share > 0 ? '+' : share < 0 ? '−' : ''}${pct.format(Math.abs(share))}`, kind: tone(change) });
+      } else {
+        const total = values.reduce((sum, value) => sum + value, 0);
+        cells.push({ label: t('summaryTotal'), value: fmt(info.key, total) });
+        cells.push({ label: t('summaryAvg'), value: fmt(info.key, total / values.length) });
+      }
+      const dayOf = (value: number) => points.find((p) => p.value === value)?.day ?? '';
+      cells.push({ label: t('summaryHigh'), value: fmt(info.key, hi), sub: dayText(dayOf(hi), { month: 'short', day: 'numeric' }) });
+      cells.push({ label: t('summaryLow'), value: fmt(info.key, lo), sub: dayText(dayOf(lo), { month: 'short', day: 'numeric' }) });
+      holder.innerHTML = cells.map((cell) => `<div><dt>${esc(cell.label)}</dt><dd class="${cell.kind ? `gs-${cell.kind}` : ''}">${esc(cell.value)}${cell.sub ? `<small>${esc(cell.sub)}</small>` : ''}</dd></div>`).join('');
+    }
+
+    function drawChart(animate: boolean) {
+      const host = $('gsPlotHost');
+      const note = $('gsChartNote');
+      const summary = $('gsSummary');
+      renderMetricTabs();
+      const info = METRICS.find((item) => item.key === metric)!;
+      const all = series(metric);
+      const points = withinDays(all, range);
+      $('gsRanges').hidden = !hasHistory();
+      if (all.length < 2 || points.length < 2) {
+        host.innerHTML = `<p class="gs-empty">${esc(hasHistory() ? t('histShort') : t('histEmpty'))}</p>`;
+        summary.innerHTML = '';
+        note.textContent = '';
+        host.dataset.width = '';
+        return;
+      }
+      const W = Math.max(240, Math.floor(host.clientWidth || 640));
+      const H = W < 520 ? 230 : 290;
+      const scale = zoomScale(points.map((p: { value: number }) => p.value), 4, true);
+      const labels = tickLabels(scale.ticks, metric);
+      const left = Math.min(70, Math.ceil(Math.max(...labels.map((l) => l.length)) * 6.6) + 14);
+      const right = 14, top = 12, bottom = 28;
+      const plotW = W - left - right, plotH = H - top - bottom;
+      const first = Date.parse(`${points[0].day}T00:00:00Z`);
+      const span = Date.parse(`${points[points.length - 1].day}T00:00:00Z`) - first;
+      const xOf = (day: string) => left + (span ? ((Date.parse(`${day}T00:00:00Z`) - first) / span) * plotW : plotW / 2);
+      const yOf = (value: number) => top + plotH - ((value - scale.min) / (scale.max - scale.min)) * plotH;
+      const coords = points.map((p: { day: string; value: number }) => ({ x: xOf(p.day), y: yOf(p.value) }));
+      const line = smoothPath(coords);
+      const base = top + plotH;
+      const area = `${line} L${coords[coords.length - 1].x},${base} L${coords[0].x},${base} Z`;
+
+      const grid = scale.ticks.map((tick, i) => `<line x1="${left}" x2="${left + plotW}" y1="${yOf(tick)}" y2="${yOf(tick)}" class="gs-grid"/><text x="${left - 8}" y="${yOf(tick) + 4}" text-anchor="end" class="gs-axis">${esc(labels[i])}</text>`).join('');
+      const slots = Math.max(2, Math.min(points.length, Math.floor(plotW / 84) + 1));
+      const gap = Math.max(1, Math.ceil((points.length - 1) / (slots - 1)));
+      const picks = new Set<number>();
+      for (let index = points.length - 1; index >= 0; index -= gap) picks.add(index);
+      const ordered = [...picks].sort((a, b) => a - b);
+      const xticks = ordered.map((index, order, list) => {
+        const anchor = index === 0 ? 'start' : order === list.length - 1 ? 'end' : 'middle';
+        return `<text x="${coords[index].x}" y="${H - 8}" text-anchor="${anchor}" class="gs-axis">${esc(dayText(points[index].day, { month: 'short', day: 'numeric' }))}</text>`;
+      }).join('');
+
+      const changes = dayChanges(points);
+      const tip = points.map((p: { day: string; value: number }, i: number) => ({
+        x: Math.round((coords[i].x / W) * 10000) / 10000,
+        y: [Math.round((coords[i].y / H) * 10000) / 10000],
+        f: {
+          label: dayText(p.day, { weekday: 'short', month: 'short', day: 'numeric' }),
+          value: fmt(metric, p.value),
+          delta: changes[i] === null ? '' : `${signed(metric, changes[i] as number)} ${t('changeVsPrev')}`,
+        },
+      }));
+      const tipJson = JSON.stringify({ points: tip }).replace(/</g, '\\u003c');
+      const unitLine = info.kind === 'level' ? t('atEnd') : t('perDay');
+      const lastPoint = coords[coords.length - 1];
+      host.dataset.width = String(W);
+      host.innerHTML = `<div class="gs-plot" data-ct data-ct-place="side" tabindex="0" role="group" aria-label="${esc(`${t(metric === 'voice' ? 'voice' : metric)} ${unitLine}`)}" style="--c:${COLORS[metric]};height:${H}px">
+        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('chartLabel'))}" class="${animate ? 'gs-draw' : ''}">
+          ${grid}${xticks}
+          <path d="${area}" class="gs-area"/><path d="${line}" pathLength="1" class="gs-line"/>
+          <circle cx="${lastPoint.x}" cy="${lastPoint.y}" r="4.5" class="gs-end"/>
+        </svg>
+        <i class="ct-guide" data-ct-guide></i><i class="ct-dot" data-ct-dot style="--ct-c:${COLORS[metric]}"></i>
+        <div class="ct-tip gs-tip" data-ct-box><b data-ct-f="label"></b><span data-ct-f="value"></span><em data-ct-f="delta"></em></div>
+        <script type="application/json" data-ct-data>${tipJson}<\/script>
+      </div>`;
+      renderSummary(points, info);
+      const covered = Math.round((Date.parse(`${points[points.length - 1].day}T00:00:00Z`) - first) / 86_400_000) + 1;
+      note.textContent = `${t('zoomNote')}${covered < range ? ` ${t('onlyDays').replace('{n}', String(covered))}` : ''}`;
+    }
+
+    // ── The day by day table ──
+    function renderTable() {
+      const holder = $('gsTable');
+      $('gsTablePanel').hidden = false;
+      const more = $('gsMore') as HTMLButtonElement;
+      const today = botDay();
+      const days = allDays();
+      const rows = dailyRows(days, today, 30);
+      const used = METRICS.filter((info) => rows.some((row: any) => row.cells[info.key]) );
+      const live: Record<string, number> = {};
+      if (snapshot) {
+        const data = snapshot.data;
+        for (const info of METRICS) {
+          if (info.kind === 'level') { const v = Number(data?.[info.key]); if (Number.isFinite(v) && v > 0) live[info.key] = v; }
+          else live[info.key] = estimate(info.field, 'today');
+        }
+      }
+      const liveKeys = METRICS.filter((info) => live[info.key] !== undefined && (info.kind === 'flow' || rows.some((row: any) => row.cells[info.key])));
+      const columns = METRICS.filter((info) => used.includes(info) || (rows.length && liveKeys.includes(info)));
+      if (!columns.length || !rows.length) {
+        // Nothing to list (no history at all): the history panel above already says so, so this one is left out.
+        $('gsTablePanel').hidden = true;
+        holder.innerHTML = '';
+        more.hidden = true;
+        return;
+      }
+      const head = columns.map((info) => `<th scope="col" style="--m:${COLORS[info.key]}"><i class="gs-swatch"></i>${esc(t(info.key === 'voice' ? 'voice' : info.key))}</th>`).join('');
+      const cell = (key: string, value: number, change: number | null) => {
+        const shown = key === 'voice' ? hoursOf(value) : value;
+        const changeShown = change === null ? null : key === 'voice' ? hoursOf(change) : change;
+        const extra = changeShown === null ? '' : ` <span class="gs-d gs-${tone(Math.round(changeShown * 10) / 10)}">(${esc(signed(key, changeShown))})</span>`;
+        return `<td><span class="gs-v">${esc(fmt(key, shown))}</span>${extra}</td>`;
+      };
+      let body = '';
+      if (snapshot && liveKeys.length) {
+        const cells = columns.map((info) => {
+          if (live[info.key] === undefined) return '<td class="gs-none">–</td>';
+          if (info.kind === 'level') {
+            const before = [...days].reverse().find((row: any) => row.day < today && row[info.field] !== undefined);
+            return cell(info.key, live[info.key], before ? live[info.key] - before[info.field] : null);
+          }
+          return cell(info.key, live[info.key], null);
+        }).join('');
+        body += `<tr class="gs-today"><th scope="row">${esc(t('today'))}<small>${esc(t('soFar'))}</small></th>${cells}</tr>`;
+      }
+      body += rows.slice(0, tableRows).map((row: any) => {
+        const cells = columns.map((info) => (row.cells[info.key] ? cell(info.key, row.cells[info.key].value, row.cells[info.key].change) : '<td class="gs-none">–</td>')).join('');
+        return `<tr><th scope="row">${esc(dayText(row.day, { weekday: 'short', month: 'short', day: 'numeric' }))}</th>${cells}</tr>`;
+      }).join('');
+      holder.innerHTML = `<table class="gs-table"><thead><tr><th scope="col">${esc(t('colDay'))}</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      more.hidden = rows.length <= 14;
+      more.textContent = tableRows > 14 ? t('less') : t('more');
+    }
+
+    // ── The ranking: the top 10 servers that did not hide themselves (the bot only sends those). ──
     function iconUrl(value: unknown) {
       if (typeof value !== 'string') return null;
       try {
@@ -215,39 +466,53 @@ const COUNTERS = [
       } catch { return null; }
     }
 
-    function fillList(list: HTMLElement | null, rows: any[], metric: string, emptyText: string, pictureKey: string) {
-      if (!list) return;
+    function renderRanking() {
+      const list = $('gsRank');
+      const rows: any[] = (snapshot?.data?.ranking?.[rankPeriod]?.[rankMetric] ?? []).slice(0, 10);
       list.textContent = '';
       if (!rows.length) {
         const empty = document.createElement('li');
         empty.className = 'gs-rank-empty';
-        empty.textContent = emptyText;
+        empty.textContent = t('rankEmpty');
         list.appendChild(empty);
         return;
       }
+      const key = rankMetric === 'voiceSeconds' ? 'voice' : rankMetric;
+      const top = Math.max(1, ...rows.map((row) => Number(row.value) || 0));
       rows.forEach((row, index) => {
+        const value = Number(row.value) || 0;
         const item = document.createElement('li');
-        item.className = 'gs-row';
+        item.className = `gs-row gs-place-${index + 1}`;
+        item.style.setProperty('--w', String(Math.max(0.03, value / top)));
         const place = document.createElement('span');
         place.className = 'gs-place';
         place.textContent = String(index + 1);
         const avatar = document.createElement('span');
         avatar.className = 'gs-avatar';
-        const icon = iconUrl(row[pictureKey]);
-        if (icon) { const img = document.createElement('img'); img.src = icon; img.alt = ''; img.loading = 'lazy'; avatar.appendChild(img); } else avatar.textContent = String(row.name || '?').slice(0, 1).toUpperCase();
+        const icon = iconUrl(row.icon);
+        if (icon) { const img = document.createElement('img'); img.src = icon; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; avatar.appendChild(img); } else avatar.textContent = String(row.name || '?').slice(0, 1).toUpperCase();
+        const who = document.createElement('span');
+        who.className = 'gs-who';
         const name = document.createElement('span');
         name.className = 'gs-name';
         name.textContent = String(row.name || '');
-        const value = document.createElement('span');
-        value.className = 'gs-value';
-        value.textContent = formatRankValue(metric, Number(row.value) || 0);
-        item.append(place, avatar, name, value);
+        who.appendChild(name);
+        const members = Number(row.members);
+        if (Number.isFinite(members) && members > 0) {
+          const meta = document.createElement('span');
+          meta.className = 'gs-meta';
+          meta.textContent = `${num.format(members)} ${t('membersShort')}`;
+          who.appendChild(meta);
+        }
+        const amount = document.createElement('span');
+        amount.className = 'gs-value';
+        amount.textContent = fmt(key, key === 'voice' ? hoursOf(value) : value);
+        const bar = document.createElement('span');
+        bar.className = 'gs-bar';
+        bar.setAttribute('aria-hidden', 'true');
+        item.append(place, avatar, who, amount, bar);
         list.appendChild(item);
       });
-    }
-
-    function renderRanking() {
-      fillList(document.getElementById('gsRank'), (snapshot?.data?.ranking?.[rankPeriod]?.[rankMetric] ?? []).slice(0, 5), rankMetric, root!.dataset.empty || '', 'icon');
     }
 
     function renderStamp() {
@@ -255,9 +520,11 @@ const COUNTERS = [
       const live = document.getElementById('gsLive');
       if (!stamp || !snapshot) return;
       const time = new Date(snapshot.updatedAt);
-      stamp.textContent = `${root!.dataset.updated} ${time.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
+      stamp.textContent = `${t('updated')} ${time.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
       live?.classList.add('on');
     }
+
+    function renderAll(animate = false) { renderCards(); renderRanking(); renderStamp(); renderTable(); drawChart(animate); }
 
     async function load(fromClick = false, card?: HTMLElement) {
       if (card) card.classList.add('loading');
@@ -269,7 +536,9 @@ const COUNTERS = [
             snapshot = { data: payload.data, updatedAt: payload.updatedAt };
             fetchedAt = Date.now();
             document.getElementById('gsUnavailable')?.setAttribute('hidden', '');
-            renderCounters(); renderRanking(); renderStamp();
+            renderCards(); renderRanking(); renderStamp(); renderTable();
+            // The chart is drawn again only when the shape of the data changed (never under an open tooltip).
+            if (!$('gsPlotHost').querySelector('[data-dash-hold]')) drawChart(false);
           }
         } else if (!snapshot) {
           document.getElementById('gsUnavailable')?.removeAttribute('hidden');
@@ -281,85 +550,242 @@ const COUNTERS = [
       }
     }
 
-    function choose(group: Element[], active: Element) {
-      group.forEach((button) => button.classList.toggle('on', button === active));
+    async function loadHistory() {
+      try {
+        const response = await fetch(root!.dataset.historyEndpoint || '/api/stats-history', { headers: { Accept: 'application/json' } });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const days = normalizeHistory(payload);
+        if (!days.length) return;
+        history = { days, source: payload.source || 'saved' };
+        renderTable();
+        if (!$('gsPlotHost').querySelector('[data-dash-hold]')) drawChart(false);
+      } catch { /* the page keeps the history it has */ }
     }
 
-    root.querySelectorAll<HTMLElement>('[data-counter-period]').forEach((button, _i, all) => {
-      button.addEventListener('click', () => { counterPeriod = button.dataset.counterPeriod || 'all'; choose([...all], button); renderCounters(); });
-    });
-    root.querySelectorAll<HTMLElement>('[data-metric-tab]').forEach((button, _i, all) => {
-      button.addEventListener('click', () => { rankMetric = button.dataset.metricTab || 'messages'; choose([...all], button); renderRanking(); });
-    });
-    root.querySelectorAll<HTMLElement>('[data-rank-period]').forEach((button, _i, all) => {
-      button.addEventListener('click', () => { rankPeriod = button.dataset.rankPeriod || 'all'; choose([...all], button); renderRanking(); });
-    });
-    root.querySelectorAll<HTMLElement>('.gs-counter').forEach((card) => {
-      card.addEventListener('click', () => load(true, card));
-    });
+    function press(group: HTMLElement | null, active: Element) {
+      group?.querySelectorAll('button').forEach((button) => button.setAttribute('aria-pressed', String(button === active)));
+    }
 
-    renderCounters(); renderRanking(); renderStamp();
+    $('gsRanges').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-range]');
+      if (!button) return;
+      range = RANGES.includes(Number(button.dataset.range)) ? Number(button.dataset.range) : 30;
+      press($('gsRanges'), button);
+      drawChart(true);
+    });
+    $('gsMetrics').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-chart-metric]');
+      if (!button) return;
+      metric = button.dataset.chartMetric || 'messages';
+      drawChart(true);
+    });
+    $('gsMore').addEventListener('click', () => { tableRows = tableRows > 14 ? 14 : 30; renderTable(); });
+    $('gsRankMetric').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-metric-tab]');
+      if (!button) return;
+      rankMetric = button.dataset.metricTab || 'messages';
+      press($('gsRankMetric'), button);
+      renderRanking();
+    });
+    $('gsRankPeriod').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLElement>('[data-rank-period]');
+      if (!button) return;
+      rankPeriod = button.dataset.rankPeriod || 'all';
+      press($('gsRankPeriod'), button);
+      renderRanking();
+    });
+    root.querySelectorAll<HTMLElement>('.gs-card').forEach((card) => card.addEventListener('click', () => load(true, card)));
+
+    // The chart is drawn at the width it has, so its text keeps its size on a phone; a new width draws it again.
+    let resizing = 0;
+    const watch = () => {
+      cancelAnimationFrame(resizing);
+      resizing = requestAnimationFrame(() => {
+        const host = $('gsPlotHost');
+        if (host.querySelector('[data-dash-hold]')) return;
+        if (String(Math.max(240, Math.floor(host.clientWidth))) !== host.dataset.width && host.dataset.width) drawChart(false);
+      });
+    };
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(watch).observe($('gsPlotHost')); else window.addEventListener('resize', watch);
+
+    renderAll(true);
     load();
     setInterval(() => { if (!document.hidden) load(); }, refreshMs);
-    setInterval(() => { if (!document.hidden) renderCounters(); }, 1000);
+    setInterval(() => { if (!document.hidden) renderCards(); }, 1000);
+    setInterval(() => { if (!document.hidden) loadHistory(); }, historyEveryMs);
     document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - fetchedAt > refreshMs) load(); });
   }
 </script>
 
 <style>
-  .gs-sec { padding: 90px 0 120px; }
-  .gs-wrap { max-width: 860px; }
+  .gs-sec {
+    padding: 90px 0 120px;
+    /* One color for each number, used by the cards, the chart and the table. The same pastels as the dashboard's charts. */
+    --m-servers: #8fdca8; --m-members: #9bd0f5; --m-messages: #f0a88f; --m-voice: #c6a8f5; --m-reactions: #f5c26b;
+  }
+  :root[data-theme="light"] .gs-sec { --m-servers: #3c935f; --m-members: #3a7fb8; --m-messages: #c4573a; --m-voice: #7b55c4; --m-reactions: #b07a0c; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .gs-sec { --m-servers: #3c935f; --m-members: #3a7fb8; --m-messages: #c4573a; --m-voice: #7b55c4; --m-reactions: #b07a0c; }
+  }
+  .gs-wrap { max-width: 980px; }
+  .gs-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .gs-sec h1 { font-size: 34px; margin: 14px 0 12px; }
-  .gs-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; max-width: 60ch; margin-bottom: 30px; }
-  .gs-periods, .gs-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .gs-periods { margin-bottom: 14px; }
-  .gs-live { margin-left: auto; display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); opacity: 0.5; }
+  .gs-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; max-width: 62ch; margin: 0 0 28px; }
+  .gs-live { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); opacity: 0.55; }
   .gs-live.on { opacity: 1; color: var(--green); }
   .gs-live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .gs-live.on .gs-live-dot { animation: gsPulse 1.6s ease-in-out infinite; }
   @keyframes gsPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  .gs-pill { border: 1px solid var(--border); background: var(--card); color: var(--text-muted); border-radius: 999px; padding: 6px 13px; font-size: 13px; font-family: inherit; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
-  .gs-pill:hover { color: var(--text); }
-  .gs-pill.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+  :global(.gs-swatch) { display: inline-block; width: 8px; height: 8px; border-radius: 3px; background: var(--m, var(--accent)); flex: none; }
 
-  .gs-counters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
-  .gs-counter { text-align: left; border: 1px solid var(--border); border-radius: 16px; padding: 20px 20px 22px; background: var(--card); color: var(--text); font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 14px; min-width: 0; transition: border-color .15s ease, transform .15s ease; }
-  .gs-counter:hover { border-color: var(--accent); }
-  .gs-counter:active { transform: scale(0.99); }
-  .gs-counter.loading { border-color: var(--accent); }
-  .gs-counter-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+  /* The five numbers: servers and members first, then what they did. */
+  .gs-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .gs-card { grid-column: span 2; text-align: left; border: 1px solid var(--border); border-radius: 16px; padding: 18px 18px 16px; color: var(--text); font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 12px; min-width: 0; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--m) 9%, var(--card)), var(--card) 70%); transition: border-color .15s ease, transform .15s ease; }
+  .gs-card[hidden] { display: none; }
+  .gs-card-servers, .gs-card-members { grid-column: span 3; --m: var(--m-servers); }
+  .gs-card-members { --m: var(--m-members); }
+  .gs-card-messages { --m: var(--m-messages); }
+  .gs-card-voiceSeconds { --m: var(--m-voice); }
+  .gs-card-reactions { --m: var(--m-reactions); }
+  .gs-card:hover { border-color: color-mix(in srgb, var(--m) 55%, var(--border)); }
+  .gs-card:active { transform: scale(0.99); }
+  .gs-card.loading { border-color: var(--m); }
+  .gs-card-label { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+  .gs-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; }
+  :global(.gs-chip) { display: inline-flex; align-items: baseline; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 12px; line-height: 1.35; white-space: nowrap; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text-muted); }
+  :global(.gs-chip b) { font-weight: 700; font-variant-numeric: tabular-nums; }
+  :global(.gs-chip em) { font-style: normal; color: var(--text-dim); }
+  :global(.gs-chip.gs-up) { background: var(--green-soft); }
+  :global(.gs-chip.gs-up b) { color: var(--green); }
+  :global(.gs-chip.gs-down) { background: var(--red-soft); }
+  :global(.gs-chip.gs-down b) { color: var(--red); }
+  :global(.gs-arrow) { display: none; }
   .gs-unavailable { color: var(--text-dim); font-size: 14px; margin: 0 0 14px; }
 
   /* The rolling number: every digit is a strip that slides, so a change is seen as movement. The digits are made by the
      script, so their rules are :global(). */
-  .gs-odo { display: flex; align-items: flex-end; font-family: var(--serif); font-size: clamp(26px, 4.2vw, 38px); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-  :global(.gs-col) { display: inline-block; height: 1em; overflow: hidden; }
+  .gs-odo { display: flex; align-items: flex-end; font-family: var(--serif); font-size: clamp(26px, 4.4vw, 38px); font-weight: 600; line-height: 1; font-variant-numeric: lining-nums tabular-nums; }
+  .gs-card-servers .gs-odo, .gs-card-members .gs-odo { font-size: clamp(28px, 4.8vw, 42px); }
+  :global(.gs-col) { display: inline-block; height: 1.18em; overflow: hidden; }
   :global(.gs-strip) { display: flex; flex-direction: column; transition: transform 0.9s cubic-bezier(.2, .8, .2, 1); }
-  :global(.gs-strip i) { display: block; height: 1em; line-height: 1; font-style: normal; text-align: center; }
-  :global(.gs-sep) { display: inline-block; height: 1em; line-height: 1; padding: 0 1px; }
+  :global(.gs-strip i) { display: block; height: 1.18em; line-height: 1.18; font-style: normal; text-align: center; }
+  :global(.gs-sep) { display: inline-block; height: 1.18em; line-height: 1.18; padding: 0 1px; }
 
-  .gs-rank-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin: 38px 0 14px; }
-  .gs-rank-head h2 { font-size: 20px; margin: 0 0 4px; }
-  .gs-rank-desc { margin: 0; font-size: 13.5px; color: var(--text-dim); }
-  .gs-rank-tabs { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-  :global(.gs-rank) { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: var(--card); }
-  :global(.gs-row) { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+  /* The panels: history, day by day and ranking. */
+  .gs-panel { border: 1px solid var(--border); border-radius: 18px; background: var(--card); padding: 22px 22px 20px; margin-top: 14px; min-width: 0; }
+  .gs-panel-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+  .gs-panel h2 { font-size: 20px; margin: 0 0 4px; }
+  .gs-panel-desc { margin: 0; font-size: 13.5px; color: var(--text-dim); }
+  .gs-panel-note { margin: 10px 0 0; font-size: 12px; color: var(--text-dim); min-height: 1em; }
+  .gs-seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 999px; background: color-mix(in srgb, var(--text) 3%, var(--card)); max-width: 100%; }
+  .gs-seg[hidden] { display: none; }
+  .gs-seg button, :global(.gs-metrics button) { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 13px; padding: 5px 13px; border-radius: 999px; cursor: pointer; transition: color .15s ease, background .15s ease; white-space: nowrap; }
+  .gs-seg button:hover, :global(.gs-metrics button:hover) { color: var(--text); }
+  .gs-seg button[aria-pressed="true"] { color: var(--text); background: color-mix(in srgb, var(--accent) 16%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .gs-seg button:focus-visible, :global(.gs-metrics button:focus-visible), .gs-more:focus-visible, .gs-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :global(.gs-metrics) { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; padding: 1px; }
+  .gs-metrics[hidden] { display: none; }
+  .gs-metrics::-webkit-scrollbar { display: none; }
+  :global(.gs-metrics button) { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--card); padding: 6px 13px; }
+  :global(.gs-metrics button[aria-pressed="true"]) { color: var(--text); border-color: var(--m); background: color-mix(in srgb, var(--m) 14%, var(--card)); }
+
+  :global(.gs-summary) { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 16px; margin: 0 0 12px; }
+  :global(.gs-summary > div) { min-width: 0; }
+  :global(.gs-summary dt) { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); }
+  :global(.gs-summary dd) { margin: 2px 0 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; }
+  :global(.gs-summary small) { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+  :global(.gs-summary dd.gs-up) { color: var(--green); }
+  :global(.gs-summary dd.gs-down) { color: var(--red); }
+  :global(.gs-summary dd.gs-up small), :global(.gs-summary dd.gs-down small) { color: inherit; opacity: .8; }
+
+  .gs-plot-host { min-width: 0; min-height: 60px; }
+  :global(.gs-plot) { display: block; width: 100%; }
+  :global(.gs-plot svg) { display: block; max-width: 100%; overflow: visible; }
+  :global(.gs-grid) { stroke: var(--border); stroke-dasharray: 3 5; }
+  :global(.gs-axis) { fill: var(--text-dim); font-size: 11.5px; font-family: var(--mono); }
+  :global(.gs-line) { fill: none; stroke: var(--c); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  :global(.gs-area) { fill: color-mix(in srgb, var(--c) 16%, transparent); stroke: none; }
+  :global(.gs-end) { fill: var(--c); stroke: var(--card); stroke-width: 2; }
+  :global(.gs-draw .gs-line) { stroke-dasharray: 1; stroke-dashoffset: 1; animation: gsDraw 0.9s cubic-bezier(.16, 1, .3, 1) forwards; }
+  :global(.gs-draw .gs-area) { opacity: 0; animation: gsFade .6s ease-out .3s forwards; }
+  :global(.gs-draw .gs-end) { opacity: 0; animation: gsFade .3s ease-out .8s forwards; }
+  @keyframes gsDraw { to { stroke-dashoffset: 0; } }
+  @keyframes gsFade { to { opacity: 1; } }
+  :global(.gs-tip) { display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; font-size: 12.5px; min-width: 0; max-width: 220px; }
+  :global(.gs-tip b) { font-weight: 600; color: var(--text); }
+  :global(.gs-tip span) { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; }
+  :global(.gs-tip em) { font-style: normal; color: var(--text-dim); font-size: 11.5px; }
+  :global(.gs-tip em:empty) { display: none; }
+  :global(.gs-empty) { margin: 0; padding: 28px 8px; font-size: 14px; line-height: 1.55; color: var(--text-dim); text-align: center; border: 1px dashed var(--border); border-radius: 14px; }
+
+  /* The table keeps its own horizontal scroll, so the page never scrolls sideways; the day stays in view. */
+  .gs-table-scroll { overflow-x: auto; border: 1px solid var(--border-soft); border-radius: 14px;
+    /* Soft edges that show there is more to scroll to. */
+    background: linear-gradient(to right, var(--card) 30%, transparent) left center / 36px 100% no-repeat local, linear-gradient(to left, var(--card) 30%, transparent) right center / 36px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, .22), transparent) left center / 12px 100% no-repeat scroll, radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .22), transparent) right center / 12px 100% no-repeat scroll; }
+  .gs-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :global(.gs-table) { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; min-width: 560px; }
+  :global(.gs-table th), :global(.gs-table td) { padding: 10px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border-soft); font-variant-numeric: tabular-nums; }
+  :global(.gs-table tr:last-child th), :global(.gs-table tr:last-child td) { border-bottom: 0; }
+  :global(.gs-table thead th) { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  :global(.gs-table thead th .gs-swatch) { margin-right: 7px; }
+  :global(.gs-table th:first-child) { text-align: left; position: sticky; left: 0; background: var(--card); font-weight: 500; color: var(--text); z-index: 1; }
+  :global(.gs-table thead th:first-child) { background: color-mix(in srgb, var(--text) 3%, var(--card)); color: var(--text-dim); }
+  :global(.gs-table tbody tr:hover td), :global(.gs-table tbody tr:hover th) { background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  :global(.gs-table .gs-v) { color: var(--text); font-weight: 600; }
+  :global(.gs-table .gs-d) { font-size: 12px; }
+  :global(.gs-table .gs-up) { color: var(--green); }
+  :global(.gs-table .gs-down) { color: var(--red); }
+  :global(.gs-table .gs-flat) { color: var(--text-dim); }
+  :global(.gs-table .gs-none) { color: var(--text-dim); }
+  :global(.gs-table .gs-today th), :global(.gs-table .gs-today td) { background: color-mix(in srgb, var(--accent) 7%, var(--card)); }
+  :global(.gs-table .gs-today th small) { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; }
+  .gs-more { margin: 12px auto 0; display: block; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); font: inherit; font-size: 13px; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+  .gs-more:hover { color: var(--text); border-color: var(--text-dim); }
+  .gs-more[hidden] { display: none; }
+
+  /* The ranking: place, icon, name (and its members), the number, and a thin bar for how it compares with the first. */
+  .gs-rank-tabs { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 100%; }
+  :global(.gs-rank) { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border-soft); border-radius: 14px; overflow: hidden; }
+  :global(.gs-row) { display: grid; grid-template-columns: 30px 38px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding: 11px 16px 13px; position: relative; }
   :global(.gs-row:not(:last-child)) { border-bottom: 1px solid var(--border-soft); }
-  :global(.gs-place) { width: 22px; font-family: var(--mono); font-size: 13px; color: var(--text-dim); text-align: right; }
-  :global(.gs-row:nth-child(1) .gs-place) { color: var(--yellow); }
-  :global(.gs-avatar) { width: 34px; height: 34px; border-radius: 10px; background: var(--border-soft); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; overflow: hidden; flex-shrink: 0; }
+  :global(.gs-bar) { position: absolute; left: 16px; bottom: 5px; height: 3px; border-radius: 3px; width: calc((100% - 32px) * var(--w, 0)); background: color-mix(in srgb, var(--m-messages) 55%, transparent); }
+  :global(.gs-place) { font-family: var(--mono); font-size: 13px; color: var(--text-dim); text-align: center; width: 26px; height: 26px; line-height: 26px; border-radius: 9px; }
+  :global(.gs-place-1 .gs-place) { background: color-mix(in srgb, #f5c26b 62%, transparent); color: var(--text); font-weight: 700; }
+  :global(.gs-place-2 .gs-place) { background: color-mix(in srgb, #9bd0f5 55%, transparent); color: var(--text); font-weight: 700; }
+  :global(.gs-place-3 .gs-place) { background: color-mix(in srgb, #f0a88f 55%, transparent); color: var(--text); font-weight: 700; }
+  :global(.gs-avatar) { width: 38px; height: 38px; border-radius: 12px; background: var(--border-soft); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; overflow: hidden; flex-shrink: 0; }
   :global(.gs-avatar img) { width: 100%; height: 100%; object-fit: cover; }
-  :global(.gs-name) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; font-weight: 500; }
-  :global(.gs-value) { font-family: var(--mono); font-size: 13.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+  :global(.gs-who) { display: flex; flex-direction: column; min-width: 0; }
+  :global(.gs-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; font-weight: 600; }
+  :global(.gs-meta) { font-size: 12px; color: var(--text-dim); }
+  :global(.gs-value) { font-family: var(--mono); font-size: 13.5px; color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
   :global(.gs-rank-empty) { padding: 22px 18px; font-size: 14px; color: var(--text-dim); line-height: 1.55; }
-  .gs-note { margin: 14px 2px 0; font-size: 12.5px; color: var(--text-dim); }
+  .gs-note { margin: 16px 2px 0; font-size: 12.5px; color: var(--text-dim); }
 
   @media (max-width: 720px) {
-    .gs-counters { grid-template-columns: 1fr; }
+    .gs-sec { padding: 64px 0 90px; }
+    .gs-sec h1 { font-size: 29px; }
+    .gs-cards { gap: 10px; }
+    .gs-card { grid-column: span 6; padding: 16px 16px 14px; gap: 10px; }
+    .gs-card-servers, .gs-card-members { grid-column: span 3; padding: 14px 14px 12px; }
+    .gs-card-servers .gs-odo, .gs-card-members .gs-odo { font-size: 28px; }
+    .gs-card-servers .gs-chips, .gs-card-members .gs-chips { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .gs-panel { padding: 18px 14px 16px; border-radius: 16px; }
+    .gs-panel-head { align-items: flex-start; }
     .gs-rank-tabs { align-items: flex-start; }
-    .gs-live { margin-left: 0; width: 100%; }
+    :global(.gs-summary) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    :global(.gs-row) { grid-template-columns: 26px 34px minmax(0, 1fr) auto; column-gap: 10px; padding: 10px 12px 13px; }
+    :global(.gs-bar) { left: 12px; width: calc((100% - 24px) * var(--w, 0)); }
+    :global(.gs-avatar) { width: 34px; height: 34px; border-radius: 10px; }
+    :global(.gs-place) { width: 24px; height: 24px; line-height: 24px; }
+    :global(.gs-table th), :global(.gs-table td) { padding: 9px 11px; }
+    :global(.gs-table) { min-width: 520px; }
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.gs-strip) { transition: none; }
+    :global(.gs-draw .gs-line), :global(.gs-draw .gs-area), :global(.gs-draw .gs-end) { animation: none; opacity: 1; stroke-dashoffset: 0; }
   }
 </style>
