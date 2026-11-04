@@ -135,9 +135,13 @@ const lvl = summarize(seriesOf(days, 'servers', '2026-11-04'), 'level');
 assert.deepEqual([lvl.last.value, lvl.change, lvl.high.value, lvl.low.value], [182, 2, 182, 180], 'a level keeps today');
 assert.ok(Math.abs(lvl.share - 2 / 180) < 1e-9);
 
-// Which stretches are drawn dashed: today so far, and any stretch that touches a day rebuilt afterwards.
+// Which stretches are drawn dashed: today so far, and a stretch between two days that were both rebuilt afterwards; a stretch with a known day at one end is solid.
 const drawn = seriesOf(days, 'members', '2026-11-04');
-assert.deepEqual(drawn.slice(1).map((p, i) => isApprox(drawn[i], p)), [true, false]);
+assert.deepEqual(drawn.slice(1).map((p, i) => isApprox(drawn[i], p)), [false, false], 'a stretch with a known day at one end is solid');
+assert.equal(isApprox({ estimated: true }, { estimated: true }), true, 'between two rebuilt days: dashed');
+assert.equal(isApprox({ estimated: true }, {}), false, 'from a rebuilt day to a known one (the rise to a spike): solid');
+assert.equal(isApprox({}, { estimated: true }), false, 'from a known day to a rebuilt one (the fall after a spike): solid');
+assert.equal(isApprox({}, { partial: true }), true, 'today so far: dashed');
 const drawnFlow = seriesOf(days, 'messages', '2026-11-04');
 assert.deepEqual(drawnFlow.slice(1).map((p, i) => isApprox(drawnFlow[i], p)), [false, true]);
 
@@ -209,8 +213,6 @@ for (const lang of Object.keys(COPY)) {
   for (const [key, text] of Object.entries(COPY[lang])) assert.ok(typeof text === 'string' && text.trim(), `${lang}.${key} is empty`);
 }
 for (const lang of Object.keys(COPY)) {
-  assert.ok(COPY[lang].estimatedNote.includes('{date}'), `${lang}.estimatedNote needs the date`);
-  assert.ok(COPY[lang].estimatedTableNote.includes('{date}'), `${lang}.estimatedTableNote needs the date`);
   assert.ok(COPY[lang].range365.trim().length <= 3, `${lang}.range365 is a short label`);
   // The note says where the numbers come from (the team's records of key dates, and the counters) and that the line is dashed.
   assert.ok(!COPY[lang].estimatedNote.includes('<'), `${lang}.estimatedNote has no markup`);

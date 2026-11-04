@@ -134,8 +134,11 @@ export function runsOf(points) {
   return runs;
 }
 
-/** True when the stretch that ends at `point` is not a plain measured one: the day in progress, or a day rebuilt afterwards. */
-export const isApprox = (before, point) => Boolean(point.partial || point.estimated || before?.estimated);
+/**
+ * True when the stretch that ends at `point` is drawn dashed: the day in progress, or a stretch between two days that were both rebuilt afterwards (the line
+ * between two known dates). A stretch that has a known day at one end is solid: the rise to a day the team recorded (a spike) and the fall after it.
+ */
+export const isApprox = (before, point) => Boolean(point.partial || (point.estimated && before?.estimated));
 
 /** The day `back` days before `day`. */
 export const daysBefore = (day, back) => new Date(Date.parse(`${day}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
