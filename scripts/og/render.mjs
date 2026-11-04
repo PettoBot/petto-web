@@ -91,10 +91,12 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
   const tmp = path.join(os.tmpdir(), `petto-og-${process.pid}.html`);
   const files = {};
+  const versions = {}; // the first characters of the hash of each picture: the address of the picture changes when the picture does (see pageImagePath)
   for (const job of jobs) {
     if (only && !only.has(job.key)) { continue; }
     const { png, webp } = await draw(page, job, tmp);
     await writeFile(path.join(outDir, `${job.name}.webp`), webp);
+    versions[job.name] = createHash('md5').update(webp).digest('hex').slice(0, 10);
     if (pngDir) await writeFile(path.join(pngDir, `${job.name}.png`), png);
     console.log(`${job.name}.webp  ${(webp.length / 1024).toFixed(0)} KB`);
   }
@@ -102,7 +104,7 @@ async function main() {
   await rm(tmp, { force: true });
   if (only) return; // a partial run leaves the manifest and the rest of the folder alone
   // The manifest: what exists, so the layout never points at a card that was not drawn; and a hash of what the cards were made from.
-  for (const job of jobs) files[job.name] = { key: job.key, lang: job.lang, tone: job.card.tone, alt: job.title, tagline: job.tagline, embedTitle: job.embed.title, description: job.embed.description };
+  for (const job of jobs) files[job.name] = { key: job.key, lang: job.lang, tone: job.card.tone, alt: job.title, tagline: job.tagline, embedTitle: job.embed.title, description: job.embed.description, version: versions[job.name] };
   const present = new Set(jobs.map((job) => `${job.name}.webp`));
   for (const file of await readdir(outDir)) if (!present.has(file)) await rm(path.join(outDir, file));
   await writeFile(manifestFile, `${JSON.stringify({ width: WIDTH, height: HEIGHT, spec: await specHash(jobs), cards: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) }, null, 1)}\n`);
