@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import DashChartTip from './DashChartTip.astro';
+import StatsChartStyle from './StatsChartStyle.astro';
 import { localePath, type Locale } from '../i18n/ui';
 import { getEnv } from '../utils/env';
 import { loadGlobalHistory } from '../utils/globalStatsHistory';
@@ -134,10 +135,12 @@ const CARDS = [
     </section>
   </main>
   <DashChartTip />
+  <StatsChartStyle />
 </Base>
 
 <script>
-  import { LONG_RANGE_DAYS, METRICS, RANGES, baseSince, botDay, dailyRows, daysBefore, isApprox, monthTicks, nextDay, normalizeHistory, runsOf, seriesOf, smoothPath, summarize, withinDays, withLiveToday, zoomScale } from '../utils/globalStatsMath.mjs';
+  import { METRICS, RANGES, baseSince, botDay, dailyRows, daysBefore, normalizeHistory, seriesOf, summarize, withinDays, withLiveToday } from '../utils/globalStatsMath.mjs';
+  import { lineChart, tickLabels } from '../utils/statsChart.mjs';
 
   const root = document.getElementById('gs');
   if (root) {
@@ -290,17 +293,6 @@ const CARDS = [
     // ── The chart ──
     const COLORS: Record<string, string> = { servers: 'var(--m-servers)', members: 'var(--m-members)', messages: 'var(--m-messages)', voice: 'var(--m-voice)', reactions: 'var(--m-reactions)' };
 
-    function tickLabels(ticks: number[], key: string) {
-      const plain = ticks.map((value) => (key === 'voice' ? num1.format(value) : num.format(value)));
-      if (Math.max(...ticks.map(Math.abs)) < 10_000) return key === 'voice' ? ticks.map((v) => (Number.isInteger(v) ? num.format(v) : num1.format(v))) : plain;
-      for (let digits = 0; digits <= 2; digits += 1) {
-        const formatter = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: digits });
-        const labels = ticks.map((value) => formatter.format(value));
-        if (new Set(labels).size === labels.length) return labels;
-      }
-      return plain;
-    }
-
     // Servers and members are always among the tabs once the page has any number, even before the bot stores their history: then
     // the tab shows today's count as a single point and says the history starts today.
     function renderMetricTabs() {
@@ -365,103 +357,19 @@ const CARDS = [
       }
       const W = Math.max(240, Math.floor(host.clientWidth || 640));
       const H = single ? 170 : W < 520 ? 230 : 290;
-      const scale = zoomScale(points.map((p) => p.value), single ? 2 : 4, true);
-      const labels = tickLabels(scale.ticks, metric);
-      const left = Math.min(70, Math.ceil(Math.max(...labels.map((l) => l.length)) * 6.6) + 14);
-      const right = 14, top = 12, bottom = 28;
-      const plotW = W - left - right, plotH = H - top - bottom;
-      const first = Date.parse(`${points[0].day}T00:00:00Z`);
-      const span = Date.parse(`${points[points.length - 1].day}T00:00:00Z`) - first;
-      const xOf = (day: string) => left + (span ? ((Date.parse(`${day}T00:00:00Z`) - first) / span) * plotW : plotW / 2);
-      const yOf = (value: number) => top + plotH - ((value - scale.min) / (scale.max - scale.min)) * plotH;
-      const coords = points.map((p) => ({ x: xOf(p.day), y: yOf(p.value) }));
-      const base = top + plotH;
-      const lastIndex = points.length - 1;
-
-      // The line is drawn in runs of consecutive days (a day without a number is a gap, never a joined line). Inside a run, a stretch
-      // that is not a plain measurement (today so far, or days rebuilt afterwards) is dashed.
-      let areas = '', lines = '', dots = '';
-      const runs = runsOf(points);
-      runs.forEach((run, runIndex) => {
-        const rc = run.map((index) => coords[index]);
-        // One area for the whole run (the line below is cut in stretches, but two translucent areas side by side leave a seam).
-        if (run.length > 1) areas += `<path d="${smoothPath(rc, 0, rc.length - 1)} L${rc[rc.length - 1].x},${base} L${rc[0].x},${base} Z" class="gs-area"/>`;
-        if (run.length === 1) {
-          const point = points[run[0]];
-          if (run[0] !== lastIndex) dots += `<circle cx="${rc[0].x}" cy="${rc[0].y}" r="3.4" class="gs-dot${point.partial ? ' gs-hollow' : ''}"/>`;
-          return;
-        }
-        const flags = rc.slice(1).map((_, k) => isApprox(points[run[k]], points[run[k + 1]]));
-        let a = 0;
-        for (let k = 1; k <= flags.length; k += 1) {
-          if (k < flags.length && flags[k] === flags[a]) continue;
-          const piece = smoothPath(rc, a, k);
-          lines += flags[a] ? `<path d="${piece}" class="gs-line gs-line-dash"/>` : `<path d="${piece}" pathLength="1" class="gs-line"/>`;
-          a = k;
-        }
-        // The two ends of a run that touches a gap get a small dot, so the line is seen to stop there.
-        if (runIndex > 0) dots += `<circle cx="${rc[0].x}" cy="${rc[0].y}" r="3.2" class="gs-dot"/>`;
-        if (runIndex < runs.length - 1) dots += `<circle cx="${rc[rc.length - 1].x}" cy="${rc[rc.length - 1].y}" r="3.2" class="gs-dot"/>`;
-      });
-      const lastPoint = coords[lastIndex];
-      const endMark = `<circle cx="${lastPoint.x}" cy="${lastPoint.y}" r="${points[lastIndex].partial ? 5.2 : 4.5}" class="gs-end${points[lastIndex].partial ? ' gs-hollow' : ''}"/>`;
-
-      const grid = scale.ticks.map((tick, i) => `<line x1="${left}" x2="${left + plotW}" y1="${yOf(tick)}" y2="${yOf(tick)}" class="gs-grid"/><text x="${left - 8}" y="${yOf(tick) + 4}" text-anchor="end" class="gs-axis">${esc(labels[i])}</text>`).join('');
-      // The labels of the axis. A short chart names days; one longer than LONG_RANGE_DAYS names months (the first of each, thinned so
-      // they never touch, with the year on January and on the oldest). The last label of a short per-day chart reads "Today, so far",
-      // which is longer, so those labels are further apart.
-      const partialLast = Boolean(points[lastIndex].partial);
-      const monthMode = (span / 86_400_000) > LONG_RANGE_DAYS;
-      let xticks = '';
-      if (monthMode) {
-        const ticks = monthTicks(points[0].day, points[lastIndex].day, Math.max(2, Math.floor(plotW / 70)));
-        xticks = ticks.map((tick) => {
-          const x = xOf(tick.day);
-          const anchor = x < left + 26 ? 'start' : x > W - right - 26 ? 'end' : 'middle';
-          return `<text x="${x}" y="${H - 8}" text-anchor="${anchor}" class="gs-axis">${esc(dayText(tick.day, tick.year ? { month: 'short', year: 'numeric' } : { month: 'short' }))}</text>`;
-        }).join('');
-      } else {
-        const slots = Math.max(2, Math.min(points.length, Math.floor(plotW / (partialLast ? 140 : 84)) + 1));
-        const gap = Math.max(1, Math.ceil((points.length - 1) / (slots - 1)));
-        const picks = new Set<number>();
-        for (let index = lastIndex; index >= 0; index -= gap) picks.add(index);
-        const ordered = [...picks].sort((a, b) => a - b);
-        xticks = ordered.map((index, order, list) => {
-          const anchor = list.length === 1 ? 'middle' : index === 0 ? 'start' : order === list.length - 1 ? 'end' : 'middle';
-          const text = points[index].partial ? t('todaySoFar') : shortDay(points[index].day);
-          return `<text x="${coords[index].x}" y="${H - 8}" text-anchor="${anchor}" class="gs-axis${points[index].partial ? ' gs-axis-today' : ''}">${esc(text)}</text>`;
-        }).join('');
-      }
-
-      const tip = points.map((p, i) => {
-        const adjacent = i > 0 && nextDay(points[i - 1].day) === p.day;
-        return {
-          x: Math.round((coords[i].x / W) * 10000) / 10000,
-          y: [Math.round((coords[i].y / H) * 10000) / 10000],
-          f: {
-            label: dayText(p.day, { weekday: 'short', month: 'short', day: 'numeric' }),
-            tag: p.partial ? t('todaySoFar') : p.estimated ? t('estimatedTag') : '',
-            value: fmt(metric, p.value),
-            // Today so far is not compared with a whole day: it would read as a fall.
-            delta: adjacent && !p.partial ? `${signed(metric, p.value - points[i - 1].value)} ${t('changeVsPrev')}` : '',
-          },
-        };
-      });
-      const tipJson = JSON.stringify({ points: tip }).replace(/</g, '\\u003c');
+      const partialLast = Boolean(points[points.length - 1].partial);
       const unitLine = info.kind === 'level' ? t('atEnd') : t('perDay');
+      const chart = lineChart({
+        points, W, H, single, animate, color: COLORS[metric], format: (value: number) => fmt(metric, value), dayText, signed: (change: number) => signed(metric, change),
+        tickLabels: (ticks: number[]) => tickLabels(ticks, { locale, num, num1, fractional: metric === 'voice' }),
+        text: { todaySoFar: t('todaySoFar'), estimatedTag: t('estimatedTag'), changeVsPrev: t('changeVsPrev') },
+        aria: `${t(metric === 'voice' ? 'voice' : metric)} ${unitLine}`, svgLabel: t('chartLabel'),
+      });
       host.dataset.width = String(W);
-      host.innerHTML = `<div class="gs-plot" data-ct data-ct-place="side" tabindex="0" role="group" aria-label="${esc(`${t(metric === 'voice' ? 'voice' : metric)} ${unitLine}`)}" style="--c:${COLORS[metric]};height:${H}px">
-        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('chartLabel'))}" class="${animate ? 'gs-draw' : ''}">
-          ${grid}${xticks}
-          ${areas}${lines}${dots}${endMark}
-        </svg>
-        <i class="ct-guide" data-ct-guide></i><i class="ct-dot" data-ct-dot style="--ct-c:${COLORS[metric]}"></i>
-        <div class="ct-tip gs-tip" data-ct-box><b data-ct-f="label"></b><small data-ct-f="tag"></small><span data-ct-f="value"></span><em data-ct-f="delta"></em></div>
-        <script type="application/json" data-ct-data>${tipJson}<\/script>
-      </div>${single ? `<p class="gs-empty gs-empty-inline">${esc(t('histStarts'))}</p>` : ''}`;
+      host.innerHTML = `${chart.html}${single ? `<p class="gs-empty gs-empty-inline">${esc(t('histStarts'))}</p>` : ''}`;
       renderSummary(points, info);
       const notes: string[] = [];
-      const covered = Math.round((Date.parse(`${points[lastIndex].day}T00:00:00Z`) - first) / 86_400_000) + 1;
+      const covered = Math.round((Date.parse(`${points[points.length - 1].day}T00:00:00Z`) - Date.parse(`${points[0].day}T00:00:00Z`)) / 86_400_000) + 1;
       if (!single && covered < range) notes.push(t('onlyDays').replace('{n}', String(covered)));
       // A series with dashed stretches says they are approximate; the members also say where their numbers come from.
       if (points.some((p) => p.estimated)) notes.push(t(metric === 'members' ? 'estimatedNote' : 'approxNote'));
@@ -772,30 +680,6 @@ const CARDS = [
   :global(.gs-summary dd.gs-up small), :global(.gs-summary dd.gs-down small) { color: inherit; opacity: .8; }
 
   .gs-plot-host { min-width: 0; min-height: 60px; }
-  :global(.gs-plot) { display: block; width: 100%; }
-  :global(.gs-plot svg) { display: block; max-width: 100%; overflow: visible; }
-  :global(.gs-grid) { stroke: var(--border); stroke-dasharray: 3 5; }
-  :global(.gs-axis) { fill: var(--text-dim); font-size: 11.5px; font-family: var(--mono); }
-  :global(.gs-axis-today) { fill: var(--text-muted); }
-  :global(.gs-line) { fill: none; stroke: var(--c); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-  :global(.gs-area) { fill: color-mix(in srgb, var(--c) 16%, transparent); stroke: none; }
-  :global(.gs-end) { fill: var(--c); stroke: var(--card); stroke-width: 2; }
-  /* Not a plain measurement (today so far, or days rebuilt afterwards): a dashed line, and an open end for today. */
-  :global(.gs-line-dash) { stroke-dasharray: 5 4.5; stroke-linecap: butt; stroke-width: 2.2; }
-  :global(.gs-dot) { fill: var(--c); stroke: var(--card); stroke-width: 1.6; }
-  :global(.gs-hollow) { fill: var(--card); stroke: var(--c); stroke-width: 2.4; }
-  :global(.gs-draw .gs-line:not(.gs-line-dash)) { stroke-dasharray: 1; stroke-dashoffset: 1; animation: gsDraw 0.9s cubic-bezier(.16, 1, .3, 1) forwards; }
-  :global(.gs-draw .gs-area), :global(.gs-draw .gs-line-dash), :global(.gs-draw .gs-dot) { opacity: 0; animation: gsFade .6s ease-out .3s forwards; }
-  :global(.gs-draw .gs-end) { opacity: 0; animation: gsFade .3s ease-out .8s forwards; }
-  @keyframes gsDraw { to { stroke-dashoffset: 0; } }
-  @keyframes gsFade { to { opacity: 1; } }
-  :global(.gs-tip) { display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; font-size: 12.5px; min-width: 0; max-width: 220px; }
-  :global(.gs-tip b) { font-weight: 600; color: var(--text); }
-  :global(.gs-tip small) { font-size: 11.5px; color: var(--accent); font-weight: 600; }
-  :global(.gs-tip small:empty) { display: none; }
-  :global(.gs-tip span) { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; }
-  :global(.gs-tip em) { font-style: normal; color: var(--text-dim); font-size: 11.5px; }
-  :global(.gs-tip em:empty) { display: none; }
   :global(.gs-empty-inline) { margin-top: 12px; padding: 14px 12px; }
   :global(.gs-empty) { margin: 0; padding: 28px 8px; font-size: 14px; line-height: 1.55; color: var(--text-dim); text-align: center; border: 1px dashed var(--border); border-radius: 14px; }
 
@@ -866,6 +750,5 @@ const CARDS = [
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.gs-strip) { transition: none; }
-    :global(.gs-draw .gs-line:not(.gs-line-dash)), :global(.gs-draw .gs-area), :global(.gs-draw .gs-line-dash), :global(.gs-draw .gs-end), :global(.gs-draw .gs-dot) { animation: none; opacity: 1; stroke-dashoffset: 0; }
   }
 </style>
