@@ -19,6 +19,7 @@ const cases = [
   ['image proxy in an <img>', { method: 'GET', pathname: '/dash/guild/1/picture/a', search: '', headers: h({ accept: 'image/avif,*/*', 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' }), lang: 'es' }, null],
   ['language switch', { method: 'GET', pathname: '/dash/lang', search: '?to=en&next=/dash', headers: h(nav), lang: 'es' }, null],
   ['login callback', { method: 'GET', pathname: '/dash/callback', search: '?code=x', headers: h(nav), lang: 'es' }, null],
+  ['login from the top bar', { method: 'GET', pathname: '/dash/login', search: '', headers: h(nav), lang: 'es' }, null],
   ['logout', { method: 'GET', pathname: '/dash/logout', search: '', headers: h(nav), lang: 'es' }, null],
   ['health as JSON', { method: 'GET', pathname: '/dash/health', search: '?format=json', headers: h(nav), lang: 'es' }, null],
   ['old browser without sec-fetch, HTML', { method: 'GET', pathname: '/dash/manage', search: '', headers: h({ accept: 'text/html' }), lang: 'es' }, '/es/dash/manage'],

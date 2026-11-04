@@ -15,7 +15,7 @@ export function withDashPrefix(path, lang) {
 }
 
 // Routes that must answer where they are asked: the language switch, signing in and out.
-const NEVER = /^\/(?:dash\/(?:lang|callback|logout)|feedback\/login)(?:[/?#]|$)/;
+const NEVER = /^\/(?:dash\/(?:lang|callback|login|logout)|feedback\/login)(?:[/?#]|$)/;
 // The pages that carry the language in their address: the dashboard and the feedback board (/es/feedback, /pt-br/feedback).
 const LANGUAGE_PAGES = /^\/(?:dash|feedback)(?:\/|$)/;
 
