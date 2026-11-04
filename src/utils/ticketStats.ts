@@ -1,4 +1,7 @@
 // The numbers of the tickets of a server for the dashboard (the same ones `ticket stats` gives in Discord).
+// The days of the chart are the days of Petto (GMT-5, Colombia), like the rest of the statistics.
+import { botDay, rangeDays } from './activityStats';
+
 export interface TicketRow { status: string; claimed_by: string | null; created_at: string; closed_at: string | null }
 
 export interface TicketStats {
@@ -29,13 +32,10 @@ export function summarizeTickets(tickets: TicketRow[], ratings: { rating: number
   };
 }
 
-/** What was opened and closed on each of the last `count` days (UTC), oldest first. */
+/** What was opened and closed on each of the last `count` days (GMT-5), oldest first. */
 function lastDays(tickets: TicketRow[], now: number, count: number) {
-  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-  const out = Array.from({ length: count }, (_, i) => {
-    const ms = now - (count - 1 - i) * DAY;
-    return { key: day(ms), label: new Date(ms).toISOString().slice(5, 10), opened: 0, closed: 0 };
-  });
+  const day = (ms: number) => botDay(ms);
+  const out = rangeDays(new Date(now), count).map((key) => ({ key, label: key.slice(5), opened: 0, closed: 0 }));
   const byKey = new Map(out.map((d) => [d.key, d]));
   for (const t of tickets) {
     const a = byKey.get(day(new Date(t.created_at).getTime()));
