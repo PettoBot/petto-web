@@ -53,7 +53,7 @@ for (const [key, card] of Object.entries(CARDS)) {
 }
 // What every preview says (src/data/previewText.mjs, and the posts): a title that says what the page is and carries the brand (never a bare word), a description of
 // a sentence or two, and nothing about how many servers or members Petto has, in any language, in the title, the description or the picture's words.
-const SIZE_OF_THE_BOT = /\d[\d.,]*\s*(?:servers?|servidores?|members?|miembros?|membros?|guilds?|users?|usuarios?|usuários?)\b|looking after|cuidando\b|cuidar d[eo]\b/i;
+const SIZE_OF_THE_BOT = /\d[\d.,]*\s*(?:servers?|servidores?|members?|miembros?|membros?|guilds?|users?|usuarios?|usuários?)\b|looking after|looked after|cuidando\b|cuidar d[eo]\b|bien cuidado|bem cuidado/i;
 const BANNED = /\bAI\b|\bIA\b/;
 for (const key of Object.keys(CARDS)) if (!PREVIEW[key]) problems.push(`${key}: it has no text for its link preview (src/data/previewText.mjs)`);
 for (const key of Object.keys(PREVIEW)) if (!CARDS[key]) problems.push(`${key}: it has text for a link preview and no card`);
