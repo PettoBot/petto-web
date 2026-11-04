@@ -86,6 +86,7 @@ const CARDS = [
                 <button type="button" data-range="7" aria-pressed="false">{c.range7}</button>
                 <button type="button" data-range="30" aria-pressed="true">{c.range30}</button>
                 <button type="button" data-range="90" aria-pressed="false">{c.range90}</button>
+                <button type="button" data-range="365" aria-pressed="false">{c.range365}</button>
               </div>
             </div>
             <div class="gs-metrics" role="group" aria-label={c.metricLabel} id="gsMetrics"></div>
@@ -102,6 +103,7 @@ const CARDS = [
               </div>
             </div>
             <div class="gs-table-scroll" id="gsTable" tabindex="0" role="region" aria-labelledby="gsTableTitle"></div>
+            <p class="gs-panel-note" id="gsTableNote"></p>
             <button type="button" class="gs-more" id="gsMore" hidden></button>
           </section>
 
@@ -135,7 +137,7 @@ const CARDS = [
 </Base>
 
 <script>
-  import { METRICS, RANGES, botDay, changeShare, changeSince, dailyRows, dayChanges, normalizeHistory, seriesOf, smoothPath, withinDays, zoomScale } from '../utils/globalStatsMath.mjs';
+  import { LONG_RANGE_DAYS, METRICS, RANGES, baseSince, botDay, dailyRows, daysBefore, isApprox, monthTicks, nextDay, normalizeHistory, runsOf, seriesOf, smoothPath, summarize, withinDays, withLiveToday, zoomScale } from '../utils/globalStatsMath.mjs';
 
   const root = document.getElementById('gs');
   if (root) {
@@ -205,29 +207,31 @@ const CARDS = [
     }
 
     // The counters between two snapshots: the snapshot's number plus what the day's rate adds since then.
-    function estimate(key: string, period: 'all' | 'today' | 'week') {
+    function estimate(key: string, period: 'all' | 'today' | 'week', at = Date.now()) {
       const data = snapshot?.data;
       const base = data?.totals?.[period]?.[key] ?? 0;
       const rate = data?.rates?.[key] ?? 0;
-      const since = Math.min(staleCapMs, Math.max(0, Date.now() - new Date(snapshot.updatedAt).getTime()));
+      const since = Math.min(staleCapMs, Math.max(0, at - new Date(snapshot.updatedAt).getTime()));
       return base + rate * (since / 1000);
     }
+    // The chart and the table are drawn from one reading of the clock, so today's point and today's row show the same number.
+    let frozenAt = Date.now();
+    const freeze = () => { frozenAt = Date.now(); };
+    /** Today so far (messages, reactions, voice seconds) from the live numbers, or undefined when the bot did not send it: never a made-up zero. */
+    function liveFlow(field: string): number | undefined {
+      const base = snapshot?.data?.totals?.today?.[field];
+      return typeof base === 'number' && Number.isFinite(base) ? estimate(field, 'today', frozenAt) : undefined;
+    }
 
-    // ── History: the days the bot saved, plus today's servers and members from the live numbers. ──
+    // ── History: the days the bot saved, ending today. Today's numbers are always the live ones: servers and members are the count the
+    //    cards show (a full point), the per-day numbers are today so far (a partial one). ──
     function allDays() {
-      const today = botDay();
-      const days = history.days.map((row) => ({ ...row }));
       const data = snapshot?.data;
-      const servers = Number(data?.servers);
-      const members = Number(data?.members);
-      if (Number.isFinite(servers) || Number.isFinite(members)) {
-        let row = days.find((entry) => entry.day === today);
-        if (!row) { row = { day: today }; days.push(row); }
-        if (Number.isFinite(servers) && servers > 0) row.servers = servers;
-        if (Number.isFinite(members) && members > 0) row.members = members;
-        if (!METRICS.some((info) => row[info.field] !== undefined)) days.splice(days.indexOf(row), 1);
+      const live: Record<string, number | undefined> = {};
+      if (snapshot) {
+        for (const info of METRICS) live[info.field] = info.kind === 'level' ? Number(data?.[info.key]) : liveFlow(info.field);
       }
-      return days.sort((a, b) => (a.day < b.day ? -1 : 1));
+      return withLiveToday(history.days, botDay(), live);
     }
     function series(key: string) {
       const points = seriesOf(allDays(), key, botDay());
@@ -238,19 +242,22 @@ const CARDS = [
     // ── The five cards ──
     function chipsFor(key: string) {
       if (key === 'servers' || key === 'members') {
+        // From the history (today's point is the live count the card shows). No change is drawn when the history does not reach back
+        // that far, and a change measured from a rebuilt day is marked approximate.
         const points = series(key);
-        return [
-          { label: t('chip7'), change: changeSince(points, 7) },
-          { label: t('chip30'), change: changeSince(points, 30) },
-        ];
+        const last = points[points.length - 1];
+        return [[7, t('chip7')], [30, t('chip30')]].map(([back, label]) => {
+          const base = baseSince(points, back as number);
+          return { label: label as string, change: base && last ? last.value - base.value : null, approx: Boolean(base?.estimated) };
+        });
       }
       const unit = key === 'voiceSeconds' ? 'voice' : key;
       const todayValue = estimate(key, 'today');
       const weekValue = estimate(key, 'week');
       const conv = (value: number) => (key === 'voiceSeconds' ? hoursOf(value) : value);
       return [
-        { label: t('chipToday'), change: conv(todayValue), unit },
-        { label: t('chipWeek'), change: conv(weekValue), unit },
+        { label: t('chipToday'), change: typeof snapshot?.data?.totals?.today?.[key] === 'number' ? conv(todayValue) : null, unit, approx: false },
+        { label: t('chipWeek'), change: typeof snapshot?.data?.totals?.week?.[key] === 'number' ? conv(weekValue) : null, unit, approx: false },
       ];
     }
 
@@ -274,7 +281,7 @@ const CARDS = [
             const change = chip.change as number;
             const kind = tone(Math.round(change * 10) / 10);
             const hint = key === 'servers' || key === 'members' ? ` title="${esc(`${t('chipHint')} ${chip.label}`)}"` : '';
-            return `<span class="gs-chip gs-${kind}"${hint}><i class="gs-arrow"></i><b>${esc(signed(unit, change))}</b><em>${esc(chip.label)}</em></span>`;
+            return `<span class="gs-chip gs-${kind}"${hint}><i class="gs-arrow"></i><b>${chip.approx ? '~\u2009' : ''}${esc(signed(unit, change))}</b><em>${esc(chip.label)}</em></span>`;
           }).join('');
         if (holder.dataset.html !== html) { holder.dataset.html = html; holder.innerHTML = html; }
       });
@@ -294,9 +301,12 @@ const CARDS = [
       return plain;
     }
 
+    // Servers and members are always among the tabs once the page has any number, even before the bot stores their history: then
+    // the tab shows today's count as a single point and says the history starts today.
     function renderMetricTabs() {
       const holder = $('gsMetrics');
-      const available = METRICS.filter((info) => series(info.key).length >= 2);
+      const anything = Boolean(snapshot) || history.days.length > 0;
+      const available = METRICS.filter((info) => series(info.key).length >= 1 || (info.kind === 'level' && anything));
       const keys = available.map((info) => info.key);
       if (!keys.includes(metric) && keys.length) metric = keys[0];
       const html = available.map((info) => `<button type="button" data-chart-metric="${info.key}" aria-pressed="${info.key === metric}" style="--m:${COLORS[info.key]}"><i class="gs-swatch"></i>${esc(t(info.key === 'voice' ? 'voice' : info.key))}</button>`).join('');
@@ -307,27 +317,32 @@ const CARDS = [
       holder.hidden = !available.length;
     }
 
-    function renderSummary(points: { day: string; value: number }[], info: { key: string; kind: string }) {
+    type Point = { day: string; value: number; partial?: boolean; estimated?: boolean };
+    const shortDay = (day: string) => dayText(day, { month: 'short', day: 'numeric' });
+
+    function renderSummary(points: Point[], info: { key: string; kind: string }) {
       const holder = $('gsSummary');
-      const values = points.map((p) => p.value);
-      const first = values[0];
-      const last = values[values.length - 1];
-      const hi = Math.max(...values);
-      const lo = Math.min(...values);
+      const sum = summarize(points, info.kind);
+      const none = '–';
       const cells: { label: string; value: string; sub?: string; kind?: string }[] = [];
+      const withDay = (point: Point | null) => ({ value: point ? fmt(info.key, point.value) : none, sub: point ? shortDay(point.day) : '' });
       if (info.kind === 'level') {
-        const change = last - first;
-        const share = changeShare(change, first);
-        cells.push({ label: t('summaryNow'), value: fmt(info.key, last) });
-        cells.push({ label: t('summaryChange'), value: signed(info.key, change), sub: share === null ? '' : `${share > 0 ? '+' : share < 0 ? '−' : ''}${pct.format(Math.abs(share))}`, kind: tone(change) });
+        cells.push({ label: t('summaryNow'), value: fmt(info.key, sum.last!.value) });
+        if (points.length > 1) {
+          const share = sum.share as number | null;
+          cells.push({ label: t('summaryChange'), value: signed(info.key, sum.change!), sub: share === null ? '' : `${share > 0 ? '+' : share < 0 ? '−' : ''}${pct.format(Math.abs(share))}`, kind: tone(sum.change!) });
+          cells.push({ label: t('summaryHigh'), ...withDay(sum.high) });
+          cells.push({ label: t('summaryLow'), ...withDay(sum.low) });
+        }
       } else {
-        const total = values.reduce((sum, value) => sum + value, 0);
-        cells.push({ label: t('summaryTotal'), value: fmt(info.key, total) });
-        cells.push({ label: t('summaryAvg'), value: fmt(info.key, total / values.length) });
+        // The day in progress counts in the total, never in the average, the highest or the lowest.
+        cells.push({ label: t('summaryTotal'), value: fmt(info.key, sum.total!), sub: sum.partial ? t('incToday') : '' });
+        if (sum.fullDays) {
+          cells.push({ label: t('summaryAvg'), value: fmt(info.key, sum.average!) });
+          cells.push({ label: t('summaryHigh'), ...withDay(sum.high) });
+          cells.push({ label: t('summaryLow'), ...withDay(sum.low) });
+        }
       }
-      const dayOf = (value: number) => points.find((p) => p.value === value)?.day ?? '';
-      cells.push({ label: t('summaryHigh'), value: fmt(info.key, hi), sub: dayText(dayOf(hi), { month: 'short', day: 'numeric' }) });
-      cells.push({ label: t('summaryLow'), value: fmt(info.key, lo), sub: dayText(dayOf(lo), { month: 'short', day: 'numeric' }) });
       holder.innerHTML = cells.map((cell) => `<div><dt>${esc(cell.label)}</dt><dd class="${cell.kind ? `gs-${cell.kind}` : ''}">${esc(cell.value)}${cell.sub ? `<small>${esc(cell.sub)}</small>` : ''}</dd></div>`).join('');
     }
 
@@ -337,19 +352,20 @@ const CARDS = [
       const summary = $('gsSummary');
       renderMetricTabs();
       const info = METRICS.find((item) => item.key === metric)!;
-      const all = series(metric);
-      const points = withinDays(all, range);
+      const all: Point[] = series(metric);
+      const points: Point[] = withinDays(all, range);
       $('gsRanges').hidden = !hasHistory();
-      if (all.length < 2 || points.length < 2) {
-        host.innerHTML = `<p class="gs-empty">${esc(hasHistory() ? t('histShort') : t('histEmpty'))}</p>`;
+      const single = all.length === 1;
+      if (!points.length || (points.length < 2 && !single)) {
+        host.innerHTML = `<p class="gs-empty">${esc(all.length ? t('histShort') : t('histEmpty'))}</p>`;
         summary.innerHTML = '';
         note.textContent = '';
         host.dataset.width = '';
         return;
       }
       const W = Math.max(240, Math.floor(host.clientWidth || 640));
-      const H = W < 520 ? 230 : 290;
-      const scale = zoomScale(points.map((p: { value: number }) => p.value), 4, true);
+      const H = single ? 170 : W < 520 ? 230 : 290;
+      const scale = zoomScale(points.map((p) => p.value), single ? 2 : 4, true);
       const labels = tickLabels(scale.ticks, metric);
       const left = Math.min(70, Math.ceil(Math.max(...labels.map((l) => l.length)) * 6.6) + 14);
       const right = 14, top = 12, bottom = 28;
@@ -358,101 +374,156 @@ const CARDS = [
       const span = Date.parse(`${points[points.length - 1].day}T00:00:00Z`) - first;
       const xOf = (day: string) => left + (span ? ((Date.parse(`${day}T00:00:00Z`) - first) / span) * plotW : plotW / 2);
       const yOf = (value: number) => top + plotH - ((value - scale.min) / (scale.max - scale.min)) * plotH;
-      const coords = points.map((p: { day: string; value: number }) => ({ x: xOf(p.day), y: yOf(p.value) }));
-      const line = smoothPath(coords);
+      const coords = points.map((p) => ({ x: xOf(p.day), y: yOf(p.value) }));
       const base = top + plotH;
-      const area = `${line} L${coords[coords.length - 1].x},${base} L${coords[0].x},${base} Z`;
+      const lastIndex = points.length - 1;
+
+      // The line is drawn in runs of consecutive days (a day without a number is a gap, never a joined line). Inside a run, a stretch
+      // that is not a plain measurement (today so far, or days rebuilt afterwards) is dashed.
+      let areas = '', lines = '', dots = '';
+      const runs = runsOf(points);
+      runs.forEach((run, runIndex) => {
+        const rc = run.map((index) => coords[index]);
+        // One area for the whole run (the line below is cut in stretches, but two translucent areas side by side leave a seam).
+        if (run.length > 1) areas += `<path d="${smoothPath(rc, 0, rc.length - 1)} L${rc[rc.length - 1].x},${base} L${rc[0].x},${base} Z" class="gs-area"/>`;
+        if (run.length === 1) {
+          const point = points[run[0]];
+          if (run[0] !== lastIndex) dots += `<circle cx="${rc[0].x}" cy="${rc[0].y}" r="3.4" class="gs-dot${point.partial ? ' gs-hollow' : ''}"/>`;
+          return;
+        }
+        const flags = rc.slice(1).map((_, k) => isApprox(points[run[k]], points[run[k + 1]]));
+        let a = 0;
+        for (let k = 1; k <= flags.length; k += 1) {
+          if (k < flags.length && flags[k] === flags[a]) continue;
+          const piece = smoothPath(rc, a, k);
+          lines += flags[a] ? `<path d="${piece}" class="gs-line gs-line-dash"/>` : `<path d="${piece}" pathLength="1" class="gs-line"/>`;
+          a = k;
+        }
+        // The two ends of a run that touches a gap get a small dot, so the line is seen to stop there.
+        if (runIndex > 0) dots += `<circle cx="${rc[0].x}" cy="${rc[0].y}" r="3.2" class="gs-dot"/>`;
+        if (runIndex < runs.length - 1) dots += `<circle cx="${rc[rc.length - 1].x}" cy="${rc[rc.length - 1].y}" r="3.2" class="gs-dot"/>`;
+      });
+      const lastPoint = coords[lastIndex];
+      const endMark = `<circle cx="${lastPoint.x}" cy="${lastPoint.y}" r="${points[lastIndex].partial ? 5.2 : 4.5}" class="gs-end${points[lastIndex].partial ? ' gs-hollow' : ''}"/>`;
 
       const grid = scale.ticks.map((tick, i) => `<line x1="${left}" x2="${left + plotW}" y1="${yOf(tick)}" y2="${yOf(tick)}" class="gs-grid"/><text x="${left - 8}" y="${yOf(tick) + 4}" text-anchor="end" class="gs-axis">${esc(labels[i])}</text>`).join('');
-      const slots = Math.max(2, Math.min(points.length, Math.floor(plotW / 84) + 1));
-      const gap = Math.max(1, Math.ceil((points.length - 1) / (slots - 1)));
-      const picks = new Set<number>();
-      for (let index = points.length - 1; index >= 0; index -= gap) picks.add(index);
-      const ordered = [...picks].sort((a, b) => a - b);
-      const xticks = ordered.map((index, order, list) => {
-        const anchor = index === 0 ? 'start' : order === list.length - 1 ? 'end' : 'middle';
-        return `<text x="${coords[index].x}" y="${H - 8}" text-anchor="${anchor}" class="gs-axis">${esc(dayText(points[index].day, { month: 'short', day: 'numeric' }))}</text>`;
-      }).join('');
+      // The labels of the axis. A short chart names days; one longer than LONG_RANGE_DAYS names months (the first of each, thinned so
+      // they never touch, with the year on January and on the oldest). The last label of a short per-day chart reads "Today, so far",
+      // which is longer, so those labels are further apart.
+      const partialLast = Boolean(points[lastIndex].partial);
+      const monthMode = (span / 86_400_000) > LONG_RANGE_DAYS;
+      let xticks = '';
+      if (monthMode) {
+        const ticks = monthTicks(points[0].day, points[lastIndex].day, Math.max(2, Math.floor(plotW / 70)));
+        xticks = ticks.map((tick) => {
+          const x = xOf(tick.day);
+          const anchor = x < left + 26 ? 'start' : x > W - right - 26 ? 'end' : 'middle';
+          return `<text x="${x}" y="${H - 8}" text-anchor="${anchor}" class="gs-axis">${esc(dayText(tick.day, tick.year ? { month: 'short', year: 'numeric' } : { month: 'short' }))}</text>`;
+        }).join('');
+      } else {
+        const slots = Math.max(2, Math.min(points.length, Math.floor(plotW / (partialLast ? 140 : 84)) + 1));
+        const gap = Math.max(1, Math.ceil((points.length - 1) / (slots - 1)));
+        const picks = new Set<number>();
+        for (let index = lastIndex; index >= 0; index -= gap) picks.add(index);
+        const ordered = [...picks].sort((a, b) => a - b);
+        xticks = ordered.map((index, order, list) => {
+          const anchor = list.length === 1 ? 'middle' : index === 0 ? 'start' : order === list.length - 1 ? 'end' : 'middle';
+          const text = points[index].partial ? t('todaySoFar') : shortDay(points[index].day);
+          return `<text x="${coords[index].x}" y="${H - 8}" text-anchor="${anchor}" class="gs-axis${points[index].partial ? ' gs-axis-today' : ''}">${esc(text)}</text>`;
+        }).join('');
+      }
 
-      const changes = dayChanges(points);
-      const tip = points.map((p: { day: string; value: number }, i: number) => ({
-        x: Math.round((coords[i].x / W) * 10000) / 10000,
-        y: [Math.round((coords[i].y / H) * 10000) / 10000],
-        f: {
-          label: dayText(p.day, { weekday: 'short', month: 'short', day: 'numeric' }),
-          value: fmt(metric, p.value),
-          delta: changes[i] === null ? '' : `${signed(metric, changes[i] as number)} ${t('changeVsPrev')}`,
-        },
-      }));
+      const tip = points.map((p, i) => {
+        const adjacent = i > 0 && nextDay(points[i - 1].day) === p.day;
+        return {
+          x: Math.round((coords[i].x / W) * 10000) / 10000,
+          y: [Math.round((coords[i].y / H) * 10000) / 10000],
+          f: {
+            label: dayText(p.day, { weekday: 'short', month: 'short', day: 'numeric' }),
+            tag: p.partial ? t('todaySoFar') : p.estimated ? t('estimatedTag') : '',
+            value: fmt(metric, p.value),
+            // Today so far is not compared with a whole day: it would read as a fall.
+            delta: adjacent && !p.partial ? `${signed(metric, p.value - points[i - 1].value)} ${t('changeVsPrev')}` : '',
+          },
+        };
+      });
       const tipJson = JSON.stringify({ points: tip }).replace(/</g, '\\u003c');
       const unitLine = info.kind === 'level' ? t('atEnd') : t('perDay');
-      const lastPoint = coords[coords.length - 1];
       host.dataset.width = String(W);
       host.innerHTML = `<div class="gs-plot" data-ct data-ct-place="side" tabindex="0" role="group" aria-label="${esc(`${t(metric === 'voice' ? 'voice' : metric)} ${unitLine}`)}" style="--c:${COLORS[metric]};height:${H}px">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('chartLabel'))}" class="${animate ? 'gs-draw' : ''}">
           ${grid}${xticks}
-          <path d="${area}" class="gs-area"/><path d="${line}" pathLength="1" class="gs-line"/>
-          <circle cx="${lastPoint.x}" cy="${lastPoint.y}" r="4.5" class="gs-end"/>
+          ${areas}${lines}${dots}${endMark}
         </svg>
         <i class="ct-guide" data-ct-guide></i><i class="ct-dot" data-ct-dot style="--ct-c:${COLORS[metric]}"></i>
-        <div class="ct-tip gs-tip" data-ct-box><b data-ct-f="label"></b><span data-ct-f="value"></span><em data-ct-f="delta"></em></div>
+        <div class="ct-tip gs-tip" data-ct-box><b data-ct-f="label"></b><small data-ct-f="tag"></small><span data-ct-f="value"></span><em data-ct-f="delta"></em></div>
         <script type="application/json" data-ct-data>${tipJson}<\/script>
-      </div>`;
+      </div>${single ? `<p class="gs-empty gs-empty-inline">${esc(t('histStarts'))}</p>` : ''}`;
       renderSummary(points, info);
-      const covered = Math.round((Date.parse(`${points[points.length - 1].day}T00:00:00Z`) - first) / 86_400_000) + 1;
-      note.textContent = `${t('zoomNote')}${covered < range ? ` ${t('onlyDays').replace('{n}', String(covered))}` : ''}`;
+      // The note about the zoomed axis is only true when the axis does not start at zero.
+      const notes = single || scale.min <= 0 ? [] : [t('zoomNote')];
+      const covered = Math.round((Date.parse(`${points[lastIndex].day}T00:00:00Z`) - first) / 86_400_000) + 1;
+      if (!single && covered < range) notes.push(t('onlyDays').replace('{n}', String(covered)));
+      // Each series says where its own numbers come from: the servers of the days before today are the public daily count of discord.watch
+      // (dashed between two interpolated days); the members are the team's records of key dates and the join and leave counters.
+      if (metric === 'servers') { if (points.some((p) => p.day !== botDay())) notes.push(t('serversCredit')); }
+      else if (points.some((p) => p.estimated)) notes.push(t('estimatedNote'));
+      if (partialLast && !single) notes.push(t('partialNote'));
+      note.textContent = notes.join(' ');
     }
 
-    // ── The day by day table ──
+    // ── The day by day table: the same days as the chart. The first row is today so far, from the same live numbers as the chart's last point. ──
     function renderTable() {
       const holder = $('gsTable');
       $('gsTablePanel').hidden = false;
       const more = $('gsMore') as HTMLButtonElement;
+      const tableNote = $('gsTableNote');
       const today = botDay();
       const days = allDays();
       const rows = dailyRows(days, today, 30);
-      const used = METRICS.filter((info) => rows.some((row: any) => row.cells[info.key]) );
-      const live: Record<string, number> = {};
-      if (snapshot) {
-        const data = snapshot.data;
-        for (const info of METRICS) {
-          if (info.kind === 'level') { const v = Number(data?.[info.key]); if (Number.isFinite(v) && v > 0) live[info.key] = v; }
-          else live[info.key] = estimate(info.field, 'today');
-        }
-      }
-      const liveKeys = METRICS.filter((info) => live[info.key] !== undefined && (info.kind === 'flow' || rows.some((row: any) => row.cells[info.key])));
-      const columns = METRICS.filter((info) => used.includes(info) || (rows.length && liveKeys.includes(info)));
-      if (!columns.length || !rows.length) {
-        // Nothing to list (no history at all): the history panel above already says so, so this one is left out.
+      const todayRow = days.find((row: any) => row.day === today) ?? null;
+      const yesterday = days.find((row: any) => row.day === daysBefore(today, 1)) ?? null;
+      // A column is there when any listed day has that number; servers and members get theirs as soon as today's count is known,
+      // and the days the bot has not stored show a dash, never a zero.
+      const columns = METRICS.filter((info) => (todayRow && todayRow[info.field] !== undefined) || rows.some((row: any) => row.cells[info.key]));
+      if (!columns.length || (!rows.length && !todayRow)) {
+        // Nothing to list: the history panel above already says so, so this one is left out.
         $('gsTablePanel').hidden = true;
         holder.innerHTML = '';
+        tableNote.textContent = '';
         more.hidden = true;
         return;
       }
       const head = columns.map((info) => `<th scope="col" style="--m:${COLORS[info.key]}"><i class="gs-swatch"></i>${esc(t(info.key === 'voice' ? 'voice' : info.key))}</th>`).join('');
-      const cell = (key: string, value: number, change: number | null) => {
+      const cell = (key: string, value: number, change: number | null, estimated?: string) => {
         const shown = key === 'voice' ? hoursOf(value) : value;
         const changeShown = change === null ? null : key === 'voice' ? hoursOf(change) : change;
-        const extra = changeShown === null ? '' : ` <span class="gs-d gs-${tone(Math.round(changeShown * 10) / 10)}">(${esc(signed(key, changeShown))})</span>`;
-        return `<td><span class="gs-v">${esc(fmt(key, shown))}</span>${extra}</td>`;
+        const approx = estimated ? '~' : '';
+        const extra = changeShown === null ? '' : ` <span class="gs-d gs-${tone(Math.round(changeShown * 10) / 10)}">(${estimated === 'change' ? '~' : ''}${esc(signed(key, changeShown))})</span>`;
+        return `<td${estimated ? ` class="${estimated === 'value' ? 'gs-est' : ''}" title="${esc(t('estimatedTag'))}"` : ''}><span class="gs-v">${estimated === 'value' ? approx : ''}${esc(fmt(key, shown))}</span>${extra}</td>`;
       };
       let body = '';
-      if (snapshot && liveKeys.length) {
+      if (todayRow) {
         const cells = columns.map((info) => {
-          if (live[info.key] === undefined) return '<td class="gs-none">–</td>';
-          if (info.kind === 'level') {
-            const before = [...days].reverse().find((row: any) => row.day < today && row[info.field] !== undefined);
-            return cell(info.key, live[info.key], before ? live[info.key] - before[info.field] : null);
-          }
-          return cell(info.key, live[info.key], null);
+          const value = todayRow[info.field];
+          if (value === undefined) return '<td class="gs-none">–</td>';
+          // A level is compared with yesterday's; today so far is not compared with a whole day.
+          const before = info.kind === 'level' ? yesterday?.[info.field] : undefined;
+          return cell(info.key, value, before === undefined ? null : value - before, info.kind === 'level' && yesterday?.[info.flag] ? 'change' : undefined);
         }).join('');
         body += `<tr class="gs-today"><th scope="row">${esc(t('today'))}<small>${esc(t('soFar'))}</small></th>${cells}</tr>`;
       }
-      body += rows.slice(0, tableRows).map((row: any) => {
-        const cells = columns.map((info) => (row.cells[info.key] ? cell(info.key, row.cells[info.key].value, row.cells[info.key].change) : '<td class="gs-none">–</td>')).join('');
+      const shownRows = rows.slice(0, tableRows);
+      body += shownRows.map((row: any) => {
+        const cells = columns.map((info) => (row.cells[info.key] ? cell(info.key, row.cells[info.key].value, row.cells[info.key].change, row.cells[info.key].estimated) : '<td class="gs-none">–</td>')).join('');
         return `<tr><th scope="row">${esc(dayText(row.day, { weekday: 'short', month: 'short', day: 'numeric' }))}</th>${cells}</tr>`;
       }).join('');
       holder.innerHTML = `<table class="gs-table"><thead><tr><th scope="col">${esc(t('colDay'))}</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      // One note for each series that has something to say: members from the records and counters, servers from discord.watch.
+      const noteParts: string[] = [];
+      if (shownRows.some((row: any) => row.cells.members?.estimated) || (columns.some((info) => info.key === 'members') && yesterday?.estimated)) noteParts.push(t('estimatedTableNote'));
+      if (shownRows.some((row: any) => row.cells.servers)) noteParts.push(t('serversCreditTable'));
+      tableNote.textContent = noteParts.join(' ');
       more.hidden = rows.length <= 14;
       more.textContent = tableRows > 14 ? t('less') : t('more');
     }
@@ -524,7 +595,7 @@ const CARDS = [
       live?.classList.add('on');
     }
 
-    function renderAll(animate = false) { renderCards(); renderRanking(); renderStamp(); renderTable(); drawChart(animate); }
+    function renderAll(animate = false) { freeze(); renderCards(); renderRanking(); renderStamp(); renderTable(); drawChart(animate); }
 
     async function load(fromClick = false, card?: HTMLElement) {
       if (card) card.classList.add('loading');
@@ -535,6 +606,7 @@ const CARDS = [
           if (payload?.data?.totals) {
             snapshot = { data: payload.data, updatedAt: payload.updatedAt };
             fetchedAt = Date.now();
+            freeze();
             document.getElementById('gsUnavailable')?.setAttribute('hidden', '');
             renderCards(); renderRanking(); renderStamp(); renderTable();
             // The chart is drawn again only when the shape of the data changed (never under an open tooltip).
@@ -558,6 +630,7 @@ const CARDS = [
         const days = normalizeHistory(payload);
         if (!days.length) return;
         history = { days, source: payload.source || 'saved' };
+        freeze();
         renderTable();
         if (!$('gsPlotHost').querySelector('[data-dash-hold]')) drawChart(false);
       } catch { /* the page keeps the history it has */ }
@@ -705,19 +778,27 @@ const CARDS = [
   :global(.gs-plot svg) { display: block; max-width: 100%; overflow: visible; }
   :global(.gs-grid) { stroke: var(--border); stroke-dasharray: 3 5; }
   :global(.gs-axis) { fill: var(--text-dim); font-size: 11.5px; font-family: var(--mono); }
+  :global(.gs-axis-today) { fill: var(--text-muted); }
   :global(.gs-line) { fill: none; stroke: var(--c); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
   :global(.gs-area) { fill: color-mix(in srgb, var(--c) 16%, transparent); stroke: none; }
   :global(.gs-end) { fill: var(--c); stroke: var(--card); stroke-width: 2; }
-  :global(.gs-draw .gs-line) { stroke-dasharray: 1; stroke-dashoffset: 1; animation: gsDraw 0.9s cubic-bezier(.16, 1, .3, 1) forwards; }
-  :global(.gs-draw .gs-area) { opacity: 0; animation: gsFade .6s ease-out .3s forwards; }
+  /* Not a plain measurement (today so far, or days rebuilt afterwards): a dashed line, and an open end for today. */
+  :global(.gs-line-dash) { stroke-dasharray: 5 4.5; stroke-linecap: butt; stroke-width: 2.2; }
+  :global(.gs-dot) { fill: var(--c); stroke: var(--card); stroke-width: 1.6; }
+  :global(.gs-hollow) { fill: var(--card); stroke: var(--c); stroke-width: 2.4; }
+  :global(.gs-draw .gs-line:not(.gs-line-dash)) { stroke-dasharray: 1; stroke-dashoffset: 1; animation: gsDraw 0.9s cubic-bezier(.16, 1, .3, 1) forwards; }
+  :global(.gs-draw .gs-area), :global(.gs-draw .gs-line-dash), :global(.gs-draw .gs-dot) { opacity: 0; animation: gsFade .6s ease-out .3s forwards; }
   :global(.gs-draw .gs-end) { opacity: 0; animation: gsFade .3s ease-out .8s forwards; }
   @keyframes gsDraw { to { stroke-dashoffset: 0; } }
   @keyframes gsFade { to { opacity: 1; } }
   :global(.gs-tip) { display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; font-size: 12.5px; min-width: 0; max-width: 220px; }
   :global(.gs-tip b) { font-weight: 600; color: var(--text); }
+  :global(.gs-tip small) { font-size: 11.5px; color: var(--accent); font-weight: 600; }
+  :global(.gs-tip small:empty) { display: none; }
   :global(.gs-tip span) { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; }
   :global(.gs-tip em) { font-style: normal; color: var(--text-dim); font-size: 11.5px; }
   :global(.gs-tip em:empty) { display: none; }
+  :global(.gs-empty-inline) { margin-top: 12px; padding: 14px 12px; }
   :global(.gs-empty) { margin: 0; padding: 28px 8px; font-size: 14px; line-height: 1.55; color: var(--text-dim); text-align: center; border: 1px dashed var(--border); border-radius: 14px; }
 
   /* The table keeps its own horizontal scroll, so the page never scrolls sideways; the day stays in view. */
@@ -740,6 +821,7 @@ const CARDS = [
   :global(.gs-table .gs-down) { color: var(--red); }
   :global(.gs-table .gs-flat) { color: var(--text-dim); }
   :global(.gs-table .gs-none) { color: var(--text-dim); }
+  :global(.gs-table .gs-est .gs-v) { font-weight: 500; color: var(--text-muted); }
   :global(.gs-table .gs-today th), :global(.gs-table .gs-today td) { background: color-mix(in srgb, var(--accent) 7%, var(--card)); }
   :global(.gs-table .gs-today th small) { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; }
   .gs-more { margin: 12px auto 0; display: block; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); font: inherit; font-size: 13px; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
@@ -786,6 +868,6 @@ const CARDS = [
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.gs-strip) { transition: none; }
-    :global(.gs-draw .gs-line), :global(.gs-draw .gs-area), :global(.gs-draw .gs-end) { animation: none; opacity: 1; stroke-dashoffset: 0; }
+    :global(.gs-draw .gs-line:not(.gs-line-dash)), :global(.gs-draw .gs-area), :global(.gs-draw .gs-line-dash), :global(.gs-draw .gs-end), :global(.gs-draw .gs-dot) { animation: none; opacity: 1; stroke-dashoffset: 0; }
   }
 </style>
