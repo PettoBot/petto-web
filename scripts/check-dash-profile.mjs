@@ -229,7 +229,11 @@ check('the redirect to /dash carries ?notice=relogin', /notice=relogin/.test(rea
 same('login info codes', [loginInfo('relogin'), loginInfo('x'), loginInfo(null), loginInfo(['relogin'])], ['relogin', null, null, null]);
 check('the login card shows the info banner with a close button', /data-dl-info/.test(read('src/components/DashLogin.astro')) && /data-dl-info-close/.test(read('src/components/DashLogin.astro')) && /loginInfo\(noticeParam\)/.test(read('src/pages/dash/index.astro')));
 try {
-  const { SESSION_VERSION, decodeAnySession, decodeSession, encodeSession } = await import('../src/utils/session.ts');
+  // session.ts has no imports, so it is turned into plain JavaScript with the TypeScript package of the repo and loaded from memory: this works on
+  // any Node (CI runs Node 20, which cannot import a .ts file) and needs no flag.
+  const ts = (await import('typescript')).default;
+  const compiled = ts.transpileModule(read('src/utils/session.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const { SESSION_VERSION, decodeAnySession, decodeSession, encodeSession } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
   const base = { userId: USER, username: 'liam', avatar: null, accessToken: 'a', refreshToken: 'r', expiresAt: Date.now() + 1e6 };
   const fresh = await encodeSession(base, 'secret');
   same('a new session carries the version and is accepted', [(await decodeSession(fresh, 'secret'))?.v], [SESSION_VERSION]);
@@ -245,7 +249,7 @@ try {
   same('a lower version is rejected', await decodeSession(await forge({ v: SESSION_VERSION - 1 }), 'secret'), null);
   same('a higher version is accepted', (await decodeSession(await forge({ v: SESSION_VERSION + 1 }), 'secret'))?.userId, USER);
 } catch (error) {
-  check('the session version runs (needs node with TypeScript support)', false, String(error?.message ?? error));
+  check('the session version runs', false, String(error?.message ?? error));
 }
 
 // --- the texts: every key the new parts use is in the Spanish and Portuguese catalogs, with the same placeholders ---
