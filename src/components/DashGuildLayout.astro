@@ -11,11 +11,15 @@ import DashMotion from './DashMotion.astro';
 import DashToast from './DashToast.astro';
 import DashBotWait from './DashBotWait.astro';
 import DashAutocomplete from './DashAutocomplete.astro';
-import DashServerSort from './DashServerSort.astro';
+import DashSideHead from './DashSideHead.astro';
+import DashServerSheet from './DashServerSheet.astro';
 import DashUserCard from './DashUserCard.astro';
 import { useTranslations } from '../i18n/ui';
 import { canManageGuild, guildIconUrl } from '../utils/discord';
+import { getEnv } from '../utils/env';
 import { loadDashLayoutData } from '../utils/dashLayoutData';
+import { guildHeaderArt } from '../utils/dashProfile.mjs';
+import { splitServers, botInviteUrl } from '../utils/dashSwitcher.mjs';
 import { vanityConfig } from '../utils/vanityBot';
 import { isPettoOwner } from '../utils/premiumAdmin';
 import { canUseQuests } from '../utils/questAccess';
@@ -54,21 +58,15 @@ const pageAccess = roleAccess ? pageDecision(roleAccess, pageOf(Astro.url.pathna
 const accessNotice = ({ no_section: dt('Your role does not open that part of the dashboard.'), view_only: dt('Your role can look at that part but not change it.'), dev_readonly: dt('Support mode: this setting is not editable on other servers') } as Record<string, string>)[Astro.url.searchParams.get('error') ?? ''] ?? null;
 const roleBlockLabels = JSON.stringify({ everyone: dt('everyone'), managed: dt('managed'), above_bot: dt('above the bot') });
 
-// Other servers Petto is already in, for the sidebar switcher dropdown, so picking a
-// different server doesn't need a round trip through /dash/manage every time.
-interface SwitcherGuild { id: string; name: string; icon: string | null; premium: boolean; members: number | null }
-let switcherGuilds: SwitcherGuild[] = [];
+// The servers of the switcher sheet (the ones the server picker already read: no extra Discord call): where Petto is, and where it could be
+// invited. The banner of this server comes from the same list (Discord sends it with each server).
+const clientId = getEnv(Astro, 'DISCORD_CLIENT_ID');
+const { mine: switcherGuilds, invite: inviteGuilds } = splitServers(discordGuilds, activeBotGuildIds, { canManage: canManageGuild, iconOf: (g: any) => guildIconUrl(g), memberCounts, premiumIds: premiumGuildIds });
+const switcherInvites = clientId ? inviteGuilds.map((g) => ({ ...g, href: botInviteUrl(clientId, g.id) })) : [];
+const headerArt = guildHeaderArt({ id: guildId, banner: discordGuilds?.find((g: any) => g.id === guildId)?.banner });
 let devView = false;
 if (discordGuilds) {
-  const manageable = discordGuilds.filter(canManageGuild);
-  devView = Boolean(user.userId) && isPettoOwner(Astro, user.userId as string) && !manageable.some((g: any) => g.id === guildId);
-  if (manageable.length > 0 && activeBotGuildIds) {
-    switcherGuilds = manageable
-      .filter((g: any) => activeBotGuildIds.has(g.id))
-      .map((g: any) => ({ id: g.id, name: g.name, icon: guildIconUrl(g), premium: premiumGuildIds.has(g.id), members: memberCounts.get(g.id) ?? null }))
-      // The biggest first (the order of the server list); an unknown count goes last.
-      .sort((a: SwitcherGuild, b: SwitcherGuild) => (b.members ?? -1) - (a.members ?? -1) || a.name.localeCompare(b.name));
-  }
+  devView = Boolean(user.userId) && isPettoOwner(Astro, user.userId as string) && !discordGuilds.filter(canManageGuild).some((g: any) => g.id === guildId);
 }
 
 // Support mode (utils/supportEdit.ts): what the Petto owner may change on this server he does not manage, drawn as a banner and as
@@ -323,7 +321,7 @@ const skeletonOf: Record<string, string> = {
   'giveaways-active': 'list', 'vanity-logs': 'list', 'leveling-leaderboard': 'list', 'leveling-leaderboard-voice': 'list', backups: 'list',
   feeds: 'list', 'feeds-overview': 'list', 'feeds-youtube': 'list', 'feeds-twitch': 'list', 'feeds-kick': 'list', 'feeds-bluesky': 'list', 'feeds-reddit': 'list', 'feeds-steam': 'list', 'feeds-github': 'list', 'feeds-modrinth': 'list', 'feeds-npm': 'list', 'feeds-pypi': 'list', 'feeds-anilist': 'list', 'feeds-pinterest': 'list', 'feeds-rss': 'list', 'feeds-wikipedia': 'list', 'feeds-chess': 'list', 'feeds-pokemon': 'list',
   responders: 'cards', autoresponders: 'cards', 'custom-commands': 'cards', timers: 'cards', 'sticky-messages': 'cards', counters: 'cards',
-  'ticket-ai': 'form',
+  'ticket-ai': 'form', 'security-unrestricted': 'cards',
 };
 // The menu is split in a few sections, each with a title, so the long list reads as parts of the server.
 const sectionOf = (label: string) => {
@@ -390,39 +388,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           <div class="dgl-backdrop" id="dgl-backdrop" hidden></div>
           <aside class="dgl-side reveal" id="dgl-side">
             <div class="dgl-drawer-head">
-              <img src="/assets/mascot-icon.webp" alt="" width="30" height="30" />
-              <span class="dgl-drawer-title"><strong>Petto</strong><small>{dt('Dashboard')}</small></span>
               <button type="button" class="dgl-side-close" id="dgl-side-close" aria-label={dt('Close the menu')}><Icon name="ph:x" width="16" height="16" /></button>
             </div>
-            <div class="dgl-switcher-wrap">
-              <button type="button" class="dgl-switcher" id="dgl-switcher-btn" aria-expanded="false">
-                <img src={guildIcon} alt="" />
-                <div class="dgl-switcher-text">
-                  <span class="dgl-switcher-sub"><span class="dgl-switcher-eyebrow">{dt('Server')}</span>{resolvedPremiumActive && <span class="dgl-server-premium"><InlineIcon name="ph:crown-fill" width="11" height="11" />Premium</span>}</span>
-                  <span class="dgl-switcher-name-row"><span class="dgl-switcher-name">{guildName}</span></span>
-                </div>
-                <Icon name="ph:caret-up-down" width="13" height="13" />
-              </button>
-              <div class="dgl-switcher-panel" id="dgl-switcher-panel" hidden>
-                {switcherGuilds.length > 1 && <div class="dgl-switcher-sort"><DashServerSort targets="#dgl-switcher-list" compact /></div>}
-                {switcherGuilds.length > 0 && (
-                  <div class="dgl-switcher-list" id="dgl-switcher-list">
-                    {switcherGuilds.map((g) => (
-                      <a href={`/dash/guild/${g.id}/overview`} data-name={g.name.toLowerCase()} data-members={g.members != null ? String(g.members) : ''} class:list={['dgl-switcher-item', { current: g.id === guildId }]}>
-                        {g.icon ? <img src={g.icon} alt="" /> : <div class="dgl-switcher-item-fallback"><Icon name="ph:buildings-fill" width="14" height="14" /></div>}
-                        <span class="dgl-switcher-item-text"><span class="dgl-switcher-item-name">{g.name}</span>{g.members != null && <small>{dt('{n} members', { n: g.members.toLocaleString(dashLocale(dashLang)) })}</small>}</span>
-                        {g.premium && <span class="dgl-switcher-premium"><InlineIcon name="ph:crown-fill" width="11" height="11" />Premium</span>}
-                        {g.id === guildId && <Icon name="ph:check-fill" width="13" height="13" />}
-                      </a>
-                    ))}
-                  </div>
-                )}
-                <a href="/dash/manage" class="dgl-switcher-all">
-                  <Icon name="ph:squares-four-fill" width="14" height="14" />
-                  {dt('Manage all servers')}
-                </a>
-              </div>
-            </div>
+            <DashSideHead kind="guild" name={guildName} icon={guildIcon} art={headerArt} premium={resolvedPremiumActive} />
 
             <button type="button" class="dgl-resync" id="dgl-resync" data-url={`/dash/guild/${guildId}/resync-api`} data-busy={dt('Syncing…')} data-done={dt('Synced')} data-failed={dt('Could not sync. Try again.')} title={dt('Reload the roles, channels and server data from Discord')}>
               <Icon name="ph:arrows-clockwise-fill" width="14" height="14" />
@@ -641,6 +609,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     </section>
   </main>
 
+  <DashServerSheet user={{ name: user.username, avatar: user.avatar }} profileHref="/dash/me" currentId={guildId} servers={switcherGuilds} invites={switcherInvites} owner={Boolean(user.userId) && isPettoOwner(Astro, user.userId as string)} />
+
   <div class="dgl-progress" id="dgl-progress"></div>
 
   <div class="dgl-savebar" id="dgl-savebar" role="status" aria-live="polite">
@@ -671,6 +641,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
 )}
 <script>
   // @ts-nocheck: plain browser JavaScript, written before this was a bundled script.
+  import { SKELETON_SUBTITLE as skeletonSubtitle, skeletonShape } from '../utils/dashSkeleton.mjs';
   // The dashboard's own behaviour (navigation without reloading, saving, live updates, menus...). A bundled script, so the browser
   // keeps it (it used to be sent inline, about 80 KB, with every page). It runs once per full page load, after the page is parsed.
 
@@ -1249,28 +1220,6 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (dirtyForm && !leavingToSave) { e.preventDefault(); e.returnValue = ''; }
     });
 
-    function bindSwitcherMenu() {
-      var btn = document.getElementById('dgl-switcher-btn');
-      var panel = document.getElementById('dgl-switcher-panel');
-      if (!btn || !panel) return;
-      btn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (dirtyForm) { shakeSaveBar(); return; }
-        var isOpen = !panel.hidden && !panel._dglLeave;
-        if (isOpen) window.dglMotion.hide(panel); else { window.dglMotion.stay(panel); panel.hidden = false; }
-        btn.classList.toggle('open', !isOpen);
-        btn.setAttribute('aria-expanded', String(!isOpen));
-      });
-      document.addEventListener('click', function (e) {
-        if (!panel.hidden && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
-          window.dglMotion.hide(panel);
-          btn.classList.remove('open');
-          btn.setAttribute('aria-expanded', 'false');
-        }
-      });
-    }
-    bindSwitcherMenu();
-
     var mobileToggle = document.getElementById('dgl-mobile-toggle');
     var dglSide = document.querySelector('.dgl-side');
     // On a phone the menu is a drawer at the side: a button opens it, and it closes with the backdrop, the X, Escape or a link.
@@ -1386,7 +1335,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     });
 
     function bindNavGuard(root) {
-      root.querySelectorAll('.dgl-link, .dgl-switcher-item, .dgl-switcher-all, .dgl-user a').forEach(function (a) {
+      root.querySelectorAll('.dgl-link, .ds-sheet a, .dgl-user a').forEach(function (a) {
         if (a.dataset.navGuardBound) return;
         a.dataset.navGuardBound = '1';
         a.addEventListener('click', function (e) {
@@ -1402,18 +1351,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // The placeholders have the shape of the page that is coming (data-sk on its menu link) and its real title, so the title does not
     // move and the blocks sit where the real ones will. They show at once when the page is not already here; a page read ahead is swapped in
     // directly, with no placeholders at all.
-    function skeletonHtml(kind) {
-      var n = function (count, html) { var out = ''; for (var i = 0; i < count; i++) out += html; return out; };
-      var panel = function (fields) { return '<div class="sk-panel"><span class="sk sk-head"></span><div class="sk-fields">' + fields + '</div></div>'; };
-      switch (kind) {
-        case 'stats': return '<div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></div><span class="sk sk-block"></span><div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span></div>';
-        case 'grid': return '<div class="sk-toolbar"><span class="sk"></span></div><div class="sk-mods">' + n(9, '<span class="sk"></span>') + '</div>';
-        case 'cards': return '<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-grid">' + n(4, '<span class="sk sk-card"></span>') + '</div>';
-        case 'list': return '<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-rows">' + n(7, '<span class="sk"></span>') + '</div>';
-        case 'editor': return '<div class="sk-editor"><div class="sk-col"><span class="sk sk-field"></span><span class="sk sk-field"></span><span class="sk sk-field tall"></span><span class="sk sk-field"></span></div><div class="sk-col"><span class="sk sk-card tall"></span></div></div>';
-        default: return panel('<span class="sk"></span><span class="sk"></span><span class="sk wide"></span>') + panel('<span class="sk"></span><span class="sk"></span>');
-      }
-    }
+    function skeletonHtml(kind) { return skeletonSubtitle + skeletonShape(kind); }
     // Which menu link a page address belongs to (the same rules as updateActiveLink), for the title and shape of its placeholders.
     function navLinkFor(href) {
       var target;
@@ -1449,6 +1387,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       content.scrollTop = 0;
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
+    window.dglShowSkeleton = function (href) { if (!dirtyForm) showContentSkeleton(href); };
+    // Coming back with the back button must not show a page frozen under its placeholders.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) hideContentSkeleton(); });
     function hideContentSkeleton() {
       clearTimeout(skeletonTimer);
       var content = document.getElementById('dgl-content');
@@ -2880,7 +2821,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
 
     var content = document.getElementById('dgl-content');
     if (content) { keepSymbols(document.body); initContent(content); }
-    // The sidebar (nav links, server switcher, logout) never gets replaced by swapContent,
+    // The sidebar (nav links, server sheet, logout) never gets replaced by swapContent,
     // so these only need binding once, not on every navigation like initContent's binders.
     bindNavGuard(document);
     bindDglLinks(document);
@@ -2907,60 +2848,15 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     /* As tall as its content (the user card follows the list, no empty stretch), and no taller than the screen: then the list scrolls.
        The visible height is used: a phone's address and tab bars are not part of 100vh and cut the bottom of the menu. */
     max-height: calc(100vh - var(--dgl-header-h, 60px) - 56px);
-    max-height: min(calc(100dvh - var(--dgl-header-h, 60px) - 56px), var(--dgl-panel-h, 100dvh));
+    max-height: min(calc(100dvh - var(--dgl-header-h, 60px) - 56px), max(var(--dgl-panel-h, 100dvh), 360px));
     display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 16px; background: var(--card); overflow: hidden;
   }
-  /* The server card at the top of the menu. */
-  .dgl-switcher-wrap { position: relative; padding: 8px 8px 0; flex: none; }
-  .dgl-switcher {
-    display: flex; align-items: center; gap: 10px; padding: 7px 9px; width: 100%; border-radius: 12px;
-    background: color-mix(in srgb, var(--text) 3%, transparent); border: 1px solid var(--border-soft); text-align: left; cursor: pointer; font-family: var(--sans);
-    transition: background-color var(--m-fast) ease, border-color var(--m-fast) ease, transform var(--m-instant) ease;
-  }
-  .dgl-switcher:hover, .dgl-switcher.open { background: var(--card-hover); border-color: var(--border); }
-  .dgl-switcher:active { transform: scale(.985); }
-  .dgl-switcher img { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; flex-shrink: 0; box-shadow: 0 0 0 1px var(--border-soft); }
-  .dgl-switcher-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .dgl-switcher-eyebrow { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); }
-  .dgl-switcher-name-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
-  .dgl-switcher-sub { display: flex; align-items: center; gap: 6px; min-width: 0; line-height: 1.2; }
-  .dgl-switcher-name { min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dgl-server-premium, .dgl-switcher-premium { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 42%, var(--border)); border-radius: 999px; font-family: var(--mono); font-size: 9px; font-weight: 700; line-height: 1; padding: 4px 6px; }
-  .dgl-switcher :global(svg) { color: var(--text-dim); flex-shrink: 0; }
-  .dgl-switcher.open .dgl-switcher-icon,
-  .dgl-switcher.open :global(svg:last-child) { transform: rotate(180deg); }
-  .dgl-switcher > :global(svg:last-child) { transition: transform var(--m-base) var(--m-out); }
 
-  .dgl-switcher-panel {
-    position: absolute; top: calc(100% + 6px); left: 10px; right: 10px; z-index: 50;
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    box-shadow: 0 18px 40px -14px rgba(0,0,0,0.55); padding: 6px; overflow: hidden;
-  }
-  .dgl-switcher-list { max-height: 260px; overflow-y: auto; }
-  .dgl-switcher-item {
-    display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px;
-    text-decoration: none; color: var(--text-muted); font-size: 13px;
-  }
-  .dgl-switcher-item:hover { background: var(--card-hover); color: var(--text); }
-  .dgl-switcher-item.current { color: var(--accent); background: var(--accent-soft); }
-  .dgl-switcher-item img, .dgl-switcher-item-fallback { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
-  .dgl-switcher-item-fallback { display: flex; align-items: center; justify-content: center; background: var(--bg-raise); color: var(--text-dim); }
-  .dgl-switcher-item-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-  .dgl-switcher-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dgl-switcher-item-text small { font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-  .dgl-switcher-sort { display: flex; justify-content: flex-end; padding: 2px 2px 6px; }
-  .dgl-switcher-item .dgl-switcher-premium { font-size: 8px; padding: 3px 5px; }
-  .dgl-switcher-item :global(svg:last-child) { flex-shrink: 0; color: var(--accent); }
   .dgl-resync { white-space: nowrap; display: flex; align-items: center; justify-content: center; gap: 8px; flex: none; width: calc(100% - 16px); margin: 6px 8px 0; padding: 5px 12px; border-radius: 10px; border: 1px dashed var(--border); background: transparent; color: var(--muted, var(--text)); font: inherit; font-size: .82rem; cursor: pointer; touch-action: manipulation; transition: color .15s ease, border-color .15s ease, background .15s ease; }
   .dgl-resync:hover { color: var(--text); border-color: var(--accent); }
   .dgl-resync[disabled] { opacity: .7; cursor: progress; }
   .dgl-resync.busy :global(svg) { animation: dgl-spin .8s linear infinite; }
   @keyframes dgl-spin { to { transform: rotate(360deg); } }
-  .dgl-switcher-all {
-    display: flex; align-items: center; gap: 9px; padding: 9px; margin-top: 4px; border-top: 1px solid var(--border-soft);
-    text-decoration: none; color: var(--text-muted); font-size: 12.5px; font-weight: 600;
-  }
-  .dgl-switcher-all:hover { color: var(--text); }
 
   .dgl-find { display: flex; flex: none; align-items: center; gap: 8px; width: calc(100% - 16px); margin: 5px 8px 0; padding: 5px 10px; border-radius: 10px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 3%, transparent); color: var(--text-dim); font: inherit; font-size: 12.5px; cursor: pointer; touch-action: manipulation; transition: color var(--m-fast) ease, border-color var(--m-fast) ease, transform var(--m-instant) ease; }
   .dgl-find span { flex: 1; text-align: left; }
@@ -3055,10 +2951,10 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   @media (max-width:760px) { .dgl-dev-actions { width:100%; }.dgl-dev-actions .btn, .dgl-dev-actions form { flex:1 1 100%; width:100%; justify-content:center; box-sizing:border-box; } }
   .dgl-content {
     min-width: 0; border: 1px solid var(--border); border-radius: 18px; background: var(--card);
-    padding: 28px 32px 40px; max-height: calc(100vh - var(--dgl-header-h, 60px) - 56px); max-height: calc(100dvh - var(--dgl-header-h, 60px) - 56px); min-height: min(640px, calc(100dvh - var(--dgl-header-h, 60px) - 56px)); overflow-y: auto;
-    scrollbar-width: none;
+    /* The panel grows with its content and the page scrolls (never a scroll inside the card, which hid its own bottom edge and made long lists
+       look cut off). The menu next to it is sticky and keeps its own height. */
+    padding: 28px 32px 40px; min-height: min(640px, calc(100dvh - var(--dgl-header-h, 60px) - 56px));
   }
-  .dgl-content::-webkit-scrollbar { display: none; }
   /* A field or card reached with Tab never lands on the very edge of the content box, with half its focus ring cut. */
   .dgl-content { scroll-padding-block: 14px; }
 
@@ -3074,31 +2970,19 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     .dgl-side.open, .dgl-side.reveal.open { transform: none !important; visibility: visible; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--m-slow) var(--m-out), visibility 0s !important; }
     .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); touch-action: none; }
     .dgl-backdrop[hidden] { display: none; }
-    /* The drawer opens with its own small header, like an app: Petto and "Dashboard" on the left, the close button on the right. */
-    .dgl-drawer-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 8px 14px; flex: none; }
-    .dgl-drawer-head img { width: 30px; height: 30px; object-fit: contain; }
-    .dgl-drawer-title { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.15; }
-    .dgl-drawer-title strong { font-family: var(--serif); font-size: 19px; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
-    .dgl-drawer-title small { font-size: 11.5px; color: var(--text-dim); }
+    /* The close button floats over the banner at the top of the drawer, so the drawer starts with the banner and no extra row. */
+    .dgl-drawer-head { display: flex; position: absolute; z-index: 5; top: 0; right: 0; padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 0 0; }
     .dgl-side-close { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 12px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 3%, transparent); color: var(--text-muted); cursor: pointer; touch-action: manipulation; transition: transform var(--m-instant) ease, color var(--m-fast) ease, background-color var(--m-fast) ease; }
-    .dgl-side-close:active { transform: scale(.92); background: var(--card-hover); color: var(--text); }
+    .dgl-drawer-head .dgl-side-close { background: rgba(8, 9, 12, .42); border-color: rgba(255, 255, 255, .22); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    .dgl-side-close:active { transform: scale(.92); }
     /* The bar with the menu button stays under the site's header while the page scrolls, so the menu opens from anywhere on the page. */
     .dgl-menu-bar { display: flex; align-items: center; gap: 12px; margin: -8px 0 4px; padding: 8px 0; min-width: 0; position: sticky; top: var(--dgl-header-h, 60px); z-index: 30; background: var(--bg); }
     .dgl-menu-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; padding: 0; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--accent); cursor: pointer; touch-action: manipulation; transition: transform .12s ease, background .15s ease; }
     .dgl-menu-btn:active { transform: scale(.94); background: var(--card-hover); }
     .dgl-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 700; color: var(--text); }
-    .dgl-switcher-wrap { display: block; }
     .dgl-content { position: relative; z-index: 0; display: block; clear: both; width: 100%; box-sizing: border-box; height: auto; max-height: none; min-height: 0; overflow-y: visible; border-radius: 14px; padding: 22px 18px 104px; margin: 0; }
-    .dgl-switcher-panel { position: static; width: auto; margin: 6px 10px 10px; box-shadow: none; }
 
     .dgl-mobile-toggle { display: none !important; }
-    /* The server card: icon, name and a small line under it (the line that sits above the name on the desktop). */
-    .dgl-switcher-wrap { padding: 4px 12px 0; }
-    .dgl-switcher img { width: 40px; height: 40px; border-radius: 12px; }
-    .dgl-switcher { padding: 8px 12px 8px 9px; border-radius: 14px; }
-    .dgl-switcher-sub { order: 2; }
-    .dgl-switcher-eyebrow { font-family: var(--sans); font-size: 12px; letter-spacing: 0; text-transform: none; }
-    .dgl-switcher-name { font-size: 15px; }
     .dgl-resync, .dgl-find { width: calc(100% - 24px); margin-left: 12px; margin-right: 12px; padding-top: 8px; padding-bottom: 8px; font-size: 13px; }
     .dgl-resync { margin-top: 8px; padding-top: 6px; padding-bottom: 6px; }
     /* Compact groups with a comfortable touch target; the list scrolls and the user card stays at the bottom of the drawer. */

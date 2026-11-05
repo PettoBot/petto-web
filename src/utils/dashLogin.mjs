@@ -19,6 +19,18 @@ export const LOGIN_ERRORS = [
 /** The codes that are Discord's doing (the card shows the Discord icon for them instead of a warning). */
 export const DISCORD_ERRORS = ['missing_code', 'token_exchange_failed', 'user_fetch_failed', 'discord_unavailable'];
 
+/** Every `?notice=` code the card can show as an information banner (not an error). */
+export const LOGIN_INFO = ['relogin'];
+
+/**
+ * The info banner of the card for `?notice=` (or for a rejected old session): a known code or null. Never repeats the text of the address.
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+export function loginInfo(raw) {
+  return typeof raw === 'string' && LOGIN_INFO.includes(raw) ? raw : null;
+}
+
 /**
  * What the card says for the `error` of the address: a known code, 'unknown' for any other text (the card then says something went wrong),
  * or null when there is no error. Anything that is not a known code is never repeated on the page.

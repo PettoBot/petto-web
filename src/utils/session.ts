@@ -3,7 +3,16 @@
 // Uses Web Crypto only (no Node `Buffer`) so it runs the same in `astro dev` and in
 // the Cloudflare Workers runtime.
 
+/**
+ * The version of the login. A session made with a lower number (or with none, like every session before this field) is rejected as
+ * logged out: the cookie is cleared and the visitor logs in again. Raise this number whenever everyone has to log in again
+ * (for example when the session starts keeping new data that only a fresh login can read).
+ */
+export const SESSION_VERSION = 1;
+
 export interface Session {
+  /** The SESSION_VERSION it was made with (stamped by encodeSession). */
+  v?: number;
   userId: string;
   username: string;
   avatar: string | null;
@@ -11,6 +20,10 @@ export interface Session {
   decoration?: string | null;
   /** Asset folder and palette name of the Discord nameplate (null: has none; missing: not read yet). */
   nameplate?: { asset: string; palette: string } | null;
+  /** The @username (the display name is `username`), the hash of the Discord banner and the accent color (null: has none; missing: not read yet). */
+  handle?: string | null;
+  banner?: string | null;
+  accentColor?: number | null;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
@@ -46,10 +59,14 @@ function isSession(value: unknown): value is Session {
   if (!value || typeof value !== 'object') return false;
   const session = value as Partial<Session>;
   return typeof session.userId === 'string'
+    && (session.v === undefined || typeof session.v === 'number')
     && typeof session.username === 'string'
     && (session.avatar === null || typeof session.avatar === 'string')
     && (session.decoration === undefined || session.decoration === null || typeof session.decoration === 'string')
     && (session.nameplate === undefined || session.nameplate === null || (typeof session.nameplate === 'object' && typeof session.nameplate.asset === 'string' && typeof session.nameplate.palette === 'string'))
+    && (session.handle === undefined || session.handle === null || typeof session.handle === 'string')
+    && (session.banner === undefined || session.banner === null || typeof session.banner === 'string')
+    && (session.accentColor === undefined || session.accentColor === null || typeof session.accentColor === 'number')
     && typeof session.accessToken === 'string'
     && typeof session.refreshToken === 'string'
     && typeof session.expiresAt === 'number';
@@ -61,12 +78,24 @@ export async function encodeSession(session: Session, secret: string): Promise<s
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
-    new TextEncoder().encode(JSON.stringify(session)),
+    new TextEncoder().encode(JSON.stringify({ ...session, v: SESSION_VERSION })),
   );
   return `v1.${toBase64Url(iv)}.${toBase64Url(new Uint8Array(ciphertext))}`;
 }
 
+/** True when the session was made with the current SESSION_VERSION (a lower or missing one needs a new login). */
+export function isCurrentSession(session: Session): boolean {
+  return typeof session.v === 'number' && session.v >= SESSION_VERSION;
+}
+
+/** The session of a cookie if it is a current one; null for an invalid cookie and for one made before SESSION_VERSION. */
 export async function decodeSession(value: string, secret: string): Promise<Session | null> {
+  const session = await decodeAnySession(value, secret);
+  return session && isCurrentSession(session) ? session : null;
+}
+
+/** Like decodeSession but also returns a valid session of an older version, so the caller can tell "old" from "broken". */
+export async function decodeAnySession(value: string, secret: string): Promise<Session | null> {
   if (value.startsWith('v1.')) {
     const [, encodedIv, encodedCiphertext] = value.split('.');
     if (!encodedIv || !encodedCiphertext) return null;

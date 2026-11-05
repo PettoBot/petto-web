@@ -102,7 +102,7 @@ check('the old component is gone', !existsSync(new URL('src/components/Dash.astr
 
 // The page: a visitor with a session goes on to the servers, anyone else gets the card.
 const page = read('src/pages/dash/index.astro');
-check('the page draws the card', /<DashLogin error=\{errorParam\} \/>/.test(page));
+check('the page draws the card', /<DashLogin error=\{errorParam\} info=\{/.test(page));
 check('a session goes to the servers', /if \(session\) \{\s*return Astro\.redirect\(managePath\(errorParam\)\);\s*\}/.test(page));
 check('the page does not build a Discord address', !/dashAuthorizeUrl/.test(page));
 
