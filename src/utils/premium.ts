@@ -69,7 +69,7 @@ function polarApiBase(astro: any): string {
     : 'https://api.polar.sh';
 }
 
-async function read<T>(astro: any, table: string, query: string): Promise<T[]> {
+export async function read<T>(astro: any, table: string, query: string): Promise<T[]> {
   const settings = config(astro);
   if (!settings) return [];
   try {
