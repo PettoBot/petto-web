@@ -1,4 +1,4 @@
-import { decodeSession, encodeSession, type Session } from './session';
+import { decodeAnySession, encodeSession, isCurrentSession, type Session } from './session';
 import { canManageGuild } from './discord';
 import { getCachedUserGuilds } from './discordCache';
 import { getEnv } from './env';
@@ -84,8 +84,14 @@ export async function getDashboardSession(astro: any): Promise<Session | null> {
   const clientId = getEnv(astro, 'DISCORD_CLIENT_ID');
   const clientSecret = getEnv(astro, 'DISCORD_CLIENT_SECRET');
   const cookie = astro.cookies.get('petto_session')?.value;
-  const session = cookie && clientSecret ? await decodeSession(cookie, clientSecret) : null;
+  const session = cookie && clientSecret ? await decodeAnySession(cookie, clientSecret) : null;
   if (!session) return null;
+  if (!isCurrentSession(session)) {
+    // Made before the current SESSION_VERSION: logged out. The cookie goes, and the middleware sends the visitor to the login card with a notice.
+    try { astro.cookies.delete('petto_session', { path: '/' }); } catch { /* the cookie is rejected on every read anyway */ }
+    if (astro.locals) astro.locals.sessionStale = true;
+    return null;
+  }
 
   const needsRefresh = session.expiresAt <= Date.now() + 60_000;
   if (!needsRefresh || !clientId || !clientSecret) {

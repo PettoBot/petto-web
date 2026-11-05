@@ -16,8 +16,10 @@ interface Props {
   currentId?: string | null;
   servers: { id: string; name: string; icon: string | null; premium: boolean }[];
   invites: { id: string; name: string; icon: string | null; href: string }[];
+  /** The visitor is the Petto owner (decided on the server by isPettoOwner): only then the "All servers (owner)" part is drawn and can fetch. */
+  owner?: boolean;
 }
-const { user, profileHref, onProfile = false, currentId = null, servers, invites } = Astro.props;
+const { user, profileHref, onProfile = false, currentId = null, servers, invites, owner = false } = Astro.props;
 const dt = makeT(getDashLang(Astro));
 ---
 <div class="ds-veil" data-sheet-veil hidden></div>
@@ -33,6 +35,25 @@ const dt = makeT(getDashLang(Astro));
       <span class="ds-profile-text"><strong>{user.name}</strong><small>{dt('See your profile')}</small></span>
       <Icon name="ph:caret-right-bold" width="14" height="14" />
     </a>
+
+    {owner && (
+      <div class="ds-owner" data-owner data-endpoint="/dash/owner-servers" data-current={currentId ?? ''} data-more={dt('Show more')} data-failed={dt('Could not load the servers.')} data-retry={dt('Try again')} data-none={dt('No servers found.')} data-members={dt('{n} members', { n: '{n}' })}>
+        <button type="button" class="ds-owner-toggle" data-owner-toggle aria-expanded="false" aria-controls="ds-owner-panel">
+          <span class="ds-owner-ico"><Icon name="ph:hard-drives-fill" width="16" height="16" /></span>
+          <span class="ds-owner-label">{dt('All servers (owner)')}</span>
+          <Icon name="ph:caret-down-bold" width="14" height="14" class="ds-owner-caret" />
+        </button>
+        <div class="ds-owner-panel" id="ds-owner-panel" data-owner-panel hidden>
+          <label class="ds-owner-search"><Icon name="ph:magnifying-glass" width="15" height="15" /><input type="search" data-owner-q placeholder={dt('Search by name or ID')} aria-label={dt('Search by name or ID')} autocomplete="off" maxlength="100" /></label>
+          <ul class="ds-list" data-owner-list></ul>
+          <ul class="ds-list ds-owner-skel" data-owner-skel aria-hidden="true" hidden>
+            {[0, 1, 2, 3].map(() => <li class="ds-row"><span class="ds-icon ds-sk"></span><span class="ds-sk ds-sk-line"></span></li>)}
+          </ul>
+          <p class="ds-empty" data-owner-msg hidden></p>
+          <button type="button" class="ds-owner-more" data-owner-more hidden>{dt('Show more')}</button>
+        </div>
+      </div>
+    )}
 
     <h3 class="ds-head">{dt('Your servers')}</h3>
     {servers.length > 0 ? (
@@ -124,6 +145,64 @@ const dt = makeT(getDashLang(Astro));
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }, true);
 
+    // The owner's part: fetched only when it is opened (the markup exists only for the owner), one page at a time, filtered on the server.
+    var own = sheet.querySelector('[data-owner]');
+    if (own) {
+      var toggle = own.querySelector('[data-owner-toggle]'), panel = own.querySelector('[data-owner-panel]');
+      var qInput = own.querySelector('[data-owner-q]'), ul = own.querySelector('[data-owner-list]');
+      var skel = own.querySelector('[data-owner-skel]'), msg = own.querySelector('[data-owner-msg]'), more = own.querySelector('[data-owner-more]');
+      var ds = own.dataset, token = 0, next = 0, busy = false, timer = 0, started = false;
+      var show = function (el, on) { el.hidden = !on; };
+      var row = function (g) {
+        var li = document.createElement('li'), a = document.createElement('a');
+        a.className = 'ds-row' + (g.id === ds.current ? ' current' : '');
+        a.href = '/dash/guild/' + encodeURIComponent(g.id) + '/overview';
+        if (g.id === ds.current) a.setAttribute('aria-current', 'page');
+        var icon;
+        if (g.icon && g.icon.indexOf('https://cdn.discordapp.com/') === 0) { icon = document.createElement('img'); icon.src = g.icon; icon.width = 40; icon.height = 40; icon.loading = 'lazy'; icon.referrerPolicy = 'no-referrer'; icon.alt = ''; icon.className = 'ds-icon'; }
+        else { icon = document.createElement('span'); icon.className = 'ds-icon ds-icon-fallback'; icon.textContent = (g.name || '?').charAt(0).toUpperCase(); }
+        var name = document.createElement('span'); name.className = 'ds-name'; name.textContent = g.name;
+        var sub = document.createElement('small'); sub.className = 'ds-owner-sub'; sub.textContent = g.members === null ? '' : ds.members.replace('{n}', g.members.toLocaleString());
+        a.appendChild(icon); a.appendChild(name); if (g.members !== null) a.appendChild(sub); li.appendChild(a);
+        return li;
+      };
+      var load = function (reset) {
+        if (busy && !reset) return;
+        var mine = ++token;
+        busy = true;
+        if (reset) { next = 0; ul.textContent = ''; }
+        show(msg, false); show(more, false); show(skel, true);
+        var url = ds.endpoint + '?offset=' + next + '&q=' + encodeURIComponent(qInput.value.trim());
+        fetch(url, { credentials: 'same-origin', headers: { accept: 'application/json' } })
+          .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+          .then(function (data) {
+            if (mine !== token) return;
+            data.items.forEach(function (g) { ul.appendChild(row(g)); });
+            next = data.next === null ? 0 : data.next;
+            show(more, data.next !== null);
+            if (!ul.children.length) { msg.textContent = ds.none; show(msg, true); }
+          })
+          .catch(function () {
+            if (mine !== token) return;
+            msg.textContent = ds.failed + ' '; show(msg, true);
+            var retry = document.createElement('button'); retry.type = 'button'; retry.className = 'ds-owner-retry'; retry.textContent = ds.retry;
+            retry.addEventListener('click', function () { load(reset || !ul.children.length); });
+            msg.appendChild(retry);
+          })
+          .then(function () { if (mine === token) { busy = false; show(skel, false); } });
+      };
+      toggle.addEventListener('click', function () {
+        var open = panel.hidden;
+        show(panel, open);
+        toggle.setAttribute('aria-expanded', String(open));
+        own.classList.toggle('is-open', open);
+        if (open && !started) { started = true; load(true); }
+        if (open) { qInput.focus({ preventScroll: true }); if (own.scrollIntoView) own.scrollIntoView({ block: 'nearest' }); }
+      });
+      qInput.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { busy = false; load(true); }, 250); });
+      more.addEventListener('click', function () { load(false); });
+    }
+
     // On a phone, a swipe down on the top of the sheet closes it.
     var grab = sheet.querySelector('[data-sheet-grab]');
     var startY = null, delta = 0;
@@ -186,6 +265,26 @@ const dt = makeT(getDashLang(Astro));
   .ds-plus { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text-muted); text-decoration: none; touch-action: manipulation; transition: background-color var(--m-fast) ease, color var(--m-fast) ease, border-color var(--m-fast) ease; }
   .ds-plus:hover { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
   .ds-empty { margin: 4px 6px 2px; font-size: 13.5px; color: var(--text-muted); }
+  .ds-owner { margin-top: 10px; }
+  .ds-owner-toggle { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 12px 6px 8px; border-radius: 14px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; font-size: 14.5px; font-weight: 600; text-align: left; cursor: pointer; touch-action: manipulation; transition: background-color var(--m-fast) ease; }
+  .ds-owner-toggle:hover { background: var(--card-hover); }
+  .ds-owner-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+  .ds-owner-label { flex: 1; min-width: 0; }
+  .ds-owner-toggle :global(.ds-owner-caret) { flex: none; color: var(--text-dim); transition: transform .2s ease; }
+  .ds-owner.is-open :global(.ds-owner-caret) { transform: rotate(180deg); }
+  .ds-owner-panel { padding: 8px 0 0; }
+  .ds-owner-panel[hidden], .ds-owner-skel[hidden], .ds-owner-more[hidden], .ds-empty[hidden] { display: none; }
+  .ds-owner-search { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; margin-bottom: 6px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-raise); color: var(--text-dim); }
+  .ds-owner-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; }
+  .ds-owner-search:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+  .ds-owner-sub { flex: none; color: var(--text-dim); font-size: 12px; }
+  .ds-owner-more, .ds-owner-retry { margin: 8px auto 0; display: block; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .ds-owner-retry { display: inline-block; margin: 0 0 0 6px; padding: 3px 10px; }
+  .ds-owner-more:hover, .ds-owner-retry:hover { background: var(--card-hover); }
+  .ds-sk { background: linear-gradient(90deg, var(--bg-raise), var(--card-hover), var(--bg-raise)); background-size: 200% 100%; animation: ds-sk 1.2s ease-in-out infinite; }
+  .ds-sk-line { flex: 1; height: 12px; border-radius: 6px; max-width: 60%; }
+  @keyframes ds-sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  .ds-owner-toggle:focus-visible, .ds-owner-more:focus-visible, .ds-owner-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .ds-profile:focus-visible, a.ds-row:focus-visible, .ds-plus:focus-visible, .ds-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* On a desktop the same sheet is centered. */
@@ -198,9 +297,18 @@ const dt = makeT(getDashLang(Astro));
     .ds-close { display: grid; top: 10px; right: 12px; }
     .ds-body { padding-top: 2px; }
   }
-  @media (prefers-reduced-motion: reduce) { .ds-sheet, .ds-veil { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .ds-sheet, .ds-veil { transition: none; } .ds-sk { animation: none; } }
 </style>
 
 <style is:global>
   html.ds-open, html.ds-open body { overflow: hidden; }
+  /* The owner's rows are built by the script, so they carry no scoped attribute: the same look as the rows above, under the owner panel. */
+  .ds-owner-panel .ds-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ds-owner-panel .ds-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 8px; border-radius: 14px; color: var(--text); text-decoration: none; transition: background-color var(--m-fast) ease; }
+  .ds-owner-panel a.ds-row:hover { background: var(--card-hover); }
+  .ds-owner-panel .ds-row.current { background: var(--accent-soft); }
+  .ds-owner-panel .ds-icon { flex: none; width: 40px; height: 40px; border-radius: 12px; object-fit: cover; background: var(--bg-raise); }
+  .ds-owner-panel .ds-icon-fallback { display: grid; place-items: center; color: var(--text-dim); font-weight: 700; font-size: 15px; }
+  .ds-owner-panel .ds-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ds-owner-panel a.ds-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

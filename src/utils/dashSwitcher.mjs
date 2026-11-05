@@ -31,3 +31,24 @@ export function splitServers(guilds, botIds, { canManage, iconOf, memberCounts =
 export function botInviteUrl(clientId, guildId) {
   return `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=${encodeURIComponent('bot applications.commands')}&guild_id=${encodeURIComponent(guildId)}&disable_guild_select=true`;
 }
+
+/** How many servers one page of the owner's list holds (and the most it can ask for). */
+export const OWNER_PAGE = 30;
+export const OWNER_PAGE_MAX = 50;
+
+/**
+ * One page of the servers the bot is in, for the owner's part of the sheet: filtered by name or ID, the biggest first, then by name.
+ * @param {{ id: string, name: string, icon: string | null, memberCount: number | null }[]} guilds
+ * @param {{ q?: unknown, offset?: unknown, limit?: unknown }} options
+ * @returns {{ items: { id: string, name: string, icon: string | null, members: number | null }[], total: number, next: number | null }}
+ */
+export function pageOwnerServers(guilds, { q = '', offset = 0, limit = OWNER_PAGE } = {}) {
+  const needle = typeof q === 'string' ? q.trim().toLowerCase().slice(0, 100) : '';
+  const start = Math.max(0, Number.parseInt(String(offset), 10) || 0);
+  const size = Math.min(OWNER_PAGE_MAX, Math.max(1, Number.parseInt(String(limit), 10) || OWNER_PAGE));
+  const matching = (Array.isArray(guilds) ? guilds : [])
+    .filter((g) => typeof g?.id === 'string' && /^\d{15,25}$/.test(g.id) && typeof g.name === 'string' && (!needle || g.name.toLowerCase().includes(needle) || g.id.includes(needle)))
+    .sort((a, b) => (b.memberCount ?? -1) - (a.memberCount ?? -1) || a.name.localeCompare(b.name));
+  const items = matching.slice(start, start + size).map((g) => ({ id: g.id, name: g.name, icon: typeof g.icon === 'string' && g.icon.startsWith('https://cdn.discordapp.com/') ? g.icon : null, members: g.memberCount ?? null }));
+  return { items, total: matching.length, next: start + size < matching.length ? start + size : null };
+}

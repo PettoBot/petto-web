@@ -5391,4 +5391,8 @@ export const dashPt: Record<string, string> = {
   "Discord did not answer in time. Reload in a few seconds to load your servers.": "O Discord não respondeu a tempo. Recarregue em alguns segundos para carregar seus servidores.",
   "Unlock the paid modules and the custom look for your servers.": "Desbloqueie os módulos pagos e o visual próprio nos seus servidores.",
   "My profile": "Meu perfil",
+  "All servers (owner)": "Todos os servidores (dono)",
+  "Show more": "Mostrar mais",
+  "Could not load the servers.": "Não foi possível carregar os servidores.",
+  "Because of a data update, we need you to log in again.": "Por causa de uma atualização de dados, precisamos que você faça login novamente.",
 };

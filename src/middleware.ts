@@ -37,7 +37,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   configureSnapshots({ locals: context.locals });
   // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
   if (DASH_PATH.test(context.url.pathname)) {
-    const response = withFreshDash(await timed(context, () => handle(context, (payload?: any) => (payload ? next(payload) : guildPage(context, next)))));
+    const response = withReloginNotice(context, withFreshDash(await timed(context, () => handle(context, (payload?: any) => (payload ? next(payload) : guildPage(context, next))))));
     // A change answered "not found" is said in the log with where it came from, to tell a page that said it from a route that was not found.
     if (response.status === 404 && !['GET', 'HEAD'].includes(context.request.method.toUpperCase())) {
       console.warn(`[web] the dashboard answered 404 to ${context.request.method} ${context.url.pathname} (route ${(context as any).routePattern ?? 'unknown'}, reroute ${response.headers.get('x-astro-reroute') ?? 'none'})`);
@@ -116,6 +116,20 @@ async function guildPage(context: APIContext, next: MiddlewareNext): Promise<Res
     extra.Vary = 'X-Dash-Partial';
   }
   return withHeaders(response, extra);
+}
+
+/**
+ * A session made before SESSION_VERSION was rejected (dashAuth.ts) and the page sent the visitor to the plain /dash: the redirect gets
+ * `?notice=relogin` so the login card says why, and the old cookie is cleared (also on a prefixed address, where a rewritten route loses it).
+ */
+function withReloginNotice(context: APIContext, response: Response): Response {
+  if (!(context.locals as Record<string, unknown>).sessionStale) return response;
+  const location = response.headers.get('location');
+  if (!location || !/^(?:\/(?:es|pt-br))?\/dash\/?$/i.test(location)) return response;
+  const headers = new Headers(response.headers);
+  headers.set('location', `${location}?notice=relogin`);
+  headers.append('set-cookie', `petto_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${context.url.protocol === 'https:' ? '; Secure' : ''}`);
+  return new Response(null, { status: response.status, headers });
 }
 
 function withHeaders(response: Response, values: Record<string, string>): Response {
