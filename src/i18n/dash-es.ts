@@ -95,6 +95,7 @@ export const dashEs: Record<string, string> = {
   "All servers": "Todos los servidores",
   "Every server Petto is in. Open one to see its dashboard exactly as the managers do, but read only. You can also remove Petto from a server.": "Todos los servidores donde está Petto. Abre uno para ver su dashboard exactamente como lo ven los administradores, pero solo lectura. También puedes quitar a Petto de un servidor.",
   "Owner grants": "Permisos del dueño",
+  "Premium grants": "Concesiones de Premium",
   "Back to servers": "Volver a los servidores",
   "That request was not valid.": "Esa solicitud no era válida.",
   "Discord did not let the bot leave that server.": "Discord no dejó que el bot saliera de ese servidor.",
