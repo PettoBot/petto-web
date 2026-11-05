@@ -5394,5 +5394,5 @@ export const dashPt: Record<string, string> = {
   "All servers (owner)": "Todos os servidores (dono)",
   "Show more": "Mostrar mais",
   "Could not load the servers.": "Não foi possível carregar os servidores.",
-  "Because of a data update, we need you to log in again.": "Por causa de uma atualização de dados, precisamos que você faça login novamente.",
+  "The Petto dashboard has been refreshed. Log in with Discord to continue.": "O painel do Petto foi renovado. Entre com o Discord para continuar.",
 };
