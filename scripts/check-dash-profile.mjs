@@ -222,6 +222,10 @@ const catalog = (name) => {
 const es = catalog('dash-es.ts');
 const pt = catalog('dash-pt.ts');
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+// The swipe moves the sheet through --ds-dy only: an inline transform would replace translate(-50%, ...) and push the sheet to the right.
+check('the sheet swipe never sets an inline transform', !/sheet\.style\.transform/.test(sheetSrc) && /setProperty\('--ds-dy'/.test(sheetSrc));
+check('every sheet transform keeps the horizontal centering', (sheetSrc.match(/transform: translate\(-50%, [^;]*var\(--ds-dy/g) || []).length === 3);
+
 const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro'];
 for (const file of files) {
   for (const m of read(file).matchAll(/\bdt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g)) {
