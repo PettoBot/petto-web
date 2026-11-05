@@ -11,6 +11,10 @@ export interface Session {
   decoration?: string | null;
   /** Asset folder and palette name of the Discord nameplate (null: has none; missing: not read yet). */
   nameplate?: { asset: string; palette: string } | null;
+  /** The @username (the display name is `username`), the hash of the Discord banner and the accent color (null: has none; missing: not read yet). */
+  handle?: string | null;
+  banner?: string | null;
+  accentColor?: number | null;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
@@ -50,6 +54,9 @@ function isSession(value: unknown): value is Session {
     && (session.avatar === null || typeof session.avatar === 'string')
     && (session.decoration === undefined || session.decoration === null || typeof session.decoration === 'string')
     && (session.nameplate === undefined || session.nameplate === null || (typeof session.nameplate === 'object' && typeof session.nameplate.asset === 'string' && typeof session.nameplate.palette === 'string'))
+    && (session.handle === undefined || session.handle === null || typeof session.handle === 'string')
+    && (session.banner === undefined || session.banner === null || typeof session.banner === 'string')
+    && (session.accentColor === undefined || session.accentColor === null || typeof session.accentColor === 'number')
     && typeof session.accessToken === 'string'
     && typeof session.refreshToken === 'string'
     && typeof session.expiresAt === 'number';

@@ -9,6 +9,7 @@ import { markTiming } from './serverTiming';
 import { getRoleAccess, pageDecision, pageOf, type RoleAccess } from './dashAccess';
 import { supportGate } from './supportEdit';
 import { cosmeticsFromUser } from './discordCosmetics.mjs';
+import { profileFromUser } from './dashProfile.mjs';
 
 export type GuildAuth = { session: Session; devView?: boolean; access?: RoleAccess } | { redirect: string };
 
@@ -54,11 +55,12 @@ async function persistSessionCookie(astro: any, session: Session, clientSecret: 
 }
 
 /**
- * A session made before the user card kept the avatar decoration and the nameplate reads them once from Discord (best effort: a slow or
+ * A session made before the user card kept the avatar decoration and the nameplate (or before the menu header kept the banner, the accent
+ * color and the @username) reads them once from Discord (best effort: a slow or
  * failed answer leaves the session as it was and the card shows the plain avatar). Only for a page read, never for an API call or a write.
  */
 async function withCosmetics(astro: any, session: Session, clientSecret: string): Promise<Session> {
-  if (session.decoration !== undefined && session.nameplate !== undefined) return session;
+  if (session.decoration !== undefined && session.nameplate !== undefined && session.handle !== undefined && session.banner !== undefined && session.accentColor !== undefined) return session;
   const request = astro.request as Request | undefined;
   const method = String(request?.method ?? 'GET').toUpperCase();
   if ((method !== 'GET' && method !== 'HEAD') || !/text\/html/i.test(request?.headers.get('accept') ?? '')) return session;
@@ -66,7 +68,8 @@ async function withCosmetics(astro: any, session: Session, clientSecret: string)
     try {
       const res = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${session.accessToken}` }, signal: AbortSignal.timeout(2000) });
       if (!res.ok) return null;
-      const updated: Session = { ...session, ...cosmeticsFromUser(await res.json()) };
+      const user = await res.json();
+      const updated: Session = { ...session, ...cosmeticsFromUser(user), ...profileFromUser(user) };
       await persistSessionCookie(astro, updated, clientSecret);
       return updated;
     } catch {
