@@ -6,10 +6,11 @@ import { profileFromUser } from '../../utils/dashProfile.mjs';
 import { getEnv } from '../../utils/env';
 import { getDashLang, makeT } from '../../i18n/dash';
 import { withDashPrefix } from '../../utils/dashPrefix.mjs';
+import { LANDING_PATH } from '../../utils/dashLogin.mjs';
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
-/** A small page that shows the loading animation while the next page (the list of servers) loads. */
+/** A small page that shows the loading animation while the next page (the profile) loads. */
 function loadingPage(target: string, dt: (key: string) => string): Response {
   const href = escapeHtml(target);
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="1;url=${href}"><title>Petto</title><style>
@@ -20,7 +21,7 @@ function loadingPage(target: string, dt: (key: string) => string): Response {
 .o span:nth-child(2){inset:7px;opacity:.6;animation-duration:1.4s;animation-direction:reverse}.o span:nth-child(3){inset:16px;opacity:.35;animation-duration:.8s}
 strong{font-size:16px}small{font-size:13px;opacity:.65}.l{width:180px;height:4px;border-radius:4px;background:rgba(240,168,143,.18);overflow:hidden;margin-top:12px}.l i{display:block;height:100%;width:40%;border-radius:4px;background:#f0a88f;animation:m 1.2s ease-in-out infinite}
 @keyframes s{to{transform:rotate(360deg)}}@keyframes m{0%{transform:translateX(-110%)}100%{transform:translateX(350%)}}@keyframes in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
-</style></head><body><div class="b" role="status"><div class="o"><span></span><span></span><span></span></div><strong>${escapeHtml(dt('Loading your servers'))}</strong><small>${escapeHtml(dt('Signing you in…'))}</small><div class="l"><i></i></div></div><script>location.replace(${JSON.stringify(target)})</script></body></html>`;
+</style></head><body><div class="b" role="status"><div class="o"><span></span><span></span><span></span></div><strong>${escapeHtml(dt('Loading your data'))}</strong><small>${escapeHtml(dt('Signing you in…'))}</small><div class="l"><i></i></div></div><script>location.replace(${JSON.stringify(target)})</script></body></html>`;
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
@@ -94,9 +95,9 @@ export const GET: APIRoute = async ({ url, redirect: plainRedirect, cookies, loc
     const afterLogin = cookies.get('petto_after_login')?.value || (fromState ? `${fromState[2] === 'es' ? '/es' : fromState[2] === 'pt' ? '/pt-br' : ''}/form/${fromState[1]}` : undefined);
     cookies.delete('petto_after_login', { path: '/' });
     // Only places of this site that need a signed-in member: the dashboard, the appeal site, the feedback board, the forms filled on the web, and the checkout that opens from the Premium page.
-    const returnTo = afterLogin && /^\/(?:(?:es|pt-br)\/(?=dash))?(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|f\/[0-9A-Za-z]{12}$|(?:(?:es|pt-br)\/)?form[#/][0-9A-Za-z]{12}$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : '/dash/manage';
-    // The destination is checked above, so it is safe to put in the page. Only the plain list of servers gets the animation.
-    if (returnTo === '/dash/manage') return loadingPage(withDashPrefix(returnTo, lang), makeT(lang));
+    const returnTo = afterLogin && /^\/(?:(?:es|pt-br)\/(?=dash))?(?:appeal\/[a-z0-9-]{3,32}(?:\/(?:form\/\d{1,12}|status\/[0-9a-f-]{36}))?$|dash(?:\/|$)|feedback(?:\/(?:new|\d{1,12}))?$|f\/[0-9A-Za-z]{12}$|(?:(?:es|pt-br)\/)?form[#/][0-9A-Za-z]{12}$|premium\/checkout\?plan=premium-[135]-(?:month|year)&terms=1$)/.test(afterLogin) ? afterLogin : LANDING_PATH;
+    // The destination is checked above, so it is safe to put in the page. Only the plain landing page gets the animation.
+    if (returnTo === LANDING_PATH) return loadingPage(withDashPrefix(returnTo, lang), makeT(lang));
     return redirect(returnTo);
   } catch {
     return redirect('/dash?error=login_failed');

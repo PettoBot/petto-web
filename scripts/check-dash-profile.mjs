@@ -151,6 +151,15 @@ check('the profile page adds no Discord call of its own', !/discord\.com/.test(m
 check('the account header uses the decoration and the animated banner only without reduced motion', /prefers-reduced-motion: reduce/.test(head));
 check('the profile and its prefixed addresses are routed by the existing middleware', /\(es\|pt-br\)\(\\\/dash/.test(read('src/middleware.ts')));
 check('the callback accepts /dash/me as a place to come back to', /dash\(\?:\\\/\|\$\)/.test(read('src/pages/dash/callback.ts')));
+// The account pages share one layout (menu, header, drawer) and the plain login lands on the profile.
+const account = { 'src/components/DashManage.astro': 'servers', 'src/components/DashHistory.astro': 'history', 'src/components/DashPremium.astro': 'premium', 'src/components/DashMe.astro': 'overview' };
+for (const [file, id] of Object.entries(account)) {
+  const source = read(file);
+  check(`${file} sits in the account layout`, new RegExp(`<DashMeLayout user=\\{user\\} active="${id}"`).test(source) && !/layouts\/Base\.astro/.test(source));
+  check(`${id} is in the account menu`, new RegExp(`id: '${id}', href: '/dash/`).test(meLayout));
+}
+check('the login lands on the profile', /afterLogin : LANDING_PATH/.test(read('src/pages/dash/callback.ts')) && /LANDING_PATH = '\/dash\/me'/.test(read('src/utils/dashLogin.mjs')));
+check('the skeleton of the kit goes inside the account panel', /getElementById\('dme-content'\)/.test(read('src/components/DashPanelKit.astro')));
 
 
 // --- the owner's part of the sheet: a page of the bot's servers, filtered, never drawn or fetched for anyone else ---
