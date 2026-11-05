@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { loginInfo } from '../src/utils/dashLogin.mjs';
 import {
-  accentHex, cleanAccentColor, cleanBannerHash, guildBannerUrl, guildHeaderArt, profileFromUser, profileOverview, snowflakeDate, userBannerUrls, userHeaderArt,
+  accentHex, accountAge, cleanAccentColor, cleanBannerHash, guildBannerUrl, guildHeaderArt, profileFromUser, profileOverview, snowflakeDate, userBannerUrls, userHeaderArt,
 } from '../src/utils/dashProfile.mjs';
 import { OWNER_PAGE, OWNER_PAGE_MAX, SWITCHER_LIMIT, botInviteUrl, pageOwnerServers, splitServers } from '../src/utils/dashSwitcher.mjs';
 
@@ -113,6 +113,7 @@ same('overview name and handle', [full.name, full.handle], ['liam', 'ft8d']);
 same('overview servers', [full.servers.managed, full.servers.withPetto, full.servers.toInvite, full.servers.top.length], [15, 12, 3, 2]);
 same('overview premium', full.premium, { status: 'active', slotsUsed: 2, slotsTotal: 3, endsAt: '2027-01-02T00:00:00.000Z' });
 same('overview settings', full.settings, { prefix: '?', reputation: { points: 42, servers: 2 } });
+same('overview invite list and premium count', [full.servers.invite.map((g) => g.name), full.servers.premium], [['Gamma (no bot)'], 1]);
 same('overview created', full.created, '2017-03-20T22:02:59.853Z');
 const bare = profileOverview({ session: { userId: 'x', username: ' ', handle: 'bad handle' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } } });
 same('overview of an empty account', [bare.name, bare.handle, bare.created, bare.premium, bare.settings], ['', null, null, { status: 'free', slotsUsed: 0, slotsTotal: 0, endsAt: null }, { prefix: null, reputation: null }]);
@@ -120,6 +121,14 @@ same('overview hides the handle when it is the name', profileOverview({ session:
 same('overview ends date only while active', profileOverview({ session: { userId: USER, username: 'a' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } }, premium: { status: 'expired', periodEnd: '2020-01-01T00:00:00Z' } }).premium.endsAt, null);
 same('overview unknown premium status is free', profileOverview({ session: { userId: USER, username: 'a' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } }, premium: { status: 'hacked' } }).premium.status, 'free');
 same('overview reputation of zero is hidden', profileOverview({ session: { userId: USER, username: 'a' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } }, reputation: { points: 0, servers: 0 } }).settings.reputation, null);
+
+// --- the account age: whole years, or months under a year ---
+const AT = Date.parse('2026-11-04T19:30:00Z');
+same('age in years', accountAge('2017-03-20T22:02:59.853Z', AT), { unit: 'year', n: 9 });
+same('age just under a year', accountAge('2025-11-05T00:00:00Z', AT), { unit: 'month', n: 11 });
+same('age of exactly a year', accountAge('2025-11-04T00:00:00Z', AT), { unit: 'year', n: 1 });
+same('age of a new account', accountAge('2026-11-01T00:00:00Z', AT), { unit: 'month', n: 1 });
+same('age: junk and the future', [accountAge(null, AT), accountAge('x', AT), accountAge('2030-01-01T00:00:00Z', AT)], [null, null, null]);
 
 // --- the session keeps only the new optional fields, with their types, and nothing else of the account ---
 const session = read('src/utils/session.ts');

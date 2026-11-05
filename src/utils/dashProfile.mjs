@@ -103,9 +103,10 @@ const PREMIUM_STATES = ['free', 'pending', 'active', 'past_due', 'canceled', 'ex
  *   prefix?: unknown,
  *   reputation?: { points?: unknown, servers?: unknown } | null,
  *   top?: number,
+ *   inviteTop?: number,
  * }} input
  */
-export function profileOverview({ session, servers, premium = null, prefix = null, reputation = null, top = 5 }) {
+export function profileOverview({ session, servers, premium = null, prefix = null, reputation = null, top = 5, inviteTop = 4 }) {
   const name = typeof session.username === 'string' ? session.username.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80) : '';
   const handle = typeof session.handle === 'string' && HANDLE.test(session.handle) ? session.handle : null;
   const created = snowflakeDate(session.userId);
@@ -119,8 +120,20 @@ export function profileOverview({ session, servers, premium = null, prefix = nul
     // The @username is shown only when it says something the display name does not.
     handle: handle && handle !== name ? handle : null,
     created: created ? created.toISOString() : null,
-    servers: { withPetto: servers.total.mine, toInvite: servers.total.invite, managed: servers.total.mine + servers.total.invite, top: servers.mine.slice(0, top) },
+    servers: { withPetto: servers.total.mine, toInvite: servers.total.invite, managed: servers.total.mine + servers.total.invite, top: servers.mine.slice(0, top), invite: servers.invite.slice(0, inviteTop), premium: servers.mine.filter((guild) => /** @type {any} */ (guild)?.premium === true).length },
     premium: { status, slotsUsed: count(premium?.slotsUsed), slotsTotal: count(premium?.slotsTotal), endsAt: end && !Number.isNaN(end.getTime()) && status === 'active' ? end.toISOString() : null },
     settings: { prefix: cleanPrefix || null, reputation: points > 0 ? { points, servers: Math.max(1, count(reputation?.servers)) } : null },
   };
+}
+
+/**
+ * How long an account has existed, as whole years or, under a year, whole months (at least 1), from its creation date.
+ * @param {string | null | undefined} created ISO date  @param {number} [now] milliseconds
+ * @returns {{ unit: 'year' | 'month', n: number } | null}
+ */
+export function accountAge(created, now = Date.now()) {
+  const from = typeof created === 'string' ? new Date(created) : null;
+  if (!from || Number.isNaN(from.getTime()) || from.getTime() > now) return null;
+  const months = Math.max(0, (new Date(now).getUTCFullYear() - from.getUTCFullYear()) * 12 + new Date(now).getUTCMonth() - from.getUTCMonth() - (new Date(now).getUTCDate() < from.getUTCDate() ? 1 : 0));
+  return months >= 12 ? { unit: 'year', n: Math.floor(months / 12) } : { unit: 'month', n: Math.max(1, months) };
 }
