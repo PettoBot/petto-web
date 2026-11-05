@@ -31,7 +31,7 @@ const base = () => ({
   voice_notify_every: 1, voice_role_mode: 'highest', voice_ignored_channel_ids: [], voice_ignored_category_ids: [], voice_notify_ping: true, voice_notify_delete_after: 0, voice_notify_milestones: [],
   rank_style: 'card', rank_card: null, notify_card: null, voice_notify_card: null,
   min_message_chars: 3, anti_repeat: true, daily_xp_cap: 0, voice_alone_percent: 100, voice_min_members: 1, voice_ignore_muted: false, daily_bonus_xp: 0, streak_bonus_xp: 0, streak_max_days: 7,
-  xp_multiplier: 1, multiplier_mode: 'highest', multiplier_cap: 20, reset_on_leave: false, restore_roles: true, no_xp_role_ids: [], only_xp_role_ids: [],
+  xp_multiplier: 1, multiplier_mode: 'highest', multiplier_cap: 20, vote_boost_enabled: true, reset_on_leave: false, restore_roles: true, no_xp_role_ids: [], only_xp_role_ids: [],
   leaderboard_public: false, leaderboard_slug: null, leaderboard_join_url: null,
 });
 const ch = ['111111111111111111', '222222222222222222', '333333333333333333'];
