@@ -29,6 +29,7 @@ interface AutomodConfig {
   maxMessageLength: number;
   maxLines: number;
   exemptChannelIds: string[];
+  allowedInviteCodes: string[];
   spamRepeat: boolean;
   spamMentions: boolean;
   spamInvites: boolean;
@@ -78,6 +79,8 @@ interface Props {
   roles: { id: string; name: string }[];
   channels: { id: string; name: string }[];
   saved: boolean;
+  badInvites?: string[];
+  tooManyInvites?: boolean;
   sanctionTemplates: Record<string, { dm: string; reply: string; log: string }>;
   sanctionMessagesReady: boolean;
   embedTemplateNames: string[];
@@ -86,7 +89,7 @@ interface Props {
   /** The server's prefix, for the commands named in the texts. */
   prefix?: string;
 }
-const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, caseLog = { type: '', filter: '', q: '', before: null, older: false, failed: false, edit: null }, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, caseMessage = null, section, prefix = '!' } = Astro.props;
+const { user, guildId, guildName, guildIcon, automod, antinuke, stickyRolesEnabled, cases, activeSanctions = [], modStats = { total: 0, automatic: 0, byType: [], moderators: [], days: [] }, people = {}, casesLimit = 25, caseLog = { type: '', filter: '', q: '', before: null, older: false, failed: false, edit: null }, silentChannels, escalationRules, sanctionTemplates, sanctionMessagesReady, embedTemplateNames, roles, channels, saved, badInvites = [], tooManyInvites = false, caseMessage = null, section, prefix = '!' } = Astro.props;
 
 const typeColor: Record<string, string> = {
   ban: '#fe6465', tempban: '#fe6465', kick: '#ff9f5a', warn: '#fed53c',
@@ -109,6 +112,8 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   <h1>{selectedTitle}</h1>
 
   {saved && <div class="md-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {badInvites.length > 0 && <div class="md-flash md-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('These invites were not valid and were skipped: {a}', { a: badInvites.join(', ') })}</div>}
+  {tooManyInvites && <div class="md-flash md-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Only the first {a} invites were kept.', { a: 50 })}</div>}
 
   {selectedSection === 'protection' && (
   <form method="POST" class:list={['md-form', { 'md-section-hidden': selectedSection !== 'protection' }]} id="mdForm">
@@ -131,11 +136,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
           <label>{dt('Banned words')}</label>
           <textarea name="banned_words" rows="2" placeholder={dt('comma, separated, words')}>{automod.bannedWords.join(', ')}</textarea>
         </div>
-        <div class="md-row">
-          <label>{dt('Immune roles')}</label>
-          <MultiSelect lazy name="immune_role_ids" options={roles} selected={automod.immuneRoleIds} placeholder={dt('Search roles...')} />
-          <p class="md-row-hint">{dt('Skips both the word filter and anti-spam entirely.')}</p>
-        </div>
+        <p class="md-row-hint">{dt('Roles and channels the automod never checks are set under Anti-spam.')}</p>
       </div>
 
       <div class="md-card">
@@ -156,6 +157,11 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
         </div>
         <label class="md-check"><input type="checkbox" name="spam_mentions" checked={automod.spamMentions} />{dt('Catch mass mentions')}</label>
         <label class="md-check"><input type="checkbox" name="spam_invites" checked={automod.spamInvites} />{dt('Catch invites that are not on the allow-list')}</label>
+        <div class="md-row">
+          <label for="md-allowed-invites">{dt('Allowed invites')}</label>
+          <textarea id="md-allowed-invites" name="allowed_invite_codes" rows="2" placeholder={dt('discord.gg/petto, one per line')}>{automod.allowedInviteCodes.join('\n')}</textarea>
+          <p class="md-row-hint">{dt('Discord invites that members may post. Paste the full link or only the code. Other web links are filtered in the AutoMod filters page.')} <a href={`/dash/guild/${guildId}/automod`}>{dt('Open the AutoMod filters')}</a></p>
+        </div>
         <label class="md-check"><input type="checkbox" name="spam_caps" checked={automod.spamCaps} />{dt('Catch shouting (capital letters)')}</label>
         <div class="md-row md-row-2">
           <div><label>{dt('Percent in capitals')}</label><input type="number" name="caps_percent" value={automod.capsPercent} min="30" max="100" /></div>
@@ -167,8 +173,14 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
         </div>
         <p class="md-row-hint">{dt('0 turns a limit off. Long messages are only deleted, nobody is punished for them.')}</p>
         <div class="md-row">
-          <label>{dt('Channels the automod never checks')}</label>
+          <label>{dt('Ignored roles')}</label>
+          <MultiSelect lazy name="immune_role_ids" options={roles} selected={automod.immuneRoleIds} placeholder={dt('Search roles...')} />
+          <p class="md-row-hint">{dt('Members with these roles are never checked by the word filter, anti-spam or the Petto filters.')}</p>
+        </div>
+        <div class="md-row">
+          <label>{dt('Ignored channels')}</label>
           <MultiSelect lazy name="exempt_channel_ids" options={channels} selected={automod.exemptChannelIds} placeholder={dt('Search channels...')} />
+          <p class="md-row-hint">{dt('Nothing is checked in these channels.')}</p>
         </div>
       </div>
 
@@ -668,6 +680,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   h2 { font-size: 14.5px; margin: 0 0 14px; }
 
   .md-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .md-flash-warn { color: var(--amber, #ffb86c); background: transparent; border-color: var(--amber, #ffb86c); }
 
   .md-form { display: flex; flex-direction: column; align-items: flex-start; gap: 24px; margin-bottom: 40px; }
   .md-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 14px; width: 100%; }
@@ -701,6 +714,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   .md-row { display: flex; flex-direction: column; gap: 5px; }
   .md-row label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .md-row input, .md-row select, .md-row textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; resize: vertical; }
+  .md-row-hint a { color: var(--accent); }
   .md-row-hint { font-size: 11px; color: var(--text-dim); margin: 0; line-height: 1.4; }
 
   .md-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 130px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
