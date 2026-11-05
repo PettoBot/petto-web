@@ -6,6 +6,7 @@ import { loginInfo } from '../src/utils/dashLogin.mjs';
 import {
   accentHex, accountAge, cleanAccentColor, cleanBannerHash, guildBannerUrl, guildHeaderArt, profileFromUser, profileOverview, snowflakeDate, userBannerUrls, userHeaderArt,
 } from '../src/utils/dashProfile.mjs';
+import { MAX_ALLOWED_DOMAINS, normalizeDomain, parseDomainList } from '../src/utils/linkDomains.mjs';
 import { OWNER_PAGE, OWNER_PAGE_MAX, SWITCHER_LIMIT, botInviteUrl, pageOwnerServers, splitServers } from '../src/utils/dashSwitcher.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -238,7 +239,7 @@ check('every sheet transform keeps the horizontal centering', (sheetSrc.match(/t
 // Moving to another page replaces #dgl-content, so the menu height cap must follow the new node (an observer on the old one reported 0).
 check('the menu height follows the page node after a swap', /MutationObserver\(tell\)\.observe\(layout, \{ childList: true \}\)/.test(guildLayout) && /panel !== watched/.test(guildLayout));
 
-const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro'];
+const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro', 'src/components/DashAutomodTemplates.astro'];
 for (const file of files) {
   for (const m of read(file).matchAll(/\bdt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g)) {
     const key = (m[1] ?? m[2]).replace(/\\'/g, "'");
@@ -250,6 +251,31 @@ for (const file of files) {
 }
 for (const [key] of [...es].filter(([key]) => !pt.has(key))) check(`"${key}" is in the Portuguese catalog too`, false);
 for (const [key] of [...pt].filter(([key]) => !es.has(key))) check(`"${key}" is in the Spanish catalog too`, false);
+
+// --- the allowed domains of the All links filter (the same rules as the bot's src/utils/linkDomains.js) ---
+same('domain lowercase', normalizeDomain('Example.COM'), 'example.com');
+same('domain from a link', normalizeDomain('https://www.Example.com/path?q=1#x'), 'example.com');
+same('domain port', normalizeDomain('example.com:8080'), 'example.com');
+same('domain final dot', normalizeDomain('example.com.'), 'example.com');
+same('domain wildcard', normalizeDomain('*.example.com'), 'example.com');
+same('domain subdomain kept', normalizeDomain('sub.example.co.uk'), 'sub.example.co.uk');
+same('domain idn', normalizeDomain('münchen.de'), 'xn--mnchen-3ya.de');
+same('domain punycode', normalizeDomain('xn--mnchen-3ya.de'), 'xn--mnchen-3ya.de');
+for (const bad of ['', '   ', 'localhost', '1.2.3.4', '[::1]', 'a..b.com', '-x.com', 'x-.com', 'foo.c', 'bad domain.com', 'user@example.com', 'http://user@example.com', 'exa_mple.com', 'exam%70le.com', 'example.com\\evil.com', `${'x'.repeat(64)}.com`, '<script>.com', null, undefined, 7, {}]) {
+  same(`domain rejects ${JSON.stringify(bad)}`, normalizeDomain(bad), null);
+}
+same('domain list from text', parseDomainList('example.com, HTTPS://Example.com/x\nnope;foo.org\n\n'), { domains: ['example.com', 'foo.org'], invalid: ['nope'], overflow: 0 });
+same('domain list from an array', parseDomainList(['a.com', 'b.com', 7]).invalid, ['7']);
+same('domain list not a text', parseDomainList(null), { domains: [], invalid: [], overflow: 0 });
+const manyDomains = parseDomainList(Array.from({ length: 60 }, (_, i) => `site${i}.com`));
+same('domain list limit', [manyDomains.domains.length, manyDomains.overflow, MAX_ALLOWED_DOMAINS], [50, 10, 50]);
+same('domain list reports at most 5 invalid', parseDomainList('a b c d e f g h'.split(' ').map((x) => `x${x}`)).invalid.length, 5);
+const domainsApi = read('src/pages/dash/guild/[id]/automod-api.ts');
+check('domains are saved through the validation', /op === 'link_domains_save'[\s\S]*parseDomainList\(body\.domains\)[\s\S]*allowed_link_domains: domains/.test(domainsApi));
+check('a missing column is answered as unsupported, not as a failure', /unsupported = \/allowed_link_domains\|PGRST204\|42703\//.test(domainsApi) && /unsupported \? 409 : 500/.test(domainsApi));
+const domainsPage = read('src/pages/dash/guild/[id]/automod.astro');
+check('the page reads the column on its own and turns the control off when it fails', /select=allowed_link_domains/.test(domainsPage) && /linkDomainsSupported = Boolean\(domainsRes\?\.ok\)/.test(domainsPage));
+check('the control is disabled when unsupported', /disabled=\{!linkDomainsSupported\}/.test(read('src/components/DashAutomodTemplates.astro')));
 
 if (failed) { console.log(`${failed} checks failed`); process.exit(1); }
 console.log('Checked the menu header, the server sheet and the profile dash.');

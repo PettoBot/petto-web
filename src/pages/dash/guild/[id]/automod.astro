@@ -17,16 +17,20 @@ const { session } = auth;
 if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
 const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-const [guildInfo, filtersRes, rolesRes, channelsRes] = await runBatched([
+const [guildInfo, filtersRes, rolesRes, channelsRes, domainsRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${apiUrl}/rest/v1/automod_rules?guild_id=eq.${id}&select=id,name,template,options,action,mute_minutes,enabled,hits&order=id.asc`, { headers: apiHeaders }),
   () => getGuildList(Astro, id, botToken, 'roles'),
   () => getGuildList(Astro, id, botToken, 'channels'),
-], 4);
+  // A database that does not have the column yet (the bot that adds it is not deployed) answers with an error: the list is then shown off.
+  () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=allowed_link_domains`, { headers: apiHeaders }),
+], 5);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 const filters = filtersRes?.ok ? await filtersRes.json() : [];
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
+const linkDomainsSupported = Boolean(domainsRes?.ok);
+const linkDomains: string[] = linkDomainsSupported ? ((await domainsRes.json())[0]?.allowed_link_domains ?? []) : [];
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5 || c.type === 4).map((c: any) => ({ id: c.id, name: c.name, category: c.type === 4 }));
 ---
 <DashAutomodTemplates
@@ -37,4 +41,6 @@ const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: an
   filters={filters}
   roles={roles}
   channels={channels}
+  linkDomains={linkDomains}
+  linkDomainsSupported={linkDomainsSupported}
 />

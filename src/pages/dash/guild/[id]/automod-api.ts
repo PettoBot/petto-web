@@ -4,6 +4,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { callPettoNativeAutomod } from '../../../../utils/pettoBotApi';
+import { parseDomainList } from '../../../../utils/linkDomains.mjs';
 import { TEMPLATES, PACKS, PETTO_ACTIONS, cleanOptions } from '../../../../utils/automodTemplates';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -78,6 +79,21 @@ export const POST: APIRoute = async (astro) => {
       }),
     });
     return json({ ok: res.ok, message: res.ok ? undefined : 'It could not be saved, try again.' }, res.ok ? 200 : 500);
+  }
+  if (op === 'link_domains_save') {
+    // Same rules as the bot's /automod links allow: normalized, valid names only, 50 at most. What is not valid is reported, the rest is saved.
+    const { domains, invalid, overflow } = parseDomainList(body.domains);
+    await ensureGuildRow(apiUrl, headers, id);
+    const res = await fetch(`${apiUrl}/rest/v1/automod_config?on_conflict=guild_id`, {
+      method: 'POST',
+      headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ guild_id: id, allowed_link_domains: domains, updated_at: new Date().toISOString() }),
+    });
+    if (res.ok) return json({ ok: true, domains, invalid, overflow });
+    // The column does not exist until the bot that adds it is deployed: say so instead of failing like any other error.
+    const detail = await res.text().catch(() => '');
+    const unsupported = /allowed_link_domains|PGRST204|42703/.test(detail);
+    return json({ ok: false, unsupported, message: unsupported ? 'The bot has not been updated for this yet.' : 'It could not be saved, try again.' }, unsupported ? 409 : 500);
   }
   if (op === 'filter_toggle' || op === 'filter_delete') {
     const ruleId = Math.floor(Number(body.id));
