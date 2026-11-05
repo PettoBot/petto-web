@@ -3,7 +3,7 @@
 // Run: node scripts/check-dash-login.mjs
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { DISCORD_ERRORS, LOGIN_ERRORS, LOGIN_HREF, homeHref, isDiscordNotice, loginNotice, managePath } from '../src/utils/dashLogin.mjs';
+import { DISCORD_ERRORS, LOGIN_ERRORS, LOGIN_HREF, homeHref, isDiscordNotice, loginNotice, landingPath } from '../src/utils/dashLogin.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -17,8 +17,7 @@ const same = (name, got, expected) => check(name, JSON.stringify(got) === JSON.s
 same('login address', LOGIN_HREF, '/dash/login');
 check('the login route exists', existsSync(new URL('src/pages/dash/login.ts', root)));
 same('home address per language', [homeHref('en'), homeHref('es'), homeHref('pt-BR'), homeHref('fr')], ['/', '/es/', '/pt-br/', '/']);
-same('logged in goes to the servers', [managePath(null), managePath('no_access'), managePath('login_failed')], ['/dash/manage', '/dash/manage', '/dash/manage']);
-same('logged in keeps the Discord notice', managePath('discord_unavailable'), '/dash/manage?error=discord_unavailable');
+same('logged in goes to the profile', [landingPath(null), landingPath('no_access'), landingPath('login_failed'), landingPath('discord_unavailable')], ['/dash/me', '/dash/me', '/dash/me', '/dash/me']);
 
 // Which notice the card shows for the error of the address.
 same('no error, no notice', [loginNotice(null), loginNotice(undefined), loginNotice('')], [null, null, null]);
@@ -103,7 +102,7 @@ check('the old component is gone', !existsSync(new URL('src/components/Dash.astr
 // The page: a visitor with a session goes on to the servers, anyone else gets the card.
 const page = read('src/pages/dash/index.astro');
 check('the page draws the card', /<DashLogin error=\{errorParam\} info=\{/.test(page));
-check('a session goes to the servers', /if \(session\) \{\s*return Astro\.redirect\(managePath\(errorParam\)\);\s*\}/.test(page));
+check('a session goes to the profile', /if \(session\) \{\s*return Astro\.redirect\(landingPath\(errorParam\)\);\s*\}/.test(page));
 check('the page does not build a Discord address', !/dashAuthorizeUrl/.test(page));
 
 console.log(`Checked the login card, ${failed} failed.`);

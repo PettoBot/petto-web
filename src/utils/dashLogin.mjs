@@ -1,7 +1,7 @@
 // The "Login required" card of /dash (components/DashLogin.astro): which notices it can show above the button and where its buttons go.
 // Plain JavaScript so scripts/check-dash-login.mjs can check these rules with node alone.
 
-/** Where the Login button goes: the Discord login of the site, which comes back to the list of servers (or to the page that asked for it). */
+/** Where the Login button goes: the Discord login of the site, which comes back to the profile (or to the page that asked for it). */
 export const LOGIN_HREF = '/dash/login';
 
 /** Every `?error=` code that sends a visitor to /dash (the login callback, the login route, the checkout and the server pages). */
@@ -47,9 +47,12 @@ export function isDiscordNotice(raw) {
   return typeof raw === 'string' && DISCORD_ERRORS.includes(raw);
 }
 
-/** Where a visitor who is already logged in goes from /dash: the list of servers, which says "Discord did not answer" itself. @param {unknown} raw */
-export function managePath(raw) {
-  return raw === 'discord_unavailable' ? '/dash/manage?error=discord_unavailable' : '/dash/manage';
+/** Where a visitor who is already logged in goes from /dash (and where a plain login lands): their profile, which says "Discord did not answer" itself. */
+export const LANDING_PATH = '/dash/me';
+
+/** @param {unknown} _raw */
+export function landingPath(_raw) {
+  return LANDING_PATH;
 }
 
 /** The home page of the site in the language of the card ('' prefix for English). @param {string} lang */
