@@ -226,6 +226,9 @@ const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1])
 check('the sheet swipe never sets an inline transform', !/sheet\.style\.transform/.test(sheetSrc) && /setProperty\('--ds-dy'/.test(sheetSrc));
 check('every sheet transform keeps the horizontal centering', (sheetSrc.match(/transform: translate\(-50%, [^;]*var\(--ds-dy/g) || []).length === 3);
 
+// Moving to another page replaces #dgl-content, so the menu height cap must follow the new node (an observer on the old one reported 0).
+check('the menu height follows the page node after a swap', /MutationObserver\(tell\)\.observe\(layout, \{ childList: true \}\)/.test(guildLayout) && /panel !== watched/.test(guildLayout));
+
 const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro'];
 for (const file of files) {
   for (const m of read(file).matchAll(/\bdt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g)) {
