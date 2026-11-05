@@ -5541,4 +5541,11 @@ export const dashEs: Record<string, string> = {
   "Recent events": "Eventos recientes",
   "Keep a channel for pictures, videos or links only.": "Reserva un canal solo para imágenes, videos o enlaces.",
   "Vote boost: +10% XP for 12 hours to members who vote for Petto": "Bonus de voto: +10% de XP durante 12 horas a quien vote por Petto",
+  "Mention a role": "Mencionar un rol",
+  "Mention a channel": "Mencionar un canal",
+  "Add a variable": "Añadir una variable",
+  "Restore default": "Restaurar el original",
+  "Expand all": "Abrir todas",
+  "Collapse all": "Cerrar todas",
+  "Pick a role, a channel or a variable and it goes where the cursor is in the text.": "Elige un rol, un canal o una variable y se pone donde está el cursor en el texto.",
 };

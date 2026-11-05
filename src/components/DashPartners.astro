@@ -8,6 +8,7 @@ import MultiSelect from './MultiSelect.astro';
 import SelectSource from './SelectSource.astro';
 import SelectChosen from './SelectChosen.astro';
 import UserChip from './UserChip.astro';
+import DashStatTiles from './DashStatTiles.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 import { FREE_LIMITS, PREMIUM_LIMITS } from '../utils/planLimits';
@@ -24,7 +25,7 @@ interface Props {
   roles: { id: string; name: string }[];
   embedTemplates: { name: string; v2: boolean }[];
   blacklist: { server: string; note: string }[];
-  stats: { today: number; week: number; total: number; weekBoard: { managerId: string; count: number }[]; allBoard: { managerId: string; count: number }[]; recent: { name: string; at: string }[] };
+  stats: { today: number; week: number; total: number; todayChange: number | null; weekChange: number | null; weekBoard: { managerId: string; count: number }[]; allBoard: { managerId: string; count: number }[]; recent: { name: string; at: string }[] };
   channelLimit: number;
   people?: Record<string, { name: string; avatar: string }>;
   premium: boolean;
@@ -64,122 +65,210 @@ const changed = (key: string) => Boolean(config.messages[key]?.text || config.me
   {notice === 'bad_server' && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Give the ID of the server, a number of 17 to 20 digits.')}</div>}
   {!ready && <div class="pt-flash pt-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
-  <div class="pt-stats">
-    <div class="pt-stat"><b>{stats.today}</b><span>{dt('Today')}</span></div>
-    <div class="pt-stat"><b>{stats.week}</b><span>{dt('This week')}</span></div>
-    <div class="pt-stat"><b>{stats.total}</b><span>{dt('All time')}</span></div>
-  </div>
+  <DashStatTiles against={dt('vs before')} tiles={[
+    { label: dt('Today'), value: stats.today, tone: 'messages', change: stats.todayChange },
+    { label: dt('This week'), value: stats.week, tone: 'joins', change: stats.weekChange },
+    { label: dt('All time'), value: stats.total, tone: 'invites' },
+  ]} />
 
-  <div class="pt-grid">
-    <form method="POST" class="pt-form">
-      <input type="hidden" name="action" value="save" />
-      <label class="pt-check"><input type="checkbox" name="enabled" checked={config.enabled} />{dt('Count partnerships')}</label>
+  <form method="POST" class="pt-form">
+    <input type="hidden" name="action" value="save" />
+    <label class="pt-check"><input type="checkbox" name="enabled" checked={config.enabled} />{dt('Count partnerships')}</label>
 
-      <div class="pt-field"><label>{dt('Partner channels')}</label>
+    <div class="pt-grid">
+      <div class="pt-field pt-wide"><label>{dt('Partner channels')}</label>
         <MultiSelect lazy name="channel_ids" options={channels.map((ch) => ({ id: ch.id, name: `#${ch.name}` }))} selected={config.channelIds} placeholder={dt('Search channels...')} />
-        <span class="pt-note">{dt('Free servers can have {a}, Premium {b}.', { a: FREE_LIMITS.partnerChannels, b: PREMIUM_LIMITS.partnerChannels })}</span>
-      </div>
-      <div class="pt-field"><label>{dt('Welcome channel')}</label>
-        <select name="welcome_channel_id" data-fill="pt-ch"><option value="">{dt('None')}</option><SelectChosen items={channels} selected={config.welcomeChannelId} prefix="#" /></select>
-        <span class="pt-note">{dt('Where a new Partner Manager is welcomed when they are given the role. Empty welcomes only with the command.')}</span>
+        <span class="pt-hint">{dt('Free servers can have {a}, Premium {b}.', { a: FREE_LIMITS.partnerChannels, b: PREMIUM_LIMITS.partnerChannels })}</span>
       </div>
       <div class="pt-field"><label>{dt('Partner Manager role')}</label>
         <select name="manager_role_id" data-fill="pt-roles"><option value="">{dt('Anyone')}</option><SelectChosen items={roles} selected={config.managerRoleId} /></select>
-        <span class="pt-note">{dt('Only the members with this role are counted. Empty counts anyone who posts in a partner channel.')}</span>
+        <span class="pt-hint">{dt('Only the members with this role are counted. Empty counts anyone who posts in a partner channel.')}</span>
       </div>
+      <div class="pt-field"><label>{dt('Welcome channel')}</label>
+        <select name="welcome_channel_id" data-fill="pt-ch"><option value="">{dt('None')}</option><SelectChosen items={channels} selected={config.welcomeChannelId} prefix="#" /></select>
+        <span class="pt-hint">{dt('Where a new Partner Manager is welcomed when they are given the role. Empty welcomes only with the command.')}</span>
+      </div>
+    </div>
 
-      <fieldset class="pt-set"><legend>{dt('Requirements')}</legend>
-        <div class="pt-row">
-          <div class="pt-field"><label>{dt('Minimum members')}</label><input type="number" name="min_members" min="0" max="10000000" value={config.minMembers} /></div>
-          <div class="pt-field"><label>{dt('Minimum age (days)')}</label><input type="number" name="min_age_days" min="0" max="3650" value={config.minAgeDays} /></div>
-          <div class="pt-field"><label>{dt('Cooldown')}</label><input type="text" name="cooldown" value={config.cooldown} maxlength="30" placeholder="3d 4h" /></div>
+    <section class="pt-sec">
+      <h2>{dt('Requirements')}</h2>
+      <div class="pt-grid pt-grid-3">
+        <div class="pt-field"><label>{dt('Minimum members')}</label><input type="number" name="min_members" min="0" max="10000000" value={config.minMembers} /></div>
+        <div class="pt-field"><label>{dt('Minimum age (days)')}</label><input type="number" name="min_age_days" min="0" max="3650" value={config.minAgeDays} /></div>
+        <div class="pt-field"><label>{dt('Cooldown')}</label><input type="text" name="cooldown" value={config.cooldown} maxlength="30" placeholder="3d 4h" /></div>
+      </div>
+      <span class="pt-hint">{dt('0 means no requirement. The cooldown is how long before the same server can partner again, written like 3d 4h, 12h or 30m. Empty is no cooldown.')}</span>
+      <div class="pt-switches">
+        <label class="pt-switch"><input type="checkbox" name="block_nsfw" checked={config.blockNsfw} /><span><b>{dt('Refuse servers that Discord marks as NSFW')}</b></span></label>
+        <label class="pt-switch"><input type="checkbox" name="keep_original" checked={config.keepOriginal} /><span><b>{dt('Keep the message when a partnership is refused')}</b></span></label>
+      </div>
+      <div class="pt-grid">
+        <div class="pt-field pt-wide"><label>{dt('Blocked words')}</label>
+          <textarea name="blocked_keywords" class="dgl-autogrow pt-one" rows="1" maxlength="400" placeholder={dt('18+, nsfw, gambling')}>{config.blockedKeywords}</textarea>
+          <span class="pt-hint">{dt('Servers with one of these words in their name or description are refused. Separated by commas, up to 10.')}</span>
         </div>
-        <span class="pt-note">{dt('0 means no requirement. The cooldown is how long before the same server can partner again, written like 3d 4h, 12h or 30m. Empty is no cooldown.')}</span>
-        <label class="pt-check"><input type="checkbox" name="block_nsfw" checked={config.blockNsfw} />{dt('Refuse servers that Discord marks as NSFW')}</label>
-        <div class="pt-field"><label>{dt('Blocked words')}</label><input type="text" name="blocked_keywords" value={config.blockedKeywords} maxlength="400" placeholder={dt('18+, nsfw, gambling')} /><span class="pt-note">{dt('Servers with one of these words in their name or description are refused. Separated by commas, up to 10.')}</span></div>
-        <label class="pt-check"><input type="checkbox" name="keep_original" checked={config.keepOriginal} />{dt('Keep the message when a partnership is refused')}</label>
         <div class="pt-field"><label>{dt('Reaction when it counts')}</label><input type="text" name="react_emoji" data-emoji-input value={config.reactEmoji} maxlength="64" placeholder="🤝" /></div>
-      </fieldset>
+      </div>
+    </section>
 
-      <fieldset class="pt-set"><legend>{dt('Replies')}</legend>
-        <span class="pt-note">{dt('Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} and the usual ones like {user.mention}.')}</span>
-        {replies.map(([key, label, fallback]) => (
-          <details class="pt-reply" open={changed(key)}>
-            <summary>{dt(label)}{changed(key) && <span class="pt-dot" title={dt('Changed')}></span>}</summary>
-            <textarea name={`text_${key}`} data-ac rows="3" maxlength="2000" placeholder={fallback}>{config.messages[key]?.text ?? ''}</textarea><SilentMentionHint />
-            <select name={`tpl_${key}`}><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === config.messages[key]?.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
-          </details>
-        ))}
-      </fieldset>
+    <section class="pt-sec">
+      <div class="pt-sec-head">
+        <h2>{dt('Replies')}</h2>
+        <span class="pt-bulk"><button type="button" class="btn btn-ghost btn-sm" data-pt-bulk="open">{dt('Expand all')}</button><button type="button" class="btn btn-ghost btn-sm" data-pt-bulk="close">{dt('Collapse all')}</button></span>
+      </div>
+      <span class="pt-hint">{dt('Each reply can be a text or one of your saved embeds. Empty uses the default. Variables: {partner.name}, {partner.members}, {partner.manager}, {partner.count_week}, {partner.count_total}, {partner.rank_week}, {partner.top_week}, {partner.server_week} and the usual ones like {user.mention}.')}</span>
+      <span class="pt-hint">{dt('Pick a role, a channel or a variable and it goes where the cursor is in the text.')}</span>
+      {replies.map(([key, label, fallback]) => (
+        <details class="pt-reply" open={changed(key)}>
+          <summary><span class="pt-reply-title">{dt(label)}</span>{changed(key) && <span class="pt-dot" title={dt('Changed')}></span>}<Icon name="ph:caret-down-bold" class="pt-caret" width="13" height="13" /></summary>
+          <div class="pt-reply-body">
+            <div class="pt-tools">
+              <select class="pt-ins" data-pt-insert="role" data-fill="pt-roles" aria-label={dt('Mention a role')}><option value="">{dt('Mention a role')}</option></select>
+              <select class="pt-ins" data-pt-insert="channel" data-fill="pt-ch" aria-label={dt('Mention a channel')}><option value="">{dt('Mention a channel')}</option></select>
+              <select class="pt-ins" data-pt-insert="var" aria-label={dt('Add a variable')}><option value="">{dt('Add a variable')}</option>{partnerVars.map((v) => <option value={v.tok}>{v.tok}</option>)}</select>
+            </div>
+            <textarea name={`text_${key}`} data-ac class="dgl-autogrow" rows="4" maxlength="2000" placeholder={fallback}>{config.messages[key]?.text ?? ''}</textarea><SilentMentionHint />
+            <div class="pt-reply-foot">
+              <select name={`tpl_${key}`}><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === config.messages[key]?.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
+              <span class="pt-count" data-pt-count>0 / 2000</span>
+              <button type="button" class="btn btn-ghost btn-sm pt-reset" data-pt-reset><Icon name="ph:arrow-counter-clockwise-bold" width="13" height="13" />{dt('Restore default')}</button>
+            </div>
+          </div>
+        </details>
+      ))}
+    </section>
+
+    <div class="pt-foot">
       <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
-    </form>
+      <span class="pt-hint">{dt('Commands: !partner stats, !partner leaderboard and !partnerconfig.')}</span>
+    </div>
+  </form>
 
-    <aside class="pt-side">
-      <section class="pt-card">
-        <h2>{dt('This week')}</h2>
-        {stats.weekBoard.length ? <ol>{stats.weekBoard.map((entry) => <li><UserChip id={entry.managerId} person={people[entry.managerId]} /><b>{entry.count}</b></li>)}</ol> : <p class="pt-note">{dt('Nobody has a partnership in this period.')}</p>}
-      </section>
-      <section class="pt-card">
-        <h2>{dt('All time')}</h2>
-        {stats.allBoard.length ? <ol>{stats.allBoard.map((entry) => <li><UserChip id={entry.managerId} person={people[entry.managerId]} /><b>{entry.count}</b></li>)}</ol> : <p class="pt-note">{dt('Nobody has a partnership in this period.')}</p>}
-      </section>
-      <section class="pt-card">
-        <h2>{dt('Blacklist')}</h2>
-        <p class="pt-note">{dt('Servers that can never be a partner.')}</p>
-        {blacklist.length > 0 && <ul>{blacklist.map((row) => (
-          <li><span><code>{row.server}</code>{row.note && <small>{row.note}</small>}</span>
-            <form method="POST" data-no-dirty><input type="hidden" name="action" value="remove_blacklist" /><input type="hidden" name="server" value={row.server} /><button type="submit" class="pt-x" aria-label={dt('Remove')}><Icon name="ph:x" width="13" height="13" /></button></form></li>
-        ))}</ul>}
-        <form method="POST" class="pt-add" data-no-dirty>
-          <input type="hidden" name="action" value="add_blacklist" />
-          <input type="text" name="server" placeholder={dt('ID of the server')} inputmode="numeric" maxlength="25" required />
-          <textarea name="note" class="dgl-autogrow" rows="2" placeholder={dt('Why (optional)')} aria-label={dt('Why (optional)')} maxlength="200"></textarea>
-          <button type="submit" class="btn btn-ghost btn-sm" disabled={!ready}>{dt('Add')}</button>
-        </form>
-      </section>
-      <p class="pt-note">{dt('Commands: !partner stats, !partner leaderboard and !partnerconfig.')}</p>
-    </aside>
+  <div class="pt-cards">
+    <section class="pt-card">
+      <h2>{dt('This week')}</h2>
+      {stats.weekBoard.length ? <ol>{stats.weekBoard.map((entry) => <li><UserChip id={entry.managerId} person={people[entry.managerId]} /><b>{entry.count}</b></li>)}</ol> : <p class="pt-hint">{dt('Nobody has a partnership in this period.')}</p>}
+    </section>
+    <section class="pt-card">
+      <h2>{dt('All time')}</h2>
+      {stats.allBoard.length ? <ol>{stats.allBoard.map((entry) => <li><UserChip id={entry.managerId} person={people[entry.managerId]} /><b>{entry.count}</b></li>)}</ol> : <p class="pt-hint">{dt('Nobody has a partnership in this period.')}</p>}
+    </section>
+    <section class="pt-card">
+      <h2>{dt('Blacklist')}</h2>
+      <p class="pt-hint">{dt('Servers that can never be a partner.')}</p>
+      {blacklist.length > 0 && <ul>{blacklist.map((row) => (
+        <li><span><code>{row.server}</code>{row.note && <small>{row.note}</small>}</span>
+          <form method="POST" data-no-dirty><input type="hidden" name="action" value="remove_blacklist" /><input type="hidden" name="server" value={row.server} /><button type="submit" class="pt-x" aria-label={dt('Remove')}><Icon name="ph:x" width="13" height="13" /></button></form></li>
+      ))}</ul>}
+      <form method="POST" class="pt-add" data-no-dirty>
+        <input type="hidden" name="action" value="add_blacklist" />
+        <input type="text" name="server" placeholder={dt('ID of the server')} inputmode="numeric" maxlength="25" required />
+        <textarea name="note" class="dgl-autogrow" rows="2" placeholder={dt('Why (optional)')} aria-label={dt('Why (optional)')} maxlength="200"></textarea>
+        <button type="submit" class="btn btn-ghost btn-sm" disabled={!ready}>{dt('Add')}</button>
+      </form>
+    </section>
   </div>
   <SelectSource name="pt-ch" items={channels.map((c) => ({ id: c.id, name: c.name }))} prefix="#" />
   <SelectSource name="pt-roles" items={roles.map((r) => ({ id: r.id, name: r.name }))} />
   <EmojiPicker customEmojis={customEmojis} />
 </DashGuildLayout>
 
+<script is:inline>
+  (function () {
+    if (window.__ptTools) return;
+    window.__ptTools = true;
+    var count = function (box) {
+      var area = box.querySelector('textarea[name^="text_"]'); var out = box.querySelector('[data-pt-count]');
+      if (area && out) out.textContent = area.value.length + ' / ' + (area.maxLength > 0 ? area.maxLength : 2000);
+    };
+    var all = function () { Array.prototype.forEach.call(document.querySelectorAll('.pt-reply'), count); };
+    all();
+    // A role, a channel or a variable goes where the cursor is in the text of the reply.
+    document.addEventListener('change', function (event) {
+      var select = event.target && event.target.closest && event.target.closest('select[data-pt-insert]');
+      if (!select || !select.value) return;
+      var box = select.closest('.pt-reply'); var area = box && box.querySelector('textarea[name^="text_"]');
+      var kind = select.getAttribute('data-pt-insert');
+      var text = kind === 'role' ? '<@&' + select.value + '>' : kind === 'channel' ? '<#' + select.value + '>' : select.value;
+      select.value = '';
+      if (!area) return;
+      var start = area.selectionStart == null ? area.value.length : area.selectionStart; var end = area.selectionEnd == null ? start : area.selectionEnd;
+      area.setRangeText(text, start, end, 'end');
+      area.focus();
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.addEventListener('input', function (event) {
+      var area = event.target && event.target.matches && event.target.matches('.pt-reply textarea') ? event.target : null;
+      if (area) count(area.closest('.pt-reply'));
+    });
+    document.addEventListener('click', function (event) {
+      var target = event.target && event.target.closest ? event.target : null; if (!target) return;
+      var reset = target.closest('[data-pt-reset]');
+      if (reset) {
+        var box = reset.closest('.pt-reply');
+        var area = box.querySelector('textarea[name^="text_"]'); var tpl = box.querySelector('select[name^="tpl_"]');
+        if (area) { area.value = ''; area.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (tpl) { tpl.value = ''; tpl.dispatchEvent(new Event('input', { bubbles: true })); }
+        return;
+      }
+      var bulk = target.closest('[data-pt-bulk]');
+      if (bulk) Array.prototype.forEach.call(document.querySelectorAll('.pt-reply'), function (d) { d.open = bulk.getAttribute('data-pt-bulk') === 'open'; });
+    });
+  })();
+</script>
+
 <style>
   h1 { font-size: 24px; margin: 0 0 18px; }
-  .pt-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 640px; }
+  h2 { font-size: 15px; margin: 0; }
+  .pt-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 1000px; }
   .pt-flash-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
-  .pt-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 640px; margin-bottom: 20px; }
-  .pt-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
-  .pt-stat b { font-size: 24px; }
-  .pt-stat span { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .pt-grid { display: grid; grid-template-columns: minmax(0, 640px) minmax(min(260px, 100%), 340px); gap: 28px; align-items: start; }
-  @media (max-width: 960px) { .pt-grid { grid-template-columns: 1fr; } }
-  .pt-form { display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 20px; }
+  .pt-form { display: flex; flex-direction: column; gap: 18px; max-width: 1000px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; margin-bottom: 24px; }
+  .pt-check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .pt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .pt-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pt-wide { grid-column: 1 / -1; }
   .pt-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .pt-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .pt-field input, .pt-field select, .pt-reply textarea, .pt-reply select, .pt-add input, .pt-add textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; }
-  .pt-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  @media (max-width: 560px) { .pt-row { grid-template-columns: 1fr; } }
-  .pt-note { font-size: 11.5px; line-height: 1.4; color: var(--text-dim); }
-  .pt-set { border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  .pt-set legend { font-size: 12px; font-weight: 600; color: var(--text-dim); padding: 0 6px; }
-  .pt-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
-  .pt-reply { border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
-  .pt-reply summary { cursor: pointer; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .pt-reply[open] summary { margin-bottom: 8px; }
-  .pt-reply textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; margin-bottom: 8px; }
-  .pt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; }
-  .pt-side { display: flex; flex-direction: column; gap: 14px; }
-  .pt-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 16px; }
-  .pt-card h2 { font-size: 14px; margin: 0 0 8px; }
+  .pt-field label { font-size: 13px; font-weight: 600; }
+  .pt-field input[type=text], .pt-field input[type=number], .pt-field select, .pt-field textarea, .pt-reply textarea, .pt-reply select, .pt-add input, .pt-add textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; min-width: 0; }
+  .pt-hint { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+  .pt-sec { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border-soft); padding: 16px 0 0; min-width: 0; }
+  .pt-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .pt-bulk { display: inline-flex; gap: 6px; }
+  .pt-switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pt-switch { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+  .pt-switch input { margin-top: 3px; }
+  .pt-switch b { display: block; font-size: 13.5px; font-weight: 600; }
+  textarea.pt-one { min-height: 2.6em; resize: none; line-height: 1.45; }
+  .pt-reply { border: 1px solid var(--border); border-radius: 10px; background: var(--card); min-width: 0; }
+  .pt-reply summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 11px 14px; font-size: 13.5px; font-weight: 600; border-radius: 10px; transition: background-color 0.25s ease; }
+  .pt-reply summary::-webkit-details-marker { display: none; }
+  .pt-reply summary:hover { background: var(--card-hover); }
+  .pt-reply summary:active { background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .pt-reply-title { flex: 1; min-width: 0; }
+  .pt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+  .pt-caret { flex: none; color: var(--text-dim); transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+  .pt-reply[open] .pt-caret { transform: rotate(180deg); }
+  .pt-reply-body { display: flex; flex-direction: column; gap: 10px; padding: 2px 14px 14px; }
+  .pt-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .pt-tools .pt-ins { font-size: 12.5px; padding: 6px 8px; }
+  .pt-reply textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; min-height: 7.5em; }
+  .pt-reply-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pt-reply-foot select { flex: 1 1 200px; width: auto; }
+  .pt-count { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .pt-reset { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .pt-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .pt-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; max-width: 1000px; align-items: start; }
+  .pt-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 16px; min-width: 0; }
+  .pt-card h2 { margin: 0 0 8px; }
   .pt-card ol, .pt-card ul { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .pt-card li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
   .pt-card code { font-size: 12px; color: var(--text-muted); word-break: break-all; }
   .pt-card small { display: block; color: var(--text-dim); font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pt-add { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
   .pt-add textarea { resize: vertical; line-height: 1.45; }
+  .pt-add .btn { align-self: flex-start; }
   .pt-x { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; }
   .pt-x:hover { color: var(--red, #ed4245); }
-  .pt-add { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-  .pt-add .btn { align-self: flex-start; }
+  @media (max-width: 900px) { .pt-cards { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .pt-grid, .pt-grid-3, .pt-switches, .pt-tools { grid-template-columns: 1fr; } }
 </style>

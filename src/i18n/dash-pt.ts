@@ -5541,4 +5541,11 @@ export const dashPt: Record<string, string> = {
   "Recent events": "Eventos recentes",
   "Keep a channel for pictures, videos or links only.": "Reserve um canal só para imagens, vídeos ou links.",
   "Vote boost: +10% XP for 12 hours to members who vote for Petto": "Bônus de voto: +10% de XP por 12 horas para quem votar no Petto",
+  "Mention a role": "Mencionar um cargo",
+  "Mention a channel": "Mencionar um canal",
+  "Add a variable": "Adicionar uma variável",
+  "Restore default": "Restaurar o padrão",
+  "Expand all": "Abrir todas",
+  "Collapse all": "Fechar todas",
+  "Pick a role, a channel or a variable and it goes where the cursor is in the text.": "Escolha um cargo, um canal ou uma variável e ele vai para onde está o cursor no texto.",
 };
