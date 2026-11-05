@@ -32,6 +32,20 @@ const ERRORS: Record<string, string> = {
 };
 const errorText = (code?: string) => (code && ERRORS[code] ? t(ERRORS[code]) : t("Couldn't do that, try again."));
 
+const IMAGE_ICON = 'M216 40H40a16 16 0 0 0-16 16v144a16 16 0 0 0 16 16h176a16 16 0 0 0 16-16V56a16 16 0 0 0-16-16m-60 48a12 12 0 1 1-12 12a12 12 0 0 1 12-12m60 112H40v-39.31l46.34-46.35a8 8 0 0 1 11.32 0L165 181.66a8 8 0 0 0 11.32-11.32l-17.66-17.65L173 138.34a8 8 0 0 1 11.31 0L216 170.07z';
+const PLUG_ICON = 'M237.66 77.66L203.31 112l26.35 26.34a8 8 0 0 1-11.32 11.32l-6.34-6.35l-53 53a40 40 0 0 1-56.57 0l-15.68-15.74l-49.09 49.09a8 8 0 0 1-11.32-11.32l49.09-49.09l-15.71-15.71a40 40 0 0 1 0-56.57l53-53l-6.35-6.34a8 8 0 0 1 11.32-11.32L144 52.69l34.34-34.35a8 8 0 1 1 11.32 11.32L155.31 64L192 100.69l34.34-34.35a8 8 0 0 1 11.32 11.32';
+
+/** A centered empty state that fills the rest of the panel. */
+function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
+  return (
+    <div className="crd-empty">
+      <svg width="26" height="26" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d={icon} /></svg>
+      <strong>{title}</strong>
+      {hint && <p>{hint}</p>}
+    </div>
+  );
+}
+
 const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel', rank: 'Side', rankBottom: 'Bottom bar', levelup: 'Level-up' };
 
 async function call(guildId: string, path: string, init?: RequestInit) {
@@ -419,7 +433,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     setDirty(true);
   }
 
-  if (loadError) return <p className="ebr-empty-note">{t('Image cards are not available right now.')}</p>;
+  if (loadError) return <div className="ebr-app crd-app"><EmptyState icon={PLUG_ICON} title={t('Image cards are not available right now.')} /></div>;
   if (!overview) return <p className="ebr-empty-note">{t('Loading...')}</p>;
 
   const isRank = draft.kind === 'rank';
@@ -436,7 +450,6 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       {flash && <div className="ebr-flash">{flash}</div>}
       <div className="ebr-layout">
         <aside className="ebr-list">
-          {overview.cards.length === 0 && <p className="ebr-empty-note">{t('No cards yet.')}</p>}
           {overview.cards.map((c) => (
             <button key={c.name} type="button" className={`ebr-list-item${c.name === selected ? ' active' : ''}`} onClick={() => pick(c.name)}>{c.name}{c.data.kind === 'rank' ? ' · rank' : ''}{c.data.mode === 'advanced' ? ' ★' : ''}</button>
           ))}
@@ -459,7 +472,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
         </aside>
 
         {!selected ? (
-          <p className="ebr-empty-note">{t('Create a card on the left to get started.')}</p>
+          <EmptyState icon={IMAGE_ICON} title={t('No cards yet.')} hint={t('Name a card and press + New to make the first one.')} />
         ) : (
           <div className="ebr-editor">
             <div className="ebr-preview-col">
