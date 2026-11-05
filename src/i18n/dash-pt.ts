@@ -5471,4 +5471,12 @@ export const dashPt: Record<string, string> = {
   "Your theme and how you sort your servers are kept only in this browser. You can forget them here.": "Seu tema e como você ordena seus servidores ficam salvos apenas neste navegador. Aqui você pode esquecê-los.",
   "Forgotten": "Esquecido",
   "Forget saved choices": "Esquecer o que foi salvo",
+  "set": "definido",
+  "on": "ativo",
+  "off": "desligado",
+  "Running now": "Em andamento",
+  "Routed events": "Eventos enviados",
+  "Members suggest, everyone votes once and the staff answers with a reason.": "Os membros sugerem, todos votam uma vez e a equipe responde com um motivo.",
+  "Members confess without a name, with a look you choose, a check by the staff and anonymous replies.": "Os membros confessam sem nome, com o visual que você escolher, uma revisão da equipe e respostas anônimas.",
+  "A channel where members count one number after the other, with records, saves and a leaderboard.": "Um canal onde os membros contam um número após o outro, com recordes, salvamentos e um ranking.",
 };
