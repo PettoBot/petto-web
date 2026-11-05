@@ -1,6 +1,7 @@
 // Checks the login of the top bar (src/utils/navAccount.mjs, src/pages/api/session.ts, src/components/NavAccount.astro).
 // Run: node scripts/check-nav-account.mjs
 import { existsSync, readFileSync } from 'node:fs';
+import { LOGIN_HREF } from '../src/utils/dashLogin.mjs';
 import { accountEntries, accountState, cacheText, initialOf, loginHref, publicUser, readCache, sessionAnswer, SESSION_ENDPOINT, SUPPORT_URL } from '../src/utils/navAccount.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -100,8 +101,17 @@ for (const [name, text] of [['api/session.ts', endpoint], ['NavAccount.astro', c
 }
 check('the bar asks the endpoint once and gives up', /fetch\(SESSION_ENDPOINT/.test(component) && /AbortController/.test(component) && (component.match(/fetch\(/g) ?? []).length === 1);
 
+// The full bar (links, language, theme, Login or profile, Add to Discord) fits from 881px up, so the burger menu starts at 880px and nowhere else.
+check('the burger menu starts at 880px', /@media \(max-width: 880px\) \{\s*nav\.links \{ display: none; \}\s*\.nav-burger \{ display: flex; \}\s*\.nav-desktop-only \{ display: none; \}/.test(layout));
+check('the page closes the burger menu above 880px', /window\.innerWidth > 880 && mobileNav/.test(layout));
+check('the bar hides its login at 880px, where the burger menu has its own', /@media \(max-width: 880px\) \{ \.nav-account \{ display: none; \} \}/.test(component) && /window\.innerWidth <= 880/.test(component));
+for (const [name, text] of [['Base.astro', layout], ['NavAccount.astro', component]]) {
+  check(`${name} has no burger breakpoint above 880px`, !/@media \(max-width: (?:1060|1061|1120)px\)/.test(text) && !/innerWidth (?:<=|>) (?:1060|1061|1120)/.test(text));
+}
+check('Login is an icon that keeps its text for screen readers', /<svg viewBox="0 0 256 256"[^>]*aria-hidden="true"/.test(component) && /class="nav-login-label"/.test(component) && /title=\{t\.login\}/.test(component));
+
 // One login: the dashboard page and the Login of the bar build the same address.
-check('Login and the dashboard share the address', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && /dashAuthorizeUrl/.test(read('src/pages/dash/index.astro')));
+check('Login and the dashboard card share the route', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && LOGIN_HREF === loginHref('en') && /href=\{LOGIN_HREF\}/.test(read('src/components/DashLogin.astro')));
 check('Login goes to the callback of the dashboard', /\/dash\/callback/.test(read('src/utils/discordLogin.ts')) && /identify guilds/.test(read('src/utils/discordLogin.ts')));
 
 // The icons of the menu are drawn by InlineIcon.

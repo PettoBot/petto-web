@@ -16,6 +16,7 @@ export function percentChange(now: number, before: number): number | null {
 }
 
 export const COMPARE_KEYS = ['messages', 'reactions', 'voiceSeconds', 'joins', 'leaves'] as const;
+const firstDayOf = (rows: Row[]) => rows.reduce<string | null>((first, row) => { const day = dayKey(row.day); return first === null || day < first ? day : first; }, null);
 export type CompareKey = (typeof COMPARE_KEYS)[number];
 
 export function buildAnalysis({ days, now = new Date(), channelRows, hourlyRows, flowRows, contentRows, lifespanRows }: { days: number; now?: Date; channelRows: Row[]; hourlyRows: Row[]; flowRows: Row[]; contentRows: Row[]; lifespanRows: Row[] }) {
@@ -34,6 +35,7 @@ export function buildAnalysis({ days, now = new Date(), channelRows, hourlyRows,
       voiceSeconds: sum(channels.map((row) => num(row.voice_seconds))),
       joins: sum(flows.map((row) => num(row.joins))),
       leaves: sum(flows.map((row) => num(row.leaves))),
+      invited: sum(flows.map((row) => num(row.invited))),
       links: sum(content.map((row) => num(row.links))),
       attachments: sum(content.map((row) => num(row.attachments))),
       replies: sum(content.map((row) => num(row.replies))),
@@ -61,10 +63,14 @@ export function buildAnalysis({ days, now = new Date(), channelRows, hourlyRows,
   const lifespanTotal = sum(lifespan);
 
   const per100 = (key: 'links' | 'attachments' | 'replies' | 'mentions') => (now_.messages ? Math.round((now_[key] / now_.messages) * 1000) / 10 : 0);
+  // The day right before the period (the first day's change is measured against it), and the first day each family of counters has a row:
+  // before that day nothing was counted, so a day is never compared with a day that was not counted yet.
+  const edge = totals(new Set([previous[previous.length - 1]]));
+  const counted = { activity: firstDayOf(channelRows), flow: firstDayOf(flowRows) };
   const netByDay = current.map((day) => sum(only(flowRows, new Set([day])).map((row) => num(row.joins) - num(row.leaves))));
   return {
     days: current,
-    now: now_, before, change,
+    now: now_, before, change, edge, counted,
     heatmap, peak: peak as { weekday: number; hour: number; value: number } | null, byHour, byWeekday, dayparts,
     lifespan, lifespanTotal, earlyLeaveShare: lifespanTotal ? (lifespan[0] + lifespan[1]) / lifespanTotal : null,
     content: { per100: { links: per100('links'), attachments: per100('attachments'), replies: per100('replies'), mentions: per100('mentions') }, totals: { links: now_.links, attachments: now_.attachments, replies: now_.replies, mentions: now_.mentions } },

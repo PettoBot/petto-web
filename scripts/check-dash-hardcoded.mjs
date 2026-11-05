@@ -45,7 +45,7 @@ for (const file of walk(root)) {
   const name = basename(file);
   const rel = file.replace(root, 'src/');
   if (rel.includes('/pages/previewtmp/') || rel.includes('/i18n/')) continue;
-  if (file.endsWith('.astro') && (name.startsWith('Dash') || DASH_HELPERS.has(name)) && name !== 'Dash.astro') {
+  if (file.endsWith('.astro') && (name.startsWith('Dash') || DASH_HELPERS.has(name))) {
     const src = readFileSync(file, 'utf8');
     const body = stripAstro(src);
     for (const m of body.matchAll(/>([^<>]+)</g)) {
