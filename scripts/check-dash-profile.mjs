@@ -252,6 +252,10 @@ try {
   check('the session version runs', false, String(error?.message ?? error));
 }
 
+// --- the phone bar: no Add to Discord button in it (it is in the menu), and the menu bar of the account pages sticks right under the header ---
+check('the phone bar hides its Add to Discord button whichever stylesheet loads last', /header\.nav \.nav-actions \.nav-desktop-only \{ display: none !important; \}/.test(read('src/layouts/Base.astro')));
+check('the account layout measures the header height for its sticky bar', /syncHeaderHeight\(\)/.test(read('src/components/DashMeLayout.astro')) && /--dgl-header-h/.test(read('src/components/DashMeLayout.astro')));
+
 // --- the texts: every key the new parts use is in the Spanish and Portuguese catalogs, with the same placeholders ---
 const catalog = (name) => {
   const out = new Map();
