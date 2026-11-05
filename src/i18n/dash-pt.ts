@@ -5497,6 +5497,8 @@ export const dashPt: Record<string, string> = {
   "When it is given or onboarding is finished": "Ao receber o cargo ou concluir a integração",
   "Role triggers are not available yet. Petto is being updated: try again in a few minutes.": "Os gatilhos por cargo ainda não estão disponíveis. O Petto está sendo atualizado: tente de novo em alguns minutos.",
   "The role triggers could not be read. Try again in a moment.": "Não foi possível ler os gatilhos por cargo. Tente de novo em instantes.",
+  "Recent activity": "Atividade recente",
+  "Nothing yet. What the rules do shows up here.": "Nada ainda. O que as regras fizerem aparecerá aqui.",
   "Past this many actions a minute, the rest wait in line.": "Passando este número de ações por minuto, o resto espera na fila.",
   "Default for its size: {n}.": "Padrão pelo tamanho: {n}.",
   "Default for this size.": "Padrão pelo tamanho.",

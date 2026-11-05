@@ -5497,6 +5497,8 @@ export const dashEs: Record<string, string> = {
   "When it is given or onboarding is finished": "Al recibirlo o al terminar la incorporación",
   "Role triggers are not available yet. Petto is being updated: try again in a few minutes.": "Los disparadores por rol aún no están disponibles. Petto se está actualizando: vuelve a intentarlo en unos minutos.",
   "The role triggers could not be read. Try again in a moment.": "No se pudieron leer los disparadores por rol. Inténtalo de nuevo en un momento.",
+  "Recent activity": "Actividad reciente",
+  "Nothing yet. What the rules do shows up here.": "Aún nada. Lo que hagan las reglas aparecerá aquí.",
   "Past this many actions a minute, the rest wait in line.": "Pasado este número de acciones por minuto, el resto espera en fila.",
   "Default for its size: {n}.": "Por defecto según su tamaño: {n}.",
   "Default for this size.": "Valor por defecto según el tamaño.",

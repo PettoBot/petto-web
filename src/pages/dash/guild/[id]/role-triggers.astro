@@ -4,6 +4,7 @@ import DashRoleTriggers from '../../../../components/DashRoleTriggers.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
+import { describeTeam } from '../../../../utils/team';
 import { getCachedUserGuilds } from '../../../../utils/discordCache';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
 import { SNOWFLAKE, canEditRoleTriggers, cleanRule, validateRule, MAX_RULES, MIN_LIMIT, MAX_LIMIT, BREAKER_PAUSE_MINUTES, QUEUE_MINUTES, defaultLimit, parseLimit } from '../../../../utils/roleTriggers.mjs';
@@ -128,6 +129,21 @@ if (Astro.request.method === 'POST') {
 if (missingAfterWrite) loaded = { state: 'unavailable', rows: [] };
 
 const memberCount = Number((await getGuildDetails(id, botToken).catch(() => null))?.approximate_member_count) || 0;
+// What the rules did lately: the cases the bot wrote with the source "roletrigger" (the reason is "Role trigger: <role> - <reason>"). Optional: nothing shown when it cannot be read.
+const activityRes = await fetch(`${apiUrl}/rest/v1/mod_actions?guild_id=eq.${id}&source=eq.roletrigger&select=case_number,type,user_id,reason,created_at&order=created_at.desc&limit=8`, { headers: apiHeaders }).catch(() => null);
+const activityRows: any[] = activityRes?.ok ? ((await activityRes.json().catch(() => [])) as any[]).filter((row) => row && SNOWFLAKE.test(String(row.user_id))) : [];
+const activityPeople = activityRows.length ? await describeTeam(botToken, [...new Set(activityRows.map((row) => String(row.user_id)))]).catch(() => new Map()) : new Map();
+const activity = activityRows.map((row) => {
+  const person: any = activityPeople.get(String(row.user_id));
+  return {
+    caseNumber: Number(row.case_number) || 0,
+    type: String(row.type ?? ''),
+    name: String(person?.displayName || person?.username || row.user_id),
+    avatar: String(person?.avatarUrl ?? '').replace(/\?size=128$/, '?size=32'),
+    reason: String(row.reason ?? '').replace(/^Role trigger:\s*/, ''),
+    at: String(row.created_at ?? ''),
+  };
+});
 const rules = loaded.rows.map(cleanRule).map((rule) => {
   const role = roleById.get(rule.roleId);
   return { ...rule, roleName: role ? String(role.name) : null, roleColor: role && Number(role.color) > 0 ? Number(role.color) : 0 };
@@ -140,5 +156,5 @@ const roles = allRoles
   .map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color) > 0 ? Number(role.color) : 0, hasRule: used.has(String(role.id)) }));
 ---
 <DashRoleTriggers user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
-  rules={rules} roles={roles} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES}
+  rules={rules} roles={roles} activity={activity} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES}
   limit={{ chosen: limitState.chosen, fallback: defaultLimit(memberCount), available: limitState.available, min: MIN_LIMIT, max: MAX_LIMIT, minutes: BREAKER_PAUSE_MINUTES, queueMinutes: QUEUE_MINUTES }} />
