@@ -130,6 +130,8 @@ export function canEditRoleTriggers(guild) {
 export const MIN_LIMIT = 1;
 export const MAX_LIMIT = 500;
 export const BREAKER_PAUSE_MINUTES = 10;
+/** The line of members over the limit holds what the limit can handle in this many minutes (the bot: QUEUE_MINUTES). */
+export const QUEUE_MINUTES = 10;
 
 /** What a server gets when it did not choose: it grows with the size of the server. */
 export function defaultLimit(memberCount) {
