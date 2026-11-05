@@ -1,0 +1,119 @@
+---
+export const prerender = false;
+import DashRoleTriggers from '../../../../components/DashRoleTriggers.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getCachedUserGuilds } from '../../../../utils/discordCache';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { SNOWFLAKE, canEditRoleTriggers, cleanRule, validateRule, MAX_RULES } from '../../../../utils/roleTriggers.mjs';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+
+// The bot changes role triggers with Administrator only (a rule sanctions members by itself), so the page asks for the same: the visitor's
+// own permissions in the server, read from Discord, never the cookie. Someone let in by a role of the dashboard, and the Petto owner in
+// Support mode (this page is not in supportEdit.ts: it stays closed), only look.
+let canEdit = false;
+if (!auth.devView && !auth.access) {
+  const guilds = await getCachedUserGuilds(session.accessToken, Astro.request, { forAccess: true }).catch(() => []);
+  canEdit = canEditRoleTriggers(guilds.find((g: any) => g.id === id));
+}
+
+// The same checks as the bot's `roletrigger add` (utils/roleTriggers.mjs), then one write to the table the bot reads (it keeps the rules in
+// memory for 30 seconds, and nothing here tells it to drop them, so a change applies within about that time).
+const errors: Record<string, string> = {
+  noRole: dt('That role does not exist.'),
+  everyone: dt('@everyone cannot be a trigger.'),
+  managed: dt('A role that an integration manages cannot be a trigger.'),
+  badAction: dt('That action is not valid.'),
+  badOn: dt('That moment is not valid.'),
+  tooMany: dt('A server can have up to {max} role triggers. Remove one first.', { max: MAX_RULES }),
+  noDuration: dt('Only mute, jail and ban take a duration.'),
+  badDuration: dt('That duration is not valid. Use something like 1h, 12h or 1d.'),
+  timeoutCap: dt('Discord timeouts cannot exceed 28 days.'),
+  reasonLong: dt('The reason can have up to 200 characters.'),
+};
+const tableMissing = (res: Response | null, body: any) => Boolean(res && (res.status === 404 || ['PGRST205', '42P01'].includes(String(body?.code ?? ''))));
+
+let message: { kind: 'ok' | 'err'; text: string } | null = null;
+let missingAfterWrite = false;
+const [guildInfo, rolesRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'roles')]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const allRoles: any[] = rolesRes.ok ? ((await rolesRes.json().catch(() => [])) as any[]) : [];
+const roleById = new Map(allRoles.map((r: any) => [String(r.id), r]));
+
+const readRules = async () => {
+  const res = await fetch(`${apiUrl}/rest/v1/role_triggers?guild_id=eq.${id}&select=*&order=created_at.asc`, { headers: apiHeaders }).catch(() => null);
+  const body: any = res ? await res.json().catch(() => null) : null;
+  if (res?.ok && Array.isArray(body)) return { state: 'ok' as const, rows: body as any[] };
+  return { state: tableMissing(res, body) ? ('unavailable' as const) : ('error' as const), rows: [] as any[] };
+};
+
+let loaded = await readRules();
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  if (!canEdit) message = { kind: 'err', text: dt('Only administrators can change role triggers, the same as the command.') };
+  else if (loaded.state !== 'ok') message = { kind: 'err', text: loaded.state === 'unavailable' ? dt('Role triggers are not available yet. Petto is being updated: try again in a few minutes.') : dt('The role triggers could not be read. Try again in a moment.') };
+  else if (action === 'add') {
+    const roleId = String(form.get('role_id') ?? '');
+    const found = SNOWFLAKE.test(roleId) ? roleById.get(roleId) : null;
+    const actionName = String(form.get('rule_action') ?? '');
+    // The field is hidden for the actions without a duration, so what it still holds is ignored, not an error.
+    const takesDuration = ['mute', 'jail', 'ban'].includes(actionName);
+    const checked = validateRule({
+      role: found ? { id: String(found.id), managed: Boolean(found.managed) } : null,
+      guildId: id,
+      action: actionName,
+      duration: takesDuration ? String(form.get('duration') ?? '').trim() || null : null,
+      reason: String(form.get('reason') ?? '').replace(/\u0000/g, '').replace(/\s+/g, ' '),
+      on: String(form.get('on') ?? 'role_added'),
+      existingRoleIds: loaded.rows.map((row) => String(row.role_id)),
+    });
+    if (!checked.ok) message = { kind: 'err', text: errors[checked.error] ?? dt('Something went wrong, try again.') };
+    else {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const res = await fetch(`${apiUrl}/rest/v1/role_triggers?on_conflict=guild_id,role_id`, {
+        method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, ...checked.rule }),
+      }).catch(() => null);
+      if (res?.ok) message = { kind: 'ok', text: dt('Saved.') };
+      else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
+    }
+  } else if (action === 'remove') {
+    const roleId = String(form.get('role_id') ?? '');
+    if (!SNOWFLAKE.test(roleId)) message = { kind: 'err', text: dt('Something went wrong, try again.') };
+    else {
+      const res = await fetch(`${apiUrl}/rest/v1/role_triggers?guild_id=eq.${id}&role_id=eq.${roleId}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+      message = res?.ok ? { kind: 'ok', text: dt('Rule removed.') } : { kind: 'err', text: dt('Something went wrong, try again.') };
+    }
+  }
+  if (message?.kind === 'ok') loaded = await readRules();
+}
+if (missingAfterWrite) loaded = { state: 'unavailable', rows: [] };
+
+const rules = loaded.rows.map(cleanRule).map((rule) => {
+  const role = roleById.get(rule.roleId);
+  return { ...rule, roleName: role ? String(role.name) : null, roleColor: role && Number(role.color) > 0 ? Number(role.color) : 0 };
+});
+const used = new Set(rules.map((rule) => rule.roleId));
+// @everyone is every member and an integration's role cannot be given by hand: the bot refuses both.
+const roles = allRoles
+  .filter((role: any) => String(role.id) !== id && !role.managed)
+  .sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0))
+  .map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color) > 0 ? Number(role.color) : 0, hasRule: used.has(String(role.id)) }));
+---
+<DashRoleTriggers user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  rules={rules} roles={roles} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES} />

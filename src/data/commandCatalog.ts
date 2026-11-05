@@ -35,7 +35,7 @@ const categoryOf: Record<string, string[]> = {
   tickets: ['ticket', 'quickreply', 'forum', 'forumconfig'],
   leveling: ['levels', 'level', 'rank', 'top', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
-  automation: ['automation', 'message', 'automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'reaction', 'reactionrole', 'starboard', 'monkeyboard', 'clownboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity', 'feed', 'messagelinks'],
+  automation: ['automation', 'message', 'automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'roletrigger', 'reaction', 'reactionrole', 'starboard', 'monkeyboard', 'clownboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity', 'feed', 'messagelinks'],
   community: ['community', 'social', 'contributions', 'specialchannels', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
   onboarding: ['greet', 'welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
