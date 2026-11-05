@@ -110,6 +110,13 @@ for (const [name, text] of [['Base.astro', layout], ['NavAccount.astro', compone
 }
 check('Login is an icon that keeps its text for screen readers', /<svg viewBox="0 0 256 256"[^>]*aria-hidden="true"/.test(component) && /class="nav-login-label"/.test(component) && /title=\{t\.login\}/.test(component));
 
+// The language picker: a local flag for each language (never hotlinked), the name in its own language, a check on the current one.
+for (const flag of ['us', 'es', 'br']) check(`flag ${flag}.svg exists`, existsSync(new URL(`public/assets/flags/${flag}.svg`, root)) && /^<svg /.test(read(`public/assets/flags/${flag}.svg`)));
+check('the language button shows the flag and keeps an accessible label', /id="langToggle" aria-label=\{langLabel\}/.test(layout) && /aria-haspopup="true" aria-expanded="false" aria-controls="langMenu"/.test(layout) && /class="flag flag-round" src=\{langNow\.flag\}/.test(layout));
+check('the names are written in their own language', ['English', 'Español', 'Português (Brasil)'].every((name) => layout.includes(`label: '${name}'`)) && layout.includes("'/assets/flags/br.svg'"));
+check('the menus mark the current language with a check', (layout.match(/o\.code === lang && <InlineIcon name="ph:check-bold"/g) ?? []).length === 2);
+check('no flag is loaded from another site', !/https?:\/\/[^'"]*flag/i.test(layout));
+
 // One login: the dashboard page and the Login of the bar build the same address.
 check('Login and the dashboard card share the route', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && LOGIN_HREF === loginHref('en') && /href=\{LOGIN_HREF\}/.test(read('src/components/DashLogin.astro')));
 check('Login goes to the callback of the dashboard', /\/dash\/callback/.test(read('src/utils/discordLogin.ts')) && /identify guilds/.test(read('src/utils/discordLogin.ts')));
