@@ -168,6 +168,31 @@ for (const [file, id] of Object.entries(account)) {
   check(`${file} sits in the account layout`, new RegExp(`<DashMeLayout user=\\{user\\} active="${id}"`).test(source) && !/layouts\/Base\.astro/.test(source));
   check(`${id} is in the account menu`, new RegExp(`id: '${id}', href: '/dash/`).test(meLayout));
 }
+// The private staff pages live in the same layout, with a Staff group that only the people who may open them see.
+const staffPages = {
+  'src/components/DashAdminServers.astro': 'staff-servers', 'src/components/DashPremiumAdmin.astro': 'staff-premium', 'src/components/DashTeamAdmin.astro': 'staff-team',
+  'src/components/DashPartnersAdmin.astro': 'staff-partners', 'src/components/DashCreditsAdmin.astro': 'staff-credits', 'src/components/DashAppealNames.astro': 'staff-appeals',
+  'src/components/DashImportPick.astro': 'servers',
+};
+for (const [file, id] of Object.entries(staffPages)) {
+  const source = read(file);
+  check(`${file} sits in the account layout`, new RegExp(`<DashMeLayout user=\\{user\\} active="${id}"`).test(source) && !/layouts\/Base\.astro/.test(source));
+  if (id.startsWith('staff-')) check(`${id} is in the Staff group`, new RegExp(`id: '${id}', href: '/dash/`).test(meLayout));
+}
+check('the Staff group is built only from the access of the person', /const access = await staffAccess\(Astro, user\.userId\)/.test(meLayout) && /if \(staffItems\.length\) sections\.push/.test(meLayout));
+check('the owner pages are in the menu for the owner only', ['staff-servers', 'staff-premium', 'staff-team'].every((id) => new RegExp(`access\\.owner && \\{ id: '${id}'`).test(meLayout)));
+check('partners, credits and appeal names are in the menu for the team only', ['staff-partners', 'staff-credits', 'staff-appeals'].every((id) => new RegExp(`access\\.team && \\{ id: '${id}'`).test(meLayout)));
+const staffAccessSource = read('src/utils/staffAccess.ts');
+check('the menu access reuses the checks of the pages', /isPettoOwner\(astro, userId\)/.test(staffAccessSource) && /canEditPartners\(astro, userId\)/.test(staffAccessSource));
+// The page checks did not move: each one still refuses before it reads or writes anything.
+const refuse = (file, check_, where) => check(`${file} refuses the people who may not open it`, new RegExp(`if \\(!${check_}\\) return Astro\\.redirect\\('/dash/manage\\?error=forbidden'\\)`).test(read(file)), where);
+for (const file of ['src/pages/dash/admin.astro', 'src/pages/dash/admin/servers.astro', 'src/pages/dash/team.astro']) refuse(file, 'isPettoOwner\\(Astro, session\\.userId\\)');
+for (const file of ['src/pages/dash/partners-admin.astro', 'src/pages/dash/appeal-names.astro']) refuse(file, '\\(await canEditPartners\\(Astro, session\\.userId\\)\\)');
+refuse('src/pages/dash/credits-admin.astro', '\\(await canEditCredits\\(Astro, session\\.userId\\)\\)');
+for (const file of ['src/pages/dash/admin.astro', 'src/pages/dash/admin/servers.astro', 'src/pages/dash/team.astro', 'src/pages/dash/partners-admin.astro', 'src/pages/dash/credits-admin.astro', 'src/pages/dash/appeal-names.astro']) {
+  const page = read(file);
+  check(`${file} checks the person before any POST is read`, page.indexOf('error=forbidden') > -1 && page.indexOf('error=forbidden') < page.indexOf("Astro.request.method"));
+}
 check('the login lands on the profile', /afterLogin : LANDING_PATH/.test(read('src/pages/dash/callback.ts')) && /LANDING_PATH = '\/dash\/me'/.test(read('src/utils/dashLogin.mjs')));
 check('the skeleton of the kit goes inside the account panel', /getElementById\('dme-content'\)/.test(read('src/components/DashPanelKit.astro')));
 
