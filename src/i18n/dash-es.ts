@@ -5404,4 +5404,12 @@ export const dashEs: Record<string, string> = {
   "Show more": "Mostrar más",
   "Could not load the servers.": "No se pudieron cargar los servidores.",
   "The Petto dashboard has been refreshed. Log in with Discord to continue.": "El panel de Petto se renovó. Inicia sesión con Discord para continuar.",
+  "set": "definido",
+  "on": "activo",
+  "off": "apagado",
+  "Running now": "En curso",
+  "Routed events": "Eventos enviados",
+  "Members suggest, everyone votes once and the staff answers with a reason.": "Los miembros sugieren, todos votan una vez y el staff responde con un motivo.",
+  "Members confess without a name, with a look you choose, a check by the staff and anonymous replies.": "Los miembros confiesan sin nombre, con el aspecto que elijas, una revisión del staff y respuestas anónimas.",
+  "A channel where members count one number after the other, with records, saves and a leaderboard.": "Un canal donde los miembros cuentan un número tras otro, con récords, salvaciones y un ranking.",
 };

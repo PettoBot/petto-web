@@ -5404,4 +5404,12 @@ export const dashPt: Record<string, string> = {
   "Show more": "Mostrar mais",
   "Could not load the servers.": "Não foi possível carregar os servidores.",
   "The Petto dashboard has been refreshed. Log in with Discord to continue.": "O painel do Petto foi renovado. Entre com o Discord para continuar.",
+  "set": "definido",
+  "on": "ativo",
+  "off": "desligado",
+  "Running now": "Em andamento",
+  "Routed events": "Eventos enviados",
+  "Members suggest, everyone votes once and the staff answers with a reason.": "Os membros sugerem, todos votam uma vez e a equipe responde com um motivo.",
+  "Members confess without a name, with a look you choose, a check by the staff and anonymous replies.": "Os membros confessam sem nome, com o visual que você escolher, uma revisão da equipe e respostas anônimas.",
+  "A channel where members count one number after the other, with records, saves and a leaderboard.": "Um canal onde os membros contam um número após o outro, com recordes, salvamentos e um ranking.",
 };
