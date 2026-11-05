@@ -2,10 +2,11 @@
 // DashServerSheet.astro, DashMeLayout.astro, DashMe.astro, pages/dash/me.astro).
 // Run: node scripts/check-dash-profile.mjs
 import { readFileSync } from 'node:fs';
+import { loginInfo } from '../src/utils/dashLogin.mjs';
 import {
   accentHex, cleanAccentColor, cleanBannerHash, guildBannerUrl, guildHeaderArt, profileFromUser, profileOverview, snowflakeDate, userBannerUrls, userHeaderArt,
 } from '../src/utils/dashProfile.mjs';
-import { SWITCHER_LIMIT, botInviteUrl, splitServers } from '../src/utils/dashSwitcher.mjs';
+import { OWNER_PAGE, OWNER_PAGE_MAX, SWITCHER_LIMIT, botInviteUrl, pageOwnerServers, splitServers } from '../src/utils/dashSwitcher.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -151,6 +152,58 @@ check('the account header uses the decoration and the animated banner only witho
 check('the profile and its prefixed addresses are routed by the existing middleware', /\(es\|pt-br\)\(\\\/dash/.test(read('src/middleware.ts')));
 check('the callback accepts /dash/me as a place to come back to', /dash\(\?:\\\/\|\$\)/.test(read('src/pages/dash/callback.ts')));
 
+
+// --- the owner's part of the sheet: a page of the bot's servers, filtered, never drawn or fetched for anyone else ---
+const bigList = Array.from({ length: 95 }, (_, i) => ({ id: String(300000000000000000n + BigInt(i)), name: `Srv ${String(i).padStart(2, '0')}`, icon: i === 0 ? 'https://cdn.discordapp.com/icons/1/a.png' : i === 1 ? 'http://evil.test/x.png' : null, memberCount: i === 5 ? 1000 : i % 2 ? null : i }));
+const first = pageOwnerServers(bigList, {});
+same('owner page: size, total and where the next starts', [first.items.length, first.total, first.next], [OWNER_PAGE, 95, OWNER_PAGE]);
+same('owner page: the biggest first', first.items[0].name, 'Srv 05');
+same('owner page: the last page has no next', pageOwnerServers(bigList, { offset: 90 }).next, null);
+same('owner page: the limit is capped', pageOwnerServers(bigList, { limit: 5000 }).items.length, OWNER_PAGE_MAX);
+same('owner page: bad numbers fall back', [pageOwnerServers(bigList, { offset: 'x', limit: '-3' }).items.length, pageOwnerServers(bigList, { offset: -9 }).items.length], [1, OWNER_PAGE]);
+same('owner search by name', pageOwnerServers(bigList, { q: ' SRV 42 ' }).items.map((g) => g.name), ['Srv 42']);
+same('owner search by id', pageOwnerServers(bigList, { q: '300000000000000007' }).items.map((g) => g.name), ['Srv 07']);
+same('owner search with no match', pageOwnerServers(bigList, { q: 'zzz' }), { items: [], total: 0, next: null });
+same('owner page: only discord icons pass', pageOwnerServers(bigList, { q: 'Srv 0', limit: 50 }).items.filter((g) => g.name === 'Srv 00' || g.name === 'Srv 01').map((g) => g.icon), ['https://cdn.discordapp.com/icons/1/a.png', null]);
+same('owner page: junk input', [pageOwnerServers(null, {}).total, pageOwnerServers([{ id: 'x', name: 'a' }, { id: '300000000000000001' }], {}).total, pageOwnerServers(bigList, { q: { toString: 1 } }).total], [0, 0, 95]);
+const ownerRoute = read('src/pages/dash/owner-servers.ts');
+check('the owner route answers 404 to anyone but the owner, before reading the list', /!isPettoOwner\(astro, session\.userId\)\) return json\(\{ error: 'not_found' \}, 404\)/.test(ownerRoute) && ownerRoute.indexOf('isPettoOwner(astro') < ownerRoute.indexOf('getBotGuildList(botToken)'));
+check('the owner route is not cached', /no-store/.test(ownerRoute));
+const sheetSrc = read('src/components/DashServerSheet.astro');
+check('the owner part exists only in the markup of an owner (server side)', /\{owner && \(\s*<div class="ds-owner" data-owner/.test(sheetSrc) && /owner\?: boolean/.test(sheetSrc) && /owner = false/.test(sheetSrc));
+check('the owner part fetches only when it is opened, with a skeleton', /if \(open && !started\)/.test(sheetSrc) && /data-owner-skel/.test(sheetSrc) && !/fetch\(/.test(sheetSrc.split('<script is:inline>')[0]));
+check('the owner rows link like the normal rows', /'\/dash\/guild\/' \+ encodeURIComponent\(g\.id\) \+ '\/overview'/.test(sheetSrc));
+check('the owner list is built with textContent, never innerHTML', !/innerHTML/.test(sheetSrc));
+check('both layouts decide the owner with isPettoOwner', /owner=\{[^}]*isPettoOwner\(Astro, user\.userId/.test(guildLayout) && /owner=\{isPettoOwner\(Astro, user\.userId\)\}/.test(meLayout));
+
+// --- everyone logs in again once: the session carries a version, an older one is rejected ---
+check('the session has a version constant, stamped when it is made', /export const SESSION_VERSION = \d+;/.test(session) && /JSON\.stringify\(\{ \.\.\.session, v: SESSION_VERSION \}\)/.test(session));
+check('a session without the version or with a lower one is rejected', /typeof session\.v === 'number' && session\.v >= SESSION_VERSION/.test(session) && /isCurrentSession\(session\)/.test(session));
+check('the session code stays Web Crypto only (Cloudflare)', !/node:|from 'crypto'|require\(|\bBuffer\b|from 'pg'/.test(session.replace(/^\s*\/\/.*$/gm, '')));
+check('a stale session is cleared and flagged', /isCurrentSession\(session\)/.test(auth) && /sessionStale = true/.test(auth) && /cookies\.delete\('petto_session'/.test(auth));
+check('the redirect to /dash carries ?notice=relogin', /notice=relogin/.test(read('src/middleware.ts')) && /withReloginNotice\(context,/.test(read('src/middleware.ts')));
+same('login info codes', [loginInfo('relogin'), loginInfo('x'), loginInfo(null), loginInfo(['relogin'])], ['relogin', null, null, null]);
+check('the login card shows the info banner with a close button', /data-dl-info/.test(read('src/components/DashLogin.astro')) && /data-dl-info-close/.test(read('src/components/DashLogin.astro')) && /loginInfo\(noticeParam\)/.test(read('src/pages/dash/index.astro')));
+try {
+  const { SESSION_VERSION, decodeAnySession, decodeSession, encodeSession } = await import('../src/utils/session.ts');
+  const base = { userId: USER, username: 'liam', avatar: null, accessToken: 'a', refreshToken: 'r', expiresAt: Date.now() + 1e6 };
+  const fresh = await encodeSession(base, 'secret');
+  same('a new session carries the version and is accepted', [(await decodeSession(fresh, 'secret'))?.v], [SESSION_VERSION]);
+  same('a session with the wrong secret is rejected', await decodeSession(fresh, 'other'), null);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('secret'));
+  const key = await crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt']);
+  const b64 = (bytes) => Buffer.from(bytes).toString('base64url');
+  const forge = async (extra) => `v1.${b64(iv)}.${b64(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify({ ...base, ...extra })))))}`;
+  const old = await forge({});
+  same('a session made before the version is rejected as logged out', await decodeSession(old, 'secret'), null);
+  same('...but can still be told apart from a broken cookie', (await decodeAnySession(old, 'secret'))?.userId, USER);
+  same('a lower version is rejected', await decodeSession(await forge({ v: SESSION_VERSION - 1 }), 'secret'), null);
+  same('a higher version is accepted', (await decodeSession(await forge({ v: SESSION_VERSION + 1 }), 'secret'))?.userId, USER);
+} catch (error) {
+  check('the session version runs (needs node with TypeScript support)', false, String(error?.message ?? error));
+}
+
 // --- the texts: every key the new parts use is in the Spanish and Portuguese catalogs, with the same placeholders ---
 const catalog = (name) => {
   const out = new Map();
@@ -160,7 +213,7 @@ const catalog = (name) => {
 const es = catalog('dash-es.ts');
 const pt = catalog('dash-pt.ts');
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
-const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro'];
+const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro'];
 for (const file of files) {
   for (const m of read(file).matchAll(/\bdt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g)) {
     const key = (m[1] ?? m[2]).replace(/\\'/g, "'");
