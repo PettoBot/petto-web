@@ -3,10 +3,10 @@ export const prerender = false;
 import DashRoleTriggers from '../../../../components/DashRoleTriggers.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getGuildInfo, getGuildList, getGuildDetails } from '../../../../utils/discord';
 import { getCachedUserGuilds } from '../../../../utils/discordCache';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { SNOWFLAKE, canEditRoleTriggers, cleanRule, validateRule, MAX_RULES } from '../../../../utils/roleTriggers.mjs';
+import { SNOWFLAKE, canEditRoleTriggers, cleanRule, validateRule, MAX_RULES, MIN_LIMIT, MAX_LIMIT, BREAKER_PAUSE_MINUTES, defaultLimit, parseLimit } from '../../../../utils/roleTriggers.mjs';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -61,7 +61,18 @@ const readRules = async () => {
   return { state: tableMissing(res, body) ? ('unavailable' as const) : ('error' as const), rows: [] as any[] };
 };
 
+// The safety stop: a row of `role_trigger_settings`, or nothing (then the default for the size of the server applies).
+const readLimit = async () => {
+  const res = await fetch(`${apiUrl}/rest/v1/role_trigger_settings?guild_id=eq.${id}&select=max_actions`, { headers: apiHeaders }).catch(() => null);
+  const body: any = res ? await res.json().catch(() => null) : null;
+  if (res?.ok && Array.isArray(body)) {
+    const value = Number(body[0]?.max_actions);
+    return { available: true, chosen: parseLimit(String(value)) };
+  }
+  return { available: false, chosen: null as number | null };
+};
 let loaded = await readRules();
+let limitState = await readLimit();
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
@@ -92,6 +103,18 @@ if (Astro.request.method === 'POST') {
       if (res?.ok) message = { kind: 'ok', text: dt('Saved.') };
       else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
     }
+  } else if (action === 'set_limit' || action === 'reset_limit') {
+    const value = action === 'set_limit' ? parseLimit(form.get('limit')) : null;
+    if (action === 'set_limit' && value === null) message = { kind: 'err', text: dt('The limit must be a whole number from {min} to {max}.', { min: MIN_LIMIT, max: MAX_LIMIT }) };
+    else if (!limitState.available) message = { kind: 'err', text: dt('Role triggers are not available yet. Petto is being updated: try again in a few minutes.') };
+    else {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const res = action === 'set_limit'
+        ? await fetch(`${apiUrl}/rest/v1/role_trigger_settings?on_conflict=guild_id`, { method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, max_actions: value, updated_at: new Date().toISOString() }) }).catch(() => null)
+        : await fetch(`${apiUrl}/rest/v1/role_trigger_settings?guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+      if (res?.ok) { message = { kind: 'ok', text: action === 'set_limit' ? dt('Saved.') : dt('Back to the default.') }; limitState = await readLimit(); }
+      else message = { kind: 'err', text: dt('Something went wrong, try again.') };
+    }
   } else if (action === 'remove') {
     const roleId = String(form.get('role_id') ?? '');
     if (!SNOWFLAKE.test(roleId)) message = { kind: 'err', text: dt('Something went wrong, try again.') };
@@ -104,6 +127,7 @@ if (Astro.request.method === 'POST') {
 }
 if (missingAfterWrite) loaded = { state: 'unavailable', rows: [] };
 
+const memberCount = Number((await getGuildDetails(id, botToken).catch(() => null))?.approximate_member_count) || 0;
 const rules = loaded.rows.map(cleanRule).map((rule) => {
   const role = roleById.get(rule.roleId);
   return { ...rule, roleName: role ? String(role.name) : null, roleColor: role && Number(role.color) > 0 ? Number(role.color) : 0 };
@@ -116,4 +140,5 @@ const roles = allRoles
   .map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color) > 0 ? Number(role.color) : 0, hasRule: used.has(String(role.id)) }));
 ---
 <DashRoleTriggers user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
-  rules={rules} roles={roles} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES} />
+  rules={rules} roles={roles} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES}
+  limit={{ chosen: limitState.chosen, fallback: defaultLimit(memberCount), available: limitState.available, min: MIN_LIMIT, max: MAX_LIMIT, minutes: BREAKER_PAUSE_MINUTES }} />

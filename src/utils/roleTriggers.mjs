@@ -124,3 +124,26 @@ export function canEditRoleTriggers(guild) {
   if (guild.owner) return true;
   try { return (BigInt(guild.permissions ?? '0') & 0x8n) === 0x8n; } catch { return false; }
 }
+
+
+// ---- The safety stop (the circuit breaker): how many actions a minute before the rules of the server pause. The same numbers as the bot (utils/roleTriggers.js).
+export const MIN_LIMIT = 1;
+export const MAX_LIMIT = 500;
+export const BREAKER_PAUSE_MINUTES = 10;
+
+/** What a server gets when it did not choose: it grows with the size of the server. */
+export function defaultLimit(memberCount) {
+  const count = Number(memberCount) || 0;
+  if (count >= 25_000) return 40;
+  if (count >= 5_000) return 20;
+  if (count >= 1_000) return 10;
+  return 5;
+}
+
+/** The number a person typed, or null when it is not a whole number from MIN_LIMIT to MAX_LIMIT. */
+export function parseLimit(input) {
+  const text = String(input ?? '').trim();
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const value = Number(text);
+  return value >= MIN_LIMIT && value <= MAX_LIMIT ? value : null;
+}
