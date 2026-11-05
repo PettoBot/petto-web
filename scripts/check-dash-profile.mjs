@@ -4,8 +4,9 @@
 import { readFileSync } from 'node:fs';
 import { loginInfo } from '../src/utils/dashLogin.mjs';
 import {
-  accentHex, cleanAccentColor, cleanBannerHash, guildBannerUrl, guildHeaderArt, profileFromUser, profileOverview, snowflakeDate, userBannerUrls, userHeaderArt,
+  accentHex, accountAge, cleanAccentColor, cleanBannerHash, guildBannerUrl, guildHeaderArt, profileFromUser, profileOverview, snowflakeDate, userBannerUrls, userHeaderArt,
 } from '../src/utils/dashProfile.mjs';
+import { MAX_ALLOWED_DOMAINS, normalizeDomain, parseDomainList } from '../src/utils/linkDomains.mjs';
 import { OWNER_PAGE, OWNER_PAGE_MAX, SWITCHER_LIMIT, botInviteUrl, pageOwnerServers, splitServers } from '../src/utils/dashSwitcher.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -113,6 +114,7 @@ same('overview name and handle', [full.name, full.handle], ['liam', 'ft8d']);
 same('overview servers', [full.servers.managed, full.servers.withPetto, full.servers.toInvite, full.servers.top.length], [15, 12, 3, 2]);
 same('overview premium', full.premium, { status: 'active', slotsUsed: 2, slotsTotal: 3, endsAt: '2027-01-02T00:00:00.000Z' });
 same('overview settings', full.settings, { prefix: '?', reputation: { points: 42, servers: 2 } });
+same('overview invite list and premium count', [full.servers.invite.map((g) => g.name), full.servers.premium], [['Gamma (no bot)'], 1]);
 same('overview created', full.created, '2017-03-20T22:02:59.853Z');
 const bare = profileOverview({ session: { userId: 'x', username: ' ', handle: 'bad handle' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } } });
 same('overview of an empty account', [bare.name, bare.handle, bare.created, bare.premium, bare.settings], ['', null, null, { status: 'free', slotsUsed: 0, slotsTotal: 0, endsAt: null }, { prefix: null, reputation: null }]);
@@ -120,6 +122,14 @@ same('overview hides the handle when it is the name', profileOverview({ session:
 same('overview ends date only while active', profileOverview({ session: { userId: USER, username: 'a' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } }, premium: { status: 'expired', periodEnd: '2020-01-01T00:00:00Z' } }).premium.endsAt, null);
 same('overview unknown premium status is free', profileOverview({ session: { userId: USER, username: 'a' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } }, premium: { status: 'hacked' } }).premium.status, 'free');
 same('overview reputation of zero is hidden', profileOverview({ session: { userId: USER, username: 'a' }, servers: { mine: [], invite: [], total: { mine: 0, invite: 0 } }, reputation: { points: 0, servers: 0 } }).settings.reputation, null);
+
+// --- the account age: whole years, or months under a year ---
+const AT = Date.parse('2026-11-04T19:30:00Z');
+same('age in years', accountAge('2017-03-20T22:02:59.853Z', AT), { unit: 'year', n: 9 });
+same('age just under a year', accountAge('2025-11-05T00:00:00Z', AT), { unit: 'month', n: 11 });
+same('age of exactly a year', accountAge('2025-11-04T00:00:00Z', AT), { unit: 'year', n: 1 });
+same('age of a new account', accountAge('2026-11-01T00:00:00Z', AT), { unit: 'month', n: 1 });
+same('age: junk and the future', [accountAge(null, AT), accountAge('x', AT), accountAge('2030-01-01T00:00:00Z', AT)], [null, null, null]);
 
 // --- the session keeps only the new optional fields, with their types, and nothing else of the account ---
 const session = read('src/utils/session.ts');
@@ -151,6 +161,40 @@ check('the profile page adds no Discord call of its own', !/discord\.com/.test(m
 check('the account header uses the decoration and the animated banner only without reduced motion', /prefers-reduced-motion: reduce/.test(head));
 check('the profile and its prefixed addresses are routed by the existing middleware', /\(es\|pt-br\)\(\\\/dash/.test(read('src/middleware.ts')));
 check('the callback accepts /dash/me as a place to come back to', /dash\(\?:\\\/\|\$\)/.test(read('src/pages/dash/callback.ts')));
+// The account pages share one layout (menu, header, drawer) and the plain login lands on the profile.
+const account = { 'src/components/DashManage.astro': 'servers', 'src/components/DashHistory.astro': 'history', 'src/components/DashPremium.astro': 'premium', 'src/components/DashMe.astro': 'overview' };
+for (const [file, id] of Object.entries(account)) {
+  const source = read(file);
+  check(`${file} sits in the account layout`, new RegExp(`<DashMeLayout user=\\{user\\} active="${id}"`).test(source) && !/layouts\/Base\.astro/.test(source));
+  check(`${id} is in the account menu`, new RegExp(`id: '${id}', href: '/dash/`).test(meLayout));
+}
+// The private staff pages live in the same layout, with a Staff group that only the people who may open them see.
+const staffPages = {
+  'src/components/DashAdminServers.astro': 'staff-servers', 'src/components/DashPremiumAdmin.astro': 'staff-premium', 'src/components/DashTeamAdmin.astro': 'staff-team',
+  'src/components/DashPartnersAdmin.astro': 'staff-partners', 'src/components/DashCreditsAdmin.astro': 'staff-credits', 'src/components/DashAppealNames.astro': 'staff-appeals',
+  'src/components/DashImportPick.astro': 'servers',
+};
+for (const [file, id] of Object.entries(staffPages)) {
+  const source = read(file);
+  check(`${file} sits in the account layout`, new RegExp(`<DashMeLayout user=\\{user\\} active="${id}"`).test(source) && !/layouts\/Base\.astro/.test(source));
+  if (id.startsWith('staff-')) check(`${id} is in the Staff group`, new RegExp(`id: '${id}', href: '/dash/`).test(meLayout));
+}
+check('the Staff group is built only from the access of the person', /const access = await staffAccess\(Astro, user\.userId\)/.test(meLayout) && /if \(staffItems\.length\) sections\.push/.test(meLayout));
+check('the owner pages are in the menu for the owner only', ['staff-servers', 'staff-premium', 'staff-team'].every((id) => new RegExp(`access\\.owner && \\{ id: '${id}'`).test(meLayout)));
+check('partners, credits and appeal names are in the menu for the team only', ['staff-partners', 'staff-credits', 'staff-appeals'].every((id) => new RegExp(`access\\.team && \\{ id: '${id}'`).test(meLayout)));
+const staffAccessSource = read('src/utils/staffAccess.ts');
+check('the menu access reuses the checks of the pages', /isPettoOwner\(astro, userId\)/.test(staffAccessSource) && /canEditPartners\(astro, userId\)/.test(staffAccessSource));
+// The page checks did not move: each one still refuses before it reads or writes anything.
+const refuse = (file, check_, where) => check(`${file} refuses the people who may not open it`, new RegExp(`if \\(!${check_}\\) return Astro\\.redirect\\('/dash/manage\\?error=forbidden'\\)`).test(read(file)), where);
+for (const file of ['src/pages/dash/admin.astro', 'src/pages/dash/admin/servers.astro', 'src/pages/dash/team.astro']) refuse(file, 'isPettoOwner\\(Astro, session\\.userId\\)');
+for (const file of ['src/pages/dash/partners-admin.astro', 'src/pages/dash/appeal-names.astro']) refuse(file, '\\(await canEditPartners\\(Astro, session\\.userId\\)\\)');
+refuse('src/pages/dash/credits-admin.astro', '\\(await canEditCredits\\(Astro, session\\.userId\\)\\)');
+for (const file of ['src/pages/dash/admin.astro', 'src/pages/dash/admin/servers.astro', 'src/pages/dash/team.astro', 'src/pages/dash/partners-admin.astro', 'src/pages/dash/credits-admin.astro', 'src/pages/dash/appeal-names.astro']) {
+  const page = read(file);
+  check(`${file} checks the person before any POST is read`, page.indexOf('error=forbidden') > -1 && page.indexOf('error=forbidden') < page.indexOf("Astro.request.method"));
+}
+check('the login lands on the profile', /afterLogin : LANDING_PATH/.test(read('src/pages/dash/callback.ts')) && /LANDING_PATH = '\/dash\/me'/.test(read('src/utils/dashLogin.mjs')));
+check('the skeleton of the kit goes inside the account panel', /getElementById\('dme-content'\)/.test(read('src/components/DashPanelKit.astro')));
 
 
 // --- the owner's part of the sheet: a page of the bot's servers, filtered, never drawn or fetched for anyone else ---
@@ -185,7 +229,11 @@ check('the redirect to /dash carries ?notice=relogin', /notice=relogin/.test(rea
 same('login info codes', [loginInfo('relogin'), loginInfo('x'), loginInfo(null), loginInfo(['relogin'])], ['relogin', null, null, null]);
 check('the login card shows the info banner with a close button', /data-dl-info/.test(read('src/components/DashLogin.astro')) && /data-dl-info-close/.test(read('src/components/DashLogin.astro')) && /loginInfo\(noticeParam\)/.test(read('src/pages/dash/index.astro')));
 try {
-  const { SESSION_VERSION, decodeAnySession, decodeSession, encodeSession } = await import('../src/utils/session.ts');
+  // session.ts has no imports, so it is turned into plain JavaScript with the TypeScript package of the repo and loaded from memory: this works on
+  // any Node (CI runs Node 20, which cannot import a .ts file) and needs no flag.
+  const ts = (await import('typescript')).default;
+  const compiled = ts.transpileModule(read('src/utils/session.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const { SESSION_VERSION, decodeAnySession, decodeSession, encodeSession } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
   const base = { userId: USER, username: 'liam', avatar: null, accessToken: 'a', refreshToken: 'r', expiresAt: Date.now() + 1e6 };
   const fresh = await encodeSession(base, 'secret');
   same('a new session carries the version and is accepted', [(await decodeSession(fresh, 'secret'))?.v], [SESSION_VERSION]);
@@ -201,7 +249,7 @@ try {
   same('a lower version is rejected', await decodeSession(await forge({ v: SESSION_VERSION - 1 }), 'secret'), null);
   same('a higher version is accepted', (await decodeSession(await forge({ v: SESSION_VERSION + 1 }), 'secret'))?.userId, USER);
 } catch (error) {
-  check('the session version runs (needs node with TypeScript support)', false, String(error?.message ?? error));
+  check('the session version runs', false, String(error?.message ?? error));
 }
 
 // --- the texts: every key the new parts use is in the Spanish and Portuguese catalogs, with the same placeholders ---
@@ -213,7 +261,14 @@ const catalog = (name) => {
 const es = catalog('dash-es.ts');
 const pt = catalog('dash-pt.ts');
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
-const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro'];
+// The swipe moves the sheet through --ds-dy only: an inline transform would replace translate(-50%, ...) and push the sheet to the right.
+check('the sheet swipe never sets an inline transform', !/sheet\.style\.transform/.test(sheetSrc) && /setProperty\('--ds-dy'/.test(sheetSrc));
+check('every sheet transform keeps the horizontal centering', (sheetSrc.match(/transform: translate\(-50%, [^;]*var\(--ds-dy/g) || []).length === 3);
+
+// Moving to another page replaces #dgl-content, so the menu height cap must follow the new node (an observer on the old one reported 0).
+check('the menu height follows the page node after a swap', /MutationObserver\(tell\)\.observe\(layout, \{ childList: true \}\)/.test(guildLayout) && /panel !== watched/.test(guildLayout));
+
+const files = ['src/components/DashSideHead.astro', 'src/components/DashServerSheet.astro', 'src/components/DashMeLayout.astro', 'src/components/DashMe.astro', 'src/components/DashLogin.astro', 'src/components/DashAutomodTemplates.astro'];
 for (const file of files) {
   for (const m of read(file).matchAll(/\bdt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g)) {
     const key = (m[1] ?? m[2]).replace(/\\'/g, "'");
@@ -225,6 +280,31 @@ for (const file of files) {
 }
 for (const [key] of [...es].filter(([key]) => !pt.has(key))) check(`"${key}" is in the Portuguese catalog too`, false);
 for (const [key] of [...pt].filter(([key]) => !es.has(key))) check(`"${key}" is in the Spanish catalog too`, false);
+
+// --- the allowed domains of the All links filter (the same rules as the bot's src/utils/linkDomains.js) ---
+same('domain lowercase', normalizeDomain('Example.COM'), 'example.com');
+same('domain from a link', normalizeDomain('https://www.Example.com/path?q=1#x'), 'example.com');
+same('domain port', normalizeDomain('example.com:8080'), 'example.com');
+same('domain final dot', normalizeDomain('example.com.'), 'example.com');
+same('domain wildcard', normalizeDomain('*.example.com'), 'example.com');
+same('domain subdomain kept', normalizeDomain('sub.example.co.uk'), 'sub.example.co.uk');
+same('domain idn', normalizeDomain('münchen.de'), 'xn--mnchen-3ya.de');
+same('domain punycode', normalizeDomain('xn--mnchen-3ya.de'), 'xn--mnchen-3ya.de');
+for (const bad of ['', '   ', 'localhost', '1.2.3.4', '[::1]', 'a..b.com', '-x.com', 'x-.com', 'foo.c', 'bad domain.com', 'user@example.com', 'http://user@example.com', 'exa_mple.com', 'exam%70le.com', 'example.com\\evil.com', `${'x'.repeat(64)}.com`, '<script>.com', null, undefined, 7, {}]) {
+  same(`domain rejects ${JSON.stringify(bad)}`, normalizeDomain(bad), null);
+}
+same('domain list from text', parseDomainList('example.com, HTTPS://Example.com/x\nnope;foo.org\n\n'), { domains: ['example.com', 'foo.org'], invalid: ['nope'], overflow: 0 });
+same('domain list from an array', parseDomainList(['a.com', 'b.com', 7]).invalid, ['7']);
+same('domain list not a text', parseDomainList(null), { domains: [], invalid: [], overflow: 0 });
+const manyDomains = parseDomainList(Array.from({ length: 60 }, (_, i) => `site${i}.com`));
+same('domain list limit', [manyDomains.domains.length, manyDomains.overflow, MAX_ALLOWED_DOMAINS], [50, 10, 50]);
+same('domain list reports at most 5 invalid', parseDomainList('a b c d e f g h'.split(' ').map((x) => `x${x}`)).invalid.length, 5);
+const domainsApi = read('src/pages/dash/guild/[id]/automod-api.ts');
+check('domains are saved through the validation', /op === 'link_domains_save'[\s\S]*parseDomainList\(body\.domains\)[\s\S]*allowed_link_domains: domains/.test(domainsApi));
+check('a missing column is answered as unsupported, not as a failure', /unsupported = \/allowed_link_domains\|PGRST204\|42703\//.test(domainsApi) && /unsupported \? 409 : 500/.test(domainsApi));
+const domainsPage = read('src/pages/dash/guild/[id]/automod.astro');
+check('the page reads the column on its own and turns the control off when it fails', /select=allowed_link_domains/.test(domainsPage) && /linkDomainsSupported = Boolean\(domainsRes\?\.ok\)/.test(domainsPage));
+check('the control is disabled when unsupported', /disabled=\{!linkDomainsSupported\}/.test(read('src/components/DashAutomodTemplates.astro')));
 
 if (failed) { console.log(`${failed} checks failed`); process.exit(1); }
 console.log('Checked the menu header, the server sheet and the profile dash.');

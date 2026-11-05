@@ -39,14 +39,14 @@ export default defineConfig({
     icon({
       include: {
         ph: [
-          'vinyl-record-fill', 'dog-fill', 'bird-fill', 'feather-fill', 'rabbit-fill', 'leaf-fill', 'shuffle-fill', 'fire-fill', 'music-notes-fill', 'apple-logo-fill', 'twitch-logo-fill', 'youtube-logo-fill', 'github-logo-fill', 'steam-logo-fill', 'game-controller-fill', 'crown-simple-fill', 'television-fill', 'film-strip-fill', 'circle-half-fill', 'book-open-text-fill', 'package-fill', 'currency-btc-fill', 'currency-circle-dollar-fill', 'paw-print-fill',
+          'moon-fill', 'desktop-fill', 'cookie-fill', 'sort-ascending-fill', 'hand-heart-fill', 'arrow-up-right-bold', 'vinyl-record-fill', 'dog-fill', 'bird-fill', 'feather-fill', 'rabbit-fill', 'leaf-fill', 'shuffle-fill', 'fire-fill', 'music-notes-fill', 'apple-logo-fill', 'twitch-logo-fill', 'youtube-logo-fill', 'github-logo-fill', 'steam-logo-fill', 'game-controller-fill', 'crown-simple-fill', 'television-fill', 'film-strip-fill', 'circle-half-fill', 'book-open-text-fill', 'package-fill', 'currency-btc-fill', 'currency-circle-dollar-fill', 'paw-print-fill',
           'folder-simple-fill', 'broadcast-fill', 'arrows-clockwise-bold', 'plug-fill', 'hourglass-medium-fill', 'pause-fill', 'check-circle-fill', 'x-circle-fill', 'funnel-simple-bold', 'users-three-fill',
           'puzzle-piece-fill', 'translate-fill', 'paperclip-bold', 'file-text-bold', 'magnifying-glass-bold', 'microphone-fill', 'handshake-fill', 'pencil-simple-fill', 'plus-circle-fill', 'trash', 'calendar-check-fill', 'gavel-fill', 'robot-fill',
           'bug-fill', 'user-circle-dashed-fill', 'chat-circle-fill', 'user-circle-fill', 'browser-fill', 'scales-fill', 'list-checks-fill', 'tray-fill', 'pencil-simple-bold', 'cursor-click-fill', 'gear-six-fill', 'paint-brush-broad-fill', 'chat-teardrop-text-fill', 'copy-simple-bold', 'link-simple-bold', 'trash-bold', 'circle', 'plus-bold', 'arrow-square-out-bold', 'check-circle-fill',
           'arrow-right-bold', 'lock-fill', 'lightning-fill', 'sword-fill', 'hammer-fill', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
           'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
           'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'dots-six-vertical-bold', 'text-align-left-bold', 'caret-up-bold', 'caret-down-bold', 'clock-countdown-fill', 'link-simple-bold', 'bell-fill',
-          'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-left-bold',
+          'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-right', 'caret-left-bold',
           'caret-right-bold', 'caret-up-down', 'chart-bar', 'chart-bar-fill', 'chart-line-fill',
           'chart-line-up', 'chart-line-up-fill', 'chat-circle-dots-fill', 'chat-circle-text-fill',
           'chats-circle-fill', 'chats-fill', 'chat-text-fill', 'check-bold', 'arrow-clockwise-bold', 'smiley-wink-fill', 'check-circle-fill',

@@ -1,42 +1,94 @@
 ---
 // The overview of the profile dash (/dash/me): what Petto and Discord really know about the account. Nothing is invented: a figure that
-// is not there is not drawn, and a card with nothing to say shows a short empty state.
+// is not there is not drawn, and a card with nothing to say is left out. Every part comes from data the dashboard already reads: the session,
+// the server lists the picker caches, the Premium snapshot, the personal rows (prefix, reputation), the saved names and the latest changelog entry.
 import { Icon } from 'astro-icon/components';
 import InlineIcon from './InlineIcon.astro';
 import DashMeLayout from './DashMeLayout.astro';
+import { guildLetter, guildLetterStyle } from '../utils/guildLetter.mjs';
 import { dashLocale, getDashLang, makeT } from '../i18n/dash';
-import { guildIconUrl } from '../utils/discord';
+import { localePath } from '../i18n/ui';
+import { changelogEntries } from '../utils/changelogFeed';
+import { accountAge, userHeaderArt } from '../utils/dashProfile.mjs';
+import { userCardData } from '../utils/discordCosmetics.mjs';
 import type { Session } from '../utils/session';
 import type { profileOverview } from '../utils/dashProfile.mjs';
 
-interface Props { user: Session; overview: ReturnType<typeof profileOverview>; unavailable?: boolean }
-const { user, overview, unavailable = false } = Astro.props;
+interface Props { user: Session; overview: ReturnType<typeof profileOverview>; names?: Array<{ value: string; seen_at: string }>; unavailable?: boolean }
+const { user, overview, names = [], unavailable = false } = Astro.props;
 const lang = getDashLang(Astro);
 const dt = makeT(lang);
 const locale = dashLocale(lang);
 const date = (iso: string | null) => (iso ? new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(iso)) : null);
+const shortDate = (iso: string) => new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso));
 const statusLabel: Record<string, string> = { active: dt('Active'), pending: dt('Pending'), past_due: dt('Past due'), canceled: dt('Canceled'), expired: dt('Expired'), free: dt('Free') };
 const { servers, premium, settings } = overview;
+const card = userCardData(user);
+const art = userHeaderArt(user);
+const avatar = card.avatar ? card.avatar.replace(/size=64$/, 'size=256') : null;
+const age = accountAge(overview.created, Date.now());
+const ageText = !age ? null : age.unit === 'year'
+  ? (age.n === 1 ? dt('1 year on Discord') : dt('{a} years on Discord', { a: age.n }))
+  : (age.n === 1 ? dt('1 month on Discord') : dt('{a} months on Discord', { a: age.n }));
+const langName: Record<string, string> = { en: 'English', es: 'Español', 'pt-BR': 'Português (Brasil)' };
 const premiumNote = premium.status === 'active'
   ? [premium.slotsTotal ? dt('{a} of {b} slots used', { a: premium.slotsUsed, b: premium.slotsTotal }) : null, premium.endsAt ? dt('Active until {d}', { d: date(premium.endsAt) }) : null].filter(Boolean).join(' · ')
   : '';
+const slotsPercent = premium.slotsTotal ? Math.min(100, Math.round((premium.slotsUsed / premium.slotsTotal) * 100)) : 0;
 const stats = [
-  { icon: 'ph:hard-drives-fill', label: dt('Servers you manage'), value: String(servers.managed.toLocaleString(locale)) },
-  { icon: 'ph:check-circle-fill', label: dt('With Petto'), value: String(servers.withPetto.toLocaleString(locale)) },
-  { icon: 'ph:crown-fill', label: 'Premium', value: statusLabel[premium.status] ?? premium.status, note: premiumNote },
-  { icon: 'ph:calendar-check-fill', label: dt('On Discord since'), value: date(overview.created) ?? '—' },
+  { icon: 'ph:hard-drives-fill', label: dt('Servers you manage'), value: servers.managed.toLocaleString(locale) },
+  { icon: 'ph:check-circle-fill', label: dt('With Petto'), value: servers.withPetto.toLocaleString(locale) },
+  { icon: 'ph:crown-fill', label: dt('With Premium'), value: servers.premium.toLocaleString(locale), note: premium.status === 'active' ? dt('Premium: {a}', { a: statusLabel.active }) : '' },
+  ...(settings.reputation ? [{ icon: 'ph:heart-fill', label: dt('Reputation'), value: settings.reputation.points.toLocaleString(locale), note: settings.reputation.servers === 1 ? dt('In 1 server') : dt('In {a} servers', { a: settings.reputation.servers }) }] : []),
 ];
+// The latest release of the changelog the site already ships, in the language of the dashboard (plain text, no markdown).
+const latest = changelogEntries(lang)[0];
+const plain = (text: string) => text.replace(/`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}…` : text);
+const news = latest ? latest.items.slice(0, 3).map((item) => clip(plain(item), 150)) : [];
+const changelogHref = `${localePath[lang]}/changelog`;
 ---
 <DashMeLayout user={user} active="overview" pageTitle="Overview">
-  <header class="dm-head">
-    <h1>{dt('Welcome back, {a}', { a: overview.name || user.username })}</h1>
-    <p>{dt('Your Discord account, your servers and your Premium in one place.')}{overview.handle && <span class="dm-handle"> @{overview.handle}</span>}</p>
-  </header>
+  <div class="am-hero">
+    <div class:list={['am-banner', `am-banner-${art.kind}`]} style={art.kind === 'color' ? `--am-tint:${art.color}` : undefined} aria-hidden="true">
+      {art.kind === 'image' && (
+        <picture>
+          {art.animated && <source media="(prefers-reduced-motion: reduce)" srcset={art.still} />}
+          <img src={art.animated ?? art.still} alt="" width="900" height="200" decoding="async" referrerpolicy="no-referrer" />
+        </picture>
+      )}
+      {art.kind === 'art' && <img src="/assets/dash-banner-petto.webp" alt="" width="900" height="200" decoding="async" class="am-banner-petto" />}
+    </div>
+    <div class="am-hero-body">
+      <span class="am-av">
+        {avatar ? <img src={avatar} alt="" width="84" height="84" referrerpolicy="no-referrer" /> : <span class="am-av-fallback"><Icon name="ph:user-fill" width="30" height="30" /></span>}
+        {card.decoration && (
+          <picture class="am-deco">
+            <source media="(prefers-reduced-motion: reduce)" srcset={card.decoration.still} />
+            <img src={card.decoration.animated} alt="" width="96" height="96" decoding="async" />
+          </picture>
+        )}
+      </span>
+      <div class="am-who">
+        <h1>{dt('Welcome back, {a}', { a: overview.name || user.username })}</h1>
+        <p class="am-sub">
+          {overview.handle && <span class="am-handle">@{overview.handle}</span>}
+          {ageText && <span class="am-chip"><Icon name="ph:calendar-check-fill" width="13" height="13" />{ageText}</span>}
+          {overview.created && <span class="am-since">{dt('Joined Discord on {d}', { d: date(overview.created) })}</span>}
+        </p>
+      </div>
+      <div class="am-actions">
+        <a class="btn btn-primary btn-sm" href="/dash/manage" data-sk="grid"><Icon name="ph:hard-drives-fill" width="14" height="14" />{dt('Manage servers')}</a>
+        <a class="btn btn-ghost btn-sm" href="/dash/premium" data-sk="cards"><Icon name="ph:crown-fill" width="14" height="14" />Premium</a>
+        <a class="btn btn-ghost btn-sm" href="https://petto.sbs/support" target="_blank" rel="noopener"><Icon name="ph:headset-fill" width="14" height="14" />{dt('Support')}</a>
+      </div>
+    </div>
+  </div>
 
-  <div class="dm-stats">
+  <div class="am-stats" style={`--am-cols:${stats.length}`}>
     {stats.map((stat) => (
-      <div class="dm-stat">
-        <Icon name={stat.icon} width="44" height="44" class="dm-stat-icon" />
+      <div class="am-stat">
+        <Icon name={stat.icon} width="44" height="44" class="am-stat-icon" />
         <strong>{stat.value}</strong>
         <span>{stat.label}</span>
         {stat.note && <small>{stat.note}</small>}
@@ -44,89 +96,143 @@ const stats = [
     ))}
   </div>
 
-  <div class="dm-grid">
-    <section class="dm-card dm-card-wide">
-      <div class="dm-card-head"><h2>{dt('Your servers')}</h2><a href="/dash/manage">{dt('See all')}</a></div>
+  <div class="ac-grid am-grid">
+    <section class="ac-card ac-wide">
+      <div class="ac-card-head"><h2><Icon name="ph:hard-drives-fill" width="16" height="16" />{dt('Your servers')}</h2><a href="/dash/manage" data-sk="grid">{dt('See all')}</a></div>
       {servers.top.length > 0 ? (
-        <ul class="dm-servers">
+        <ul class="am-servers">
           {servers.top.map((g: any) => (
             <li>
               <a href={`/dash/guild/${g.id}/overview`}>
-                {g.icon ? <img src={g.icon} alt="" width="36" height="36" loading="lazy" referrerpolicy="no-referrer" /> : <span class="dm-sv-fallback"><Icon name="ph:buildings-fill" width="16" height="16" /></span>}
-                <span class="dm-sv-name">{g.name}</span>
-                {g.premium && <span class="dm-sv-premium"><InlineIcon name="ph:crown-fill" width="11" height="11" />Premium</span>}
-                <Icon name="ph:caret-right-bold" width="13" height="13" class="dm-sv-go" />
+                {g.icon ? <img src={g.icon} alt="" width="38" height="38" loading="lazy" referrerpolicy="no-referrer" /> : <span class="am-sv-fallback" style={guildLetterStyle(g.name)}>{guildLetter(g.name)}</span>}
+                <span class="am-sv-name">{g.name}</span>
+                {g.premium && <span class="am-sv-premium"><InlineIcon name="ph:crown-fill" width="11" height="11" />Premium</span>}
+                <span class="am-sv-go">{dt('Manage')}<Icon name="ph:caret-right-bold" width="12" height="12" /></span>
               </a>
             </li>
           ))}
         </ul>
       ) : (
-        <p class="dm-empty">{unavailable ? dt('Discord did not answer in time. Reload in a few seconds to load your servers.') : dt('Petto is not in any of your servers yet.')}</p>
+        <p class="ac-muted">{unavailable ? dt('Discord did not answer in time. Reload in a few seconds to load your servers.') : dt('Petto is not in any of your servers yet.')}</p>
       )}
     </section>
 
-    <section class="dm-card">
-      <div class="dm-card-head"><h2>Premium</h2></div>
-      <p class="dm-premium-state"><span class:list={['dm-pill', `is-${premium.status}`]}>{statusLabel[premium.status] ?? premium.status}</span></p>
-      {premiumNote ? <p class="dm-muted">{premiumNote}</p> : <p class="dm-muted">{dt('Unlock the paid modules and the custom look for your servers.')}</p>}
-      <a class="btn btn-ghost btn-sm dm-btn" href="/dash/premium"><Icon name="ph:crown-fill" width="13" height="13" /> {dt('Manage Premium')}</a>
+    {servers.invite.length > 0 && (
+      <section class="ac-card ac-wide am-invite">
+        <div class="ac-card-head"><h2><Icon name="ph:plus-circle-fill" width="16" height="16" />{dt('Bring Petto to your other servers')}</h2>{servers.toInvite > servers.invite.length && <a href="/dash/manage" data-sk="grid">{dt('And {a} more', { a: servers.toInvite - servers.invite.length })}</a>}</div>
+        <ul class="am-invites">
+          {servers.invite.map((g: any) => (
+            <li>
+              {g.icon ? <img src={g.icon} alt="" width="34" height="34" loading="lazy" referrerpolicy="no-referrer" /> : <span class="am-sv-fallback" style={guildLetterStyle(g.name)}>{guildLetter(g.name)}</span>}
+              <span class="am-sv-name">{g.name}</span>
+              <a class="btn btn-ghost btn-sm" href={g.href} target="_blank" rel="noopener noreferrer"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Invite')}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <section class="ac-card">
+      <div class="ac-card-head"><h2><Icon name="ph:crown-fill" width="16" height="16" />Premium</h2><span class:list={['ac-pill', `is-${premium.status}`]}>{statusLabel[premium.status] ?? premium.status}</span></div>
+      <p class="ac-muted">{premiumNote || dt('Unlock the paid modules and the custom look for your servers.')}</p>
+      {premium.slotsTotal > 0 && <div class="am-meter" role="img" aria-label={dt('{a} of {b} slots used', { a: premium.slotsUsed, b: premium.slotsTotal })}><span style={`width:${slotsPercent}%`}></span></div>}
+      <div class="ac-btns"><a class="btn btn-ghost btn-sm" href="/dash/premium" data-sk="cards"><Icon name="ph:crown-fill" width="13" height="13" />{dt('Manage Premium')}</a></div>
     </section>
 
-    <section class="dm-card">
-      <div class="dm-card-head"><h2>{dt('Your settings')}</h2></div>
-      {settings.prefix || settings.reputation ? (
-        <dl class="dm-rows">
-          {settings.prefix && <div><dt>{dt('Personal prefix')}</dt><dd><code>{settings.prefix}</code></dd></div>}
-          {settings.reputation && <div><dt>{dt('Reputation')}</dt><dd>{settings.reputation.points.toLocaleString(locale)}<small>{settings.reputation.servers === 1 ? dt('In 1 server') : dt('In {a} servers', { a: settings.reputation.servers })}</small></dd></div>}
-        </dl>
-      ) : (
-        <p class="dm-empty">{dt('Nothing set yet. Your own prefix and your reputation show up here.')}</p>
-      )}
+    <section class="ac-card">
+      <div class="ac-card-head"><h2><Icon name="ph:sliders-horizontal-fill" width="16" height="16" />{dt('Your settings')}</h2><a href="/dash/preferences" data-sk="form">{dt('Preferences')}</a></div>
+      <dl class="ac-rows">
+        <div><dt>{dt('Dashboard language')}</dt><dd>{langName[lang] ?? lang}</dd></div>
+        <div><dt>{dt('Personal prefix')}</dt><dd>{settings.prefix ? <code class="ac-code">{settings.prefix}</code> : <span class="am-dim">{dt('Not set')}</span>}</dd></div>
+        {settings.reputation && <div><dt>{dt('Reputation')}</dt><dd>{settings.reputation.points.toLocaleString(locale)}<small>{settings.reputation.servers === 1 ? dt('In 1 server') : dt('In {a} servers', { a: settings.reputation.servers })}</small></dd></div>}
+      </dl>
     </section>
+
+    {names.length > 0 && (
+      <section class="ac-card">
+        <div class="ac-card-head"><h2><Icon name="ph:clock-counter-clockwise" width="16" height="16" />{dt('Recent names')}</h2><a href="/dash/history" data-sk="list">{dt('Open history')}</a></div>
+        <ul class="am-names">
+          {names.map((n) => <li><span class="am-name">{n.value}</span><time datetime={n.seen_at}>{shortDate(n.seen_at)}</time></li>)}
+        </ul>
+      </section>
+    )}
+
+    {news.length > 0 && latest && (
+      <section class:list={['ac-card', { 'ac-wide': names.length === 0 }]}>
+        <div class="ac-card-head"><h2><Icon name="ph:sparkle-fill" width="16" height="16" />{dt('What is new in Petto')}</h2><a href={changelogHref}>{dt('Changelog')}</a></div>
+        <p class="am-ver"><b>v{latest.display ?? latest.version}</b>{latest.name && <span> · {latest.name}</span>}<span class="am-dim"> · {latest.date}</span></p>
+        <ul class="ac-list">
+          {news.map((item) => <li><Icon name="ph:check-bold" width="13" height="13" /><span>{item}</span></li>)}
+        </ul>
+      </section>
+    )}
   </div>
 </DashMeLayout>
 
 <style>
-  .dm-head h1 { margin: 0; font-family: var(--serif); font-size: clamp(26px, 4.4vw, 38px); line-height: 1.08; overflow-wrap: anywhere; }
-  .dm-head p { margin: 8px 0 0; color: var(--text-muted); font-size: 15px; }
-  .dm-handle { color: var(--text-dim); font-family: var(--mono); font-size: 13px; white-space: nowrap; }
-  .dm-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
-  .dm-stat { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 16px 16px 15px; border: 1px solid var(--border-soft); border-radius: 16px; background: color-mix(in srgb, var(--text) 3%, transparent); min-width: 0; }
-  .dm-stat strong { font-family: var(--serif); font-size: 26px; line-height: 1.1; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-  .dm-stat:nth-child(4) strong { font-size: 18px; line-height: 1.35; }
-  .dm-stat span { color: var(--text-muted); font-size: 13px; }
-  .dm-stat small { color: var(--text-dim); font-size: 12px; line-height: 1.35; }
-  .dm-stat :global(.dm-stat-icon) { position: absolute; right: -6px; bottom: -8px; color: var(--accent); opacity: .12; transform: rotate(-12deg); }
-  .dm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
-  .dm-card { min-width: 0; padding: 16px 18px 18px; border: 1px solid var(--border-soft); border-radius: 16px; background: color-mix(in srgb, var(--text) 2%, transparent); }
-  .dm-card-wide { grid-column: 1 / -1; }
-  .dm-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  .dm-card-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
-  .dm-card-head a { font-size: 12.5px; color: var(--accent); text-decoration: none; }
-  .dm-card-head a:hover { text-decoration: underline; }
-  .dm-servers { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; }
-  .dm-servers a { display: flex; align-items: center; gap: 11px; padding: 7px 9px; border-radius: 12px; color: var(--text); text-decoration: none; transition: background-color var(--m-fast) ease; }
-  .dm-servers a:hover { background: var(--card-hover); }
-  .dm-servers img, .dm-sv-fallback { flex: none; width: 36px; height: 36px; border-radius: 11px; object-fit: cover; background: var(--bg-raise); }
-  .dm-sv-fallback { display: grid; place-items: center; color: var(--text-dim); }
-  .dm-sv-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dm-sv-premium { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 42%, var(--border)); border-radius: 999px; font-family: var(--mono); font-size: 9px; font-weight: 700; line-height: 1; padding: 4px 6px; }
-  .dm-servers :global(.dm-sv-go) { flex: none; color: var(--text-dim); }
-  .dm-empty { margin: 2px 0 0; color: var(--text-muted); font-size: 13.5px; }
-  .dm-muted { margin: 8px 0 14px; color: var(--text-muted); font-size: 13.5px; line-height: 1.45; }
-  .dm-premium-state { margin: 0; }
-  .dm-pill { display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; color: var(--text-muted); background: color-mix(in srgb, var(--text) 6%, transparent); border: 1px solid var(--border-soft); }
-  .dm-pill.is-active { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: color-mix(in srgb, var(--yellow) 42%, var(--border)); }
-  .dm-pill.is-past_due, .dm-pill.is-expired { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
-  .dm-btn { display: inline-flex; align-items: center; gap: 6px; }
-  .dm-rows { margin: 0; display: grid; gap: 10px; }
-  .dm-rows div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--border-soft); }
-  .dm-rows div:last-child { border-bottom: 0; padding-bottom: 0; }
-  .dm-rows dt { color: var(--text-muted); font-size: 13.5px; }
-  .dm-rows dd { margin: 0; font-weight: 700; font-size: 15px; text-align: right; }
-  .dm-rows dd small { display: block; color: var(--text-dim); font-weight: 400; font-size: 12px; }
-  .dm-rows code { font-family: var(--mono); padding: 2px 8px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
-  @media (max-width: 1100px) { .dm-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 720px) { .dm-grid, .dm-servers { grid-template-columns: minmax(0, 1fr); } }
-  @media (max-width: 480px) { .dm-stats { gap: 8px; } .dm-stat { padding: 13px 12px 12px; } .dm-stat strong { font-size: 22px; } .dm-stat:nth-child(4) strong { font-size: 15px; } .dm-stat span { font-size: 12.5px; } .dm-stat small { font-size: 11.5px; } }
+  .am-hero { position: relative; border: 1px solid var(--border-soft); border-radius: 18px; overflow: hidden; background: color-mix(in srgb, var(--text) 2%, transparent); }
+  .am-banner { position: relative; height: 128px; overflow: hidden; isolation: isolate; background: linear-gradient(115deg, #6e4339, #403670); }
+  :global(:root[data-theme="light"]) .am-banner-art { background: linear-gradient(115deg, #ffd8c8, #e3d6fb); }
+  .am-banner-color { background: linear-gradient(115deg, var(--am-tint), color-mix(in srgb, var(--am-tint) 55%, #000)); }
+  .am-banner picture { display: contents; }
+  .am-banner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .am-banner-petto { object-position: 50% 60%; }
+  .am-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 55%, color-mix(in srgb, var(--card) 80%, transparent) 100%); }
+  .am-hero-body { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px 18px; padding: 14px 22px 20px; }
+  .am-av { position: relative; width: 84px; height: 84px; margin-top: -58px; align-self: start; }
+  .am-av > img, .am-av-fallback { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--bg-raise); box-shadow: 0 0 0 4px var(--card), 0 8px 20px -8px rgba(0, 0, 0, .55); }
+  .am-av-fallback { display: grid; place-items: center; color: var(--text-dim); }
+  .am-deco { position: absolute; left: -10%; top: -10%; width: 120%; height: 120%; pointer-events: none; }
+  .am-deco img { width: 100%; height: 100%; max-width: none; }
+  .am-who { min-width: 0; }
+  .am-who h1 { margin: 0; font-family: var(--serif); font-size: clamp(24px, 3.6vw, 32px); line-height: 1.1; overflow-wrap: anywhere; }
+  .am-sub { margin: 8px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--text-muted); font-size: 13.5px; }
+  .am-handle { font-family: var(--mono); font-size: 13px; color: var(--text-dim); }
+  .am-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft); }
+  .am-since { color: var(--text-dim); font-size: 12.5px; }
+  .am-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
+  .am-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+  .am-stats { display: grid; grid-template-columns: repeat(var(--am-cols, 4), minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .am-stat { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 16px 16px 15px; border: 1px solid var(--border-soft); border-radius: 16px; background: color-mix(in srgb, var(--text) 3%, transparent); min-width: 0; }
+  .am-stat strong { font-family: var(--serif); font-size: 28px; line-height: 1.1; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+  .am-stat span { color: var(--text-muted); font-size: 13px; }
+  .am-stat small { color: var(--text-dim); font-size: 12px; line-height: 1.35; }
+  .am-stat :global(.am-stat-icon) { position: absolute; right: -6px; bottom: -8px; color: var(--accent); opacity: .12; transform: rotate(-12deg); }
+  .am-grid { margin-top: 12px; }
+
+  .am-servers, .am-invites { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+  .am-servers a { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid transparent; border-radius: 13px; color: var(--text); text-decoration: none; transition: background-color var(--m-fast) ease, border-color var(--m-fast) ease; }
+  .am-servers a:hover { background: var(--card-hover); border-color: var(--border-soft); }
+  .am-servers img, .am-invites img, .am-sv-fallback { flex: none; width: 38px; height: 38px; border-radius: 12px; object-fit: cover; background: var(--bg-raise); }
+  .am-invites img, .am-invites .am-sv-fallback { width: 34px; height: 34px; border-radius: 11px; }
+  .am-sv-fallback { display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 16px; line-height: 1; }
+  .am-sv-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .am-sv-premium { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 42%, var(--border)); border-radius: 999px; font-family: var(--mono); font-size: 9px; font-weight: 700; line-height: 1; padding: 4px 6px; }
+  .am-sv-go { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+  .am-servers a:hover .am-sv-go { color: var(--accent); }
+  .am-invites li { display: flex; align-items: center; gap: 12px; padding: 6px 4px 6px 10px; border: 1px dashed var(--border); border-radius: 13px; }
+  .am-invites .btn { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+  .am-invite { background: color-mix(in srgb, var(--accent) 5%, transparent); border-color: color-mix(in srgb, var(--accent) 22%, var(--border-soft)); }
+  .am-meter { height: 8px; margin-top: 14px; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+  .am-meter span { display: block; height: 100%; border-radius: inherit; background: var(--yellow); }
+  .am-dim { color: var(--text-dim); font-weight: 400; }
+  .am-names { list-style: none; margin: 0; padding: 0; display: grid; }
+  .am-names li { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--border-soft); }
+  .am-names li:first-child { padding-top: 0; }
+  .am-names li:last-child { border-bottom: 0; padding-bottom: 0; }
+  .am-name { font-weight: 600; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+  .am-names time { flex: none; color: var(--text-dim); font-size: 12.5px; }
+  .am-ver { margin: 0 0 6px; font-size: 13.5px; }
+  .am-ver b { color: var(--text); }
+
+  @media (max-width: 1100px) { .am-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 720px) {
+    .am-banner { height: 104px; }
+    .am-hero-body { padding: 12px 16px 18px; gap: 14px 14px; }
+    .am-av { width: 72px; height: 72px; margin-top: -50px; }
+    .am-actions .btn { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+    .am-servers, .am-invites { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 480px) { .am-stats { gap: 8px; } .am-stat { padding: 13px 12px 12px; } .am-stat strong { font-size: 24px; } .am-stat span { font-size: 12.5px; } .am-stat small { font-size: 11.5px; } }
 </style>

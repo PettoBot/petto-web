@@ -4,6 +4,7 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import { TEMPLATES, PACKS } from '../utils/automodTemplates';
 import { getDashLang, makeT } from '../i18n/dash';
+import { MAX_ALLOWED_DOMAINS } from '../utils/linkDomains.mjs';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -15,8 +16,10 @@ interface Props {
   filters: { id: number; name: string; template: string; options: Record<string, boolean | number>; action: string; mute_minutes: number; enabled: boolean; hits: number }[];
   roles: { id: string; name: string }[];
   channels: { id: string; name: string; category: boolean }[];
+  linkDomains?: string[];
+  linkDomainsSupported?: boolean;
 }
-const { user, guildId, guildName, guildIcon, filters, roles, channels } = Astro.props;
+const { user, guildId, guildName, guildIcon, filters, roles, channels, linkDomains = [], linkDomainsSupported = true } = Astro.props;
 const textChannels = channels.filter((c) => !c.category);
 
 const info: Record<string, { name: string; text: string; sample: string }> = {
@@ -82,6 +85,18 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
       <div class="am-field am-wide"><span>{dt('Channels that are never checked')}</span><MultiSelect name="am_exempt_channels" options={channels} selected={[]} placeholder={dt('Search channels...')} /></div>
     </div>
     <p class="am-hint">{dt('Staff with Manage Messages and the immune roles are never checked by the Petto filters.')}</p>
+  </div>
+
+  <div class="am-card am-domains" data-am-domains>
+    <h2>{dt('Allowed domains')}</h2>
+    <p class="am-hint">{dt('The "All links" filter of Petto lets a message through when every link in it is on this list (or a subdomain of one). Write one domain per line, like youtube.com.')}</p>
+    <textarea id="am-allowed-domains" data-domains rows="3" maxlength="4000" aria-label={dt('Allowed domains')} placeholder={dt('youtube.com, one per line')} disabled={!linkDomainsSupported}>{linkDomains.join('\n')}</textarea>
+    <div class="am-domains-foot">
+      <button type="button" class="btn btn-accent btn-sm" data-save-domains disabled={!linkDomainsSupported}>{dt('Save domains')}</button>
+      <span class="am-hint">{dt('Up to {n} domains. Links to anything else are still caught, and Discord rules are not changed by this list.', { n: MAX_ALLOWED_DOMAINS })}</span>
+    </div>
+    <p class="am-note" data-domains-note hidden={linkDomainsSupported}><Icon name="ph:warning-fill" width="15" height="15" />{dt('This setting is not available yet: Petto has not been updated on the server for it. Try again later.')}</p>
+    <p class="am-note" data-domains-bad hidden></p>
   </div>
 
   <div class="am-slots">
@@ -232,10 +247,34 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
     };
     fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'native_list' }) })
       .then(function (r) { return r.json(); }).then(renderNative).catch(function () { renderNative(null); });
+    var saveDomains = function (btn) {
+      var box = document.querySelector('[data-am-domains]');
+      var area = box.querySelector('[data-domains]');
+      var bad = box.querySelector('[data-domains-bad]');
+      btn.disabled = true;
+      fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'link_domains_save', domains: area.value }) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          btn.disabled = false;
+          if (data && data.ok) {
+            area.value = data.domains.join('\n');
+            var parts = [];
+            if (data.invalid.length) parts.push(cdt('These were not valid domains and were skipped: {a}', { a: data.invalid.join(', ') }));
+            if (data.overflow) parts.push(cdt('Only the first {a} domains were kept.', { a: data.domains.length }));
+            bad.textContent = parts.join(' '); bad.hidden = parts.length === 0;
+            msg(cdt('Domains saved.'), true);
+          } else if (data && data.unsupported) {
+            area.disabled = true; btn.disabled = true;
+            box.querySelector('[data-domains-note]').hidden = false;
+          } else msg((data && data.message) || cdt('It could not be done.'), false);
+        })
+        .catch(function () { btn.disabled = false; msg(cdt('It could not be done.'), false); });
+    };
     document.addEventListener('click', function (event) {
       var t = event.target;
       var btn = t.closest && t.closest('button');
       if (!btn) return;
+      if (btn.hasAttribute('data-save-domains')) { saveDomains(btn); return; }
       var tile = btn.closest('.am-tile');
       var s = settings();
       var native = btn.getAttribute('data-add-native');
@@ -272,6 +311,14 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
   .am-field > span { font-size: 12.5px; font-weight: 600; }
   .am-field input[type=text], .am-field input[type=number], .am-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13.5px; width: 100%; box-sizing: border-box; }
   .am-wide { grid-column: 1 / -1; }
+  .am-domains { margin-top: 16px; }
+  .am-domains textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--mono); font-size: 13px; width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; }
+  .am-domains textarea:disabled { opacity: .55; cursor: not-allowed; }
+  .am-domains .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .am-domains-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .am-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12.5px; color: var(--yellow); }
+  .am-note[hidden] { display: none; }
+  .am-note :global(svg) { flex: none; margin-top: 2px; }
   .am-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
   .am-slots { display: flex; gap: 12px; margin: 16px 0 4px; flex-wrap: wrap; }
   .am-slots div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 10px 16px; min-width: 150px; }

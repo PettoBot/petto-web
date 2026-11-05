@@ -2,7 +2,7 @@
 // Run: node scripts/check-nav-account.mjs
 import { existsSync, readFileSync } from 'node:fs';
 import { LOGIN_HREF } from '../src/utils/dashLogin.mjs';
-import { accountEntries, accountState, cacheText, initialOf, loginHref, publicUser, readCache, sessionAnswer, SESSION_ENDPOINT, SUPPORT_URL } from '../src/utils/navAccount.mjs';
+import { accountEntries, accountState, cacheText, dashboardHref, initialOf, loginHref, profileHref, publicUser, readCache, sessionAnswer, SESSION_ENDPOINT, SUPPORT_URL } from '../src/utils/navAccount.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -58,11 +58,12 @@ for (const [lang, { prefix, login }] of Object.entries(expected)) {
     ['logout', `${prefix}/dash/logout`, false],
   ]);
   same(`login address in ${lang}`, loginHref(lang), login);
+  same(`profile and dashboard addresses in ${lang}`, [profileHref(lang), dashboardHref(lang)], [`${prefix}/dash/me`, `${prefix}/dash/manage`]);
 }
 same('endpoint address', SESSION_ENDPOINT, '/api/session');
 
 // Every address points at something that exists.
-for (const file of ['src/pages/dash/manage/index.astro', 'src/pages/dash/premium.astro', 'src/pages/dash/logout.ts', 'src/pages/dash/login.ts', 'src/pages/dash/callback.ts', 'src/pages/api/session.ts']) check(`${file} exists`, existsSync(new URL(file, root)));
+for (const file of ['src/pages/dash/manage/index.astro', 'src/pages/dash/me.astro', 'src/pages/dash/premium.astro', 'src/pages/dash/logout.ts', 'src/pages/dash/login.ts', 'src/pages/dash/callback.ts', 'src/pages/api/session.ts']) check(`${file} exists`, existsSync(new URL(file, root)));
 check('support address is the one of the site', SUPPORT_URL === 'https://petto.sbs/support' && /^\/support\s+https:\/\/discord\.gg\/\S+\s+301/m.test(read('public/_redirects')));
 
 // The texts exist in the three languages, with the words of each one.
@@ -70,9 +71,9 @@ const ui = read('src/i18n/ui.ts');
 const navBlocks = [...ui.matchAll(/^ {2}(en|es|'pt-BR'): \{\n {4}nav: \{\n([\s\S]*?)\n {6}menu: \{/gm)];
 same('three nav blocks', navBlocks.map((m) => m[1].replace(/'/g, '').length > 0), [true, true, true]);
 const words = {
-  en: { login: 'Login', servers: 'Manage servers', premium: 'Manage premium', support: 'Support server', logout: 'Logout' },
-  es: { login: 'Iniciar sesión', servers: 'Administrar servidores', premium: 'Administrar premium', support: 'Servidor de soporte', logout: 'Cerrar sesión' },
-  'pt-BR': { login: 'Entrar', servers: 'Gerenciar servidores', premium: 'Gerenciar premium', support: 'Servidor de suporte', logout: 'Sair' },
+  en: { login: 'Login', servers: 'Manage servers', premium: 'Manage premium', support: 'Support server', logout: 'Logout', profile: 'Your profile', dashboard: 'Open dashboard', loginDiscord: 'Login with Discord' },
+  es: { login: 'Iniciar sesión', servers: 'Administrar servidores', premium: 'Administrar premium', support: 'Servidor de soporte', logout: 'Cerrar sesión', profile: 'Tu perfil', dashboard: 'Abrir panel', loginDiscord: 'Iniciar sesión con Discord' },
+  'pt-BR': { login: 'Entrar', servers: 'Gerenciar servidores', premium: 'Gerenciar premium', support: 'Servidor de suporte', logout: 'Sair', profile: 'Seu perfil', dashboard: 'Abrir painel', loginDiscord: 'Entrar com o Discord' },
 };
 for (const match of navBlocks) {
   const lang = match[1].replace(/'/g, '');
@@ -83,14 +84,16 @@ for (const match of navBlocks) {
   check(`${lang}: login text`, login === words[lang].login, `got ${login}`);
   for (const key of ['servers', 'premium', 'support', 'logout']) check(`${lang}: ${key} text`, got[key] === words[lang][key], `got ${got[key]}`);
   check(`${lang}: account label`, Boolean(got.label));
-  same(`${lang}: same keys as the entries`, Object.keys(got).sort(), ['label', 'logout', 'premium', 'servers', 'support']);
+  same(`${lang}: same keys as the entries and the card`, Object.keys(got).sort(), ['dashboard', 'label', 'logout', 'premium', 'profile', 'servers', 'support']);
+  for (const key of ['loginDiscord', 'loginLine']) check(`${lang}: ${key} text`, new RegExp(`${key}: '[^']+'`).test(text));
+  check(`${lang}: card texts`, got.profile === words[lang].profile && got.dashboard === words[lang].dashboard && new RegExp(`loginDiscord: '${words[lang].loginDiscord}'`).test(text), `got ${got.profile} / ${got.dashboard}`);
 }
 
 // The state is never drawn into the page (the CDN keeps it), and nothing here needs Node.
 const component = read('src/components/NavAccount.astro');
 const layout = read('src/layouts/Base.astro');
 const endpoint = read('src/pages/api/session.ts');
-check('the bar starts as Login', (component.match(/data-nav-account data-state="guest"/g) ?? []).length === 2 && !/data-nav-account data-state="user"/.test(component));
+check('the bar starts as Login', (component.match(/data-nav-account data-state="guest"/g) ?? []).length === 3 && !/data-nav-account data-state="user"/.test(component));
 for (const [name, text] of [['Base.astro', layout], ['NavAccount.astro', component]]) {
   check(`${name} does not read the session`, !/getDashboardSession|decodeSession|petto_session/.test(text));
 }
@@ -102,13 +105,20 @@ for (const [name, text] of [['api/session.ts', endpoint], ['NavAccount.astro', c
 check('the bar asks the endpoint once and gives up', /fetch\(SESSION_ENDPOINT/.test(component) && /AbortController/.test(component) && (component.match(/fetch\(/g) ?? []).length === 1);
 
 // The full bar (links, language, theme, Login or profile, Add to Discord) fits from 881px up, so the burger menu starts at 880px and nowhere else.
-check('the burger menu starts at 880px', /@media \(max-width: 880px\) \{\s*nav\.links \{ display: none; \}\s*\.nav-burger \{ display: flex; \}\s*\.nav-desktop-only \{ display: none; \}/.test(layout));
+check('the burger menu starts at 880px', /@media \(max-width: 880px\) \{\s*nav\.links \{ display: none; \}\s*\.nav-burger \{ display: flex;[^}]*\}\s*\.nav-desktop-only \{ display: none; \}/.test(layout));
 check('the page closes the burger menu above 880px', /window\.innerWidth > 880 && mobileNav/.test(layout));
-check('the bar hides its login at 880px, where the burger menu has its own', /@media \(max-width: 880px\) \{ \.nav-account \{ display: none; \} \}/.test(component) && /window\.innerWidth <= 880/.test(component));
+check('the bar keeps its login next to the burger on a phone and the sheet has its own card', !/@media \(max-width: 880px\) \{ \.nav-account \{ display: none; \} \}/.test(component) && /variant="mobile"/.test(layout) && /variant="foot"/.test(layout));
 for (const [name, text] of [['Base.astro', layout], ['NavAccount.astro', component]]) {
   check(`${name} has no burger breakpoint above 880px`, !/@media \(max-width: (?:1060|1061|1120)px\)/.test(text) && !/innerWidth (?:<=|>) (?:1060|1061|1120)/.test(text));
 }
 check('Login is an icon that keeps its text for screen readers', /<svg viewBox="0 0 256 256"[^>]*aria-hidden="true"/.test(component) && /class="nav-login-label"/.test(component) && /title=\{t\.login\}/.test(component));
+
+// The language picker: a local flag for each language (never hotlinked), the name in its own language, a check on the current one.
+for (const flag of ['us', 'es', 'br']) check(`flag ${flag}.svg exists`, existsSync(new URL(`public/assets/flags/${flag}.svg`, root)) && /^<svg /.test(read(`public/assets/flags/${flag}.svg`)));
+check('the language button shows the flag and keeps an accessible label', /id="langToggle" aria-label=\{langLabel\}/.test(layout) && /aria-haspopup="true" aria-expanded="false" aria-controls="langMenu"/.test(layout) && /class="flag flag-round" src=\{langNow\.flag\}/.test(layout));
+check('the names are written in their own language', ['English', 'Español', 'Português (Brasil)'].every((name) => layout.includes(`label: '${name}'`)) && layout.includes("'/assets/flags/br.svg'"));
+check('the menus mark the current language with a check', (layout.match(/o\.code === lang && <InlineIcon name="ph:check-bold"/g) ?? []).length === 2);
+check('no flag is loaded from another site', !/https?:\/\/[^'"]*flag/i.test(layout));
 
 // One login: the dashboard page and the Login of the bar build the same address.
 check('Login and the dashboard card share the route', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && LOGIN_HREF === loginHref('en') && /href=\{LOGIN_HREF\}/.test(read('src/components/DashLogin.astro')));
