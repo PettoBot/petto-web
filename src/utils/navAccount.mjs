@@ -57,6 +57,16 @@ export function loginHref(lang) {
   return `${prefixOf(lang)}/dash/login`;
 }
 
+/** The profile page of the dashboard (the card of the burger menu opens it). @param {string} lang */
+export function profileHref(lang) {
+  return `${prefixOf(lang)}/dash/me`;
+}
+
+/** The list of servers, where the dashboard starts. @param {string} lang */
+export function dashboardHref(lang) {
+  return `${prefixOf(lang)}/dash/manage`;
+}
+
 /**
  * The entries of the profile menu, in order. `key` is the name of the text in the site's translations (nav.account.<key>).
  * @param {string} lang

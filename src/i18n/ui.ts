@@ -23,8 +23,8 @@ export const ui = {
     nav: {
       features: 'Features', commands: 'Commands', releases: 'Releases', support: 'Support', addToDiscord: 'Add to Discord',
       product: 'Product', community: 'Community', docs: 'Docs', premium: 'Premium', status: 'Status',
-      login: 'Login',
-      account: { label: 'Account', servers: 'Manage servers', premium: 'Manage premium', support: 'Support server', logout: 'Logout' },
+      login: 'Login', loginDiscord: 'Login with Discord', loginLine: 'Log in to manage your servers and your profile.',
+      account: { label: 'Account', profile: 'Your profile', dashboard: 'Open dashboard', servers: 'Manage servers', premium: 'Manage premium', support: 'Support server', logout: 'Logout' },
       menu: {
         product: {
           tagline: 'Everything Petto runs, and what is coming next.',
@@ -1626,8 +1626,8 @@ export const ui = {
     nav: {
       features: 'Funciones', commands: 'Comandos', releases: 'Novedades', support: 'Soporte', addToDiscord: 'Agregar a Discord',
       product: 'Producto', community: 'Comunidad', docs: 'Docs', premium: 'Premium', status: 'Estado',
-      login: 'Iniciar sesión',
-      account: { label: 'Cuenta', servers: 'Administrar servidores', premium: 'Administrar premium', support: 'Servidor de soporte', logout: 'Cerrar sesión' },
+      login: 'Iniciar sesión', loginDiscord: 'Iniciar sesión con Discord', loginLine: 'Inicia sesión para administrar tus servidores y tu perfil.',
+      account: { label: 'Cuenta', profile: 'Tu perfil', dashboard: 'Abrir panel', servers: 'Administrar servidores', premium: 'Administrar premium', support: 'Servidor de soporte', logout: 'Cerrar sesión' },
       menu: {
         product: {
           tagline: 'Todo lo que corre Petto, y lo que viene después.',
@@ -3229,8 +3229,8 @@ export const ui = {
     nav: {
       features: 'Recursos', commands: 'Comandos', releases: 'Novidades', support: 'Suporte', addToDiscord: 'Adicionar ao Discord',
       product: 'Produto', community: 'Comunidade', docs: 'Docs', premium: 'Premium', status: 'Status',
-      login: 'Entrar',
-      account: { label: 'Conta', servers: 'Gerenciar servidores', premium: 'Gerenciar premium', support: 'Servidor de suporte', logout: 'Sair' },
+      login: 'Entrar', loginDiscord: 'Entrar com o Discord', loginLine: 'Entre para gerenciar seus servidores e seu perfil.',
+      account: { label: 'Conta', profile: 'Seu perfil', dashboard: 'Abrir painel', servers: 'Gerenciar servidores', premium: 'Gerenciar premium', support: 'Servidor de suporte', logout: 'Sair' },
       menu: {
         product: {
           tagline: 'Tudo que o Petto roda, e o que vem a seguir.',

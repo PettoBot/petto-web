@@ -46,7 +46,7 @@ export default defineConfig({
           'arrow-right-bold', 'lock-fill', 'lightning-fill', 'sword-fill', 'hammer-fill', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
           'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
           'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'dots-six-vertical-bold', 'text-align-left-bold', 'caret-up-bold', 'caret-down-bold', 'clock-countdown-fill', 'link-simple-bold', 'bell-fill',
-          'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-left-bold',
+          'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-right', 'caret-left-bold',
           'caret-right-bold', 'caret-up-down', 'chart-bar', 'chart-bar-fill', 'chart-line-fill',
           'chart-line-up', 'chart-line-up-fill', 'chat-circle-dots-fill', 'chat-circle-text-fill',
           'chats-circle-fill', 'chats-fill', 'chat-text-fill', 'check-bold', 'arrow-clockwise-bold', 'smiley-wink-fill', 'check-circle-fill',
