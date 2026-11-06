@@ -5657,4 +5657,6 @@ export const dashPt: Record<string, string> = {
   "Everything is set up. Nice work.": "Tudo está configurado. Bom trabalho!",
   "Voice hours": "Horas de voz",
   "{a} text · {b} voice · {c} categories": "{a} de texto · {b} de voz · {c} categorias",
+  "On a panel": "Em um painel",
+  "With a form": "Com formulário",
 };

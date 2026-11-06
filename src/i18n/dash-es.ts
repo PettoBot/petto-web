@@ -5657,4 +5657,6 @@ export const dashEs: Record<string, string> = {
   "Everything is set up. Nice work.": "Todo está configurado. ¡Buen trabajo!",
   "Voice hours": "Horas de voz",
   "{a} text · {b} voice · {c} categories": "{a} de texto · {b} de voz · {c} categorías",
+  "On a panel": "En un panel",
+  "With a form": "Con formulario",
 };
