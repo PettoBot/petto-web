@@ -13,8 +13,28 @@ import { profileFromUser } from './dashProfile.mjs';
 
 export type GuildAuth = { session: Session; devView?: boolean; access?: RoleAccess } | { redirect: string };
 
+// Discord gives a refresh token for one use only. A page asks the server for several things at once (the page, the events, a save), and
+// when the token is about to expire each of those requests used to refresh it on its own: the first one worked, the others were told the
+// token was already used and the visitor saw "your session ended" even though they were logged in.
+// Requests that carry the same refresh token now share one refresh, and its answer is kept for a short while for the ones that were
+// already on their way with the old cookie.
+const REFRESH_SHARE_MS = 2 * 60_000;
+const sharedRefreshes = new Map<string, { at: number; result: Promise<Session | null> }>();
+
 async function refreshSession(session: Session, clientId: string, clientSecret: string): Promise<Session | null> {
   if (!session.refreshToken) return null;
+  const now = Date.now();
+  for (const [key, entry] of sharedRefreshes) if (now - entry.at > REFRESH_SHARE_MS) sharedRefreshes.delete(key);
+  const shared = sharedRefreshes.get(session.refreshToken);
+  if (shared) return shared.result.then((done) => (done ? { ...session, accessToken: done.accessToken, refreshToken: done.refreshToken, expiresAt: done.expiresAt } : null));
+  const result = refreshSessionNow(session, clientId, clientSecret);
+  sharedRefreshes.set(session.refreshToken, { at: now, result });
+  // A refresh that failed is not kept: the next request tries again.
+  void result.then((done) => { if (!done) sharedRefreshes.delete(session.refreshToken); });
+  return result;
+}
+
+async function refreshSessionNow(session: Session, clientId: string, clientSecret: string): Promise<Session | null> {
 
   try {
     const response = await fetch('https://discord.com/api/oauth2/token', {

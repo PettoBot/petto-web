@@ -100,7 +100,12 @@ function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?:
 const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel', rank: 'Side', rankBottom: 'Bottom bar', levelup: 'Level-up' };
 
 async function call(guildId: string, path: string, init?: RequestInit) {
-  return fetch(`/dash/guild/${guildId}/cards-api${path}`, init);
+  const url = `/dash/guild/${guildId}/cards-api${path}`;
+  const res = await fetch(url, init);
+  // A 401 right when the login is renewed (another request of the page renewed it at the same moment) is not a real logout: try once more.
+  if (res.status !== 401 || (typeof ReadableStream !== 'undefined' && init?.body instanceof ReadableStream)) return res;
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return fetch(url, init);
 }
 async function post(guildId: string, body: unknown, path = '') {
   return call(guildId, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
