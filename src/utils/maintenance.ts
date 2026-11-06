@@ -11,11 +11,11 @@ export function isPettoTeam(astro: any, userId: string | undefined): boolean {
   return isPettoOwner(astro, userId) || list(astro, 'PETTO_DEVELOPER_IDS').includes(userId);
 }
 
-// Parts of the dashboard that are paused for a while: their page says so and does nothing else. Backups stay as they are (the code, the saved
-// backups and the schedules). Only the owner and the developers can still use them. Setting BACKUPS_MAINTENANCE=off brings them back for
-// everyone (the bot reads the same switch).
+// Backups are open for every member of a server. They can still be paused for a while (their page says so and does nothing else; the code,
+// the saved backups and the schedules stay as they are, and only the owner and the developers can still use them): set BACKUPS_MAINTENANCE=on.
+// The bot reads the same switch.
 export function backupsPaused(astro: any): boolean {
-  return String(getEnv(astro, 'BACKUPS_MAINTENANCE') ?? '').toLowerCase() !== 'off';
+  return String(getEnv(astro, 'BACKUPS_MAINTENANCE') ?? '').toLowerCase() === 'on';
 }
 
 /** Whether backups are closed for this person: they are paused and the person is not part of the team. */

@@ -4,10 +4,12 @@ import './cards.css';
 import { t } from '../embeds/t';
 import { toast } from '../embeds/toast';
 import { drawCard } from './cardCanvas';
+import { DashSkeleton, useWait, useRevealWhen } from '../DashSkeleton';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import DesignGallery, { type DesignInfo } from './DesignGallery';
 import { unknownVariables } from '../../utils/variableCheck';
 import { findSample, tokenValues, sampleContext } from '../../utils/variableSamples';
+import { ask } from '../dglAsk';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
   LEVELUP_HEIGHT, LEVELUP_TEXTS, RANK_DEFAULTS, RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
@@ -100,7 +102,12 @@ function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?:
 const PRESET_LABELS: Record<string, string> = { classic: 'Classic', side: 'Side', bars: 'Bars', panel: 'Panel', rank: 'Side', rankBottom: 'Bottom bar', levelup: 'Level-up' };
 
 async function call(guildId: string, path: string, init?: RequestInit) {
-  return fetch(`/dash/guild/${guildId}/cards-api${path}`, init);
+  const url = `/dash/guild/${guildId}/cards-api${path}`;
+  const res = await fetch(url, init);
+  // A 401 right when the login is renewed (another request of the page renewed it at the same moment) is not a real logout: try once more.
+  if (res.status !== 401 || (typeof ReadableStream !== 'undefined' && init?.body instanceof ReadableStream)) return res;
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return fetch(url, init);
 }
 async function post(guildId: string, body: unknown, path = '') {
   return call(guildId, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -350,7 +357,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }
 
   async function pick(name: string) {
-    if (dirty && !window.confirm(t('You have unsaved changes. Leave without saving?'))) return;
+    if (dirty && !(await ask(t('You have unsaved changes. Leave without saving?'), { tone: 'neutral', confirm: t('Leave anyway') }))) return;
     const row = overview?.cards.find((c) => c.name === name);
     setSelected(name);
     stash.current = null;
@@ -409,7 +416,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }, [dirty]);
 
   async function handleDelete() {
-    if (!window.confirm(t('Delete the "{name}" card? Messages that use it are sent without the picture.', { name: selected }))) return;
+    if (!(await ask(t('Delete the "{name}" card? Messages that use it are sent without the picture.', { name: selected }), { confirm: t('Delete') }))) return;
     const res = await post(guildId, { action: 'delete', name: selected });
     if (!res.ok) { notify(errorText(), 'error'); return; }
     const body = await refresh();
@@ -443,7 +450,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }
 
   async function removeAsset(id: string) {
-    if (!window.confirm(t('Delete this picture? Cards that use it will draw without it.'))) return;
+    if (!(await ask(t('Delete this picture? Cards that use it will draw without it.'), { confirm: t('Delete') }))) return;
     const res = await post(guildId, { action: 'delete_asset', id });
     if (res.ok) await refresh();
     else notify(errorText(), 'error');
@@ -484,8 +491,12 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     setDirty(true);
   }
 
+  // The first read waits with grey blocks (only if it takes more than 150 ms) and the app is uncovered from the top down when it arrives.
+  const wait = useWait(!overview && !loadError);
+  const appRef = useRef<HTMLDivElement>(null);
+  useRevealWhen(appRef, Boolean(overview), wait.waited);
   if (loadError) return <div className="ebr-app crd-app"><EmptyState icon={PLUG_ICON} title={t('Image cards are not available right now.')} /></div>;
-  if (!overview) return <p className="ebr-empty-note">{t('Loading...')}</p>;
+  if (!overview || wait.skeleton) return wait.skeleton ? <div className="ebr-app crd-app"><DashSkeleton shape="editor" /></div> : null;
 
   const isRank = draft.kind === 'rank';
   const basic = draft.basic ?? newCard(draft.kind ?? 'welcome').basic!;
@@ -497,7 +508,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const storageMax = Math.round(overview.limits.storageBytes / 1048576);
 
   return (
-    <div className="ebr-app crd-app">
+    <div className="ebr-app crd-app" ref={appRef}>
       {flash && <div className="ebr-flash">{flash}</div>}
       <UsageTiles overview={overview} premium={premium} premiumUrl={premiumUrl} />
       <div className="ebr-layout">

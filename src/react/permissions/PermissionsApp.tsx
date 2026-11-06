@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import './permissions-app.css';
 import { toast } from '../embeds/toast';
+import { ask, askText } from '../dglAsk';
 
 // The Permissions page: Petto's levels (groups of roles or members with a level from 0 to 100, and the level each command needs),
 // every command grouped by category with what gates it, and a live preview of what a role can use. The groups and levels are saved
@@ -186,7 +187,7 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
                       onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }} />
                   </NumberBox>
                 </label>
-                {!g.isBase && canEdit && <button type="button" className="pmx-icon-btn" aria-label={t('Delete group')} disabled={busy} onClick={() => { if (confirm(t('Delete this group?'))) call('delete_group', { groupId: g.id }, t('Group deleted.')); }}><Ico name="trash" /></button>}
+                {!g.isBase && canEdit && <button type="button" className="pmx-icon-btn" aria-label={t('Delete group')} disabled={busy} onClick={() => { void ask(t('Delete this group?'), { confirm: t('Delete') }).then((ok) => { if (ok) call('delete_group', { groupId: g.id }, t('Group deleted.')); }); }}><Ico name="trash" /></button>}
               </div>
               <div className="pmx-bar"><i style={{ width: `${g.level}%` }} /></div>
               {g.isBase ? <p className="pmx-muted">{t('Everybody in the server has this level.')}</p> : (
@@ -202,7 +203,7 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
                     );
                   })}
                   {canEdit && (
-                    <select className="pmx-add" value="" disabled={busy} aria-label={t('Add a role')} onChange={(e) => { const v = e.currentTarget.value; if (!v) return; if (v === '__user') { const id = prompt(t('The ID of the member')) ?? ''; if (/^\d{15,25}$/.test(id.trim())) call('add_member', { groupId: g.id, subjectType: 'user', subjectId: id.trim() }); return; } call('add_member', { groupId: g.id, subjectType: 'role', subjectId: v }); }}>
+                    <select className="pmx-add" value="" disabled={busy} aria-label={t('Add a role')} onChange={(e) => { const v = e.currentTarget.value; if (!v) return; if (v === '__user') { void askText(t('The ID of the member'), { confirm: t('Add'), field: { placeholder: '123456789012345678', inputMode: 'numeric', maxLength: 25 } }).then((answer) => { const id = answer ?? ''; if (/^\d{15,25}$/.test(id.trim())) call('add_member', { groupId: g.id, subjectType: 'user', subjectId: id.trim() }); }); return; } call('add_member', { groupId: g.id, subjectType: 'role', subjectId: v }); }}>
                       <option value="">{t('+ Add a role')}</option>
                       {roles.filter((r) => !g.members.some((m) => m.subjectId === r.id)).map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
                       <option value="__user">{t('A member by ID…')}</option>

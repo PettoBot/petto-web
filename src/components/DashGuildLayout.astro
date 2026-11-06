@@ -10,6 +10,8 @@ import DashKeepPlace from './DashKeepPlace.astro';
 import DashMotion from './DashMotion.astro';
 import DashTemplateLock from './DashTemplateLock.astro';
 import DashToast from './DashToast.astro';
+import DashConfirm from './DashConfirm.astro';
+import DashLoading from './DashLoading.astro';
 import DashBotWait from './DashBotWait.astro';
 import DashAutocomplete from './DashAutocomplete.astro';
 import DashSideHead from './DashSideHead.astro';
@@ -361,7 +363,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           <script type="application/json" data-support-policy set:html={supportJson}></script>
           <div class="dgl-dev-actions">
             <a class="btn btn-ghost btn-sm" href="/dash/admin/servers"><Icon name="ph:hard-drives-fill" width="13" height="13" /> {dt('All servers')}</a>
-            <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName}>
+            <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName} data-confirm={dt('Remove Petto from {name}? The bot will leave the server.', { name: guildName })}>
               <input type="hidden" name="action" value="leave" />
               <input type="hidden" name="guild_id" value={guildId} />
               <button class="btn btn-danger btn-sm" type="submit"><Icon name="ph:sign-out-fill" width="13" height="13" /> {dt('Remove Petto')}</button>
@@ -596,7 +598,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 <script type="application/json" data-support-policy set:html={supportJson}></script>
                 <div class="dgl-dev-actions">
                   <a class="btn btn-ghost btn-sm" href="/dash/admin/servers"><Icon name="ph:hard-drives-fill" width="13" height="13" /> {dt('All servers')}</a>
-                  <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName}>
+                  <form method="POST" action="/dash/admin/servers" data-dev-leave data-guild-name={guildName} data-confirm={dt('Remove Petto from {name}? The bot will leave the server.', { name: guildName })}>
                     <input type="hidden" name="action" value="leave" />
                     <input type="hidden" name="guild_id" value={guildId} />
                     <button class="btn btn-danger btn-sm" type="submit"><Icon name="ph:sign-out-fill" width="13" height="13" /> {dt('Remove Petto')}</button>
@@ -635,6 +637,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
 <DashMotion />
 <DashTemplateLock />
 <DashToast />
+<DashConfirm />
+<DashLoading />
 <DashBotWait />
 <DashAutocomplete />
 <DashPreviews />
@@ -725,13 +729,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     if (!policy) return;
     var form = event.target;
     if (form && form.hasAttribute && form.hasAttribute('data-dev-leave')) {
-      if (!window.confirm(cdt('Remove Petto from {name}? The bot will leave the server.', { name: form.getAttribute('data-guild-name') || cdt('this server') }))) event.preventDefault();
+      // The question is asked by the form itself (data-confirm, DashConfirm.astro).
       return;
     }
     if (supportAllows(policy, supportActionsOf(form, event.submitter))) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    window.alert(policy.denied || '');
+    if (window.dglToast) window.dglToast(policy.denied || '', { kind: 'error' });
   }, true);
   // The read-only look: a form Support mode cannot save has its fields locked and its buttons hidden; a button of an editable form that
   // carries a forbidden action (Delete next to Save) is hidden alone. Drawn again after each change of the content.
@@ -1818,6 +1822,25 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (version && isNewer(version, latestVersion)) latestVersion = version;
     }
     var latestVersion = shownVersion();
+    // A change made from this page (a switch, a save of a page script, an editor) already shows on screen, and the server announces it right
+    // after: that announcement must not redraw the page under the person (a small reload that makes the controls blink and the editors start
+    // over). Every write (POST, PUT, PATCH, DELETE) opens a short window (it closes at once if the write fails) in which the stamps heard are taken as seen.
+    // A change made by someone else outside that window still redraws the page as before.
+    if (!window.__dglFetchMarked) {
+      window.__dglFetchMarked = true;
+      var nativeFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var pending = nativeFetch.apply(this, arguments);
+        var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+          // The server announces the change while it is still answering, before the answer arrives: the window opens when the write starts.
+          var before = window.__dglOwnChangeUntil || 0;
+          window.__dglOwnChangeUntil = Date.now() + 20000;
+          pending.then(function (res) { window.__dglOwnChangeUntil = res && res.ok ? Date.now() + 8000 : before; }, function () { window.__dglOwnChangeUntil = before; });
+        }
+        return pending;
+      };
+    }
     // Stamps from Redis are numbers (r12) and only go up; a message that arrives late never counts as newer.
     function isNewer(candidate, than) {
       if (!candidate) return false;
@@ -1938,6 +1961,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     function heard(version) {
       if (!isNewer(version, latestVersion)) return;
       latestVersion = version;
+      // The echo of a change made from this page: it is already on screen, so it is taken as seen and nothing is redrawn.
+      if (Date.now() < (window.__dglOwnChangeUntil || 0)) { setShownVersion(version); return; }
       // A burst of changes (a save that touches several tables, the bot's copy right after) becomes one read.
       clearTimeout(heardTimer);
       heardTimer = setTimeout(function () { refreshCurrent(false); }, 400);
@@ -2162,8 +2187,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         form.dataset.ajaxBound = '1';
         form.addEventListener('submit', function (e) {
           var submitter = e.submitter;
-          var confirmMsg = submitter && submitter.dataset ? submitter.dataset.confirm : null;
-          if (confirmMsg && !window.confirm(confirmMsg)) { e.preventDefault(); return; }
+          // A button with data-confirm asked its question already (DashConfirm.astro) before this submit happened.
           e.preventDefault();
           var btn = submitter && submitter.tagName === 'BUTTON' ? submitter : form.querySelector('button[type="submit"]');
           // The button says "Saving..." at the width it had (a longer word in Spanish or Portuguese must not push it out of its row), and
@@ -3126,9 +3150,14 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     .dgl-layout { display: block; }
     /* The menu is a drawer at the side, closed until the button is pressed, so it never covers the page. */
     /* It slides in decelerating and out accelerating; it stays visible until it is fully out (visibility waits for the slide). */
-    .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 18px 18px 0; margin: 0; transform: translateX(-105%) !important; transition: transform var(--m-base) var(--m-in), visibility 0s linear var(--m-base) !important; visibility: hidden; will-change: transform; }
-    .dgl-side.open, .dgl-side.reveal.open { transform: none !important; visibility: visible; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--m-slow) var(--m-out), visibility 0s !important; }
-    .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); touch-action: none; }
+    .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 18px 18px 0; margin: 0; transform: translateX(-105%) !important; transition: transform var(--dgl-drawer-out) var(--dgl-drawer-ease-out), visibility 0s linear var(--dgl-drawer-out) !important; visibility: hidden; will-change: transform; }
+    .dgl-side.open, .dgl-side.reveal.open { transform: none !important; visibility: visible; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--dgl-drawer-in) var(--dgl-drawer-ease-in), visibility 0s !important; }
+    /* A softer drawer: it starts gently, takes a little over half a second and settles slowly, and it leaves a little quicker than it came. The veil behind it fades with it. */
+    :root { --dgl-drawer-in: 580ms; --dgl-drawer-out: 440ms; --dgl-drawer-ease-in: cubic-bezier(.33, 0, .2, 1); --dgl-drawer-ease-out: cubic-bezier(.4, 0, .2, 1); }
+    .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); touch-action: none; animation: m-fade-in var(--dgl-drawer-in) ease both; }
+    .dgl-backdrop.dgl-leave { animation: m-fade-out var(--dgl-drawer-out) ease both !important; }
+    /* What is inside the drawer comes up a little after it, one block after the other. */
+    .dgl-side.open > :not(.dgl-drawer-head) { animation: m-fade-in 460ms ease both; animation-delay: 120ms; }
     .dgl-backdrop[hidden] { display: none; }
     /* The close button floats over the banner at the top of the drawer, so the drawer starts with the banner and no extra row. */
     .dgl-drawer-head { display: flex; position: absolute; z-index: 5; top: 0; right: 0; padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 0 0; }

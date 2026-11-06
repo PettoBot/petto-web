@@ -32,6 +32,7 @@ const ui = {
   confirmTemplate: dt('Replace what you wrote with this template?'),
   confirmLeave: dt('You have changes that are not saved. Leave anyway?'),
   confirmNew: dt('You have changes that are not saved. Start a new command anyway?'),
+  yesDelete: dt('Delete'), yesLeave: dt('Leave anyway'), yesContinue: dt('Continue'), yesReplace: dt('Replace'),
   needName: dt('Write a name first.'),
   running: dt('Running...'),
   prints: dt('It would print'),
@@ -151,7 +152,7 @@ const triggerTypes = [
           <h2>{dt('Functions')}</h2>
         </div>
         <input type="text" id="cc-fn-search" class="cc-input" placeholder={dt('Search a function')} autocomplete="off" />
-        <ul class="cc-fns" id="cc-fns"></ul>
+        <ul class="cc-fns" id="cc-fns"><li class="cc-fns-wait" aria-hidden="true"><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span></li></ul>
         <p class="cc-note">{dt('Click a function to put it in the code.')}</p>
       </section>
     </aside>
@@ -241,6 +242,8 @@ const triggerTypes = [
   const root = document.getElementById('cc') as HTMLElement | null;
   if (root) {
     const ui = JSON.parse(root.dataset.ui || '{}');
+    // The questions are asked with the card of the dashboard (DashConfirm.astro); without it nothing destructive goes on.
+    const ask = (text: string, opts?: object): Promise<boolean> => { const w = window as unknown as { dglConfirm?: (t: string, o?: object) => Promise<boolean> }; return w.dglConfirm ? w.dglConfirm(text, opts) : Promise.resolve(false); };
     const endpoint = root.dataset.endpoint || '';
     const prefix = root.dataset.prefix || '!';
     let commands: { name: string; code: string; triggerType: string; triggerText: string }[] = JSON.parse(root.dataset.commands || '[]');
@@ -621,13 +624,13 @@ const triggerTypes = [
       syncBar();
       if (source) checkNow(); else setStatus('wait', '');
     }
-    function open(name: string) {
-      if (dirty() && !confirm(ui.confirmLeave)) return;
+    async function open(name: string) {
+      if (dirty() && !(await ask(ui.confirmLeave, { tone: 'neutral', confirm: ui.yesLeave }))) return;
       const command = commands.find((entry) => entry.name === name);
       if (command) load(command.name, command.code, command.triggerType, command.triggerText);
     }
-    $('cc-new').addEventListener('click', () => {
-      if (dirty() && !confirm(ui.confirmNew)) return;
+    $('cc-new').addEventListener('click', async () => {
+      if (dirty() && !(await ask(ui.confirmNew, { tone: 'neutral', confirm: ui.yesContinue }))) return;
       load(null, '');
       nameInput.focus();
     });
@@ -656,7 +659,7 @@ const triggerTypes = [
     nameInput.addEventListener('input', syncBar);
 
     deleteButton.addEventListener('click', async () => {
-      if (!current || !confirm(ui.confirmDelete)) return;
+      if (!current || !(await ask(ui.confirmDelete, { confirm: ui.yesDelete }))) return;
       const { payload } = await api({ action: 'delete', name: current });
       if (!payload?.ok) { say(ui.unavailable, 'bad'); return; }
       commands = commands.filter((entry) => entry.name !== current);
@@ -793,11 +796,11 @@ const triggerTypes = [
     });
 
     const templates = $<HTMLSelectElement>('cc-templates');
-    templates.addEventListener('change', () => {
+    templates.addEventListener('change', async () => {
       const template = (meta?.templates ?? []).find((entry: any) => entry.id === templates.value);
       $('cc-template-note').textContent = template?.description ?? '';
       if (!template) return;
-      if ((code.value.trim() && dirty()) && !confirm(ui.confirmTemplate)) { templates.value = ''; return; }
+      if ((code.value.trim() && dirty()) && !(await ask(ui.confirmTemplate, { tone: 'neutral', confirm: ui.yesReplace }))) { templates.value = ''; return; }
       current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false;
       if (!nameInput.value.trim() || !commands.some((entry) => entry.name === nameInput.value.trim())) nameInput.value = template.suggestedName;
       code.value = template.code;
@@ -875,10 +878,12 @@ const triggerTypes = [
         metaStatus = response.status;
         meta = await response.json();
       } catch { meta = null; }
-      if (!meta?.ok) { setStatus('wait', `${ui.unavailable} ${why({ status: metaStatus, payload: meta })}`); return; }
+      if (!meta?.ok) { $('cc-fns').textContent = ''; setStatus('wait',`${ui.unavailable} ${why({ status: metaStatus, payload: meta })}`); return; }
       for (const template of meta.templates) { const option = document.createElement('option'); option.value = template.id; option.textContent = template.name; templates.appendChild(option); }
       if (Array.isArray(meta.functions) && meta.functions.length) functionNames = new Set(meta.functions.map((fn: any) => String(fn.name)));
       drawFunctions();
+      // The functions read from the bot replace the grey rows and are uncovered from the top down.
+      (window as unknown as { dglLoad?: { reveal: (el: Element) => void } }).dglLoad?.reveal($('cc-fns'));
       drawGutter();
       if (!meta.canWrite) say(ui.closed, 'bad');
       if (code.value.trim()) checkNow();
@@ -931,6 +936,8 @@ const triggerTypes = [
   .cc-list, .cc-fns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .cc-list { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
   .cc-fns { max-height: 220px; overflow: auto; overscroll-behavior: contain; gap: 2px; }
+  .cc-fns-wait { display: grid; align-content: start; gap: 8px; list-style: none; padding: 4px 0; min-height: 212px; }
+  .cc-fns-wait .sk { height: 24px; border-radius: 8px; }
   @media (max-width: 1100px) { .cc-list { max-height: 300px; } .cc-fns { max-height: 240px; } }
   /* The items of the lists are made by the script, so their rules are :global(). A command is a small panel: its trigger, then its name and size. */
   :global(.cc-item) { width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 2px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 3%, var(--card)); color: var(--text); border-radius: 11px; padding: 9px 12px; font: inherit; cursor: pointer; text-align: left; min-width: 0; transition: background-color .25s ease, border-color .25s ease; }

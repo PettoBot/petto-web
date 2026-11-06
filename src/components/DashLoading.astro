@@ -1,0 +1,148 @@
+---
+// One way to wait for data in the dashboard. Whatever arrives after the page (a list read by a script, a panel, a result after a button) first
+// shows a placeholder in the shape of what will come, and then is uncovered from the top down; it never pops in. Scripts call
+//   window.dglLoad.run(region, promise, { shape, count, render(value, region), retry })   (the whole wait in one call), or
+//   var wait = window.dglLoad.wait(region, { shape, count });  wait.done(fn) / wait.fail(error) / wait.cancel()
+//   window.dglLoad.reveal(el)   uncovers `el` from the top down (for content a script already drew)
+//   window.dglLoad.shape(shape, count)   the placeholder as an element (for a script that places it itself)
+// The placeholder shows only if the answer takes more than 150 ms (a fast one never flashes it) and stays at least 350 ms once shown; the box
+// keeps its height until the content has been drawn, so nothing around it moves. A region with data-lazy-region="..." that a script fills
+// (without calling dglLoad) is uncovered the same way. Shapes: lines, rows, cards, tiles, editor. With "reduce motion" the placeholder still
+// shows and the content appears at once. The look (.sk, the shimmer) is the one of the page skeletons (Base.astro).
+import { getDashLang, makeT } from '../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+const words = { failed: dt('Could not load this.'), retry: dt('Try again') };
+---
+<script is:inline set:html={`window.dglLoadWords = ${JSON.stringify(words)};`}></script>
+<script>
+  import { createWaiter, LINE_WIDTHS } from '../utils/dashLoading.mjs';
+
+  type Shape = 'lines' | 'rows' | 'cards' | 'tiles' | 'editor';
+  type Opts = { shape?: Shape; count?: number; delay?: number; min?: number; retry?: () => void };
+  const w = window as unknown as { dglLoad?: unknown; dglLoadWords?: { failed: string; retry: string }; dglMotion?: { reduced: () => boolean } };
+
+  if (!w.dglLoad) {
+    const reduced = () => !!(w.dglMotion && w.dglMotion.reduced()) || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const make = (cls: string, tag = 'span') => { const el = document.createElement(tag); el.className = cls; return el; };
+
+    // The placeholder, as an element, in the shape of what will come.
+    const shape = (kind: Shape = 'lines', count = 0): HTMLElement => {
+      const wrap = make('dgl-wait sk-wrap', 'div');
+      wrap.setAttribute('aria-hidden', 'true');
+      if (kind === 'rows') {
+        wrap.classList.add('dgl-wait-rows');
+        for (let i = 0; i < (count || 5); i++) wrap.appendChild(make('sk'));
+      } else if (kind === 'cards') {
+        wrap.classList.add('dgl-wait-cards');
+        for (let i = 0; i < (count || 6); i++) wrap.appendChild(make('sk'));
+      } else if (kind === 'tiles') {
+        wrap.classList.add('dgl-wait-tiles');
+        for (let i = 0; i < (count || 4); i++) wrap.appendChild(make('sk'));
+      } else if (kind === 'editor') {
+        wrap.classList.add('dgl-wait-editor');
+        wrap.appendChild(make('sk')); wrap.appendChild(make('sk'));
+      } else {
+        wrap.classList.add('dgl-wait-lines');
+        for (let i = 0; i < (count || 8); i++) { const line = make('sk dgl-wait-line'); line.style.width = LINE_WIDTHS[i % LINE_WIDTHS.length] + '%'; wrap.appendChild(line); }
+      }
+      return wrap;
+    };
+
+    // Uncovers an element from the top down; the class comes off when the animation ends.
+    const reveal = (el: Element | null) => {
+      if (!el || reduced()) return;
+      const box = el as HTMLElement;
+      box.classList.remove('dgl-reveal-down');
+      void box.offsetWidth;
+      box.classList.add('dgl-reveal-down');
+      const end = (e: Event) => { if (e.target !== box) return; box.classList.remove('dgl-reveal-down'); box.removeEventListener('animationend', end); };
+      box.addEventListener('animationend', end);
+      setTimeout(() => { box.classList.remove('dgl-reveal-down'); }, 900);
+    };
+
+    const waits = new WeakMap<Element, { cancel: () => void }>();
+
+    // A wait on a region: the placeholder after the delay, the content (drawn by `draw`) when it arrives, a failure row with "Try again" if it fails.
+    const wait = (region: HTMLElement, opts: Opts = {}) => {
+      // A new wait on the same region takes the place of the old one.
+      waits.get(region)?.cancel();
+      let holder: HTMLElement | null = null;
+      const settle = () => { region.removeAttribute('aria-busy'); setTimeout(() => { region.style.minHeight = ''; }, 700); waits.delete(region); };
+      const waiter = createWaiter({
+        delay: opts.delay, min: opts.min,
+        show: () => {
+          holder = shape(opts.shape, opts.count);
+          region.setAttribute('aria-busy', 'true');
+          region.insertBefore(holder, region.firstChild);
+          region.style.minHeight = Math.max(region.offsetHeight, holder.offsetHeight) + 'px';
+        },
+        hide: () => { holder?.remove(); holder = null; },
+        render: (draw: unknown) => { try { if (typeof draw === 'function') (draw as () => void)(); } finally { settle(); reveal(region); } },
+        fail: () => {
+          settle();
+          const box = make('dgl-wait-fail', 'div');
+          const text = make('', 'span'); text.textContent = (w.dglLoadWords && w.dglLoadWords.failed) || 'Could not load this.';
+          box.appendChild(text);
+          if (opts.retry) {
+            const btn = make('btn btn-ghost btn-sm', 'button') as HTMLButtonElement; btn.type = 'button';
+            btn.textContent = (w.dglLoadWords && w.dglLoadWords.retry) || 'Try again';
+            btn.addEventListener('click', () => { box.remove(); opts.retry?.(); });
+            box.appendChild(btn);
+          }
+          region.appendChild(box); reveal(box);
+        },
+      });
+      // Content that is already there keeps its box until the new content is drawn, so nothing around it moves.
+      const hold = () => { if (!holder) region.style.minHeight = region.offsetHeight + 'px'; };
+      const controller = {
+        done(draw?: () => void) { hold(); waiter.done(draw); },
+        fail(error?: unknown) { void error; hold(); waiter.fail(error); },
+        cancel() { waiter.cancel(); region.removeAttribute('aria-busy'); region.style.minHeight = ''; waits.delete(region); },
+      };
+      waits.set(region, controller);
+      return controller;
+    };
+
+    // The whole wait in one call: `promise` is what is being read, `render(value, region)` draws it. A failure shows the row with "Try again".
+    const run = <T,>(region: HTMLElement, promise: Promise<T>, opts: Opts & { render?: (value: T, region: HTMLElement) => void } = {}) => {
+      const waiting = wait(region, opts);
+      return Promise.resolve(promise).then(
+        (value) => { waiting.done(() => opts.render?.(value, region)); return value as T | undefined; },
+        (error) => { waiting.fail(error); return undefined; },
+      );
+    };
+
+    // A region marked data-lazy-region that a script fills by itself (without calling dglLoad) is uncovered when its content arrives.
+    const marks = new WeakMap<Element, number>();
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (!record.addedNodes.length) continue;
+        const target = record.target instanceof Element ? record.target : null;
+        const region = target && target.closest('[data-lazy-region]');
+        if (!region || region.querySelector(':scope > .dgl-wait') || region.getAttribute('aria-busy') === 'true') continue;
+        const added = Array.from(record.addedNodes).some((n) => n.nodeType === 1 && !(n as Element).classList.contains('dgl-wait') && !(n as Element).classList.contains('sk-wrap'));
+        const last = marks.get(region) ?? 0;
+        if (added && Date.now() - last > 1000) { marks.set(region, Date.now()); reveal(region); }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
+    w.dglLoad = { wait, run, shape, reveal };
+  }
+</script>
+
+<style is:global>
+  /* The placeholders of a wait: grey blocks with the shimmer of the page skeletons, with the sizes of what comes in their place. */
+  .dgl-wait { display: grid; gap: 10px; }
+  .dgl-wait .sk { border-radius: 12px; }
+  .dgl-wait-lines .dgl-wait-line { height: 12px; border-radius: 6px; margin: 0; }
+  .dgl-wait-rows .sk { height: 56px; }
+  .dgl-wait-cards { grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 12px; }
+  .dgl-wait-cards .sk { height: 120px; border-radius: 14px; }
+  .dgl-wait-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .dgl-wait-tiles .sk { height: 74px; border-radius: 14px; }
+  .dgl-wait-editor { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  .dgl-wait-editor .sk { height: 280px; border-radius: 14px; }
+  @media (max-width: 720px) { .dgl-wait-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dgl-wait-editor { grid-template-columns: minmax(0, 1fr); } }
+  .dgl-wait-fail { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; color: var(--text-muted); }
+  [aria-busy='true'] { cursor: progress; }
+</style>

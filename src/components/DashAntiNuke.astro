@@ -236,13 +236,13 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
             <div class="sx-row"><span class="anx-k">{dt('Ends')}</span><b>{lockdownActive.endsAt ? ago(lockdownActive.endsAt) : dt('It stays until you end it.')}</b></div>
             <div class="sx-row"><span class="anx-k">{dt('Channels closed')}</span><b>{lockdownActive.channels}</b></div>
             {lockdownActive.reason && <p class="sx-hint">{lockdownActive.reason}</p>}
-            <div class="an-foot"><button type="button" class="btn btn-accent btn-sm" data-lockdown="end" data-ask={dt('End the lockdown and reopen everything?')} data-failed={dt('It could not be done.')}>{dt('End the lockdown')}</button></div>
+            <div class="an-foot"><button type="button" class="btn btn-accent btn-sm" data-lockdown="end" data-confirm={dt('End the lockdown and reopen everything?')} data-confirm-tone="neutral" data-failed={dt('It could not be done.')}>{dt('End the lockdown')}</button></div>
           </div>
         ) : (
           <div class="anx-start">
             <div class="sx-field"><label for="an-lock-reason">{dt('Reason (optional)')}</label><textarea id="an-lock-reason" class="dgl-autogrow sx-one" rows="1" data-one-line data-count data-lockdown-reason maxlength="300"></textarea></div>
             <div class="sx-field"><label for="an-lock-min">{dt('Minutes until it ends (0 uses the setting below)')}</label><SxNumber id="an-lock-min" data-lockdown-minutes value={0} min={0} max={10080} /></div>
-            <div><button type="button" class="btn btn-accent btn-sm an-danger" data-lockdown="start" data-ask={dt('Start a lockdown now? The channels will be closed.')} data-failed={dt('It could not be done.')}>{dt('Start a lockdown now')}</button></div>
+            <div><button type="button" class="btn btn-accent btn-sm an-danger" data-lockdown="start" data-confirm={dt('Start a lockdown now? The channels will be closed.')} data-failed={dt('It could not be done.')}>{dt('Start a lockdown now')}</button></div>
           </div>
         )}
       </div>
@@ -441,7 +441,7 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
             <div class="anx-event-side">
               <span class={`sx-tag anx-act-${e.action}`}>{actionNames[e.action] ?? e.action}</span>
               {e.restored_at ? <span class="sx-pill-state on">{dt('Restored')}</span> : (e.restorable.length > 0 || e.previous_roles.length > 0) ? (
-                <button type="button" class="btn btn-ghost btn-sm" data-an-restore={e.id} data-ask={dt('Put back what this protection stopped?')} data-done={dt('Done.')} data-failed={dt('It could not be restored.')}><Icon name="ph:arrow-counter-clockwise-bold" width="13" height="13" />{dt('Restore')}</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-an-restore={e.id} data-confirm={dt('Put back what this protection stopped?')} data-confirm-tone="neutral" data-done={dt('Done.')} data-failed={dt('It could not be restored.')}><Icon name="ph:arrow-counter-clockwise-bold" width="13" height="13" />{dt('Restore')}</button>
               ) : null}
             </div>
           </div>
@@ -493,7 +493,7 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
 <script is:inline>
   // The rows open and close by themselves; the switch of a row saves it right away.
   // What a button did, in the toast of the dashboard (a plain alert without it).
-  var anSay = function (text, ok, ms) { if (window.dglToast) window.dglToast(text, { kind: ok ? 'ok' : 'error', ms: ms }); else alert(text); };
+  var anSay = function (text, ok, ms) { if (window.dglToast) window.dglToast(text, { kind: ok ? 'ok' : 'error', ms: ms }); };
   if (!window.__anBound) {
     window.__anBound = true;
     document.addEventListener('click', function (event) {
@@ -509,21 +509,26 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
         var panelEl = document.querySelector('[data-an-panel="' + wanted + '"]');
         if (panelEl && panelEl.hasAttribute('data-lazy') && !panelEl.hasAttribute('data-loading')) {
           panelEl.setAttribute('data-loading', '');
-          panelEl.classList.add('an-panel-loading');
+          // The panel is empty until it is read: it waits with grey blocks (shared placeholder) and is uncovered from the top down.
+          var waiting = window.dglLoad ? window.dglLoad.wait(panelEl, { shape: 'rows', count: 8, delay: 0, min: 300 }) : null;
+          if (!waiting) panelEl.classList.add('an-panel-loading');
           fetch('?section=' + wanted, { method: 'GET' })
             .then(function (r) { return r.text(); })
             .then(function (html) {
               var doc = new DOMParser().parseFromString(html, 'text/html');
               var fresh = doc.querySelector('[data-an-panel="' + wanted + '"]');
               if (!fresh) throw new Error('missing');
-              panelEl.innerHTML = fresh.innerHTML;
-              panelEl.removeAttribute('data-lazy');
-              panelEl.removeAttribute('data-loading');
-              panelEl.classList.remove('an-panel-loading');
-              panelEl.hidden = !document.querySelector('[data-an-tab="' + wanted + '"].on');
-              if (window.dglInitContent) window.dglInitContent(panelEl);
+              var draw = function () {
+                panelEl.innerHTML = fresh.innerHTML;
+                panelEl.removeAttribute('data-lazy');
+                panelEl.removeAttribute('data-loading');
+                panelEl.classList.remove('an-panel-loading');
+                panelEl.hidden = !document.querySelector('[data-an-tab="' + wanted + '"].on');
+                if (window.dglInitContent) window.dglInitContent(panelEl);
+              };
+              if (waiting) waiting.done(draw); else draw();
             })
-            .catch(function () { location.href = '?section=' + wanted; });
+            .catch(function () { if (waiting) waiting.cancel(); location.href = '?section=' + wanted; });
         }
         return;
       }
@@ -534,7 +539,7 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
       if (lock) {
         var guildId = location.pathname.replace(/^\/(es|pt-br)(?=\/)/i, '').split('/')[3];
         var starting = lock.getAttribute('data-lockdown') === 'start';
-        if (!confirm(lock.getAttribute('data-ask') || (starting ? 'Start a lockdown now? The channels will be closed.' : 'End the lockdown and reopen everything?'))) return;
+        // The question was asked by the button itself (data-confirm, DashConfirm.astro).
         var lockFailed = lock.getAttribute('data-failed') || 'It could not be done.';
         var reasonEl = document.querySelector('[data-lockdown-reason]');
         var minutesEl = document.querySelector('[data-lockdown-minutes]');
@@ -556,7 +561,6 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
         if (btn) btn.setAttribute('aria-expanded', show ? 'true' : 'false');
       }
       if (restore) {
-        if (!confirm(restore.getAttribute('data-ask') || 'Put back what this protection stopped?')) return;
         var restoreFailed = restore.getAttribute('data-failed') || 'It could not be restored.';
         var guild = location.pathname.replace(/^\/(es|pt-br)(?=\/)/i, '').split('/')[3];
         restore.disabled = true;

@@ -1,0 +1,350 @@
+---
+// The "Import" panel of Config Management: a YAML file (chosen, dropped or pasted) is checked by the server, the page shows what would
+// change (grouped by module, with what is skipped and what is left out and why), and only after a confirmation (the "Are you sure?" card)
+// is it applied. Nothing is written by "Check file". The server (general-config-import.ts) checks the file again when it applies it.
+import { Icon } from 'astro-icon/components';
+import { getDashLang, makeT } from '../i18n/dash';
+interface Props { guildId: string }
+const { guildId } = Astro.props;
+const dt = makeT(getDashLang(Astro));
+const words = {
+  choose: dt('Choose a .yaml or .yml file.'),
+  tooBig: dt('The file is too big (at most {n} KB).'),
+  checking: dt('Checking the file...'),
+  network: dt('Could not reach Petto. Try again.'),
+  fileOf: dt('{name} ({n} KB)'),
+  toChange: dt('To change'),
+  same: dt('Already the same'),
+  skipped: dt('Skipped'),
+  leftOut: dt('Left out'),
+  unknown: dt('Not recognized'),
+  nothing: dt('Nothing to change: the file matches this server.'),
+  skippedHead: dt('Skipped: these values cannot be used as they are'),
+  warnHead: dt('Applied only in part'),
+  leftOutHead: dt('Left out of the import'),
+  unknownHead: dt('Not recognized in the file'),
+  unreadable: dt('The current settings of this part could not be read, so it was not checked.'),
+  apply: dt('Apply {n} changes'),
+  applyOne: dt('Apply 1 change'),
+  applying: dt('Applying...'),
+  cancel: dt('Cancel'),
+  ask: dt('Apply {n} changes to this server? The settings are saved now, and each one can be changed back from its own page, but this cannot be undone in one step.'),
+  yes: dt('Apply'),
+  done: dt('Done: {n} settings changed.'),
+  doneSome: dt('Some parts could not be saved. Check the list and try again.'),
+  saved: dt('Saved'),
+  notSaved: dt('Could not be saved'),
+  toast: dt('Imported {n} settings.'),
+  toastFail: dt('Some settings could not be imported.'),
+  on: dt('on'),
+  off: dt('off'),
+  empty: dt('empty'),
+  more: dt('+{n} more'),
+  again: dt('Check another file'),
+};
+---
+<section class="sx-panel cm-import" aria-labelledby="cm-imp-h" data-cm-import data-src={`/dash/guild/${guildId}/general-config-import`} data-words={JSON.stringify(words)}>
+  <div class="sx-panel-head">
+    <span class="sx-panel-icon" style="--c:var(--accent)"><Icon name="ph:upload-simple-bold" width="17" height="17" /></span>
+    <h2 id="cm-imp-h">{dt('Import')}</h2>
+  </div>
+  <p class="sx-lead">{dt('Bring back a configuration file like the YAML above (the one you downloaded). Petto shows what would change first, and nothing is saved until you confirm.')}</p>
+  <p class="sx-hint cm-imp-scope"><Icon name="ph:info-fill" width="15" height="15" /><span>{dt('Imported: the prefixes, language and mute role of the server, AutoMod, Leveling, Counting and Birthdays. Lists (commands, rewards, panels...), settings that have their own page and anything that changes Discord are left out, and listed after you check the file.')}</span></p>
+
+  <div class="cm-imp-drop" data-cm-drop>
+    <Icon name="ph:file-arrow-up-fill" width="26" height="26" />
+    <strong>{dt('Drop a YAML file here')}</strong>
+    <span>{dt('or')}</span>
+    <button type="button" class="btn btn-ghost btn-sm" data-cm-pick>{dt('Choose a file')}</button>
+    <input type="file" class="cm-imp-file" accept=".yaml,.yml,text/yaml,text/x-yaml,text/plain" data-cm-file tabindex="-1" aria-label={dt('Choose a file')} />
+    <em class="cm-imp-name" data-cm-name hidden></em>
+  </div>
+
+  <details class="dfx-acc cm-imp-paste">
+    <summary><span class="dfx-acc-title"><b>{dt('Or paste the text')}</b></span><Icon name="ph:caret-down-bold" class="dfx-caret" width="14" height="14" /></summary>
+    <div class="dfx-acc-body">
+      <textarea class="dgl-autogrow cm-imp-text" rows="4" spellcheck="false" autocomplete="off" data-cm-text placeholder={dt('Paste the YAML here')} aria-label={dt('Paste the YAML here')}></textarea>
+    </div>
+  </details>
+
+  <div class="cm-imp-actions">
+    <button type="button" class="btn btn-accent btn-sm" data-cm-check disabled><Icon name="ph:magnifying-glass-bold" width="14" height="14" />{dt('Check file')}</button>
+  </div>
+  <p class="cm-imp-error" role="alert" data-cm-error hidden></p>
+  <div class="cm-imp-out" data-cm-out aria-live="polite" hidden></div>
+</section>
+
+<script is:inline>
+  (function () {
+    var root = document.querySelector('[data-cm-import]');
+    if (!root || root.dataset.bound) return;
+    root.dataset.bound = '1';
+    var W = {};
+    try { W = JSON.parse(root.getAttribute('data-words') || '{}'); } catch (e) { /* the texts stay empty */ }
+    var MAX_KB = 256;
+    var q = function (s) { return root.querySelector(s); };
+    var dropEl = q('[data-cm-drop]'), fileEl = q('[data-cm-file]'), pickBtn = q('[data-cm-pick]'), nameEl = q('[data-cm-name]');
+    var textEl = q('[data-cm-text]'), checkBtn = q('[data-cm-check]'), errEl = q('[data-cm-error]'), outEl = q('[data-cm-out]');
+    var fill = function (s, vars) { return String(s).replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] != null ? vars[k] : m; }); };
+    var el = function (tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+    var reduced = function () { return !!(window.dglMotion && window.dglMotion.reduced && window.dglMotion.reduced()); };
+    var fileText = '';
+    var busy = false;
+    var checked = '';
+
+    function showError(text) { errEl.textContent = text || ''; errEl.hidden = !text; }
+    function source() { return fileText || textEl.value; }
+    function refreshCheck() { checkBtn.disabled = busy || !source().trim(); }
+    function clearOut() { outEl.hidden = true; outEl.replaceChildren(); checked = ''; }
+    function uncover(node) {
+      if (reduced()) return;
+      node.classList.add('dgl-reveal-down');
+      node.addEventListener('animationend', function done(e) { if (e.target !== node) return; node.classList.remove('dgl-reveal-down'); node.removeEventListener('animationend', done); });
+    }
+    function skeleton() {
+      var s = el('div', 'cm-skel'); s.setAttribute('aria-hidden', 'true');
+      [62, 38, 74, 50, 30, 66, 44].forEach(function (w) { var span = el('span'); span.style.width = w + '%'; s.appendChild(span); });
+      return s;
+    }
+
+    // The file, chosen or dropped.
+    function takeFile(file) {
+      showError('');
+      clearOut();
+      if (!file) return;
+      if (!/\.(ya?ml|txt)$/i.test(file.name) && file.type && !/yaml|text/.test(file.type)) { showError(W.choose); return; }
+      if (file.size > MAX_KB * 1024) { showError(fill(W.tooBig, { n: MAX_KB })); return; }
+      file.text().then(function (text) {
+        fileText = text; textEl.value = '';
+        nameEl.textContent = fill(W.fileOf, { name: file.name, n: Math.max(1, Math.round(file.size / 1024)) });
+        nameEl.hidden = false;
+        refreshCheck();
+      }).catch(function () { showError(W.choose); });
+    }
+    pickBtn.addEventListener('click', function () { fileEl.click(); });
+    fileEl.addEventListener('change', function () { takeFile(fileEl.files && fileEl.files[0]); fileEl.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (type) { dropEl.addEventListener(type, function (e) { e.preventDefault(); dropEl.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (type) { dropEl.addEventListener(type, function (e) { e.preventDefault(); dropEl.classList.remove('over'); }); });
+    dropEl.addEventListener('drop', function (e) { takeFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+    textEl.addEventListener('input', function () { fileText = ''; nameEl.hidden = true; clearOut(); showError(''); refreshCheck(); });
+
+    function post(action) {
+      return fetch(root.getAttribute('data-src'), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ action: action, yaml: source() }) })
+        .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; }); });
+    }
+
+    // How a value reads in the list.
+    function show(value) {
+      if (value === null || value === undefined || value === '') return W.empty;
+      if (value === true) return W.on;
+      if (value === false) return W.off;
+      if (Array.isArray(value)) {
+        if (!value.length) return W.empty;
+        var head = value.slice(0, 5).join(', ');
+        return value.length > 5 ? head + ' ' + fill(W.more, { n: value.length - 5 }) : head;
+      }
+      var text = String(value);
+      return text.length > 90 ? text.slice(0, 89) + '…' : text;
+    }
+    function group(title, count, tone, open) {
+      var d = el('details', 'dfx-acc cm-imp-group ' + (tone || ''));
+      if (open) d.open = true;
+      var s = el('summary');
+      var t = el('span', 'dfx-acc-title'); t.appendChild(el('b', null, title));
+      s.append(t, el('span', 'cm-imp-count', String(count)));
+      var caret = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); caret.setAttribute('viewBox', '0 0 256 256'); caret.setAttribute('width', '14'); caret.setAttribute('height', '14'); caret.setAttribute('class', 'dfx-caret'); caret.setAttribute('aria-hidden', 'true');
+      caret.innerHTML = '<path fill="currentColor" d="M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80a8 8 0 0 1 11.32-11.32L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32Z"/>';
+      s.appendChild(caret);
+      var body = el('div', 'dfx-acc-body');
+      d.append(s, body);
+      return { node: d, body: body };
+    }
+    function row(setting) { var r = el('div', 'cm-imp-row'); r.appendChild(el('code', 'cm-imp-key', setting)); return r; }
+
+    function drawPlan(plan) {
+      outEl.replaceChildren();
+      var t = plan.totals;
+      var chips = el('div', 'cm-imp-sum');
+      [[t.changes, W.toChange, 'go'], [t.unchanged, W.same, ''], [t.invalid, W.skipped, t.invalid ? 'bad' : ''], [t.ignored, W.leftOut, ''], [t.unknown, W.unknown, t.unknown ? 'warn' : '']].forEach(function (c) {
+        var chip = el('span', 'cm-imp-chip ' + c[2]); chip.appendChild(el('b', null, String(c[0]))); chip.appendChild(document.createTextNode(' ' + c[1])); chips.appendChild(chip);
+      });
+      outEl.appendChild(chips);
+      if (!t.changes) outEl.appendChild(el('p', 'cm-imp-nothing', W.nothing));
+      plan.modules.forEach(function (m) {
+        if (m.unreadable) { var u = el('p', 'cm-imp-warn', m.title + ': ' + W.unreadable); outEl.appendChild(u); }
+      });
+      var mods = plan.modules.filter(function (m) { return m.changes.length; });
+      mods.forEach(function (m) {
+        var g = group(m.title, m.changes.length, 'go', true);
+        m.changes.forEach(function (c) {
+          var r = row(c.setting);
+          var vals = el('span', 'cm-imp-vals');
+          vals.append(el('span', 'cm-imp-from', show(c.from)), el('span', 'cm-imp-arrow', '→'), el('span', 'cm-imp-to', show(c.to)));
+          r.appendChild(vals);
+          if (c.note) r.appendChild(el('span', 'cm-imp-note', c.note));
+          g.body.appendChild(r);
+        });
+        outEl.appendChild(g.node);
+      });
+      var bad = [], warn = [];
+      plan.modules.forEach(function (m) { m.invalid.forEach(function (i) { bad.push([m, i]); }); m.warnings.forEach(function (i) { warn.push([m, i]); }); });
+      if (bad.length) {
+        var gb = group(W.skippedHead, bad.length, 'bad', true);
+        bad.forEach(function (p) { var r = row(p[1].setting); r.appendChild(el('span', 'cm-imp-note bad', p[1].reason)); gb.body.appendChild(r); });
+        outEl.appendChild(gb.node);
+      }
+      if (warn.length) {
+        var gw = group(W.warnHead, warn.length, 'warn', true);
+        warn.forEach(function (p) { var r = row(p[1].setting); r.appendChild(el('span', 'cm-imp-note warn', p[1].reason)); gw.body.appendChild(r); });
+        outEl.appendChild(gw.node);
+      }
+      if (plan.ignored.length) {
+        var gi = group(W.leftOutHead, plan.ignored.length, '', false);
+        plan.ignored.forEach(function (i) { var r = row(i.path); r.appendChild(el('span', 'cm-imp-note', i.reason)); gi.body.appendChild(r); });
+        outEl.appendChild(gi.node);
+      }
+      if (plan.unknown.length) {
+        var gu = group(W.unknownHead, plan.unknown.length, 'warn', false);
+        plan.unknown.forEach(function (p) { gu.body.appendChild(row(p)); });
+        outEl.appendChild(gu.node);
+      }
+      var bar = el('div', 'cm-imp-actions');
+      var apply = el('button', 'btn btn-accent btn-sm', t.changes === 1 ? W.applyOne : fill(W.apply, { n: t.changes })); apply.type = 'button';
+      if (!t.changes) apply.disabled = true;
+      var cancel = el('button', 'btn btn-ghost btn-sm', W.cancel); cancel.type = 'button';
+      bar.append(apply, cancel);
+      outEl.appendChild(bar);
+      cancel.addEventListener('click', function () { clearOut(); });
+      apply.addEventListener('click', function () { confirmApply(plan, apply, cancel); });
+      outEl.hidden = false;
+      uncover(outEl);
+    }
+
+    function confirmApply(plan, applyBtn, cancelBtn) {
+      if (busy) return;
+      var ask = window.dglConfirm ? window.dglConfirm(fill(W.ask, { n: plan.totals.changes }), { confirm: W.yes, tone: 'danger' }) : Promise.resolve(true);
+      ask.then(function (yes) {
+        if (!yes) return;
+        busy = true; refreshCheck();
+        applyBtn.disabled = true; cancelBtn.disabled = true; applyBtn.textContent = W.applying; applyBtn.classList.add('dgl-busy');
+        outEl.appendChild(skeleton());
+        post('apply').then(function (answer) {
+          busy = false; refreshCheck();
+          var data = answer.data || {};
+          if (!data.plan) { applyBtn.disabled = false; cancelBtn.disabled = false; applyBtn.classList.remove('dgl-busy'); applyBtn.textContent = fill(W.apply, { n: plan.totals.changes }); outEl.querySelectorAll('.cm-skel').forEach(function (s) { s.remove(); }); showError(data.error || W.network); toast(data.error || W.network, false); return; }
+          drawResult(data);
+        }).catch(function () {
+          busy = false; refreshCheck();
+          applyBtn.disabled = false; cancelBtn.disabled = false; applyBtn.classList.remove('dgl-busy'); applyBtn.textContent = fill(W.apply, { n: plan.totals.changes });
+          outEl.querySelectorAll('.cm-skel').forEach(function (s) { s.remove(); });
+          showError(W.network); toast(W.network, false);
+        });
+      });
+    }
+
+    function toast(text, ok) { if (window.dglToast) window.dglToast(text, { kind: ok ? 'ok' : 'error' }); }
+
+    function drawResult(data) {
+      outEl.replaceChildren();
+      var results = data.results || [];
+      var changed = 0;
+      var failedAny = false;
+      var list = el('div', 'cm-imp-result');
+      results.forEach(function (r) {
+        var mod = (data.plan.modules || []).filter(function (m) { return m.id === r.id; })[0];
+        var line = el('div', 'cm-imp-res ' + (r.ok ? 'ok' : 'bad'));
+        line.appendChild(el('b', null, mod ? mod.title : r.id));
+        line.appendChild(el('span', null, r.ok ? W.saved + ' (' + r.changes + ')' : W.notSaved));
+        list.appendChild(line);
+        if (r.ok) changed += r.changes; else failedAny = true;
+      });
+      outEl.appendChild(el('p', failedAny ? 'cm-imp-warn' : 'cm-imp-done', failedAny ? W.doneSome : fill(W.done, { n: changed })));
+      outEl.appendChild(list);
+      var bar = el('div', 'cm-imp-actions');
+      var again = el('button', 'btn btn-ghost btn-sm', W.again); again.type = 'button';
+      again.addEventListener('click', function () { fileText = ''; textEl.value = ''; nameEl.hidden = true; clearOut(); refreshCheck(); });
+      bar.appendChild(again);
+      outEl.appendChild(bar);
+      uncover(outEl);
+      toast(failedAny ? W.toastFail : fill(W.toast, { n: changed }), !failedAny);
+      // The file shown above is read again in place: the page does not reload.
+      var viewer = document.querySelector('[data-cm]');
+      if (viewer) viewer.dispatchEvent(new CustomEvent('cm:reload'));
+    }
+
+    checkBtn.addEventListener('click', function () {
+      if (busy || !source().trim()) return;
+      showError(''); clearOut();
+      busy = true; refreshCheck();
+      var wait = el('div', 'cm-imp-wait'); wait.append(el('p', 'cm-imp-nothing', W.checking), skeleton());
+      outEl.replaceChildren(wait); outEl.hidden = false;
+      var started = Date.now();
+      post('preview').then(function (answer) {
+        // A check that answers at once still shows its placeholder for a moment, so the list does not flash in.
+        var wait = Math.max(0, 260 - (Date.now() - started));
+        setTimeout(function () {
+          busy = false; refreshCheck();
+          var data = answer.data || {};
+          if (!answer.ok || !data.plan) { outEl.hidden = true; outEl.replaceChildren(); showError(data.error || W.network); return; }
+          checked = source();
+          drawPlan(data.plan);
+        }, wait);
+      }).catch(function () { busy = false; refreshCheck(); outEl.hidden = true; outEl.replaceChildren(); showError(W.network); });
+    });
+    refreshCheck();
+  })();
+</script>
+
+<style is:global>
+  .cm .cm-import { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .cm .cm-imp-scope { display: flex; align-items: flex-start; gap: 8px; margin: 0; }
+  .cm .cm-imp-scope svg { flex: none; margin-top: 2px; color: #8399ff; }
+  .cm .cm-imp-drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 22px 16px; text-align: center; border: 1.5px dashed var(--border); border-radius: 14px; color: var(--text-muted); transition: border-color var(--m-fast) ease, background-color var(--m-fast) ease; }
+  .cm .cm-imp-drop > svg { color: var(--accent); }
+  .cm .cm-imp-drop strong { color: var(--text); font-size: 14.5px; }
+  .cm .cm-imp-drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .cm .cm-imp-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .cm .cm-imp-name { font-style: normal; font-size: 12.5px; color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 3px 12px; max-width: 100%; overflow-wrap: anywhere; }
+  .cm .cm-imp-text { width: 100%; box-sizing: border-box; min-height: 96px; max-height: 320px; font: 12.5px/1.5 var(--mono, ui-monospace, monospace); }
+  .cm .cm-imp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .cm .cm-imp-error { margin: 0; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); overflow-wrap: anywhere; }
+  .cm .cm-imp-error[hidden], .cm .cm-imp-out[hidden] { display: none; }
+  .cm .cm-imp-out { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .cm .cm-imp-sum { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cm .cm-imp-chip { font-size: 12.5px; padding: 4px 11px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-muted); }
+  .cm .cm-imp-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .cm .cm-imp-chip.go { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .cm .cm-imp-chip.bad { background: color-mix(in srgb, var(--red) 15%, transparent); }
+  .cm .cm-imp-chip.warn { background: color-mix(in srgb, var(--yellow) 18%, transparent); }
+  .cm .cm-imp-nothing, .cm .cm-imp-done, .cm .cm-imp-warn { margin: 0; font-size: 13.5px; color: var(--text-muted); }
+  .cm .cm-imp-done { color: var(--green); font-weight: 600; }
+  .cm .cm-imp-warn { color: var(--yellow); }
+  .cm .cm-imp-count { margin-left: auto; margin-right: 6px; font: 600 11.5px var(--sans); color: var(--text-dim); background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; }
+  .cm .cm-imp-group.bad > summary b { color: var(--red); }
+  .cm .cm-imp-group.warn > summary b { color: var(--yellow); }
+  .cm .cm-imp-group .dfx-acc-body { gap: 0; padding-top: 0; }
+  .cm .cm-imp-row { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: 4px 14px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--border-soft); font-size: 13px; }
+  .cm .cm-imp-row:first-child { border-top: 0; }
+  .cm .cm-imp-key { font: 12px var(--mono, ui-monospace, monospace); color: var(--text); overflow-wrap: anywhere; }
+  .cm .cm-imp-vals { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+  .cm .cm-imp-from { color: var(--text-dim); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-dim) 60%, transparent); overflow-wrap: anywhere; }
+  .cm .cm-imp-arrow { color: var(--text-dim); }
+  .cm .cm-imp-to { color: var(--green); font-weight: 600; overflow-wrap: anywhere; }
+  .cm .cm-imp-note { grid-column: 2; font-size: 12.5px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .cm .cm-imp-note.bad { color: var(--red); }
+  .cm .cm-imp-note.warn { color: var(--yellow); }
+  .cm .cm-imp-result { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .cm .cm-imp-res { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--border-soft); }
+  .cm .cm-imp-res:first-child { border-top: 0; }
+  .cm .cm-imp-res.ok span { color: var(--green); }
+  .cm .cm-imp-res.bad span { color: var(--red); }
+  .cm .cm-imp-wait { display: flex; flex-direction: column; gap: 10px; }
+  @container cm (max-width: 560px) {
+    .cm .cm-imp-row { grid-template-columns: minmax(0, 1fr); }
+    .cm .cm-imp-note { grid-column: 1; }
+  }
+  @media (max-width: 560px) {
+    .cm .cm-imp-row { grid-template-columns: minmax(0, 1fr); }
+    .cm .cm-imp-note { grid-column: 1; }
+  }
+</style>
