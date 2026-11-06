@@ -6158,4 +6158,5 @@ export const dashPt: Record<string, string> = {
   "{n} roles that are not in this server were left out.": "{n} cargos que não estão neste servidor ficaram de fora.",
   "{x} is not an invite code.": "{x} não é um código de convite.",
   "Could not load this.": "Não foi possível carregar isto.",
+  "Leave anyway": "Sair mesmo assim",
 };
