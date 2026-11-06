@@ -54,7 +54,7 @@ export default defineConfig({
           'check-fill', 'circle-dashed', 'circle-fill', 'clipboard-text-fill', 'clock-counter-clockwise-fill', 'credit-card-fill',
           'clock-fill', 'code-fill', 'command-fill', 'copy-bold', 'crown-fill', 'cube-fill', 'database-fill',
           'cloud-slash-fill', 'door-fill', 'door-open-fill', 'download-simple-bold', 'envelope-simple-fill', 'eye-fill', 'eye-slash-fill',
-          'file-code-bold', 'file-code-fill', 'flag-fill', 'flask-fill', 'floppy-disk-fill', 'folder-fill',
+          'file-arrow-up-fill', 'file-code-bold', 'file-code-fill', 'flag-fill', 'flask-fill', 'floppy-disk-fill', 'folder-fill',
           'funnel-fill', 'gauge-fill', 'gavel-fill', 'gear-fill', 'gear-six-fill', 'gift-fill', 'user-check-fill', 'medal', 'clock-counter-clockwise', 'palette-fill', 'broom-fill', 'sparkle', 'link-bold', 'globe', 'globe-fill', 'cake-fill', 'trophy-fill',
           'globe-hemisphere-west-fill', 'hand-fill', 'hand-waving-fill', 'handshake-fill', 'hard-drives-fill', 'image-fill', 'hash', 'hash-fill', 'headphones-fill',
           'headset-fill', 'heart-fill', 'identification-badge-fill', 'info-fill', 'key-fill', 'keyhole-fill',
