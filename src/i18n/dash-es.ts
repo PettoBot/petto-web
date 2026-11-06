@@ -5737,4 +5737,10 @@ export const dashEs: Record<string, string> = {
   "Steps": "Pasos",
   "First step": "Primer paso",
   "Last step": "Último paso",
+  "Saved designs": "Diseños guardados",
+  "Kinds with a design": "Tipos con diseño",
+  "Messages with a design": "Mensajes con diseño",
+  "Default": "Predeterminado",
+  "{a} of 3 with a design": "{a} de 3 con diseño",
+  "Usual messages": "Los mensajes de siempre",
 };

@@ -5737,4 +5737,10 @@ export const dashPt: Record<string, string> = {
   "Steps": "Passos",
   "First step": "Primeiro passo",
   "Last step": "Último passo",
+  "Saved designs": "Designs salvos",
+  "Kinds with a design": "Tipos com design",
+  "Messages with a design": "Mensagens com design",
+  "Default": "Padrão",
+  "{a} of 3 with a design": "{a} de 3 com design",
+  "Usual messages": "As mensagens de sempre",
 };
