@@ -5717,4 +5717,10 @@ export const dashPt: Record<string, string> = {
   "A picture with the avatar and the progress bar.": "Uma imagem com o avatar e a barra de progresso.",
   "The same numbers, as text in Discord.": "Os mesmos números, como texto no Discord.",
   "The picture and the text together.": "A imagem e o texto juntos.",
+  "Daily limit": "Limite diário",
+  "No limit": "Sem limite",
+  "Streak days": "Dias de sequência",
+  "Pasting the same text over and over does not farm XP.": "Colar o mesmo texto várias vezes não dá XP.",
+  "The roles of the levels they had come back with them.": "Os cargos dos níveis que tinham voltam com eles.",
+  "If they return, they start from zero.": "Se voltarem, começam do zero.",
 };

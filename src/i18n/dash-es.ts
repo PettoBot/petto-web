@@ -5717,4 +5717,10 @@ export const dashEs: Record<string, string> = {
   "A picture with the avatar and the progress bar.": "Una imagen con el avatar y la barra de progreso.",
   "The same numbers, as text in Discord.": "Los mismos números, como texto en Discord.",
   "The picture and the text together.": "La imagen y el texto juntos.",
+  "Daily limit": "Límite diario",
+  "No limit": "Sin límite",
+  "Streak days": "Días de racha",
+  "Pasting the same text over and over does not farm XP.": "Pegar el mismo texto una y otra vez no da XP.",
+  "The roles of the levels they had come back with them.": "Los roles de los niveles que tenían vuelven con ellos.",
+  "If they return, they start from zero.": "Si vuelven, empiezan desde cero.",
 };
