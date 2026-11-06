@@ -101,6 +101,37 @@
     }
     window.dglMotion = { reduced: reduced, leave: leave, stay: stay, hide: hide, flip: flip, crossfade: crossfade };
 
+    // Closing a fold at the very end of a page makes the page shorter than the place the person is at, so the browser drags the whole page
+    // down while the fold shrinks (the page seems to jump and the last block flickers). When a fold is closed with the page already at
+    // its end, an empty block as tall as the fold is left at the end of the content: the page keeps its height, the fold shrinks softly
+    // and nothing else moves. The block goes away as soon as the person scrolls up a little or leaves the page.
+    document.addEventListener('click', function (event) {
+      var summary = event.target && event.target.closest ? event.target.closest('details[open] > summary') : null;
+      if (!summary || !summary.parentElement.classList.contains('dfx-acc') || reduced()) return;
+      var fold = summary.parentElement;
+      var host = fold.closest('#dgl-content') || document.body;
+      var scroller = document.scrollingElement || document.documentElement;
+      for (var node = fold.parentElement; node && node !== document.body; node = node.parentElement) {
+        var overflow = getComputedStyle(node).overflowY;
+        if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 2) { scroller = node; break; }
+      }
+      if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 6) return;
+      var old = host.querySelector(':scope > .dgl-slack');
+      if (old) old.remove();
+      var slack = document.createElement('div');
+      slack.className = 'dgl-slack';
+      slack.setAttribute('aria-hidden', 'true');
+      slack.style.cssText = 'height:' + Math.max(0, fold.offsetHeight - summary.offsetHeight) + 'px;pointer-events:none';
+      host.appendChild(slack);
+      var target = scroller === (document.scrollingElement || document.documentElement) ? window : scroller;
+      var release = function () {
+        if (!slack.isConnected) { target.removeEventListener('scroll', release); return; }
+        var free = scroller.scrollHeight - slack.offsetHeight - scroller.scrollTop - scroller.clientHeight;
+        if (free > 24) { slack.remove(); target.removeEventListener('scroll', release); }
+      };
+      setTimeout(function () { target.addEventListener('scroll', release, { passive: true }); }, 700);
+    }, true);
+
     // Text areas marked .dgl-autogrow grow with what is typed, up to a limit (then they scroll). Browsers that size a field to its content
     // by themselves (CSS field-sizing) need nothing; the others get their height set when the text changes and when a page appears.
     if (!(window.CSS && CSS.supports && CSS.supports('field-sizing', 'content'))) {
@@ -162,6 +193,11 @@
   @keyframes m-pop-out-up { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--m-rise)) scale(.98); } }
   @keyframes m-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes m-fade-out { from { opacity: 1; } to { opacity: 0; } }
+  /* Something that arrives after the page (a file, a list read in the background) is uncovered from the top down while it fades in, after its
+     placeholder: it does not pop in all at once. Add the class and take it off when the animation ends. */
+  @keyframes m-reveal-down { from { opacity: 0; clip-path: inset(0 0 100% 0); } 60% { opacity: 1; } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+  .dgl-reveal-down { animation: m-reveal-down 640ms cubic-bezier(.32, .72, 0, 1) both; }
+  @media (prefers-reduced-motion: reduce) { .dgl-reveal-down { animation: none; } }
   @keyframes m-rise-in { from { opacity: 0; transform: translateY(var(--m-rise-lg)); } to { opacity: 1; transform: none; } }
   @keyframes m-dialog-in { from { opacity: 0; transform: translateY(var(--m-rise-lg)) scale(.97); } to { opacity: 1; transform: none; } }
   @keyframes m-dialog-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--m-rise)) scale(.98); } }
