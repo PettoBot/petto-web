@@ -8,6 +8,9 @@
 //   window.dglMotion.hide(el)          the exit, then `el.hidden = true`.
 //   window.dglMotion.flip(anchor, change)  runs `change()` (something above the rest grows or shrinks) and slides what comes after
 //                                       `anchor` from where it was to where it lands, with transforms only (see the accordions).
+//   window.dglMotion.crossfade(change)  runs `change()` (the page content is swapped for another) as a short cross-fade of the whole page: what
+//                                       does not change (menu, header) looks still, nothing moves sideways. Returns a promise that settles once
+//                                       `change()` has run. Without view transitions, or with "reduce motion", `change()` just runs.
 ---
 <script is:inline>
   (function () {
@@ -79,7 +82,24 @@
         el._dglFlip.onfinish = el._dglFlip.oncancel = function () { el._dglFlip = null; };
       });
     }
-    window.dglMotion = { reduced: reduced, leave: leave, stay: stay, hide: hide, flip: flip };
+    // A change of page as a cross-fade (the browser's view transition: the old page fades out while the new one fades in, ~220 ms, see the
+    // ::view-transition rules below). `change` runs in the middle, after the old page was captured; it may throw, and then the promise rejects
+    // like the plain call would have thrown. A skipped transition (a second page change, a hidden tab) is not an error for anyone.
+    function crossfade(change) {
+      if (!document.startViewTransition || reduced() || document.hidden) { change(); return Promise.resolve(); }
+      var root = document.documentElement;
+      var transition;
+      // Only the content is a picture of its own (the class gives #dgl-content its view-transition-name, and only while this lasts): the menu,
+      // the header and a drawer that is closing are not part of the fade, so they behave exactly as they do without it.
+      root.classList.add('dgl-vt');
+      // A phone scrolls the whole page: it goes to the top first, so the box of the content does not slide while it fades.
+      if (window.scrollY > 0) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      try { transition = document.startViewTransition(change); } catch (e) { root.classList.remove('dgl-vt'); change(); return Promise.resolve(); }
+      transition.ready.catch(function () { /* skipped */ });
+      transition.finished.catch(function () { /* skipped */ }).then(function () { root.classList.remove('dgl-vt'); });
+      return transition.updateCallbackDone;
+    }
+    window.dglMotion = { reduced: reduced, leave: leave, stay: stay, hide: hide, flip: flip, crossfade: crossfade };
 
     // Text areas marked .dgl-autogrow grow with what is typed, up to a limit (then they scroll). Browsers that size a field to its content
     // by themselves (CSS field-sizing) need nothing; the others get their height set when the text changes and when a page appears.
@@ -201,7 +221,16 @@
   body.dashboard-motion :is(.btn, button).dgl-busy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: progress; }
   body.dashboard-motion :is(.btn, button).dgl-busy::before { content: ''; flex: none; box-sizing: border-box; width: 13px; height: 13px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 28%, transparent); border-top-color: currentColor; animation: m-spin .7s linear infinite; }
 
+  /* The change of page (dglMotion.crossfade): a short, soft cross-fade of the content. The pictures only change in opacity; if the new page is
+     taller or shorter, the box grows or shrinks in height (never sideways), and the rest of the page is not in the fade at all. */
+  html.dgl-vt #dgl-content { view-transition-name: dgl-content; }
+  html.dgl-vt::view-transition-group(dgl-content), html.dgl-vt::view-transition-old(dgl-content), html.dgl-vt::view-transition-new(dgl-content) { animation-duration: 220ms; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
+  /* The rest of the page (menu, header, a drawer that is closing) is the new picture at once, as it is without the fade. */
+  html.dgl-vt::view-transition-old(root) { display: none; }
+  html.dgl-vt::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
   @media (prefers-reduced-motion: reduce) {
+    html.dgl-vt::view-transition-group(*), html.dgl-vt::view-transition-old(*), html.dgl-vt::view-transition-new(*) { animation: none !important; }
     .dgl-leave, .dgl-selmenu, .dgl-float.dgl-float:not([hidden]), .dgl-stagger > *, .ep-modal:not([hidden]), .ep-modal:not([hidden]) > *, .rb-modal:not([hidden]), .rb-modal:not([hidden]) > * { animation: none !important; }
     body.dashboard-motion dialog, body.dashboard-motion dialog::backdrop { transition: none; }
     body.dashboard-motion :is(.btn, button).dgl-busy::before { animation-duration: 3s; }
