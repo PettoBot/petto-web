@@ -2,8 +2,9 @@
 // One place for the questions of the dashboard ("Delete this?", "Restore this backup?"): a card in the middle of the screen over a dimmed
 // layer, in the look of the dashboard, instead of the browser's own window ("petto.sbs says..."). Scripts call
 //   window.dglConfirm(text, { title, confirm, cancel, tone: 'danger' | 'neutral' })   ->  a promise that settles with true (yes) or false
+//   window.dglPrompt(text, { field: { placeholder, value, maxLength, inputMode }, title, confirm })  ->  the written text, or null for no
 // and a button or form can ask by itself with data-confirm="<text>" (the form is sent, or the button pressed, only after a yes; the button's
-// own label is the label of the yes). Escape, a click outside and "Cancel" say no. The card comes in and goes out with the motion tokens
+// own label is the label of the yes; data-confirm-yes names it by hand and data-confirm-tone="neutral" makes the card blue instead of red). Escape, a click outside and "Cancel" say no. The card comes in and goes out with the motion tokens
 // (DashMotion.astro), and the focus goes to "Cancel" (the safe answer) and comes back to where it was.
 import { getDashLang, makeT } from '../i18n/dash';
 const dt = makeT(getDashLang(Astro));
@@ -16,7 +17,7 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
     var ICON = '<svg viewBox="0 0 256 256" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M236.8 188.09 149.35 36.22a24.76 24.76 0 0 0-42.7 0L19.2 188.09a23.51 23.51 0 0 0 0 23.72A24.35 24.35 0 0 0 40.55 224h174.9a24.35 24.35 0 0 0 21.33-12.19 23.51 23.51 0 0 0 .02-23.72ZM120 104a8 8 0 0 1 16 0v40a8 8 0 0 1-16 0Zm8 88a12 12 0 1 1 12-12 12 12 0 0 1-12 12Z"/></svg>';
     var open = null;
     function words() { return window.dglConfirmWords || { title: 'Are you sure?', confirm: 'Confirm', cancel: 'Cancel' }; }
-    window.dglConfirm = function (text, opts) {
+    function ask(text, opts) {
       opts = opts || {};
       // One question at a time: asking again while one is open answers "no" to the old one.
       if (open) open(false);
@@ -35,7 +36,17 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
         var yes = document.createElement('button'); yes.type = 'button'; yes.className = 'dgl-ask-yes'; yes.textContent = opts.confirm || w.confirm;
         var no = document.createElement('button'); no.type = 'button'; no.className = 'dgl-ask-no'; no.textContent = opts.cancel || w.cancel;
         layer.setAttribute('aria-labelledby', 'dgl-ask-title'); layer.setAttribute('aria-describedby', 'dgl-ask-text');
-        box.append(icon, title, body, yes, no);
+        // A question that wants a word as the answer (dglPrompt): one line of text between the question and the buttons.
+        var input = null;
+        if (opts.field) {
+          input = document.createElement('input'); input.type = 'text'; input.className = 'dgl-ask-input'; input.autocomplete = 'off'; input.spellcheck = false;
+          input.placeholder = opts.field.placeholder || ''; input.value = opts.field.value || ''; input.setAttribute('aria-labelledby', 'dgl-ask-text');
+          if (opts.field.maxLength) input.maxLength = opts.field.maxLength;
+          if (opts.field.inputMode) input.inputMode = opts.field.inputMode;
+        }
+        box.append(icon, title, body);
+        if (input) box.appendChild(input);
+        box.append(yes, no);
         layer.appendChild(box);
         var settled = false;
         function finish(answer) {
@@ -47,7 +58,7 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
             layer.remove();
             document.documentElement.classList.remove('dgl-ask-open');
             if (returnTo && returnTo.isConnected && returnTo.focus) { try { returnTo.focus({ preventScroll: true }); } catch (e) {} }
-            resolve(answer);
+            resolve(answer && input ? input.value : answer);
           };
           if (window.dglMotion) window.dglMotion.leave(layer, done); else done();
         }
@@ -56,8 +67,12 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
           if (e.key === 'Tab') {
             // The focus stays inside the card: between its two buttons.
             e.preventDefault();
-            (document.activeElement === no ? yes : no).focus();
+            var order = input ? [input, yes, no] : [yes, no];
+            var at = order.indexOf(document.activeElement);
+            order[(at + (e.shiftKey ? order.length - 1 : 1)) % order.length].focus();
+            return;
           }
+          if (e.key === 'Enter' && input && document.activeElement === input) { e.preventDefault(); finish(true); }
         }
         yes.addEventListener('click', function () { finish(true); });
         no.addEventListener('click', function () { finish(false); });
@@ -66,9 +81,12 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
         open = finish;
         document.documentElement.classList.add('dgl-ask-open');
         document.body.appendChild(layer);
-        no.focus({ preventScroll: true });
+        (input || no).focus({ preventScroll: true });
       });
-    };
+    }
+    window.dglConfirm = function (text, opts) { return ask(text, opts); };
+    // dglPrompt(text, { field: { placeholder, value, maxLength, inputMode }, title, confirm }) settles with the written text, or null for no.
+    window.dglPrompt = function (text, opts) { return ask(text, Object.assign({ tone: 'neutral', field: {} }, opts)).then(function (answer) { return answer === false ? null : String(answer); }); };
 
     // data-confirm on a button or on a form: the action waits for a yes. The answer is given once; then the same click or submit goes on.
     var passing = false;
@@ -78,7 +96,7 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
       if (!button || button.disabled) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      window.dglConfirm(button.getAttribute('data-confirm'), { confirm: (button.getAttribute('data-confirm-yes') || button.textContent || button.getAttribute('aria-label') || '').trim().slice(0, 40) || undefined }).then(function (yes) {
+      window.dglConfirm(button.getAttribute('data-confirm'), { tone: button.getAttribute('data-confirm-tone') || undefined, confirm: (button.getAttribute('data-confirm-yes') || button.textContent || button.getAttribute('aria-label') || button.getAttribute('title') || '').trim().slice(0, 40) || undefined }).then(function (yes) {
         if (!yes) return;
         passing = true;
         try { button.click(); } finally { passing = false; }
@@ -91,7 +109,9 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
       event.preventDefault();
       event.stopImmediatePropagation();
       var submitter = event.submitter || null;
-      window.dglConfirm(form.getAttribute('data-confirm')).then(function (yes) {
+      // The yes button is named after the button that sent the form (or data-confirm-yes on the form).
+      var yesLabel = (form.getAttribute('data-confirm-yes') || (submitter && (submitter.textContent || submitter.getAttribute('aria-label') || submitter.getAttribute('title'))) || '').trim().slice(0, 40);
+      window.dglConfirm(form.getAttribute('data-confirm'), { tone: form.getAttribute('data-confirm-tone') || undefined, confirm: yesLabel || undefined }).then(function (yes) {
         if (!yes) return;
         passing = true;
         try { if (form.requestSubmit) form.requestSubmit(submitter || undefined); else form.submit(); } finally { passing = false; }
@@ -113,6 +133,8 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
   .dgl-ask-yes { border: 0; color: #fff; background: var(--red); }
   .dgl-ask-box.neutral .dgl-ask-yes { color: #1b1b1b; background: var(--accent); }
   .dgl-ask-yes:hover { filter: brightness(1.08); }
+  .dgl-ask-input { box-sizing: border-box; width: 100%; margin: 0 0 16px; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-raise, transparent); color: var(--text); font: inherit; font-size: 15px; text-align: center; }
+  .dgl-ask-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .dgl-ask-no { margin-top: 10px; border: 1px solid var(--border); color: var(--text); background: transparent; }
   .dgl-ask-no:hover { background: var(--card-hover); }
   .dgl-ask-yes:active, .dgl-ask-no:active { transform: scale(.985); }
