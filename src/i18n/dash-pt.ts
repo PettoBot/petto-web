@@ -5696,4 +5696,10 @@ export const dashPt: Record<string, string> = {
   "The card": "O cartão",
   "What the message says. Write it here or choose a design from the Embeds page.": "O que a mensagem diz. Escreva aqui ou escolha um design da página de Embeds.",
   "Members can also fill the form on the web, from a link button.": "Os membros também podem preencher o formulário na web, a partir de um botão com link.",
+  "Extra entries for the members who have a role.": "Entradas extras para os membros que têm um cargo.",
+  "+{a} entries": "+{a} entradas",
+  "+{a} claim time": "+{a} de tempo para resgatar",
+  "Stacks": "Soma",
+  "Time stacks": "Tempo soma",
+  "A level to take part, and extra entries for each level reached.": "Um nível para participar e entradas extras para cada nível alcançado.",
 };

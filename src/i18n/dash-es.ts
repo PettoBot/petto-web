@@ -5696,4 +5696,10 @@ export const dashEs: Record<string, string> = {
   "The card": "La tarjeta",
   "What the message says. Write it here or choose a design from the Embeds page.": "Lo que dice el mensaje. Escríbelo aquí o elige un diseño de la página de Embeds.",
   "Members can also fill the form on the web, from a link button.": "Los miembros también pueden rellenar el formulario en la web, desde un botón con enlace.",
+  "Extra entries for the members who have a role.": "Entradas extra para los miembros que tienen un rol.",
+  "+{a} entries": "+{a} entradas",
+  "+{a} claim time": "+{a} de tiempo de reclamo",
+  "Stacks": "Se suma",
+  "Time stacks": "Tiempo se suma",
+  "A level to take part, and extra entries for each level reached.": "Un nivel para participar, y entradas extra por cada nivel alcanzado.",
 };
