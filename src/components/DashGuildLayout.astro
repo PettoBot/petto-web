@@ -1818,6 +1818,25 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (version && isNewer(version, latestVersion)) latestVersion = version;
     }
     var latestVersion = shownVersion();
+    // A change made from this page (a switch, a save of a page script, an editor) already shows on screen, and the server announces it right
+    // after: that announcement must not redraw the page under the person (a small reload that makes the controls blink and the editors start
+    // over). Every write (POST, PUT, PATCH, DELETE) opens a short window (it closes at once if the write fails) in which the stamps heard are taken as seen.
+    // A change made by someone else outside that window still redraws the page as before.
+    if (!window.__dglFetchMarked) {
+      window.__dglFetchMarked = true;
+      var nativeFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var pending = nativeFetch.apply(this, arguments);
+        var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+          // The server announces the change while it is still answering, before the answer arrives: the window opens when the write starts.
+          var before = window.__dglOwnChangeUntil || 0;
+          window.__dglOwnChangeUntil = Date.now() + 20000;
+          pending.then(function (res) { window.__dglOwnChangeUntil = res && res.ok ? Date.now() + 8000 : before; }, function () { window.__dglOwnChangeUntil = before; });
+        }
+        return pending;
+      };
+    }
     // Stamps from Redis are numbers (r12) and only go up; a message that arrives late never counts as newer.
     function isNewer(candidate, than) {
       if (!candidate) return false;
@@ -1938,6 +1957,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     function heard(version) {
       if (!isNewer(version, latestVersion)) return;
       latestVersion = version;
+      // The echo of a change made from this page: it is already on screen, so it is taken as seen and nothing is redrawn.
+      if (Date.now() < (window.__dglOwnChangeUntil || 0)) { setShownVersion(version); return; }
       // A burst of changes (a save that touches several tables, the bot's copy right after) becomes one read.
       clearTimeout(heardTimer);
       heardTimer = setTimeout(function () { refreshCurrent(false); }, 400);
