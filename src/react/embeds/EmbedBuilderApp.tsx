@@ -73,15 +73,51 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const descRef = useRef<HTMLTextAreaElement>(null);
   // The template as it was loaded or last saved: what "discard" on the dashboard's bar of unsaved changes goes back to.
   const savedData = useRef<TemplateData | null>(null);
+  // The templates already read: going back to one shows it at once and refreshes it behind (never over what is being edited).
+  const cache = useRef<Record<string, TemplateData>>({});
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
+  // Which template and which embed the person was on, kept for this tab, so a reload or a save does not send them back to the first.
+  const storeKey = `ebr:${guildId}:${apiPath}`;
+  const remember = (key: string, value: string) => { try { sessionStorage.setItem(`${storeKey}:${key}`, value); } catch { /* the tab keeps no memory: nothing is lost */ } };
+  const recall = (key: string) => { try { return sessionStorage.getItem(`${storeKey}:${key}`); } catch { return null; } };
+  function pick(name: string) {
+    setSelected(name);
+    remember('selected', name);
+    if (apiPath === 'embeds-api') { try { const url = new URL(window.location.href); url.searchParams.set('name', name); window.history.replaceState(window.history.state, '', url); } catch { /* the address is a convenience */ } }
+  }
+  function chooseEmbed(i: number) { setActiveEmbed(i); if (selected) remember(`embed:${selected}`, String(i)); }
 
   useEffect(() => {
     if (!selected) { setData(emptyTemplate()); savedData.current = null; return; }
-    setLoading(true);
+    const cached = cache.current[selected];
+    const wanted = Number(recall(`embed:${selected}`) ?? 0) || 0;
+    if (cached) { setData(cached); savedData.current = cached; setDirty(false); setActiveEmbed(Math.max(0, Math.min(wanted, cached.embeds.length - 1))); } else { setLoading(true); setActiveEmbed(0); }
+    let current = true;
     api(guildId, apiPath, `?name=${encodeURIComponent(selected)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((row) => { if (row) { const loaded = normalizeTemplateData(row.data); setData(loaded); savedData.current = loaded; } setDirty(false); })
-      .finally(() => setLoading(false));
+      .then((row) => {
+        if (!row || !current) return;
+        const loaded = normalizeTemplateData(row.data);
+        cache.current[selected] = loaded;
+        // Edits made while it was refreshing win over what came back.
+        if (cached && dirtyRef.current) return;
+        setData(loaded); savedData.current = loaded; setDirty(false);
+        setActiveEmbed(Math.max(0, Math.min(wanted, loaded.embeds.length - 1)));
+      })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
   }, [selected, guildId, apiPath]);
+
+  // Back on the page (a reload, a visit from another page): the template the person had open, unless the address names one.
+  useEffect(() => {
+    try {
+      if (new URL(window.location.href).searchParams.has('name')) return;
+      const stored = recall('selected');
+      if (stored && stored !== selected && initialTemplateNames.includes(stored)) setSelected(stored);
+    } catch { /* nothing to restore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // A message sent from the Embed Generator arrives in the URL fragment (#import=CODE).
   useEffect(() => {
@@ -145,7 +181,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       const body = await res.json();
       if (!res.ok) { notify(body.error ? t(body.error) : t("Couldn't create that template."), 'error'); return; }
       setNames((n) => [...n, body.name].sort());
-      setSelected(body.name);
+      pick(body.name);
       setNewName('');
     } finally {
       creating.current = false;
@@ -161,7 +197,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     if (!res) { notify(t("Couldn't save, try again."), 'error'); return false; }
     const failure = res.ok ? null : await res.json().catch(() => null);
     notify(res.ok ? t('Saved.') : failure?.error ? t(failure.error) : t("Couldn't save, try again."), res.ok ? 'ok' : 'error');
-    if (res.ok) { setDirty(false); savedData.current = data; }
+    if (res.ok) { setDirty(false); savedData.current = data; cache.current[selected] = data; }
     return res.ok;
   }
 
@@ -184,6 +220,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'delete', name: selected }) });
     if (!res.ok) { notify(t("Couldn't delete that template."), 'error'); return; }
     setNames((n) => n.filter((x) => x !== selected));
+    delete cache.current[selected];
     setSelected('');
   }
 
@@ -195,7 +232,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { notify(body.error ? t(body.error) : t("Couldn't create that template."), 'error'); return false; }
       setNames((n) => [...n, body.name].sort());
-      setSelected(body.name);
+      pick(body.name);
       setPendingImport(null);
       setImportText('');
       notify(t('Imported.'));
@@ -318,7 +355,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       <div className="ebr-top">
         <div className="ebr-chips" role="tablist" aria-label={t('Templates')}>
           {names.map((n) => (
-            <button key={n} type="button" role="tab" aria-selected={n === selected} className={`ebr-chip${n === selected ? ' active' : ''}`} onClick={() => setSelected(n)}>{n}</button>
+            <button key={n} type="button" role="tab" aria-selected={n === selected} className={`ebr-chip${n === selected ? ' active' : ''}`} onClick={() => pick(n)}>{n}</button>
           ))}
           <button type="button" className={`ebr-chip-new${newOpen ? ' open' : ''}`} aria-expanded={newOpen} onClick={() => setNewOpen((o) => !o)}>{t('+ New')}</button>
         </div>
@@ -351,7 +388,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       ) : loading ? (
         <div className="ebr-skeleton" aria-hidden="true"><i /><i /><i /></div>
       ) : (
-        <div className="ebr-editor" data-view={view}>
+        <div className="ebr-editor ebr-fade" data-view={view} key={selected}>
           <div className="ebr-head">
             <div className="ebr-head-title">
               <h2>{selected}</h2>
@@ -396,7 +433,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                   <div className="ebr-embed-tabs">
                     {data.embeds.map((_, i) => (
                       <div key={i} className={`ebr-tab${i === activeEmbed ? ' active' : ''}`}>
-                        <button type="button" className="ebr-tab-main" onClick={() => setActiveEmbed(i)}>Embed {i + 1}</button>
+                        <button type="button" className="ebr-tab-main" onClick={() => chooseEmbed(i)}>Embed {i + 1}</button>
                         <button type="button" className="ebr-tab-x" onClick={() => removeEmbed(i)} aria-label={t('Remove')} title={t('Remove')}>×</button>
                       </div>
                     ))}
