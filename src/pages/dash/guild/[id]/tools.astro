@@ -11,6 +11,7 @@ import { planLimits } from '../../../../utils/planLimits';
 import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
 import { withinBudget } from '../../../../utils/liveCall';
 import { periodStartInstant } from '../../../../utils/dashDays';
+import { botDay, rangeDays } from '../../../../utils/activityStats';
 
 // Uploads, requests, and reviews with profiles: three small modules that share one page, chosen with ?section=.
 const { id } = Astro.params as { id: string };
@@ -74,7 +75,7 @@ if (Astro.request.method === 'POST') {
 }
 
 const get = (table: string, query = '') => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${query}`, { headers: apiHeaders });
-const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, channelsRes, rolesRes, templatesRes, reviewsRes] = await Promise.all([
+const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, channelsRes, rolesRes, templatesRes, reviewsRes, statusRes] = await Promise.all([
   getGuildInfo(id, botToken),
   get('upload_config', '&select=*'),
   get('request_config', '&select=*'),
@@ -86,6 +87,8 @@ const [guildInfo, uploadRes, requestRes, profileRes, openRes, uploadLogRes, chan
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }),
   // Every review of the server (they are small: stars, a short comment and who): the numbers count all of them, the list shows the newest.
   section === 'reviews' ? get('member_reviews', '&select=id,target_id,reviewer_id,stars,comment,updated_at&order=updated_at.desc&limit=2000').catch(() => null) : Promise.resolve(null),
+  // Only the status of every request (a short column), to count the open, claimed and closed ones: the list above is just the newest 15.
+  section === 'requests' ? get('requests', '&select=status&limit=5000').catch(() => null) : Promise.resolve(null),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -104,19 +107,55 @@ const logRows = (uploadLogRes.ok ? await uploadLogRes.json() : []) as { user_id:
 const weekStart = periodStartInstant('week');
 const byUser = new Map<string, number>();
 for (const row of logRows) if (new Date(row.created_at).getTime() >= weekStart) byUser.set(row.user_id, (byUser.get(row.user_id) ?? 0) + 1);
-const uploadStats = { total: logRows.length, week: [...byUser.values()].reduce((a, b) => a + b, 0), board: [...byUser.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([userId, count]) => ({ userId, count })) };
+// The last 14 days (Petto's days, GMT-5), oldest first: what the little bar charts draw, from the same rows.
+const days14 = rangeDays(new Date(), 14);
+const perDay = (stamps: string[]) => {
+  const counts = Array<number>(14).fill(0);
+  for (const stamp of stamps) { const at = days14.indexOf(botDay(stamp)); if (at >= 0) counts[at] += 1; }
+  return counts;
+};
+const reachesBack = (rows: { created_at?: string; updated_at?: string }[], cap: number) => rows.length < cap || Date.parse(String(rows[rows.length - 1]?.created_at ?? rows[rows.length - 1]?.updated_at)) <= Date.now() - 14 * 86_400_000;
+const uploadDays = perDay(logRows.map((row) => row.created_at));
+const uploadStats = {
+  total: logRows.length, capped: logRows.length >= 5000, week: [...byUser.values()].reduce((a, b) => a + b, 0), today: uploadDays[13], days: uploadDays,
+  board: [...byUser.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([userId, count]) => ({ userId, count })),
+};
 const reviewRows: any[] = reviewsRes?.ok ? await reviewsRes.json().catch(() => []) : [];
+const reviewDays = perDay(reviewRows.map((row) => String(row.updated_at)));
+const byTarget = new Map<string, { count: number; stars: number }>();
+const starCounts = [0, 0, 0, 0, 0];
+for (const row of reviewRows) {
+  const stars = Math.max(1, Math.min(5, Number(row.stars) || 1));
+  starCounts[stars - 1] += 1;
+  const entry = byTarget.get(String(row.target_id)) ?? { count: 0, stars: 0 };
+  entry.count += 1; entry.stars += stars;
+  byTarget.set(String(row.target_id), entry);
+}
+const addUp = (list: number[]) => list.reduce((a, b) => a + b, 0);
 const reviewStats = {
   total: reviewRows.length,
   average: reviewRows.length ? reviewRows.reduce((sum, row) => sum + (Number(row.stars) || 0), 0) / reviewRows.length : 0,
-  members: new Set(reviewRows.map((row) => String(row.target_id))).size,
+  members: byTarget.size,
+  stars: starCounts,
+  days: reviewDays,
+  week: addUp(reviewDays.slice(7)),
+  // The change against the 7 days before only counts when the 2000 reviews read reach back that far.
+  weekBefore: reachesBack(reviewRows, 2000) ? addUp(reviewDays.slice(0, 7)) : null,
+  top: [...byTarget.entries()].map(([userId, entry]) => ({ userId, count: entry.count, average: entry.stars / entry.count })).sort((a, b) => b.count - a.count || b.average - a.average).slice(0, 5),
 };
 const recentReviews = reviewRows.slice(0, 30);
+const statusRows: { status: string }[] = statusRes?.ok ? await statusRes.json().catch(() => []) : [];
+const requestCounts = {
+  open: statusRows.filter((row) => row.status === 'open').length,
+  claimed: statusRows.filter((row) => row.status === 'claimed').length,
+  total: statusRows.length,
+  capped: statusRows.length >= 5000,
+};
 
 // Names and pictures instead of bare IDs (the uploads of the week, the open requests and the reviews). Never waits long for them.
 const named: string[] = section === 'uploads' ? uploadStats.board.map((entry) => entry.userId)
   : section === 'requests' ? openRequests.flatMap((req: any) => [String(req.userId), String(req.claimedBy ?? '')])
-  : recentReviews.flatMap((row) => [String(row.target_id), String(row.reviewer_id)]);
+  : [...recentReviews.flatMap((row) => [String(row.target_id), String(row.reviewer_id)]), ...reviewStats.top.map((entry) => entry.userId)];
 const profiles = named.length ? (await withinBudget(getMemberProfiles(Astro, id, named, botToken, { fallback: 'user', userId: session.userId }), 1500))?.value ?? new Map() : new Map();
 const person = (userId: string) => {
   const profile = profiles.get(userId) ?? null;
@@ -150,4 +189,5 @@ const embedTemplates = (templatesRes.ok ? await templatesRes.json() : []).map((r
   people={people}
   reviewStats={reviewStats}
   reviewList={reviewList}
+  requestCounts={requestCounts}
 />
