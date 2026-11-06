@@ -2,8 +2,11 @@
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MaintenanceGate from './MaintenanceGate.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
 
-import { getDashLang, makeT } from '../i18n/dash';
+import { getDashLang, makeT, dashLocale } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 interface Backup { id: string | number; backup_number: string | number; label: string; source: string; created_at: string; }
@@ -25,7 +28,22 @@ interface Props {
   restoreJob?: { status: string } | null;
 }
 const { user, guildId, guildName, guildIcon, backups, audit, schedule, connected, message, error, maintenance = false, teamNotice = false, restoreJob = null } = Astro.props;
-function date(value: string) { return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+function date(value: string) { return new Date(value).toLocaleString(dashLocale(dashLang), { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+function ago(value: string) {
+  const mins = Math.floor((Date.now() - new Date(value).getTime()) / 60000);
+  if (mins < 1) return dt('just now');
+  if (mins < 60) return dt('{n}m ago', { n: mins });
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return dt('{n}h ago', { n: hours });
+  return dt('{n}d ago', { n: Math.floor(hours / 24) });
+}
+function inTime(value: string) {
+  const mins = Math.ceil((new Date(value).getTime() - Date.now()) / 60000);
+  if (!Number.isFinite(mins) || mins <= 1) return dt('any moment now');
+  if (mins < 60) return dt('in {n}m', { n: mins });
+  const hours = Math.round(mins / 60);
+  return hours < 48 ? dt('in {n}h', { n: hours }) : dt('in {n}d', { n: Math.round(hours / 24) });
+}
 function sourceLabel(source: string) { return source === 'scheduled' ? dt('Automatic') : dt('Manual'); }
 function actionLabel(action: string) {
   return ({ backup_created: dt('Backup created'), backup_exported: dt('Backup exported'), backup_restored: dt('Backup restored'), schedule_updated: dt('Schedule updated'), schedule_disabled: dt('Schedule disabled') } as Record<string, string>)[action] ?? action;
@@ -64,66 +82,161 @@ const restoreText = {
 };
 const backupCount = backups.length;
 const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJob.status);
+const titleOf = (backup: Backup) => backup.label || (backup.source === 'scheduled' ? dt('Automatic backup') : dt('Manual backup'));
+const autoCount = backups.filter((backup) => backup.source === 'scheduled').length;
+const manualCount = backupCount - autoCount;
+const lastAt = backups.reduce((latest, backup) => Math.max(latest, new Date(backup.created_at).getTime() || 0), 0);
+const lastText = lastAt ? ago(new Date(lastAt).toISOString()) : '–';
+// The choices of the schedule form (the values the bot accepts); one that is not in the list falls back to the usual one.
+const everyOptions: [number, string][] = [[6, dt('6 hours')], [12, dt('12 hours')], [24, dt('24 hours')], [48, dt('48 hours')], [168, dt('7 days')]];
+const keepOptions: [number, string][] = [[3, dt('3 copies')], [7, dt('7 copies')], [14, dt('14 copies')], [30, dt('30 copies')]];
+const everyNow = everyOptions.some(([n]) => n === schedule?.interval_hours) ? (schedule?.interval_hours as number) : 24;
+const keepNow = keepOptions.some(([n]) => n === schedule?.retention_count) ? (schedule?.retention_count as number) : 7;
+const keptShare = schedule && schedule.retention_count > 0 ? Math.min(100, Math.round((autoCount / schedule.retention_count) * 100)) : 0;
+const AUDIT_ICON: Record<string, string> = { backup_created: 'ph:plus-circle-fill', backup_exported: 'ph:download-simple-bold', backup_restored: 'ph:arrow-counter-clockwise-bold', schedule_updated: 'ph:clock-fill', schedule_disabled: 'ph:prohibit-fill' };
+const AUDIT_COLOR: Record<string, string> = { backup_created: '#86b894', backup_exported: '#9bd0f5', backup_restored: '#f5c26b', schedule_updated: '#c6a8f5', schedule_disabled: '#c98791' };
 ---
 
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="backups" pageTitle="Backups">
+  <DashSettingsKit />
+  <DashFormKit />
   <div class="vb-page">
   <MaintenanceGate active={maintenance} title={dt('Backups are under maintenance')} description={dt('Backups are paused for now and cannot be used, here or with the commands. Your saved backups and schedules are kept as they are, and they will come back later.')}>
   {teamNotice && <div class="vb-team-note"><Icon name="ph:wrench-fill" width="14" height="14" />{dt('Backups are under maintenance for everyone else. You can use them because you are part of the Petto team.')}</div>}
   <div class="vb-heading">
     <div>
-      <div class="vb-eyebrow"><Icon name="ph:archive-fill" width="13" height="13" />{dt('Petto Vault')}</div>
+      <div class="vb-eyebrow"><Icon name="ph:archive-fill" width="14" height="14" />{dt('Petto Vault')}</div>
       <h1>{dt('Backups')}</h1>
     </div>
     <span class:list={['vb-status', { online: connected }]}><i></i>{connected ? dt('Vault connected') : dt('Vault unavailable')}</span>
   </div>
 
-  {message && <div class="vb-notice success"><Icon name="ph:check-circle-fill" width="15" height="15" />{message}</div>}
-  {error && <div class="vb-notice error"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
+  {message && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{message}</div>}
+  {error && <div class="sx-flash sx-flash-bad"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
 
   {!connected ? (
     <section class="vb-empty">
-      <Icon name="ph:cloud-slash-fill" width="24" height="24" />
+      <Icon name="ph:cloud-slash-fill" width="26" height="26" />
       <div><strong>{dt('Vault is not connected to the dashboard yet.')}</strong><p>{dt('The bot needs its private Vault database and the shared dashboard secret configured before this page can manage backups.')}</p></div>
     </section>
   ) : (
     <>
+      <DashStatTiles tiles={[
+        { label: dt('Saved backups'), value: backupCount, tone: 'invites' },
+        { label: dt('Manual'), value: manualCount, tone: 'messages' },
+        { label: dt('Automatic'), value: autoCount, tone: 'voice' },
+        { label: dt('Last backup'), value: 0, text: lastText, tone: 'joins' },
+      ]} />
+
       <div class="vb-layout">
         <div class="vb-col vb-col-main">
-          <section class="vb-card vb-saved">
-            <div class="vb-section-head"><h2><Icon name="ph:stack-fill" width="16" height="16" />{dt('Saved backups')}</h2><span class="vb-count">{dt('{a} recent', { a: backups.length })}</span></div>
-            {backups.length ? <div class="vb-list dgl-stagger">{backups.map((backup) => <div class="vb-row"><span class="vb-row-icon"><Icon name={backup.source === 'scheduled' ? 'ph:clock-fill' : 'ph:archive-fill'} width="15" height="15" /></span><div class="vb-row-main"><strong>{backup.label || dt('Manual backup')}</strong><span>#{backup.backup_number} · {sourceLabel(backup.source)} · {date(backup.created_at)}</span></div><a class="btn btn-ghost btn-sm" href={`/dash/guild/${guildId}/backups-export?id=${encodeURIComponent(String(backup.backup_number))}`}><Icon name="ph:download-simple-bold" width="14" height="14" />{dt('Export')}</a><button class="btn btn-ghost btn-sm" type="button" data-vb-restore={String(backup.backup_number)} data-vb-label={backup.label || dt('Manual backup')}><Icon name="ph:archive-fill" width="14" height="14" />{dt('Restore')}</button><button class="btn btn-ghost btn-sm vb-del" type="button" data-vb-delete={String(backup.backup_number)} aria-label={dt('Delete')} title={dt('Delete')}><Icon name="ph:trash-fill" width="14" height="14" /></button></div>)}</div> : <div class="vb-empty-inline"><Icon name="ph:archive-fill" width="22" height="22" /><p>{dt('No backups yet. Create the first one.')}</p></div>}
+          <section class="sx-panel vb-saved" data-vb-saved>
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:stack-fill" width="17" height="17" /></span>
+              <h2>{dt('Saved backups')}</h2>
+              <span class="sx-tag" data-vb-count>{backupCount}</span>
+            </div>
+            {schedule && (
+              <div class="vb-keep">
+                <span>{dt('{a} of {b} automatic copies kept', { a: autoCount, b: schedule.retention_count })}</span>
+                <span class="vb-keep-bar"><i style={`width:${keptShare}%`}></i></span>
+              </div>
+            )}
+            {backups.length > 0 && (
+              <div class="dfx-chips vb-chips" role="radiogroup" aria-label={dt('Filter')}>
+                <label class="dfx-chip vb-chip"><input type="radio" name="vb-source" value="" checked />{dt('All')}<b>{backupCount}</b></label>
+                <label class="dfx-chip vb-chip"><input type="radio" name="vb-source" value="manual" disabled={manualCount === 0} />{dt('Manual')}<b>{manualCount}</b></label>
+                <label class="dfx-chip vb-chip"><input type="radio" name="vb-source" value="scheduled" disabled={autoCount === 0} />{dt('Automatic')}<b>{autoCount}</b></label>
+              </div>
+            )}
+            {backups.length ? (
+              <div class="vb-list dgl-stagger">
+                {backups.map((backup) => (
+                  <div class:list={['vb-row', { auto: backup.source === 'scheduled' }]} data-vb-source={backup.source === 'scheduled' ? 'scheduled' : 'manual'}>
+                    <span class="vb-row-icon"><Icon name={backup.source === 'scheduled' ? 'ph:clock-fill' : 'ph:archive-fill'} width="16" height="16" /></span>
+                    <div class="vb-row-main">
+                      <div class="vb-row-title"><strong>{titleOf(backup)}</strong><em>{ago(backup.created_at)}</em></div>
+                      <span>#{backup.backup_number} · {sourceLabel(backup.source)} · {date(backup.created_at)}</span>
+                    </div>
+                    <div class="vb-row-actions">
+                      <button class="btn btn-ghost btn-sm" type="button" data-vb-restore={String(backup.backup_number)} data-vb-label={titleOf(backup)}><Icon name="ph:arrow-counter-clockwise-bold" width="14" height="14" />{dt('Restore')}</button>
+                      <a class="btn btn-ghost btn-sm vb-icon-btn" href={`/dash/guild/${guildId}/backups-export?id=${encodeURIComponent(String(backup.backup_number))}`} aria-label={dt('Export')} title={dt('Export')}><Icon name="ph:download-simple-bold" width="14" height="14" /></a>
+                      <button class="btn btn-ghost btn-sm vb-del vb-icon-btn" type="button" data-vb-delete={String(backup.backup_number)} aria-label={dt('Delete')} title={dt('Delete')}><Icon name="ph:trash-fill" width="14" height="14" /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : <div class="vb-empty-inline"><Icon name="ph:archive-fill" width="24" height="24" /><p>{dt('No backups yet. Create the first one.')}</p></div>}
+            <p class="sx-empty vb-none" hidden><Icon name="ph:magnifying-glass-bold" width="16" height="16" />{dt('No backup matches that.')}</p>
           </section>
 
-          <section class="vb-card vb-activity">
-            <div class="vb-section-head"><h2><Icon name="ph:list-dashes-fill" width="16" height="16" />{dt('Activity history')}</h2></div>
-            {audit.length ? <div class="vb-audit-list">{audit.map((entry) => <div class="vb-audit-row"><span class="vb-audit-dot"></span><div><strong>{actionLabel(entry.action)}</strong><span>{dt('User {a} {b}· {c}', { a: (entry.actor_id), b: (entry.backup_number ? `· backup #${entry.backup_number} ` : ''), c: (date(entry.created_at)) })}</span></div></div>)}</div> : <div class="vb-empty-inline"><Icon name="ph:list-dashes-fill" width="22" height="22" /><p>{dt('No Vault activity recorded yet.')}</p></div>}
+          <section class="sx-panel vb-activity">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#f0a88f"><Icon name="ph:list-dashes-fill" width="17" height="17" /></span>
+              <h2>{dt('Activity history')}</h2>
+              {audit.length > 0 && <span class="sx-tag">{audit.length}</span>}
+            </div>
+            {audit.length ? (
+              <div class="vb-audit-list dgl-stagger">
+                {audit.map((entry) => (
+                  <div class="vb-audit-row">
+                    <span class="vb-audit-icon" style={`--c:${AUDIT_COLOR[entry.action] ?? '#94a3b8'}`}><Icon name={AUDIT_ICON[entry.action] ?? 'ph:clock-fill'} width="14" height="14" /></span>
+                    <div>
+                      <strong>{actionLabel(entry.action)}{entry.backup_number ? <span class="vb-audit-num"> #{entry.backup_number}</span> : null}</strong>
+                      <span>{dt('User {a}', { a: entry.actor_id })} · {date(entry.created_at)}</span>
+                    </div>
+                    <em>{ago(entry.created_at)}</em>
+                  </div>
+                ))}
+              </div>
+            ) : <div class="vb-empty-inline"><Icon name="ph:list-dashes-fill" width="24" height="24" /><p>{dt('No Vault activity recorded yet.')}</p></div>}
           </section>
         </div>
 
         <div class="vb-col vb-col-side">
-          <section class="vb-card vb-card-accent vb-create">
-            <div class="vb-card-title"><span class="vb-icon green"><Icon name="ph:plus-circle-fill" width="15" height="15" /></span><div><h2>{dt('Create a backup')}</h2><p>{dt('Save the current roles, channels, permissions, emojis, and server settings.')}</p></div></div>
+          <section class="sx-panel vb-create">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:plus-circle-fill" width="17" height="17" /></span>
+              <h2>{dt('Create a backup')}</h2>
+            </div>
+            <p class="sx-lead">{dt('Save the current roles, channels, permissions, emojis, and server settings.')}</p>
             <form method="POST" enctype="multipart/form-data" class="vb-form" data-no-dirty>
               <input type="hidden" name="action" value="create" />
-              <label>{dt('Backup name')} <input type="text" name="label" maxlength="80" placeholder={dt('Before changing roles')} /></label>
-              <button class="btn btn-accent btn-sm" type="submit"><Icon name="ph:archive-fill" width="14" height="14" />{dt('Create backup')}</button>
+              <div class="dfx-field"><label for="vb-label">{dt('Backup name')}</label><textarea id="vb-label" name="label" class="dgl-autogrow dfx-one" rows="1" data-one-line data-count maxlength="80" placeholder={dt('Before changing roles')}></textarea></div>
+              <div class="sx-foot"><button class="btn btn-accent btn-sm" type="submit"><Icon name="ph:archive-fill" width="14" height="14" />{dt('Create backup')}</button></div>
             </form>
           </section>
 
-          <section class="vb-card vb-schedule">
-            <div class="vb-card-title"><span class="vb-icon accent"><Icon name="ph:clock-fill" width="15" height="15" /></span><div><h2>{dt('Automatic backups')}</h2><p>{schedule ? dt('Every {a} hours · keeps {b}', { a: schedule.interval_hours, b: schedule.retention_count }) : dt('No schedule is active for this server.')}</p></div></div>
+          <section class="sx-panel vb-schedule">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#9bd0f5"><Icon name="ph:clock-fill" width="17" height="17" /></span>
+              <h2>{dt('Automatic backups')}</h2>
+              <span class:list={['sx-pill-state', { on: Boolean(schedule) }]}>{schedule ? dt('On') : dt('Off')}</span>
+            </div>
+            <p class="sx-lead">{schedule ? dt('Every {a} hours · keeps {b}', { a: schedule.interval_hours, b: schedule.retention_count }) : dt('No schedule is active for this server.')}{schedule?.next_run_at ? ` · ${dt('Next one {a}', { a: inTime(schedule.next_run_at) })}` : ''}</p>
             <form method="POST" enctype="multipart/form-data" class="vb-form vb-schedule-form">
               <input type="hidden" name="action" value="schedule" />
-              <label>{dt('Every')} <select name="hours"><option value="6">{dt('6 hours')}</option><option value="12">{dt('12 hours')}</option><option value="24" selected={schedule?.interval_hours === 24 || !schedule}>{dt('24 hours')}</option><option value="48">{dt('48 hours')}</option><option value="168">{dt('7 days')}</option></select></label>
-              <label>{dt('Keep')} <select name="retention"><option value="3">{dt('3 copies')}</option><option value="7" selected={schedule?.retention_count === 7 || !schedule}>{dt('7 copies')}</option><option value="14">{dt('14 copies')}</option><option value="30">{dt('30 copies')}</option></select></label>
-              <button class="btn btn-ghost btn-sm" type="submit">{dt('Save schedule')}</button>
+              <div class="dfx-field"><span class="dfx-label">{dt('Every')}</span>
+                <div class="dfx-chips vb-chips">
+                  {everyOptions.map(([n, label]) => <label class="dfx-chip vb-chip"><input type="radio" name="hours" value={n} checked={n === everyNow} />{label}</label>)}
+                </div>
+              </div>
+              <div class="dfx-field"><span class="dfx-label">{dt('Keep')}</span>
+                <div class="dfx-chips vb-chips">
+                  {keepOptions.map(([n, label]) => <label class="dfx-chip vb-chip"><input type="radio" name="retention" value={n} checked={n === keepNow} />{label}</label>)}
+                </div>
+              </div>
+              <div class="sx-foot"><button class="btn btn-accent btn-sm" type="submit">{dt('Save schedule')}</button></div>
             </form>
             {schedule && <form method="POST" enctype="multipart/form-data" class="vb-unschedule" data-no-dirty><input type="hidden" name="action" value="unschedule" /><button type="submit">{dt('Disable schedule')}</button></form>}
           </section>
 
-          <section class="vb-card vb-data">
-            <div class="vb-card-title"><span class="vb-icon accent"><Icon name="ph:lock-key-fill" width="15" height="15" /></span><div><h2>{dt('Your data')}</h2><p>{dt('A backup keeps names, permissions and settings: no messages and no member list. Backups of a server Petto has left are deleted after 30 days.')}</p></div></div>
+          <section class="sx-panel vb-data">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#c98791"><Icon name="ph:lock-key-fill" width="17" height="17" /></span>
+              <h2>{dt('Your data')}</h2>
+            </div>
+            <p class="sx-lead">{dt('A backup keeps names, permissions and settings: no messages and no member list. Backups of a server Petto has left are deleted after 30 days.')}</p>
             <div class="vb-data-actions">
               {schedule && <form method="POST" enctype="multipart/form-data" class="vb-inline-form" data-no-dirty><input type="hidden" name="action" value="unschedule" /><button class="btn btn-ghost btn-sm" type="submit"><Icon name="ph:clock-fill" width="14" height="14" />{dt('Disable automatic backups')}</button></form>}
               {backupCount > 0 && <button class="btn btn-ghost btn-sm vb-del" type="button" data-vb-delete-all={String(backupCount)}><Icon name="ph:trash-fill" width="14" height="14" />{dt('Delete all backups')}</button>}
@@ -337,6 +450,26 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
           }
         })();
       </script>
+      <script is:inline>
+        // The chips of the saved backups (all, manual, automatic) hide the rows of the other kind. Works again when the dashboard swaps the page in.
+        (function () {
+          var root = document.querySelector('[data-vb-saved]:not([data-bound])');
+          if (!root) return;
+          root.setAttribute('data-bound', '1');
+          var rows = Array.prototype.slice.call(root.querySelectorAll('.vb-row'));
+          var count = root.querySelector('[data-vb-count]');
+          var none = root.querySelector('.vb-none');
+          var apply = function () {
+            var on = root.querySelector('input[name="vb-source"]:checked');
+            var kind = on ? on.value : '';
+            var shown = 0;
+            rows.forEach(function (row) { var ok = !kind || row.getAttribute('data-vb-source') === kind; row.hidden = !ok; if (ok) shown++; });
+            if (count) count.textContent = String(shown);
+            if (none) none.hidden = shown > 0;
+          };
+          root.querySelectorAll('input[name="vb-source"]').forEach(function (radio) { radio.addEventListener('change', apply); });
+        })();
+      </script>
     </>
   )}
   </MaintenanceGate>
@@ -344,69 +477,88 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
 </DashGuildLayout>
 
 <style>
-  .vb-team-note { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 40%, transparent); border-radius: 10px; padding: 9px 13px; margin-bottom: 16px; }
+  .vb-team-note { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 40%, transparent); border-radius: 10px; padding: 9px 13px; margin-bottom: 14px; }
 
-  /* The page fills the panel: the two columns stretch to its bottom, and the lists inside them centre their empty state. */
-  .vb-page { display: flex; flex-direction: column; min-height: 100%; }
+  /* The page fills the panel: an empty state stretches to its bottom. */
+  .vb-page { display: flex; flex-direction: column; min-height: 100%; max-width: 1180px; }
   .vb-page > :global(.maint-gate) { flex: 1 1 auto; display: flex; flex-direction: column; }
   .vb-page :global(.maint-gate-content) { flex: 1 1 auto; display: flex; flex-direction: column; }
   h1 { font-size: 24px; margin: 0; }
-  h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
-  p { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; margin: 0; }
-  .vb-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 18px; margin-bottom: 14px; }
+  h2 { font-size: 15.5px; margin: 0; }
+  p { margin: 0; }
+  .vb-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 18px; margin-bottom: 16px; }
   .vb-heading > div { min-width: 0; }
-  .vb-eyebrow { display: flex; align-items: center; gap: 6px; color: var(--accent); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
-  .vb-status { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 999px; padding: 7px 10px; color: var(--text-dim); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .vb-eyebrow { display: flex; align-items: center; gap: 7px; color: var(--accent); font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+  .vb-status { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; color: var(--text-dim); font: 600 12px var(--sans); }
   .vb-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
-  .vb-status.online { color: var(--green); border-color: var(--green); background: var(--green-soft); }
-  .vb-status.online i { background: var(--green); }
-  .vb-notice, .vb-empty { display: flex; align-items: flex-start; gap: 9px; border: 1px solid; border-radius: 10px; padding: 11px 14px; margin-bottom: 18px; font-size: 13px; }
-  .vb-notice.success { color: var(--green); border-color: var(--green); background: var(--green-soft); }
-  .vb-notice.error { color: var(--red); border-color: var(--red); background: var(--red-soft); }
-  .vb-empty { color: var(--text-muted); border-color: var(--border); background: var(--card); padding: 20px; }
-  .vb-empty strong { color: var(--text); display: block; margin-bottom: 4px; }
-  .vb-empty { flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-radius: 14px; margin-bottom: 0; }
-  .vb-empty p { max-width: 52ch; }
-  .vb-layout { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
-  .vb-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  .vb-col-main > .vb-card { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .vb-col-side > .vb-data { flex: 1 1 auto; max-height: 260px; }
-  .vb-card { border: 1px solid var(--border); border-radius: 14px; padding: 18px; background: var(--card); }
-  .vb-card-accent { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
-  .vb-card-title { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
-  .vb-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; }
-  .vb-icon.green { color: var(--green); background: var(--green-soft); }
-  .vb-icon.accent { color: var(--accent); background: var(--accent-soft); }
-  .vb-form { display: flex; align-items: flex-end; gap: 9px; flex-wrap: wrap; }
-  .vb-form label { display: flex; flex-direction: column; gap: 6px; color: var(--text-muted); font-size: 11.5px; }
-  .vb-form input, .vb-form select { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--bg-raise); color: var(--text); font: 13px var(--sans); }
-  .vb-form input { width: min(250px, 100%); }
-  .vb-create .vb-form label { flex: 1 1 150px; }
-  .vb-create .vb-form input { width: 100%; box-sizing: border-box; }
-  .vb-form input:focus, .vb-form select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-  .vb-dialog :global(.btn-sm), .btn-sm { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12px; }
-  .vb-unschedule { margin-top: 12px; }
-  .vb-unschedule button { border: 0; padding: 0; color: var(--red); background: transparent; font-size: 11px; cursor: pointer; }
-  .vb-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-  .vb-section-head h2 { color: var(--text); margin: 0; }
-  .vb-section-head h2 :global(svg) { color: var(--accent); }
-  .vb-count { color: var(--text-dim); font: 10px var(--mono); text-transform: uppercase; white-space: nowrap; }
-  .vb-list { display: flex; flex-direction: column; gap: 7px; }
-  .vb-row { display: flex; align-items: center; gap: 10px; min-width: 0; border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; background: var(--bg-raise); }
-  .vb-row-icon { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; color: var(--accent); background: var(--accent-soft); flex-shrink: 0; }
+  .vb-status.online { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border)); background: var(--green-soft); }
+  .vb-status.online i { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
+  .vb-page :global(.sx-flash) { max-width: 1000px; }
+  .vb-page > :global(.maint-gate) > :global(.maint-gate-content) > :global(.stt) { margin-bottom: 14px; }
+
+  .vb-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; min-height: 240px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 24px; color: var(--text-dim); }
+  .vb-empty :global(svg) { color: var(--accent); }
+  .vb-empty strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 14.5px; }
+  .vb-empty p { max-width: 52ch; font-size: 13px; line-height: 1.5; }
+
+  .vb-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .vb-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .vb-col-main { align-self: stretch; }
+  .vb-col-main > :global(.sx-panel:has(> .vb-empty-inline)) { flex: 1 1 auto; }
+  .vb-col-side { position: sticky; top: 0; align-self: start; }
+  .vb-layout > .vb-col > :global(.sx-panel) { animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .vb-create { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .vb-form { display: flex; flex-direction: column; gap: 14px; }
+  .vb-form :global(.dfx-field) { gap: 8px; }
+  .vb-chips { gap: 6px; }
+  .vb-chip { padding: 6px 12px; font-size: 12.5px; }
+  .vb-chip :global(b), .vb-chip b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .vb-unschedule { margin: 0; }
+  .vb-unschedule button { border: 0; padding: 0; color: var(--red); background: transparent; font: 600 12.5px var(--sans); cursor: pointer; }
+  .vb-unschedule button:hover { text-decoration: underline; }
+  .vb-schedule .sx-lead { margin-top: -4px; }
+
+  /* Saved backups */
+  .vb-keep { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-dim); margin-top: -4px; }
+  .vb-keep-bar { flex: 1 1 120px; max-width: 220px; height: 5px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .vb-keep-bar i { display: block; height: 100%; border-radius: inherit; background: #9bd0f5; transform-origin: left; animation: vb-grow .8s var(--m-out) backwards; }
+  .vb-list { display: flex; flex-direction: column; gap: 8px; }
+  .vb-row { display: flex; align-items: center; gap: 12px; min-width: 0; border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 10px 10px 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); transition: background-color .3s ease, border-color .3s ease; }
+  .vb-row:hover { border-color: var(--border); background: var(--card-hover); }
+  .vb-row[hidden], .vb-none[hidden] { display: none; }
+  .vb-row-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: color-mix(in srgb, #c6a8f5 60%, var(--text)); background: color-mix(in srgb, #c6a8f5 15%, transparent); flex: none; }
+  .vb-row.auto .vb-row-icon { color: color-mix(in srgb, #9bd0f5 60%, var(--text)); background: color-mix(in srgb, #9bd0f5 15%, transparent); }
   .vb-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
-  .vb-row-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
-  .vb-row-main span, .vb-audit-row span { color: var(--text-dim); font-size: 11px; }
-  .vb-inline-form { display: inline-flex; margin: 0; }
+  .vb-row-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .vb-row-title strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13.5px; }
+  .vb-row-title em { flex: none; font-style: normal; font-size: 11.5px; color: var(--text-dim); }
+  .vb-row-main > span { font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .vb-row-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+  .vb-icon-btn { padding-inline: 9px; }
+  .vb-del { color: var(--red); }
+  .vb-dialog :global(.btn-sm), .btn-sm { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12px; }
   .vb-dialog :global(.btn-danger), .btn-danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
-  .vb-empty-inline { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 90px; border: 1px dashed var(--border); border-radius: 12px; padding: 16px; text-align: center; }
+  .vb-empty-inline { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 150px; border: 1px dashed var(--border); border-radius: 12px; padding: 16px; text-align: center; }
+  .vb-col-main > :global(.sx-panel) > .vb-empty-inline { flex: 1 1 auto; }
   .vb-empty-inline :global(svg) { flex-shrink: 0; color: var(--accent); }
-  .vb-empty-inline p { margin: 0; color: var(--text-dim); font-size: 13px; }
-  .vb-audit-list { display: flex; flex-direction: column; gap: 10px; }
-  .vb-audit-row { display: flex; align-items: flex-start; gap: 10px; }
-  .vb-audit-dot { width: 7px; height: 7px; border-radius: 50%; margin: 5px 2px 0; background: var(--accent); flex-shrink: 0; }
-  .vb-audit-row div { display: flex; flex-direction: column; gap: 3px; }
-  .vb-audit-row strong { color: var(--text); font-size: 12.5px; }
+  .vb-empty-inline p { color: var(--text-dim); font-size: 13px; }
+
+  /* Activity */
+  .vb-audit-list { display: flex; flex-direction: column; }
+  .vb-audit-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 10px 4px; }
+  .vb-audit-row + .vb-audit-row { border-top: 1px solid var(--border-soft); }
+  .vb-audit-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: color-mix(in srgb, var(--c) 60%, var(--text)); background: color-mix(in srgb, var(--c) 16%, transparent); }
+  .vb-audit-row div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .vb-audit-row strong { color: var(--text); font-size: 13px; }
+  .vb-audit-num { font-weight: 500; color: var(--text-dim); }
+  .vb-audit-row div > span { font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .vb-audit-row > em { padding-top: 4px; font: 11px var(--mono); font-style: normal; color: var(--text-dim); white-space: nowrap; }
+
+  .vb-inline-form { display: inline-flex; margin: 0; }
+  .vb-data-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .vb-data-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 12.5px; }
+  @keyframes vb-grow { from { transform: scaleX(0); } to { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .vb-keep-bar i { animation: none; } }
 
   .vb-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(86vh, 720px); overflow: auto; border: 1px solid var(--border); border-radius: 16px; padding: 0; background: var(--card); color: var(--text); box-shadow: 0 24px 70px rgba(0, 0, 0, .55); }
   /* The dimming fades in and out with every dialog of the dashboard (DashMotion); this one also blurs what is behind. */
@@ -449,13 +601,19 @@ const restoreRunning = restoreJob && ['running', 'cancelling'].includes(restoreJ
   :global(.vb-phase) { color: var(--text-muted); font-size: 12.5px; }
   :global(.vb-dialog .btn:disabled) { opacity: .55; cursor: not-allowed; }
   @media (prefers-reduced-motion: reduce) { :global(.vb-bar i) { transition: none; } }
-  @media (max-width: 1000px) {
-    .vb-layout { display: flex; flex-direction: column; }
+  /* The panel is about 370px narrower than the window (the side menu), so two columns need a wide window. */
+  @media (max-width: 1180px) {
+    .vb-layout { display: flex; flex-direction: column; align-items: stretch; }
     .vb-col { display: contents; }
+    .vb-col-side { position: static; }
     .vb-create { order: 1; } .vb-schedule { order: 2; } .vb-saved { order: 3; } .vb-activity { order: 4; } .vb-data { order: 5; }
-    .vb-layout > .vb-col > .vb-card { flex: 0 0 auto; }
-    .vb-col-side > .vb-data { max-height: none; }
   }
   @media (max-width: 680px) { .vb-heading { flex-direction: column; align-items: flex-start; } }
-  @media (max-width: 430px) { .vb-row { flex-wrap: wrap; row-gap: 10px; } .vb-row-main { flex-basis: calc(100% - 37px); } .vb-row-main + .btn { margin-left: 37px; } .vb-form > * { width: 100%; } .vb-form input, .vb-form select { width: 100%; } }
+  @media (max-width: 560px) {
+    .vb-row { flex-wrap: wrap; row-gap: 10px; }
+    .vb-row-main { flex-basis: calc(100% - 50px); }
+    .vb-row-actions { margin-left: 46px; }
+    .vb-audit-row { grid-template-columns: 28px minmax(0, 1fr); }
+    .vb-audit-row > em { grid-column: 2; padding-top: 0; }
+  }
 </style>
