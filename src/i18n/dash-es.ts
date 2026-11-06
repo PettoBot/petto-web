@@ -6157,4 +6157,5 @@ export const dashEs: Record<string, string> = {
   "{n} channels that are not in this server were left out.": "Se dejaron fuera {n} canales que no están en este servidor.",
   "{n} roles that are not in this server were left out.": "Se dejaron fuera {n} roles que no están en este servidor.",
   "{x} is not an invite code.": "{x} no es un código de invitación.",
+  "Could not load this.": "No se pudo cargar esto.",
 };
