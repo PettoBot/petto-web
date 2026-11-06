@@ -6084,4 +6084,6 @@ export const dashEs: Record<string, string> = {
   "Saving changes the message in Discord.": "Al guardar se cambia el mensaje en Discord.",
   "Saving posts the message in the channel.": "Al guardar se publica el mensaje en el canal.",
   "Now: accounts younger than {a} are fake joins.": "Ahora: las cuentas con menos de {a} son entradas falsas.",
+  "Are you sure?": "¿Estás seguro?",
+  "Confirm": "Confirmar",
 };
