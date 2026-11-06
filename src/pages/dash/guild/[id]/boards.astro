@@ -42,14 +42,23 @@ if (Astro.request.method === 'POST') {
   } else failed = 'board';
 }
 
-const [guildInfo, channelsRes, rolesRes, templatesRes, customEmojis, ...boardRes] = await Promise.all([
+const [guildInfo, channelsRes, rolesRes, templatesRes, customEmojis, ...boardAndCountRes] = await Promise.all([
   getGuildInfo(id, botToken),
   getGuildList(Astro, id, botToken, 'channels'),
   getGuildList(Astro, id, botToken, 'roles'),
   fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }).catch(() => null),
   getGuildEmojis(id, botToken),
   ...BOARD_KINDS.map((k) => fetch(`${apiUrl}/rest/v1/${k.table}?guild_id=eq.${id}&select=*`, { headers: apiHeaders }).catch(() => null)),
+  // How many messages each board has reposted: only the total of its entries is asked for (one row and the count in the header), never the rows.
+  ...BOARD_KINDS.map((k) => fetch(`${apiUrl}/rest/v1/${k.entries}?guild_id=eq.${id}&select=guild_id`, { headers: { ...apiHeaders, Prefer: 'count=exact', Range: '0-0' } }).catch(() => null)),
 ]);
+const boardRes = boardAndCountRes.slice(0, BOARD_KINDS.length);
+const entryCounts: (number | null)[] = await Promise.all(boardAndCountRes.slice(BOARD_KINDS.length).map(async (res) => {
+  await res?.body?.cancel().catch(() => {});
+  if (res?.status === 416) return 0;
+  const total = Number(res?.headers.get('content-range')?.split('/')[1]);
+  return res?.ok && Number.isFinite(total) ? total : null;
+}));
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const channels: { id: string; name: string }[] = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
 const roles: { id: string; name: string }[] = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone' && !r.managed).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name }));
@@ -61,4 +70,4 @@ for (let i = 0; i < BOARD_KINDS.length; i++) {
   if (rows[0]) boards.push(boardFromRow(BOARD_KINDS[i], rows[0]));
 }
 ---
-<DashBoards user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} boards={boards} channels={channels} roles={roles} templates={templates} customEmojis={customEmojis} ready={ready} saved={saved} failed={failed} />
+<DashBoards user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} boards={boards} entryCounts={entryCounts} channels={channels} roles={roles} templates={templates} customEmojis={customEmojis} ready={ready} saved={saved} failed={failed} />

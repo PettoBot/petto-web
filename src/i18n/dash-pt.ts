@@ -5985,4 +5985,13 @@ export const dashPt: Record<string, string> = {
   "Click a channel to start checking it.": "Clique em um canal para começar a verificá-lo.",
   "+{n} more": "+{n} mais",
   "What happens to the rest": "O que acontece com o resto",
+  "Messages that get enough reactions are reposted in a channel of their own.": "As mensagens que recebem reações suficientes são repostadas em um canal próprio.",
+  "Active boards": "Boards ativos",
+  "Messages reposted": "Mensagens repostadas",
+  "Emojis watched": "Emojis monitorados",
+  "Timestamp": "Data e hora",
+  "Own reaction": "Reação própria",
+  "Reposted: {n}": "Repostadas: {n}",
+  "Ignores {n}": "Ignora {n}",
+  "How reactions count": "Como as reações contam",
 };

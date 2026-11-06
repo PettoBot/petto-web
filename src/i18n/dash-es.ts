@@ -5985,4 +5985,13 @@ export const dashEs: Record<string, string> = {
   "Click a channel to start checking it.": "Haz clic en un canal para empezar a revisarlo.",
   "+{n} more": "+{n} más",
   "What happens to the rest": "Qué pasa con lo demás",
+  "Messages that get enough reactions are reposted in a channel of their own.": "Los mensajes que reciben suficientes reacciones se vuelven a publicar en un canal propio.",
+  "Active boards": "Boards activos",
+  "Messages reposted": "Mensajes republicados",
+  "Emojis watched": "Emojis vigilados",
+  "Timestamp": "Marca de hora",
+  "Own reaction": "Reacción propia",
+  "Reposted: {n}": "Republicados: {n}",
+  "Ignores {n}": "Ignora {n}",
+  "How reactions count": "Cómo cuentan las reacciones",
 };
