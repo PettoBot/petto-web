@@ -5548,4 +5548,5 @@ export const dashPt: Record<string, string> = {
   "Expand all": "Abrir todas",
   "Collapse all": "Fechar todas",
   "Pick a role, a channel or a variable and it goes where the cursor is in the text.": "Escolha um cargo, um canal ou uma variável e ele vai para onde está o cursor no texto.",
+  "A saved embed is picked, so this text is not used. Take the embed off to write it.": "Há um embed salvo escolhido, então este texto não é usado. Remova o embed para escrevê-lo.",
 };

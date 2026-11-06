@@ -5548,4 +5548,5 @@ export const dashEs: Record<string, string> = {
   "Expand all": "Abrir todas",
   "Collapse all": "Cerrar todas",
   "Pick a role, a channel or a variable and it goes where the cursor is in the text.": "Elige un rol, un canal o una variable y se pone donde está el cursor en el texto.",
+  "A saved embed is picked, so this text is not used. Take the embed off to write it.": "Hay un embed guardado elegido, así que este texto no se usa. Quita el embed para escribirlo.",
 };

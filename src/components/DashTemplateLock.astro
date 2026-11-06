@@ -1,0 +1,91 @@
+---
+// A saved embed and a text for the same message do not go together: when a saved embed is picked, Petto sends the embed and the text beside it would be ignored.
+// So the text is locked while an embed is chosen (it keeps what was written and the form still sends it, so choosing "No saved embed" gives it back).
+// It works for every page with the same markup, without each page asking for it:
+//   - a text field with data-dp-template="<name of the select>" (the previews already say so);
+//   - a select with data-tpl-locks="field_a field_b" (the names of the fields it locks);
+//   - otherwise the text areas that share a block (up to 3 levels up) with the select, when that block holds this one choice of embed and at most two text areas.
+// A select with data-tpl-ignore, a text area inside data-tpl-keep, and the selects marked data-dp-template-only are left alone.
+import { getDashLang, makeT } from '../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+const note = dt('A saved embed is picked, so this text is not used. Take the embed off to write it.');
+---
+<script is:inline define:vars={{ note }}>
+  (function () {
+    if (window.__dglTplLock) return;
+    window.__dglTplLock = true;
+    var NAME = /template|^tpl_|^embed(_|$)/;
+    function isChoice(el) {
+      return el && el.tagName === 'SELECT' && !el.multiple && !el.hasAttribute('data-tpl-ignore') && (!el.hasAttribute('data-dp-template-only') || el.hasAttribute('data-tpl-locks')) && NAME.test(el.name || '')
+        && Array.prototype.some.call(el.options, function (o) { return o.value === ''; });
+    }
+    function sameForm(select, el) { return !select.form || el.form === select.form || !el.form; }
+    function targetsOf(select) {
+      var out = [];
+      var explicit = select.getAttribute('data-tpl-locks');
+      if (explicit) {
+        explicit.split(/[\s,]+/).filter(Boolean).forEach(function (name) {
+          (select.form || document).querySelectorAll('[name="' + name.replace(/"/g, '') + '"]').forEach(function (el) { out.push(el); });
+        });
+      }
+      document.querySelectorAll('[data-dp-template]').forEach(function (el) { if (el.getAttribute('data-dp-template') === select.name && sameForm(select, el)) out.push(el); });
+      if (out.length) return out;
+      var node = select.parentElement;
+      for (var depth = 0; node && depth < 3; depth++, node = node.parentElement) {
+        if (node.matches('form, .dgl-content, body, main')) break;
+        var areas = Array.prototype.filter.call(node.querySelectorAll('textarea'), function (a) { return !a.closest('[data-tpl-keep]'); });
+        if (!areas.length) continue;
+        var choices = Array.prototype.filter.call(node.querySelectorAll('select'), isChoice);
+        return choices.length === 1 && areas.length <= 2 ? areas : [];
+      }
+      return [];
+    }
+    function setLocked(el, locked) {
+      var was = el.getAttribute('data-tpl-locked') === '1';
+      if (locked === was) return;
+      if (locked) {
+        el.setAttribute('data-tpl-locked', '1');
+        el.readOnly = true;
+        el.setAttribute('tabindex', '-1');
+        el.setAttribute('aria-disabled', 'true');
+        try { el.inert = true; } catch (e) { /* the read-only flag is enough */ }
+        var hint = document.createElement('small');
+        hint.className = 'dgl-tpl-note';
+        hint.textContent = note;
+        el.parentNode.insertBefore(hint, el);
+        el._tplNote = hint;
+      } else {
+        el.removeAttribute('data-tpl-locked');
+        el.readOnly = false;
+        el.removeAttribute('tabindex');
+        el.removeAttribute('aria-disabled');
+        try { el.inert = false; } catch (e) { /* nothing to undo */ }
+        if (el._tplNote) { el._tplNote.remove(); el._tplNote = null; }
+      }
+    }
+    function refresh(select) {
+      if (!isChoice(select)) return;
+      var locked = select.value !== '';
+      targetsOf(select).forEach(function (el) { setLocked(el, locked); });
+    }
+    function all() { document.querySelectorAll('select').forEach(refresh); }
+    document.addEventListener('change', function (e) { if (e.target && e.target.tagName === 'SELECT') refresh(e.target); });
+    document.addEventListener('input', function (e) { if (e.target && e.target.tagName === 'SELECT') refresh(e.target); });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', all); else all();
+    // A form the page opens later (the edit form of a row) is checked when it arrives, once per frame at most.
+    var queued = false;
+    new MutationObserver(function (records) {
+      if (queued) return;
+      for (var i = 0; i < records.length; i++) {
+        for (var j = 0; j < records[i].addedNodes.length; j++) {
+          var node = records[i].addedNodes[j];
+          if (node.nodeType === 1 && (node.matches('select, textarea') || node.querySelector('select'))) { queued = true; requestAnimationFrame(function () { queued = false; all(); }); return; }
+        }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  })();
+</script>
+<style is:global>
+  textarea[data-tpl-locked="1"] { opacity: 0.5; cursor: not-allowed; resize: none; }
+  .dgl-tpl-note { display: block; font-size: 12px; line-height: 1.4; color: var(--text-dim); margin-bottom: 4px; }
+</style>
