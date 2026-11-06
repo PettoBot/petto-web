@@ -210,6 +210,30 @@ const dcCategories = selectedSection !== 'disabled-commands' ? [] : (() => {
 })();
 // The sections with message fields get the data of the typed autocomplete.
 const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders', 'sticky-messages', 'auto-threads'].includes(selectedSection);
+// The numbers above custom commands, autoresponders, sticky messages, reaction roles, auto-threads and disabled commands: all counted from the lists the page already has.
+const ax1Code = customCommands.filter((c) => c.isCode).length;
+const ax1CmdEmbed = customCommands.filter((c) => !c.isCode && c.embedTemplate).length;
+const ax1ArEmbed = autoResponders.filter((a) => a.embedTemplate || a.replyType === 'embed').length;
+const ax1ArScoped = autoResponders.filter((a) => a.channelIds.length > 0 || a.roleIds.length > 0).length;
+const ax1StickyEmbed = stickyMessages.filter((s) => s.embedTemplate).length;
+const ax1RrButtons = reactionRoles.filter((r) => r.interactionType === 'button').length;
+const ax1RrMessages = new Set(reactionRoles.map((r) => r.messageId)).size;
+const ax1ThreadsMsg = autoThreads.filter((t) => t.messageText || t.embedTemplate).length;
+const ax1DcServer = disabledCommands.filter((d) => !d.channelId).length;
+// The messages that carry role bindings, each with its bindings (the panel next to the new-binding form of the reaction roles).
+const ax1RrMenus = (() => {
+  const byMessage = new Map<string, { messageId: string; channelId: string; items: ReactionRole[] }>();
+  for (const r of reactionRoles) {
+    const group = byMessage.get(r.messageId) ?? { messageId: r.messageId, channelId: r.channelId ?? '', items: [] };
+    group.items.push(r);
+    byMessage.set(r.messageId, group);
+  }
+  return [...byMessage.values()];
+})();
+// A custom emoji is written <:name:id> (or <a:name:id>): it is drawn as its picture; any other emoji is drawn as the text it is.
+const ax1Emoji = (emoji: string) => { const m = emoji.match(/^<(a?):(\w+):(\d+)>$/); return m ? { name: m[2], src: `https://cdn.discordapp.com/emojis/${m[3]}.${m[1] ? 'gif' : 'webp'}?size=48` } : null; };
+// The archive times of an auto-thread, as the field sends them (minutes) and as they are shown.
+const ax1Archive = [60, 1440, 4320, 10080];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'overview' ? 'automation-overview' : selectedSection} pageTitle={selectedMeta.label}>
   <DashSettingsKit />
@@ -900,71 +924,114 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   )}
 
   {selectedSection === 'custom-commands' && (
-  <div class:list={['am-section', showSection('custom-commands')]} data-section="custom-commands">
-    <h2><span class="am-h2-icon" style="--c:var(--accent)"><Icon name="ph:terminal-window-fill" width="14" height="14" /></span><Fragment set:html={dth('Custom commands <span class="am-count">{a}/{b}</span>', { a: (customCommands.length), b: (customCommandLimit) })} />{!premiumActive && <span class="am-premium-tag">Premium: {PREMIUM_LIMITS.customCommands}</span>}</h2>
-    <div class="am-spoiler">
-      <Icon name="ph:code-fill" width="18" height="18" />
-      <div><strong>{dt('Commands in code')}</strong><span><Fragment set:html={dth('Write custom commands with code: embeds, buttons, forms and reactions. Open <a href="{a}">the editor</a>, or use <code>!customcommand code</code> in Discord. <a href="https://code.petto.sbs" target="_blank" rel="noopener">Read the docs</a>.', { a: `/dash/guild/${guildId}/code` })} /></span></div>
-    </div>
-    {customCommands.length === 0 && <p class="am-empty"><Icon name="ph:sparkle" width="15" height="15" />{dt('Nothing here yet. Add the first one below.')}</p>}
-    <div class="am-list dgl-stagger">
-      {customCommands.map((c) => (
-        <div class="am-card am-card-sum dgl-rc">
-          <span class="am-card-head">
-            <span class="am-card-main">
-              <code class="am-row-key">{prefix}{c.name}</code>
-              {c.isCode ? (
-                <span class="am-row-mode" title={dt('Written in code. Edit it in Discord with the customcommand code command.')}>{dt('code')}</span>
-              ) : c.embedTemplate ? (
-                <span class="am-row-mode" title={dt('Uses a saved embed template')}>embed: {c.embedTemplate}</span>
-              ) : null}
-            </span>
-            <span class="am-card-acts">
-              <form method="POST" data-no-dirty><input type="hidden" name="action" value="delete_command" /><input type="hidden" name="id" value={c.id} />
-                <button type="submit" class="am-act am-act-del" title={dt('Delete')} aria-label={dt('Delete')}><Icon name="ph:trash-fill" width="12" height="12" /></button>
-              </form>
-            </span>
-          </span>
-          <span class="am-chat">
-            <span class="am-msg">
-              <span class="am-av am-av-member"><Icon name="ph:user-fill" width="12" height="12" /></span>
-              <span class="am-msg-body"><span class="am-msg-name">{dt('Member')}</span><span class="am-msg-text am-msg-trigger">{prefix}{c.name}</span></span>
-            </span>
-            <span class="am-msg">
-              <img class="am-av" src="/assets/mascot-icon.webp" alt="" width="22" height="22" loading="lazy" decoding="async" />
-              <span class="am-msg-body" data-cp={c.isCode ? undefined : ''} data-cp-text={c.embedTemplate ? '' : (c.response ?? '')} data-cp-template={c.embedTemplate ?? ''}><span class="am-msg-name am-msg-bot">Petto<span class="am-msg-tag">{dt('APP')}</span></span>
-                {c.isCode ? <span class="am-msg-text am-msg-none">{dt('Written in code')}</span>
-                  : c.embedTemplate ? <span class="am-msg-embed" style="--ec:var(--border)"><span class="am-msg-embed-title">{c.embedTemplate}</span></span>
-                  : c.response ? <span class="am-msg-text am-msg-clamp" title={c.response}>{c.response}</span>
-                  : <span class="am-msg-text am-msg-none">{dt('No reply text')}</span>}
-              </span>
-            </span>
-          </span>
+  <div class="ax1-page ax1-grid2" data-section="custom-commands">
+    <DashStatTiles tiles={[
+      { label: dt('Commands'), value: customCommands.length, text: `${customCommands.length} / ${customCommandLimit}`, tone: 'messages' },
+      { label: dt('Text replies'), value: customCommands.length - ax1Code - ax1CmdEmbed, tone: 'joins' },
+      { label: dt('Saved embeds'), value: ax1CmdEmbed, tone: 'voice' },
+      { label: dt('Written in code'), value: ax1Code, tone: 'invites' },
+    ]} />
+      {customCommandAtLimit ? (
+        <div class="sx-panel">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:var(--yellow)"><Icon name="ph:crown-fill" width="17" height="17" /></span>
+            <h2>{premiumActive ? dt('Custom command limit reached') : dt('Free command limit reached')}</h2>
+          </div>
+          <p class="sx-lead">{premiumActive ? dt('You are using all {n} available custom commands.', { n: customCommandLimit }) : dt('Free includes {a} custom commands. Premium increases this to {b}.', { a: FREE_LIMITS.customCommands, b: PREMIUM_LIMITS.customCommands })}</p>
+          {!premiumActive && <div class="sx-foot"><a class="btn btn-accent btn-sm" href={`/dash/premium?guild_id=${guildId}`}><Icon name="ph:crown-fill" width="12" height="12" />{dt('Unlock Premium')}</a></div>}
         </div>
-      ))}
-    </div>
-    {customCommandAtLimit ? (
-      <div class="am-limit-card">
-        <Icon name="ph:crown-fill" width="18" height="18" />
-        <div><strong>{premiumActive ? dt('Custom command limit reached') : dt('Free command limit reached')}</strong><span>{premiumActive ? dt('You are using all {n} available custom commands.',{n:customCommandLimit}) : dt('Free includes {a} custom commands. Premium increases this to {b}.', { a: FREE_LIMITS.customCommands, b: PREMIUM_LIMITS.customCommands })}</span></div>
-        {!premiumActive && <a class="btn btn-ghost btn-sm" href={`/dash/premium?guild_id=${guildId}`}>{dt('Unlock Premium')}</a>}
+      ) : (
+        <form method="POST" class="sx-panel ax1-form" data-no-dirty>
+          <input type="hidden" name="action" value="add_command" />
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:var(--accent)"><Icon name="ph:terminal-window-fill" width="17" height="17" /></span>
+            <h2>{dt('New command')}</h2>
+          </div>
+          <p class="sx-lead">{selectedMeta.description}</p>
+          <div class="sx-grid">
+            <div class="sx-field"><label for="ax1-cc-name">{dt('Command name')}</label>
+              <span class="ax1-inp"><i>{prefix}</i><input type="text" id="ax1-cc-name" name="name" placeholder="rules" maxlength="32" required data-count autocomplete="off" /></span>
+            </div>
+            {embedTemplateNames.length > 0 && (
+              <div class="sx-field"><label for="ax1-cc-tpl">{dt('Saved embed')}</label>
+                <select id="ax1-cc-tpl" name="embed_template" data-tpl-locks="response">
+                  <option value="">{dt('No template, use response text')}</option>
+                  {embedTemplateNames.map((n) => <option value={n}>{n}</option>)}
+                </select>
+              </div>
+            )}
+            <div class="sx-field sx-wide"><label for="ax1-cc-response">{dt('Response')}</label>
+              <textarea class="dgl-autogrow" rows="3" id="ax1-cc-response" name="response" data-ac data-count placeholder={dt('Response text or flags (optional with a template)')} maxlength="500"></textarea><SilentMentionHint />
+              <VariableHelp />
+            </div>
+          </div>
+          {embedTemplateNames.length > 0 && <p class="sx-hint ax1-text"><Fragment set:html={dth('Templates are managed on the Embeds page. You can still put flags such as <code>{a}</code> in the response field.', { a: ('{reactreply:🌸}') })} /></p>}
+          <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button></div>
+        </form>
+      )}
+      <div class="sx-stack ax1-late">
+        <div class="sx-panel">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+            <h2>{dt('How it works')}</h2>
+          </div>
+          <ol class="ax1-steps">
+            <li><span class="ax1-step-n">1</span><span><b>{dt('Pick a name')}</b><em>{dt('Short and without spaces, like rules.')}</em></span></li>
+            <li><span class="ax1-step-n">2</span><span><b>{dt('Write the answer')}</b><em>{dt('A text, or a saved embed from the Embeds page.')}</em></span></li>
+            <li><span class="ax1-step-n">3</span><span><b>{dt('Members use it')}</b><em>{dt('They type {a} and Petto answers.', { a: `${prefix}rules` })}</em></span></li>
+          </ol>
+        </div>
+        <div class="sx-panel">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#c792ea"><Icon name="ph:code-fill" width="17" height="17" /></span>
+            <h2>{dt('Commands in code')}</h2>
+          </div>
+          <p class="sx-hint ax1-text"><Fragment set:html={dth('Write custom commands with code: embeds, buttons, forms and reactions. Open <a href="{a}">the editor</a>, or use <code>!customcommand code</code> in Discord. <a href="https://code.petto.sbs" target="_blank" rel="noopener">Read the docs</a>.', { a: `/dash/guild/${guildId}/code` })} /></p>
+        </div>
       </div>
-    ) : (
-      <form method="POST" class="am-add" data-no-dirty>
-        <input type="hidden" name="action" value="add_command" />
-        <input type="text" name="name" placeholder={dt('Command name')} maxlength="32" required />
-        <textarea class="dgl-autogrow" rows="2" name="response" data-ac placeholder={dt('Response text or flags (optional with a template)')} maxlength="500"></textarea><SilentMentionHint />
-        {embedTemplateNames.length > 0 && (
-          <select name="embed_template" data-tpl-locks="response">
-            <option value="">{dt('No template, use response text')}</option>
-            {embedTemplateNames.map((n) => <option value={n}>{n}</option>)}
-          </select>
-        )}
-        <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
-      </form>
-    )}
-    {embedTemplateNames.length > 0 && <p class="am-hint"><Fragment set:html={dth('Templates are managed on the Embeds page. You can still put flags such as <code>{a}</code> in the response field.', { a: ('{reactreply:🌸}') })} /></p>}
-    <VariableHelp />
+    <section class="ax1-list">
+      <div class="ax1-list-head">
+        <h2>{dt('Your commands')}</h2>
+        <span class="sx-tag">{customCommands.length} / {customCommandLimit}</span>
+        {!premiumActive && <span class="ax1-premium">Premium: {PREMIUM_LIMITS.customCommands}</span>}
+      </div>
+      {customCommands.length === 0 ? (
+        <p class="ax1-empty"><Icon name="ph:terminal-window-fill" width="26" height="26" />{dt('Nothing here yet. Add the first one above.')}</p>
+      ) : (
+        <div class="ax1-cards dgl-stagger">
+          {customCommands.map((c) => (
+            <div class="ax1-card ax1-plain dgl-rc">
+              <div class="ax1-card-head">
+                <span class="ax1-card-main">
+                  <code class="ax1-key">{prefix}{c.name}</code>
+                  {c.isCode ? (
+                    <span class="ax1-chip" title={dt('Written in code. Edit it in Discord with the customcommand code command.')}>{dt('code')}</span>
+                  ) : c.embedTemplate ? (
+                    <span class="ax1-chip" title={dt('Uses a saved embed template')}>embed: {c.embedTemplate}</span>
+                  ) : null}
+                </span>
+                <span class="ax1-acts">
+                  <form method="POST" data-no-dirty><input type="hidden" name="action" value="delete_command" /><input type="hidden" name="id" value={c.id} />
+                    <button type="submit" class="ax1-act ax1-act-del" title={dt('Delete')} aria-label={dt('Delete')} data-confirm={dt('Delete this? This cannot be undone.')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+                  </form>
+                </span>
+              </div>
+              <span class="am-chat">
+                <span class="am-msg">
+                  <img class="am-av" src="/assets/mascot-icon.webp" alt="" width="22" height="22" loading="lazy" decoding="async" />
+                  <span class="am-msg-body" data-cp={c.isCode ? undefined : ''} data-cp-text={c.embedTemplate ? '' : (c.response ?? '')} data-cp-template={c.embedTemplate ?? ''}><span class="am-msg-name am-msg-bot">Petto<span class="am-msg-tag">{dt('APP')}</span></span>
+                    {c.isCode ? <span class="am-msg-text am-msg-none">{dt('Written in code')}</span>
+                      : c.embedTemplate ? <span class="am-msg-embed" style="--ec:var(--border)"><span class="am-msg-embed-title">{c.embedTemplate}</span></span>
+                      : c.response ? <span class="am-msg-text am-msg-clamp" title={c.response}>{c.response}</span>
+                      : <span class="am-msg-text am-msg-none">{dt('No reply text')}</span>}
+                  </span>
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   </div>
   )}
 
@@ -1805,6 +1872,149 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
     .am-card-sum { padding: 12px 14px; }
     .am-chat { padding: 10px; }
   }
+</style>
+
+<style>
+  /* Custom commands, autoresponders, sticky messages, reaction roles, auto-threads and disabled commands (the ax1- classes) */
+  .ax1-page { display: flex; flex-direction: column; gap: 14px; max-width: 1100px; min-width: 0; }
+  .ax1-page > :global(.stt) { margin-bottom: 0; }
+  .ax1-grid2 { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .ax1-grid2 > .ax1-list, .ax1-grid2 > .ax1-banner, .ax1-grid2 > :global(.stt), .ax1-grid2 > :global(.sx-flash) { grid-column: 1 / -1; }
+  .ax1-grid2 > :global(.stt), .ax1-grid2 > .ax1-banner, .ax1-grid2 > :global(.sx-flash) { margin: 0; }
+  .ax1-grid2 > .ax1-list { margin-top: 4px; }
+  .ax1-text { line-height: 1.55; overflow-wrap: anywhere; }
+  .ax1-text :global(code) { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+  .ax1-text :global(a) { color: var(--accent); }
+  .ax1-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .ax1-steps li { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .ax1-steps li > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ax1-steps b { font-size: 13.5px; overflow-wrap: anywhere; }
+  .ax1-steps em { font-style: normal; font-size: 12.5px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .ax1-step-n { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font: 700 12px var(--sans); color: var(--accent); background: var(--accent-soft); }
+  .ax1-inp { display: flex; align-items: center; min-width: 0; border: 1px solid var(--border); border-radius: 9px; background: var(--card); transition: border-color .25s ease, box-shadow .25s ease; }
+  .ax1-inp:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .ax1-inp > i { flex: none; padding-left: 11px; font: 600 13.5px var(--mono); color: var(--accent); }
+  .ax1-inp > input { flex: 1; min-width: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; padding-left: 4px !important; }
+  .ax1-inp > :global(.dfx-count) { flex: none; align-self: center; margin: 0 10px 0 0; }
+  .ax1-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 0; }
+  .ax1-list-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-width: 0; }
+  .ax1-list-head h2 { margin: 0; font-size: 15.5px; }
+  .ax1-premium { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 32%, var(--border)); border-radius: 999px; padding: 3px 7px; }
+  .ax1-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 auto; width: 100%; max-width: 420px; box-sizing: border-box; padding: 24px 16px; border: 1px dashed var(--border); border-radius: 14px; font-size: 13px; color: var(--text-dim); text-align: center; }
+  .ax1-empty :global(svg) { color: var(--accent); }
+  .ax1-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: dense; gap: 12px; align-items: start; min-width: 0; }
+  .ax1-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); min-width: 0; }
+  .ax1-plain { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .ax1-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .ax1-card-main { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; flex: 1; }
+  .ax1-key { font-family: var(--mono); color: var(--accent); font-weight: 600; background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-dim); background: var(--bg-raise); border: 1px solid var(--border-soft); padding: 2px 8px; border-radius: 999px; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+  .ax1-acts { display: flex; align-items: center; gap: 4px; flex: none; }
+  .ax1-acts :global(form) { margin: 0; display: flex; }
+  .ax1-act { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; transition: color .25s ease, border-color .25s ease, background-color .25s ease; }
+  .ax1-act-del { width: 28px; padding: 0; }
+  .ax1-act-del:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--border)); background: var(--red-soft); }
+  .ax1-split { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .ax1-split > :global(.stt) { grid-column: 1 / -1; margin-bottom: 0; }
+  .ax1-split .ax1-cards, .ax1-split .ax1-cards .sx-grid { grid-template-columns: minmax(0, 1fr); }
+  .ax1-lead { margin: -4px 0 2px; }
+  .ax1-h3 { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
+  .ax1-hide { display: none; }
+  .ax1-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .ax1-chip-accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; font-weight: 600; cursor: help; }
+  .ax1-kind { width: 28px; height: 28px; display: grid; place-items: center; flex: none; border-radius: 9px; color: var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent); }
+  .ax1-card-title { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A card that opens in place to be edited: open, it takes the whole row. */
+  .ax1-fold { transition: border-color .3s ease; }
+  .ax1-fold[open] { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--c, var(--accent)) 45%, var(--border)); transform: none !important; }
+  .ax1-fold:not(.ax1-free) { interpolate-size: allow-keywords; }
+  .ax1-fold:not(.ax1-free)::details-content { block-size: 0; overflow: clip; opacity: 0; transition: block-size .45s cubic-bezier(.22, 1, .36, 1), opacity .3s ease, content-visibility .45s allow-discrete; }
+  .ax1-fold:not(.ax1-free)[open]::details-content { block-size: auto; opacity: 1; }
+  .ax1-sum { list-style: none; cursor: pointer; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; transition: background-color .25s ease; }
+  .ax1-sum::-webkit-details-marker { display: none; }
+  .ax1-sum:hover { background: var(--card-hover); }
+  .ax1-sum:active { background: color-mix(in srgb, var(--text) 9%, transparent); }
+  .ax1-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ax1-sum .ax1-card-head { gap: 10px; }
+  .ax1-sum:hover .ax1-act:not(.ax1-act-del), .ax1-fold[open] .ax1-act:not(.ax1-act-del) { color: var(--text); border-color: color-mix(in srgb, var(--c, var(--accent)) 45%, var(--border)); }
+  .ax1-t-close, .ax1-fold[open] .ax1-t-edit { display: none; }
+  .ax1-fold[open] .ax1-t-close { display: inline; }
+  .ax1-sum-new { flex-direction: row; align-items: center; justify-content: center; gap: 8px; min-height: 64px; box-sizing: border-box; font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
+  .ax1-new { grid-column: 1 / -1; border-style: dashed; background: transparent; }
+  .ax1-new:hover .ax1-sum-new, .ax1-new[open] .ax1-sum-new { color: var(--accent); }
+  .ax1-new[open] { background: var(--card); border-style: solid; }
+  .ax1-edit { display: flex; flex-direction: column; gap: 18px; padding: 16px 18px 18px; border-top: 1px solid var(--border-soft); min-width: 0; }
+  .ax1-ar-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start; }
+  .ax1-ar-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .ax1-embed { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .ax1-embed > :global(.sx-field) { align-self: stretch; }
+  .ax1-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .ax1-actions:not(:has(> :not(.dgl-bar-save))) { display: none; }
+  .ax1-limit { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-color: color-mix(in srgb, var(--yellow) 38%, var(--border)); background: color-mix(in srgb, var(--yellow) 6%, var(--card)); }
+  .ax1-limit-icon { width: 34px; height: 34px; display: grid; place-items: center; flex: none; border-radius: 10px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .ax1-limit-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+  .ax1-limit-text b { font-size: 13.5px; }
+  .ax1-limit-text em { font-style: normal; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
+  .ax1-banner { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; padding: 13px 16px; border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border)); border-radius: 14px; background: var(--accent-soft); color: var(--text); text-decoration: none; min-width: 0; transition: background-color .25s ease, border-color .25s ease; }
+  .ax1-banner:hover { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
+  .ax1-banner:active { transform: none; filter: none; }
+  .ax1-banner-icon { width: 36px; height: 36px; display: grid; place-items: center; flex: none; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .ax1-banner-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+  .ax1-banner-text b { font-size: 14px; overflow-wrap: anywhere; }
+  .ax1-banner-text em { font-style: normal; font-size: 12.5px; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
+  .ax1-mark { width: 40px; height: 40px; display: grid; place-items: center; flex: none; border-radius: 12px; color: var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); }
+  .ax1-mark img { width: 24px; height: 24px; object-fit: contain; }
+  .ax1-mark-emoji { font-size: 21px; line-height: 1; }
+  .ax1-rr-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .ax1-rr-name b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-rr-name em { font-style: normal; font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-chip-link { color: var(--text-muted); transition: color .25s ease, border-color .25s ease; }
+  .ax1-chip-link:hover { color: var(--accent); border-color: var(--accent); }
+  .ax1-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--accent); text-decoration: none; }
+  .ax1-link:hover { text-decoration: underline; }
+  .ax1-dc-cats { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ax1-dc-cat { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; box-sizing: border-box; padding: 5px 12px 5px 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; text-align: left; transition: background-color .25s ease, border-color .25s ease, color .25s ease; }
+  button.ax1-dc-cat { cursor: pointer; }
+  button.ax1-dc-cat:hover { background: var(--card-hover); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .ax1-dc-cat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ax1-dc-cat[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .ax1-dc-icon { width: 24px; height: 24px; display: grid; place-items: center; flex: none; border-radius: 50%; color: var(--accent); background: var(--accent-soft); }
+  .ax1-dc-name { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-dc-n { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .ax1-dc-off { font-size: 10.5px; font-weight: 600; color: #fe6465; background: color-mix(in srgb, #fe6465 12%, transparent); border: 1px solid color-mix(in srgb, #fe6465 30%, var(--border-soft)); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+  .ax1-dc-groups { display: flex; flex-direction: column; gap: 10px; }
+  .ax1-dc-group { border: 1px solid var(--border-soft); border-radius: 12px; padding: 12px 14px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .ax1-dc-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; min-width: 0; }
+  .ax1-dc-place { display: inline-flex; align-items: center; gap: 5px; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-dc-clear { margin: 0 0 0 auto; }
+  .ax1-dc-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .ax1-dc-chip { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; box-sizing: border-box; margin: 0; padding: 2px 4px 2px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, #fe6465 35%, var(--border-soft)); background: color-mix(in srgb, #fe6465 8%, transparent); }
+  .ax1-dc-chip code { font-size: 12px; background: none; padding: 0; overflow-wrap: anywhere; }
+  .ax1-dc-x { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; border: 0; background: transparent; color: var(--text-dim); cursor: pointer; transition: background-color .25s ease, color .25s ease; }
+  .ax1-dc-x:hover { background: color-mix(in srgb, #fe6465 20%, transparent); color: #fe6465; }
+  .ax1-dc-chip[hidden], .ax1-dc-group[hidden], .ax1-empty[hidden] { display: none; }
+  .ax1-thread { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--text-muted); }
+  .ax1-thread :global(svg) { flex: none; color: #5b8def; }
+  .ax1-thread > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-menus { display: flex; flex-direction: column; gap: 8px; }
+  .ax1-menu { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .ax1-menu-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+  .ax1-menu-items { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .ax1-menu-item { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; box-sizing: border-box; padding: 3px 9px; border-radius: 999px; background: var(--bg-raise); border: 1px solid var(--border-soft); font-size: 15px; line-height: 1.3; }
+  .ax1-menu-item :global(img) { width: 18px; height: 18px; object-fit: contain; }
+  .ax1-menu-item em { font-style: normal; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax1-rr-who { flex-direction: row; align-items: flex-end; gap: 14px; }
+  .ax1-rr-who > :global(.sx-field:last-child) { flex: 1; }
+  @media (max-width: 1100px) { .ax1-grid2, .ax1-ar-cols, .ax1-split { grid-template-columns: minmax(0, 1fr); } .ax1-late { order: 1; } }
+  @media (max-width: 720px) {
+    .ax1-cards { grid-template-columns: minmax(0, 1fr); }
+    .ax1-act-t { display: none; }
+    .ax1-act:not(.ax1-act-del) { width: 28px; padding: 0; }
+    .ax1-edit { padding: 14px; }
+    .ax1-limit { flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) { .ax1-fold, .ax1-fold::details-content { transition: none !important; } }
+  /* ax1:end */
 </style>
 
 <style>
