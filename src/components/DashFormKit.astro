@@ -1,0 +1,178 @@
+---
+// The pieces the settings pages of the dashboard share, so they look and move the same: the form card with its sections, the fields, the cards with a
+// switch, the chips, the number with its less/more buttons, the boxes that grow with their text, the groups that open smoothly and the rows of a list.
+// Everything is `dfx-*` and only moves with opacity and transform (nothing scales a wide row; a press is a soft highlight). Put <DashFormKit /> once in a page.
+//
+//   <label class="dfx-master"><span><b>Title</b><em>Hint</em></span><input type="checkbox" class="dfx-t" name="enabled" /></label>
+//   <section class="dfx-sec"><div class="dfx-sec-head"><h2>Title</h2><p>Short line</p></div><div class="dfx-grid">
+//     <div class="dfx-field"><label>Name</label><input ...><span class="dfx-hint">Hint</span></div>   (.dfx-wide spans both columns)
+//   </div></section>
+//   <div class="dfx-switches"><label class="dfx-switch"><span><b>Title</b><em>Hint</em></span><input type="checkbox" class="dfx-t" /></label></div>
+//   <div class="dfx-chips"><label class="dfx-chip"><input type="checkbox" />Text</label></div>
+//
+// Scripts (once per page): every number field inside .dfx-field gets less/more buttons (hold to repeat; the input keeps its name, value, min and max);
+// textarea[data-one-line] is a one line text that grows with what is written (Enter does nothing and pasted line breaks become spaces);
+// textarea/input[data-count] shows how many characters of its maxlength are used.
+import { getDashLang, makeT } from '../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+const less = dt('Less');
+const more = dt('More');
+---
+<script is:inline define:vars={{ less, more }}>
+  (function () {
+    if (window.__dfxKit) return;
+    window.__dfxKit = true;
+    // Numbers: [-] value [+]
+    function enhanceNumber(input) {
+      if (input.getAttribute('data-dfx') || input.closest('.dfx-num') || input.type !== 'number') return;
+      input.setAttribute('data-dfx', '1');
+      var wrap = document.createElement('span');
+      wrap.className = 'dfx-num';
+      input.parentNode.insertBefore(wrap, input);
+      var minus = document.createElement('button');
+      minus.type = 'button'; minus.className = 'dfx-step'; minus.textContent = '−'; minus.setAttribute('aria-label', less); minus.tabIndex = -1;
+      var plus = document.createElement('button');
+      plus.type = 'button'; plus.className = 'dfx-step'; plus.textContent = '+'; plus.setAttribute('aria-label', more); plus.tabIndex = -1;
+      wrap.appendChild(minus); wrap.appendChild(input); wrap.appendChild(plus);
+      function state() {
+        var v = input.value === '' ? NaN : Number(input.value);
+        minus.disabled = input.disabled || (input.min !== '' && !isNaN(v) && v <= Number(input.min));
+        plus.disabled = input.disabled || (input.max !== '' && !isNaN(v) && v >= Number(input.max));
+      }
+      function move(dir) {
+        try { if (input.value === '') input.value = input.min !== '' ? input.min : '0'; else if (dir > 0) input.stepUp(); else input.stepDown(); }
+        catch (e) { var s = Number(input.step) || 1; input.value = String(Number(input.value || 0) + dir * s); }
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        state();
+      }
+      [[minus, -1], [plus, 1]].forEach(function (pair) {
+        var timer = 0, repeat = 0;
+        function stop() { clearTimeout(timer); clearInterval(repeat); }
+        pair[0].addEventListener('pointerdown', function (e) {
+          if (pair[0].disabled) return;
+          e.preventDefault(); move(pair[1]);
+          timer = setTimeout(function () { repeat = setInterval(function () { move(pair[1]); }, 70); }, 380);
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (name) { pair[0].addEventListener(name, stop); });
+        pair[0].addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); move(pair[1]); } });
+      });
+      input.addEventListener('input', state); input.addEventListener('change', state);
+      state();
+    }
+    // A one line text in a box that grows.
+    function oneLine(area) {
+      if (area.getAttribute('data-dfx-one')) return;
+      area.setAttribute('data-dfx-one', '1');
+      area.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+      area.addEventListener('input', function () {
+        if (/[\r\n]/.test(area.value)) { var at = area.selectionStart; area.value = area.value.replace(/\s*[\r\n]+\s*/g, ' '); try { area.setSelectionRange(at, at); } catch (e) { /* no caret to keep */ } }
+      });
+    }
+    // How much of the limit is used.
+    function counter(field) {
+      if (field.getAttribute('data-dfx-count')) return;
+      field.setAttribute('data-dfx-count', '1');
+      var out = document.createElement('span');
+      out.className = 'dfx-count';
+      field.insertAdjacentElement('afterend', out);
+      function paint() { out.textContent = field.value.length + ' / ' + (field.maxLength > 0 ? field.maxLength : ''); out.classList.toggle('dfx-count-near', field.maxLength > 0 && field.value.length > field.maxLength * 0.9); }
+      field.addEventListener('input', paint); paint();
+    }
+    function all(root) {
+      (root || document).querySelectorAll('.dfx-field input[type="number"]').forEach(enhanceNumber);
+      (root || document).querySelectorAll('textarea[data-one-line]').forEach(oneLine);
+      (root || document).querySelectorAll('textarea[data-count], input[data-count]').forEach(counter);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { all(); }); else all();
+  })();
+</script>
+<style is:global>
+  .dfx-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; max-width: 1000px; animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .dfx-flash.dfx-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .dfx-form { display: flex; flex-direction: column; gap: 22px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; min-width: 0; margin-bottom: 20px; }
+  .dfx-form > * { animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .dfx-form > :nth-child(2) { animation-delay: 40ms; } .dfx-form > :nth-child(3) { animation-delay: 80ms; } .dfx-form > :nth-child(4) { animation-delay: 120ms; }
+  .dfx-form > :nth-child(5) { animation-delay: 160ms; } .dfx-form > :nth-child(6) { animation-delay: 200ms; } .dfx-form > :nth-child(n+7) { animation-delay: 240ms; }
+  /* A section of a form. `section` has a big padding on the site: it is set here on purpose. */
+  .dfx-sec { display: flex; flex-direction: column; gap: 14px; padding: 18px 0 0; border-top: 1px solid var(--border-soft); min-width: 0; }
+  .dfx-sec-head h2 { font-size: 15px; margin: 0; }
+  .dfx-sec-head p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+  .dfx-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
+  .dfx-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dfx-wide { grid-column: 1 / -1; }
+  .dfx-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .dfx-field > label, .dfx-label { font-size: 13px; font-weight: 600; }
+  .dfx-field input[type="text"], .dfx-field input[type="url"], .dfx-field input[type="number"], .dfx-field select, .dfx-field textarea { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; min-height: 40px; transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease; }
+  .dfx-field input:hover, .dfx-field select:hover, .dfx-field textarea:hover { border-color: color-mix(in srgb, var(--text) 24%, var(--border)); }
+  .dfx-field input:focus, .dfx-field select:focus, .dfx-field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .dfx-field textarea { line-height: 1.5; resize: vertical; }
+  .dfx-field textarea.dgl-autogrow { min-height: 7em; }
+  .dfx-field textarea.dfx-one { min-height: 40px; resize: none; overflow-y: hidden; padding-block: 9px; }
+  .dfx-hint { font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+  .dfx-count { align-self: flex-end; font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; margin-top: -2px; }
+  .dfx-count-near { color: var(--yellow); }
+  /* The number with its less and more buttons. */
+  .dfx-num { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; background: var(--card); overflow: hidden; transition: border-color 0.25s ease, box-shadow 0.25s ease; }
+  .dfx-num:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .dfx-field .dfx-num input[type="number"] { border: 0; border-radius: 0; box-shadow: none; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; flex: 1 1 auto; width: 100%; -moz-appearance: textfield; appearance: textfield; }
+  .dfx-field .dfx-num input[type="number"]::-webkit-outer-spin-button, .dfx-field .dfx-num input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .dfx-step { flex: none; width: 42px; border: 0; background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer; transition: background-color 0.25s ease, color 0.25s ease; touch-action: manipulation; }
+  .dfx-step:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 11%, transparent); color: var(--text); }
+  .dfx-step:active:not(:disabled) { background: color-mix(in srgb, var(--accent) 24%, transparent); color: var(--accent); transform: none; filter: none; }
+  .dfx-step:disabled { opacity: 0.35; cursor: not-allowed; }
+  /* The switch: a track and a knob. */
+  input.dfx-t { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 44px; height: 26px; margin: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 18%, transparent); cursor: pointer; transition: background-color 0.3s var(--m-out); }
+  input.dfx-t::after { content: ''; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 35%); transition: transform 0.3s var(--m-out); }
+  input.dfx-t:checked { background: var(--accent); }
+  input.dfx-t:checked::after { transform: translateX(18px); }
+  input.dfx-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input.dfx-t:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dfx-master { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; cursor: pointer; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, var(--card)), var(--card) 80%); transition: border-color 0.3s ease; }
+  .dfx-master:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .dfx-master b { display: block; font-size: 15px; font-weight: 600; }
+  .dfx-master em { display: block; font-style: normal; font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+  .dfx-switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .dfx-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: border-color 0.3s ease, background-color 0.3s ease; }
+  .dfx-switch:hover { background: var(--card-hover); }
+  .dfx-switch:active { background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .dfx-switch:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
+  .dfx-switch b { display: block; font-size: 13.5px; font-weight: 600; }
+  .dfx-switch em { display: block; font-style: normal; font-size: 12px; line-height: 1.4; color: var(--text-dim); margin-top: 2px; }
+  /* Chips: a choice you can turn on or off. */
+  .dfx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dfx-chip { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; color: var(--text-muted); cursor: pointer; user-select: none; transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+  .dfx-chip input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .dfx-chip:hover { background: var(--card-hover); color: var(--text); }
+  .dfx-chip:has(input:checked) { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--accent); font-weight: 600; }
+  .dfx-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* A group that opens by growing, for the settings that are not needed every day. */
+  .dfx-acc { border: 1px solid var(--border); border-radius: 12px; background: var(--card); min-width: 0; interpolate-size: allow-keywords; }
+  .dfx-acc > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 13px 16px; cursor: pointer; border-radius: 12px; transition: background-color 0.25s ease; }
+  .dfx-acc > summary::-webkit-details-marker { display: none; }
+  .dfx-acc > summary:hover { background: var(--card-hover); }
+  .dfx-acc > summary:active { background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .dfx-acc-title { flex: 1; min-width: 0; }
+  .dfx-acc-title b { display: block; font-size: 14px; font-weight: 600; }
+  .dfx-acc-title em { display: block; font-style: normal; font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  .dfx-caret { flex: none; color: var(--text-dim); transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+  .dfx-acc[open] > summary .dfx-caret { transform: rotate(180deg); }
+  .dfx-acc::details-content { block-size: 0; overflow: clip; opacity: 0; transition: block-size 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease, content-visibility 0.45s allow-discrete; }
+  .dfx-acc[open]::details-content { block-size: auto; opacity: 1; }
+  .dfx-acc > :not(summary) { animation: none; }
+  .dfx-acc-body { display: flex; flex-direction: column; gap: 16px; padding: 4px 16px 16px; }
+  .dfx-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .dfx-link { font-size: 13px; color: var(--accent); text-decoration: none; }
+  .dfx-link:hover { text-decoration: underline; }
+  /* A card with a list, and its rows. */
+  .dfx-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px 20px; min-width: 0; margin-bottom: 20px; }
+  .dfx-card > h2 { font-size: 15px; margin: 0 0 12px; }
+  .dfx-empty { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-dim); margin: 0; }
+  .dfx-emoji-row { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+  @media (max-width: 720px) {
+    .dfx-form { padding: 16px; }
+    .dfx-grid, .dfx-grid-3, .dfx-switches { grid-template-columns: 1fr; }
+    .dfx-step { width: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .dfx-form > *, .dfx-flash { animation: none; } input.dfx-t, input.dfx-t::after, .dfx-acc::details-content { transition: none; } }
+</style>
