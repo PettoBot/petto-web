@@ -5727,4 +5727,11 @@ export const dashEs: Record<string, string> = {
   "Voice rewards": "Recompensas de voz",
   "Highest level": "Nivel más alto",
   "A role given to a member when they reach a level. Message levels and voice levels have their own rewards.": "Un rol que recibe un miembro al llegar a un nivel. Los niveles de mensajes y los de voz tienen sus propias recompensas.",
+  "Members ranked": "Miembros en el ranking",
+  "Top level": "Nivel más alto",
+  "Voice XP in the top": "XP de voz del top",
+  "XP in the top": "XP del top",
+  "Voice leveling is off, so nobody earns voice XP right now. You can still change this page, and what you save stays.": "Los niveles de voz están apagados, así que nadie gana XP de voz ahora. Aun así puedes cambiar esta página y lo que guardes se queda.",
+  "Voice XP": "XP de voz",
+  "voice XP": "XP de voz",
 };
