@@ -5711,4 +5711,5 @@ export const dashEs: Record<string, string> = {
   "winners": "ganadores",
   "entries": "participaciones",
   "entry": "participación",
+  "Minutes to level 10": "Minutos para el nivel 10",
 };

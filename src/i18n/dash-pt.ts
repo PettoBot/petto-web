@@ -5711,4 +5711,5 @@ export const dashPt: Record<string, string> = {
   "winners": "vencedores",
   "entries": "participações",
   "entry": "participação",
+  "Minutes to level 10": "Minutos para o nível 10",
 };
