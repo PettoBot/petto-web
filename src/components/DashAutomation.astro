@@ -13,6 +13,10 @@ import ColorPicker from './ColorPicker.astro';
 import EmojiPicker from './EmojiPicker.astro';
 import LiveTextPreview from './LiveTextPreview.astro';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
+import SxNumber from './SxNumber.astro';
 import { getAllCommands } from '../utils/commandList';
 import { useTranslations } from '../i18n/ui';
 
@@ -67,6 +71,7 @@ interface Props {
   monkeyboard: StarboardSettings | null;
   stickyRolesEnabled?: boolean;
   stickyRolesSaved?: number;
+  stickyRolesWaiting?: { id: string; name: string | null; avatar: string }[];
   voiceMaster: VoiceMasterSettings | null;
   voiceChannels: { id: string; name: string }[];
   channelCategories: { id: string; name: string }[];
@@ -75,13 +80,23 @@ interface Props {
   section?: string;
   customEmojis?: { id: string; name: string; animated: boolean }[];
 }
-const { user, guildId, guildName, guildIcon, prefix = '!', monkeyboard = null, customCommands, premiumActive, autoResponders, stickyMessages, disabledCommands, reactionRoles, reactionTriggers, reactionMessages, autoThreads, roles, channels, embedTemplateNames, saved, notice = null, reactionRoleError, error, aliases, timers, starboard, voiceMaster, voiceChannels, channelCategories, managedWebhooks, serverCounters, stickyRolesEnabled = false, stickyRolesSaved = 0, section, customEmojis = [] } = Astro.props;
+const { user, guildId, guildName, guildIcon, prefix = '!', monkeyboard = null, customCommands, premiumActive, autoResponders, stickyMessages, disabledCommands, reactionRoles, reactionTriggers, reactionMessages, autoThreads, roles, channels, embedTemplateNames, saved, notice = null, reactionRoleError, error, aliases, timers, starboard, voiceMaster, voiceChannels, channelCategories, managedWebhooks, serverCounters, stickyRolesEnabled = false, stickyRolesSaved = 0, stickyRolesWaiting = [], section, customEmojis = [] } = Astro.props;
 
 const ARCHIVE_LABELS: Record<number, string> = { 60: '1 hour', 1440: '1 day', 4320: '3 days', 10080: '1 week' };
 
 // The channel and role lists of the searchable selects, written once for the whole page.
 const channelOptions = channels.map((c) => ({ id: c.id, name: `#${c.name}` }));
 const roleOptions = roles.map((r) => ({ id: r.id, name: r.name }));
+// VoiceMaster and Sticky roles: the name of a channel by its id, a name cut to fit a number tile, and the three privacy modes as a title and a line ("Public: everyone can see and join").
+const vmName = (list: { id: string; name: string }[], id: string | null | undefined) => list.find((c) => c.id === id)?.name ?? '—';
+const vmNameValue = voiceMaster?.defaultName ?? '{user.name}';
+const vmShort = (text: string) => (text.length > 12 ? `${text.slice(0, 11)}…` : text);
+const vmSplit = (text: string): [string, string] => { const [head, ...rest] = text.split(': '); return [head, rest.join(': ')]; };
+const vmPrivacy: Record<string, [string, string]> = {
+  public: vmSplit(dt('Public: everyone can see and join')),
+  locked: vmSplit(dt('Locked: everyone sees it, only invited members join')),
+  hidden: vmSplit(dt('Hidden: only invited members see and join')),
+};
 const newsChannelIds = new Set(channels.filter((c) => c.type === 5).map((c) => c.id));
 function channelName(id: string) {
   return channels.find((c) => c.id === id)?.name ?? id;
@@ -313,15 +328,62 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   )}
 
   {selectedSection === 'sticky-roles' && (
-  <div class:list={['am-section', showSection('sticky-roles')]} data-section="sticky-roles">
-    <h2><span class="am-h2-icon" style="--c:#5eead4"><Icon name="ph:arrow-counter-clockwise-fill" width="14" height="14" /></span>{dt('Sticky roles')}</h2>
-    <p class="am-hint am-section-intro">{dt('When this is on, Petto remembers the roles of a member who leaves and gives them back once if the member returns.')}</p>
-    <form method="POST" class="am-add am-add-wide">
-      <input type="hidden" name="action" value="save_sticky_roles" />
-      <label class="am-check"><input type="checkbox" name="enabled" checked={stickyRolesEnabled} />{dt('Give back the roles of members who return')}</label>
-      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save')}</button>
-    </form>
-    <p class="am-hint">{dt('Members waiting to get their roles back: {a}', { a: stickyRolesSaved >= 1000 ? '1000+' : stickyRolesSaved })}</p>
+  <div class="vmx-page" data-section="sticky-roles">
+    <DashSettingsKit />
+    <DashFormKit />
+    <DashStatTiles tiles={[
+      { label: dt('Sticky roles'), value: 0, text: stickyRolesEnabled ? dt('On') : dt('Off'), tone: stickyRolesEnabled ? 'joins' : 'leaves' },
+      stickyRolesSaved >= 1000 ? { label: dt('Members waiting'), value: 0, text: '1000+', tone: 'invites' } : { label: dt('Members waiting'), value: stickyRolesSaved, tone: 'invites' },
+    ]} />
+    <div class="sx-duo vmx-duo vmx-stretch">
+      <div class="vmx-col">
+        <form method="POST" class="sx-panel">
+          <input type="hidden" name="action" value="save_sticky_roles" />
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#5eead4"><Icon name="ph:arrow-counter-clockwise-fill" width="17" height="17" /></span>
+            <h2>{dt('Sticky roles')}</h2>
+          </div>
+          <p class="sx-lead">{dt('When this is on, Petto remembers the roles of a member who leaves and gives them back once if the member returns.')}</p>
+          <label class="sx-switch sx-master"><input type="checkbox" name="enabled" checked={stickyRolesEnabled} /><span class="sx-switch-text"><b>{dt('Give back the roles of members who return')}</b></span><span class="sx-toggle"></span></label>
+          <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save')}</button></div>
+        </form>
+        <div class="sx-panel vmx-grow">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+            <h2>{dt('How it works')}</h2>
+          </div>
+          <ol class="vmx-steps">
+            <li><span class="vmx-step-n">1</span><span><b>{dt('A member leaves the server')}</b><em>{dt('Petto remembers the roles they had.')}</em></span></li>
+            <li><span class="vmx-step-n">2</span><span><b>{dt('The member comes back')}</b><em>{dt('Petto gives those roles back, once.')}</em></span></li>
+            <li><span class="vmx-step-n">3</span><span><b>{dt('Members waiting')}</b><em>{dt('The ones who left and have not come back yet are listed here.')}</em></span></li>
+          </ol>
+        </div>
+      </div>
+      <div class="sx-panel vmx-grow">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:users-three-fill" width="17" height="17" /></span>
+          <h2>{dt('Waiting for their roles')}</h2>
+          <span class="vmx-count">{stickyRolesSaved >= 1000 ? '1000+' : stickyRolesSaved}</span>
+        </div>
+        {stickyRolesWaiting.length === 0 ? (
+          <div class="vmx-empty">
+            <Icon name="ph:users-three-fill" width="28" height="28" />
+            <b>{dt('Nobody is waiting right now.')}</b>
+            <p>{dt('When a member leaves, they show up here until they come back.')}</p>
+          </div>
+        ) : (
+          <div class="vmx-people">
+            {stickyRolesWaiting.map((member) => (
+              <div class="vmx-person">
+                <img src={member.avatar} alt="" width="34" height="34" loading="lazy" referrerpolicy="no-referrer" />
+                <span><b>{member.name ?? member.id}</b><code>{member.id}</code></span>
+              </div>
+            ))}
+            {stickyRolesSaved > stickyRolesWaiting.length && <p class="sx-hint">{dt('And {n} more.', { n: stickyRolesSaved >= 1000 ? '1000+' : stickyRolesSaved - stickyRolesWaiting.length })}</p>}
+          </div>
+        )}
+      </div>
+    </div>
   </div>
   )}
 
@@ -499,55 +561,106 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   )}
 
   {selectedSection === 'voicemaster' && (
-  <div class:list={['am-section', showSection('voicemaster')]} data-section="voicemaster">
-    <h2><span class="am-h2-icon" style="--c:var(--accent)"><Icon name="ph:speaker-high-fill" width="14" height="14" /></span>{dt('VoiceMaster')}<span class:list={['vm-status', voiceMaster ? 'on' : 'off']}>{voiceMaster ? dt('Active') : dt('Not set up')}</span></h2>
-    <form method="POST" class="vm-form" data-vm>
+  <div class="vmx-page" data-section="voicemaster">
+    <DashSettingsKit />
+    <DashFormKit />
+    <DashStatTiles tiles={[
+      { label: dt('Status'), value: 0, text: voiceMaster ? dt('Active') : dt('Not set up'), tone: voiceMaster ? 'joins' : 'leaves' },
+      { label: dt('Creator channel'), value: 0, text: voiceMaster ? vmShort(vmName(voiceChannels, voiceMaster.creatorChannelId)) : '—', tone: 'voice' },
+      { label: dt('Default user limit'), value: voiceMaster?.defaultLimit ?? 0, text: voiceMaster?.defaultLimit ? undefined : dt('No limit'), tone: 'messages' },
+      { label: dt('Privacy of new rooms'), value: 0, text: vmPrivacy[voiceMaster?.privacyMode ?? 'public'][0], tone: 'invites' },
+      { label: dt('Access roles'), value: voiceMaster?.accessRoleIds?.length ?? 0, text: voiceMaster?.accessRoleIds?.length ? undefined : dt('Everyone'), tone: 'reactions' },
+    ]} />
+    <form method="POST" class="vmx-form" data-vm>
       <input type="hidden" name="action" value="save_voicemaster" />
-      <div class="vm-grid">
-        <label class="vm-field"><span class="vm-label">{dt('Creator channel')}</span>
-          <select name="creator_channel_id" required><option value="" disabled selected>{dt('Join-to-create voice channel')}</option>{voiceChannels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.creatorChannelId}>{c.name}</option>)}</select>
-          <span class="vm-help">{dt('Members join this channel and get their own room.')}</span></label>
-        <label class="vm-field"><span class="vm-label">{dt('Control panel channel')}</span>
-          <select name="panel_channel_id" required><option value="" disabled selected>{dt('Panel text channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.panelChannelId}>#{c.name}</option>)}</select>
-          <span class="vm-help">{dt('Where the panel with the buttons is posted.')}</span></label>
-        <label class="vm-field"><span class="vm-label">{dt('Category')}</span>
-          <select name="category_id"><option value="">{dt('Use creator category')}</option>{channelCategories.map((c) => <option value={c.id} selected={c.id === voiceMaster?.categoryId}>{c.name}</option>)}</select>
-          <span class="vm-help">{dt('Where the new rooms are created.')}</span></label>
-        <label class="vm-field"><span class="vm-label">{dt('Default user limit')}</span>
-          <input type="number" name="default_limit" min="0" max="99" value={voiceMaster?.defaultLimit ?? 0} />
-          <span class="vm-help">{dt('0 means no limit.')}</span></label>
-      </div>
-      <div class="vm-field vm-name">
-        <label class="vm-label" for="vmName">{dt('Room name template')}</label>
-        <input id="vmName" type="text" name="default_name" maxlength="100" value={voiceMaster?.defaultName ?? '{user.name}'} placeholder="{user.name}" data-vm-name />
-        <div class="vm-chips"><span class="vm-help">{dt('Click to add:')}</span>{['{user.name}', '{user.display_name}'].map((v) => <button type="button" class="vm-chip" data-vm-insert={v}>{v}</button>)}</div>
-        <div class="vm-preview"><Icon name="ph:speaker-high-fill" width="14" height="14" /><span data-vm-sample>{(voiceMaster?.defaultName ?? '{user.name}').replace(/\{user\.display_name\}|\{user\.name\}|\{user\}/g, 'Liam')}</span><em>{dt('How the first room of Liam would be named.')}</em></div>
-      </div>
-      <div class="vm-card">
-        <div class="vm-card-head"><Icon name="ph:lock-simple-fill" width="14" height="14" /><strong>{dt('Who can join and what they can do')}</strong></div>
-        <label class="vm-switch"><input type="checkbox" name="sync_category_permissions" checked={voiceMaster?.syncCategoryPermissions === true} />
-          <span><b>{dt('Copy the permissions of the category')}</b><small>{dt('A new room starts with the same permissions as its category, so roles set there work inside the room.')}</small></span></label>
-        <div class="vm-field"><span class="vm-label">{dt('Access roles')}</span>
-          <MultiSelect name="access_role_ids" options={roleOptions} source="am-roles" selected={voiceMaster?.accessRoleIds ?? []} placeholder={dt('Everyone can join')} />
-          <span class="vm-help">{dt('When you pick roles, only they can see and join the rooms.')}</span></div>
-        <label class="vm-field"><span class="vm-label">{dt('Privacy of new rooms')}</span>
-          <select name="privacy_mode">
-            <option value="public" selected={(voiceMaster?.privacyMode ?? 'public') === 'public'}>{dt('Public: everyone can see and join')}</option>
-            <option value="locked" selected={voiceMaster?.privacyMode === 'locked'}>{dt('Locked: everyone sees it, only invited members join')}</option>
-            <option value="hidden" selected={voiceMaster?.privacyMode === 'hidden'}>{dt('Hidden: only invited members see and join')}</option>
-          </select></label>
-        <div class="vm-field"><span class="vm-label">{dt('What the owner of a room can do')}</span>
-          <div class="vm-perms">
-            {[['manage_channels', 'Manage the channel'], ['move_members', 'Move members'], ['mute_members', 'Mute members'], ['deafen_members', 'Deafen members'], ['priority_speaker', 'Priority speaker'], ['manage_permissions', 'Manage permissions']].map(([key, label]) => (
-              <label class="vm-perm"><input type="checkbox" name="owner_permissions" value={key} checked={(voiceMaster?.ownerPermissions ?? ['manage_channels', 'move_members']).includes(key)} />{dt(label)}</label>
-            ))}
+      <div class="sx-duo vmx-duo vmx-main">
+        <div class="sx-stack">
+          <div class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon"><Icon name="ph:speaker-high-fill" width="17" height="17" /></span>
+              <h2>{dt('Channels')}</h2>
+            </div>
+            <div class="sx-field"><label for="vm-creator">{dt('Creator channel')}</label>
+              <select id="vm-creator" name="creator_channel_id" required><option value="" disabled selected>{dt('Join-to-create voice channel')}</option>{voiceChannels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.creatorChannelId}>{c.name}</option>)}</select>
+              <span class="sx-hint">{dt('Members join this channel and get their own room.')}</span></div>
+            <div class="sx-field"><label for="vm-panel">{dt('Control panel channel')}</label>
+              <select id="vm-panel" name="panel_channel_id" required><option value="" disabled selected>{dt('Panel text channel')}</option>{channels.map((c) => <option value={c.id} selected={c.id === voiceMaster?.panelChannelId}>#{c.name}</option>)}</select>
+              <span class="sx-hint">{dt('Where the panel with the buttons is posted.')}</span></div>
+            <div class="sx-field"><label for="vm-category">{dt('Category')}</label>
+              <select id="vm-category" name="category_id"><option value="">{dt('Use creator category')}</option>{channelCategories.map((c) => <option value={c.id} selected={c.id === voiceMaster?.categoryId}>{c.name}</option>)}</select>
+              <span class="sx-hint">{dt('Where the new rooms are created.')}</span></div>
           </div>
-          <span class="vm-help">{dt('Joining and seeing their own room is always allowed.')}</span></div>
+          <div class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon"><Icon name="ph:headphones-fill" width="17" height="17" /></span>
+              <h2>{dt('The rooms')}</h2>
+            </div>
+            <div class="sx-field"><label for="vm-limit">{dt('Default user limit')}</label>
+              <SxNumber id="vm-limit" name="default_limit" value={voiceMaster?.defaultLimit ?? 0} min={0} max={99} />
+              <span class="sx-hint">{dt('0 means no limit.')}</span></div>
+            <div class="sx-field">
+              <label for="vmName">{dt('Room name template')}</label>
+              <textarea id="vmName" name="default_name" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="100" placeholder="{user.name}" data-vm-name>{vmNameValue}</textarea>
+              <div class="vm-chips"><span class="sx-hint">{dt('Click to add:')}</span>{['{user.name}', '{user.display_name}'].map((v) => <button type="button" class="vm-chip" data-vm-insert={v}>{v}</button>)}</div>
+              <div class="vm-preview"><Icon name="ph:speaker-high-fill" width="14" height="14" /><span data-vm-sample>{(voiceMaster?.defaultName ?? '{user.name}').replace(/\{user\.display_name\}|\{user\.name\}|\{user\}/g, 'Liam')}</span><em>{dt('How the first room of Liam would be named.')}</em></div>
+            </div>
+          </div>
+          <div class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon"><Icon name="ph:lock-simple-fill" width="17" height="17" /></span>
+              <h2>{dt('Who can join and what they can do')}</h2>
+            </div>
+            <label class="sx-switch"><input type="checkbox" name="sync_category_permissions" checked={voiceMaster?.syncCategoryPermissions === true} /><span class="sx-switch-text"><b>{dt('Copy the permissions of the category')}</b><em>{dt('A new room starts with the same permissions as its category, so roles set there work inside the room.')}</em></span><span class="sx-toggle"></span></label>
+            <div class="sx-field"><span class="sx-label">{dt('Access roles')}</span>
+              <MultiSelect name="access_role_ids" options={roleOptions} source="am-roles" selected={voiceMaster?.accessRoleIds ?? []} placeholder={dt('Everyone can join')} />
+              <span class="sx-hint">{dt('When you pick roles, only they can see and join the rooms.')}</span></div>
+            <div class="sx-field"><span class="sx-label">{dt('Privacy of new rooms')}</span>
+              <div class="sx-choices">
+                {['public', 'locked', 'hidden'].map((mode) => (
+                  <label class="sx-choice"><input type="radio" name="privacy_mode" value={mode} checked={(voiceMaster?.privacyMode ?? 'public') === mode} /><span class="sx-choice-body"><b>{vmPrivacy[mode][0]}</b><em>{vmPrivacy[mode][1]}</em></span></label>
+                ))}
+              </div>
+            </div>
+            <div class="sx-field"><span class="sx-label">{dt('What the owner of a room can do')}</span>
+              <div class="sx-chips">
+                {[['manage_channels', 'Manage the channel'], ['move_members', 'Move members'], ['mute_members', 'Mute members'], ['deafen_members', 'Deafen members'], ['priority_speaker', 'Priority speaker'], ['manage_permissions', 'Manage permissions']].map(([key, label]) => (
+                  <label class="sx-chip"><input type="checkbox" name="owner_permissions" value={key} checked={(voiceMaster?.ownerPermissions ?? ['manage_channels', 'move_members']).includes(key)} /><span>{dt(label)}</span></label>
+                ))}
+              </div>
+              <span class="sx-hint">{dt('Joining and seeing their own room is always allowed.')}</span></div>
+          </div>
+        </div>
+        <div class="sx-stack vmx-side">
+          <div class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+              <h2>{dt('How it works')}</h2>
+            </div>
+            <ol class="vmx-steps">
+              <li><span class="vmx-step-n">1</span><span><b>{dt('A member joins the creator channel')}</b><em>{voiceMaster ? '🔊 ' + vmName(voiceChannels, voiceMaster.creatorChannelId) : dt('Pick the creator channel on the left.')}</em></span></li>
+              <li><span class="vmx-step-n">2</span><span><b>{dt('They get a room of their own')}</b><em>{voiceMaster ? dt('In {a}', { a: voiceMaster.categoryId ? vmName(channelCategories, voiceMaster.categoryId) : dt('the category of the creator channel') }) : dt('A temporary voice channel, made for them.')}</em></span></li>
+              <li><span class="vmx-step-n">3</span><span><b>{dt('They manage it from the panel')}</b><em>{voiceMaster ? '#' + vmName(channels, voiceMaster.panelChannelId) : dt('Or with the command !vc.')}</em></span></li>
+            </ol>
+          </div>
+          <div class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon"><Icon name="ph:sliders-fill" width="17" height="17" /></span>
+              <h2>{dt('What is set now')}</h2>
+            </div>
+            <div class="vmx-facts">
+              <div class="sx-row"><span class="vmx-k">{dt('Default user limit')}</span><b>{voiceMaster?.defaultLimit ? voiceMaster.defaultLimit : dt('No limit')}</b></div>
+              <div class="sx-row"><span class="vmx-k">{dt('Privacy of new rooms')}</span><b>{vmPrivacy[voiceMaster?.privacyMode ?? 'public'][0]}</b></div>
+              <div class="sx-row"><span class="vmx-k">{dt('Access roles')}</span><b>{voiceMaster?.accessRoleIds?.length ? dt('{n} role(s)', { n: voiceMaster.accessRoleIds.length }) : dt('Everyone')}</b></div>
+              <div class="sx-row"><span class="vmx-k">{dt('Copy the permissions of the category')}</span><b>{voiceMaster?.syncCategoryPermissions ? dt('On') : dt('Off')}</b></div>
+              <div class="sx-row"><span class="vmx-k">{dt('What the owner of a room can do')}</span><b>{(voiceMaster?.ownerPermissions ?? ['manage_channels', 'move_members']).length}</b></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <label class="am-check"><input type="checkbox" name="resend_panel" checked />{dt('Replace and resend the current VoiceMaster panel')}</label>
-      <div class="am-feature-actions"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save VoiceMaster')}</button>{voiceMaster && <button type="submit" name="action" value="disable_voicemaster" class="am-del-text"><Icon name="ph:prohibit-fill" width="12" height="12" />{dt('Disable')}</button>}</div>
+      <label class="sx-switch"><input type="checkbox" name="resend_panel" checked /><span class="sx-switch-text"><b>{dt('Replace and resend the current VoiceMaster panel')}</b></span><span class="sx-toggle"></span></label>
+      <div class="vmx-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Save VoiceMaster')}</button>{voiceMaster && <button type="submit" name="action" value="disable_voicemaster" class="btn btn-ghost btn-sm vmx-disable"><Icon name="ph:prohibit-fill" width="12" height="12" />{dt('Disable')}</button>}</div>
     </form>
-    <p class="am-hint"><Fragment set:html={dth('Users join the creator channel, receive a temporary channel, and manage it from the panel or <code>!vc</code>.')} /></p>
+    <p class="sx-hint vmx-cmd"><Fragment set:html={dth('Users join the creator channel, receive a temporary channel, and manage it from the panel or <code>!vc</code>.')} /></p>
     <script is:inline>
       (function () {
         var f = document.querySelector('[data-vm]'); if (!f || f.dataset.bound) return; f.dataset.bound = '1';
@@ -1381,29 +1494,47 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   .am-send-pane .am-group :global(.am-add-row) { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; align-items: center; }
   .am-send-pane .am-group :global(.am-add-row) > :global(*) { min-width: 0; }
   .am-group textarea { min-height: 70px; }
-  .vm-card { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: color-mix(in srgb, var(--card) 70%, transparent); }
-  .vm-card-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-  .vm-switch { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-  .vm-switch input { margin-top: 3px; accent-color: var(--accent); }
-  .vm-switch span { display: flex; flex-direction: column; gap: 2px; } .vm-switch b { font-size: 13px; font-weight: 600; } .vm-switch small { font-size: 11.5px; color: var(--text-dim); }
-  .vm-perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 14px; }
-  .vm-perm { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
-  .vm-perm input { accent-color: var(--accent); }
-  @media (max-width: 640px) { .am-group { padding: 10px; border-radius: 10px; } .am-send { padding-left: 10px; padding-right: 10px; } }
-  .vm-status { margin-left: 10px; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; vertical-align: middle; }
-  .vm-status.on { color: var(--green); background: var(--green-soft); }
-  .vm-status.off { color: var(--text-dim); background: var(--card); border: 1px solid var(--border); }
-  .vm-form { display: flex; flex-direction: column; gap: 16px; max-width: 880px; }
-  .vm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
-  .vm-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .vm-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
-  .vm-help { font-size: 11.5px; color: var(--text-dim); }
-  .vm-form select, .vm-form input[type="text"], .vm-form input[type="number"] { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13px; }
-  .vm-form select:focus, .vm-form input:focus { outline: none; border-color: var(--accent); }
+  /* VoiceMaster and Sticky roles */
+  .vmx-page { display: flex; flex-direction: column; max-width: 1100px; min-width: 0; }
+  .vmx-form { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .vmx-duo { align-items: start; }
+  .vmx-main { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .vmx-side { position: sticky; top: 0; }
+  .vmx-main .sx-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vmx-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .vmx-disable:hover { color: var(--red); border-color: var(--red); }
+  .vmx-cmd { margin: 0; }
+  .vmx-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; }
+  .vmx-steps li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .vmx-steps li > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .vmx-steps b { font-size: 13.5px; }
+  .vmx-steps em { font-style: normal; font-size: 12.5px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .vmx-step-n { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font: 700 12px var(--sans); color: var(--accent); background: var(--accent-soft); }
+  .vmx-facts { display: flex; flex-direction: column; gap: 8px; }
+  .vmx-facts .sx-row b { font-size: 13px; text-align: right; }
+  .vmx-k { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-dim); }
+  .vmx-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  /* Sticky roles is a short page: its panels stretch to the height of the window, and what is inside spreads over them. */
+  .vmx-stretch { align-items: stretch; min-height: calc(100dvh - 367px); }
+  .vmx-grow { flex: 1 1 auto; }
+  .vmx-stretch .vmx-steps li { flex: 1 1 auto; }
+  .vmx-count { font: 600 11.5px var(--sans); color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; }
+  .vmx-people { display: flex; flex-direction: column; gap: 8px; }
+  .vmx-person { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .vmx-person img { width: 34px; height: 34px; border-radius: 50%; flex: none; }
+  .vmx-person span { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+  .vmx-person b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vmx-person code { font-size: 11px; color: var(--text-dim); }
+  .vmx-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 20px 12px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-dim); text-align: center; }
+  .vmx-empty :global(svg) { color: var(--accent); }
+  .vmx-empty b { font-size: 14.5px; color: var(--text); }
+  .vmx-empty p { margin: 0; font-size: 13px; }
   .vm-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .vm-chip { font-family: var(--mono); font-size: 11.5px; color: var(--accent); background: var(--accent-soft, var(--card)); border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px; cursor: pointer; }
   .vm-chip:hover { border-color: var(--accent); }
   .vm-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #2b2d31; color: #dbdee1; border-radius: 9px; padding: 9px 12px; font-size: 14px; }
   .vm-preview em { color: #949ba4; font-size: 11.5px; font-style: normal; margin-left: auto; }
-  @media (max-width: 700px) { .vm-grid { grid-template-columns: minmax(0, 1fr); } .vm-preview em { margin-left: 0; } }
+  @media (max-width: 1000px) { .vmx-main { grid-template-columns: minmax(0, 1fr); } .vmx-side { position: static; } .vmx-stretch { min-height: 0; } }
+  @media (max-width: 720px) { .vmx-main .sx-choices { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 720px) { .vm-preview em { margin-left: 0; } }
 </style>

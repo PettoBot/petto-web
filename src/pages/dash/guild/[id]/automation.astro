@@ -18,6 +18,8 @@ import { readCommandNames, MAX_COMMANDS_AT_ONCE, MAX_CHANNELS_AT_ONCE } from '..
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 import { callPettoTimerRun } from '../../../../utils/pettoBotApi';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
+import { withinBudget } from '../../../../utils/liveCall';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
 const dt = makeT(getDashLang(Astro));
 
@@ -734,7 +736,15 @@ try {
 
 const customCommands = commandsRes?.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name) })) : [];
 const stickyRolesEnabled = stickyRolesRes?.ok ? Boolean((await stickyRolesRes.json())?.[0]?.enabled) : false;
-const stickyRolesSaved = stickySnapshotsRes?.ok ? (await stickySnapshotsRes.json()).length : 0;
+const stickyRows: any[] = stickySnapshotsRes?.ok ? await stickySnapshotsRes.json() : [];
+const stickyRolesSaved = stickyRows.length;
+// The first members waiting to get their roles back, with their names (never waits long for them).
+const waitingIds = stickyRows.slice(0, 8).map((row) => String(row.user_id));
+const waitingProfiles = waitingIds.length ? (await withinBudget(getMemberProfiles(Astro, id, waitingIds, botToken, { fallback: 'user', userId: session.userId }), 1500))?.value ?? new Map() : new Map();
+const stickyRolesWaiting = waitingIds.map((userId) => {
+  const profile = waitingProfiles.get(userId) ?? null;
+  return { id: userId, name: profile ? profile.displayName || profile.username : null, avatar: memberAvatarUrl(userId, profile, 64) };
+});
 const embedTemplateNames = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 const autoResponders = respondersRes?.ok ? (await respondersRes.json()).map((a: any) => ({
   id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, replyToTrigger: a.reply_to_trigger ?? false, pingUser: a.ping_user ?? false, deletePrevious: a.delete_previous ?? false, channelIds: a.channel_ids ?? [], roleIds: a.role_ids ?? [],
@@ -801,6 +811,7 @@ const customEmojis = await customEmojisPromise;
   monkeyboard={monkeyboard}
   stickyRolesEnabled={stickyRolesEnabled}
   stickyRolesSaved={stickyRolesSaved}
+  stickyRolesWaiting={stickyRolesWaiting}
   voiceMaster={voiceMaster}
   voiceChannels={voiceChannels}
   channelCategories={channelCategories}
