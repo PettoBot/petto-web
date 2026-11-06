@@ -5690,4 +5690,10 @@ export const dashPt: Record<string, string> = {
   "Nobody can open a ticket outside the hours.": "Ninguém pode abrir um ticket fora do horário.",
   "Characters": "Caracteres",
   "The list updates by itself while this page is open. Pick a ticket to read it and answer from here.": "A lista se atualiza sozinha enquanto esta página está aberta. Escolha um ticket para lê-lo e responder daqui.",
+  "Closed, with transcript": "Fechados, com transcrição",
+  "Stored": "Guardadas",
+  "The message members press to fill a form. Pick where it goes and which forms it opens.": "A mensagem que os membros pressionam para preencher um formulário. Escolha onde vai e quais formulários ela abre.",
+  "The card": "O cartão",
+  "What the message says. Write it here or choose a design from the Embeds page.": "O que a mensagem diz. Escreva aqui ou escolha um design da página de Embeds.",
+  "Members can also fill the form on the web, from a link button.": "Os membros também podem preencher o formulário na web, a partir de um botão com link.",
 };

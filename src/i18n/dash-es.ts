@@ -5690,4 +5690,10 @@ export const dashEs: Record<string, string> = {
   "Nobody can open a ticket outside the hours.": "Nadie puede abrir un ticket fuera del horario.",
   "Characters": "Caracteres",
   "The list updates by itself while this page is open. Pick a ticket to read it and answer from here.": "La lista se actualiza sola mientras esta página está abierta. Elige un ticket para leerlo y responder desde aquí.",
+  "Closed, with transcript": "Cerrados, con transcript",
+  "Stored": "Guardadas",
+  "The message members press to fill a form. Pick where it goes and which forms it opens.": "El mensaje que los miembros pulsan para rellenar un formulario. Elige dónde va y qué formularios abre.",
+  "The card": "La tarjeta",
+  "What the message says. Write it here or choose a design from the Embeds page.": "Lo que dice el mensaje. Escríbelo aquí o elige un diseño de la página de Embeds.",
+  "Members can also fill the form on the web, from a link button.": "Los miembros también pueden rellenar el formulario en la web, desde un botón con enlace.",
 };
