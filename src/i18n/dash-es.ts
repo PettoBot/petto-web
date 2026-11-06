@@ -5910,4 +5910,12 @@ export const dashEs: Record<string, string> = {
   "Or with the command !vc.": "O con el comando !vc.",
   "What is set now": "Lo que está configurado ahora",
   "{n} role(s)": "{n} rol(es)",
+  "{n} in {a}": "{n} en {a}",
+  "After {a}": "A los {a}",
+  "{n} in the last {a}": "{n} en los últimos {a}",
+  "{a} ago": "hace {a}",
+  "{a} · {b} cooldown": "{a} · {b} de espera",
+  "in {a}": "en {a}",
+  "Every {a} · keeps {b}": "Cada {a} · guarda {b}",
+  "Too many AI requests on this server. Try again in {a}.": "Demasiadas peticiones de IA en este servidor. Prueba de nuevo en {a}.",
 };

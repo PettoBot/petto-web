@@ -1,6 +1,7 @@
 // The AI assistant of the tickets (beta), server side: its settings in the bot's database, the monthly counter, the Groq client, the
 // limits (one request at a time, requests per hour) and the actions of the page's API route. The prompt itself is put together in
 // ticketAiPrompt.mjs. The Groq key (GROQ_API_KEY) is only read here, never sent to the browser, never logged, never put in a message.
+import { formatDuration } from './formatDuration';
 import { getEnv } from './env';
 import { TICKET_AI_CONFIG as CFG } from '../data/ticketAiConfig';
 import {
@@ -251,7 +252,7 @@ export function problemText(dt: Dt, code: string, extra: { minutes?: number } = 
     upstream: dt('The AI could not answer right now. Try again in a moment.'),
     empty: dt('The AI gave an empty answer. Try again or say it in another way.'),
     in_flight: dt('Wait for the answer that is on its way.'),
-    rate_limited: dt('Too many AI requests on this server. Try again in {n} min.', { n: extra.minutes ?? 60 }),
+    rate_limited: dt('Too many AI requests on this server. Try again in {a}.', { a: formatDuration((extra.minutes ?? 60) * 60) }),
     too_long: dt('That message is too long (at most {n} characters).', { n: LIMITS.message }),
     empty_message: dt('Write a message first.'),
     pending: dt('The database update for the AI assistant is pending.'),

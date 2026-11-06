@@ -5910,4 +5910,12 @@ export const dashPt: Record<string, string> = {
   "Or with the command !vc.": "Ou com o comando !vc.",
   "What is set now": "O que está configurado agora",
   "{n} role(s)": "{n} cargo(s)",
+  "{n} in {a}": "{n} em {a}",
+  "After {a}": "Após {a}",
+  "{n} in the last {a}": "{n} nos últimos {a}",
+  "{a} ago": "há {a}",
+  "{a} · {b} cooldown": "{a} · {b} de intervalo",
+  "in {a}": "em {a}",
+  "Every {a} · keeps {b}": "A cada {a} · guarda {b}",
+  "Too many AI requests on this server. Try again in {a}.": "Muitos pedidos de IA neste servidor. Tente de novo em {a}.",
 };

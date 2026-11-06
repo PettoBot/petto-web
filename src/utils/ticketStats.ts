@@ -1,6 +1,7 @@
 // The numbers of the tickets of a server for the dashboard (the same ones `ticket stats` gives in Discord).
 // The days of the chart are the days of Petto (GMT-5, Colombia), like the rest of the statistics.
 import { botDay, rangeDays } from './activityStats';
+import { formatDuration } from './formatDuration';
 
 export interface TicketRow { status: string; claimed_by: string | null; created_at: string; closed_at: string | null }
 
@@ -56,10 +57,8 @@ function lastDays(tickets: TicketRow[], now: number, count: number) {
   return out.map(({ label, opened, closed }) => ({ label, opened, closed }));
 }
 
-/** A length of time in minutes as text (`45 min`, `3 h 20 min`, `2 d 4 h`). */
-export function minutesText(minutes: number | null): string {
+/** A length of time in minutes as the short text of the dashboard (`45m`, `3h 20m`, `2d 4h`). */
+export function minutesText(minutes: number | null, locale?: string): string {
   if (minutes === null) return '-';
-  if (minutes < 60) return `${minutes} min`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-  return `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
+  return formatDuration(minutes * 60, { locale });
 }
