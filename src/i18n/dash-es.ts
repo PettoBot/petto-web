@@ -5688,4 +5688,5 @@ export const dashEs: Record<string, string> = {
   "Say when the staff answers, and what members are told outside those hours.": "Di cuándo responde el staff y qué se les dice a los miembros fuera de ese horario.",
   "The hours are shown to the member who opens a ticket.": "El horario se muestra al miembro que abre un ticket.",
   "Nobody can open a ticket outside the hours.": "Nadie puede abrir un ticket fuera del horario.",
+  "Characters": "Caracteres",
 };

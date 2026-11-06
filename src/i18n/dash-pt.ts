@@ -5688,4 +5688,5 @@ export const dashPt: Record<string, string> = {
   "Say when the staff answers, and what members are told outside those hours.": "Diga quando a equipe responde e o que os membros recebem fora desse horário.",
   "The hours are shown to the member who opens a ticket.": "O horário é mostrado ao membro que abre um ticket.",
   "Nobody can open a ticket outside the hours.": "Ninguém pode abrir um ticket fora do horário.",
+  "Characters": "Caracteres",
 };
