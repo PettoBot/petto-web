@@ -6050,4 +6050,12 @@ export const dashPt: Record<string, string> = {
   "The instructions, the knowledge and the hand-over list together can have up to {n} characters.": "As instruções, o conhecimento e a lista de transferência juntos podem ter até {n} caracteres.",
   "Together": "No total",
   "Last saved {a}": "Salvo pela última vez {a}",
+  "Followed": "Seguidas",
+  "Limit per platform": "Limite por plataforma",
+  "Every {a}": "A cada {a}",
+  "Pick a platform to see its accounts or to follow a new one.": "Escolha uma plataforma para ver as contas dela ou seguir uma nova.",
+  "Accounts": "Contas",
+  "Followed accounts": "Contas seguidas",
+  "No account followed yet": "Você ainda não segue nenhuma conta",
+  "What Petto posts": "O que o Petto publica",
 };

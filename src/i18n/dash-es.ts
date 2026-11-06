@@ -6050,4 +6050,12 @@ export const dashEs: Record<string, string> = {
   "The instructions, the knowledge and the hand-over list together can have up to {n} characters.": "Las instrucciones, el conocimiento y la lista de traspaso juntos pueden tener hasta {n} caracteres.",
   "Together": "En total",
   "Last saved {a}": "Guardado por última vez {a}",
+  "Followed": "Seguidas",
+  "Limit per platform": "Límite por plataforma",
+  "Every {a}": "Cada {a}",
+  "Pick a platform to see its accounts or to follow a new one.": "Elige una plataforma para ver sus cuentas o seguir una nueva.",
+  "Accounts": "Cuentas",
+  "Followed accounts": "Cuentas seguidas",
+  "No account followed yet": "Aún no sigues ninguna cuenta",
+  "What Petto posts": "Qué publica Petto",
 };
