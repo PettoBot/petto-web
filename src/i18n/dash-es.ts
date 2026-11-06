@@ -6035,4 +6035,11 @@ export const dashEs: Record<string, string> = {
   "Preview counts how many members would change and touches nobody.": "La vista previa cuenta cuántos miembros cambiarían y no toca a nadie.",
   "A job runs in the background, one at a time per server, and goes on by itself if Petto restarts.": "Un trabajo corre en segundo plano, uno a la vez por servidor, y sigue solo si Petto se reinicia.",
   "Large servers can take a few minutes: Discord paces it.": "Los servidores grandes pueden tardar unos minutos: Discord marca el ritmo.",
+  "Choose the name and picture Petto uses when it sends each kind of message.": "Elige el nombre y la imagen que usa Petto al enviar cada tipo de mensaje.",
+  "With your look": "Con tu aspecto",
+  "With Petto's look": "Con el aspecto de Petto",
+  "Own names": "Nombres propios",
+  "Own pictures": "Imágenes propias",
+  "Your look": "Tu aspecto",
+  "No kind of message has a look of its own yet.": "Ningún tipo de mensaje tiene un aspecto propio todavía.",
 };
