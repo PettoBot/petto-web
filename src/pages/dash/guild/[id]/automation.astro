@@ -18,6 +18,8 @@ import { readCommandNames, MAX_COMMANDS_AT_ONCE, MAX_CHANNELS_AT_ONCE } from '..
 import { hasPremiumForGuild } from '../../../../utils/premium';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 import { callPettoTimerRun } from '../../../../utils/pettoBotApi';
+import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
+import { withinBudget } from '../../../../utils/liveCall';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
 const dt = makeT(getDashLang(Astro));
 
@@ -734,7 +736,15 @@ try {
 
 const customCommands = commandsRes?.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name) })) : [];
 const stickyRolesEnabled = stickyRolesRes?.ok ? Boolean((await stickyRolesRes.json())?.[0]?.enabled) : false;
-const stickyRolesSaved = stickySnapshotsRes?.ok ? (await stickySnapshotsRes.json()).length : 0;
+const stickyRows: any[] = stickySnapshotsRes?.ok ? await stickySnapshotsRes.json() : [];
+const stickyRolesSaved = stickyRows.length;
+// The first members waiting to get their roles back, with their names (never waits long for them).
+const waitingIds = stickyRows.slice(0, 8).map((row) => String(row.user_id));
+const waitingProfiles = waitingIds.length ? (await withinBudget(getMemberProfiles(Astro, id, waitingIds, botToken, { fallback: 'user', userId: session.userId }), 1500))?.value ?? new Map() : new Map();
+const stickyRolesWaiting = waitingIds.map((userId) => {
+  const profile = waitingProfiles.get(userId) ?? null;
+  return { id: userId, name: profile ? profile.displayName || profile.username : null, avatar: memberAvatarUrl(userId, profile, 64) };
+});
 const embedTemplateNames = embedTemplatesRes?.ok ? (await embedTemplatesRes.json()).map((t: any) => t.name) : [];
 const autoResponders = respondersRes?.ok ? (await respondersRes.json()).map((a: any) => ({
   id: a.id, arId: a.ar_id, trigger: a.trigger, reply: a.reply, matchMode: a.match_mode, deleteTrigger: a.delete_trigger ?? false, replyToTrigger: a.reply_to_trigger ?? false, pingUser: a.ping_user ?? false, deletePrevious: a.delete_previous ?? false, channelIds: a.channel_ids ?? [], roleIds: a.role_ids ?? [],
@@ -770,6 +780,36 @@ const channels = allChannels
   .map((c: any) => ({ id: c.id, name: c.name, type: c.type }));
 const voiceChannels = allChannels.filter((c: any) => c.type === 2 || c.type === 13).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
 const channelCategories = allChannels.filter((c: any) => c.type === 4).sort((a: any, b: any) => a.position - b.position).map((c: any) => ({ id: c.id, name: c.name }));
+// The Automation hub only says how many each feature has: one row per request (the count comes in the header), and a read that fails leaves
+// its feature without a number. Timers are read for their next run (a few columns).
+let overview: { counts: Record<string, number | null>; on: Record<string, boolean>; timers: { total: number; running: number; nextRunAt: string | null } | null } | null = null;
+if (shown === 'overview') {
+  const countHeaders = { ...apiHeaders, Prefer: 'count=exact' };
+  const hubTables: [string, string][] = [['custom-commands', 'custom_commands'], ['autoresponders', 'auto_responders'], ['sticky-messages', 'sticky_messages'], ['reaction-roles', 'reaction_roles'], ['reaction-triggers', 'reaction_triggers'], ['reaction-messages', 'reaction_message_configs'], ['auto-threads', 'auto_threads'], ['disabled-commands', 'disabled_commands'], ['aliases', 'command_aliases'], ['webhooks', 'managed_webhooks'], ['counters', 'server_counters'], ['starboard', 'starboards'], ['monkeyboard', 'monkeyboards'], ['clownboard', 'clownboards']];
+  const hubReads: (Response | null)[] = [...(await runBatched([
+    ...hubTables.map(([, table]) => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&select=guild_id`, { headers: { ...countHeaders, Range: '0-0' } }).catch(() => null)),
+    () => fetch(`${apiUrl}/rest/v1/auto_messages?guild_id=eq.${id}&select=next_run_at,paused&order=next_run_at.asc&limit=200`, { headers: apiHeaders }).catch(() => null),
+    () => fetch(`${apiUrl}/rest/v1/voice_configs?guild_id=eq.${id}&select=creator_channel_id&limit=1`, { headers: apiHeaders }).catch(() => null),
+    () => fetch(`${apiUrl}/rest/v1/sticky_roles_config?guild_id=eq.${id}&select=enabled&limit=1`, { headers: apiHeaders }).catch(() => null),
+  ], 6))];
+  const counts: Record<string, number | null> = {};
+  for (let i = 0; i < hubTables.length; i++) {
+    const res = hubReads[i];
+    await res?.body?.cancel().catch(() => {});
+    const total = Number(res?.headers.get('content-range')?.split('/')[1]);
+    counts[hubTables[i][0]] = res?.status === 416 ? 0 : res?.ok && Number.isFinite(total) ? total : null;
+  }
+  const timerRows: any[] | null = hubReads[hubTables.length]?.ok ? await hubReads[hubTables.length]!.json() : null;
+  const voiceRows: any[] | null = hubReads[hubTables.length + 1]?.ok ? await hubReads[hubTables.length + 1]!.json() : null;
+  const stickyRoleRows: any[] | null = hubReads[hubTables.length + 2]?.ok ? await hubReads[hubTables.length + 2]!.json() : null;
+  const running = (timerRows ?? []).filter((t) => !t.paused);
+  counts.timers = timerRows ? timerRows.length : null;
+  overview = {
+    counts,
+    on: { voicemaster: Boolean(voiceRows?.length), 'sticky-roles': Boolean(stickyRoleRows?.[0]?.enabled) },
+    timers: timerRows ? { total: timerRows.length, running: running.length, nextRunAt: running[0]?.next_run_at ?? null } : null,
+  };
+}
 const customEmojis = await customEmojisPromise;
 ---
 <DashAutomation
@@ -801,10 +841,12 @@ const customEmojis = await customEmojisPromise;
   monkeyboard={monkeyboard}
   stickyRolesEnabled={stickyRolesEnabled}
   stickyRolesSaved={stickyRolesSaved}
+  stickyRolesWaiting={stickyRolesWaiting}
   voiceMaster={voiceMaster}
   voiceChannels={voiceChannels}
   channelCategories={channelCategories}
   managedWebhooks={managedWebhooks}
   serverCounters={serverCounters}
+  overview={overview}
   section={section}
 />

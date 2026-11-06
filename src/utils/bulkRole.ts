@@ -1,5 +1,6 @@
 // What the Roles page (mass add or remove of a role) knows about a job and about the roles it may hand out. The bot runs the jobs
 // (utils/bulkRoleEngine.js there); the page writes a row, reads it back and shows it. Nothing here talks to Discord or the database.
+import { formatDuration } from './formatDuration';
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
 
@@ -118,10 +119,7 @@ export function etaSeconds(job: Pick<BulkJob, 'startedAt' | 'processedMembers' |
   return Math.max(1, Math.round(((now - started) / job.processedMembers) * (job.totalMembers - job.processedMembers) / 1000));
 }
 
-/** `2 min 5 s`-style text for a number of seconds (the words are the same in every language). */
+/** The short text of the dashboard for a number of seconds (`45s`, `35m`, `1h 5m`). */
 export function shortDuration(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return `${s} s`;
-  if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`;
-  return `${Math.floor(s / 3600)} h${Math.floor((s % 3600) / 60) ? ` ${Math.floor((s % 3600) / 60)} min` : ''}`;
+  return formatDuration(Math.max(0, seconds));
 }

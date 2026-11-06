@@ -3,11 +3,13 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
 import DashStatTiles from './DashStatTiles.astro';
 import SxNumber from './SxNumber.astro';
 import { CASE_FILTERS, caseLogHref } from '../utils/caseLog';
 
 import { getDashLang, makeT } from '../i18n/dash';
+import { formatDuration } from '../utils/formatDuration';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const dth = makeT(dashLang, true);
@@ -113,10 +115,13 @@ const wordActions: [string, string, string][] = [['warn', dt('Warn'), 'ph:warnin
 const raidActions: [string, string, string][] = [['alert', dt('Alert'), 'ph:bell-ringing-fill'], ['kick', dt('Kick'), 'ph:sign-out-fill'], ['lockdown', dt('Lockdown'), 'ph:lock-fill']];
 const altActions: [string, string, string][] = [['kick', dt('Kick'), 'ph:sign-out-fill'], ['flag', dt('Flag'), 'ph:flag-fill']];
 const protectionsOn = [automod.wordFilterEnabled, automod.antiSpamEnabled, automod.antiRaidEnabled, automod.antiAltEnabled, stickyRolesEnabled].filter(Boolean).length;
+const messageKinds = ['default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'];
+const messageSlots = ['dm', 'reply', 'log'] as const;
 const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hidden';
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'protection' ? 'moderation' : selectedSection === 'stats' ? 'mod-stats' : selectedSection === 'active' ? 'active-sanctions' : selectedSection} pageTitle={selectedTitle}>
   <DashSettingsKit />
+  <DashFormKit />
   <h1>{selectedTitle}</h1>
 
   {saved && <div class="md-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
@@ -300,150 +305,243 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   )}
 
   {selectedSection === 'silent-channels' && (
-  <div class:list={['md-section', showSection('silent-channels')]}>
-    <h2><Fragment set:html={dth('Silent channels <span class="md-count">{a}</span>', { a: (silentChannels.length) })} /></h2>
-    <p class="md-section-note">{dt('Any message here counts as a violation, independent of the word filter or anti-spam toggles.')}</p>
-    {silentChannels.length === 0 && <p class="md-list-empty"><Icon name="ph:speaker-slash-fill" width="16" height="16" />{dt('No silent channels yet. Add one below.')}</p>}
-    <div class="md-list-grid dgl-stagger">
+  <div class:list={['mdx-page', showSection('silent-channels')]}>
+    <DashStatTiles tiles={[
+      { label: dt('Silent channels'), value: silentChannels.length, tone: 'invites' },
+      { label: dt('Warn'), value: silentChannels.filter((s) => s.action === 'warn').length, tone: 'reactions' },
+      { label: dt('Mute'), value: silentChannels.filter((s) => s.action === 'mute').length, tone: 'voice' },
+      { label: dt('Kick'), value: silentChannels.filter((s) => s.action === 'kick').length, tone: 'messages' },
+    ]} />
+    <div class="mdx-head">
+      <h2>{dt('Silent channels')} <span class="mdx-count">{silentChannels.length}</span></h2>
+      <p>{dt('Any message here counts as a violation, independent of the word filter or anti-spam toggles.')}</p>
+    </div>
+    {silentChannels.length === 0 && <p class="mdx-empty"><Icon name="ph:speaker-slash-fill" width="18" height="18" />{dt('No silent channels yet. Add one below.')}</p>}
+    <div class="mdx-list dgl-stagger">
       {silentChannels.map((s) => (
-        <form method="POST" class="md-list-row" data-no-dirty>
+        <form method="POST" class="mdx-item md-list-row" data-no-dirty>
           <input type="hidden" name="action" value="delete_silent_channel" />
           <input type="hidden" name="channel_id" value={s.channelId} />
-          <span class="md-list-name">#{s.name}</span>
-          <span class="md-list-tag">{s.action}</span>
-          <button type="submit" class="md-list-del" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+          <span class="mdx-icon" style="--c:#8fb3ff"><Icon name="ph:speaker-slash-fill" width="16" height="16" /></span>
+          <span class="mdx-item-main"><b>#{s.name}</b></span>
+          <span class="mdx-pill" style={`--c:${typeColor[s.action] ?? '#94a3b8'}`}>{s.action}</span>
+          <button type="submit" class="mdx-del" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="15" height="15" /></button>
         </form>
       ))}
     </div>
-    <form method="POST" class="md-add-row" data-no-dirty>
+    <form method="POST" class="mdx-add" data-no-dirty>
       <input type="hidden" name="action" value="add_silent_channel" />
-      <select name="channel_id" required>
-        <option value="" disabled selected>{dt('Channel')}</option>
-        {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
-      </select>
-      <select name="silent_action">
-        {['warn', 'mute', 'kick'].map((act) => <option value={act}>{act}</option>)}
-      </select>
-      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
+      <div class="mdx-add-title"><Icon name="ph:plus-circle-fill" width="16" height="16" />{dt('Add')}</div>
+      <div class="sx-grid">
+        <div class="sx-field"><label for="mdx-silent-channel">{dt('Channel')}</label>
+          <select id="mdx-silent-channel" name="channel_id" required>
+            <option value="" disabled selected>{dt('Channel')}</option>
+            {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
+          </select>
+        </div>
+        <div class="sx-field">
+          <span class="sx-label" id="mdx-silent-action">{dt('Action')}</span>
+          <div class="dfx-chips" role="radiogroup" aria-labelledby="mdx-silent-action">
+            {['warn', 'mute', 'kick'].map((act, i) => <label class="dfx-chip"><input type="radio" name="silent_action" value={act} checked={i === 0} /><i class="mdx-dot" style={`--c:${typeColor[act]}`}></i>{act}</label>)}
+          </div>
+        </div>
+      </div>
+      <div class="mdx-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button></div>
     </form>
   </div>
   )}
 
   {selectedSection === 'warn-escalation' && (
-  <div class:list={['md-section', showSection('warn-escalation')]}>
-    <h2><Fragment set:html={dth('Warn escalation <span class="md-count">{a}</span>', { a: (escalationRules.length) })} /></h2>
-    <p class="md-section-note">{dt('At warning #N, automatically take an action, checked against the member\'s live active-warn count.')}</p>
-    {escalationRules.length === 0 && <p class="md-list-empty"><Icon name="ph:list-checks-fill" width="16" height="16" />{dt('No steps yet. Add the first one below.')}</p>}
-    <div class="md-list-grid dgl-stagger">
+  <div class:list={['mdx-page', showSection('warn-escalation')]}>
+    <DashStatTiles tiles={[
+      { label: dt('Steps'), value: escalationRules.length, tone: 'invites' },
+      { label: dt('First step'), value: escalationRules[0]?.warnCount ?? 0, text: escalationRules.length ? dt('Warn #{a}', { a: escalationRules[0].warnCount }) : '-', tone: 'reactions' },
+      { label: dt('Last step'), value: escalationRules[escalationRules.length - 1]?.warnCount ?? 0, text: escalationRules.length ? dt('Warn #{a}', { a: escalationRules[escalationRules.length - 1].warnCount }) : '-', tone: 'leaves' },
+    ]} />
+    <div class="mdx-head">
+      <h2>{dt('Warn escalation')} <span class="mdx-count">{escalationRules.length}</span></h2>
+      <p>{dt('At warning #N, automatically take an action, checked against the member\'s live active-warn count.')}</p>
+    </div>
+    {escalationRules.length === 0 && <p class="mdx-empty"><Icon name="ph:list-checks-fill" width="18" height="18" />{dt('No steps yet. Add the first one below.')}</p>}
+    <div class="mdx-ladder dgl-stagger">
       {escalationRules.map((r) => (
-        <form method="POST" class="md-list-row" data-no-dirty>
+        <form method="POST" class="mdx-item mdx-step md-list-row" data-no-dirty>
           <input type="hidden" name="action" value="delete_escalation" />
           <input type="hidden" name="warn_count" value={r.warnCount} />
-          <span class="md-list-name">{dt('Warn #{a}', { a: (r.warnCount) })}</span>
-          <span class="md-list-tag">{r.action}{r.durationMinutes ? ` (${r.durationMinutes}m)` : ''}</span>
-          <button type="submit" class="md-list-del" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
+          <span class="mdx-badge" style={`--c:${typeColor[r.action] ?? '#94a3b8'}`} aria-hidden="true">{r.warnCount}</span>
+          <span class="mdx-item-main"><b>{dt('Warn #{a}', { a: (r.warnCount) })}</b></span>
+          <span class="mdx-pill" style={`--c:${typeColor[r.action] ?? '#94a3b8'}`}>{r.action}{r.durationMinutes ? ` · ${formatDuration(r.durationMinutes * 60)}` : ''}</span>
+          <button type="submit" class="mdx-del" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="15" height="15" /></button>
         </form>
       ))}
     </div>
-    <form method="POST" class="md-add-row" data-no-dirty>
+    <form method="POST" class="mdx-add" data-no-dirty>
       <input type="hidden" name="action" value="add_escalation" />
-      <input type="number" name="warn_count" placeholder={dt('Warn #')} min="1" max="50" required />
-      <select name="esc_action">
-        {['mute', 'tempmute', 'kick', 'ban'].map((act) => <option value={act}>{act}</option>)}
-      </select>
-      <input type="number" name="duration_minutes" placeholder={dt('Minutes (temp only)')} min="0" />
-      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
+      <div class="mdx-add-title"><Icon name="ph:plus-circle-fill" width="16" height="16" />{dt('Add')}</div>
+      <div class="sx-grid">
+        <div class="sx-field"><label for="mdx-warn-count">{dt('Warn #')}</label><SxNumber id="mdx-warn-count" name="warn_count" value={Math.min(50, (escalationRules[escalationRules.length - 1]?.warnCount ?? 2) + 1)} min="1" max="50" required /></div>
+        <div class="sx-field">
+          <span class="sx-label" id="mdx-esc-action">{dt('Action')}</span>
+          <div class="dfx-chips" role="radiogroup" aria-labelledby="mdx-esc-action">
+            {['mute', 'tempmute', 'kick', 'ban'].map((act, i) => <label class="dfx-chip"><input type="radio" name="esc_action" value={act} checked={i === 0} /><i class="mdx-dot" style={`--c:${typeColor[act]}`}></i>{act}</label>)}
+          </div>
+        </div>
+        <div class="sx-field" data-sx-needs="esc_action=tempmute"><label for="mdx-esc-minutes">{dt('Minutes (temp only)')}</label><SxNumber id="mdx-esc-minutes" name="duration_minutes" value="0" min="0" /></div>
+      </div>
+      <div class="mdx-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button></div>
     </form>
   </div>
   )}
 
   {selectedSection === 'sanction-messages' && (
-  <div class:list={['md-section', showSection('sanction-messages')]}>
-    <h2>{dt('Sanction messages')}</h2>
-    <p class="md-section-note">{dt('Use a saved design from the Embeds page for what a member receives, what is posted where the command was used, and the log entry. A type without its own design uses the Default row. Variables start with {case.…}, for example {case.reason} and {case.moderator}.')}</p>
-    {!sanctionMessagesReady && <p class="md-empty-note">{dt('This arrives with the next Petto update.')}</p>}
+  <div class:list={['mdx-page', showSection('sanction-messages')]}>
+    <DashStatTiles tiles={[
+      { label: dt('Saved designs'), value: embedTemplateNames.length, tone: 'invites' },
+      { label: dt('Kinds with a design'), value: messageKinds.filter((type) => messageSlots.some((slot) => sanctionTemplates[type]?.[slot])).length, tone: 'joins' },
+      { label: dt('Messages with a design'), value: messageKinds.reduce((sum, type) => sum + messageSlots.filter((slot) => sanctionTemplates[type]?.[slot]).length, 0), tone: 'messages' },
+    ]} />
+    <div class="mdx-head">
+      <h2>{dt('Sanction messages')}</h2>
+      <p>{dt('Use a saved design from the Embeds page for what a member receives, what is posted where the command was used, and the log entry. A type without its own design uses the Default row. Variables start with {case.…}, for example {case.reason} and {case.moderator}.')}</p>
+    </div>
+    {!sanctionMessagesReady && <p class="mdx-empty"><Icon name="ph:hourglass-medium-fill" width="18" height="18" />{dt('This arrives with the next Petto update.')}</p>}
     {sanctionMessagesReady && (
-      <form method="POST" class="md-msg-form">
+      <form method="POST" class="md-msg-form mdx-msgs">
         <input type="hidden" name="action" value="save_sanction_messages" />
-        <div class="md-msg-grid">
-          <span class="md-msg-head"></span>
-          <span class="md-msg-head">{dt('DM to the member')}</span>
-          <span class="md-msg-head">{dt('Reply in the channel')}</span>
-          <span class="md-msg-head">{dt('Sanctions log')}</span>
-          {['default', 'ban', 'tempban', 'softban', 'unban', 'kick', 'mute', 'tempmute', 'unmute', 'warn', 'jail', 'unjail'].map((type) => (
-            <div class="md-msg-row">
-              <span class="md-msg-type" style={`--c:${typeColor[type] ?? 'var(--accent)'}`}>{type}</span>
-              {(['dm', 'reply', 'log'] as const).map((slot) => (
-                <label class="md-msg-slot">
-                  <span class="md-msg-slot-name">{slot === 'dm' ? dt('DM to the member') : slot === 'reply' ? dt('Reply in the channel') : dt('Sanctions log')}</span>
-                  <select name={`${type}__${slot}`} aria-label={`${type} ${slot}`}>
-                    <option value="" selected={!sanctionTemplates[type]?.[slot]}>{type === 'default' ? dt('Usual message') : dt('Same as default')}</option>
-                    {embedTemplateNames.map((name) => <option value={name} selected={name === sanctionTemplates[type]?.[slot]}>{name}</option>)}
-                  </select>
-                </label>
-              ))}
-            </div>
-          ))}
+        <div class="mdx-accs">
+          {messageKinds.map((type) => {
+            const used = messageSlots.filter((slot) => sanctionTemplates[type]?.[slot]).length;
+            return (
+            <details class="dfx-acc mdx-acc" open={type === 'default' || used > 0} style={`--c:${typeColor[type] ?? 'var(--accent)'}`}>
+              <summary>
+                <span class="mdx-kind">{type === 'default' ? dt('Default') : type}</span>
+                <span class="dfx-acc-title"><em>{used > 0 ? dt('{a} of 3 with a design', { a: used }) : type === 'default' ? dt('Usual messages') : dt('Same as default')}</em></span>
+                {used > 0 && <i class="mdx-changed" title={dt('Changed')}></i>}
+                <Icon name="ph:caret-down-bold" class="dfx-caret" width="14" height="14" />
+              </summary>
+              <div class="dfx-acc-body">
+                <div class="sx-grid sx-grid-3">
+                  {messageSlots.map((slot) => (
+                    <div class="sx-field">
+                      <label for={`mdx-${type}-${slot}`}>{slot === 'dm' ? dt('DM to the member') : slot === 'reply' ? dt('Reply in the channel') : dt('Sanctions log')}</label>
+                      <select id={`mdx-${type}-${slot}`} name={`${type}__${slot}`} aria-label={`${type} ${slot}`}>
+                        <option value="" selected={!sanctionTemplates[type]?.[slot]}>{type === 'default' ? dt('Usual message') : dt('Same as default')}</option>
+                        {embedTemplateNames.map((name) => <option value={name} selected={name === sanctionTemplates[type]?.[slot]}>{name}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </details>
+            );
+          })}
         </div>
-        <button type="submit" class="btn btn-accent btn-sm">{dt('Save changes')}</button>
+        <div class="mdx-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save changes')}</button></div>
       </form>
     )}
   </div>
   )}
 
   {selectedSection === 'active' && (
-  <div class:list={['md-section', showSection('active')]}>
-    <h2><Fragment set:html={dth('Active sanctions <span class="md-count">{a}</span>', { a: (activeSanctions.length) })} /></h2>
-    {activeSanctions.length === 0 ? <p class="md-empty-note">{dt('Nothing is active right now.')}</p> : (
-      <div class="md-case-list">
-        {activeSanctions.map((c) => (
-          <div class="md-case-row">
-            <span class="md-case-num">#{c.caseNumber}</span>
-            <span class="md-case-type" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>{c.type}</span>
-            <span class="md-case-person">
-              {people[c.userId] ? <img src={people[c.userId].avatar} alt="" width="20" height="20" loading="lazy" /> : null}
+  <div class:list={['mdx-page', showSection('active')]}>
+    <DashStatTiles tiles={[
+      { label: dt('Active sanctions'), value: activeSanctions.length, tone: 'invites' },
+      { label: dt('Ban'), value: activeSanctions.filter((c) => ['ban', 'tempban', 'hardban'].includes(c.type)).length, tone: 'leaves' },
+      { label: dt('Mute'), value: activeSanctions.filter((c) => ['mute', 'tempmute'].includes(c.type)).length, tone: 'voice' },
+      { label: dt('Jail'), value: activeSanctions.filter((c) => c.type === 'jail').length, tone: 'messages' },
+    ]} />
+    <div class="mdx-head">
+      <h2>{dt('Active sanctions')} <span class="mdx-count">{activeSanctions.length}</span></h2>
+    </div>
+    {activeSanctions.length === 0 ? <p class="mdx-empty"><Icon name="ph:shield-check-fill" width="18" height="18" />{dt('Nothing is active right now.')}</p> : (
+      <div class="mdx-sanctions dgl-stagger">
+        {activeSanctions.map((c) => {
+          const left = c.expiresAt ? Math.min(1, Math.max(0, (new Date(c.expiresAt).getTime() - Date.now()) / Math.max(1, new Date(c.expiresAt).getTime() - new Date(c.createdAt).getTime()))) : null;
+          return (
+          <div class="mdx-sanction" style={`--c:${typeColor[c.type] ?? '#94a3b8'}`}>
+            <div class="mdx-sanction-top">
+              <span class="mdx-case-num">#{c.caseNumber}</span>
+              <span class="mdx-pill">{c.type}</span>
+              {c.type === 'hardban'
+                ? <span class="md-case-inactive">{dt('Only the owner can lift it')}</span>
+                : <button type="button" class="btn btn-ghost btn-sm md-lift" data-lift={c.caseNumber} data-lift-confirm={dt('Lift this sanction now?')} data-lift-error={dt('It could not be lifted.')}>{dt('Lift')}</button>}
+            </div>
+            <div class="mdx-person">
+              {people[c.userId] ? <img src={people[c.userId].avatar} alt="" width="36" height="36" loading="lazy" /> : <span class="mdx-av" aria-hidden="true"></span>}
               <span><b>{people[c.userId]?.name ?? c.userId}</b><code>{c.userId}</code></span>
-            </span>
-            <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
-            {c.expiresAt ? <time class="md-case-when" datetime={c.expiresAt} data-local-time>{c.expiresAt}</time> : <span class="md-case-when">{dt('No end')}</span>}
-            {c.reason && <span class="md-case-reason">{c.reason}</span>}
-            {c.type === 'hardban'
-              ? <span class="md-case-inactive">{dt('Only the owner can lift it')}</span>
-              : <button type="button" class="btn btn-ghost btn-sm md-lift" data-lift={c.caseNumber} data-lift-confirm={dt('Lift this sanction now?')} data-lift-error={dt('It could not be lifted.')}>{dt('Lift')}</button>}
+            </div>
+            {c.reason && <p class="mdx-reason">{c.reason}</p>}
+            <div class="mdx-sanction-foot">
+              <span class="mdx-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
+              {c.expiresAt ? <time class="mdx-when" datetime={c.expiresAt} data-local-time>{c.expiresAt}</time> : <span class="mdx-when">{dt('No end')}</span>}
+            </div>
+            {left !== null && <div class="mdx-left" role="img" aria-label={dt('Time left')}><i style={`width:${Math.round(left * 100)}%`}></i></div>}
           </div>
-        ))}
+          );
+        })}
       </div>
     )}
   </div>
   )}
 
   {selectedSection === 'stats' && (
-  <div class:list={['md-section', showSection('stats')]}>
-    <h2>{dt('Moderator stats')} <span class="md-count">{dt('last 30 days')}</span></h2>
-    <div class="md-stat-strip">
-      <div><b>{modStats.total}</b><span>{dt('Cases')}</span></div>
-      <div><b>{modStats.total - modStats.automatic}</b><span>{dt('By moderators')}</span></div>
-      <div><b>{modStats.automatic}</b><span>{dt('By the bot (automatic)')}</span></div>
+  <div class:list={['mdx-page', showSection('stats')]}>
+    <DashStatTiles tiles={[
+      { label: dt('Cases'), value: modStats.total, tone: 'invites' },
+      { label: dt('By moderators'), value: modStats.total - modStats.automatic, tone: 'joins' },
+      { label: dt('By the bot (automatic)'), value: modStats.automatic, tone: 'voice' },
+    ]} />
+    <div class="mdx-head">
+      <h2>{dt('Moderator stats')} <span class="mdx-count">{dt('last 30 days')}</span></h2>
     </div>
-    <div class="md-bars" aria-label={dt('Cases in the last 14 days')}>
-      {modStats.days.map((d) => <div class="md-bar" title={`${d.label}: ${d.count}`}><i style={`height:${Math.max(4, d.count / Math.max(1, ...modStats.days.map((x) => x.count)) * 100)}%`}></i><span>{d.label.slice(3)}</span></div>)}
-    </div>
-    <div class="md-stat-cols">
-      <div>
-        <h3>{dt('By kind')}</h3>
-        {modStats.byType.length === 0 ? <p class="md-empty-note">{dt('Nothing yet.')}</p> : modStats.byType.map(([type, count]) => <div class="md-stat-line"><span class="md-case-type" style={`--c:${typeColor[type] ?? '#94a3b8'}`}>{type}</span><b>{count}</b></div>)}
+    <div class="mdx-panel mdx-chart-panel">
+      <div class="mdx-panel-title">{dt('Cases in the last 14 days')}</div>
+      <div class="mdx-chart md-bars" aria-label={dt('Cases in the last 14 days')}>
+        {modStats.days.map((d, i) => {
+          const top = Math.max(1, ...modStats.days.map((x) => x.count));
+          return (
+          <div class:list={['md-bar', { 'mdx-bar-top': d.count > 0 && d.count === top }]} style={`--i:${i}`} title={`${d.label}: ${d.count}`}>
+            <em>{d.count || ''}</em>
+            <i style={`height:${Math.max(4, (d.count / top) * 100)}%`}></i>
+            <span>{d.label.slice(3)}</span>
+          </div>
+          );
+        })}
       </div>
-      <div>
-        <h3>{dt('Moderators')}</h3>
-        {modStats.moderators.length === 0 ? <p class="md-empty-note">{dt('Nothing yet.')}</p> : modStats.moderators.map((m) => <div class="md-stat-line"><span class="md-case-person">{people[m.userId] ? <img src={people[m.userId].avatar} alt="" width="20" height="20" loading="lazy" /> : null}<b>{people[m.userId]?.name ?? m.userId}</b></span><b>{m.count}</b></div>)}
+    </div>
+    <div class="mdx-cols">
+      <div class="mdx-panel">
+        <div class="mdx-panel-title">{dt('By kind')}</div>
+        {modStats.byType.length === 0 ? <p class="mdx-empty-line">{dt('Nothing yet.')}</p> : modStats.byType.map(([type, count], i) => (
+          <div class="mdx-stat-row" style={`--c:${typeColor[type] ?? '#94a3b8'};--i:${Math.min(i, 9)}`}>
+            <span class="mdx-pill">{type}</span>
+            <span class="mdx-track"><i style={`width:${Math.round((count / Math.max(1, modStats.byType[0][1])) * 100)}%`}></i></span>
+            <b>{count}</b>
+          </div>
+        ))}
+      </div>
+      <div class="mdx-panel">
+        <div class="mdx-panel-title">{dt('Moderators')}</div>
+        {modStats.moderators.length === 0 ? <p class="mdx-empty-line">{dt('Nothing yet.')}</p> : modStats.moderators.map((m, i) => (
+          <div class="mdx-stat-row" style={`--c:var(--accent);--i:${Math.min(i, 9)}`}>
+            <span class="mdx-mod">{i < 3 ? <Icon name="ph:medal-fill" width="18" height="18" class={`mdx-medal mdx-medal-${i + 1}`} /> : <span class="mdx-rank">{i + 1}</span>}{people[m.userId] ? <img src={people[m.userId].avatar} alt="" width="24" height="24" loading="lazy" /> : null}<b>{people[m.userId]?.name ?? m.userId}</b></span>
+            <span class="mdx-track"><i style={`width:${Math.round((m.count / Math.max(1, modStats.moderators[0].count)) * 100)}%`}></i></span>
+            <b>{m.count}</b>
+          </div>
+        ))}
       </div>
     </div>
   </div>
   )}
 
   {selectedSection === 'cases' && (
-  <div class:list={['md-section', showSection('cases')]} data-case-log>
-    <h2><Fragment set:html={caseFiltered ? dth('Cases found <span class="md-count">{a}</span>', { a: cases.length + (caseLog.older ? '+' : '') }) : dth('Recent cases <span class="md-count">{a}</span>', { a: cases.length + (caseLog.older ? '+' : '') })} /></h2>
+  <div class:list={['mdx-page', showSection('cases')]} data-case-log>
+    <DashStatTiles tiles={[
+      { label: dt('Cases shown'), value: cases.length, tone: 'invites' },
+      { label: dt('Still active'), value: cases.filter((c) => c.active).length, tone: 'joins' },
+      { label: dt('With proof'), value: cases.filter((c) => (c.evidence ?? []).length > 0).length, tone: 'reactions' },
+    ]} />
+    <div class="mdx-head"><h2><Fragment set:html={caseFiltered ? dth('Cases found <span class="md-count">{a}</span>', { a: cases.length + (caseLog.older ? '+' : '') }) : dth('Recent cases <span class="md-count">{a}</span>', { a: cases.length + (caseLog.older ? '+' : '') })} /></h2></div>
     {caseMessage && <div class:list={['md-case-flash', { 'md-case-flash-err': caseMessage.kind === 'err' }]} role={caseMessage.kind === 'err' ? 'alert' : 'status'}>{caseMessage.text}</div>}
     {cases.length === 0 && !caseFiltered && !caseLog.failed ? (
       <div class="md-case-empty">
@@ -487,8 +585,12 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
                 <span class="md-case-by">{dt('by')} {people[c.moderatorId]?.name ?? c.moderatorId}</span>
                 <time class="md-case-when" datetime={c.createdAt} data-local-time>{c.createdAt}</time>
                 {c.reason && <span class="md-case-reason">{c.reason}</span>}
-                {(c.evidence ?? []).length > 0 && <span class="md-case-evidence">{dt('Proof')}: {(c.evidence ?? []).map((url, i) => <a href={url} target="_blank" rel="noopener noreferrer">{i + 1}</a>)}</span>}
-                {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
+                {((c.evidence ?? []).length > 0 || !c.active) && (
+                  <div class="md-case-foot">
+                    {(c.evidence ?? []).length > 0 && <span class="md-case-evidence">{dt('Proof')}: {(c.evidence ?? []).map((url, i) => <a href={url} target="_blank" rel="noopener noreferrer">{i + 1}</a>)}</span>}
+                    {!c.active && <span class="md-case-inactive">{dt('expired')}</span>}
+                  </div>
+                )}
                 {/* One edit form at a time: a form in every row (a textarea in a fold, 100 of them) made the page slow to draw. The link
                     works without the script (the page comes back with the form of that case open); with it, the form is put in place
                     from the template below. */}
@@ -497,7 +599,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
                   <form method="POST" class="md-case-form" data-no-dirty data-dash-hold data-case-form>
                     <input type="hidden" name="case" value={c.caseNumber} />
                     <label><span>{dt('Reason of case #{a}', { a: c.caseNumber })}</span>
-                      <textarea name="reason" rows="2" maxlength="1000" required placeholder={dt('Why this sanction was given')}>{c.reason ?? ''}</textarea>
+                      <textarea name="reason" class="dgl-autogrow" rows="2" data-count maxlength="1000" required placeholder={dt('Why this sanction was given')}>{c.reason ?? ''}</textarea>
                     </label>
                     <div class="md-case-form-actions">
                       <button type="submit" name="action" value="case_edit" class="btn btn-accent btn-sm">{dt('Save reason')}</button>
@@ -515,7 +617,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
             <form method="POST" class="md-case-form" data-no-dirty data-dash-hold data-case-form>
               <input type="hidden" name="case" value="" />
               <label><span data-case-label={dt('Reason of case #{a}', { a: '{n}' })}></span>
-                <textarea name="reason" rows="2" maxlength="1000" required placeholder={dt('Why this sanction was given')}></textarea>
+                <textarea name="reason" class="dgl-autogrow" rows="2" data-count maxlength="1000" required placeholder={dt('Why this sanction was given')}></textarea>
               </label>
               <div class="md-case-form-actions">
                 <button type="submit" name="action" value="case_edit" class="btn btn-accent btn-sm">{dt('Save reason')}</button>
@@ -600,6 +702,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
           var link = row.querySelector('[data-case-edit]');
           if (link) { link.classList.add('on'); link.setAttribute('aria-expanded', 'true'); }
           if (window.dglInitContent) window.dglInitContent(row);
+          if (window.__dfxKit) window.__dfxKit();
           area.focus();
           area.setSelectionRange(area.value.length, area.value.length);
           return true;
@@ -642,14 +745,14 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
           var guild = window.location.pathname.split('/dash/guild/')[1].split('/')[0];
           var failed = btn.getAttribute('data-lift-error') || 'It could not be lifted.';
           var say = function (text) { if (window.dglToast) window.dglToast(text, { kind: 'error' }); else window.alert(text); };
-          btn.disabled = true;
+          btn.disabled = true; btn.classList.add('dgl-busy');
           fetch('/dash/guild/' + guild + '/moderation-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ case: Number(btn.getAttribute('data-lift')) }) })
             .then(function (r) { return r.json(); })
             .then(function (data) {
               if (data && data.ok) { if (window.dglRefreshPage) window.dglRefreshPage(true); else window.location.reload(); }
-              else { say((data && data.message) || failed); btn.disabled = false; }
+              else { say((data && data.message) || failed); btn.disabled = false; btn.classList.remove('dgl-busy'); }
             })
-            .catch(function () { say(failed); btn.disabled = false; });
+            .catch(function () { say(failed); btn.disabled = false; btn.classList.remove('dgl-busy'); });
         });
       }
       document.querySelectorAll('#dgl-content time[data-local-time]').forEach(function (t) {
@@ -679,44 +782,7 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   .mp-link-text em { font-style: normal; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
   .mp-link :global(.mp-link-go) { flex: none; margin-top: 8px; color: var(--text-dim); transition: transform .35s cubic-bezier(.22, 1, .36, 1), color .25s ease; }
   .mp-link:hover :global(.mp-link-go) { color: var(--accent); transform: translateX(3px); }
-  .md-case-tools { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; max-width: 760px; }
-  .md-case-search { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raise); color: var(--text); font: 13px var(--sans); }
-  .md-case-types { display: flex; flex-wrap: wrap; gap: 6px; }
-  .md-case-search-row { display: flex; gap: 8px; align-items: center; }
-  .md-case-search-row .md-case-search { flex: 1; min-width: 0; }
-  .md-case-search-row .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-  .md-case-hint { margin: 0; font-size: 12px; color: var(--text-dim); }
-  .md-case-pill { display: inline-block; text-decoration: none; border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 999px; padding: 4px 11px; font: 600 11.5px var(--sans); cursor: pointer; text-transform: capitalize; }
-  .md-case-pill:hover { color: var(--text); border-color: var(--c, var(--text-dim)); }
-  .md-case-pager { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .md-case-pager .btn { display: inline-flex; align-items: center; gap: 6px; }
-  .md-case-none a { color: var(--accent); }
-  /* A row off screen is not laid out or painted until it is scrolled to: a long list used to freeze the page while it was drawn. */
-  .md-case-list .md-case-row { content-visibility: auto; contain-intrinsic-size: auto 46px; }
-  .md-case-pill.on { background: color-mix(in srgb, var(--c, var(--accent)) 18%, transparent); color: var(--c, var(--accent)); border-color: var(--c, var(--accent)); }
-  .md-case-person { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
-  .md-case-person img { border-radius: 50%; }
-  .md-case-person span { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-  .md-case-person b { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .md-case-person code { font-size: 10px; color: var(--text-dim); }
-  .md-case-by, .md-case-when { font-size: 11.5px; color: var(--text-dim); }
-  .md-case-none { color: var(--text-dim); font-size: 13px; }
   .md-case-row[hidden] { display: none; }
-  .md-case-flash { font-size: 13px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 9px 13px; margin: 0 0 12px; max-width: 760px; }
-  .md-case-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
-  .md-case-empty { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; max-width: 760px; color: var(--text-dim); }
-  .md-case-empty .md-empty-note { margin: 0 0 6px; }
-  .md-case-empty-more { margin: 0; font-size: 12.5px; color: var(--text-dim); }
-  .md-case-edit { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; font-size: 11.5px; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
-  .md-case-edit:hover, .md-case-edit.on { color: var(--text); border-color: var(--text-dim); }
-  .md-case-row > .md-case-form { flex-basis: 100%; }
-  .md-case-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-width: 640px; }
-  .md-case-form label { display: flex; flex-direction: column; gap: 5px; }
-  .md-case-form label span { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; }
-  .md-case-form textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise, var(--card)); color: var(--text); font: 13px var(--sans); resize: vertical; width: 100%; box-sizing: border-box; }
-  .md-case-form-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .md-case-form-actions .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
-  .md-case-delete:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
   h1 { font-size: 24px; margin: 0 0 20px; }
   h2 { font-size: 14.5px; margin: 0 0 14px; }
 
@@ -726,28 +792,12 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   .md-form { display: flex; flex-direction: column; align-items: flex-start; gap: 24px; margin-bottom: 40px; }
   .md-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 14px; width: 100%; }
   .md-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-  .md-row-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .md-row-2 > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .md-row-2 label { font-size: 12.5px; }
-  .md-case-evidence { font-size: 12px; color: var(--text-dim); display: inline-flex; gap: 6px; align-items: center; }
-  .md-case-evidence a { color: var(--accent); }
-  .md-stat-strip { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0 18px; }
-  .md-stat-strip div { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 18px; min-width: 130px; }
-  .md-stat-strip b { display: block; font-size: 22px; }
-  .md-stat-strip span { font-size: 12.5px; color: var(--text-dim); }
   .md-bars { display: flex; align-items: flex-end; gap: 10px; height: 160px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px 8px; background: var(--card); margin-bottom: 18px; }
   .md-bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
   .md-bar i { display: block; width: 100%; max-width: 44px; background: var(--accent); border-radius: 4px 4px 0 0; }
   .md-bar span { font-size: 10px; color: var(--text-dim); }
-  .md-stat-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
-  .md-stat-cols h3 { font-size: 13px; margin: 0 0 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
-  .md-stat-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px; }
   .md-lift { margin-left: auto; }
-  @media (max-width: 720px) { .md-stat-cols, .md-row-2 { grid-template-columns: 1fr; } }
-  .md-card-link { text-decoration: none; color: inherit; transition: border-color var(--m-fast) ease; }
-  .md-card-link:hover { border-color: var(--accent); }
   .md-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card); display: flex; flex-direction: column; gap: 11px; }
-  .md-card-head { display: flex; align-items: center; gap: 10px; }
   .md-card-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
   .md-card-title { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--text); }
   .md-card-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin: 0; }
@@ -755,67 +805,166 @@ const showSection = (id: string) => selectedSection === id ? '' : 'md-section-hi
   .md-row { display: flex; flex-direction: column; gap: 5px; }
   .md-row label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .md-row input, .md-row select, .md-row textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; resize: vertical; }
-  .md-row-hint a { color: var(--accent); }
-  .md-row-hint { font-size: 11px; color: var(--text-dim); margin: 0; line-height: 1.4; }
 
-  .md-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 130px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
-  .md-role-item { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 5px 7px; border-radius: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
-  .md-role-item:hover { background: var(--card-hover); color: var(--text); }
-  .md-role-item input { flex-shrink: 0; accent-color: var(--accent); }
-  .md-role-item :global(span){ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .md-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
-  .md-switch input { opacity: 0; width: 0; height: 0; }
-  .md-switch :global(span){ position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background 0.15s; cursor: pointer; }
-  .md-switch :global(span::before){ content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: var(--card); border-radius: 50%; transition: transform 0.15s; }
-  .md-switch input:checked + :global(span){ background: var(--accent); }
-  .md-switch input:checked + :global(span::before){ transform: translateX(14px); }
-  .md-switch input:focus-visible + :global(span){ outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .md-section { margin-top: 8px; margin-bottom: 34px; }
   .md-section-hidden { display: none; }
-  :global(.md-count){ font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-weight: 400; }
-  .md-section-note { font-size: 12.5px; color: var(--text-dim); margin: 0 0 14px; max-width: 62ch; }
-  .md-msg-grid { display: grid; grid-template-columns: 90px repeat(3, minmax(0, 1fr)); gap: 8px; align-items: center; margin-bottom: 14px; }
-  .md-msg-row, .md-msg-slot { display: contents; }
-  .md-msg-slot-name { display: none; }
-  .md-msg-head { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-  .md-msg-type { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 600; }
-  .md-msg-grid select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 8px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 12.5px; min-width: 0; }
-  /* On a phone each kind is a small card with its three choices labelled (the column headers are hidden there). */
-  @media (max-width: 720px) {
-    .md-msg-grid { grid-template-columns: 1fr; gap: 12px; }
-    .md-msg-head { display: none; }
-    .md-msg-row { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; background: var(--card); }
-    .md-msg-type { align-self: flex-start; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); padding: 2px 8px; border-radius: 6px; }
-    .md-msg-slot { display: flex; flex-direction: column; gap: 5px; }
-    .md-msg-slot-name { display: block; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
-    .md-msg-grid select { width: 100%; background: var(--bg-raise); }
-  }
+  :global(.md-count){ font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; margin-left: 6px; }
   .md-empty-note { font-size: 13px; color: var(--text-dim); }
   .md-empty-note :global(code){ font-family: var(--mono); color: var(--accent); }
 
-  .md-list-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-  .md-list-grid:empty { display: none; }
-  .md-list-empty { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 14px 16px; border: 1px dashed var(--border); border-radius: 14px; font-size: 13px; color: var(--text-dim); max-width: 520px; }
-  .md-list-empty :global(svg) { color: var(--accent); flex-shrink: 0; }
   .md-list-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 9px; padding: 7px 8px 7px 12px; background: var(--card); }
-  .md-list-name { font-size: 12.5px; color: var(--text); font-weight: 600; }
-  .md-list-tag { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); background: var(--bg-raise); padding: 2px 7px; border-radius: 5px; }
-  .md-list-del { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 3px; border-radius: 6px; }
-  .md-list-del:hover { color: var(--red); background: var(--red-soft); }
 
   .md-add-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .md-add-row input, .md-add-row select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 12.5px; }
   .md-add-row .btn { display: inline-flex; align-items: center; gap: 6px; }
 
-  .md-case-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  .md-case-row { display: flex; align-items: center; gap: 12px; padding: 9px 14px; font-size: 12.5px; background: var(--card); flex-wrap: wrap; }
-  .md-case-row + .md-case-row { border-top: 1px solid var(--border-soft); }
-  .md-case-num { font-family: var(--mono); color: var(--text-dim); }
-  .md-case-type { font-family: var(--mono); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); padding: 2px 7px; border-radius: 5px; }
-  .md-case-user, .md-case-mod { color: var(--text-dim); }
-  .md-case-user :global(code), .md-case-mod :global(code){ font-family: var(--mono); }
-  .md-case-reason { color: var(--text-muted); }
   .md-case-inactive { margin-left: auto; font-size: 11px; color: var(--text-dim); font-style: italic; }
+  /* The subpages of moderation: one width, cards that rise in one after the other, and an add box. */
+  .mdx-page { max-width: 1000px; }
+  .mdx-head { margin: 4px 0 14px; }
+  .mdx-head h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 16px; }
+  .mdx-head p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); max-width: 70ch; }
+  .mdx-count { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; }
+  .mdx-empty { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; font-size: 13.5px; color: var(--text-dim); }
+  .mdx-empty :global(svg) { flex: none; color: var(--accent); }
+  .mdx-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 10px; margin-bottom: 18px; }
+  .mdx-list:empty { display: none; }
+  .mdx-item { display: flex; align-items: center; gap: 12px; margin: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 11px 10px 11px 12px; min-width: 0; transition: border-color .3s ease, background-color .3s ease; }
+  .mdx-item:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); background: var(--card-hover); }
+  .mdx-icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; color: var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 15%, transparent); }
+  .mdx-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .mdx-item-main b { font-size: 14px; overflow-wrap: anywhere; }
+  .mdx-pill { flex: none; font-size: 12px; font-weight: 600; text-transform: capitalize; border-radius: 999px; padding: 3px 11px; color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+  .mdx-del { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--text-dim); cursor: pointer; transition: color .25s ease, background-color .25s ease; }
+  .mdx-del:hover { color: var(--red); background: var(--red-soft); }
+  .mdx-add { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px 20px; max-width: 1000px; margin-bottom: 30px; }
+  .mdx-add-title { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; }
+  .mdx-add-title :global(svg) { color: var(--accent); }
+  .mdx-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .mdx-foot .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .mdx-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  .mdx-ladder { position: relative; display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; max-width: 640px; }
+  .mdx-ladder:empty { display: none; }
+  .mdx-step { position: relative; }
+  .mdx-step + .mdx-step::before { content: ''; position: absolute; left: 28px; top: -11px; height: 11px; width: 2px; background: color-mix(in srgb, var(--text) 16%, transparent); }
+  .mdx-badge { flex: none; display: grid; place-items: center; min-width: 36px; height: 36px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; font: 700 14px var(--mono); color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); font-variant-numeric: tabular-nums; }
+  .sx-grid[class] .sx-field[data-sx-needs] { min-width: 0; }
+  .mdx-msgs { display: flex; flex-direction: column; gap: 16px; max-width: 1000px; }
+  .mdx-accs { display: flex; flex-direction: column; gap: 10px; }
+  .mdx-acc > summary { gap: 12px; }
+  .mdx-kind { flex: none; min-width: 78px; text-align: center; font: 600 12px var(--mono); text-transform: capitalize; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border-radius: 8px; padding: 4px 10px; }
+  .mdx-acc .dfx-acc-title em { font-size: 12.5px; }
+  .mdx-changed { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .mdx-sanctions { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 12px; margin-bottom: 30px; }
+  .mdx-sanction { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--c) 5%, var(--card)), var(--card) 60%); padding: 14px 16px; min-width: 0; transition: border-color .3s ease; }
+  .mdx-sanction:hover { border-color: color-mix(in srgb, var(--c) 40%, var(--border)); }
+  .mdx-sanction-top { display: flex; align-items: center; gap: 10px; }
+  .mdx-sanction-top .md-lift, .mdx-sanction-top .md-case-inactive { margin-left: auto; }
+  .mdx-case-num { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  .mdx-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .mdx-person img, .mdx-av { flex: none; width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--bg-raise); }
+  .mdx-person span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .mdx-person b { font-size: 14px; overflow-wrap: anywhere; }
+  .mdx-person code { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .mdx-reason { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .mdx-by { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .mdx-sanction-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); }
+  .mdx-left { height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
+  .mdx-left i { display: block; height: 100%; border-radius: inherit; background: var(--c); transform-origin: left; animation: mdx-bar .9s var(--m-out) backwards; animation-delay: 160ms; }
+  @keyframes mdx-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  :global(.dgl-content.dgl-quiet) .mdx-left i { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .mdx-left i { animation: none; } }
+  .mdx-panel { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 16px 18px; min-width: 0; margin-bottom: 14px; }
+  .mdx-panel-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+  .mdx-empty-line { margin: 0; font-size: 13px; color: var(--text-dim); }
+  .mdx-chart { display: flex; align-items: flex-end; gap: 8px; height: 170px; border: 0; border-radius: 0; padding: 0; background: transparent; margin: 0; }
+  .mdx-chart .md-bar { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; border-bottom: 1px solid var(--border-soft); padding-bottom: 20px; box-sizing: border-box; }
+  .mdx-chart .md-bar i { width: 100%; max-width: 40px; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 6px 6px 0 0; transform-origin: bottom; animation: mdx-grow .7s var(--m-out) backwards; animation-delay: calc(var(--i, 0) * 25ms + 100ms); transition: background-color .3s ease; }
+  .mdx-chart .mdx-bar-top i { background: var(--accent); }
+  .mdx-chart .md-bar:hover i { background: var(--accent); }
+  .mdx-chart .md-bar em { font-style: normal; font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; min-height: 14px; }
+  .mdx-chart .md-bar span { position: absolute; bottom: 2px; font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  @keyframes mdx-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .mdx-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; margin-bottom: 30px; }
+  .mdx-stat-row { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 7px 0; animation: m-rise-in var(--m-slow) var(--m-out) backwards; animation-delay: calc(var(--i, 0) * var(--m-stagger)); }
+  .mdx-stat-row + .mdx-stat-row { border-top: 1px solid var(--border-soft); }
+  .mdx-stat-row > b { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .mdx-track { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+  .mdx-track i { display: block; height: 100%; border-radius: inherit; background: var(--c); transform-origin: left; animation: mdx-bar .9s var(--m-out) backwards; animation-delay: calc(var(--i, 0) * var(--m-stagger) + 140ms); }
+  .mdx-mod { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  .mdx-mod img { border-radius: 50%; flex: none; }
+  .mdx-mod b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mdx-rank { flex: none; display: inline-block; width: 18px; text-align: center; font: 600 12px var(--mono); color: var(--text-dim); }
+  .mdx-medal { flex: none; }
+  .mdx-medal-1 { color: #e6c56f; } .mdx-medal-2 { color: #c3ccd8; } .mdx-medal-3 { color: #d39a6a; }
+  :global(.dgl-content.dgl-quiet) .mdx-chart .md-bar i, :global(.dgl-content.dgl-quiet) .mdx-stat-row, :global(.dgl-content.dgl-quiet) .mdx-track i { animation: none; }
+  @media (max-width: 720px) { .mdx-cols { grid-template-columns: minmax(0, 1fr); } .mdx-chart { gap: 4px; } }
+  @media (prefers-reduced-motion: reduce) { .mdx-chart .md-bar i, .mdx-stat-row, .mdx-track i { animation: none; } }
+  .sx-field :global(.dfx-chip) { text-transform: capitalize; }
+  @media (max-width: 720px) { .mdx-add { padding: 15px; } }
+  /* The case log: search and kinds on top, then a card of rows. The classes are the ones its script uses. */
+  .md-case-tools { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; max-width: 1000px; }
+  .md-case-search-row { display: flex; gap: 8px; align-items: center; }
+  .md-case-search { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; min-height: 40px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font: 13.5px var(--sans); transition: border-color .25s ease, box-shadow .25s ease; }
+  .md-case-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .md-case-search-row .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 40px; }
+  .md-case-hint { margin: 0; font-size: 12px; color: var(--text-dim); }
+  .md-case-types { display: flex; flex-wrap: wrap; gap: 8px; }
+  .md-case-pill { display: inline-flex; align-items: center; gap: 7px; text-decoration: none; border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; font: 500 13px var(--sans); color: var(--text-muted); text-transform: capitalize; transition: background-color .3s ease, border-color .3s ease, color .3s ease; }
+  .md-case-pill::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--text-dim)); }
+  .md-case-pill:hover { background: var(--card-hover); color: var(--text); }
+  .md-case-pill.on { background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent); color: var(--c, var(--accent)); border-color: color-mix(in srgb, var(--c, var(--accent)) 60%, var(--border)); font-weight: 600; }
+  .md-case-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: var(--card); max-width: 1000px; animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
+  .md-case-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px; font-size: 13px; background: var(--card); transition: background-color .25s ease; }
+  .md-case-row + .md-case-row { border-top: 1px solid var(--border-soft); }
+  .md-case-row:hover { background: var(--card-hover); }
+  /* A row off screen is not laid out or painted until it is scrolled to: a long list used to freeze the page while it was drawn. */
+  .md-case-list .md-case-row { content-visibility: auto; contain-intrinsic-size: auto 62px; }
+  .md-case-num { order: 1; min-width: 44px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  .md-case-type { order: 2; font-size: 12px; font-weight: 600; text-transform: capitalize; color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); padding: 3px 11px; border-radius: 999px; }
+  .md-case-person { order: 3; flex: 1 1 200px; display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+  .md-case-person img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+  .md-case-person span { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .md-case-person b { font-size: 13.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .md-case-person code { font-size: 10.5px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .md-case-by, .md-case-when { order: 4; font-size: 12px; color: var(--text-dim); }
+  .md-case-by { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .md-case-when { order: 5; font-variant-numeric: tabular-nums; }
+  .md-case-edit { order: 6; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; font-size: 12px; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; transition: color .25s ease, border-color .25s ease, background-color .25s ease; }
+  .md-case-edit:hover, .md-case-edit.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-soft); }
+  .md-case-reason { order: 10; flex: 1 1 100%; font-size: 13px; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; padding-left: 56px; }
+  .md-case-foot { order: 11; flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding-left: 56px; }
+  .md-case-evidence { font-size: 12px; color: var(--text-dim); display: inline-flex; gap: 6px; align-items: center; }
+  .md-case-evidence a { color: var(--accent); }
+  .md-case-foot > .md-case-inactive { margin: 0; font-size: 11.5px; font-style: normal; border-radius: 999px; padding: 2px 10px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .md-case-row > .md-case-form { order: 20; flex-basis: 100%; }
+  .md-case-form { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 2px 56px; max-width: 640px; animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
+  .md-case-form label { display: flex; flex-direction: column; gap: 6px; }
+  .md-case-form label span { font-size: 13px; font-weight: 600; color: var(--text); }
+  .md-case-form textarea { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background: var(--card); color: var(--text); font: 13.5px/1.5 var(--sans); width: 100%; box-sizing: border-box; min-height: 5em; resize: none; transition: border-color .25s ease, box-shadow .25s ease; }
+  .md-case-form textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .md-case-form :global(.dfx-count) { align-self: flex-end; }
+  .md-case-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .md-case-form-actions .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+  .md-case-delete:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
+  .md-case-pager { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 30px; }
+  .md-case-pager .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .md-case-none { color: var(--text-dim); font-size: 13px; }
+  .md-case-none a { color: var(--accent); }
+  .md-case-flash { max-width: 1000px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 10px; padding: 10px 14px; margin: 0 0 14px; animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .md-case-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
+  .md-case-empty { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px dashed var(--border); border-radius: 14px; max-width: 760px; color: var(--text-dim); }
+  .md-case-empty .md-empty-note { margin: 0 0 6px; }
+  .md-case-empty-more { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+  :global(.dgl-content.dgl-quiet) .md-case-list, :global(.dgl-content.dgl-quiet) .md-case-form { animation: none; }
+  @media (max-width: 720px) {
+    .md-case-row { padding: 12px 13px; }
+    .md-case-person { flex-basis: 100%; }
+    .md-case-reason { padding-left: 0; }
+    .md-case-foot { padding-left: 0; }
+    .md-case-form { margin-left: 0; }
+    .md-case-edit { margin-left: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { .md-case-list, .md-case-form, .md-case-flash { animation: none; } }
 </style>

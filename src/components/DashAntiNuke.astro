@@ -4,8 +4,13 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import MultiSelect from './MultiSelect.astro';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
+import SxNumber from './SxNumber.astro';
 import { RULES, ACTIONS, type Effective, type GuardSettings } from '../utils/antinukeRules';
-import { getDashLang, makeT } from '../i18n/dash';
+import { dashLocale, getDashLang, makeT } from '../i18n/dash';
+import { agoText, formatDuration } from '../utils/formatDuration';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -24,12 +29,14 @@ interface Props {
   lockdownConfig: { channelIds: string[]; pauseInvites: boolean; raiseVerification: boolean; autoEndMinutes: number; announceChannelId: string; message: string };
   lockdownActive: { startedBy: string; reason: string; startedAt: string; endsAt: string; channels: number } | null;
   events: { id: number; rule: string; executor_id: string; executor_name: string | null; action_count: number; action: string; detail: string | null; restorable: unknown[]; previous_roles: string[]; restored_at: string | null; created_at: string }[];
+  /** How many times a protection acted in the last 7 days (only read for the Protections tab). */
+  eventsWeek: number;
   roles: { id: string; name: string }[];
   channels: { id: string; name: string }[];
   saved: boolean;
   failed: boolean;
 }
-const { user, guildId, guildName, guildIcon, section, protections, join, shared, guard, viewerIsOwner, blocked, events, lockdownConfig, lockdownActive, roles, channels, saved, failed } = Astro.props;
+const { user, guildId, guildName, guildIcon, section, protections, join, shared, guard, viewerIsOwner, blocked, events, eventsWeek, lockdownConfig, lockdownActive, roles, channels, saved, failed } = Astro.props;
 
 const names: Record<string, { label: string; text: string }> = {
   ban: { label: dt('Anti Ban'), text: dt('Punishes mass bans in a row.') },
@@ -66,14 +73,42 @@ const tabs = [
   { id: 'log', label: dt('Log') },
 ];
 const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle: 'medium', timeStyle: 'short' });
+/** "5m ago", "1h 5m ago", "2d 3h ago". */
+const since = (iso: string) => agoText(dt, iso, { locale: dashLocale(dashLang) });
+const protection = (id: string) => protections.find((p) => p.id === id)!;
+const ruleIcon = (id: string) => RULES.find((r) => r.id === id)?.icon ?? 'ph:shield-warning-fill';
+const channelName = (id: string) => channels.find((c) => c.id === id)?.name ?? id;
+/** A channel name that fits a number tile. */
+const tileChannel = (id: string) => { const name = channelName(id); return `#${name.length > 11 ? `${name.slice(0, 10)}…` : name}`; };
+// The protections in groups, so eighteen cards read as five short lists. "raid" is Anti Raid, which lives in the AutoMod settings.
+const groups = [
+  { id: 'joins', title: dt('Joins'), hint: dt('Raids, accounts that are too new and bots that come in.'), items: ['raid', 'bot_add'] },
+  { id: 'members', title: dt('Members'), hint: dt('Mass bans, kicks, unbans and prunes.'), items: ['ban', 'kick', 'unban', 'prune'] },
+  { id: 'channels', title: dt('Channels'), hint: dt('Channels created, deleted or changed in a row.'), items: ['channel_create', 'channel_delete', 'channel_update'] },
+  { id: 'roles', title: dt('Roles'), hint: dt('Roles created, deleted or changed, and dangerous roles handed out.'), items: ['role_create', 'role_delete', 'role_update', 'role_assign'] },
+  { id: 'server', title: dt('Server and messages'), hint: dt('The server itself, emojis, webhooks and mass pings.'), items: ['guild_update', 'emoji_create', 'emoji_delete', 'webhook', 'webhook_spam', 'mention_everyone'] },
+];
+const isOn = (id: string) => (id === 'raid' ? join.raidEnabled : protection(id).enabled);
+// What the log shows, counted: which protection acted most and who set them off.
+const byRule = Object.entries(events.reduce<Record<string, number>>((all, e) => ({ ...all, [e.rule]: (all[e.rule] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]).slice(0, 6);
+const byPerson = Object.values(events.reduce<Record<string, { id: string; name: string; n: number }>>((all, e) => ({ ...all, [e.executor_id]: { id: e.executor_id, name: e.executor_name ?? e.executor_id, n: (all[e.executor_id]?.n ?? 0) + 1 } }), {})).sort((a, b) => b.n - a.n).slice(0, 5);
+const restored = events.filter((e) => e.restored_at).length;
+const canRestore = events.filter((e) => !e.restored_at && (e.restorable.length > 0 || e.previous_roles.length > 0)).length;
+const lastWindow = events.filter((e) => Date.now() - new Date(e.created_at).getTime() < guard.panicWindow * 60000).length;
+const ownTrust = (p: Effective) => p.whitelistRoleIds.length + p.whitelistIds.length;
+const withOwnTrust = protections.filter((p) => ownTrust(p) > 0).length;
+const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).length;
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="antinuke" pageTitle={dt('Anti-raid & nuke')}>
+  <DashSettingsKit />
+  <DashFormKit />
+  <div class="anx-page">
   <h1>{dt('Anti-raid & nuke')} <span class="an-count">{dt('{n} of {total} active', { n: active, total: protections.length })}</span></h1>
   <DashAcData roles={roles} channels={channels} />
 
-  {saved && <div class="an-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
-  {failed && <div class="an-flash an-bad">{dt('It could not be saved, try again.')}</div>}
-  {blocked && <div class="an-flash an-bad">{dt('Owner only is on: only the server owner and the trusted admins can change the anti-nuke.')}</div>}
+  {saved && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {failed && <div class="sx-flash sx-flash-bad">{dt('It could not be saved, try again.')}</div>}
+  {blocked && <div class="sx-flash sx-flash-bad">{dt('Owner only is on: only the server owner and the trusted admins can change the anti-nuke.')}</div>}
 
   <nav class="an-tabs">
     {tabs.map((t) => <a href={`?section=${t.id}`} class:list={['an-tab', { on: section === t.id }]} data-an-tab={t.id}>{t.label}</a>)}
@@ -82,36 +117,62 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   <div class="an-panel" data-an-panel="rules" data-lazy={section !== 'rules' ? '' : undefined} hidden={section !== 'rules'}>
   {section === 'rules' && (
   <Fragment>
-  <div class="an-list dgl-stagger">
+  <DashStatTiles tiles={[
+    { label: dt('Protections on'), value: active, tone: 'joins' },
+    { label: dt('Acted this week'), value: eventsWeek, tone: 'leaves' },
+    { label: dt('Anti Raid'), value: 0, text: join.raidEnabled ? dt('{n} in {a}', { n: join.raidThreshold, a: formatDuration(join.raidWindow) }) : dt('Off'), tone: 'voice' },
+    { label: dt('Anti Alt, minimum age'), value: 0, text: join.altEnabled ? formatDuration(join.altDays * 86400) : dt('Off'), tone: 'invites' },
+  ]} />
+  {groups.map((group) => (
+  <div class="anx-group">
+    <div class="anx-head">
+      <h2>{group.title} <span class="anx-count">{dt('{n} of {total} on', { n: group.items.filter(isOn).length, total: group.items.length })}</span></h2>
+      <p>{group.hint}</p>
+    </div>
+    <div class="an-list dgl-stagger">
+    {group.items.map((id) => {
+      if (id === 'raid') return (
     <form method="POST" class="an-row" data-an-row>
       <input type="hidden" name="action" value="save_join" />
       <div class="an-head">
         <button type="button" class="an-open" data-an-open aria-expanded="false">
           <span class="an-ico"><Icon name="ph:users-three-fill" width="16" height="16" /></span>
-          <span><b>{dt('Anti Raid')}</b><em>{dt('Reacts when many accounts join in a few seconds.')}</em></span>
+          <span class="an-text"><b>{dt('Anti Raid')}</b><em>{dt('Reacts when many accounts join in a few seconds.')}</em></span>
+          <Icon name="ph:caret-down-bold" class="an-caret" width="13" height="13" />
         </button>
-        <span class:list={['an-badge', { on: join.raidEnabled }]}>{join.raidEnabled ? dt('Active') : dt('Inactive')}</span>
-        <label class="an-switch"><input type="checkbox" name="anti_raid_enabled" checked={join.raidEnabled} data-an-auto /><span></span></label>
+        <label class="sx-switch anx-sw"><input type="checkbox" name="anti_raid_enabled" checked={join.raidEnabled} data-an-auto aria-label={dt('Anti Raid')} /><span class="sx-toggle"></span></label>
       </div>
       <div class="an-body" hidden>
-        <div class="an-grid">
-          <label class="an-field"><span>{dt('Joins that count as a raid')}</span><input type="number" name="raid_join_threshold" value={join.raidThreshold} min="2" max="50" /></label>
-          <label class="an-field"><span>{dt('In how many seconds')}</span><input type="number" name="raid_window_seconds" value={join.raidWindow} min="5" max="120" /></label>
-          <label class="an-field"><span>{dt('What to do')}</span><select name="raid_action"><option value="alert" selected={join.raidAction === 'alert'}>{dt('Only alert')}</option><option value="kick" selected={join.raidAction === 'kick'}>{dt('Kick')}</option><option value="lockdown" selected={join.raidAction === 'lockdown'}>{dt('Start a lockdown')}</option></select></label>
+        <div class="sx-grid">
+          <div class="sx-field"><label for="an-raid-n">{dt('Joins that count as a raid')}</label><SxNumber id="an-raid-n" name="raid_join_threshold" value={join.raidThreshold} min={2} max={50} /></div>
+          <div class="sx-field"><label for="an-raid-s">{dt('In how many seconds')}</label><SxNumber id="an-raid-s" name="raid_window_seconds" value={join.raidWindow} min={5} max={120} /></div>
         </div>
-        <div class="an-sep"></div>
-        <div class="an-grid">
-          <label class="an-check"><input type="checkbox" name="anti_alt_enabled" checked={join.altEnabled} />{dt('Anti Alt: catch accounts that are too new when they join')}</label>
-          <label class="an-field"><span>{dt('Minimum account age (days)')}</span><input type="number" name="anti_alt_min_age_days" value={join.altDays} min="1" max="365" /></label>
-          <label class="an-field"><span>{dt('What to do')}</span><select name="anti_alt_action"><option value="kick" selected={join.altAction === 'kick'}>{dt('Kick')}</option><option value="flag" selected={join.altAction === 'flag'}>{dt('Only flag')}</option></select></label>
+        <div class="sx-field"><span class="sx-label">{dt('What to do')}</span>
+          <div class="dfx-chips">
+            <label class="dfx-chip"><input type="radio" name="raid_action" value="alert" checked={join.raidAction === 'alert'} />{dt('Only alert')}</label>
+            <label class="dfx-chip"><input type="radio" name="raid_action" value="kick" checked={join.raidAction === 'kick'} />{dt('Kick')}</label>
+            <label class="dfx-chip"><input type="radio" name="raid_action" value="lockdown" checked={join.raidAction === 'lockdown'} />{dt('Start a lockdown')}</label>
+          </div>
+        </div>
+        <div class="sx-sub">
+          <label class="sx-switch"><input type="checkbox" name="anti_alt_enabled" checked={join.altEnabled} /><span class="sx-switch-text"><b>{dt('Anti Alt: catch accounts that are too new when they join')}</b></span><span class="sx-toggle"></span></label>
+          <div class="anx-needs" data-sx-needs="anti_alt_enabled">
+            <div class="sx-field"><label for="an-alt-d">{dt('Minimum account age (days)')}</label><SxNumber id="an-alt-d" name="anti_alt_min_age_days" value={join.altDays} min={1} max={365} /></div>
+            <div class="sx-field"><span class="sx-label">{dt('What to do')}</span>
+              <div class="dfx-chips">
+                <label class="dfx-chip"><input type="radio" name="anti_alt_action" value="kick" checked={join.altAction === 'kick'} />{dt('Kick')}</label>
+                <label class="dfx-chip"><input type="radio" name="anti_alt_action" value="flag" checked={join.altAction === 'flag'} />{dt('Only flag')}</label>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="an-foot"><button type="button" class="btn btn-ghost btn-sm" data-an-close>{dt('Close')}</button><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
       </div>
     </form>
-
-    {RULES.map((meta) => {
-      const p = protections.find((x) => x.id === meta.id)!;
-      const info = names[meta.id];
+      );
+      const meta = RULES.find((r) => r.id === id)!;
+      const p = protection(id);
+      const info = names[id];
       return (
       <form method="POST" class="an-row" data-an-row>
         <input type="hidden" name="action" value="save_rule" />
@@ -119,32 +180,34 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
         <div class="an-head">
           <button type="button" class="an-open" data-an-open aria-expanded="false">
             <span class="an-ico"><Icon name={meta.icon} width="16" height="16" /></span>
-            <span><b>{info.label}</b><em>{info.text}</em></span>
+            <span class="an-text"><b>{info.label}</b><em>{info.text}</em></span>
+            <Icon name="ph:caret-down-bold" class="an-caret" width="13" height="13" />
           </button>
-          {p.followsOldSwitch && <span class="an-badge an-old" title={dt('It follows the old single switch. Save it to tune it on its own.')}>{dt('Old switch')}</span>}
-          <span class:list={['an-badge', { on: p.enabled }]}>{p.enabled ? dt('Active') : dt('Inactive')}</span>
-          <label class="an-switch"><input type="checkbox" name="enabled" checked={p.enabled} data-an-auto /><span></span></label>
+          {p.followsOldSwitch && <span class="anx-old" title={dt('It follows the old single switch. Save it to tune it on its own.')}>{dt('Old switch')}</span>}
+          <label class="sx-switch anx-sw"><input type="checkbox" name="enabled" checked={p.enabled} data-an-auto aria-label={info.label} /><span class="sx-toggle"></span></label>
         </div>
         <div class="an-body" hidden>
-          <div class="an-grid">
-            <label class="an-field"><span>{dt('Actions that count as an attack')}</span><input type="number" name="threshold" value={p.threshold} min="1" max="50" /></label>
-            <label class="an-field"><span>{dt('In how many seconds')}</span><input type="number" name="window_seconds" value={p.window} min="2" max="600" /></label>
-            <label class="an-field"><span>{dt('What to do to the account')}</span>
-              <select name="rule_action">{ACTIONS.map((a) => <option value={a} selected={p.action === a}>{actionNames[a]}</option>)}</select>
-            </label>
-            <label class="an-field"><span>{dt('Alert channel')}</span>
-              <select name="alert_channel_id"><option value="">{dt('The automod log (or the shared channel)')}</option>{channels.map((c) => <option value={c.id} selected={c.id === p.alertChannelId}>#{c.name}</option>)}</select>
-            </label>
+          <div class="sx-grid">
+            <div class="sx-field"><label for={`an-${id}-n`}>{dt('Actions that count as an attack')}</label><SxNumber id={`an-${id}-n`} name="threshold" value={p.threshold} min={1} max={50} /></div>
+            <div class="sx-field"><label for={`an-${id}-s`}>{dt('In how many seconds')}</label><SxNumber id={`an-${id}-s`} name="window_seconds" value={p.window} min={2} max={600} /></div>
           </div>
-          <div class="an-field an-wide"><span>{dt('Trusted roles for this protection')}</span><MultiSelect name="whitelist_role_ids" options={roles} selected={p.whitelistRoleIds} placeholder={dt('Search roles...')} /></div>
-          <label class="an-field an-wide"><span>{dt('Trusted accounts for this protection (IDs)')}</span><input type="text" name="whitelist_ids" value={p.whitelistIds.join(', ')} placeholder={dt('Paste user IDs, separated by commas')} /></label>
-          <p class="an-hint">{dt('Whoever is in the shared settings is trusted here too. A bot doing the attack is banned, whatever you pick.')}</p>
+          <div class="sx-field"><span class="sx-label">{dt('What to do to the account')}</span>
+            <div class="dfx-chips">{ACTIONS.map((a) => <label class="dfx-chip"><input type="radio" name="rule_action" value={a} checked={p.action === a} />{actionNames[a]}</label>)}</div>
+          </div>
+          <div class="sx-field"><label for={`an-${id}-ch`}>{dt('Alert channel')}</label>
+            <select id={`an-${id}-ch`} name="alert_channel_id"><option value="">{dt('The automod log (or the shared channel)')}</option>{channels.map((c) => <option value={c.id} selected={c.id === p.alertChannelId}>#{c.name}</option>)}</select>
+          </div>
+          <div class="sx-field"><span class="sx-label">{dt('Trusted roles for this protection')}</span><MultiSelect name="whitelist_role_ids" options={roles} selected={p.whitelistRoleIds} placeholder={dt('Search roles...')} /></div>
+          <div class="sx-field"><label for={`an-${id}-ids`}>{dt('Trusted accounts for this protection (IDs)')}</label><textarea id={`an-${id}-ids`} name="whitelist_ids" class="dgl-autogrow sx-one" rows="1" data-one-line placeholder={dt('Paste user IDs, separated by commas')}>{p.whitelistIds.join(', ')}</textarea></div>
+          <p class="sx-hint">{dt('Whoever is in the shared settings is trusted here too. A bot doing the attack is banned, whatever you pick.')}</p>
           <div class="an-foot"><button type="button" class="btn btn-ghost btn-sm" data-an-close>{dt('Close')}</button><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
         </div>
       </form>
       );
     })}
+    </div>
   </div>
+  ))}
   </Fragment>
   )}
   </div>
@@ -152,36 +215,69 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   <div class="an-panel" data-an-panel="lockdown" data-lazy={section !== 'lockdown' ? '' : undefined} hidden={section !== 'lockdown'}>
   {section === 'lockdown' && (
   <Fragment>
-  <div class="an-card">
-    <h2>{lockdownActive ? dt('Lockdown is ON') : dt('Lockdown is off')}</h2>
-    <p class="an-hint">{dt('A lockdown closes the channels so nobody can write, pauses the invites and can raise the verification, and puts everything back when it ends. Use it while a raid lasts. Anti Raid can start it by itself.')}</p>
-    {lockdownActive ? (
-      <div class="an-old an-on">
-        <p><b>{dt('Since')}</b> {ago(lockdownActive.startedAt)}{lockdownActive.endsAt ? <> · <b>{dt('Ends')}</b> {ago(lockdownActive.endsAt)}</> : <> · {dt('It stays until you end it.')}</>} · {dt('{n} channel(s) closed', { n: lockdownActive.channels })}</p>
-        {lockdownActive.reason && <p class="an-hint">{lockdownActive.reason}</p>}
-        <div class="an-foot"><button type="button" class="btn btn-accent btn-sm" data-lockdown="end" data-ask={dt('End the lockdown and reopen everything?')} data-failed={dt('It could not be done.')}>{dt('End the lockdown')}</button></div>
+  <DashStatTiles tiles={[
+    { label: dt('Lockdown'), value: 0, text: lockdownActive ? dt('On') : dt('Off'), tone: lockdownActive ? 'leaves' : 'joins' },
+    { label: dt('Channels it closes'), value: lockdownConfig.channelIds.length, text: lockdownConfig.channelIds.length ? undefined : dt('Every text channel'), tone: 'messages' },
+    { label: dt('Ends by itself'), value: 0, text: lockdownConfig.autoEndMinutes ? formatDuration(lockdownConfig.autoEndMinutes * 60) : dt('Never'), tone: 'voice' },
+    { label: dt('Notice'), value: 0, text: lockdownConfig.announceChannelId ? tileChannel(lockdownConfig.announceChannelId) : dt('No notice'), tone: 'invites' },
+  ]} />
+  <div class="sx-duo anx-duo">
+    <div class="sx-stack">
+      <div class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style={`--c:${lockdownActive ? 'var(--red, #ff6b6b)' : 'var(--green)'}`}><Icon name={lockdownActive ? 'ph:lock-fill' : 'ph:lock-simple-open-fill'} width="17" height="17" /></span>
+          <h2>{lockdownActive ? dt('Lockdown is ON') : dt('Lockdown is off')}</h2>
+          <span class:list={['sx-pill-state', { on: !lockdownActive }]}>{lockdownActive ? dt('On') : dt('Off')}</span>
+        </div>
+        <p class="sx-lead">{dt('A lockdown closes the channels so nobody can write, pauses the invites and can raise the verification, and puts everything back when it ends. Use it while a raid lasts. Anti Raid can start it by itself.')}</p>
+        {lockdownActive ? (
+          <div class="anx-live">
+            <div class="sx-row"><span class="anx-k">{dt('Since')}</span><b>{ago(lockdownActive.startedAt)}</b></div>
+            <div class="sx-row"><span class="anx-k">{dt('Ends')}</span><b>{lockdownActive.endsAt ? ago(lockdownActive.endsAt) : dt('It stays until you end it.')}</b></div>
+            <div class="sx-row"><span class="anx-k">{dt('Channels closed')}</span><b>{lockdownActive.channels}</b></div>
+            {lockdownActive.reason && <p class="sx-hint">{lockdownActive.reason}</p>}
+            <div class="an-foot"><button type="button" class="btn btn-accent btn-sm" data-lockdown="end" data-ask={dt('End the lockdown and reopen everything?')} data-failed={dt('It could not be done.')}>{dt('End the lockdown')}</button></div>
+          </div>
+        ) : (
+          <div class="anx-start">
+            <div class="sx-field"><label for="an-lock-reason">{dt('Reason (optional)')}</label><textarea id="an-lock-reason" class="dgl-autogrow sx-one" rows="1" data-one-line data-count data-lockdown-reason maxlength="300"></textarea></div>
+            <div class="sx-field"><label for="an-lock-min">{dt('Minutes until it ends (0 uses the setting below)')}</label><SxNumber id="an-lock-min" data-lockdown-minutes value={0} min={0} max={10080} /></div>
+            <div><button type="button" class="btn btn-accent btn-sm an-danger" data-lockdown="start" data-ask={dt('Start a lockdown now? The channels will be closed.')} data-failed={dt('It could not be done.')}>{dt('Start a lockdown now')}</button></div>
+          </div>
+        )}
       </div>
-    ) : (
-      <div class="an-start">
-        <label class="an-field"><span>{dt('Reason (optional)')}</span><input type="text" data-lockdown-reason maxlength="300" /></label>
-        <label class="an-field"><span>{dt('Minutes until it ends (0 uses the setting below)')}</span><input type="number" data-lockdown-minutes value="0" min="0" max="10080" /></label>
-        <button type="button" class="btn btn-accent btn-sm an-danger" data-lockdown="start" data-ask={dt('Start a lockdown now? The channels will be closed.')} data-failed={dt('It could not be done.')}>{dt('Start a lockdown now')}</button>
+      <div class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+          <h2>{dt('What it will do now')}</h2>
+        </div>
+        <div class="anx-facts">
+          <div class="sx-row"><span class="anx-k">{dt('Channels closed')}</span><b>{lockdownConfig.channelIds.length ? dt('{n} channel(s)', { n: lockdownConfig.channelIds.length }) : dt('Every text channel')}</b></div>
+          <div class="sx-row"><span class="anx-k">{dt('Invites')}</span><b>{lockdownConfig.pauseInvites ? dt('Deleted and blocked') : dt('Left alone')}</b></div>
+          <div class="sx-row"><span class="anx-k">{dt('Verification level')}</span><b>{lockdownConfig.raiseVerification ? dt('Raised to High') : dt('Not changed')}</b></div>
+          <div class="sx-row"><span class="anx-k">{dt('It ends')}</span><b>{lockdownConfig.autoEndMinutes ? dt('After {a}', { a: formatDuration(lockdownConfig.autoEndMinutes * 60) }) : dt('When you end it')}</b></div>
+          <div class="sx-row"><span class="anx-k">{dt('Notice')}</span><b>{lockdownConfig.announceChannelId ? `#${channelName(lockdownConfig.announceChannelId)}` : dt('No notice')}</b></div>
+        </div>
       </div>
-    )}
-    <div class="an-sep"></div>
-    <form method="POST" class="an-lock-form">
+    </div>
+    <form method="POST" class="sx-panel anx-lock-form">
       <input type="hidden" name="action" value="save_lockdown" />
-      <h2>{dt('What a lockdown does')}</h2>
-      <div class="an-field an-wide"><span>{dt('Channels it closes (none chosen means every text channel)')}</span><MultiSelect name="channel_ids" options={channels} selected={lockdownConfig.channelIds} placeholder={dt('Search channels...')} /></div>
-      <label class="an-check"><input type="checkbox" name="pause_invites" checked={lockdownConfig.pauseInvites} />{dt('Delete the invites and block new ones')}</label>
-      <label class="an-check"><input type="checkbox" name="raise_verification" checked={lockdownConfig.raiseVerification} />{dt('Raise the verification level of the server to High while it lasts')}</label>
-      <div class="an-grid">
-        <label class="an-field"><span>{dt('Ends by itself after (minutes, 0 for never)')}</span><input type="number" name="auto_end_minutes" value={lockdownConfig.autoEndMinutes} min="0" max="10080" /></label>
-        <label class="an-field"><span>{dt('Channel for the notice')}</span>
-          <select name="announce_channel_id"><option value="">{dt('No notice')}</option>{channels.map((c) => <option value={c.id} selected={c.id === lockdownConfig.announceChannelId}>#{c.name}</option>)}</select>
-        </label>
+      <div class="sx-panel-head">
+        <span class="sx-panel-icon"><Icon name="ph:sliders-fill" width="17" height="17" /></span>
+        <h2>{dt('What a lockdown does')}</h2>
       </div>
-      <label class="an-field an-wide"><span>{dt('The notice')}</span><textarea name="message" rows="2" maxlength="500" placeholder={dt('This server is in lockdown for a moment. The staff is working on it, thank you for waiting.')} data-ac="roles,channels,commands,emojis">{lockdownConfig.message}</textarea><SilentMentionHint /></label>
+      <div class="sx-field"><span class="sx-label">{dt('Channels it closes (none chosen means every text channel)')}</span><MultiSelect name="channel_ids" options={channels} selected={lockdownConfig.channelIds} placeholder={dt('Search channels...')} /></div>
+      <div class="sx-switches anx-one-col">
+        <label class="sx-switch"><input type="checkbox" name="pause_invites" checked={lockdownConfig.pauseInvites} /><span class="sx-switch-text"><b>{dt('Delete the invites and block new ones')}</b></span><span class="sx-toggle"></span></label>
+        <label class="sx-switch"><input type="checkbox" name="raise_verification" checked={lockdownConfig.raiseVerification} /><span class="sx-switch-text"><b>{dt('Raise the verification level of the server to High while it lasts')}</b></span><span class="sx-toggle"></span></label>
+      </div>
+      <div class="sx-grid">
+        <div class="sx-field"><label for="an-lock-auto">{dt('Ends by itself after (minutes, 0 for never)')}</label><SxNumber id="an-lock-auto" name="auto_end_minutes" value={lockdownConfig.autoEndMinutes} min={0} max={10080} /></div>
+        <div class="sx-field"><label for="an-lock-ann">{dt('Channel for the notice')}</label>
+          <select id="an-lock-ann" name="announce_channel_id"><option value="">{dt('No notice')}</option>{channels.map((c) => <option value={c.id} selected={c.id === lockdownConfig.announceChannelId}>#{c.name}</option>)}</select>
+        </div>
+      </div>
+      <div class="sx-field"><label for="an-lock-msg">{dt('The notice')}</label><textarea id="an-lock-msg" name="message" class="dgl-autogrow" rows="2" maxlength="500" data-count placeholder={dt('This server is in lockdown for a moment. The staff is working on it, thank you for waiting.')} data-ac="roles,channels,commands,emojis">{lockdownConfig.message}</textarea><SilentMentionHint /></div>
       <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
     </form>
   </div>
@@ -192,24 +288,55 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   <div class="an-panel" data-an-panel="shared" data-lazy={section !== 'shared' ? '' : undefined} hidden={section !== 'shared'}>
   {section === 'shared' && (
   <Fragment>
-  <form method="POST" class="an-card">
+  <DashStatTiles tiles={[
+    { label: dt('Trusted roles'), value: shared.whitelistRoleIds.length, tone: 'joins' },
+    { label: dt('Trusted accounts'), value: sharedAccounts, tone: 'voice' },
+    { label: dt('With own list'), value: withOwnTrust, tone: 'invites' },
+    { label: dt('Alert channel'), value: 0, text: shared.alertChannelId ? tileChannel(shared.alertChannelId) : dt('Automod log'), tone: 'messages' },
+  ]} />
+  <form method="POST" class="sx-panel anx-shared-form">
     <input type="hidden" name="action" value="save_shared" />
-    <h2>{dt('Trusted by every protection')}</h2>
-    <div class="an-field an-wide"><span>{dt('Trusted roles')}</span><MultiSelect name="whitelist_role_ids" options={roles} selected={shared.whitelistRoleIds} placeholder={dt('Search roles...')} /></div>
-    <label class="an-field an-wide"><span>{dt('Trusted accounts and bots (IDs)')}</span><textarea name="whitelist_ids" rows="3" placeholder={dt('Paste user IDs, separated by commas')}>{shared.whitelistIds}</textarea></label>
-    <label class="an-field an-wide"><span>{dt('Alert channel for every protection')}</span>
-      <select name="alert_channel_id"><option value="">{dt('The automod log')}</option>{channels.map((c) => <option value={c.id} selected={c.id === shared.alertChannelId}>#{c.name}</option>)}</select>
-    </label>
-    {shared.oldSwitch && (
-      <div class="an-old">
-        <input type="hidden" name="old_switch_present" value="1" />
-        <label class="an-check"><input type="checkbox" name="old_switch" checked />{dt('Old single switch is on')}</label>
-        <p class="an-hint">{dt('The protections you have not tuned yet follow this switch (ban, kick, channels, roles, webhooks and emojis, counted together). Turn it off after tuning each one.')}</p>
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon"><Icon name="ph:shield-check-fill" width="17" height="17" /></span>
+      <h2>{dt('Trusted by every protection')}</h2>
+    </div>
+    <div class="sx-grid">
+      <div class="sx-field"><span class="sx-label">{dt('Trusted roles')}</span><MultiSelect name="whitelist_role_ids" options={roles} selected={shared.whitelistRoleIds} placeholder={dt('Search roles...')} /></div>
+      <div class="sx-field"><label for="an-sh-ids">{dt('Trusted accounts and bots (IDs)')}</label><textarea id="an-sh-ids" name="whitelist_ids" class="dgl-autogrow" rows="2" placeholder={dt('Paste user IDs, separated by commas')}>{shared.whitelistIds}</textarea></div>
+      <div class="sx-field"><label for="an-sh-ch">{dt('Alert channel for every protection')}</label>
+        <select id="an-sh-ch" name="alert_channel_id"><option value="">{dt('The automod log')}</option>{channels.map((c) => <option value={c.id} selected={c.id === shared.alertChannelId}>#{c.name}</option>)}</select>
+        <p class="sx-hint">{dt('The server owner and Petto are always trusted.')}</p>
       </div>
-    )}
-    <p class="an-hint">{dt('The server owner and Petto are always trusted.')}</p>
+      {shared.oldSwitch && (
+        <div class="anx-old-box sx-wide">
+          <input type="hidden" name="old_switch_present" value="1" />
+          <label class="sx-switch"><input type="checkbox" name="old_switch" checked /><span class="sx-switch-text"><b>{dt('Old single switch is on')}</b><em>{dt('The protections you have not tuned yet follow this switch (ban, kick, channels, roles, webhooks and emojis, counted together). Turn it off after tuning each one.')}</em></span><span class="sx-toggle"></span></label>
+        </div>
+      )}
+    </div>
     <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
   </form>
+  <div class="sx-panel">
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+      <h2>{dt('Trust in each protection')}</h2>
+    </div>
+    <p class="sx-lead">{dt('Every protection trusts the shared list. A protection can also have a list of its own.')}</p>
+    <div class="anx-trust anx-trust-2">
+      {RULES.map((meta) => {
+        const p = protection(meta.id);
+        return (
+        <div class="anx-trust-row">
+          <span class="an-ico anx-mini"><Icon name={meta.icon} width="14" height="14" /></span>
+          <span class="anx-trust-name">{names[meta.id].label}</span>
+          {ownTrust(p) > 0
+            ? <span class="sx-tag sx-tag-accent">{dt('Own list: {n}', { n: ownTrust(p) })}</span>
+            : <span class="sx-tag">{dt('Shared list only')}</span>}
+        </div>
+        );
+      })}
+    </div>
+  </div>
   </Fragment>
   )}
   </div>
@@ -217,26 +344,65 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   <div class="an-panel" data-an-panel="guard" data-lazy={section !== 'guard' ? '' : undefined} hidden={section !== 'guard'}>
   {section === 'guard' && (
   <Fragment>
-  <form method="POST" class="an-card">
+  <DashStatTiles tiles={[
+    { label: dt('Panic mode'), value: 0, text: guard.panicEnabled ? dt('On') : dt('Off'), tone: guard.panicEnabled ? 'joins' : 'leaves' },
+    { label: dt('Starts at'), value: 0, text: dt('{n} in {a}', { n: guard.panicThreshold, a: formatDuration(guard.panicWindow * 60) }), tone: 'voice' },
+    { label: dt('Lockdown lasts'), value: 0, text: formatDuration(guard.panicMinutes * 60), tone: 'messages' },
+    { label: dt('Owner only'), value: 0, text: guard.ownerOnly ? dt('On') : dt('Off'), tone: 'invites' },
+    { label: dt('Trusted admins'), value: guard.adminIds.length, tone: 'reactions' },
+  ]} />
+  <form method="POST" class="anx-guard">
     <input type="hidden" name="action" value="save_guard" />
-    <h2><Icon name="ph:siren-fill" width="16" height="16" /> {dt('Panic mode')}</h2>
-    <p class="an-hint">{dt('When several protections act in a few minutes, or Anti Raid sees a raid, the server is locked down at once: the channels close and the invites are deleted and paused. It ends by itself after the minutes below, or earlier from the Lockdown tab.')}</p>
-    <label class="an-check"><input type="checkbox" name="panic_enabled" checked={guard.panicEnabled} />{dt('Turn panic mode on')}</label>
-    <div class="an-grid">
-      <label class="an-field"><span>{dt('Protections acting that start it')}</span><input type="number" name="panic_threshold" value={guard.panicThreshold} min="1" max="20" /></label>
-      <label class="an-field"><span>{dt('Within how many minutes')}</span><input type="number" name="panic_window_minutes" value={guard.panicWindow} min="1" max="120" /></label>
-      <label class="an-field"><span>{dt('Lockdown ends by itself after (minutes)')}</span><input type="number" name="panic_lockdown_minutes" value={guard.panicMinutes} min="1" max="1440" /></label>
+    <div class="sx-duo anx-duo">
+      <div class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:var(--red, #ff6b6b)"><Icon name="ph:siren-fill" width="17" height="17" /></span>
+          <h2>{dt('Panic mode')}</h2>
+        </div>
+        <p class="sx-lead">{dt('When several protections act in a few minutes, or Anti Raid sees a raid, the server is locked down at once: the channels close and the invites are deleted and paused. It ends by itself after the minutes below, or earlier from the Lockdown tab.')}</p>
+        <label class="sx-switch"><input type="checkbox" name="panic_enabled" checked={guard.panicEnabled} /><span class="sx-switch-text"><b>{dt('Turn panic mode on')}</b></span><span class="sx-toggle"></span></label>
+        <div class="anx-needs" data-sx-needs="panic_enabled">
+          <div class="sx-grid">
+            <div class="sx-field"><label for="an-pn-t">{dt('Protections acting that start it')}</label><SxNumber id="an-pn-t" name="panic_threshold" value={guard.panicThreshold} min={1} max={20} /></div>
+            <div class="sx-field"><label for="an-pn-w">{dt('Within how many minutes')}</label><SxNumber id="an-pn-w" name="panic_window_minutes" value={guard.panicWindow} min={1} max={120} /></div>
+            <div class="sx-field"><label for="an-pn-m">{dt('Lockdown ends by itself after (minutes)')}</label><SxNumber id="an-pn-m" name="panic_lockdown_minutes" value={guard.panicMinutes} min={1} max={1440} /></div>
+          </div>
+          <label class="sx-switch"><input type="checkbox" name="panic_on_raid" checked={guard.panicOnRaid} /><span class="sx-switch-text"><b>{dt('Also when Anti Raid sees a raid')}</b></span><span class="sx-toggle"></span></label>
+        </div>
+      </div>
+      <div class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:crown-fill" width="17" height="17" /></span>
+          <h2>{dt('Owner')}</h2>
+        </div>
+        <label class="sx-switch"><input type="checkbox" name="dm_owner" checked={guard.dmOwner} /><span class="sx-switch-text"><b>{dt('Send the owner a DM when a protection acts')}</b></span><span class="sx-toggle"></span></label>
+        <label class="sx-switch"><input type="checkbox" name="owner_only" checked={guard.ownerOnly} disabled={!viewerIsOwner} /><span class="sx-switch-text"><b>{dt('Owner only: only the owner and the trusted admins can change the anti-nuke and restore')}</b></span><span class="sx-toggle"></span></label>
+        <div class="sx-field"><label for="an-admins">{dt('Trusted admins (IDs): they can change the anti-nuke and the protections never touch them')}</label><textarea id="an-admins" name="admin_ids" class="dgl-autogrow" rows="2" disabled={!viewerIsOwner} placeholder={dt('Paste user IDs, separated by commas')}>{guard.adminIds.join(', ')}</textarea></div>
+        {!viewerIsOwner && <p class="sx-hint">{dt('Only the server owner can change owner only and the trusted admins.')}</p>}
+        <p class="sx-hint">{dt('The protections never act on the owner, on Petto or on an account whose role is at or above Petto\'s.')}</p>
+      </div>
     </div>
-    <label class="an-check"><input type="checkbox" name="panic_on_raid" checked={guard.panicOnRaid} />{dt('Also when Anti Raid sees a raid')}</label>
-    <div class="an-sep"></div>
-    <h2><Icon name="ph:crown-fill" width="16" height="16" /> {dt('Owner')}</h2>
-    <label class="an-check"><input type="checkbox" name="dm_owner" checked={guard.dmOwner} />{dt('Send the owner a DM when a protection acts')}</label>
-    <label class="an-check"><input type="checkbox" name="owner_only" checked={guard.ownerOnly} disabled={!viewerIsOwner} />{dt('Owner only: only the owner and the trusted admins can change the anti-nuke and restore')}</label>
-    <label class="an-field an-wide"><span>{dt('Trusted admins (IDs): they can change the anti-nuke and the protections never touch them')}</span><textarea name="admin_ids" rows="2" disabled={!viewerIsOwner} placeholder={dt('Paste user IDs, separated by commas')}>{guard.adminIds.join(', ')}</textarea></label>
-    {!viewerIsOwner && <p class="an-hint">{dt('Only the server owner can change owner only and the trusted admins.')}</p>}
-    <p class="an-hint">{dt('The protections never act on the owner, on Petto or on an account whose role is at or above Petto\'s.')}</p>
     <div class="an-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save')}</button></div>
   </form>
+  <div class="sx-panel">
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon"><Icon name="ph:clock-counter-clockwise-fill" width="17" height="17" /></span>
+      <h2>{dt('Latest actions')}</h2>
+      <span class="anx-count">{dt('{n} in the last {a}', { n: lastWindow, a: formatDuration(guard.panicWindow * 60) })}</span>
+    </div>
+    {events.length === 0 ? <p class="sx-empty"><Icon name="ph:shield-check-fill" width="18" height="18" />{dt('No protection has acted yet.')}</p> : (
+      <div class="anx-trust">
+        {events.slice(0, 5).map((e) => (
+          <div class="anx-trust-row">
+            <span class="an-ico anx-mini"><Icon name={ruleIcon(e.rule)} width="14" height="14" /></span>
+            <span class="anx-trust-name"><b>{names[e.rule]?.label ?? e.rule}</b> · {e.executor_name ?? e.executor_id}</span>
+            <span class={`sx-tag anx-act-${e.action}`}>{actionNames[e.action] ?? e.action}</span>
+            <time class="anx-when" datetime={e.created_at}>{since(e.created_at)}</time>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
   </Fragment>
   )}
   </div>
@@ -244,28 +410,83 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
   <div class="an-panel" data-an-panel="log" data-lazy={section !== 'log' ? '' : undefined} hidden={section !== 'log'}>
   {section === 'log' && (
   <Fragment>
-  <div class="an-card">
-    <h2>{dt('What the protections did')}</h2>
-    {events.length === 0 ? <p class="an-empty">{dt('No protection has acted yet.')}</p> : (
-      <div class="an-events">
+  <DashStatTiles tiles={[
+    { label: dt('Actions shown'), value: events.length, tone: 'messages' },
+    { label: dt('Restored'), value: restored, tone: 'joins' },
+    { label: dt('Can be restored'), value: canRestore, tone: 'invites' },
+    { label: dt('Last action'), value: 0, text: events.length ? since(events[0].created_at) : dt('None'), tone: 'voice' },
+  ]} />
+  {events.length === 0 ? (
+    <div class="anx-empty">
+      <Icon name="ph:shield-check-fill" width="28" height="28" />
+      <b>{dt('No protection has acted yet.')}</b>
+      <p>{dt('When a protection acts, it shows up here, and you can put back what it stopped.')}</p>
+    </div>
+  ) : (
+  <div class="anx-split">
+    <div class="sx-panel">
+      <div class="sx-panel-head">
+        <span class="sx-panel-icon"><Icon name="ph:clock-counter-clockwise-fill" width="17" height="17" /></span>
+        <h2>{dt('What the protections did')}</h2>
+      </div>
+      <div class="anx-events dgl-stagger">
         {events.map((e) => (
-          <div class="an-event">
-            <div class="an-event-main">
+          <div class="anx-event">
+            <span class="an-ico"><Icon name={ruleIcon(e.rule)} width="16" height="16" /></span>
+            <div class="anx-event-main">
               <b>#{e.id} · {names[e.rule]?.label ?? e.rule}</b>
-              <span>{e.executor_name ?? e.executor_id} <code>{e.executor_id}</code> · {e.action_count}× {e.detail ?? ''} · {actionNames[e.action] ?? e.action}</span>
+              <span>{e.executor_name ?? e.executor_id} <code>{e.executor_id}</code> · {e.action_count}× {e.detail ?? ''}</span>
               <em>{ago(e.created_at)}</em>
             </div>
-            {e.restored_at ? <span class="an-badge on">{dt('Restored')}</span> : (e.restorable.length > 0 || e.previous_roles.length > 0) ? (
-              <button type="button" class="btn btn-ghost btn-sm" data-an-restore={e.id} data-ask={dt('Put back what this protection stopped?')} data-done={dt('Done.')} data-failed={dt('It could not be restored.')}><Icon name="ph:arrow-counter-clockwise-bold" width="13" height="13" />{dt('Restore')}</button>
-            ) : null}
+            <div class="anx-event-side">
+              <span class={`sx-tag anx-act-${e.action}`}>{actionNames[e.action] ?? e.action}</span>
+              {e.restored_at ? <span class="sx-pill-state on">{dt('Restored')}</span> : (e.restorable.length > 0 || e.previous_roles.length > 0) ? (
+                <button type="button" class="btn btn-ghost btn-sm" data-an-restore={e.id} data-ask={dt('Put back what this protection stopped?')} data-done={dt('Done.')} data-failed={dt('It could not be restored.')}><Icon name="ph:arrow-counter-clockwise-bold" width="13" height="13" />{dt('Restore')}</button>
+              ) : null}
+            </div>
           </div>
         ))}
       </div>
-    )}
-    <p class="an-hint">{dt('Restore rebuilds deleted channels and roles (not their messages), lifts mass bans and gives the roles back. The owner, the trusted admins and (unless owner only is on) the administrators can do it.')}</p>
+      <p class="sx-hint">{dt('Restore rebuilds deleted channels and roles (not their messages), lifts mass bans and gives the roles back. The owner, the trusted admins and (unless owner only is on) the administrators can do it.')}</p>
+    </div>
+    <div class="sx-stack">
+      <div class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:chart-bar-fill" width="17" height="17" /></span>
+          <h2>{dt('By protection')}</h2>
+        </div>
+        <div class="anx-bars">
+          {byRule.map(([rule, n], i) => (
+            <div class="anx-bar" style={`--i:${i}`}>
+              <span class="anx-bar-name">{names[rule]?.label ?? rule}</span>
+              <span class="anx-track"><i style={`width:${Math.round((n / byRule[0][1]) * 100)}%`}></i></span>
+              <b>{n}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:users-three-fill" width="17" height="17" /></span>
+          <h2>{dt('Who set them off')}</h2>
+        </div>
+        <div class="anx-bars">
+          {byPerson.map((who, i) => (
+            <div class="anx-bar" style={`--i:${i}`}>
+              <span class="anx-bar-name">{who.name}</span>
+              <span class="anx-track"><i style={`width:${Math.round((who.n / byPerson[0].n) * 100)}%`}></i></span>
+              <b>{who.n}</b>
+            </div>
+          ))}
+        </div>
+        <p class="sx-hint">{dt('Counted over the actions shown.')}</p>
+      </div>
+    </div>
   </div>
+  )}
   </Fragment>
   )}
+  </div>
   </div>
 </DashGuildLayout>
 
@@ -356,69 +577,108 @@ const ago = (iso: string) => new Date(iso).toLocaleString(dashLang, { dateStyle:
     });
   }
 </script>
-
 <style>
+  .anx-page { display: flex; flex-direction: column; max-width: 1100px; }
   h1 { font-size: 24px; margin: 0 0 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .an-count { font-size: 12px; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
-  .an-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 14px; max-width: 820px; }
-  .an-bad { color: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); background: color-mix(in srgb, var(--red, #ff6b6b) 12%, transparent); }
-  .an-panel[hidden] { display: none; }
-  .an-panel-loading { min-height: 220px; border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(100deg, color-mix(in srgb, var(--text) 5%, var(--card)) 30%, color-mix(in srgb, var(--text) 10%, var(--card)) 50%, color-mix(in srgb, var(--text) 5%, var(--card)) 70%); background-size: 200% 100%; animation: pettoShimmer 1.4s ease-in-out infinite; }
-  .an-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; max-width: none; overflow-x: auto; }
+  .an-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
   .an-tab { padding: 9px 14px; font-size: 13.5px; font-weight: 600; color: var(--text-dim); border-bottom: 2px solid transparent; white-space: nowrap; text-decoration: none; transition: color var(--m-fast) ease; }
   .an-tab:hover { color: var(--text); }
   .an-tab.on { color: var(--accent); border-color: var(--accent); }
   .an-tab:focus-visible { outline-offset: -2px; border-radius: 8px 8px 0 0; }
-  /* The protections are a grid of cards: icon, name, what it does and its switch. A card opens in place. */
+  .an-panel[hidden] { display: none; }
+  .an-panel:not([hidden]) { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .an-panel-loading { min-height: 220px; border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(100deg, color-mix(in srgb, var(--text) 5%, var(--card)) 30%, color-mix(in srgb, var(--text) 10%, var(--card)) 50%, color-mix(in srgb, var(--text) 5%, var(--card)) 70%); background-size: 200% 100%; animation: pettoShimmer 1.4s ease-in-out infinite; }
+  .an-panel > :global(.stt) { margin-bottom: 0; }
+
+  /* Protections: five short lists. Each protection is a card with its switch; it opens in place. */
+  .anx-group { display: flex; flex-direction: column; gap: 10px; }
+  .anx-head h2 { margin: 0; font-size: 15.5px; display: flex; align-items: center; gap: 10px; }
+  .anx-head p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+  .anx-count { font: 600 11.5px var(--sans); color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .an-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 12px; align-items: start; }
-  .an-row { border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; transition: border-color var(--m-base) ease; }
-  .an-row:has(.an-head .an-switch input:checked) { border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
-  .an-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
-  .an-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; color: var(--text); text-align: left; cursor: pointer; font: inherit; padding: 0; }
+  .an-row { border: 1px solid var(--border); border-radius: 14px; background: var(--card); min-width: 0; transition: border-color var(--m-base) ease; }
+  .an-row:has(.anx-sw input:checked) { border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
+  .an-head { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border-radius: 14px; transition: background-color var(--m-base) ease; }
+  .an-row.open .an-head { background: color-mix(in srgb, var(--text) 4%, transparent); border-radius: 14px 14px 0 0; }
+  .an-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; color: var(--text); text-align: left; cursor: pointer; font: inherit; padding: 0; border-radius: 10px; }
+  .an-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .an-ico { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); transition: color var(--m-base) ease, background-color var(--m-base) ease; }
-  .an-row:has(.an-head .an-switch input:checked) .an-ico { color: var(--green); background: var(--green-soft); }
-  .an-open b { display: block; font-size: 14.5px; }
-  .an-open em { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-style: normal; font-size: 12.5px; color: var(--text-dim); margin-top: 2px; overflow-wrap: anywhere; }
-  .an-row.open .an-open em { display: block; }
-  .an-row.open .an-head { background: color-mix(in srgb, var(--text) 4%, transparent); }
-  @media (prefers-reduced-motion: no-preference) { .an-row.open .an-body { animation: m-rise-in var(--m-base) var(--m-out); } }
-  .an-badge { flex: none; font-family: var(--mono, monospace); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; border: 1px dashed var(--border); border-radius: 6px; padding: 3px 8px; color: var(--text-dim); }
-  .an-badge.on { color: var(--green); border-color: var(--green); }
-  .an-old { color: var(--yellow); border-color: var(--yellow); }
-  .an-switch { flex: none; position: relative; width: 38px; height: 22px; }
-  .an-switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; margin: 0; z-index: 1; }
-  .an-switch span { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 22%, var(--card)); transition: background .15s; }
-  .an-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
-  .an-switch input:checked + span { background: var(--green); }
-  .an-switch input:checked + span::after { transform: translateX(16px); }
-  .an-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .an-body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 12px; border-top: 1px dashed var(--border); }
+  .an-row:has(.anx-sw input:checked) .an-ico { color: var(--green); background: var(--green-soft); }
+  .an-text { flex: 1; min-width: 0; }
+  .an-text b { display: block; font-size: 14.5px; }
+  .an-text em { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-style: normal; font-size: 12.5px; color: var(--text-dim); margin-top: 2px; overflow-wrap: anywhere; }
+  .an-row.open .an-text em { display: block; }
+  .an-open :global(.an-caret) { flex: none; color: var(--text-dim); transition: transform .45s cubic-bezier(.22, 1, .36, 1); }
+  .an-row.open .an-open :global(.an-caret) { transform: rotate(180deg); }
+  .anx-old { flex: none; font: 600 11px var(--sans); color: var(--yellow); border: 1px solid color-mix(in srgb, var(--yellow) 55%, transparent); border-radius: 999px; padding: 2px 8px; }
+  .anx-sw.sx-switch { flex: none; width: 40px; height: 24px; padding: 0; gap: 0; border: 0; border-radius: 999px; background: none; }
+  .anx-sw.sx-switch:hover { background: none; }
+  .an-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--border-soft); }
   .an-body[hidden] { display: none; }
-  .an-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 12px; }
-  .an-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .an-field > span { font-size: 12.5px; font-weight: 600; }
-  .an-field input[type=text], .an-field input[type=number], .an-field select, .an-field textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13.5px; width: 100%; box-sizing: border-box; }
-  .an-wide { grid-column: 1 / -1; }
-  .an-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; grid-column: 1 / -1; }
-  .an-sep { border-top: 1px dashed var(--border); }
-  .an-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
-  .an-foot { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px dashed var(--border); padding-top: 12px; }
+  @media (prefers-reduced-motion: no-preference) { .an-row.open .an-body { animation: m-rise-in var(--m-base) var(--m-out); } }
+  .an-foot { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
   /* A foot whose only button is the Save the bar of unsaved changes stands in for has nothing left to show. */
   .an-foot:not(:has(button:not(.dgl-bar-save))) { display: none; }
-  .an-card { max-width: none; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-  .an-card h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
-  .an-old { border: 1px dashed var(--yellow); border-radius: 10px; padding: 10px 12px; }
-  .an-on { border-color: var(--red, #ff6b6b); color: var(--text); }
-  .an-on p { margin: 0; color: var(--text); }
-  .an-start { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+  .anx-needs { display: flex; flex-direction: column; gap: 14px; }
+  .anx-needs[data-sx-off] { pointer-events: none; }
+  .sx-sub .anx-needs { padding-top: 2px; }
+
+  /* The other tabs: two columns while there is room */
+  .anx-duo { align-items: start; }
+  .anx-start, .anx-live, .anx-facts { display: flex; flex-direction: column; gap: 12px; }
+  .anx-facts, .anx-live { gap: 8px; }
+  .anx-k { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-dim); }
+  .anx-live .sx-row b, .anx-facts .sx-row b { font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+  .anx-live .an-foot { justify-content: flex-start; padding-top: 4px; }
   .an-danger { background: var(--red, #ff6b6b); border-color: var(--red, #ff6b6b); color: #1b1b1f; }
-  .an-lock-form { display: flex; flex-direction: column; gap: 12px; }
-  .an-empty { font-size: 13.5px; color: var(--text-dim); }
-  .an-events { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .an-event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--card); flex-wrap: wrap; }
-  .an-event + .an-event { border-top: 1px solid var(--border); }
-  .an-event-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
-  .an-event-main span { color: var(--text-muted); overflow-wrap: anywhere; }
-  .an-event-main em { font-style: normal; font-size: 12px; color: var(--text-dim); }
-  @media (max-width: 720px) { .an-start { grid-template-columns: 1fr; } .an-grid { grid-template-columns: 1fr; } .an-head { gap: 8px; padding: 12px; } .an-badge { display: none; } }
+  .anx-one-col { grid-template-columns: minmax(0, 1fr); }
+  .anx-lock-form, .anx-shared-form { min-width: 0; }
+  .anx-guard { display: flex; flex-direction: column; gap: 14px; }
+  .anx-guard .an-foot { justify-content: flex-start; }
+  .anx-old-box { border: 1px dashed var(--yellow); border-radius: 12px; padding: 4px; }
+  .anx-trust { display: flex; flex-direction: column; }
+  .anx-trust-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border-soft); min-width: 0; }
+  .anx-trust-row:first-child { border-top: 0; padding-top: 0; }
+  .anx-trust-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+  .anx-trust-2 .anx-trust-row:nth-child(2) { border-top: 0; padding-top: 0; }
+  .anx-mini { width: 26px; height: 26px; border-radius: 8px; }
+  .anx-trust-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .anx-when { flex: none; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .sx-tag.anx-act-quarantine { color: var(--accent); background: var(--accent-soft); }
+  .sx-tag.anx-act-kick { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .sx-tag.anx-act-ban { color: var(--red); background: var(--red-soft); }
+  .anx-split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .anx-split > .sx-panel, .anx-split > .sx-stack { min-width: 0; }
+  .anx-events { display: flex; flex-direction: column; gap: 8px; }
+  .anx-event { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .anx-event-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .anx-event-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+  .anx-event-main span { color: var(--text-muted); overflow-wrap: anywhere; }
+  .anx-event-main code { font-size: 11px; color: var(--text-dim); }
+  .anx-event-main em { font-style: normal; font-size: 12px; color: var(--text-dim); }
+  .anx-bars { display: flex; flex-direction: column; gap: 10px; }
+  .anx-bar { display: grid; grid-template-columns: minmax(0, 11em) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+  .anx-bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .anx-track { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+  .anx-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transform-origin: left; animation: anx-grow .8s var(--m-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
+  @keyframes anx-grow { from { transform: scaleX(0); } }
+  .anx-empty { align-self: center; width: min(560px, 100%); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px 16px; border: 1px dashed var(--border); border-radius: 14px; color: var(--text-dim); text-align: center; }
+  .anx-empty :global(svg) { color: var(--accent); }
+  .anx-empty b { font-size: 14.5px; color: var(--text); }
+  .anx-empty p { margin: 0; font-size: 13px; }
+  @media (max-width: 1000px) {
+    .anx-duo, .anx-split { grid-template-columns: minmax(0, 1fr); }
+    .anx-trust-2 { grid-template-columns: minmax(0, 1fr); }
+    .anx-trust-2 .anx-trust-row:nth-child(2) { border-top: 1px solid var(--border-soft); padding-top: 8px; }
+  }
+  @media (max-width: 720px) {
+    .an-head { gap: 8px; padding: 12px; }
+    .an-head .sx-pill-state, .anx-old { display: none; }
+    .anx-bar { grid-template-columns: minmax(0, 7em) minmax(0, 1fr) auto; }
+    .anx-event { flex-wrap: wrap; }
+    .anx-event-main { flex: 1 1 200px; }
+    .anx-event-side { flex-direction: row; align-items: center; margin-left: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .anx-track i { animation: none; } }
 </style>

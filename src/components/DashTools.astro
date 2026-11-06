@@ -3,10 +3,16 @@ import SilentMentionHint from './SilentMentionHint.astro';
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
+import SxNumber from './SxNumber.astro';
 import MultiSelect from './MultiSelect.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 import { FREE_LIMITS, PREMIUM_LIMITS } from '../utils/planLimits';
+import { rangeDays } from '../utils/activityStats';
+import { formatDuration } from '../utils/formatDuration';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 interface Reply { text: string; template: string; }
@@ -20,7 +26,7 @@ interface Props {
   requests: { enabled: boolean; channelId: string; staffRoleId: string; pingRoleId: string; maxOpen: number; completionHours: number; created: Reply };
   reviews: { enabled: boolean; channelId: string };
   openRequests: { number: number; userId: string; content: string; status: string; claimedBy: string }[];
-  uploadStats: { total: number; week: number; board: { userId: string; count: number }[] };
+  uploadStats: { total: number; capped?: boolean; week: number; today?: number; days?: number[]; board: { userId: string; count: number }[] };
   channels: { id: string; name: string; text: boolean }[];
   roles: { id: string; name: string }[];
   embedTemplates: { name: string; v2: boolean }[];
@@ -30,178 +36,360 @@ interface Props {
   saved: boolean;
   notice: string;
   people?: Record<string, { id: string; name: string | null; avatar: string }>;
-  reviewStats?: { total: number; average: number; members: number };
+  reviewStats?: { total: number; average: number; members: number; stars?: number[]; days?: number[]; week?: number; weekBefore?: number | null; top?: { userId: string; count: number; average: number }[] };
   reviewList?: { id: number; targetId: string; reviewerId: string; stars: number; comment: string; at: string }[];
+  requestCounts?: { open: number; claimed: number; total: number; capped: boolean };
 }
-const { user, guildId, guildName, guildIcon, section, uploads, requests, reviews, openRequests, uploadStats, channels, roles, embedTemplates, uploadChannelLimit, premium, ready, saved, notice, people = {}, reviewStats = { total: 0, average: 0, members: 0 }, reviewList = [] } = Astro.props;
+const { user, guildId, guildName, guildIcon, section, uploads, requests, reviews, openRequests, uploadStats, channels, roles, embedTemplates, uploadChannelLimit, premium, ready, saved, notice, people = {}, reviewStats = { total: 0, average: 0, members: 0 }, reviewList = [], requestCounts = { open: 0, claimed: 0, total: 0, capped: false } } = Astro.props;
 const who = (userId: string) => people[userId] ?? { id: userId, name: null, avatar: `https://cdn.discordapp.com/embed/avatars/${Number(userId || 0) % 6}.png` };
 const stars = (count: number) => '★'.repeat(count) + '☆'.repeat(5 - count);
 const textChannels = channels.filter((ch) => ch.text);
 const titles: Record<string, string> = { uploads: 'Uploads', requests: 'Requests', reviews: 'Reviews and profiles' };
+
+// Times as "2h ago" (the compact format of the whole dashboard) and the days of the little bar charts (Petto's days, the same as the numbers).
+const nowMs = Date.now();
+const ago = (iso: string) => {
+  const diff = nowMs - Date.parse(iso);
+  if (!Number.isFinite(diff)) return '';
+  return dt('{a} ago', { a: formatDuration(Math.max(0, diff) / 1000, { locale: dashLang }) });
+};
+const dayKeys = rangeDays(new Date(), 14);
+const bars = (values: number[] = []) => {
+  const top = Math.max(1, ...values);
+  return dayKeys.map((key, i) => ({
+    n: values[i] ?? 0,
+    height: values[i] ? Math.max(6, Math.round((values[i] / top) * 100)) : 3,
+    day: Number(key.slice(8)),
+    name: new Date(`${key}T12:00:00Z`).toLocaleDateString(dashLang, { day: 'numeric', month: 'short', timeZone: 'UTC' }),
+  }));
+};
+const sumOf = (values: number[] = []) => values.reduce((a, b) => a + b, 0);
+
+const uploadBars = bars(uploadStats.days);
+const uploads14 = sumOf(uploadStats.days);
+const boardTop = Math.max(1, ...uploadStats.board.map((entry) => entry.count));
+const reviewBars = bars(reviewStats.days);
+const reviews14 = sumOf(reviewStats.days);
+const starRows = [5, 4, 3, 2, 1].map((n) => ({ n, count: reviewStats.stars?.[n - 1] ?? 0 }));
+const starsTop = Math.max(1, ...starRows.map((row) => row.count));
+const openNow = Math.max(requestCounts.open, openRequests.filter((req) => req.status === 'open').length);
+const claimedNow = Math.max(requestCounts.claimed, openRequests.filter((req) => req.status === 'claimed').length);
+const requestsAll = Math.max(requestCounts.total, openNow + claimedNow);
+const weekChange = reviewStats.weekBefore === undefined || reviewStats.weekBefore === null ? undefined : reviewStats.weekBefore > 0 ? Math.round((((reviewStats.week ?? 0) - reviewStats.weekBefore) / reviewStats.weekBefore) * 100) : (reviewStats.week ?? 0) > 0 ? null : undefined;
+const moduleOn = section === 'uploads' ? uploads.enabled : section === 'requests' ? requests.enabled : reviews.enabled;
+const moreOpen = openNow + claimedNow > openRequests.length;
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={section} pageTitle={titles[section]}>
-  <div class="tl">
-  <h1>{dt(titles[section])}</h1>
+  <DashSettingsKit />
+  <DashFormKit />
+  <div class="sx-page tl">
+  <h1 class="sx-title">{dt(titles[section])}<span class:list={['sx-pill-state', { on: moduleOn }]}>{moduleOn ? dt('On') : dt('Off')}</span></h1>
   {section !== 'reviews' && <DashAcData roles={roles} channels={textChannels} vars={section === 'requests' ? [{ tok: '{request.number}', desc: dt('Number of the request') }, { tok: '{request.text}', desc: dt('Text of the request') }, { tok: '{request.link}', desc: dt('Link of the request') }, { tok: '{request.channel}', desc: dt('Channel of the request') }] : []} />}
-  {saved && <div class="tl-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
-  {notice === 'channel_limit' && <div class="tl-flash tl-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Only the first {a} channels were kept. Premium raises the limit.', { a: uploadChannelLimit })}</div>}
-  {notice === 'premium_timeout' && <div class="tl-flash tl-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Sending a claimed request back to open by itself is a Premium feature.')}</div>}
-  {notice === 'review_deleted' && <div class="tl-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('The review was deleted. The profile of the member counts only the ones left.')}</div>}
-  {notice === 'review_failed' && <div class="tl-flash tl-flash-err" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{dt('The review could not be deleted. Try again in a moment.')}</div>}
-  {!ready && <div class="tl-flash tl-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
+  {saved && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {notice === 'channel_limit' && <div class="sx-flash sx-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Only the first {a} channels were kept. Premium raises the limit.', { a: uploadChannelLimit })}</div>}
+  {notice === 'premium_timeout' && <div class="sx-flash sx-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Sending a claimed request back to open by itself is a Premium feature.')}</div>}
+  {notice === 'review_deleted' && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('The review was deleted. The profile of the member counts only the ones left.')}</div>}
+  {notice === 'review_failed' && <div class="sx-flash sx-flash-bad" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{dt('The review could not be deleted. Try again in a moment.')}</div>}
+  {!ready && <div class="sx-flash sx-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
 
   {section === 'uploads' && (
     <>
-      <div class="tl-grid">
-        <form method="POST" class="tl-form">
+      <DashStatTiles tiles={[
+        { label: dt('Today'), value: uploadStats.today ?? 0, tone: 'messages' },
+        { label: dt('This week'), value: uploadStats.week, tone: 'joins' },
+        uploadStats.capped ? { label: dt('All time'), value: uploadStats.total, text: `${uploadStats.total.toLocaleString(dashLang)}+`, tone: 'invites' as const } : { label: dt('All time'), value: uploadStats.total, tone: 'invites' as const },
+        { label: dt('Upload channels'), value: uploads.channelIds.length, tone: 'voice' },
+      ]} />
+      <div class="tl-cols">
+        <form method="POST" class="sx-stack tl-form">
           <input type="hidden" name="action" value="save_uploads" />
-          <label class="tl-check"><input type="checkbox" name="enabled" checked={uploads.enabled} />{dt('Count uploads')}</label>
-          <div class="tl-field"><label>{dt('Upload channels')}</label>
-            <MultiSelect lazy name="channel_ids" options={channels.map((ch) => ({ id: ch.id, name: `#${ch.name}` }))} selected={uploads.channelIds} placeholder={dt('Search channels...')} />
-            <span class="tl-note">{dt('Free servers can have {a}, Premium {b}.', { a: FREE_LIMITS.uploadChannels, b: PREMIUM_LIMITS.uploadChannels })}</span></div>
-          <div class="tl-field"><label>{dt('Uploader role')}</label><select name="uploader_role_id"><option value="">{dt('None')}</option>{roles.map((role) => <option value={role.id} selected={role.id === uploads.uploaderRoleId}>{role.name}</option>)}</select></div>
-          <div class="tl-field"><label>{dt('Welcome at the first upload')}</label><textarea name="welcome_text" data-ac rows="3" maxlength="2000" placeholder="Thanks for your first upload, {user.mention}! You are an uploader now.">{uploads.welcome.text}</textarea><SilentMentionHint />
-            <select name="welcome_template"><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === uploads.welcome.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select></div>
-          <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
+          <label class="sx-switch sx-master"><input type="checkbox" name="enabled" checked={uploads.enabled} /><span class="sx-switch-text"><b>{dt('Count uploads')}</b><em>{dt('Petto counts the messages with files in the channels below.')}</em></span><i class="sx-toggle"></i></label>
+
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#6ec6ff"><Icon name="ph:hash-fill" width="17" height="17" /></span><h2>{dt('Channels and role')}</h2></div>
+            <div class="sx-field"><span class="sx-label">{dt('Upload channels')}</span>
+              <MultiSelect lazy name="channel_ids" options={channels.map((ch) => ({ id: ch.id, name: `#${ch.name}` }))} selected={uploads.channelIds} placeholder={dt('Search channels...')} />
+              <span class="sx-hint">{dt('Free servers can have {a}, Premium {b}.', { a: FREE_LIMITS.uploadChannels, b: PREMIUM_LIMITS.uploadChannels })}</span></div>
+            <div class="sx-field"><label for="tl-uploader">{dt('Uploader role')}</label><select id="tl-uploader" name="uploader_role_id"><option value="">{dt('None')}</option>{roles.map((role) => <option value={role.id} selected={role.id === uploads.uploaderRoleId}>{role.name}</option>)}</select><span class="sx-hint">{dt('The first upload of a member gives them this role and sends the welcome.')}</span></div>
+          </section>
+
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#a5ea7a"><Icon name="ph:hand-waving-fill" width="17" height="17" /></span><h2>{dt('Welcome at the first upload')}</h2></div>
+            <div class="sx-field">
+              <textarea id="tl-welcome" name="welcome_text" class="dgl-autogrow" data-ac data-count rows="3" maxlength="2000" aria-label={dt('Welcome at the first upload')} placeholder="Thanks for your first upload, {user.mention}! You are an uploader now.">{uploads.welcome.text}</textarea><SilentMentionHint />
+            </div>
+            <div class="sx-field"><label for="tl-welcome-embed">{dt('Saved embed')}</label>
+              <select id="tl-welcome-embed" name="welcome_template" data-tpl-locks="welcome_text"><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === uploads.welcome.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select></div>
+          </section>
+
+          <div class="sx-foot tl-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:check-bold" width="13" height="13" />{dt('Save changes')}</button><p class="tl-cmds"><Icon name="ph:terminal-window-fill" width="14" height="14" />{dt('Commands: !uploads stats, !uploads leaderboard and !uploadconfig.')}</p></div>
         </form>
-        <aside class="tl-side"><div class="tl-stats"><div class="tl-stat"><b>{uploadStats.week}</b><span>{dt('This week')}</span></div><div class="tl-stat"><b>{uploadStats.total}</b><span>{dt('All time')}</span></div></div>
-        <section class="tl-card"><h2>{dt('This week')}</h2>
-          {uploadStats.board.length ? <ol>{uploadStats.board.map((entry) => <li><span class="tl-person"><img src={who(entry.userId).avatar} alt="" width="20" height="20" loading="lazy" />{who(entry.userId).name ?? <code>{entry.userId}</code>}</span><b>{entry.count}</b></li>)}</ol> : <div class="tl-none"><Icon name="ph:image-fill" width="22" height="22" /><p>{dt('Nobody has uploaded in this period.')}</p></div>}
-        <p class="tl-note tl-cmds">{dt('Commands: !uploads stats, !uploads leaderboard and !uploadconfig.')}</p></section></aside>
+
+        <aside class="tl-side">
+          <section class="sx-panel tl-block">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#fed53c"><Icon name="ph:trophy-fill" width="17" height="17" /></span><h2>{dt('This week')}</h2>{uploadStats.board.length > 0 && <span class="sx-tag">{uploadStats.week}</span>}</div>
+            {uploadStats.board.length ? (
+              <ol class="tl-ranks dgl-stagger">{uploadStats.board.map((entry, i) => (
+                <li class="tl-rank">
+                  <span class:list={['tl-rank-n', { 'tl-rank-top': i === 0 }]}>{i + 1}</span>
+                  <img src={who(entry.userId).avatar} alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer" />
+                  <span class="tl-rank-main"><b>{who(entry.userId).name ?? entry.userId}</b><i style={`width:${Math.max(4, Math.round((entry.count / boardTop) * 100))}%`}></i></span>
+                  <b class="tl-rank-count">{entry.count}</b>
+                </li>
+              ))}</ol>
+            ) : <div class="tl-empty"><Icon name="ph:image-fill" width="24" height="24" /><p>{dt('Nobody has uploaded in this period.')}</p></div>}
+          </section>
+          <section class="sx-panel tl-block">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:chart-bar-fill" width="17" height="17" /></span><h2>{dt('Uploads in the last 14 days')}</h2>{uploads14 > 0 && <span class="sx-tag">{uploads14}</span>}</div>
+            {uploads14 === 0 ? <p class="sx-empty"><Icon name="ph:chart-bar-fill" width="16" height="16" />{dt('No uploads in the last 14 days.')}</p> : (
+              <div class="tl-bars" role="img" aria-label={dt('Uploads in the last 14 days')}>
+                {uploadBars.map((d, i) => (
+                  <div class:list={['tl-bar', { 'tl-bar-today': i === 13 }]} style={`--i:${i}`} title={`${d.name}: ${d.n}`}><em>{d.n || ''}</em><i style={`height:${d.height}%`}></i><span>{d.day}</span></div>
+                ))}
+              </div>
+            )}
+          </section>
+        </aside>
       </div>
     </>
   )}
 
   {section === 'requests' && (
     <>
-      <div class="tl-grid">
-        <form method="POST" class="tl-form">
+      <DashStatTiles tiles={[
+        { label: dt('Open'), value: openNow, tone: 'reactions' },
+        { label: dt('Claimed'), value: claimedNow, tone: 'voice' },
+        requestCounts.capped ? { label: dt('Closed'), value: requestsAll - openNow - claimedNow, text: `${(requestsAll - openNow - claimedNow).toLocaleString(dashLang)}+`, tone: 'joins' as const } : { label: dt('Closed'), value: requestsAll - openNow - claimedNow, tone: 'joins' as const },
+        requestCounts.capped ? { label: dt('All time'), value: requestsAll, text: `${requestsAll.toLocaleString(dashLang)}+`, tone: 'invites' as const } : { label: dt('All time'), value: requestsAll, tone: 'invites' as const },
+      ]} />
+      <div class="tl-cols">
+        <form method="POST" class="sx-stack tl-form">
           <input type="hidden" name="action" value="save_requests" />
-          <label class="tl-check"><input type="checkbox" name="enabled" checked={requests.enabled} />{dt('Accept requests')}</label>
-          <div class="tl-field"><label>{dt('Channel for the cards')}</label><select name="channel_id"><option value="">{dt('None')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === requests.channelId}>#{ch.name}</option>)}</select></div>
-          <div class="tl-row">
-            <div class="tl-field"><label>{dt('Staff role')}</label><select name="staff_role_id"><option value="">{dt('Who can manage messages')}</option>{roles.map((role) => <option value={role.id} selected={role.id === requests.staffRoleId}>{role.name}</option>)}</select></div>
-            <div class="tl-field"><label>{dt('Role to ping')}</label><select name="ping_role_id"><option value="">{dt('None')}</option>{roles.map((role) => <option value={role.id} selected={role.id === requests.pingRoleId}>{role.name}</option>)}</select></div>
-          </div>
-          <div class="tl-row">
-            <div class="tl-field"><label>{dt('Open requests per member')}</label><input type="number" name="max_open" min="1" max="25" value={requests.maxOpen} /></div>
-            <div class="tl-field"><label>{dt('Hours to finish a claimed request')} {premium ? '' : '(Premium)'}</label><input type="number" name="completion_hours" min="0" max="720" value={requests.completionHours} disabled={!premium} /></div>
-          </div>
-          <span class="tl-note">{dt('0 hours means no limit. After the time, a claimed request goes back to open by itself.')}</span>
-          <div class="tl-field"><label>{dt('Answer to who makes a request')}</label><textarea name="created_text" data-ac rows="3" maxlength="2000" placeholder="{user.mention} your request #{request.number} is in. The staff will look at it: {request.link}">{requests.created.text}</textarea><SilentMentionHint />
-            <select name="created_template"><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === requests.created.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select>
-            <span class="tl-note">{dt('Variables: {request.number}, {request.text}, {request.link}, {request.channel}.')}</span></div>
-          <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
+          <label class="sx-switch sx-master"><input type="checkbox" name="enabled" checked={requests.enabled} /><span class="sx-switch-text"><b>{dt('Accept requests')}</b><em>{dt('Members ask the staff for something with !request make.')}</em></span><i class="sx-toggle"></i></label>
+
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#6ec6ff"><Icon name="ph:hash-fill" width="17" height="17" /></span><h2>{dt('Where and who')}</h2></div>
+            <div class="sx-field"><label for="tl-channel">{dt('Channel for the cards')}</label><select id="tl-channel" name="channel_id"><option value="">{dt('None')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === requests.channelId}>#{ch.name}</option>)}</select></div>
+            <div class="sx-grid">
+              <div class="sx-field"><label for="tl-staff">{dt('Staff role')}</label><select id="tl-staff" name="staff_role_id"><option value="">{dt('Who can manage messages')}</option>{roles.map((role) => <option value={role.id} selected={role.id === requests.staffRoleId}>{role.name}</option>)}</select></div>
+              <div class="sx-field"><label for="tl-ping">{dt('Role to ping')}</label><select id="tl-ping" name="ping_role_id"><option value="">{dt('None')}</option>{roles.map((role) => <option value={role.id} selected={role.id === requests.pingRoleId}>{role.name}</option>)}</select></div>
+            </div>
+          </section>
+
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#f5c26b"><Icon name="ph:hourglass-medium-fill" width="17" height="17" /></span><h2>{dt('Limits')}</h2></div>
+            <div class="sx-grid">
+              <div class="sx-field"><label for="tl-max">{dt('Open requests per member')}</label><SxNumber id="tl-max" name="max_open" value={requests.maxOpen} min="1" max="25" /></div>
+              <div class="sx-field"><label for="tl-hours">{dt('Hours to finish a claimed request')}{!premium && <span class="sx-tag tl-premium">Premium</span>}</label><SxNumber id="tl-hours" name="completion_hours" value={requests.completionHours} min="0" max="720" disabled={!premium} /></div>
+            </div>
+            <span class="sx-hint">{dt('0 hours means no limit. After the time, a claimed request goes back to open by itself.')}</span>
+          </section>
+
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#a5ea7a"><Icon name="ph:chat-teardrop-text-fill" width="17" height="17" /></span><h2>{dt('Answer to who makes a request')}</h2></div>
+            <div class="sx-field">
+              <textarea id="tl-created" name="created_text" class="dgl-autogrow" data-ac data-count rows="3" maxlength="2000" aria-label={dt('Answer to who makes a request')} placeholder="{user.mention} your request #{request.number} is in. The staff will look at it: {request.link}">{requests.created.text}</textarea><SilentMentionHint />
+              <span class="sx-hint">{dt('Variables: {request.number}, {request.text}, {request.link}, {request.channel}.')}</span>
+            </div>
+            <div class="sx-field"><label for="tl-created-embed">{dt('Saved embed')}</label>
+              <select id="tl-created-embed" name="created_template" data-tpl-locks="created_text"><option value="">{dt('No saved embed')}</option>{embedTemplates.map((tpl) => <option value={tpl.name} selected={tpl.name === requests.created.template}>{tpl.name}{tpl.v2 ? ' (V2)' : ''}</option>)}</select></div>
+          </section>
+
+          <div class="sx-foot tl-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:check-bold" width="13" height="13" />{dt('Save changes')}</button><p class="tl-cmds"><Icon name="ph:terminal-window-fill" width="14" height="14" />{dt('Commands: !request make, !request list and !requestconfig.')}</p></div>
         </form>
-        <aside class="tl-side"><section class="tl-card"><h2>{dt('Open requests')}</h2>
-          {openRequests.length ? <ul>{openRequests.map((req) => <li><span><b>#{req.number}</b> {who(req.userId).name ?? <code>{req.userId}</code>}<small>{req.content.slice(0, 80)}</small></span><em>{req.status === 'claimed' ? dt('Claimed') : dt('Open')}</em></li>)}</ul> : <div class="tl-none"><Icon name="ph:tray-fill" width="22" height="22" /><p>{dt('There are no open requests.')}</p></div>}
-        <p class="tl-note tl-cmds">{dt('Commands: !request make, !request list and !requestconfig.')}</p></section></aside>
+
+        <aside class="tl-side">
+          <section class="sx-panel tl-block">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#fed53c"><Icon name="ph:tray-fill" width="17" height="17" /></span><h2>{dt('Open requests')}</h2>{openRequests.length > 0 && <span class="sx-tag">{moreOpen ? `${openRequests.length}/${openNow + claimedNow}` : openRequests.length}</span>}</div>
+            {openRequests.length ? (
+              <ul class="sx-list tl-reqs dgl-stagger">{openRequests.map((req) => (
+                <li class="sx-row tl-req">
+                  <img src={who(req.userId).avatar} alt="" width="30" height="30" loading="lazy" referrerpolicy="no-referrer" />
+                  <span class="tl-req-text">
+                    <b><span class="tl-req-n">#{req.number}</span> {who(req.userId).name ?? req.userId}{req.claimedBy && <small>{dt('by {a}', { a: who(req.claimedBy).name ?? req.claimedBy })}</small>}</b>
+                    <em>{req.content.slice(0, 80)}</em>
+                  </span>
+                  <span class:list={['sx-tag', req.status === 'claimed' ? 'tl-claimed' : 'sx-tag-accent']}>{req.status === 'claimed' ? dt('Claimed') : dt('Open')}</span>
+                </li>
+              ))}</ul>
+            ) : <div class="tl-empty"><Icon name="ph:tray-fill" width="24" height="24" /><p>{dt('There are no open requests.')}</p></div>}
+          </section>
+        </aside>
       </div>
     </>
   )}
 
   {section === 'reviews' && (
     <>
-      <form method="POST" class="tl-form tl-form-wide">
-        <input type="hidden" name="action" value="save_reviews" />
-        <label class="tl-check"><input type="checkbox" name="reviews_enabled" checked={reviews.enabled} />{dt('Allow reviews')}</label>
-        <div class="tl-field"><label>{dt('Channel for new reviews')}</label><select name="review_channel_id"><option value="">{dt('None')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === reviews.channelId}>#{ch.name}</option>)}</select></div>
-        <button type="submit" class="btn btn-accent btn-sm" disabled={!ready}>{dt('Save changes')}</button>
-        <span class="tl-note tl-form-note">{dt('Every new review is shown there. Empty shows them nowhere.')} {dt('Commands: !review give, !review show, !review remove, !profile and !profileconfig.')}</span>
-      </form>
-      <div class="tl-stats tl-stats-3">
-        <div class="tl-stat"><b>{reviewStats.total}</b><span>{dt('Reviews')}</span></div>
-        <div class="tl-stat"><b>{reviewStats.total ? reviewStats.average.toFixed(1) : '–'}</b><span>{dt('Average stars')}</span></div>
-        <div class="tl-stat"><b>{reviewStats.members}</b><span>{dt('Members rated')}</span></div>
+      <DashStatTiles against={dt('vs the week before')} tiles={[
+        { label: dt('Reviews'), value: reviewStats.total, tone: 'messages' },
+        { label: dt('Average stars'), value: 0, text: reviewStats.total ? reviewStats.average.toFixed(1) : '–', tone: 'reactions' },
+        { label: dt('Members rated'), value: reviewStats.members, tone: 'joins' },
+        { label: dt('Last 7 days'), value: reviewStats.week ?? 0, tone: 'voice', change: weekChange },
+      ]} />
+      <div class="tl-cols tl-cols-reviews">
+        <div class="tl-main">
+          <form method="POST" class="sx-panel tl-set">
+            <input type="hidden" name="action" value="save_reviews" />
+            <label class="sx-switch sx-master"><input type="checkbox" name="reviews_enabled" checked={reviews.enabled} /><span class="sx-switch-text"><b>{dt('Allow reviews')}</b><em>{dt('Members rate each other from 1 to 5 stars.')}</em></span><i class="sx-toggle"></i></label>
+            <div class="sx-field" data-sx-needs="reviews_enabled"><label for="tl-review-channel">{dt('Channel for new reviews')}</label><select id="tl-review-channel" name="review_channel_id"><option value="">{dt('None')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === reviews.channelId}>#{ch.name}</option>)}</select>
+              <span class="sx-hint">{dt('Every new review is shown there. Empty shows them nowhere.')}</span></div>
+            <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:check-bold" width="13" height="13" />{dt('Save changes')}</button></div>
+          </form>
+
+          <section class="sx-panel tl-block tl-reviews">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#fed53c"><Icon name="ph:star-fill" width="17" height="17" /></span><h2>{dt('Latest reviews')}</h2>{reviewList.length > 0 && <span class="sx-tag">{reviewList.length}</span>}</div>
+            {reviewList.length ? (
+              <ul class="sx-list tl-review-list dgl-stagger">
+                {reviewList.map((review) => (
+                  <li class="sx-row tl-review">
+                    <img src={who(review.targetId).avatar} alt="" width="34" height="34" loading="lazy" referrerpolicy="no-referrer" />
+                    <div class="tl-review-body">
+                      <div class="tl-review-top">
+                        <b class="tl-review-name">{who(review.targetId).name ?? review.targetId}</b>
+                        <span class="tl-stars" aria-label={dt('{a} of 5 stars', { a: review.stars })}>{stars(review.stars)}</span>
+                      </div>
+                      {review.comment && <p class="tl-review-text">{review.comment}</p>}
+                      <p class="tl-review-by">{dt('by {a}', { a: who(review.reviewerId).name ?? review.reviewerId })} · <time datetime={review.at} title={review.at.slice(0, 16).replace('T', ' ')}>{ago(review.at)}</time></p>
+                    </div>
+                    <form method="POST" data-no-dirty class="tl-review-del">
+                      <input type="hidden" name="review_id" value={review.id} />
+                      <button type="submit" name="action" value="delete_review" class="sx-iconbtn" aria-label={dt('Delete review')} title={dt('Delete review')} data-confirm={dt('Delete this review? It is taken out of the rating of the member.')}><Icon name="ph:trash-fill" width="15" height="15" /></button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : <div class="tl-empty"><Icon name="ph:star-fill" width="24" height="24" /><p>{dt('No reviews yet.')}</p></div>}
+          </section>
+        </div>
+
+        <aside class="tl-side tl-side-sticky">
+          <section class="sx-panel tl-block">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#f5c26b"><Icon name="ph:star-fill" width="17" height="17" /></span><h2>{dt('Stars given')}</h2></div>
+            {reviewStats.total === 0 ? <p class="sx-empty"><Icon name="ph:star-fill" width="16" height="16" />{dt('No reviews yet.')}</p> : (
+              <ul class="tl-stars-list">
+                {starRows.map((row) => (
+                  <li><span class="tl-stars-n">{row.n}<Icon name="ph:star-fill" width="12" height="12" /></span><span class="tl-stars-bar"><i style={`width:${row.count ? Math.max(3, Math.round((row.count / starsTop) * 100)) : 0}%`}></i></span><b>{row.count}</b></li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section class="sx-panel tl-block">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:chart-bar-fill" width="17" height="17" /></span><h2>{dt('Reviews in the last 14 days')}</h2>{reviews14 > 0 && <span class="sx-tag">{reviews14}</span>}</div>
+            {reviews14 === 0 ? <p class="sx-empty"><Icon name="ph:chart-bar-fill" width="16" height="16" />{dt('No reviews in the last 14 days.')}</p> : (
+              <div class="tl-bars" role="img" aria-label={dt('Reviews in the last 14 days')}>
+                {reviewBars.map((d, i) => (
+                  <div class:list={['tl-bar', { 'tl-bar-today': i === 13 }]} style={`--i:${i}`} title={`${d.name}: ${d.n}`}><em>{d.n || ''}</em><i style={`height:${d.height}%`}></i><span>{d.day}</span></div>
+                ))}
+              </div>
+            )}
+          </section>
+          <section class="sx-panel tl-block">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#a5ea7a"><Icon name="ph:medal-fill" width="17" height="17" /></span><h2>{dt('Most reviewed members')}</h2></div>
+            {reviewStats.top && reviewStats.top.length > 0 ? (
+              <ol class="tl-ranks">{reviewStats.top.map((entry, i) => (
+                <li class="tl-rank">
+                  <span class:list={['tl-rank-n', { 'tl-rank-top': i === 0 }]}>{i + 1}</span>
+                  <img src={who(entry.userId).avatar} alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer" />
+                  <span class="tl-rank-main"><b>{who(entry.userId).name ?? entry.userId}</b><em>{entry.average.toFixed(1)} ★</em></span>
+                  <b class="tl-rank-count">{entry.count}</b>
+                </li>
+              ))}</ol>
+            ) : <p class="sx-empty"><Icon name="ph:medal-fill" width="16" height="16" />{dt('Nobody has been reviewed yet.')}</p>}
+          </section>
+          <p class="tl-cmds"><Icon name="ph:terminal-window-fill" width="14" height="14" />{dt('Commands: !review give, !review show, !review remove, !profile and !profileconfig.')}</p>
+        </aside>
       </div>
-      <section class="tl-card tl-reviews">
-        <h2>{dt('Latest reviews')}</h2>
-        {reviewList.length ? (
-          <ul class="tl-review-list dgl-stagger">
-            {reviewList.map((review) => (
-              <li class="tl-review">
-                <div class="tl-review-top">
-                  <span class="tl-person"><img src={who(review.targetId).avatar} alt="" width="22" height="22" loading="lazy" /><b>{who(review.targetId).name ?? review.targetId}</b></span>
-                  <span class="tl-stars" aria-label={dt('{a} of 5 stars', { a: review.stars })}>{stars(review.stars)}</span>
-                  <form method="POST" data-no-dirty class="tl-review-del">
-                    <input type="hidden" name="review_id" value={review.id} />
-                    <button type="submit" name="action" value="delete_review" aria-label={dt('Delete review')} title={dt('Delete review')} data-confirm={dt('Delete this review? It is taken out of the rating of the member.')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
-                  </form>
-                </div>
-                {review.comment && <p class="tl-review-text">{review.comment}</p>}
-                <p class="tl-review-by">{dt('by {a}', { a: who(review.reviewerId).name ?? review.reviewerId })} · <time datetime={review.at} data-tl-time>{review.at.slice(0, 10)}</time></p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div class="tl-empty">
-            <Icon name="ph:star-fill" width="22" height="22" />
-            <p>{dt('No reviews yet.')}</p>
-          </div>
-        )}
-      </section>
-      <script is:inline>
-        document.querySelectorAll('time[data-tl-time]').forEach(function (t) { var d = new Date(t.getAttribute('datetime')); if (!isNaN(d.getTime())) t.textContent = d.toLocaleDateString(); });
-      </script>
     </>
   )}
   </div>
 </DashGuildLayout>
 
 <style>
-  .tl { max-width: 1180px; display: flex; flex-direction: column; min-height: 100%; }
-  h1 { font-size: 24px; margin: 0 0 18px; }
-  .tl-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; max-width: 640px; }
-  .tl-flash-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
-  .tl-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .tl-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
-  .tl-stat b { font-size: 24px; }
-  .tl-stat span { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .tl-grid { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
-  @media (max-width: 960px) { .tl-grid { grid-template-columns: minmax(0, 1fr); } }
-  .tl-form { display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 20px; }
-  .tl-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 12px; align-items: end; }
-  .tl-form button[type="submit"] { align-self: flex-start; margin-top: auto; }
-  .tl-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .tl-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .tl-field input, .tl-field select, .tl-field textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; }
-  .tl-field textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; }
-  .tl-cmds { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }
-  .tl-note { font-size: 11.5px; line-height: 1.4; color: var(--text-dim); }
-  .tl-none { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 18px 0; color: var(--text-dim); text-align: center; }
-  .tl-none p { margin: 0; font-size: 13px; }
-  .tl-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
+  .tl { max-width: 1120px; }
+  h1 { font-size: 24px; margin: 0 0 16px; }
+  .tl-cols { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .tl-cols-reviews { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .tl-form { min-width: 0; align-self: start; }
+  .tl-foot { gap: 10px 16px; flex-wrap: wrap; }
+  /* its Save is the one the bar of unsaved changes stands in for: with nothing else in the row, no empty row is left */
+  .tl-form .sx-foot:not(:has(> :not(.dgl-bar-save))), .tl-set .sx-foot:not(:has(> :not(.dgl-bar-save))) { display: none; }
+  .tl-form .btn, .tl-set .btn { display: inline-flex; align-items: center; gap: 7px; }
+  .tl-premium { margin-left: 8px; font-weight: 600; }
   .tl-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-  .tl-side .tl-card { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .tl-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 16px; }
-  .tl-card h2 { font-size: 14px; margin: 0 0 8px; }
-  .tl-card ol, .tl-card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .tl-card li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
-  .tl-card code { font-size: 12px; color: var(--text-muted); word-break: break-all; }
-  .tl-card small { display: block; color: var(--text-dim); font-size: 11.5px; }
-  .tl-card em { font-style: normal; font-size: 11.5px; color: var(--text-dim); }
-  .tl-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
-  .tl-person { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tl-person img { flex: none; border-radius: 50%; }
-  .tl-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 16px 0; }
-  .tl-reviews { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .tl-form-wide { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 12px 20px; }
-  .tl-form-wide .tl-check { align-self: center; }
-  .tl-form-wide button[type="submit"] { margin-top: 0; }
-  .tl-form-note { grid-column: 1 / -1; }
-  @media (max-width: 720px) { .tl-form-wide { grid-template-columns: minmax(0, 1fr); } }
-  .tl-review-list { gap: 0 !important; }
-  .tl-review { display: block !important; padding: 10px 0; border-top: 1px solid var(--border); }
-  .tl-review:first-child { border-top: 0; padding-top: 2px; }
-  .tl-review-top { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; }
-  .tl-stars { color: #fed53c; letter-spacing: 1px; font-size: 13px; }
-  .tl-review-del { margin: 0; }
-  .tl-review-del button { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-dim); cursor: pointer; }
-  .tl-review-del button:hover { color: var(--red, #fe6465); border-color: var(--red, #fe6465); }
-  .tl-review-text { margin: 6px 0 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
-  .tl-review-by { margin: 4px 0 0; font-size: 11.5px; color: var(--text-dim); }
-  .tl-empty { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; padding: 18px 0; color: var(--text-dim); text-align: center; }
-  .tl-empty :global(svg) { flex: none; color: #fed53c; }
-  .tl-empty p { margin: 0; font-size: 13px; }
-  @media (max-width: 520px) { .tl-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .tl-stat b { font-size: 20px; } .tl-stat span { font-size: 10.5px; } }
+  .tl-side-sticky { position: sticky; top: 0; align-self: start; }
+  .tl-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .tl-block { padding: 16px; gap: 12px; }
+    .tl-set { gap: 12px; }
+  .tl-set .sx-switch { margin: 0; }
+  .tl-cmds { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 2px; font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+  .tl-cmds :global(svg) { flex: none; color: var(--accent); }
+  .tl-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 26px 16px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; color: var(--text-dim); }
+  .tl-empty :global(svg) { color: var(--accent); }
+  .tl-empty p { margin: 0; font-size: 13.5px; line-height: 1.5; max-width: 300px; }
+
+  /* the board of the week, the most reviewed members */
+  .tl-ranks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .tl-rank { display: flex; align-items: center; gap: 10px; padding: 4px 2px; min-width: 0; }
+  .tl-rank img { flex: none; width: 28px; height: 28px; border-radius: 50%; }
+  .tl-rank-n { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font: 700 11.5px var(--sans); color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); font-variant-numeric: tabular-nums; }
+  .tl-rank-top { color: var(--accent); background: var(--accent-soft); }
+  .tl-rank-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .tl-rank-main b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-rank-main i { display: block; height: 4px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 55%, transparent); transform-origin: left; animation:-x .6s var(--m-out) backwards; }
+  .tl-rank-main em { font-style: normal; font-size: 12px; color: var(--text-dim); }
+  .tl-rank-count { flex: none; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  @keyframes-x { from { transform: scaleX(0); } to { transform: none; } }
+
+  /* the last 14 days */
+  .tl-bars { display: flex; align-items: flex-end; gap: 5px; height: 140px; }
+  .tl-bar { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; padding-bottom: 20px; box-sizing: border-box; border-bottom: 1px solid var(--border-soft); }
+  .tl-bar i { display: block; width: 100%; max-width: 26px; border-radius: 6px 6px 0 0; background: color-mix(in srgb, var(--accent) 55%, transparent); transform-origin: bottom; animation: .6s var(--m-out) backwards; animation-delay: calc(var(--i, 0) * 25ms); }
+  .tl-bar-today i { background: var(--accent); }
+  .tl-bar em { font-style: normal; font-size: 10.5px; min-height: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .tl-bar span { position: absolute; bottom: 2px; font-size: 10px; color: var(--text-dim); }
+  @keyframes { from { transform: scaleY(0); } to { transform: none; } }
+
+  /* open requests */
+  .tl-reqs { margin: 0; padding: 0; list-style: none; }
+  .tl-req { align-items: center; padding: 9px 12px; }
+  .tl-req img { flex: none; width: 30px; height: 30px; border-radius: 50%; }
+  .tl-req-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .tl-req-text b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-req-n { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .tl-req-text em { font-style: normal; font-size: 12.5px; line-height: 1.4; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-req-text small { margin-left: 8px; font-size: 11.5px; font-weight: 400; color: var(--text-dim); }
+  .tl-claimed { color: var(--green); background: var(--green-soft); }
+
+  /* the stars given */
+  .tl-stars-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .tl-stars-list li { display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: center; gap: 10px; font-size: 13px; }
+  .tl-stars-n { display: inline-flex; align-items: center; gap: 3px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .tl-stars-n :global(svg) { color: #fed53c; }
+  .tl-stars-bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--text) 7%, transparent); overflow: hidden; }
+  .tl-stars-bar i { display: block; height: 100%; border-radius: inherit; background: #fed53c; opacity: .85; transform-origin: left; animation:-x .6s var(--m-out) backwards; }
+  .tl-stars-list b { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* the reviews */
+  .tl-review-list { margin: 0; padding: 0; list-style: none; }
+  .tl-review { align-items: flex-start; }
+  .tl-review > img { flex: none; width: 34px; height: 34px; border-radius: 50%; }
+  .tl-review-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .tl-review-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .tl-review-name { font-size: 13.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-stars { color: #fed53c; letter-spacing: 1px; font-size: 13px; white-space: nowrap; }
+  .tl-review-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+  .tl-review-by { margin: 0; font-size: 12px; color: var(--text-dim); }
+  .tl-review-del { margin: 0; flex: none; }
+
+  @media (max-width: 1060px) {
+    .tl-cols, .tl-cols-reviews { grid-template-columns: minmax(0, 1fr); }
+    .tl-side-sticky { position: static; }
+  }
+  @media (max-width: 720px) {
+    .tl-block { padding: 14px; }
+    .tl-bars { gap: 3px; }
+    .tl-bar em { font-size: 9.5px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tl-bar i, .tl-rank-main i, .tl-stars-bar i { animation: none; } }
 </style>

@@ -1,8 +1,14 @@
 ---
+// The audit log of Discord for the server: who did what and when, newest first. Numbers, the people who did the most and the days are worked out from the
+// same entries the page lists (the last 100 Discord returns), so nothing here is asked again.
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
 
-import { getDashLang, makeT } from '../i18n/dash';
+import { dashLocale, getDashLang, makeT } from '../i18n/dash';
+import { agoText } from '../utils/formatDuration';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 interface Entry { id: string; actorId: string | null; actorName: string; actionKey: string; action: string; target: string; reason: string | null; createdAt: string; }
@@ -35,97 +41,245 @@ const ACTION_COLOR: Record<string, string> = {
 };
 
 function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return dt('just now');
-  if (mins < 60) return dt('{n}m ago', { n: mins });
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return dt('{n}h ago', { n: hours });
-  const days = Math.floor(hours / 24);
-  if (days < 30) return dt('{n}d ago', { n: days });
-  return new Date(iso).toLocaleDateString(dashLang);
+  // A month and more is a date; before that the short form (5m ago, 1h 5m ago, 2d 3h ago).
+  if (Date.now() - new Date(iso).getTime() >= 30 * 86_400_000) return new Date(iso).toLocaleDateString(dashLang);
+  return agoText(dt, iso, { locale: dashLocale(dashLang) });
 }
+const now = Date.now();
+const ageOf = (e: Entry) => Math.max(0, now - new Date(e.createdAt).getTime());
+const HOUR = 3600e3; const DAY = 24 * HOUR;
 const people = new Set(entries.map((e) => e.actorId ?? e.actorName)).size;
 const latest = entries.length ? timeAgo(entries[0].createdAt) : '–';
+const lastDay = entries.filter((e) => ageOf(e) < DAY).length;
+
+// The people with the most events, and the kinds of change that happen the most.
+const tally = <T,>(keyOf: (e: Entry) => string, labelOf: (e: Entry) => T) => {
+  const map = new Map<string, { label: T; n: number }>();
+  for (const e of entries) { const key = keyOf(e); const row = map.get(key); if (row) row.n += 1; else map.set(key, { label: labelOf(e), n: 1 }); }
+  return [...map.entries()].map(([key, row]) => ({ key, label: row.label, n: row.n })).sort((a, b) => b.n - a.n);
+};
+const topPeople = tally((e) => e.actorId ?? e.actorName, (e) => e.actorName).slice(0, 5);
+const topActions = tally((e) => e.action, (e) => e.action).slice(0, 5);
+const maxPerson = topPeople[0]?.n ?? 1;
+const maxAction = topActions[0]?.n ?? 1;
+
+// Events per day for the last 14 days (a day is 24 hours counted back from now).
+const days = Array.from({ length: 14 }, (_, back) => entries.filter((e) => Math.floor(ageOf(e) / DAY) === 13 - back).length);
+const maxDay = Math.max(1, ...days);
+
+// The list in blocks by how long ago it happened, so a long log is easy to scan.
+const bucketOf = (e: Entry) => { const age = ageOf(e); return age < HOUR ? 'hour' : age < DAY ? 'day' : age < 7 * DAY ? 'week' : 'old'; };
+const bucketLabel: Record<string, string> = { hour: dt('Last hour'), day: dt('Last 24 hours'), week: dt('Last 7 days'), old: dt('Earlier') };
+const groups = ['hour', 'day', 'week', 'old'].map((id) => ({ id, label: bucketLabel[id], rows: entries.filter((e) => bucketOf(e) === id) })).filter((g) => g.rows.length);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="audit" pageTitle="Audit Log">
+  <DashSettingsKit />
+  <DashFormKit />
   <span hidden data-dash-live="60"></span>
   <div class="al">
     <h1>{dt('Audit Log')}</h1>
 
     {error && <div class="al-error"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
 
-    <div class="al-stats">
-      <div class="al-stat"><span>{dt('Events')}</span><b>{entries.length}</b></div>
-      <div class="al-stat"><span>{dt('People')}</span><b>{people}</b></div>
-      <div class="al-stat"><span>{dt('Latest')}</span><b>{latest}</b></div>
-    </div>
+    <DashStatTiles tiles={[
+      { label: dt('Events'), value: entries.length, tone: 'messages' },
+      { label: dt('People'), value: people, tone: 'voice' },
+      { label: dt('Last 24 hours'), value: lastDay, tone: 'joins' },
+      { label: dt('Latest'), value: 0, text: latest, tone: 'invites' },
+    ]} />
 
-    <section class="al-card">
-      <div class="al-card-head"><h2>{dt('Recent events')}</h2></div>
-      {entries.length === 0 ? (
-        <div class="al-empty"><Icon name="ph:clipboard-text-fill" width="22" height="22" /><p>{dt('No Discord audit events were returned for this server.')}</p></div>
-      ) : (
-        <div class="al-timeline dgl-stagger">
-          {entries.map((e) => (
-            <div class="al-row">
-              <div class="al-icon" style={`--c:${ACTION_COLOR[e.actionKey] ?? '#94a3b8'}`}>
-                <Icon name={ACTION_ICON[e.actionKey] ?? 'ph:pencil-fill'} width="14" height="14" />
-              </div>
-              <div class="al-body">
-                <p class="al-summary"><b>{e.actorName}</b> {e.action}</p>
-                {(e.target || e.reason) && (
-                  <div class="al-tags">
-                    {e.target && <span class="al-target">{e.target}</span>}
-                    {e.reason && <span class="al-reason">{dt('Reason')}: {e.reason}</span>}
-                  </div>
-                )}
-              </div>
-              <span class="al-time" title={new Date(e.createdAt).toLocaleString(dashLang)}>{timeAgo(e.createdAt)}</span>
+    {entries.length === 0 ? (
+      <div class="al-empty">
+        <Icon name="ph:clipboard-text-fill" width="26" height="26" />
+        <b>{dt('No Discord audit events were returned for this server.')}</b>
+        <p>{dt('What moderators and Petto do in the server, like bans, kicks, roles and channels, shows up here as Discord records it.')}</p>
+      </div>
+    ) : (
+      <div class="al-grid" data-audit>
+        <aside class="al-side">
+          <section class="sx-panel al-box">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#9bd0f5"><Icon name="ph:users-three-fill" width="17" height="17" /></span>
+              <h2>{dt('Most active')}</h2>
             </div>
-          ))}
-        </div>
-      )}
-    </section>
+            <ol class="al-top">
+              {topPeople.map((p, i) => (
+                <li style={`--i:${i}`}><span class="al-who"><i>{String(p.label).slice(0, 1).toUpperCase()}</i><b>{p.label}</b></span><em>{p.n}</em><span class="al-track"><i style={`width:${Math.max(6, Math.round((p.n / maxPerson) * 100))}%`}></i></span></li>
+              ))}
+            </ol>
+          </section>
+
+          <section class="sx-panel al-box">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#f0a88f"><Icon name="ph:chart-bar-fill" width="17" height="17" /></span>
+              <h2>{dt('Events per day')}</h2>
+            </div>
+            <div class="al-bars" role="img" aria-label={dt('Events per day in the last 14 days')}>
+              {days.map((n, i) => <i style={`--h:${n ? Math.max(8, Math.round((n / maxDay) * 100)) : 0}%;--i:${i}`} class:list={{ zero: n === 0 }} title={`${n} · ${13 - i === 0 ? dt('Today') : dt('{a} ago', { a: `${13 - i}d` })}`}></i>)}
+            </div>
+            <div class="al-bars-axis"><span>{dt('{a} ago', { a: '13d' })}</span><span>{dt('Today')}</span></div>
+          </section>
+
+          <section class="sx-panel al-box">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+              <h2>{dt('What happens the most')}</h2>
+            </div>
+            <ol class="al-top al-top-actions">
+              {topActions.map((a, i) => (
+                <li style={`--i:${i}`}><span class="al-who"><b>{a.label}</b></span><em>{a.n}</em><span class="al-track"><i style={`width:${Math.max(6, Math.round((a.n / maxAction) * 100))}%`}></i></span></li>
+              ))}
+            </ol>
+          </section>
+        </aside>
+
+        <section class="sx-panel al-main">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:clock-counter-clockwise-fill" width="17" height="17" /></span>
+            <h2>{dt('Recent events')}</h2>
+            <span class="sx-tag" data-al-count>{entries.length}</span>
+          </div>
+          <div class="al-tools">
+            <label class="al-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" placeholder={dt('Search by person, action or reason')} aria-label={dt('Search the audit log')} autocomplete="off" data-al-search data-dash-hold /></label>
+            <div class="dfx-chips al-chips" role="radiogroup" aria-label={dt('Filter by person')}>
+              <label class="dfx-chip al-chip"><input type="radio" name="al-who" value="" checked />{dt('All')}</label>
+              {topPeople.map((p) => <label class="dfx-chip al-chip"><input type="radio" name="al-who" value={p.key} />{p.label}<b>{p.n}</b></label>)}
+            </div>
+          </div>
+          <div class="al-timeline">
+            {groups.map((g) => (
+              <div class="al-group" data-al-group>
+                <h3>{g.label}</h3>
+                <div class="al-rows dgl-stagger">
+                  {g.rows.map((e) => (
+                    <div class="al-row" data-actor={e.actorId ?? e.actorName} data-search={`${e.actorName} ${e.action} ${e.target} ${e.reason ?? ''}`.toLowerCase()}>
+                      <div class="al-icon" style={`--c:${ACTION_COLOR[e.actionKey] ?? '#94a3b8'}`}>
+                        <Icon name={ACTION_ICON[e.actionKey] ?? 'ph:pencil-fill'} width="14" height="14" />
+                      </div>
+                      <div class="al-body">
+                        <p class="al-summary"><b>{e.actorName}</b> {e.action}</p>
+                        {(e.target || e.reason) && (
+                          <div class="al-tags">
+                            {e.target && <span class="al-target">{e.target}</span>}
+                            {e.reason && <span class="al-reason">{dt('Reason')}: {e.reason}</span>}
+                          </div>
+                        )}
+                      </div>
+                      <span class="al-time" title={new Date(e.createdAt).toLocaleString(dashLang)}>{timeAgo(e.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p class="sx-empty al-none" hidden><Icon name="ph:magnifying-glass-bold" width="16" height="16" />{dt('No event matches that.')}</p>
+        </section>
+      </div>
+    )}
   </div>
+
+  <script is:inline>
+    // The search and the chips of people filter the events already on the page. Works again when the dashboard swaps the page in.
+    (function bind() {
+      var root = document.querySelector('[data-audit]:not([data-bound])');
+      if (!root) return;
+      root.setAttribute('data-bound', '1');
+      var input = root.querySelector('[data-al-search]');
+      var rows = Array.prototype.slice.call(root.querySelectorAll('.al-row'));
+      var groups = Array.prototype.slice.call(root.querySelectorAll('[data-al-group]'));
+      var count = root.querySelector('[data-al-count]');
+      var none = root.querySelector('.al-none');
+      var apply = function () {
+        var q = (input && input.value || '').trim().toLowerCase();
+        var checked = root.querySelector('input[name="al-who"]:checked');
+        var who = checked ? checked.value : '';
+        var shown = 0;
+        rows.forEach(function (row) {
+          var ok = (!who || row.getAttribute('data-actor') === who) && (!q || row.getAttribute('data-search').indexOf(q) !== -1);
+          row.hidden = !ok; if (ok) shown++;
+        });
+        groups.forEach(function (group) { group.hidden = !group.querySelector('.al-row:not([hidden])'); });
+        if (count) count.textContent = String(shown);
+        if (none) none.hidden = shown > 0;
+      };
+      if (input) input.addEventListener('input', apply);
+      root.querySelectorAll('input[name="al-who"]').forEach(function (radio) { radio.addEventListener('change', apply); });
+    })();
+  </script>
 </DashGuildLayout>
 
 <style>
-  .al { max-width: 1180px; display: flex; flex-direction: column; min-height: 100%; }
+  .al { max-width: 1180px; display: flex; flex-direction: column; }
   h1 { font-size: 24px; margin: 0 0 18px; }
-  .al-error { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 16px; padding: 11px 14px; color: var(--red); background: var(--red-soft); border: 1px solid var(--red); border-radius: 10px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+  h2 { font-size: 15.5px; margin: 0; }
+  .al-error { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 14px; padding: 11px 14px; color: var(--red); background: var(--red-soft); border: 1px solid var(--red); border-radius: 10px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
   .al-error :global(svg) { flex: none; margin-top: 2px; }
 
-  .al-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
-  .al-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
-  .al-stat span { font-size: 12.5px; color: var(--text-dim); }
-  .al-stat b { font-size: 22px; line-height: 1.15; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  .al-card { padding: 0; margin: 0; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; }
-  .al-card-head { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-  .al-card-head h2 { font-size: 15px; margin: 0; }
-  .al-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 22px 16px; color: var(--text-dim); text-align: center; }
-  .al-empty p { margin: 0; font-size: 13.5px; }
+  /* Nothing to list: a compact box, centered near the top. It does not grow with the panel. */
+  .al-empty { align-self: center; width: min(560px, 100%); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text-dim); text-align: center; }
   .al-empty :global(svg) { color: var(--accent); }
+  .al-empty b { font-size: 14.5px; color: var(--text); }
+  .al-empty p { margin: 0; max-width: 56ch; font-size: 13px; line-height: 1.5; }
 
-  .al-timeline { display: flex; flex-direction: column; }
-  .al-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 12px 16px; }
+  .al-grid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: start; }
+  .al-main { grid-column: 1; grid-row: 1; gap: 12px; animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .al-side { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; min-width: 0; }
+  .al-box { gap: 12px; animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .al-box:nth-child(2) { animation-delay: var(--m-stagger); } .al-box:nth-child(3) { animation-delay: calc(var(--m-stagger) * 2); }
+
+  .al-top { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .al-top li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; }
+  .al-who { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+  .al-who > i { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 600 11.5px var(--sans); font-style: normal; color: var(--accent); background: var(--accent-soft); }
+  .al-who b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .al-top-actions .al-who b { font-weight: 500; white-space: normal; overflow-wrap: anywhere; font-size: 13px; }
+  .al-top em { font-style: normal; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .al-track { grid-column: 1 / -1; height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+  .al-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transform-origin: left; animation: al-grow .8s var(--m-out) backwards; animation-delay: calc(var(--i, 0) * var(--m-stagger) + 120ms); }
+  .al-top-actions .al-track i { background: #c6a8f5; }
+  .al-bars { display: flex; align-items: flex-end; gap: 4px; height: 92px; }
+  .al-bars i { flex: 1; min-width: 0; height: var(--h); border-radius: 5px 5px 2px 2px; background: color-mix(in srgb, var(--accent) 70%, transparent); transform-origin: bottom; animation: al-rise .7s var(--m-out) backwards; animation-delay: calc(var(--i, 0) * 25ms + 100ms); transition: background-color .3s ease; }
+  .al-bars i:hover { background: var(--accent); }
+  .al-bars i.zero { height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--text) 14%, transparent); }
+  .al-bars-axis { display: flex; justify-content: space-between; margin-top: -4px; font-size: 11.5px; color: var(--text-dim); }
+
+  .al-tools { display: flex; flex-direction: column; gap: 10px; }
+  .al-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 0 12px; color: var(--text-dim); background: var(--card); transition: border-color .25s ease, box-shadow .25s ease; }
+  .al-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .al-search input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13.5px; padding: 9px 0; min-width: 0; }
+  .al-chips { gap: 6px; }
+  .al-chip { padding: 6px 12px; font-size: 12.5px; }
+  .al-chip b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .al-timeline { display: flex; flex-direction: column; gap: 6px; }
+  .al-group[hidden], .al-row[hidden], .al-none[hidden] { display: none; }
+  .al-group h3 { margin: 10px 0 4px; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+  .al-rows { display: flex; flex-direction: column; }
+  .al-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 11px 6px; border-radius: 10px; transition: background-color .3s ease; }
   .al-row + .al-row { border-top: 1px solid var(--border-soft); }
-  .al-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); transition: transform var(--m-fast) var(--m-out); }
-  .al-row:hover .al-icon { transform: scale(1.12); }
+  .al-row:hover { background: var(--card-hover); }
+  .al-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
   .al-body { min-width: 0; }
   .al-summary { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
-  .al-summary :global(b){ color: var(--text); }
+  .al-summary :global(b) { color: var(--text); }
   .al-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
-  .al-target, .al-reason { display: block; width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--bg-raise); color: var(--text-muted); font-size: 11.5px; }
+  .al-target, .al-reason { display: block; width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border: 1px solid var(--border-soft); border-radius: 999px; background: var(--bg-raise); color: var(--text-muted); font-size: 11.5px; }
   .al-reason { color: var(--text-dim); font-style: italic; }
   .al-time { padding-top: 5px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); white-space: nowrap; }
+  @keyframes al-grow { from { transform: scaleX(0); } to { transform: none; } }
+  @keyframes al-rise { from { transform: scaleY(0); } to { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .al-track i, .al-bars i { animation: none; } }
 
-  @media (max-width: 520px) {
-    .al-stats { gap: 8px; }
-    .al-stat { padding: 10px 12px; }
-    .al-stat b { font-size: 18px; }
-    .al-row { grid-template-columns: 28px minmax(0, 1fr); padding: 11px 14px; }
+  /* Narrow: the summaries come first, side by side, then the list. */
+  @media (max-width: 1180px) {
+    .al-grid { grid-template-columns: minmax(0, 1fr); }
+    .al-main, .al-side { grid-column: 1; }
+    .al-side { grid-row: 1; position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .al-main { grid-row: 2; }
+  }
+  @media (max-width: 560px) {
+    .al-side > :global(.sx-panel:nth-child(3)) { display: none; }
+    .al-row { grid-template-columns: 28px minmax(0, 1fr); padding-inline: 2px; }
     .al-time { grid-column: 2; padding-top: 0; }
   }
 </style>

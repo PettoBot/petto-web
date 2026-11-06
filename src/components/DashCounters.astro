@@ -6,6 +6,11 @@ import DashChartTip from './DashChartTip.astro';
 import { chartTipJson } from '../utils/chartTip';
 import { COUNTER_FORMATS, PRESENCE_TYPES, renderCounterName, shownName, timeValue } from '../utils/counters';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
+import DurationScript from './DurationScript.astro';
+import SxNumber from './SxNumber.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 
 const dashLang = getDashLang(Astro);
@@ -76,9 +81,12 @@ const packs: { id: string; title: string; icon: string; types: string[] }[] = [
 const formatLabels: Record<string, string> = { plain: '1234', grouped: dashLang === 'en' ? '1,234' : '1.234', compact: dashLang === 'en' ? '1.2k' : '1,2k' };
 const kindLabels: Record<string, string> = { voice: dt('Voice channel (locked)'), text: dt('Text channel name'), topic: dt('Text channel topic'), category: dt('Category name'), stage: dt('Stage channel'), announce: dt('Announcement channel') };
 const kindIcon: Record<string, string> = { voice: 'ph:speaker-high-fill', text: 'ph:hash-bold', category: 'ph:folder-simple-fill', stage: 'ph:broadcast-fill', announce: 'ph:megaphone-fill', topic: 'ph:text-align-left-bold' };
+// How many counters of each kind the server has (the small tags next to the title of the list).
+const kindShort: Record<string, string> = { voice: labels.voice_channels, text: labels.text_channels, category: labels.categories, stage: labels.staging_channels, announce: labels.announcement_channels, topic: kindLabels.topic };
 // Where the value shows: a topic keeps what is written, a text channel's name is lower case with hyphens.
 const shownKind = (c: { kind: string; target: string }) => (c.target === 'topic' ? 'topic' : c.kind);
 const roleName = new Map(roles.map((r) => [r.id, r.name]));
+const kindCounts = Object.entries(counters.reduce<Record<string, number>>((acc, c) => { const k = shownKind(c); acc[k] = (acc[k] ?? 0) + 1; return acc; }, {})).map(([k, n]) => [kindShort[k] ?? k, n] as [string, number]);
 // Without the bot's numbers the previews use what Discord tells the website: the member count, and examples for the rest.
 const sample: Record<string, number | string> = values ?? { members: approxMembers || 1234, goal: approxMembers || 1234 };
 const valueOf = (type: string, roleId: string | null) => (type === 'role_online' ? (roleId ? roleOnlineCounts[roleId] ?? 0 : 0) : type === 'role_members' ? (roleId ? roleCounts[roleId] ?? 0 : 0) : type === 'clock' || type === 'date' ? timeValue(type, 'UTC', dashLang) : sample[type] ?? 0);
@@ -119,10 +127,14 @@ const badgeText: Record<string, string> = {
 };
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="counters" pageTitle={dt('Counters')}>
-  <div class="cn" data-counters data-config={JSON.stringify(config)} data-waiting={waitingText}>
+  <DashSettingsKit />
+  <DashFormKit />
+  <DurationScript />
+  <div class="sx-page cn" data-counters data-config={JSON.stringify(config)} data-waiting={waitingText}>
     <header class="cn-head">
       <div>
         <h1>{dt('Counters')}</h1>
+        <p class="cn-lead">{dt('Channels whose name shows a number, like the members of the server. Petto keeps them up to date.')}</p>
       </div>
       <div class="cn-head-actions">
         {counters.length > 0 && (
@@ -132,18 +144,25 @@ const badgeText: Record<string, string> = {
     </header>
     <DashAcData roles={roles} channels={textChannels} />
 
-    {message && <div class:list={['cn-flash', { 'cn-flash-err': message.kind === 'err' }]} role="status"><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
-    {!values && livePending && <div class="cn-flash cn-flash-wait" role="status"><Icon name="ph:hourglass-medium-fill" width="15" height="15" />{dt('Loading the live numbers from Petto...')}</div>}
-    {!values && !livePending && <div class="cn-flash cn-flash-warn"><Icon name="ph:plug-fill" width="15" height="15" />{dt('Petto did not answer, so the previews use sample numbers. Creating counters needs Petto online.')}</div>}
+    {message && <div class:list={['sx-flash', { 'sx-flash-bad': message.kind === 'err' }]} role="status"><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
+    {!values && livePending && <div class="sx-flash cn-flash-wait" role="status"><Icon name="ph:hourglass-medium-fill" width="15" height="15" />{dt('Loading the live numbers from Petto...')}</div>}
+    {!values && !livePending && <div class="sx-flash sx-flash-warn"><Icon name="ph:plug-fill" width="15" height="15" />{dt('Petto did not answer, so the previews use sample numbers. Creating counters needs Petto online.')}</div>}
 
-    <div class="cn-stats">
-      <div class="cn-stat"><b>{counters.length}{limits && <small>/{limits.max}</small>}</b><span>{dt('Counters')}</span></div>
-      <div class="cn-stat"><b>{counters.filter((c) => c.enabled && !c.problem).length}</b><span>{dt('Working')}</span></div>
-      <div class="cn-stat"><b>{values ? Number(values.members ?? 0).toLocaleString(dashLang) : approxMembers ? `~${approxMembers.toLocaleString(dashLang)}` : '—'}</b><span>{dt('Members now')}</span></div>
-      <div class="cn-stat"><b>{values && presences ? Number(values.online ?? 0).toLocaleString(dashLang) : '—'}</b><span>{dt('Online now')}</span></div>
-      <figure class="cn-stat cn-spark" data-spark aria-label={dt('Members, last 30 days')}>
-        <figcaption><span>{dt('Members, last 30 days')}</span>{spark && <b class:list={['cn-spark-change', { up: spark.change > 0, down: spark.change < 0 }]}>{spark.change > 0 ? '+' : ''}{spark.change.toLocaleString(dashLang)}</b>}</figcaption>
-        {spark ? (
+    <DashStatTiles tiles={[
+      { label: dt('Counters'), value: counters.length, text: limits ? `${counters.length} / ${limits.max}` : undefined, tone: 'voice' },
+      { label: dt('Working'), value: counters.filter((c) => c.enabled && !c.problem).length, tone: 'joins' },
+      values ? { label: dt('Members now'), value: Number(values.members ?? 0) || 0, tone: 'messages' as const } : { label: dt('Members now'), value: 0, text: approxMembers ? `~${approxMembers.toLocaleString(dashLang)}` : '—', tone: 'messages' as const },
+      values && presences ? { label: dt('Online now'), value: Number(values.online ?? 0) || 0, tone: 'invites' as const } : { label: dt('Online now'), value: 0, text: '—', tone: 'invites' as const },
+    ]} />
+
+    <figure class="sx-panel cn-spark" data-spark aria-label={dt('Members, last 30 days')}>
+      <div class="sx-panel-head">
+        <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:chart-line-up-fill" width="17" height="17" /></span>
+        <h2>{dt('Members, last 30 days')}</h2>
+        {spark && <b class:list={['cn-spark-change', { up: spark.change > 0, down: spark.change < 0 }]}>{spark.change > 0 ? '+' : ''}{spark.change.toLocaleString(dashLang)}</b>}
+      </div>
+      {spark ? (
+        <>
           <div class="cn-spark-plot" data-ct data-ct-place="above" tabindex="0" role="group" aria-label={dt('Members, last 30 days')}>
             <svg viewBox={`0 0 ${spark.W} ${spark.H}`} preserveAspectRatio="none" role="img" aria-label={dt('From {a} on {b} to {c} on {d}', { a: spark.first.members.toLocaleString(dashLang), b: dayLabel(spark.first.day), c: spark.last.members.toLocaleString(dashLang), d: dayLabel(spark.last.day) })}>
               <polygon points={spark.area} class="cn-spark-area" />
@@ -152,37 +171,147 @@ const badgeText: Record<string, string> = {
             <i class="ct-guide" data-ct-guide></i>
             <i class="ct-dot" data-ct-dot style="--ct-c:var(--accent)"></i>
             <div class="ct-tip cn-spark-tip" data-ct-box><span data-ct-f="label"></span></div>
-                        <script type="application/json" data-ct-data set:html={chartTipJson(spark.points.map((pt) => ({ x: pt.x / spark.W, y: [pt.y / spark.H], f: { label: `${dayLabel(pt.day)}: ${pt.members.toLocaleString(dashLang)}` } })))}></script>
+            <script type="application/json" data-ct-data set:html={chartTipJson(spark.points.map((pt) => ({ x: pt.x / spark.W, y: [pt.y / spark.H], f: { label: `${dayLabel(pt.day)}: ${pt.members.toLocaleString(dashLang)}` } })))}></script>
             <DashChartTip />
           </div>
-        ) : <p class="cn-hint">{dt('Petto saves the members once a day; the line shows up after the second day.')}</p>}
-        {spark && (
+          <div class="cn-spark-axis" aria-hidden="true"><span>{dayLabel(spark.first.day)} · {spark.first.members.toLocaleString(dashLang)}</span><span>{dayLabel(spark.last.day)} · {spark.last.members.toLocaleString(dashLang)}</span></div>
           <table class="cn-sr">
             <caption>{dt('Members, last 30 days')}</caption>
             <tbody>{memberDays.map((d) => <tr><th scope="row">{dayLabel(d.day)}</th><td>{d.members.toLocaleString(dashLang)}</td></tr>)}</tbody>
           </table>
-        )}
-      </figure>
-    </div>
+        </>
+      ) : <p class="sx-empty"><Icon name="ph:chart-line-up-fill" width="16" height="16" />{dt('Petto saves the members once a day; the line shows up after the second day.')}</p>}
+    </figure>
 
     {counters.length === 0 && (
-      <div class="cn-empty">
+      <section class="sx-panel cn-empty">
         <div class="cn-empty-art" aria-hidden="true">
           <div class="cn-fake"><Icon name="ph:folder-simple-fill" width="13" height="13" /><span>{dt('📊 Server stats')}</span></div>
           {['members', 'users_only', 'bots_only'].map((type, i) => (
             <div class="cn-fake cn-fake-ch" style={`--i:${i}`}><Icon name="ph:speaker-high-fill" width="13" height="13" /><span>{nameOf({ type, template: defaults[type], format: 'grouped', goal: null, timezone: null, roleId: null })}</span></div>
           ))}
         </div>
-        <div>
+        <div class="cn-empty-text">
           <h2>{dt('Start with the server stats')}</h2>
           <p>{dt('One click makes a "Server stats" category with Members, Humans and Bots, in voice channels everyone can see and nobody can join.')}</p>
           <form method="POST" data-no-dirty><input type="hidden" name="action" value="setup" /><button class="btn btn-accent btn-sm" type="submit" data-no-dirty disabled={!values}><Icon name="ph:lightning-fill" width="13" height="13" />{dt('Quick setup')}</button></form>
         </div>
-      </div>
+      </section>
     )}
 
-    <section class="cn-packs" aria-label={dt('Packs')}>
-      <h2 class="cn-packs-title"><Icon name="ph:sparkle-fill" width="14" height="14" />{dt('Packs')}<span>{dt('One click adds a category with ready counters. What the server already counts is skipped.')}</span></h2>
+    {counters.length > 0 && (
+      <section class="cn-listbox" aria-labelledby="cn-list-title">
+        <div class="cn-sec-head">
+          <h2 id="cn-list-title">{dt('Your counters')}</h2>
+          {kindCounts.map(([label, n]) => <span class="sx-tag">{label} {n}</span>)}
+        </div>
+        <p class="sx-hint cn-list-hint" id="cn-order-hint"><Icon name="ph:dots-six-vertical-bold" width="12" height="12" />{dt('Drag the handle (or use the arrows) to change the order; Petto moves the channels in Discord to match. Click a name to edit it in place.')}</p>
+        <div class="cn-order-status" role="status" aria-live="polite" data-order-status></div>
+        <div class="cn-list dgl-stagger" aria-label={dt('Counters')} data-counter-list>
+          {counters.map((c, index) => {
+            // A name that comes out empty (a template of spaces, a value not read yet) shows what the counter counts instead of a blank chip.
+            const name = nameOf(c).trim() || (labels[c.type] ?? c.type);
+            const kind = shownKind(c);
+            const status = c.problem ? 'problem' : !c.enabled ? 'off' : c.currentName !== null && shownName(name, kind) !== c.currentName ? 'waiting' : 'ok';
+            return (
+              <article class:list={['cn-item', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={kind} data-base-kind={c.kind} data-channel={c.channelId}
+                data-template-now={c.template} data-type-now={c.type} data-format-now={c.format} data-goal-now={c.goal ?? ''} data-zone-now={c.timezone ?? ''} data-role-now={c.roleId ?? ''} data-target={c.target}>
+                <div class="cn-top">
+                  <div class="cn-order">
+                    <button type="button" class="cn-handle" data-drag-handle aria-label={dt('Drag to reorder')} aria-describedby="cn-order-hint"><Icon name="ph:dots-six-vertical-bold" width="14" height="14" /></button>
+                    <span class="cn-arrows">
+                      <button type="button" data-move="-1" aria-label={dt('Move up')} disabled={index === 0}><Icon name="ph:caret-up-bold" width="11" height="11" /></button>
+                      <button type="button" data-move="1" aria-label={dt('Move down')} disabled={index === counters.length - 1}><Icon name="ph:caret-down-bold" width="11" height="11" /></button>
+                    </span>
+                  </div>
+                  <div class="cn-channel">
+                    <Icon name={kindIcon[kind] ?? kindIcon.voice} width="15" height="15" />
+                    <span class="cn-name-wrap" data-label={labels[c.type] ?? c.type}>
+                      {c.target === 'topic' && c.channelName && <small class="cn-topic-of"># {c.channelName}</small>}
+                      <button type="button" class="cn-name" data-preview-out data-inline-edit title={dt('Click to edit the name')}>{shownName(name, kind)}</button>
+                      <span class="cn-inline" data-inline-box hidden>
+                        <input type="text" maxlength={c.target === 'topic' ? 500 : 100} value={c.template} aria-label={c.target === 'topic' ? dt('Topic') : dt('Name')} data-inline-input />
+                        <small data-inline-preview></small>
+                        <small class="cn-inline-help">{dt('Enter saves, Esc cancels')}</small>
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                <div class="cn-meta">
+                  <span class="cn-type">{labels[c.type] ?? c.type}</span>
+                  {status === 'ok' && <span class="cn-pill cn-pill-ok"><Icon name="ph:check-circle-fill" width="12" height="12" />{dt('Up to date')}</span>}
+                  {status === 'waiting' && <span class="cn-pill cn-pill-wait"><Icon name="ph:hourglass-medium-fill" width="12" height="12" />{c.nextRenameAt ? <span data-countdown={c.nextRenameAt}>{dt('Waiting for Discord')}</span> : dt('Updating')}</span>}
+                  {status === 'off' && <span class="cn-pill"><Icon name="ph:pause-fill" width="12" height="12" />{dt('Off')}</span>}
+                  {status === 'problem' && <span class="cn-pill cn-pill-err"><Icon name="ph:warning-fill" width="12" height="12" />{problems[c.problem ?? ''] ?? dt('The last rename failed.')}</span>}
+                  {c.currentName && status === 'waiting' && <span class="cn-now">{dt('Now: {a}', { a: c.currentName })}</span>}
+                </div>
+                <div class="cn-times">
+                  <span><Icon name="ph:clock-counter-clockwise-fill" width="12" height="12" />{c.lastUpdatedAt ? <span data-ago={c.lastUpdatedAt}>{dt('Updated')}</span> : dt('Not renamed yet')}</span>
+                  {c.enabled && !c.problem && (
+                    <span><Icon name="ph:clock-countdown-fill" width="12" height="12" />{c.queued ? dt('Next update: now') : c.nextRenameAt ? <span data-next={c.nextRenameAt}>{dt('Next update')}</span> : c.nextCheckAt ? <span data-next={c.nextCheckAt} data-next-check>{dt('Next check')}</span> : dt('Updates when the number changes')}</span>
+                  )}
+                  {c.badges.filter((b) => badgeText[b]).map((b) => <span class:list={['cn-pill', b === 'rate_limited' ? 'cn-pill-wait' : 'cn-pill-warn']}><Icon name="ph:warning-fill" width="12" height="12" />{badgeText[b]}</span>)}
+                  {c.renamesLeft !== null && c.enabled && <span class="cn-budget" title={dt('Renames left in the current 10 minutes')}>{[0, 1].map((n) => <i class:list={{ used: n >= (c.renamesLeft ?? 2) }} />)}</span>}
+                </div>
+                <div class="cn-row-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" data-edit-toggle aria-expanded="false"><Icon name="ph:pencil-simple-bold" width="13" height="13" />{dt('Edit')}</button>
+                  <form method="POST" data-no-dirty data-bot-wait><input type="hidden" name="action" value="refresh" /><input type="hidden" name="channel_id" value={c.channelId} /><button class="btn btn-ghost btn-sm" type="submit" data-no-dirty disabled={!c.exists}><Icon name="ph:arrows-clockwise-bold" width="13" height="13" />{dt('Refresh now')}</button></form>
+                </div>
+                <details class="cn-edit">
+                  <summary hidden>{dt('Edit')}</summary>
+                  <form method="POST" class="cn-form" data-counter-form>
+                    <input type="hidden" name="action" value="save" /><input type="hidden" name="channel_id" value={c.channelId} />
+                    <input type="hidden" name="category_changed" value="0" data-category-changed />
+                    <div class="sx-grid">
+                      <div class="sx-field"><label for={`cn-type-${c.id}`}>{dt('Shows')}</label>
+                        <select id={`cn-type-${c.id}`} name="type" data-type>{groups.map((g) => <optgroup label={g.label}>{g.types.map((type) => <option value={type} selected={type === c.type}>{labels[type]}</option>)}</optgroup>)}</select>
+                      </div>
+                      <div class="sx-field"><label for={`cn-cat-${c.id}`}>{dt('Category')}</label>
+                        <select id={`cn-cat-${c.id}`} name="category_id" data-category><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id} selected={cat.id === c.parentId}>{cat.name}</option>)}</select>
+                      </div>
+                      <div class="sx-field sx-wide"><label for={`cn-tpl-${c.id}`}>{c.target === 'topic' ? dt('Topic') : dt('Name')}</label>
+                        <textarea id={`cn-tpl-${c.id}`} name="template" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength={c.target === 'topic' ? 500 : 100} data-template data-default={defaults[c.type]}>{c.template}</textarea>
+                      </div>
+                      <div class="cn-chips sx-wide" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
+                      {(c.kind === 'text' || c.kind === 'announce') && (
+                        <div class="sx-field sx-wide"><span class="sx-label">{dt('Shows the value in')}</span>
+                          <div class="sx-chips" role="radiogroup" aria-label={dt('Shows the value in')}>
+                            <label class="sx-chip"><input type="radio" name="target" value="name" data-target checked={c.target !== 'topic'} /><span>{dt('The channel name')}</span></label>
+                            <label class="sx-chip"><input type="radio" name="target" value="topic" data-target checked={c.target === 'topic'} /><span>{dt('The channel topic')}</span></label>
+                          </div>
+                        </div>
+                      )}
+                      <div class="sx-field sx-wide"><span class="sx-label">{dt('Number format')}</span>
+                        <div class="sx-chips" role="radiogroup" aria-label={dt('Number format')}>{COUNTER_FORMATS.map((f) => <label class="sx-chip"><input type="radio" name="format" value={f} checked={c.format === f} /><span>{formatLabels[f]}</span></label>)}</div>
+                      </div>
+                      <div class="sx-field" data-when="role_members role_online"><label for={`cn-role-${c.id}`}>{dt('Role')}</label>
+                        <select id={`cn-role-${c.id}`} name="role_id"><option value="">{dt('Pick a role')}</option>{roles.map((r) => <option value={r.id} selected={r.id === c.roleId}>{r.name}</option>)}</select>
+                      </div>
+                      <div class="sx-field" data-when="goal"><label for={`cn-goal-${c.id}`}>{dt('Goal (empty: the next round number)')}</label><SxNumber id={`cn-goal-${c.id}`} name="goal" min="1" value={c.goal ?? ''} placeholder="500" /></div>
+                      <div class="sx-field" data-when="clock date"><label for={`cn-zone-${c.id}`}>{dt('Time zone')}</label><input id={`cn-zone-${c.id}`} type="text" name="timezone" value={c.timezone ?? ''} placeholder="Europe/Madrid" list="cn-zones" /></div>
+                    </div>
+                    <div class="sx-switches cn-one"><label class="sx-switch"><input type="checkbox" name="enabled" checked={c.enabled} /><span class="sx-switch-text"><b>{dt('Keep it updated')}</b></span><i class="sx-toggle"></i></label></div>
+                    <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(name, kind)}</b></div>
+                    <div class="cn-actions"><button class="btn btn-accent btn-sm" type="submit"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save counter')}</button></div>
+                  </form>
+                  <form method="POST" class="cn-delete" data-no-dirty><input type="hidden" name="action" value="delete" /><input type="hidden" name="channel_id" value={c.channelId} />
+                    <label class="sx-chip cn-delchip"><input type="checkbox" name="delete_channel" checked={c.exists} disabled={!c.exists} /><span>{dt('Also delete the channel')}</span></label>
+                    <button class="cn-del" type="submit" data-no-dirty data-confirm={dt('Delete this counter?')}><Icon name="ph:trash-fill" width="13" height="13" />{dt('Delete')}</button>
+                  </form>
+                </details>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    )}
+
+    <details class="dfx-acc cn-packs" open={counters.length === 0}>
+      <summary>
+        <span class="sx-panel-icon" style="--c:#f0a88f"><Icon name="ph:sparkle-fill" width="17" height="17" /></span>
+        <span class="dfx-acc-title"><b>{dt('Packs')}</b><em>{dt('One click adds a category with ready counters. What the server already counts is skipped.')}</em></span>
+        <Icon name="ph:caret-down" class="dfx-caret" width="16" height="16" />
+      </summary>
       <div class="cn-pack-grid">
         {packs.map((pack, i) => {
           const missing = pack.types.filter((type) => type === 'goal' || !counted.has(type));
@@ -196,138 +325,43 @@ const badgeText: Record<string, string> = {
           );
         })}
       </div>
-    </section>
+    </details>
 
-    {counters.length > 0 && (
-      <p class="cn-hint cn-list-hint" id="cn-order-hint"><Icon name="ph:dots-six-vertical-bold" width="12" height="12" />{dt('Drag the handle (or use the arrows) to change the order; Petto moves the channels in Discord to match. Click a name to edit it in place.')}</p>
-      <div class="cn-order-status" role="status" aria-live="polite" data-order-status></div>
-      <div class="cn-list" aria-label={dt('Counters')} data-counter-list>
-        {counters.map((c, index) => {
-          // A name that comes out empty (a template of spaces, a value not read yet) shows what the counter counts instead of a blank chip.
-          const name = nameOf(c).trim() || (labels[c.type] ?? c.type);
-          const kind = shownKind(c);
-          const status = c.problem ? 'problem' : !c.enabled ? 'off' : c.currentName !== null && shownName(name, kind) !== c.currentName ? 'waiting' : 'ok';
-          return (
-            <article class:list={['cn-card', `cn-${status}`]} style={`--i:${index}`} data-counter-card data-kind={kind} data-base-kind={c.kind} data-channel={c.channelId}
-              data-template-now={c.template} data-type-now={c.type} data-format-now={c.format} data-goal-now={c.goal ?? ''} data-zone-now={c.timezone ?? ''} data-role-now={c.roleId ?? ''} data-target={c.target}>
-              <div class="cn-card-top">
-                <div class="cn-order">
-                  <button type="button" class="cn-handle" data-drag-handle aria-label={dt('Drag to reorder')} aria-describedby="cn-order-hint"><Icon name="ph:dots-six-vertical-bold" width="14" height="14" /></button>
-                  <span class="cn-arrows">
-                    <button type="button" data-move="-1" aria-label={dt('Move up')} disabled={index === 0}><Icon name="ph:caret-up-bold" width="11" height="11" /></button>
-                    <button type="button" data-move="1" aria-label={dt('Move down')} disabled={index === counters.length - 1}><Icon name="ph:caret-down-bold" width="11" height="11" /></button>
-                  </span>
-                </div>
-                <div class="cn-channel">
-                  <Icon name={kindIcon[kind] ?? kindIcon.voice} width="15" height="15" />
-                  <span class="cn-name-wrap" data-label={labels[c.type] ?? c.type}>
-                    {c.target === 'topic' && c.channelName && <small class="cn-topic-of"># {c.channelName}</small>}
-                    <button type="button" class="cn-name" data-preview-out data-inline-edit title={dt('Click to edit the name')}>{shownName(name, kind)}</button>
-                    <span class="cn-inline" data-inline-box hidden>
-                      <input type="text" maxlength={c.target === 'topic' ? 500 : 100} value={c.template} aria-label={c.target === 'topic' ? dt('Topic') : dt('Name')} data-inline-input />
-                      <small data-inline-preview></small>
-                      <small class="cn-inline-help">{dt('Enter saves, Esc cancels')}</small>
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div class="cn-meta">
-                <span class="cn-type">{labels[c.type] ?? c.type}</span>
-                {status === 'ok' && <span class="cn-pill cn-pill-ok"><Icon name="ph:check-circle-fill" width="12" height="12" />{dt('Up to date')}</span>}
-                {status === 'waiting' && <span class="cn-pill cn-pill-wait"><Icon name="ph:hourglass-medium-fill" width="12" height="12" />{c.nextRenameAt ? <span data-countdown={c.nextRenameAt}>{dt('Waiting for Discord')}</span> : dt('Updating')}</span>}
-                {status === 'off' && <span class="cn-pill"><Icon name="ph:pause-fill" width="12" height="12" />{dt('Off')}</span>}
-                {status === 'problem' && <span class="cn-pill cn-pill-err"><Icon name="ph:warning-fill" width="12" height="12" />{problems[c.problem ?? ''] ?? dt('The last rename failed.')}</span>}
-                {c.currentName && status === 'waiting' && <span class="cn-now">{dt('Now: {a}', { a: c.currentName })}</span>}
-              </div>
-              <div class="cn-times">
-                <span><Icon name="ph:clock-counter-clockwise-fill" width="12" height="12" />{c.lastUpdatedAt ? <span data-ago={c.lastUpdatedAt}>{dt('Updated')}</span> : dt('Not renamed yet')}</span>
-                {c.enabled && !c.problem && (
-                  <span><Icon name="ph:clock-countdown-fill" width="12" height="12" />{c.queued ? dt('Next update: now') : c.nextRenameAt ? <span data-next={c.nextRenameAt}>{dt('Next update')}</span> : c.nextCheckAt ? <span data-next={c.nextCheckAt} data-next-check>{dt('Next check')}</span> : dt('Updates when the number changes')}</span>
-                )}
-                {c.badges.filter((b) => badgeText[b]).map((b) => <span class:list={['cn-pill', b === 'rate_limited' ? 'cn-pill-wait' : 'cn-pill-warn']}><Icon name="ph:warning-fill" width="12" height="12" />{badgeText[b]}</span>)}
-                {c.renamesLeft !== null && c.enabled && <span class="cn-budget" title={dt('Renames left in the current 10 minutes')}>{[0, 1].map((n) => <i class:list={{ used: n >= (c.renamesLeft ?? 2) }} />)}</span>}
-              </div>
-              <details class="cn-edit">
-                <summary class="btn btn-ghost btn-sm"><Icon name="ph:pencil-simple-bold" width="13" height="13" />{dt('Edit')}</summary>
-                <form method="POST" class="cn-form" data-counter-form>
-                  <input type="hidden" name="action" value="save" /><input type="hidden" name="channel_id" value={c.channelId} />
-                  <input type="hidden" name="category_changed" value="0" data-category-changed />
-                  <div class="cn-grid">
-                    <label class="cn-field"><span>{dt('Shows')}</span>
-                      <select name="type" data-type>{groups.map((g) => <optgroup label={g.label}>{g.types.map((type) => <option value={type} selected={type === c.type}>{labels[type]}</option>)}</optgroup>)}</select>
-                    </label>
-                    <label class="cn-field cn-span"><span>{c.target === 'topic' ? dt('Topic') : dt('Name')}</span>
-                      <input type="text" name="template" value={c.template} maxlength={c.target === 'topic' ? 500 : 100} data-template data-default={defaults[c.type]} />
-                    </label>
-                    {(c.kind === 'text' || c.kind === 'announce') && (
-                      <label class="cn-field"><span>{dt('Shows the value in')}</span>
-                        <select name="target" data-target><option value="name" selected={c.target !== 'topic'}>{dt('The channel name')}</option><option value="topic" selected={c.target === 'topic'}>{dt('The channel topic')}</option></select>
-                      </label>
-                    )}
-                    <div class="cn-chips cn-span" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
-                    <fieldset class="cn-field cn-seg"><legend>{dt('Number format')}</legend>
-                      {COUNTER_FORMATS.map((f) => <label><input type="radio" name="format" value={f} checked={c.format === f} /><span>{formatLabels[f]}</span></label>)}
-                    </fieldset>
-                    <label class="cn-field" data-when="role_members role_online"><span>{dt('Role')}</span>
-                      <select name="role_id"><option value="">{dt('Pick a role')}</option>{roles.map((r) => <option value={r.id} selected={r.id === c.roleId}>{r.name}</option>)}</select>
-                    </label>
-                    <label class="cn-field" data-when="goal"><span>{dt('Goal (empty: the next round number)')}</span><input type="number" name="goal" min="1" value={c.goal ?? ''} placeholder="500" /></label>
-                    <label class="cn-field" data-when="clock date"><span>{dt('Time zone')}</span><input type="text" name="timezone" value={c.timezone ?? ''} placeholder="Europe/Madrid" list="cn-zones" /></label>
-                    <label class="cn-field"><span>{dt('Category')}</span>
-                      <select name="category_id" data-category><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id} selected={cat.id === c.parentId}>{cat.name}</option>)}</select>
-                    </label>
-                    <label class="cn-switch cn-span"><input type="checkbox" name="enabled" checked={c.enabled} /><span>{dt('Keep it updated')}</span></label>
-                  </div>
-                  <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(name, kind)}</b></div>
-                  <div class="cn-actions"><button class="btn btn-accent btn-sm" type="submit"><Icon name="ph:check-bold" width="13" height="13" />{dt('Save counter')}</button></div>
-                </form>
-              </details>
-              <div class="cn-card-actions">
-                <form method="POST" data-no-dirty data-bot-wait><input type="hidden" name="action" value="refresh" /><input type="hidden" name="channel_id" value={c.channelId} /><button class="btn btn-ghost btn-sm" type="submit" data-no-dirty disabled={!c.exists}><Icon name="ph:arrows-clockwise-bold" width="13" height="13" />{dt('Refresh now')}</button></form>
-                <form method="POST" class="cn-delete" data-no-dirty><input type="hidden" name="action" value="delete" /><input type="hidden" name="channel_id" value={c.channelId} />
-                  <label class="cn-check"><input type="checkbox" name="delete_channel" checked={c.exists} disabled={!c.exists} />{dt('Also delete the channel')}</label>
-                  <button class="cn-del" type="submit" data-no-dirty data-confirm={dt('Delete this counter?')}><Icon name="ph:trash-fill" width="13" height="13" />{dt('Delete')}</button>
-                </form>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    )}
-
-    <section class="cn-create cn-announce" id="announce" aria-labelledby="cn-announce-title">
-      <h2 id="cn-announce-title"><Icon name="ph:megaphone-fill" width="17" height="17" />{dt('Milestone announcements')}</h2>
-      <p class="cn-hint cn-announce-sub">{dt('A message when the server reaches the goal of a goal counter, and if you want every N members. The same number is never announced twice.')}</p>
+    <section class="sx-panel cn-announce" id="announce" aria-labelledby="cn-announce-title">
+      <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#ffb86c"><Icon name="ph:megaphone-fill" width="17" height="17" /></span><h2 id="cn-announce-title">{dt('Milestone announcements')}</h2></div>
+      <p class="sx-lead">{dt('A message when the server reaches the goal of a goal counter, and if you want every N members. The same number is never announced twice.')}</p>
       <form method="POST" class="cn-form" data-announce-form>
         <input type="hidden" name="action" value="announce" />
-        <div class="cn-grid">
-          <label class="cn-switch cn-span"><input type="checkbox" name="enabled" checked={announce ? announce.enabled : true} /><span>{dt('Announce milestones')}</span></label>
-          <label class="cn-field"><span>{dt('Channel')}</span>
-            <select name="channel_id"><option value="">{dt('Pick a channel')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === announce?.channelId}># {ch.name}</option>)}</select>
-          </label>
-          <label class="cn-field"><span>{dt('Every N members (empty: only goals)')}</span><input type="number" name="every" min="1" step="1" value={announce?.every ?? ''} placeholder="100" data-every /></label>
-          <label class="cn-switch cn-span"><input type="checkbox" name="use_goals" checked={announce ? announce.useGoals : true} /><span>{dt('When a goal counter reaches its goal')}</span></label>
-          <label class="cn-field cn-span"><span>{dt('Saved embed (optional)')}</span>
-            <select name="embed_name" data-embed><option value="">{dt('No embed: send the text')}</option>{embedNames.map((name) => <option value={name} selected={name === announce?.embedName}>{name}</option>)}</select>
-          </label>
-          <label class="cn-field cn-span" data-text-only><span>{dt('Message')}</span>
-            <textarea class="dgl-autogrow" name="message" rows="3" maxlength="2000" placeholder={announceDefault} data-announce-text data-ac="roles,channels,emojis">{announce?.message ?? ''}</textarea><SilentMentionHint />
-          </label>
-          <div class="cn-chips cn-span" data-text-only>{['{count}', '{goal}', '{server}'].map((v) => <button type="button" class="cn-chip" data-insert-announce={v}>{v}</button>)}</div>
-          <p class="cn-hint cn-span" data-embed-only hidden>{dt('The saved embed can use {counter.count}, {counter.goal} and {counter.server}.')}</p>
+        <div class="sx-switches">
+          <label class="sx-switch"><input type="checkbox" name="enabled" checked={announce ? announce.enabled : true} /><span class="sx-switch-text"><b>{dt('Announce milestones')}</b></span><i class="sx-toggle"></i></label>
+          <label class="sx-switch"><input type="checkbox" name="use_goals" checked={announce ? announce.useGoals : true} /><span class="sx-switch-text"><b>{dt('When a goal counter reaches its goal')}</b></span><i class="sx-toggle"></i></label>
+        </div>
+        <div class="sx-grid">
+          <div class="sx-field"><label for="cn-an-channel">{dt('Channel')}</label>
+            <select id="cn-an-channel" name="channel_id"><option value="">{dt('Pick a channel')}</option>{textChannels.map((ch) => <option value={ch.id} selected={ch.id === announce?.channelId}># {ch.name}</option>)}</select>
+          </div>
+          <div class="sx-field"><label for="cn-an-every">{dt('Every N members (empty: only goals)')}</label><SxNumber id="cn-an-every" name="every" min="1" step="1" value={announce?.every ?? ''} placeholder="100" data-every /></div>
+          <div class="sx-field sx-wide"><label for="cn-an-embed">{dt('Saved embed (optional)')}</label>
+            <select id="cn-an-embed" name="embed_name" data-embed><option value="">{dt('No embed: send the text')}</option>{embedNames.map((name) => <option value={name} selected={name === announce?.embedName}>{name}</option>)}</select>
+          </div>
+          <div class="sx-field sx-wide" data-text-only><label for="cn-an-message">{dt('Message')}</label>
+            <textarea id="cn-an-message" class="dgl-autogrow" name="message" rows="3" maxlength="2000" data-count placeholder={announceDefault} data-announce-text data-ac="roles,channels,emojis">{announce?.message ?? ''}</textarea><SilentMentionHint />
+          </div>
+          <div class="cn-chips sx-wide" data-text-only>{['{count}', '{goal}', '{server}'].map((v) => <button type="button" class="cn-chip" data-insert-announce={v}>{v}</button>)}</div>
+          <p class="sx-hint sx-wide" data-embed-only hidden>{dt('The saved embed can use {counter.count}, {counter.goal} and {counter.server}.')}</p>
         </div>
         <div class="cn-preview cn-announce-preview" aria-live="polite" data-text-only><span>{dt('Preview')}</span><b data-announce-preview></b></div>
         <div class="cn-actions">
           <button class="btn btn-accent btn-sm" type="submit" data-no-dirty><Icon name="ph:check-bold" width="13" height="13" />{dt('Save announcements')}</button>
           <button class="btn btn-ghost btn-sm" type="submit" name="action" value="announce_test" data-no-dirty disabled={!values}><Icon name="ph:megaphone-fill" width="13" height="13" />{dt('Save and send a test')}</button>
-          {announce && <span class="cn-hint">{dt('Last announced: {a} · next: {b}', { a: announce.lastAnnounced == null ? '—' : announce.lastAnnounced.toLocaleString(dashLang), b: announce.next == null ? '—' : announce.next.toLocaleString(dashLang) })}</span>}
+          {announce && <span class="sx-hint">{dt('Last announced: {a} · next: {b}', { a: announce.lastAnnounced == null ? '—' : announce.lastAnnounced.toLocaleString(dashLang), b: announce.next == null ? '—' : announce.next.toLocaleString(dashLang) })}</span>}
         </div>
       </form>
     </section>
 
-    <div class="cn-create" id="new">
-      <h2><Icon name="ph:plus-circle-fill" width="17" height="17" />{dt('New counter')}</h2>
-      {full && limits && <p class="cn-hint cn-limit">{limits.premium ? dt('This server has the most counters it can have ({a}).', { a: limits.max }) : dt('Free servers have {a} counters; Premium has {b}.', { a: limits.max, b: limits.premiumMax })}</p>}
+    <section class="sx-panel cn-create" id="new" aria-labelledby="cn-new-title">
+      <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#9bd0f5"><Icon name="ph:plus-circle-fill" width="17" height="17" /></span><h2 id="cn-new-title">{dt('New counter')}</h2></div>
+      {full && limits && <p class="sx-hint cn-limit">{limits.premium ? dt('This server has the most counters it can have ({a}).', { a: limits.max }) : dt('Free servers have {a} counters; Premium has {b}.', { a: limits.max, b: limits.premiumMax })}</p>}
       <form method="POST" class="cn-form" data-counter-form data-create data-no-dirty>
         <input type="hidden" name="action" value="create" />
         <div class="cn-types" role="radiogroup" aria-label={dt('Shows')}>
@@ -339,33 +373,35 @@ const badgeText: Record<string, string> = {
             </div>
           ))}
         </div>
-        <div class="cn-grid">
-          <label class="cn-field cn-span"><span>{dt('Name')}</span><input type="text" name="template" value={defaults.members} maxlength="100" data-template data-default={defaults.members} /></label>
-          <div class="cn-chips cn-span" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
-          <fieldset class="cn-field cn-seg"><legend>{dt('Number format')}</legend>
-            {COUNTER_FORMATS.map((f) => <label><input type="radio" name="format" value={f} checked={f === 'grouped'} /><span>{formatLabels[f]}</span></label>)}
-          </fieldset>
-          <label class="cn-field" data-when="role_members role_online"><span>{dt('Role')}</span><select name="role_id"><option value="">{dt('Pick a role')}</option>{roles.map((r) => <option value={r.id}>{r.name}</option>)}</select></label>
-          <label class="cn-field" data-when="goal"><span>{dt('Goal (empty: the next round number)')}</span><input type="number" name="goal" min="1" placeholder="500" /></label>
-          <label class="cn-field" data-when="clock date"><span>{dt('Time zone')}</span><input type="text" name="timezone" placeholder="Europe/Madrid" list="cn-zones" /></label>
-          <fieldset class="cn-field cn-seg cn-span"><legend>{dt('Channel')}</legend>
-            <label><input type="radio" name="use" value="new" checked data-use /><span>{dt('Make a new one')}</span></label>
-            <label><input type="radio" name="use" value="existing" data-use disabled={freeChannels.length === 0} /><span>{dt('Use one I have')}</span></label>
-          </fieldset>
-          <label class="cn-field" data-use-when="new"><span>{dt('Kind')}</span><select name="kind" data-kind>{Object.entries(kindLabels).map(([k, label]) => <option value={k}>{label}</option>)}</select></label>
-          <label class="cn-field" data-use-when="new"><span>{dt('Category')}</span><select name="category_id"><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id}>{cat.name}</option>)}</select></label>
-          <label class="cn-field cn-span" data-use-when="existing" hidden><span>{dt('Channel')}</span><select name="channel_id" data-existing>{freeChannels.map((ch) => <option value={ch.id} data-kind={ch.kind}>{ch.kind === 'voice' || ch.kind === 'stage' ? '🔊 ' : '# '}{ch.name}</option>)}</select></label>
-          <label class="cn-switch cn-span" data-use-when="existing" data-topic-switch hidden><input type="checkbox" name="target" value="topic" /><span>{dt('Show the value in the topic (the name stays as it is)')}</span></label>
+        <div class="sx-grid">
+          <div class="sx-field sx-wide"><label for="cn-new-template">{dt('Name')}</label><textarea id="cn-new-template" name="template" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="100" data-template data-default={defaults.members}>{defaults.members}</textarea></div>
+          <div class="cn-chips sx-wide" data-chips>{['{count}', '{goal}', '{left}', '{percent}', '{role}', '{tz}'].map((v) => <button type="button" class="cn-chip" data-insert={v}>{v}</button>)}</div>
+          <div class="sx-field sx-wide"><span class="sx-label">{dt('Number format')}</span>
+            <div class="sx-chips" role="radiogroup" aria-label={dt('Number format')}>{COUNTER_FORMATS.map((f) => <label class="sx-chip"><input type="radio" name="format" value={f} checked={f === 'grouped'} /><span>{formatLabels[f]}</span></label>)}</div>
+          </div>
+          <div class="sx-field" data-when="role_members role_online"><label for="cn-new-role">{dt('Role')}</label><select id="cn-new-role" name="role_id"><option value="">{dt('Pick a role')}</option>{roles.map((r) => <option value={r.id}>{r.name}</option>)}</select></div>
+          <div class="sx-field" data-when="goal"><label for="cn-new-goal">{dt('Goal (empty: the next round number)')}</label><SxNumber id="cn-new-goal" name="goal" min="1" value="" placeholder="500" /></div>
+          <div class="sx-field" data-when="clock date"><label for="cn-new-zone">{dt('Time zone')}</label><input id="cn-new-zone" type="text" name="timezone" placeholder="Europe/Madrid" list="cn-zones" /></div>
+          <div class="sx-field sx-wide"><span class="sx-label">{dt('Channel')}</span>
+            <div class="sx-chips" role="radiogroup" aria-label={dt('Channel')}>
+              <label class="sx-chip"><input type="radio" name="use" value="new" checked data-use /><span>{dt('Make a new one')}</span></label>
+              <label class="sx-chip"><input type="radio" name="use" value="existing" data-use disabled={freeChannels.length === 0} /><span>{dt('Use one I have')}</span></label>
+            </div>
+          </div>
+          <div class="sx-field" data-use-when="new"><label for="cn-new-kind">{dt('Kind')}</label><select id="cn-new-kind" name="kind" data-kind>{Object.entries(kindLabels).map(([k, label]) => <option value={k}>{label}</option>)}</select></div>
+          <div class="sx-field" data-use-when="new"><label for="cn-new-cat">{dt('Category')}</label><select id="cn-new-cat" name="category_id"><option value="">{dt('No category')}</option>{categories.map((cat) => <option value={cat.id}>{cat.name}</option>)}</select></div>
+          <div class="sx-field sx-wide" data-use-when="existing" hidden><label for="cn-new-existing">{dt('Channel')}</label><select id="cn-new-existing" name="channel_id" data-existing>{freeChannels.map((ch) => <option value={ch.id} data-kind={ch.kind}>{ch.kind === 'voice' || ch.kind === 'stage' ? '🔊 ' : '# '}{ch.name}</option>)}</select></div>
+          <div class="sx-switches cn-one sx-wide" data-use-when="existing" data-topic-switch hidden><label class="sx-switch"><input type="checkbox" name="target" value="topic" /><span class="sx-switch-text"><b>{dt('Show the value in the topic (the name stays as it is)')}</b></span><i class="sx-toggle"></i></label></div>
         </div>
         <div class="cn-preview" aria-live="polite"><span>{dt('Preview')}</span><b data-preview>{shownName(nameOf({ type: 'members', template: defaults.members, format: 'grouped', goal: null, timezone: null, roleId: null }), 'voice')}</b></div>
-        {!presences && values && <p class="cn-hint">{dt('The online counts need the Presence intent of Petto; until Discord sends presences they show 0.')}</p>}
+        {!presences && values && <p class="sx-hint">{dt('The online counts need the Presence intent of Petto; until Discord sends presences they show 0.')}</p>}
         <div class="cn-actions">
           <button class="btn btn-accent btn-sm" type="submit" disabled={full || !values}><Icon name="ph:plus-bold" width="13" height="13" />{dt('Create counter')}</button>
-          <span class="cn-hint">{dt('Prefix: !counter create members, !counter setup, !counter list.')}</span>
+          <span class="sx-hint">{dt('Prefix: !counter create members, !counter setup, !counter list.')}</span>
         </div>
       </form>
       <datalist id="cn-zones">{['UTC', 'Europe/London', 'Europe/Madrid', 'Europe/Lisbon', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'America/Mexico_City', 'America/Bogota', 'America/Lima', 'America/Argentina/Buenos_Aires', 'America/Santiago', 'America/Sao_Paulo', 'Asia/Tokyo', 'Asia/Kolkata', 'Australia/Sydney'].map((z) => <option value={z} />)}</datalist>
-    </div>
+    </section>
   </div>
 </DashGuildLayout>
 
@@ -399,7 +435,7 @@ const badgeText: Record<string, string> = {
         return form.querySelector<HTMLSelectElement>('[data-kind]')?.value ?? 'voice';
       };
       const cardKind = () => {
-        const target = form.querySelector<HTMLSelectElement>('[data-target]');
+        const target = form.querySelector<HTMLInputElement | HTMLSelectElement>('select[data-target], input[data-target]:checked');
         if (target) return target.value === 'topic' ? 'topic' : (card as HTMLElement).dataset.baseKind ?? 'text';
         return (card as HTMLElement).dataset.kind ?? 'voice';
       };
@@ -428,7 +464,7 @@ const badgeText: Record<string, string> = {
         if (target.matches('[data-type]') && template) {
           // A name nobody wrote follows the type; one the person wrote is kept.
           const next = config.defaults?.[typeOf()] ?? '{count}';
-          if (!template.value.trim() || template.value === template.dataset.default) template.value = next;
+          if (!template.value.trim() || template.value === template.dataset.default) { template.value = next; template.dispatchEvent(new Event('input', { bubbles: true })); }
           template.dataset.default = next;
         }
         if (target.matches('[data-category]')) { const flag = form.querySelector<HTMLInputElement>('[data-category-changed]'); if (flag) flag.value = '1'; }
@@ -475,14 +511,8 @@ const badgeText: Record<string, string> = {
       draw();
     }
     const words = config.text ?? {};
-    const span = (ms: number) => {
-      const sec = Math.max(0, Math.round(ms / 1000));
-      if (sec < 60) return `${sec}s`;
-      const min = Math.round(sec / 60);
-      if (min < 60) return `${min}m`;
-      const h = Math.floor(min / 60);
-      return h < 48 ? `${h}h ${String(min % 60).padStart(2, '0')}m` : `${Math.floor(h / 24)}d`;
-    };
+    // Every length of time on screen goes through the shared short format (45s, 35m, 1h 5m, 2d 3h); DurationScript puts it on the page.
+    const span = (ms: number) => (window as unknown as { dglDuration: (seconds: number, options?: { locale?: string }) => string }).dglDuration(ms / 1000, { locale: config.lang });
     // The order of the list: dragged by the handle (mouse, pen or finger) or moved with the arrows, then sent to Petto.
     const list = root.querySelector<HTMLElement>('[data-counter-list]');
     const orderStatus = root.querySelector<HTMLElement>('[data-order-status]');
@@ -517,6 +547,14 @@ const badgeText: Record<string, string> = {
       if (result.ok) lastSent = order.join(',');
       say(result.message || (result.ok ? words.saved : words.failed) || '', !result.ok, true);
     };
+    // The Edit button of a card folds its form open and closed.
+    list?.addEventListener('click', (event) => {
+      const toggle = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-edit-toggle]');
+      const details = toggle?.closest<HTMLElement>('[data-counter-card]')?.querySelector<HTMLDetailsElement>('details.cn-edit');
+      if (!toggle || !details) return;
+      details.open = !details.open;
+      toggle.setAttribute('aria-expanded', String(details.open));
+    });
     list?.addEventListener('click', (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-move]');
       if (!button) return;
@@ -611,7 +649,7 @@ const badgeText: Record<string, string> = {
       if (!document.body.contains(root)) return;
       root.querySelectorAll<HTMLElement>('[data-countdown]').forEach((el) => {
         const left = Math.max(0, Math.round((Number(el.dataset.countdown) - Date.now()) / 1000));
-        el.textContent = label.replace('{a}', left >= 60 ? `${Math.floor(left / 60)}m ${String(left % 60).padStart(2, '0')}s` : `${left}s`);
+        el.textContent = label.replace('{a}', span(left * 1000));
       });
       // "Updated 3m ago", "Next update in 4m" (a check comes every minute; a counter changes when its number does).
       root.querySelectorAll<HTMLElement>('[data-ago]').forEach((el) => {
@@ -636,45 +674,45 @@ const badgeText: Record<string, string> = {
 </script>
 
 <style>
-  .cn { max-width: 1040px; }
-  .cn-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 18px; }
-  h1 { font-size: 24px; margin: 0; }
-  h2 { font-size: 15.5px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
-  .cn-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid color-mix(in srgb, var(--green) 55%, transparent); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; animation: m-rise-in var(--m-slow) var(--m-out) both; }
-  .cn-flash-err { color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border-color: color-mix(in srgb, var(--red, #f87171) 50%, transparent); }
+  .cn { display: block; }
+  .cn-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .cn-lead { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-muted); max-width: 70ch; }
+  h2 { font-size: 15.5px; margin: 0; }
   .cn-flash-wait { color: var(--text-dim); background: var(--bg-soft); border-color: var(--border); }
-  .cn-flash-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 10%, transparent); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
-  .cn-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
-  .cn-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; min-width: 0; }
-  .cn-stat b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-  .cn-stat small { font-size: 13px; color: var(--text-dim); font-weight: 500; }
-  .cn-stat span { font-size: 12px; color: var(--text-dim); }
-  /* A section of the site has 88 px above and below (Base.astro); inside the dashboard it is only a group of the page. */
-  .cn-packs { margin: 0 0 18px; padding: 0; }
-  .cn-packs-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 14px; margin: 0 0 10px; }
-  .cn-packs-title span { flex-basis: 100%; font-family: var(--sans); font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--text-dim); }
-  .cn-pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-  .cn-pack { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px; display: flex; flex-direction: column; gap: 8px; animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(var(--i) * var(--m-stagger)); }
-  .cn-pack-head { display: flex; align-items: center; gap: 7px; font-size: 13.5px; }
-  .cn-pack-head :global(svg) { color: var(--accent); }
-  .cn-pack ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; flex: 1; }
-  .cn-pack li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); min-width: 0; }
-  .cn-pack li { align-items: flex-start; }
-  .cn-pack li :global(svg) { flex: none; margin-top: 3px; }
-  .cn-pack li span { min-width: 0; overflow-wrap: anywhere; }
-  .cn-pack li.cn-pack-have { opacity: .5; text-decoration: line-through; }
-  .cn-pack .btn { align-self: flex-start; }
-  @media (prefers-reduced-motion: reduce) { .cn-pack { animation: none; } }
-  .cn-empty { display: grid; grid-template-columns: minmax(0, 300px) 1fr; gap: 22px; align-items: center; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 20px; margin-bottom: 18px; }
-  .cn-empty p { font-size: 13.5px; color: var(--text-muted); margin: 0 0 14px; line-height: 1.55; }
+  [hidden] { display: none !important; }
+  /* A section of the site has 88 px above and below (Base.astro); here it is only a group of the page. */
+  .cn-listbox { padding: 0; }
+  .cn-spark, .cn-empty, .cn-listbox, .cn-packs, .cn-announce, .cn-create { margin: 0 0 14px; }
+  /* The line of members per day */
+  .cn-spark { gap: 10px; }
+  .cn-spark-change { font-size: 13px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .cn-spark-change.up { color: var(--green); }
+  .cn-spark-change.down { color: var(--red, #f87171); }
+  .cn-spark-plot { height: 84px; }
+  .cn-spark-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .cn-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .cn-spark-area { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: none; }
+  .cn-spark-axis { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .cn-spark-tip { width: auto; min-width: 0; white-space: nowrap; font-size: 12px; padding: 3px 8px; border-radius: 6px; box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .5); }
+  .cn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* Nothing yet: what the quick setup makes, drawn like the channel list of Discord */
+  .cn-empty { display: grid; grid-template-columns: minmax(0, 300px) 1fr; gap: 22px; align-items: center; padding: 20px; flex-direction: unset; }
+  .cn-empty p { font-size: 13.5px; color: var(--text-muted); margin: 6px 0 14px; line-height: 1.55; }
   .cn-empty-art { border-radius: 12px; background: var(--bg-soft, var(--card-hover)); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
-  .cn-fake { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .03em; padding: 4px 6px; }
-  .cn-fake-ch { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13.5px; color: var(--text-muted); border-radius: 6px; padding: 6px 8px 6px 14px; animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(var(--i) * var(--m-stagger) * 2 + var(--m-fast)); }
+  .cn-fake { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text-dim); padding: 4px 6px; }
+  .cn-fake-ch { font-weight: 500; font-size: 13.5px; color: var(--text-muted); border-radius: 6px; padding: 6px 8px 6px 14px; animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(var(--i) * var(--m-stagger) * 2 + var(--m-fast)); }
   .cn-fake-ch:hover { background: var(--card-hover); color: var(--text); }
-  .cn-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .cn-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; transition: border-color var(--m-base) ease, transform var(--m-base) var(--m-out), box-shadow var(--m-base) ease; animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(min(var(--i), 8) * var(--m-stagger)); }
-  .cn-card:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 6px 22px -14px color-mix(in srgb, var(--accent) 60%, transparent); }
-  .cn-card:has(details[open]) { grid-column: 1 / -1; }
+  /* The list */
+  .cn-sec-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .cn-list-hint { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
+  .cn-order-status { font-size: 12.5px; color: var(--green); margin-bottom: 6px; }
+  .cn-order-status:empty { margin: 0; }
+  .cn-order-status.bad { color: var(--red, #f87171); }
+  .cn-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .cn-item { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; transition: border-color var(--m-base) ease, box-shadow var(--m-base) ease; }
+  .cn-item:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 6px 22px -14px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .cn-item:has(details[open]) { grid-column: 1 / -1; }
   .cn-problem { border-color: color-mix(in srgb, var(--red, #f87171) 45%, var(--border)); }
   .cn-off { opacity: .78; }
   .cn-order { display: flex; align-items: center; gap: 2px; flex: none; }
@@ -688,10 +726,6 @@ const badgeText: Record<string, string> = {
   .cn-arrows button:disabled { opacity: .3; cursor: default; }
   .cn-dragging { opacity: .85; border-color: var(--accent) !important; box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--accent) 70%, transparent); transform: scale(1.01); z-index: 2; position: relative; }
   .cn-sorting { user-select: none; }
-  .cn-hint.cn-list-hint { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
-  .cn-order-status { font-size: 12.5px; color: var(--green); margin-bottom: 6px; }
-  .cn-order-status:empty { margin: 0; }
-  .cn-order-status.bad { color: var(--red, #f87171); }
   .cn-inline { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .cn-inline input { border: 1px solid var(--accent); border-radius: 7px; padding: 5px 8px; background: var(--card); color: var(--text); font: inherit; font-size: 13.5px; min-width: 0; width: 100%; box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
   .cn-inline small { font-size: 11.5px; color: var(--text-muted); overflow-wrap: anywhere; }
@@ -699,22 +733,10 @@ const badgeText: Record<string, string> = {
   .cn-times { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-dim); }
   .cn-times > span { display: inline-flex; align-items: center; gap: 5px; }
   .cn-pill-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
-  .cn-spark { grid-column: 1 / -1; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-  .cn-spark figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .cn-spark figcaption span { font-size: 12px; color: var(--text-dim); }
-  .cn-spark-change { font-size: 13px !important; font-weight: 600; color: var(--text-muted); }
-  .cn-spark-change.up { color: var(--green); }
-  .cn-spark-change.down { color: var(--red, #f87171); }
-  .cn-spark-plot { height: 56px; }
-  .cn-spark-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  .cn-spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-  .cn-spark-area { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: none; }
-  .cn-spark-tip { width: auto; min-width: 0; white-space: nowrap; font-size: 12px; padding: 3px 8px; border-radius: 6px; box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .5); }
-  .cn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   button.cn-name { border: 0; background: transparent; padding: 0; text-align: left; cursor: text; font-family: inherit; max-width: 100%; border-bottom: 1px dashed transparent; }
   button.cn-name:hover, button.cn-name:focus-visible { border-bottom-color: var(--text-dim); }
   button.cn-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-  .cn-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .cn-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .cn-channel { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-radius: 9px; background: var(--bg-soft, var(--card-hover)); color: var(--text-muted); flex: 1 1 0; }
   .cn-channel > :global(svg) { flex: none; }
   .cn-name-wrap { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
@@ -731,72 +753,68 @@ const badgeText: Record<string, string> = {
   .cn-budget { display: inline-flex; gap: 3px; margin-left: auto; }
   .cn-budget i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
   .cn-budget i.used { background: var(--border); }
-  .cn-edit > summary { list-style: none; width: max-content; }
-  .cn-edit > summary::-webkit-details-marker { display: none; }
-  .cn-edit[open] > summary { margin-bottom: 10px; }
-  .cn-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 10px; }
-  .cn-delete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cn-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+  .cn-row-actions form { margin: 0; }
+  .cn-row-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .cn-delete { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+  .cn-delchip > span { font-size: 12px; padding: 5px 11px 5px 9px; }
   .cn-del { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; background: transparent; color: var(--red, #f87171); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 8px; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .1s ease; }
   .cn-del:hover { background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border-color: color-mix(in srgb, var(--red, #f87171) 35%, transparent); }
   .cn-del:active { transform: scale(.97); }
-  .cn-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); }
+  /* The edit form folds open under the buttons. */
+  .cn-edit { interpolate-size: allow-keywords; }
+  .cn-edit::details-content { block-size: 0; overflow: clip; opacity: 0; transition: block-size .45s cubic-bezier(.22, 1, .36, 1), opacity .3s ease, content-visibility .45s allow-discrete; }
+  .cn-edit[open]::details-content { block-size: auto; opacity: 1; }
+  .cn-edit .cn-form { padding-top: 14px; }
   .cn-form { display: flex; flex-direction: column; gap: 14px; }
-  .cn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .cn-span { grid-column: 1 / -1; }
-  .cn-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; }
-  .cn-field > span, .cn-field legend { font-size: 12.5px; font-weight: 600; color: var(--text-muted); padding: 0; margin-bottom: 6px; }
-  .cn-field > span { margin-bottom: 0; }
-  .cn-field input[type=text], .cn-field input[type=number], .cn-field select { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 14px; min-width: 0; width: 100%; transition: border-color .15s ease, box-shadow .15s ease; }
-  .cn-field input:focus-visible, .cn-field select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  [hidden] { display: none !important; }
-  .cn-seg { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-  .cn-seg legend { width: 100%; }
-  .cn-seg label { position: relative; }
-  .cn-seg input { position: absolute; opacity: 0; pointer-events: none; }
-  .cn-seg label span { display: inline-block; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; font-size: 13px; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; font-variant-numeric: tabular-nums; }
-  .cn-seg input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .cn-seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .cn-seg input:disabled + span { opacity: .5; cursor: not-allowed; }
-  .cn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+  .cn-one { grid-template-columns: 1fr; }
+  textarea.sx-one { min-height: 40px; }
+  .cn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
   .cn-chip { font-family: var(--mono); font-size: 11.5px; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); border-radius: 7px; padding: 3px 8px; cursor: pointer; transition: border-color .15s ease, color .15s ease, transform .1s ease; }
   .cn-chip:hover { border-color: var(--accent); color: var(--accent); }
   .cn-chip:active { transform: scale(.96); }
-  .cn-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; }
   .cn-preview { display: flex; align-items: center; gap: 10px; border-radius: 10px; padding: 10px 12px; background: var(--bg-soft, var(--card-hover)); border: 1px solid var(--border); min-width: 0; }
-  .cn-preview span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); flex: none; }
+  .cn-preview span { font-size: 12px; color: var(--text-dim); flex: none; }
   .cn-preview b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cn-pop { animation: cn-pop .25s ease; }
-  .cn-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  .cn-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
-  .cn-limit { margin-bottom: 10px; color: var(--yellow); }
-  .cn-create { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px; }
-  .cn-announce { margin-bottom: 18px; }
-  .cn-announce h2 { margin-bottom: 4px; }
-  .cn-announce-sub { margin-bottom: 14px; max-width: 70ch; line-height: 1.5; }
-  .cn-field textarea { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 14px; min-width: 0; width: 100%; resize: vertical; transition: border-color .15s ease, box-shadow .15s ease; }
-  .cn-field textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cn-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .cn-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .cn-limit { color: var(--yellow); margin: 0; }
   .cn-announce-preview b { white-space: normal; font-weight: 400; overflow-wrap: anywhere; }
   .cn-announce-preview strong { font-weight: 700; }
+  /* Packs */
+  .cn-pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; padding: 4px 16px 16px; }
+  .cn-pack { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; animation: m-rise-in var(--m-slow) var(--m-out) both; animation-delay: calc(var(--i) * var(--m-stagger)); }
+  .cn-pack-head { display: flex; align-items: center; gap: 7px; font-size: 13.5px; }
+  .cn-pack-head :global(svg) { color: var(--accent); }
+  .cn-pack ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+  .cn-pack li { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--text-muted); min-width: 0; }
+  .cn-pack li :global(svg) { flex: none; margin-top: 3px; }
+  .cn-pack li span { min-width: 0; overflow-wrap: anywhere; }
+  .cn-pack li.cn-pack-have { opacity: .5; text-decoration: line-through; }
+  .cn-pack .btn { align-self: flex-start; }
+  .cn-packs > summary :global(.sx-panel-icon) { margin-right: 1px; }
+  /* New counter: what it shows */
   .cn-types { display: flex; flex-direction: column; gap: 12px; }
-  .cn-type-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin-bottom: 6px; }
+  .cn-type-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
   .cn-type-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
   .cn-type-pick { position: relative; }
   .cn-type-pick input { position: absolute; opacity: 0; pointer-events: none; }
-  .cn-type-pick span { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; cursor: pointer; height: 100%; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
-  .cn-type-pick span:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); transform: translateY(-1px); }
+  .cn-type-pick span { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; cursor: pointer; height: 100%; transition: border-color .15s ease, background .15s ease; }
+  .cn-type-pick span:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--card-hover); }
   .cn-type-pick b { font-size: 13px; font-weight: 600; }
   .cn-type-pick em { font-style: normal; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; min-height: 1em; }
   .cn-type-pick input:checked + span { border-color: var(--accent); background: var(--accent-soft); }
   .cn-type-pick input:checked + span b { color: var(--accent); }
   .cn-type-pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sx-chip > input:disabled { cursor: not-allowed; }
+  .sx-chip:has(input:disabled) > span { opacity: .5; }
   @keyframes cn-pop { 0% { transform: scale(.985); opacity: .6; } 100% { transform: none; opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .cn *, .cn *::before { animation: none !important; transition: none !important; } }
   @media (max-width: 760px) {
-    .cn-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .cn-list, .cn-grid { grid-template-columns: 1fr; }
+    .cn-list { grid-template-columns: 1fr; }
     .cn-empty { grid-template-columns: 1fr; }
     .cn-type-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .cn-pack-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 145px), 1fr)); }
-    .cn-create { padding: 14px; }
+    .cn-pack-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 145px), 1fr)); padding: 4px 12px 12px; }
   }
 </style>

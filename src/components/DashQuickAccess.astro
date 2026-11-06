@@ -1,0 +1,178 @@
+---
+// The quick access of the Overview: every module of the server in one compact list, by category, with its state, a switch where the module has a real
+// on/off in its own settings, and a button to its page. The list is the one of src/utils/dashModules.ts and the states are the ones the Modules page reads
+// (src/utils/moduleStatuses.ts). The switch saves in the background with the same page and the same way the module's own page saves (see the script).
+import { Icon } from 'astro-icon/components';
+import DashSettingsKit from './DashSettingsKit.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { MODULES, CATEGORIES } from '../utils/dashModules';
+import type { ModuleStatuses } from '../utils/moduleStatuses';
+
+interface Props { guildId: string; quick: ModuleStatuses }
+const { guildId, quick } = Astro.props;
+const dt = makeT(getDashLang(Astro));
+const base = `/dash/guild/${guildId}`;
+
+// How each switch saves: the verification card has its own route (it asks the bot to switch it); the others save their own settings form (the page that
+// holds it is read, only the switch is changed and the whole form is sent back, so no other field changes) and the answer is read to be sure.
+const SAVES: Record<string, { kind: 'verify' | 'form'; url: string }> = {
+  verification: { kind: 'verify', url: `${base}/verification-api` },
+  leveling: { kind: 'form', url: `${base}/leveling?section=settings` },
+  birthdays: { kind: 'form', url: `${base}/birthdays` },
+  suggestions: { kind: 'form', url: `${base}/suggestions` },
+  counting: { kind: 'form', url: `${base}/counting` },
+  confessions: { kind: 'form', url: `${base}/confessions` },
+};
+// The pages that are always on (nothing to switch, nothing is written).
+const ALWAYS = [
+  { id: 'overview', title: dt('Overview'), icon: 'ph:squares-four-fill', color: '#9bd0f5', href: `${base}/overview` },
+  { id: 'general', title: dt('Server settings'), icon: 'ph:gear-six-fill', color: '#b4bcd0', href: `${base}/general?section=settings` },
+  { id: 'commands', title: dt('Commands'), icon: 'ph:terminal-window-fill', color: '#8399ff', href: `${base}/permissions` },
+];
+const pageOf = (href: string) => new URL(href, 'https://x.invalid').pathname.split('/').filter(Boolean).pop() ?? '';
+
+interface Row { id: string; title: string; icon: string; color: string; href: string; mode: 'always' | 'switch' | 'plain'; on: boolean; label: string; tone: 'on' | 'off' | 'warn' | 'none'; needsChannel: boolean; hasChannel: boolean }
+const rows = (category: string): Row[] => MODULES.filter((m) => m.category === category).map((m) => {
+  const sw = quick.switches[m.id];
+  const status = quick.statuses[m.id]?.state;
+  const href = m.href(guildId);
+  if (sw && SAVES[m.id]) {
+    const warn = sw.enabled && sw.needsChannel && !sw.hasChannel;
+    return { id: m.id, title: dt(m.title), icon: m.icon, color: m.color, href, mode: 'switch', on: sw.enabled, label: warn ? dt('Missing a channel') : sw.enabled ? dt('On') : dt('Off'), tone: warn ? 'warn' : sw.enabled ? 'on' : 'off', needsChannel: sw.needsChannel, hasChannel: sw.hasChannel };
+  }
+  return { id: m.id, title: dt(m.title), icon: m.icon, color: m.color, href, mode: 'plain', on: status === 'on', label: status === 'on' ? dt('On') : status === 'todo' ? dt('Not set up') : '', tone: status === 'on' ? 'on' : status === 'todo' ? 'off' : 'none', needsChannel: false, hasChannel: true };
+});
+const groups = [
+  { id: 'essentials', label: dt('Essentials'), rows: ALWAYS.map((a): Row => ({ ...a, mode: 'always', on: true, label: dt('Always on'), tone: 'on', needsChannel: false, hasChannel: true })) },
+  ...CATEGORIES.map((c) => ({ id: c.id, label: dt(c.label), rows: rows(c.id) })).filter((g) => g.rows.length),
+];
+const words = { on: dt('On'), off: dt('Off'), saved: dt('Saved.'), failed: dt('It could not be saved, try again.'), channel: dt('Missing a channel'), busy: dt('Saving...') };
+---
+<div class="qa" data-qa-root data-words={JSON.stringify(words)} aria-label={dt('Quick access')}>
+  <DashSettingsKit />
+  <div class="qa-head">
+    <h2 class="qa-title">{dt('Quick access')}</h2>
+    <p>{dt('Turn a module on or off from here, or open its settings.')}</p>
+  </div>
+  <div class="qa-groups">
+    {groups.map((group) => (
+      <div class="qa-group" data-qa-group>
+        <div class="qa-group-head">
+          <h3>{group.label}</h3>
+          <span class="qa-count" data-qa-count>{dt('{n} of {m} on', { n: group.rows.filter((r) => r.on).length, m: group.rows.length })}</span>
+        </div>
+        <div class="qa-list dgl-stagger">
+          {group.rows.map((row) => (
+            <div class:list={['qa-mod', row.tone === 'on' ? 'on' : row.tone === 'warn' ? 'warn' : 'off', { 'qa-always': row.mode === 'always' }]} data-qa data-module={row.id} data-kind={row.mode === 'switch' ? SAVES[row.id].kind : undefined} data-url={row.mode === 'switch' ? SAVES[row.id].url : undefined} data-needs-channel={row.needsChannel ? '1' : undefined} data-has-channel={row.hasChannel ? '1' : undefined}>
+              <span class="qa-icon" style={`--c:${row.color}`}><Icon name={row.icon} width="17" height="17" /></span>
+              <span class="qa-text"><b>{row.title}</b>{row.label && <em class:list={['qa-state', row.tone]} data-qa-state>{row.mode === 'always' && <Icon name="ph:lock-simple-fill" width="11" height="11" />}{row.label}</em>}</span>
+              {row.mode === 'always' && <span class="sx-switch qa-sw qa-locked" title={dt('Always on')}><input type="checkbox" checked disabled aria-label={`${row.title}: ${dt('Always on')}`} /><span class="sx-toggle"></span></span>}
+              {row.mode === 'switch' && <label class="sx-switch qa-sw"><input type="checkbox" role="switch" checked={row.on} aria-label={row.title} data-qa-switch /><span class="sx-toggle"></span></label>}
+              {row.id !== 'overview' && <a class="btn btn-ghost btn-sm qa-config" href={row.href} data-find-page={pageOf(row.href)}>{dt('Configure')}</a>}
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
+<script is:inline>
+  // The switches of the quick access. Bound once for the whole document (the dashboard swaps pages in without a reload).
+  // - verification: its own route (`{ action: 'enable' | 'disable' }`, the bot does it, as the buttons of its page do);
+  // - the other modules: the page that holds their settings is read, only the switch is changed and the whole form is sent back to the same address
+  //   with the same method as its Save button, then the answer is read: it only counts as saved when the page now shows the switch as it was asked for;
+  // - if anything fails, the switch goes back and the toast says so. Nothing is written for a switch that cannot be saved safely: that module has no switch.
+  if (!window.__qaBound) {
+    window.__qaBound = true;
+    var qaToast = function (text, ok) { if (window.dglToast) window.dglToast(text, { kind: ok ? 'ok' : 'error' }); };
+    var qaWords = function (el) { try { return JSON.parse((el.closest('[data-qa-root]') || document.querySelector('[data-qa-root]')).getAttribute('data-words') || '{}'); } catch (e) { return {}; } };
+    var qaForm = function (doc) {
+      var forms = Array.prototype.slice.call(doc.querySelectorAll('form'));
+      return forms.filter(function (f) { return f.querySelector('input[name="enabled"][type="checkbox"]'); })[0] || null;
+    };
+    var qaPaint = function (card, on, words) {
+      card.classList.toggle('on', on); card.classList.toggle('off', !on); card.classList.remove('warn');
+      var state = card.querySelector('[data-qa-state]');
+      if (state) { state.textContent = on ? words.on : words.off; state.className = 'qa-state ' + (on ? 'on' : 'off'); state.setAttribute('data-qa-state', ''); }
+      var group = card.closest('[data-qa-group]');
+      if (group) {
+        var count = group.querySelector('[data-qa-count]');
+        var total = group.querySelectorAll('[data-qa]').length; var active = group.querySelectorAll('[data-qa].on').length;
+        if (count) count.textContent = count.textContent.replace(/\d+(?=\D+\d+)/, String(active));
+        void total;
+      }
+    };
+    document.addEventListener('change', function (event) {
+      var input = event.target && event.target.closest ? event.target.closest('[data-qa] [data-qa-switch]') : null;
+      if (!input) return;
+      var card = input.closest('[data-qa]'); var want = input.checked; var words = qaWords(card);
+      var link = card.querySelector('[data-find-page]');
+      if (link && link.getAttribute('aria-disabled') === 'true') { input.checked = !want; return; }
+      var note = card.querySelector('.qa-note'); if (note) note.remove();
+      if (want && card.getAttribute('data-needs-channel') === '1' && card.getAttribute('data-has-channel') !== '1') {
+        input.checked = false;
+        var hint = document.createElement('p'); hint.className = 'qa-note'; hint.textContent = words.channel; card.appendChild(hint);
+        return;
+      }
+      var kind = card.getAttribute('data-kind'); var url = card.getAttribute('data-url');
+      card.classList.add('dgl-busy'); input.disabled = true;
+      var save;
+      if (kind === 'verify') {
+        save = fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: want ? 'enable' : 'disable' }) })
+          .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { if (!res.ok || data.ok === false) throw new Error(data && data.message ? data.message : words.failed); }); });
+      } else {
+        save = fetch(url, { credentials: 'same-origin' })
+          .then(function (res) { if (!res.ok) throw new Error(words.failed); return res.text(); })
+          .then(function (html) {
+            var form = qaForm(new DOMParser().parseFromString(html, 'text/html'));
+            if (!form) throw new Error(words.failed);
+            var data = new FormData(form);
+            data.delete('enabled'); if (want) data.set('enabled', 'on');
+            return fetch(url, { method: 'POST', credentials: 'same-origin', body: data });
+          })
+          .then(function (res) { if (!res.ok) throw new Error(words.failed); return res.text(); })
+          .then(function (html) {
+            var form = qaForm(new DOMParser().parseFromString(html, 'text/html'));
+            var box = form && form.querySelector('input[name="enabled"][type="checkbox"]');
+            if (!box || box.checked !== want) throw new Error(words.failed);
+          });
+      }
+      save.then(function () { qaPaint(card, want, words); qaToast(words.saved, true); })
+        .catch(function (error) { input.checked = !want; qaToast(error && error.message ? error.message : words.failed, false); })
+        .then(function () { card.classList.remove('dgl-busy'); input.disabled = false; });
+    });
+  }
+</script>
+
+<style>
+  .qa { margin-bottom: 26px; }
+  .qa-head { margin-bottom: 14px; }
+  .qa-title { font-size: 16px; margin: 0; }
+  .qa-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--text-dim); }
+  .qa-groups { display: flex; flex-direction: column; gap: 18px; }
+  .qa-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .qa-group-head h3 { margin: 0; font-size: 13.5px; color: var(--text-muted); font-weight: 600; }
+  .qa-count { font: 600 11.5px var(--sans); color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .qa-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
+  .qa-mod { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); transition: border-color .3s ease, background-color .3s ease; }
+  .qa-mod.on { border-color: color-mix(in srgb, var(--green) 28%, var(--border)); }
+  .qa-mod.warn { border-color: color-mix(in srgb, var(--yellow) 45%, var(--border)); }
+  .qa-mod.off .qa-icon, .qa-mod.off .qa-text b { opacity: .55; }
+  .qa-icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); transition: opacity .3s ease; }
+  .qa-text { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .qa-text b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity .3s ease; }
+  .qa-state { display: inline-flex; align-items: center; gap: 5px; font-style: normal; font-size: 11.5px; color: var(--text-dim); }
+  .qa-state.on { color: var(--green); }
+  .qa-state.warn { color: var(--yellow); }
+  .qa-sw.sx-switch { flex: none; width: 40px; height: 24px; padding: 0; gap: 0; border: 0; border-radius: 999px; background: none; }
+  .qa-sw.sx-switch:hover { background: none; }
+  .qa-mod:has([aria-disabled='true']) .qa-sw { opacity: .4; pointer-events: none; }
+  .qa-config { flex: none; }
+  .qa-note { flex: 1 1 100%; margin: 0; padding-top: 2px; font-size: 12px; color: var(--yellow); }
+  .qa-mod.dgl-busy .qa-sw { opacity: .6; }
+  @media (max-width: 720px) {
+    .qa-list { grid-template-columns: minmax(0, 1fr); }
+    .qa-mod { padding: 10px; gap: 8px 10px; }
+  }
+</style>

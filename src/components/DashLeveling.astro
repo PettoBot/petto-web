@@ -10,6 +10,8 @@ import DashAcData from './DashAcData.astro';
 import DashStatTiles from './DashStatTiles.astro';
 import DashSettingsKit from './DashSettingsKit.astro';
 import DashFormKit from './DashFormKit.astro';
+import DurationScript from './DurationScript.astro';
+import { formatDuration } from '../utils/formatDuration';
 import { ctxFromEntries, statusParts } from '../utils/levelingDeps';
 import { configFormEntries, voiceFormEntries, rankFormEntries, rulesFormEntries, boardFormEntries, keepChosen, minFor, maxFor } from '../utils/levelingForm';
 
@@ -144,6 +146,10 @@ const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
 const leaderboardIsVoice = selectedSection === 'leaderboard-voice';
 const displayLeaderboard = leaderboardIsVoice ? voiceLeaderboard : leaderboard;
+const boardCount = displayLeaderboard.length;
+const boardTopLevel = displayLeaderboard.reduce((top, row) => Math.max(top, row.level), 0);
+const boardXp = displayLeaderboard.reduce((sum, row) => sum + row.xp, 0);
+const boardMinutes = displayLeaderboard.reduce((sum, row) => sum + (row.voiceMinutes ?? 0), 0);
 const roleName = (roleId: string) => roles.find((role) => role.id === roleId)?.name ?? roleId;
 const channelName = (channelId: string) => { const found = channels.find((c) => c.id === channelId) ?? voiceChannels.find((c) => c.id === channelId) ?? categories.find((c) => c.id === channelId); return found ? found.name : channelId; };
 const multiplierLabel = (row: Multiplier) => (row.type === 'role' ? `@${roleName(row.targetId)}` : row.type === 'category' ? `${channelName(row.targetId)} (${dt('category')})` : `#${channelName(row.targetId)}`);
@@ -173,7 +179,7 @@ const curvePath = Array.from({ length: 51 }, (_, level) => `${level ? 'L' : 'M'}
 const curveMessages = (level: number) => Math.max(0, Math.ceil(curveTotal(level) / Math.max(curveNumber(config.xpMax, 25), 1)));
 const curveCooldown = (level: number) => Math.max(0, Math.round(curveMessages(level) * curveNumber(config.cooldownSeconds, 60)));
 const formatCurve = (value: number) => Math.max(0, Math.round(value)).toLocaleString(dashLocale(dashLang));
-const formatCooldown = (value: number) => value >= 3600 ? `~${(value / 3600).toFixed(1)}h` : `~${formatCurve(value)}s`;
+const formatCooldown = (value: number) => `~${formatDuration(value, { locale: dashLocale(dashLang) })}`;
 const leaderboardProgress = (row: LeaderboardRow, voice = false) => {
   const total = voice ? voiceCurveTotal : curveTotal;
   const current = total(row.level);
@@ -268,6 +274,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   <h1>{selectedTitle}</h1>
   <DashFormKit />
   <DashSettingsKit />
+  <DurationScript />
   {['settings', 'voice'].includes(selectedSection) && <DashAcData roles={roles} channels={channels} vars={[{ tok: '{EMOJI}', desc: dt('The level-up icon') }, { tok: '{level_role}', desc: dt('The reward role of that level') }]} />}
 
   {saved && <div class="lv-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
@@ -277,6 +284,12 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
     { label: dt('Level rewards'), value: rewards.length, tone: 'joins' },
     { label: dt('Multipliers'), value: multipliers.length, tone: 'reactions' },
     { label: dt('Max level'), value: config.maxLevel, tone: 'invites' },
+  ]} />}
+
+  {selectedSection === 'voice' && <DashStatTiles tiles={[
+    { label: dt('XP per voice minute'), value: voiceConfig.xpPerMinute, tone: 'voice' },
+    { label: dt('Minutes to level 10'), value: 0, text: formatDuration(voiceMinutesForLevel(10) * 60, { locale: dashLocale(dashLang) }), tone: 'joins' },
+    { label: dt('Max level'), value: voiceConfig.maxLevel, tone: 'invites' },
   ]} />}
 
   {selectedSection === 'settings' && (
@@ -510,24 +523,24 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         <span class="lv-hint">{voiceXpHint} <a href={`/dash/guild/${guildId}/leveling?section=rules`}>{dt('Change it in Rules and events')}</a></span>
       </div>
       <div class="lv-field">
-        <label for="lv-voice_role_mode">{dt('Reward roles')}</label>
-        <select id="lv-voice_role_mode" name="voice_role_mode">
-          <option value="highest" selected={voiceConfig.roleMode === 'highest'}>{dt('Only the highest earned')}</option>
-          <option value="all" selected={voiceConfig.roleMode === 'all'}>{dt('Stack every earned role')}</option>
-        </select>
+        <span class="lv-label" id="lv-voice_role_mode-label">{dt('Reward roles')}</span>
+        <div class="dfx-chips" role="radiogroup" aria-labelledby="lv-voice_role_mode-label">
+          <label class="dfx-chip"><input id="lv-voice_role_mode" type="radio" name="voice_role_mode" value="highest" checked={voiceConfig.roleMode !== 'all'} />{dt('Only the highest earned')}</label>
+          <label class="dfx-chip"><input type="radio" name="voice_role_mode" value="all" checked={voiceConfig.roleMode === 'all'} />{dt('Stack every earned role')}</label>
+        </div>
       </div>
     </div>
 
     <div class="lv-section-label"><Icon name="ph:chat-circle-text-fill" width="14" height="14" />{dt('Voice level-up announcement')}</div>
     <div class="lv-grid">
-      <div class="lv-field">
-        <label for="lv-voice_notify_mode">{dt('Voice level-up announcement')}</label>
-        <select id="lv-voice_notify_mode" name="voice_notify_mode">
-          <option value="off" selected={voiceConfig.notifyMode === 'off'}>{dt('Off')}</option>
-          <option value="reply" selected={voiceConfig.notifyMode === 'reply'}>{dt('In the voice channel chat')}</option>
-          <option value="channel" selected={voiceConfig.notifyMode === 'channel'}>{dt('Fixed channel')}</option>
-          <option value="dm" selected={voiceConfig.notifyMode === 'dm'}>{dt('Direct message')}</option>
-        </select>
+      <div class="lv-field lv-field-wide">
+        <span class="lv-label" id="lv-voice_notify_mode-label">{dt('Voice level-up announcement')}</span>
+        <div class="dfx-chips" role="radiogroup" aria-labelledby="lv-voice_notify_mode-label">
+          <label class="dfx-chip"><input id="lv-voice_notify_mode" type="radio" name="voice_notify_mode" value="off" checked={voiceConfig.notifyMode === 'off'} />{dt('Off')}</label>
+          <label class="dfx-chip"><input type="radio" name="voice_notify_mode" value="reply" checked={voiceConfig.notifyMode === 'reply'} />{dt('In the voice channel chat')}</label>
+          <label class="dfx-chip"><input type="radio" name="voice_notify_mode" value="channel" checked={voiceConfig.notifyMode === 'channel'} />{dt('Fixed channel')}</label>
+          <label class="dfx-chip"><input type="radio" name="voice_notify_mode" value="dm" checked={voiceConfig.notifyMode === 'dm'} />{dt('Direct message')}</label>
+        </div>
       </div>
       <div class="lv-field" data-lv-dep="v_announce_on v_channel_used">
         <label for="lv-voice_notify_channel_id">{dt('Announcement channel')}</label>
@@ -632,7 +645,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
       </div>
       <div class="lv-curve-table-wrap">
         <table class="lv-curve-table"><thead><tr><th>{dt('Level')}</th><th>{dt('Total XP')}</th><th>{dt('Voice minutes')}</th><th>{dt('Approx. time')}</th></tr></thead><tbody>
-          {curvePreviewLevels.map((level) => <tr data-voice-curve-row={level}><td>{level}</td><td data-voice-curve-total>{dt('{a} XP', { a: (formatCurve(voiceCurveTotal(level))) })}</td><td data-voice-curve-minutes>~{formatCurve(voiceMinutesForLevel(level))}</td><td data-voice-curve-time>{voiceMinutesForLevel(level) >= 60 ? `~${(voiceMinutesForLevel(level) / 60).toFixed(1)}h` : `~${formatCurve(voiceMinutesForLevel(level))}m`}</td></tr>)}
+          {curvePreviewLevels.map((level) => <tr data-voice-curve-row={level}><td>{level}</td><td data-voice-curve-total>{dt('{a} XP', { a: (formatCurve(voiceCurveTotal(level))) })}</td><td data-voice-curve-minutes>~{formatCurve(voiceMinutesForLevel(level))}</td><td data-voice-curve-time>~{formatDuration(voiceMinutesForLevel(level) * 60, { locale: dashLocale(dashLang) })}</td></tr>)}
         </tbody></table>
       </div>
     </div>
@@ -645,17 +658,24 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 
   {selectedSection === 'rank' && (
   <div class:list={['lv-section', 'lv-rank-section', { 'lv-section-hidden': selectedSection !== 'rank' }]}>
-    <h2><Icon name="ph:identification-badge-fill" width="15" height="15" />{dt('Rank card')}</h2>
-    <p class="lv-note">{dt('How /levels rank answers. The card is a picture with the avatar, the name, the level and a progress bar; the embed is the text version. Make or edit cards in Image cards.')}</p>
+    <DashStatTiles tiles={[
+      { label: dt('Rank cards'), value: rankCards.length, tone: 'reactions' },
+      { label: dt('Image cards'), value: cards.length, tone: 'invites' },
+    ]} />
+    {!lvFlags.textOn && <p class="lv-gate-note lv-off-note" role="status"><span>{dt('Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.')} <a href={lvHref.settings}>{dt('Open Leveling settings')}</a></span></p>}
+    <div class="lv-head">
+      <h2><Icon name="ph:identification-badge-fill" width="16" height="16" />{dt('Rank card')}</h2>
+      <p>{dt('How /levels rank answers. The card is a picture with the avatar, the name, the level and a progress bar; the embed is the text version. Make or edit cards in Image cards.')}</p>
+    </div>
     <div class="lv-rank-layout">
       <form method="POST" class="lv-form lv-rank-form" data-lv-form="rank" data-lv-flags={JSON.stringify(lvFlags)} data-lv-hrefs={JSON.stringify(lvHref)}>
         <input type="hidden" name="action" value="rank" />
         <p class="lv-status lv-status-solo" data-lv-status="rank" aria-live="polite">{statusRank}</p>
         <div class="lv-field lv-field-wide">
-          <label>{dt('Answer with')}</label>
-          <div class="lv-choice">
-            {[['card', dt('Card')], ['embed', dt('Embed')], ['both', dt('Card and embed')]].map(([value, label]) => (
-              <label class="lv-choice-item"><input type="radio" name="rank_style" value={value} checked={rank.style === value} /><span>{label}</span></label>
+          <span class="lv-label" id="lv-rank_style-label">{dt('Answer with')}</span>
+          <div class="sx-choices" role="radiogroup" aria-labelledby="lv-rank_style-label">
+            {[['card', dt('Card'), 'ph:identification-badge-fill', dt('A picture with the avatar and the progress bar.')], ['embed', dt('Embed'), 'ph:chat-text-fill', dt('The same numbers, as text in Discord.')], ['both', dt('Card and embed'), 'ph:stack-fill', dt('The picture and the text together.')]].map(([value, label, icon, hint]) => (
+              <label class="sx-choice"><input type="radio" name="rank_style" value={value} checked={rank.style === value} /><span class="sx-choice-body"><Icon name={icon} width="18" height="18" /><b>{label}</b><em>{hint}</em></span></label>
             ))}
           </div>
         </div>
@@ -668,6 +688,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
           </select>
           <span class="lv-hint"><a href={`/dash/guild/${guildId}/cards`}>{dt('Make or edit cards')}</a></span>
         </div>
+        <div class="lv-section-label"><Icon name="ph:sparkle-fill" width="14" height="14" />{dt('Level-up card')}</div>
         <div class="lv-grid">
           <div class="lv-field" data-lv-dep="notify_card_used">
             <label for="lv-notify_card">{dt('Level-up card')}</label>
@@ -706,8 +727,17 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 
   {selectedSection === 'rules' && (
   <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rules' }]}>
-    <h2><Icon name="ph:shield-check-fill" width="15" height="15" />{dt('Rules')}</h2>
-    <p class="lv-note">{dt('How XP is earned, topic by topic. Start from a profile and adjust what you want.')}</p>
+    <DashStatTiles tiles={[
+      { label: dt('XP events'), value: events.length, tone: 'reactions' },
+      { label: dt('Daily limit'), value: rules.dailyXpCap, text: rules.dailyXpCap > 0 ? undefined : dt('No limit'), tone: 'voice' },
+      { label: dt('Daily bonus XP'), value: rules.dailyBonusXp, tone: 'joins' },
+      { label: dt('Streak days'), value: rules.streakMaxDays, tone: 'invites' },
+    ]} />
+    {!lvFlags.textOn && <p class="lv-gate-note lv-off-note" role="status"><span>{dt('Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.')} <a href={lvHref.settings}>{dt('Open Leveling settings')}</a></span></p>}
+    <div class="lv-head">
+      <h2><Icon name="ph:shield-check-fill" width="16" height="16" />{dt('Rules')}</h2>
+      <p>{dt('How XP is earned, topic by topic. Start from a profile and adjust what you want.')}</p>
+    </div>
     <form method="POST" class="lv-form lv-stage-form" data-stage-form="rules" data-lv-form="rules" data-lv-flags={JSON.stringify(lvFlags)} data-lv-hrefs={JSON.stringify(lvHref)}>
       <input type="hidden" name="action" value="rules" />
       <p class="lv-status lv-status-solo" data-lv-status="rules" aria-live="polite">{statusRules}</p>
@@ -731,7 +761,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         <div class="lv-grid">
           <div class="lv-field" data-lv-dep="text_on"><label>{dt('Minimum message length')}</label><input type="number" name="min_message_chars" value={rules.minMessageChars} min="0" max="200" /><span class="lv-hint">{dt('Links, mentions and custom emoji do not count. 0 turns it off.')}</span></div>
           <div class="lv-field" data-lv-dep="text_on"><label>{dt('Daily XP limit from messages')}</label><input type="number" name="daily_xp_cap" value={rules.dailyXpCap} min="0" max="1000000" /><span class="lv-hint">{dt('The most XP a member can earn from messages in a day. 0 means no limit. The daily bonus is not counted.')}</span></div>
-          <div class="lv-check-wrap" data-lv-dep="text_on"><label class="lv-check"><input type="checkbox" name="anti_repeat" checked={rules.antiRepeat} />{dt('The same message again within a minute earns no XP')}</label></div>
+          <div class="lv-check-wrap" data-lv-dep="text_on"><label class="lv-check"><span class="lv-check-text"><b>{dt('The same message again within a minute earns no XP')}</b><em>{dt('Pasting the same text over and over does not farm XP.')}</em></span><input type="checkbox" name="anti_repeat" checked={rules.antiRepeat} /></label></div>
         </div>
       </div>
 
@@ -741,9 +771,8 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         <div class="lv-grid">
           <div class="lv-field" data-lv-dep="voice_on"><label>{dt('People needed in voice')}</label><input type="number" name="voice_min_members" value={rules.voiceMinMembers} min="1" max="20" /><span class="lv-hint">{dt('1 also earns voice XP when you are alone. Bots and deafened members do not count as company.')}</span></div>
           <div class="lv-field" data-lv-dep="voice_on alone_used"><label>{dt('XP while alone (%)')}</label><input type="number" name="voice_alone_percent" value={rules.voiceAlonePercent} min="0" max="100" step="5" /><span class="lv-hint">{dt('Only matters when 1 person is enough. 100 is all the XP, 50 is half, 0 gives nothing while alone.')}</span></div>
-          <div class="lv-check-wrap" data-lv-dep="voice_on"><label class="lv-check"><input type="checkbox" name="voice_ignore_muted" checked={rules.voiceIgnoreMuted} />{dt('Only with the microphone on (no voice XP while muted)')}</label></div>
+          <div class="lv-check-wrap" data-lv-dep="voice_on"><label class="lv-check"><span class="lv-check-text"><b>{dt('Only with the microphone on (no voice XP while muted)')}</b><em>{dt('Petto cannot hear who is talking: it only knows if the microphone is muted or the member is deafened.')}</em></span><input type="checkbox" name="voice_ignore_muted" checked={rules.voiceIgnoreMuted} /></label></div>
         </div>
-        <p class="lv-hint">{dt('Petto cannot hear who is talking: it only knows if the microphone is muted or the member is deafened.')}</p>
       </div>
 
       <div class="lv-card">
@@ -771,7 +800,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
           </div>
           <div class="lv-field"><label>{dt('Most a multiplier can reach')}</label><input type="number" name="multiplier_cap" value={rules.multiplierCap} min="1" max="100" step="0.5" /><span class="lv-hint">{dt('The combined multiplier never goes above this.')}</span></div>
         </div>
-        <div class="lv-check-wrap"><label class="lv-check"><input type="checkbox" name="vote_boost" checked={rules.voteBoost} />{dt('Vote boost: +10% XP for 12 hours to members who vote for Petto')}</label></div>
+        <div class="lv-check-wrap"><label class="lv-check"><span class="lv-check-text"><b>{dt('Vote boost: +10% XP for 12 hours to members who vote for Petto')}</b></span><input type="checkbox" name="vote_boost" checked={rules.voteBoost} /></label></div>
       </div>
 
       <div class="lv-card">
@@ -792,29 +821,33 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         <div class="lv-card-head"><div class="lv-card-icon" style="--c:#ff8f8f"><Icon name="ph:sign-out-fill" width="16" height="16" /></div><div class="lv-card-title">{dt('Members who leave and come back')}</div></div>
         <p class="lv-card-desc">{dt('What happens to the XP and the reward roles of someone who leaves the server.')}</p>
         <div class="lv-grid">
-          <div class="lv-check-wrap" data-lv-dep="text_on"><label class="lv-check"><input type="checkbox" name="restore_roles" checked={rules.restoreRoles} />{dt('Give the reward roles back to a member who returns')}</label></div>
-          <label class="lv-check"><input type="checkbox" name="reset_on_leave" checked={rules.resetOnLeave} />{dt('Wipe the XP and level of a member who leaves')}</label>
+          <div class="lv-check-wrap" data-lv-dep="text_on"><label class="lv-check"><span class="lv-check-text"><b>{dt('Give the reward roles back to a member who returns')}</b><em>{dt('The roles of the levels they had come back with them.')}</em></span><input type="checkbox" name="restore_roles" checked={rules.restoreRoles} /></label></div>
+          <label class="lv-check"><span class="lv-check-text"><b>{dt('Wipe the XP and level of a member who leaves')}</b><em>{dt('If they return, they start from zero.')}</em></span><input type="checkbox" name="reset_on_leave" checked={rules.resetOnLeave} /></label>
         </div>
       </div>
 
-      <h2 class="lv-events-title"><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('XP events')}</h2>
-      <p class="lv-note">{dt('A boost for a few hours or days, such as double XP for a weekend.')}</p>
-      <div class="lv-rewards" data-stage-list>
+      <div class="lv-head lv-events-head">
+        <h2><Icon name="ph:rocket-launch-fill" width="16" height="16" />{dt('XP events')}</h2>
+        <p>{dt('A boost for a few hours or days, such as double XP for a weekend.')}</p>
+      </div>
+      <div class="lv-rewards lv-events" data-stage-list>
         {events.length === 0 && <p class="lv-empty-note" data-stage-empty><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('No XP events are running or coming.')}</p>}
         {events.map((event) => (
-          <div class="lv-reward-row" data-existing-event={event.id}>
+          <div class="lv-reward-row" data-existing-event={event.id} data-state={eventRunning(event) ? 'running' : 'soon'}>
             <span class="lv-reward-level">{event.name}</span>
             <span class="lv-reward-role">×{event.multiplier} · {sourceLabel(event.source)} · {eventRunning(event) ? dt('until {a}', { a: eventTime(event.endsAt) }) : dt('from {a}', { a: eventTime(event.startsAt) })}</span>
             <button type="button" class="lv-reward-del" title={dt('Remove')} data-remove-existing><Icon name="ph:trash-fill" width="13" height="13" /></button>
           </div>
         ))}
       </div>
-      <div class="lv-form lv-event-form" data-stage-add>
+      <div class="lv-form lv-event-form lv-add-box" data-stage-add>
+        <div class="lv-add-title">{dt('Add event')}</div>
         <div class="lv-grid">
-          <div class="lv-field"><label>{dt('Name')}</label><input type="text" data-f="name" maxlength="60" placeholder={dt('Double XP weekend')} /></div>
+          <div class="lv-field lv-field-wide"><label>{dt('Name')}</label><textarea class="dgl-autogrow dfx-one" rows="1" data-one-line data-count data-f="name" maxlength="60" placeholder={dt('Double XP weekend')}></textarea></div>
           <div class="lv-field"><label>{dt('Multiplier')}</label><input type="number" data-f="multiplier" value="2" min="1.1" max="20" step="0.1" /></div>
-          <div class="lv-field"><label>{dt('Applies to')}</label>
-            <select data-f="source"><option value="all">{dt('All XP')}</option><option value="text">{dt('Messages only')}</option><option value="voice">{dt('Voice only')}</option></select>
+          <div class="lv-field">
+            <span class="lv-label" id="lv-event-source-label">{dt('Applies to')}</span>
+            <select data-f="source" aria-labelledby="lv-event-source-label"><option value="all">{dt('All XP')}</option><option value="text">{dt('Messages only')}</option><option value="voice">{dt('Voice only')}</option></select>
           </div>
           <div class="lv-field"><label>{dt('Lasts (hours)')}</label><input type="number" data-f="duration" value="48" min="1" max="1440" step="1" /></div>
           <div class="lv-field"><label>{dt('Starts in (hours)')}</label><input type="number" data-f="startIn" value="0" min="0" max="720" step="1" /></div>
@@ -830,8 +863,17 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 
   {selectedSection === 'multipliers' && (
   <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'multipliers' }]}>
-    <h2><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('Multipliers')}</h2>
-    <p class="lv-note">{dt('Give more XP (or less) to a role, a channel or a whole category. 2 is double, 0.5 is half and 0 earns nothing.')}</p>
+    <DashStatTiles tiles={[
+      { label: dt('Multipliers'), value: multipliers.length, tone: 'reactions' },
+      { label: dt('Roles'), value: multipliers.filter((row) => row.type === 'role').length, tone: 'invites' },
+      { label: dt('Channels'), value: multipliers.filter((row) => row.type === 'channel').length, tone: 'voice' },
+      { label: dt('Categories'), value: multipliers.filter((row) => row.type === 'category').length, tone: 'joins' },
+    ]} />
+    {!lvFlags.textOn && <p class="lv-gate-note lv-off-note" role="status"><span>{dt('Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.')} <a href={lvHref.settings}>{dt('Open Leveling settings')}</a></span></p>}
+    <div class="lv-head">
+      <h2><Icon name="ph:rocket-launch-fill" width="16" height="16" />{dt('Multipliers')}</h2>
+      <p>{dt('Give more XP (or less) to a role, a channel or a whole category. 2 is double, 0.5 is half and 0 earns nothing.')}</p>
+    </div>
     <form method="POST" class="lv-form lv-stage-form" data-stage-form="multipliers" data-mult-form data-initial={JSON.stringify(multipliers.map((row) => ({ target_id: row.targetId, target_type: row.type, multiplier: row.multiplier, label: multiplierLabel(row) })))}>
       <input type="hidden" name="action" value="save_multipliers" />
       <input type="hidden" name="payload" value={JSON.stringify(multipliers.map((row) => ({ target_id: row.targetId, target_type: row.type, multiplier: row.multiplier })))} data-stage-payload />
@@ -841,7 +883,8 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         ))}
       </div>
       <p class="lv-empty-note" data-stage-empty hidden={multipliers.length > 0}><Icon name="ph:rocket-launch-fill" width="15" height="15" />{dt('No multipliers yet.')}</p>
-      <div class="lv-event-form" data-stage-add>
+      <div class="lv-event-form lv-add-box" data-stage-add>
+        <div class="lv-add-title">{dt('Add multiplier')}</div>
         <div class="lv-grid">
           <div class="lv-field"><label>{dt('Applies to')}</label>
             <select data-f="target_type" data-mult-type>
@@ -873,7 +916,17 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 
   {selectedSection === 'rewards' && (
   <div class:list={['lv-section', { 'lv-section-hidden': selectedSection !== 'rewards' }]}>
-    <h2><Icon name="ph:trophy-fill" width="15" height="15" />{dt('Level rewards')}</h2>
+    <DashStatTiles tiles={[
+      { label: dt('Level rewards'), value: rewards.length, tone: 'reactions' },
+      { label: dt('Message rewards'), value: rewards.filter((r) => r.source !== 'voice').length, tone: 'messages' },
+      { label: dt('Voice rewards'), value: rewards.filter((r) => r.source === 'voice').length, tone: 'voice' },
+      { label: dt('Highest level'), value: rewards.reduce((top, r) => Math.max(top, r.level), 0), tone: 'invites' },
+    ]} />
+    {!lvFlags.textOn && <p class="lv-gate-note lv-off-note" role="status"><span>{dt('Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.')} <a href={lvHref.settings}>{dt('Open Leveling settings')}</a></span></p>}
+    <div class="lv-head">
+      <h2><Icon name="ph:trophy-fill" width="16" height="16" />{dt('Level rewards')}</h2>
+      <p>{dt('A role given to a member when they reach a level. Message levels and voice levels have their own rewards.')}</p>
+    </div>
     <form method="POST" class="lv-form lv-stage-form" data-stage-form="rewards" data-initial={JSON.stringify(rewards.map((r) => ({ source: r.source, level: r.level, role_id: r.roleId, label: roleName(r.roleId) })))}>
       <input type="hidden" name="action" value="save_rewards" />
       <input type="hidden" name="payload" value={JSON.stringify(rewards.map((r) => ({ source: r.source, level: r.level, role_id: r.roleId })))} data-stage-payload />
@@ -883,13 +936,25 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         ))}
       </div>
       <p class="lv-empty-note" data-stage-empty hidden={rewards.length > 0}><Icon name="ph:trophy-fill" width="15" height="15" />{dt('No rewards yet.')}</p>
-      <div class="lv-add-reward" data-stage-add>
-        <select data-f="source"><option value="text">{dt('Message level')}</option><option value="voice">{dt('Voice level')}</option></select>
-        <input type="number" data-f="level" placeholder={dt('Level')} min="1" max="1000" />
-        <select data-f="role_id" data-give-role>
-          <option value="" disabled selected>{dt('Choose a role')}</option>
-          {roles.map((r) => <option value={r.id}>{r.name}</option>)}
-        </select>
+      <div class="lv-add-reward lv-add-box" data-stage-add>
+        <div class="lv-add-title">{dt('Add reward')}</div>
+        <div class="lv-grid lv-grid-3">
+          <div class="lv-field">
+            <span class="lv-label" id="lv-reward-source-label">{dt('Level')}</span>
+            <select data-f="source" aria-labelledby="lv-reward-source-label"><option value="text">{dt('Message level')}</option><option value="voice">{dt('Voice level')}</option></select>
+          </div>
+          <div class="lv-field">
+            <label for="lv-reward-level">{dt('From level')}</label>
+            <input id="lv-reward-level" type="number" data-f="level" placeholder={dt('Level')} min="1" max="1000" />
+          </div>
+          <div class="lv-field">
+            <span class="lv-label" id="lv-reward-role-label">{dt('Role')}</span>
+            <select data-f="role_id" data-give-role aria-labelledby="lv-reward-role-label">
+              <option value="" disabled selected>{dt('Choose a role')}</option>
+              {roles.map((r) => <option value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+        </div>
         <button type="button" class="btn btn-ghost btn-sm" data-stage-add-btn><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add reward')}</button>
       </div>
       <div class="lv-save-bar">
@@ -901,16 +966,26 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 
   {(leaderboardIsVoice || selectedSection === 'leaderboard') && <span hidden data-dash-live="30"></span>}
   {(leaderboardIsVoice || selectedSection === 'leaderboard') && (
-  <div class:list={['lv-section', { 'lv-section-hidden': !['leaderboard', 'leaderboard-voice'].includes(selectedSection) }]}>
+  <div class:list={['lv-section', 'lv-board-section', { 'lv-section-hidden': !['leaderboard', 'leaderboard-voice'].includes(selectedSection) }]}>
+    <DashStatTiles tiles={[
+      { label: dt('Members ranked'), value: boardCount, tone: 'joins' },
+      { label: dt('Top level'), value: boardTopLevel, tone: 'invites' },
+      ...(leaderboardIsVoice ? [{ label: dt('Voice minutes'), value: 0, text: formatDuration(boardMinutes * 60, { locale: dashLocale(dashLang) }), tone: 'voice' as const }] : []),
+      { label: leaderboardIsVoice ? dt('Voice XP in the top') : dt('XP in the top'), value: boardXp, tone: 'messages' },
+    ]} />
+    {leaderboardIsVoice
+      ? !lvFlags.voiceOn && <p class="lv-gate-note lv-off-note" role="status"><span>{dt('Voice leveling is off, so nobody earns voice XP right now. You can still change this page, and what you save stays.')} <a href={lvHref.voice}>{dt('Open Voice leveling')}</a></span></p>
+      : !lvFlags.textOn && <p class="lv-gate-note lv-off-note" role="status"><span>{dt('Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.')} <a href={lvHref.settings}>{dt('Open Leveling settings')}</a></span></p>}
     <form method="POST" class="lv-board-page" data-lv-form="board" data-lv-flags={JSON.stringify(lvFlags)} data-lv-hrefs={JSON.stringify(lvHref)}>
       <input type="hidden" name="action" value="board_page" />
       <div class="lv-board-page-head">
+        <span class="lv-card-icon" style="--c:#8fb3ff"><Icon name="ph:globe-fill" width="16" height="16" /></span>
         <div>
-          <h2><Icon name="ph:globe-fill" width="15" height="15" />{dt('Public page')}</h2>
+          <h2>{dt('Public page')}</h2>
           <p>{dt('Anyone with the link can see the ranking of this server on the website: names, pictures, levels and XP.')}</p>
         </div>
-        <label class="lv-check"><input type="checkbox" name="leaderboard_public" checked={publicBoard?.enabled} aria-describedby="lv-status-board" />{dt('Show the leaderboard on the website')}</label>
       </div>
+      <label class="lv-check"><span class="lv-check-text"><b>{dt('Show the leaderboard on the website')}</b></span><input type="checkbox" name="leaderboard_public" checked={publicBoard?.enabled} aria-describedby="lv-status-board" /></label>
       <p class="lv-status" id="lv-status-board" data-lv-status="board" aria-live="polite">{statusBoard}</p>
       {boardError && <div class="lv-flash lv-flash-error"><Icon name="ph:x-circle-fill" width="15" height="15" />{boardErrors[boardError] ?? boardErrors.save}</div>}
       <div class="lv-grid">
@@ -925,7 +1000,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 
     <div class="lv-board-heading">
       <div>
-        <h2><Icon name="ph:ranking-fill" width="15" height="15" />{leaderboardIsVoice ? dt('Voice leaderboard') : dt('Leaderboard')}</h2>
+        <h2><Icon name="ph:ranking-fill" width="16" height="16" />{leaderboardIsVoice ? dt('Voice leaderboard') : dt('Leaderboard')}</h2>
         <p>{leaderboardIsVoice ? dt('Members ranked by voice XP and time spent in voice channels.') : dt('Members ranked by message XP and progress through the current leveling curve.')}</p>
       </div>
       <span class="lv-board-count">{dt('Top {a}', { a: (displayLeaderboard.length) })}</span>
@@ -935,11 +1010,11 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
     ) : (
       <div class="lv-board" role="table" aria-label={dt('Leveling leaderboard')}>
         <div class="lv-board-head" role="row">
-          <span>{dt('Rank')}</span><span>{dt('Member')}</span><span>{dt('Level')}</span><span>{leaderboardIsVoice ? 'Voice XP' : 'Total XP'}</span>
+          <span>{dt('Rank')}</span><span>{dt('Member')}</span><span>{dt('Level')}</span><span>{leaderboardIsVoice ? dt('Voice XP') : dt('Total XP')}</span>
         </div>
-        {displayLeaderboard.map((row) => (
-          <div class:list={['lv-board-row', { 'lv-board-first': row.rank === 1, 'lv-board-second': row.rank === 2, 'lv-board-third': row.rank === 3 }]} role="row">
-            <span class="lv-board-rank">{String(row.rank).padStart(2, '0')}</span>
+        {displayLeaderboard.map((row, index) => (
+          <div class:list={['lv-board-row', { 'lv-board-first': row.rank === 1, 'lv-board-second': row.rank === 2, 'lv-board-third': row.rank === 3 }]} role="row" style={`--i:${Math.min(index, 9)}`}>
+            <span class="lv-board-rank" aria-label={String(row.rank)}>{row.rank <= 3 ? <Icon name="ph:medal-fill" width="24" height="24" /> : String(row.rank).padStart(2, '0')}</span>
             <div class="lv-board-member">
               <img src={row.avatarUrl} alt="" loading="lazy" />
               <div>
@@ -949,7 +1024,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
               </div>
             </div>
             <span class="lv-board-level">{dt('Lv. {a}', { a: (row.level) })}</span>
-            <span class="lv-board-xp">{row.xp.toLocaleString(dashLocale(dashLang))} <small>{leaderboardIsVoice ? 'voice XP' : 'XP'}</small>{leaderboardIsVoice && row.voiceMinutes != null && <small class="lv-board-minutes">{row.voiceMinutes.toLocaleString()} min</small>}</span>
+            <span class="lv-board-xp">{row.xp.toLocaleString(dashLocale(dashLang))} <small>{leaderboardIsVoice ? dt('voice XP') : 'XP'}</small>{leaderboardIsVoice && row.voiceMinutes != null && <small class="lv-board-minutes">{formatDuration(row.voiceMinutes * 60, { locale: dashLocale(dashLang) })}</small>}</span>
           </div>
         ))}
       </div>
@@ -1087,6 +1162,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
           payload.value = JSON.stringify({ add: added, remove: [...removed] });
         }
         fresh = null;
+        if (!list.dataset.drawn) setTimeout(() => { list.dataset.drawn = "1"; }, 700);
       };
       list.querySelectorAll("[data-existing-event]").forEach((el) => {
         el.querySelector("[data-remove-existing]")?.addEventListener("click", () => {
@@ -1140,6 +1216,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
           fresh = { name, multiplier, source: field("source")?.value ?? "all", duration, startIn: Number(field("startIn")?.value) || 0 };
           added.push(fresh);
           field("name").value = "";
+          field("name").dispatchEvent(new Event("input", { bubbles: true }));
         }
         markDirty();
         render();
@@ -1287,8 +1364,8 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
 </script>
 <script is:inline>
   (function () {
-    if (window.__lvSteppers) return;
-    window.__lvSteppers = true;
+    // The dashboard swaps a page's content in without a reload and runs this script again: the numbers of the new page get their buttons too.
+    if (window.__lvSteppers) { window.__lvSteppers(); return; }
     // The numbers get a minus and a plus (the same input, with the same name, id and limits; DashSettingsKit does the pressing and holding).
     var plus = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M224 128a8 8 0 0 1-8 8h-88v88a8 8 0 0 1-16 0v-88H32a8 8 0 0 1 0-16h88V32a8 8 0 0 1 16 0v88h88a8 8 0 0 1 8 8Z"/></svg>';
     var minus = '<svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M224 128a8 8 0 0 1-8 8H40a8 8 0 0 1 0-16h176a8 8 0 0 1 8 8Z"/></svg>';
@@ -1302,6 +1379,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         wrap.insertAdjacentHTML('beforeend', '<button type="button" class="sx-step" data-sx-step="1" tabindex="-1" aria-label="+">' + plus + '</button>');
       });
     }
+    window.__lvSteppers = run;
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
   })();
 </script>
@@ -1528,7 +1606,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         const cooldown = Math.max(0, Math.round(messages * number('cooldown_seconds', 60)));
         row.querySelector('[data-curve-total]').textContent = `${format(current)} XP`;
         row.querySelector('[data-curve-messages]').textContent = `~${format(messages)}`;
-        row.querySelector('[data-curve-cooldown]').textContent = cooldown >= 3600 ? `~${(cooldown / 3600).toFixed(1)}h` : `~${format(cooldown)}s`;
+        row.querySelector('[data-curve-cooldown]').textContent = `~${window.dglDuration(cooldown, { locale: document.documentElement.lang })}`;
       });
     };
     const curvePresets = {
@@ -1591,7 +1669,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
         const minutes = Math.max(0, Math.ceil(current / Math.max(number('voice_xp_per_minute', 5), 1)));
         row.querySelector('[data-voice-curve-total]').textContent = `${format(current)} XP`;
         row.querySelector('[data-voice-curve-minutes]').textContent = `~${format(minutes)}`;
-        row.querySelector('[data-voice-curve-time]').textContent = minutes >= 60 ? `~${(minutes / 60).toFixed(1)}h` : `~${format(minutes)}m`;
+        row.querySelector('[data-voice-curve-time]').textContent = `~${window.dglDuration(minutes * 60, { locale: document.documentElement.lang })}`;
       });
     };
     form.addEventListener('input', updateCurve);
@@ -1679,16 +1757,12 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-board-page-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .lv-board-link { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--accent); text-decoration: none; word-break: break-all; }
   .lv-board-link:hover { text-decoration: underline; }
-  .lv-note { font-size: 13px; color: var(--text-muted); margin: -6px 0 16px; max-width: 70ch; }
   .lv-hint a { color: var(--accent); }
   .lv-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
-  .lv-events-title { margin-top: 34px; }
   .lv-event-form { margin-top: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
   .lv-event-form .lv-hint { margin: 0; }
   .lv-rank-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); gap: 32px; align-items: start; }
   .lv-rank-form { margin-bottom: 0; }
-  .lv-choice { display: flex; flex-wrap: wrap; gap: 8px; }
-  .lv-choice-item { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-raise); font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer; }
   .lv-choice-item:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
   .lv-rank-preview { display: grid; gap: 8px; position: sticky; top: 90px; }
   .lv-preview-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); margin-top: 6px; }
@@ -1702,7 +1776,6 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-rank-stage[data-state="busy"]::after { content: attr(data-busy); position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--text-dim); background: color-mix(in srgb, var(--card) 70%, transparent); }
   .lv-rank-fail { display: grid; gap: 8px; justify-items: start; padding: 14px; font-size: 13px; color: var(--text-muted); }
   .lv-rank-fail button { border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text); padding: 6px 12px; cursor: pointer; font: inherit; }
-  .lv-embed-title { font-size: 18px; font-weight: 700; color: #f2f3f5; margin-top: 4px; }
   .lv-embed-bar { height: 10px; border-radius: 6px; background: #1e1f22; overflow: hidden; margin: 4px 0; }
   .lv-embed-bar span { display: block; height: 100%; background: #8399ff; border-radius: 6px; }
   .lv-embed-stack { grid-template-columns: 1fr; }
@@ -1710,7 +1783,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   [data-mult-target][hidden] { display: none !important; }
   .lv-field textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; resize: vertical; width: 100%; }
   .lv-embed-fields {  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin-top: 6px; font-size: 12.5px; }
-  @media (max-width: 1100px) { .lv-rank-layout { grid-template-columns: 1fr; } .lv-rank-preview { position: static; } }
+  @media (max-width: 1100px) { .lv-rank-layout { grid-template-columns: minmax(0, 1fr); } .lv-rank-preview { position: static; } }
 
 
   .lv-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
@@ -1723,7 +1796,8 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .lv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; width: 100%; }
-  .lv-field { display: flex; flex-direction: column; gap: 6px; }
+  .lv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
+  .lv-field select { max-width: 100%; min-width: 0; }
   .lv-field-wide { grid-column: 1 / -1; }
   .lv-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
   .lv-field input, .lv-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13.5px; }
@@ -1734,14 +1808,7 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-inline-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: normal; }
   .lv-inline-check input { accent-color: var(--accent); }
 
-  .lv-notify-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: stretch; }
-  .lv-notify-template { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-width: 0; }
-  .lv-notify-template a { color: var(--accent); }
 
-  .lv-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 130px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
-  .lv-role-item { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 5px 7px; border-radius: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
-  .lv-role-item:hover { background: var(--card-hover); color: var(--text); }
-  .lv-role-item input { flex-shrink: 0; accent-color: var(--accent); }
 
   .lv-advanced { border: 1px solid var(--border); border-radius: 13px; padding: 18px; width: 100%; background: var(--card); }
   .lv-advanced summary { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); cursor: pointer; }
@@ -1785,23 +1852,37 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-empty-note[hidden] { display: none; }
   .lv-empty-note :global(svg) { flex-shrink: 0; color: var(--accent); }
 
-  .lv-rewards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  /* The lists that are edited on the page (events, rewards, multipliers): a card for each row. The rows are drawn by the script, so their styles use :global. */
+  .lv-rewards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; margin-bottom: 14px; max-width: 980px; width: 100%; box-sizing: border-box; }
   .lv-rewards:empty { display: none; }
-  /* The rows are drawn by the script below, so their styles reach them with :global. */
-  .lv-rewards :global(.lv-reward-row) { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 9px 10px 9px 14px; background: var(--card); max-width: 460px; min-width: 0; }
+  .lv-rewards.lv-events { grid-template-columns: minmax(0, 1fr); }
+  .lv-rewards :global(.lv-reward-row) { position: relative; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 14px; padding: 11px 10px 11px 16px; background: var(--card); min-width: 0; transition: border-color .3s ease, background-color .3s ease, opacity .3s ease; }
+  .lv-rewards :global(.lv-reward-row)::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); opacity: .7; }
+  .lv-rewards :global(.lv-reward-row[data-state="running"])::before { background: var(--green); opacity: 1; }
+  .lv-rewards :global(.lv-reward-row:hover) { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); background: var(--card-hover); }
   .lv-rewards :global(.lv-reward-new) { animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
-  .lv-rewards :global(.lv-reward-level) { font-size: 13px; font-weight: 600; color: var(--text); min-width: 66px; }
-  .lv-rewards :global(.lv-reward-arrow) { color: var(--text-dim); }
+  .lv-rewards :global(.lv-reward-level) { font-size: 13.5px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+  .lv-rewards :global(.lv-reward-arrow) { color: var(--text-dim); flex: none; }
   .lv-rewards :global(.lv-reward-role) { flex: 1; min-width: 0; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
-  .lv-rewards :global(.lv-reward-del) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; border: none; background: transparent; color: var(--text-dim); font-size: 17px; line-height: 1; cursor: pointer; padding: 0; border-radius: 8px; transition: color var(--m-fast) ease, background var(--m-fast) ease, transform var(--m-fast) var(--m-out); }
+  .lv-rewards.lv-events :global(.lv-reward-row) { flex-wrap: wrap; }
+  .lv-rewards.lv-events :global(.lv-reward-role) { flex: 1 1 220px; }
+  .lv-rewards :global(.lv-reward-del) { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex-shrink: 0; margin-left: auto; border: none; background: transparent; color: var(--text-dim); font-size: 17px; line-height: 1; cursor: pointer; padding: 0; border-radius: 9px; transition: color var(--m-fast) ease, background var(--m-fast) ease, transform var(--m-fast) var(--m-out); }
   .lv-rewards :global(.lv-reward-del:hover) { color: var(--red); background: var(--red-soft); }
   .lv-rewards :global(.lv-reward-del:active) { transform: scale(var(--m-press)); }
+  /* The rows of rewards and multipliers come in one after the other the first time they are drawn; adding or removing one later does not replay it (the script marks the list). */
+  .lv-rewards:not(.lv-events):not([data-drawn]) :global(.lv-reward-row) { animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
+  .lv-rewards:not(.lv-events):not([data-drawn]) :global(.lv-reward-row:nth-child(2)) { animation-delay: var(--m-stagger); }
+  .lv-rewards:not(.lv-events):not([data-drawn]) :global(.lv-reward-row:nth-child(3)) { animation-delay: calc(var(--m-stagger) * 2); }
+  .lv-rewards:not(.lv-events):not([data-drawn]) :global(.lv-reward-row:nth-child(4)) { animation-delay: calc(var(--m-stagger) * 3); }
+  .lv-rewards:not(.lv-events):not([data-drawn]) :global(.lv-reward-row:nth-child(n+5)) { animation-delay: calc(var(--m-stagger) * 4); }
+  [data-stage-form="multipliers"] .lv-rewards :global(.lv-reward-level), [data-stage-form="rewards"] .lv-rewards :global(.lv-reward-level) { flex: none; border-radius: 999px; padding: 3px 11px; font-size: 12.5px; color: var(--accent); background: var(--accent-soft); font-variant-numeric: tabular-nums; }
+  .lv-events :global(.lv-reward-row[data-existing-event]) { animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
+  .lv-events :global(.lv-reward-row[data-existing-event]:nth-child(3)) { animation-delay: var(--m-stagger); }
+  .lv-events :global(.lv-reward-row[data-existing-event]:nth-child(4)) { animation-delay: calc(var(--m-stagger) * 2); }
+  .lv-events :global(.lv-reward-row[data-existing-event]:nth-child(n+5)) { animation-delay: calc(var(--m-stagger) * 3); }
+  @media (prefers-reduced-motion: reduce) { .lv-rewards :global(.lv-reward-new), .lv-rewards:not(.lv-events):not([data-drawn]) :global(.lv-reward-row), .lv-events :global(.lv-reward-row[data-existing-event]) { animation: none; } }
 
   .lv-save-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
-  .lv-add-reward { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .lv-add-reward input, .lv-add-reward select { min-width: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13px; }
-  .lv-add-reward input { width: 80px; flex-shrink: 0; }
-  .lv-add-reward select { flex: 1 1 140px; }
   .lv-add-reward .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
   .lv-board-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 14px; max-width: 780px; }
@@ -1878,7 +1959,26 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-field input:not([type="checkbox"]):hover, .lv-field select:hover, .lv-field textarea:hover { border-color: color-mix(in srgb, var(--text) 24%, var(--border)); }
   .lv-field input:not([type="checkbox"]):focus, .lv-field select:focus, .lv-field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
   .lv-field textarea.dgl-autogrow { min-height: 5.6em; resize: none; line-height: 1.5; }
+  .lv-field textarea.dgl-autogrow.dfx-one { min-height: 40px; overflow-y: hidden; }
   .lv-field :global(.dfx-count) { align-self: flex-end; }
+  .lv-field > .lv-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  /* The title of a subpage: one line of what it is, in the same voice as the other redesigned pages. */
+  .lv-head { margin: 4px 0 16px; max-width: 980px; }
+  .lv-head h2 { margin: 0; font-size: 16px; }
+  .lv-head p { margin: 5px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); max-width: 72ch; }
+  .lv-events-head { margin-top: 30px; }
+  .lv-add-box { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px 20px; width: 100%; box-sizing: border-box; max-width: 980px; }
+  .lv-add-title { font-size: 14.5px; font-weight: 600; }
+  .lv-add-reward.lv-add-box { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+  .lv-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 720px) { .lv-grid-3 { grid-template-columns: minmax(0, 1fr); } }
+  .lv-off-note { max-width: 980px; margin: 0 0 18px; }
+  .lv-off-note a { color: var(--accent); font-weight: 600; }
+  .lv-off-note span { min-width: 0; }
+  .lv-preview-label { font-family: var(--sans); font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); margin-top: 8px; }
+  .lv-field :global(.dfx-chip) { font-weight: 400; color: var(--text-muted); font-size: 13px; text-transform: none; letter-spacing: 0; }
+  .lv-field :global(.dfx-chip:has(input:checked)) { color: var(--accent); font-weight: 600; }
+  .lv-field :global(.dfx-chip input) { border: 0; padding: 0; }
   .lv-field :global(.sx-stepper) { max-width: none; }
   .lv-pair { gap: 10px; }
   .lv-pair :global(.sx-stepper) { flex: 1; min-width: 0; }
@@ -1891,14 +1991,17 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
   .lv-switch input:checked + span { background: var(--green); }
   /* The checks inside the options are switch rows. */
   .lv-check-wrap { width: 100%; }
-  .lv-inline-check { justify-content: space-between; gap: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; color: var(--text); font-size: 13.5px; cursor: pointer; transition: border-color .3s ease, background-color .3s ease; }
-  .lv-inline-check:hover { background: var(--card-hover); }
-  .lv-inline-check:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
-  .lv-inline-check input { appearance: none; -webkit-appearance: none; flex: none; position: relative; order: 2; width: 40px; height: 24px; margin: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 18%, transparent); cursor: pointer; transition: background-color .3s ease; }
-  .lv-inline-check input::after { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 35%); transition: transform .3s cubic-bezier(.22, 1, .36, 1); }
-  .lv-inline-check input:checked { background: var(--accent); }
-  .lv-inline-check input:checked::after { transform: translateX(16px); }
-  .lv-inline-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .lv-inline-check, .lv-check { justify-content: space-between; gap: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; color: var(--text); font-size: 13.5px; cursor: pointer; transition: border-color .3s ease, background-color .3s ease; }
+  .lv-inline-check:hover, .lv-check:hover { background: var(--card-hover); }
+  .lv-check-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .lv-check-text b { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+  .lv-check-text em { font-style: normal; font-size: 12px; line-height: 1.4; color: var(--text-dim); font-weight: 400; }
+  .lv-inline-check:has(input:checked), .lv-check:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
+  .lv-inline-check input, .lv-check input { appearance: none; -webkit-appearance: none; flex: none; position: relative; order: 2; width: 40px; height: 24px; margin: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 18%, transparent); cursor: pointer; transition: background-color .3s ease; }
+  .lv-inline-check input::after, .lv-check input::after { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 35%); transition: transform .3s cubic-bezier(.22, 1, .36, 1); }
+  .lv-inline-check input:checked, .lv-check input:checked { background: var(--accent); }
+  .lv-inline-check input:checked::after, .lv-check input:checked::after { transform: translateX(16px); }
+  .lv-inline-check input:focus-visible, .lv-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* The groups that open: a soft height animation and a caret that turns. */
   .lv-adv { border-radius: 14px; interpolate-size: allow-keywords; transition: border-color .3s ease; }
   .lv-adv[open] { border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); }
@@ -1919,4 +2022,31 @@ const advVoiceMore = voiceConfig.ignoredChannelIds.length > 0 || voiceConfig.ign
     .lv-curve-layout { grid-template-columns: minmax(0, 1fr); }
   }
   @media (prefers-reduced-motion: reduce) { .lv-form > :not(.lv-gate), .lv-gate > * { animation: none; } .lv-adv::details-content, .lv-switch span, .lv-switch span::before, .lv-inline-check input::after { transition: none; } }
+  /* The leaderboards: medals for the first three, bars that fill and rows that come in (not again when the page refreshes by itself). */
+  .lv-board-page { max-width: 980px; width: 100%; box-sizing: border-box; border-radius: 16px; padding: 18px 20px; gap: 14px; }
+  .lv-board-page-head { justify-content: flex-start; align-items: flex-start; flex-wrap: nowrap; gap: 12px; }
+  .lv-board-page-head .lv-card-icon { margin-top: 1px; }
+  .lv-board-page-head h2 { margin: 0 0 3px; font-size: 15.5px; }
+  .lv-board-page-head p { max-width: 70ch; }
+  .lv-board-heading { max-width: 980px; }
+  .lv-board-heading h2 { font-size: 16px; }
+  .lv-board-count { font: 600 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--text-muted); background: color-mix(in srgb, var(--text) 7%, transparent); border-color: transparent; }
+  .lv-board { max-width: 980px; border-radius: 16px; }
+  .lv-board-head { font: 600 12px var(--sans); letter-spacing: 0; text-transform: none; }
+  .lv-board-row { position: relative; animation: m-rise-in var(--m-slow) var(--m-out) backwards; animation-delay: calc(var(--i, 0) * var(--m-stagger)); transition: background-color .3s ease; }
+  .lv-board-first { background: linear-gradient(90deg, color-mix(in srgb, #e6c56f 10%, var(--card)), var(--card) 60%); }
+  .lv-board-first:hover { background: linear-gradient(90deg, color-mix(in srgb, #e6c56f 14%, var(--card-hover)), var(--card-hover) 60%); }
+  .lv-board-rank { display: grid; place-items: center start; }
+  .lv-board-first .lv-board-rank { color: #e6c56f; } .lv-board-second .lv-board-rank { color: #c3ccd8; } .lv-board-third .lv-board-rank { color: #d39a6a; }
+  .lv-board-rank :global(svg) { filter: drop-shadow(0 2px 4px color-mix(in srgb, currentColor 35%, transparent)); }
+  .lv-board-member img { width: 38px; height: 38px; }
+  .lv-board-first .lv-board-member img { box-shadow: 0 0 0 2px #e6c56f; } .lv-board-second .lv-board-member img { box-shadow: 0 0 0 2px #c3ccd8; } .lv-board-third .lv-board-member img { box-shadow: 0 0 0 2px #d39a6a; }
+  .lv-board-member > div { flex: 1 1 auto; }
+  .lv-board-progress { width: min(280px, 100%); height: 5px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .lv-board-progress i { transform-origin: left; animation: lv-bar-fill .9s var(--m-out) backwards; animation-delay: calc(var(--i, 0) * var(--m-stagger) + 160ms); }
+  .lv-board-level { border-radius: 999px; padding: 4px 11px; font: 600 12px var(--sans); background: color-mix(in srgb, var(--text) 5%, transparent); border-color: transparent; font-variant-numeric: tabular-nums; }
+  .lv-board-xp { font-variant-numeric: tabular-nums; }
+  :global(.dgl-content.dgl-quiet) .lv-board-row, :global(.dgl-content.dgl-quiet) .lv-board-progress i { animation: none; }
+  @keyframes lv-bar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (prefers-reduced-motion: reduce) { .lv-board-row, .lv-board-progress i { animation: none; } }
 </style>

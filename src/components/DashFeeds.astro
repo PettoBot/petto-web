@@ -7,10 +7,13 @@ import SilentMentionHint from './SilentMentionHint.astro';
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
 import Modal from './Modal.astro';
-import { getDashLang, makeT } from '../i18n/dash';
+import { agoText, formatDuration } from '../utils/formatDuration';
+import { dashLocale, getDashLang, makeT } from '../i18n/dash';
 import { postProblemText, type PostableChannel } from '../utils/channelPost';
-import { ANIMAL_KINDS, ANNOUNCING_PLATFORMS, FEED_PACES, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, paceOf, platformById, platformGroup, type FeedRow } from '../utils/feeds';
+import { ANIMAL_KINDS, ANIMAL_PLATFORM_IDS, ANNOUNCING_PLATFORMS, FEED_PACES, FEED_PLATFORMS, FEED_TYPES, FEED_VARIABLES, LOCKED_PLATFORMS, paceOf, platformById, platformGroup, type FeedRow } from '../utils/feeds';
 
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
@@ -39,6 +42,26 @@ const channelClosed = new Map(channels.filter((channel) => channel.problem).map(
 const used = current ? feeds.filter((feed) => feed.platform === current.id).length : feeds.length;
 const full = current ? used >= limit : false;
 const countOf = (id: string) => feeds.filter((feed) => feed.platform === id).length;
+const locale = dashLocale(dashLang);
+// The numbers of the tiles: what the page lists (every feed, or the ones of the platform), counted from the same rows.
+const activeCount = shown.filter((feed) => feed.enabled).length;
+const pausedCount = shown.length - activeCount;
+const platformsInUse = new Set(feeds.map((feed) => (ANIMAL_PLATFORM_IDS.includes(feed.platform) ? 'animals' : feed.platform))).size;
+const lastSentAt = shown.reduce<number>((latest, feed) => Math.max(latest, feed.lastSentAt ? Date.parse(feed.lastSentAt) || 0 : 0), 0);
+const tiles = current
+  ? [
+    { label: dt('Followed'), value: shown.length, tone: 'voice' as const },
+    { label: dt('Active'), value: activeCount, tone: 'joins' as const },
+    { label: dt('Paused'), value: pausedCount, tone: 'reactions' as const },
+    { label: dt('Last notice'), value: 0, text: lastSentAt ? agoText(dt, lastSentAt, { locale }) : '—', tone: 'messages' as const },
+  ]
+  : [
+    { label: dt('Feeds'), value: feeds.length, tone: 'voice' as const },
+    { label: dt('Platforms'), value: platformsInUse, tone: 'invites' as const },
+    { label: dt('Active'), value: activeCount, tone: 'joins' as const },
+    { label: dt('Paused'), value: pausedCount, tone: 'reactions' as const },
+    { label: dt('Limit per platform'), value: limit, tone: 'messages' as const },
+  ];
 
 // What the bot writes in last_error (petto-bot src/feeds/engine.js), in words. A failed look at an account (noFeed, rateLimited, unavailable) does not
 // count as a failure: the feed stays on and says why until a look works again.
@@ -73,6 +96,8 @@ const text = {
   pickTags: dt('Write one to four words first.'), tagsPlaceholder: dt('pink flower anime -character'),
   whichMeaning: dt('Which “{word}” do you mean?'), meaningHelp: dt('Pick one and the feed is saved with it, or add a word that says it.'),
   paused: dt('Feed paused.'), resumed: dt('Feed resumed.'), removed: dt('Stopped following {name}.'), everyN: dt('Every {n} minutes'),
+  // The two lines under the channel of the window (showChannelNote): without them opening a feed to edit it, or picking a channel, stopped with an error.
+  canPostHere: ERROR_TEXT.canPostHere, cannotPostHere: ERROR_TEXT.cannotPostHere,
 };
 const config = {
   guildId, limit, used, platforms: Object.fromEntries(FEED_PLATFORMS.map((p) => [p.id, { name: p.name, color: p.color, ink: p.ink, types: p.types, defaultTypes: p.defaultTypes, pace: Boolean(p.pace), announces: ANNOUNCING_PLATFORMS.has(p.id), extra: p.extra ?? null, intro: p.intro ? dt(p.intro) : '', account: p.account ? { ...p.account, label: dt(p.account.label), placeholder: p.account.placeholder, help: dt(p.account.help) } : null }])),
@@ -82,7 +107,8 @@ const config = {
   feeds: Object.fromEntries(feeds.map((feed) => [feed.id, feed])),
 };
 const typeTable: Record<string, { label: string; icon: string }> = FEED_TYPES;
-const paceLabel = (minutes: number): string => { const known = FEED_PACES.find((pace) => pace.minutes === minutes); return known ? dt(known.label) : dt('Every {n} minutes', { n: String(minutes) }); };
+// How often an auto feed posts, in the short form of every duration of the dashboard (the labels of the pace choices are only for the select of the window).
+const paceShort = (minutes: number): string => dt('Every {a}', { a: formatDuration(minutes * 60, { locale }) });
 const typeIcon = (id: string): string => typeTable[id]?.icon ?? 'ph:bell-ringing-fill';
 // The picture a feed of a website falls back to when the one its feed gives does not load: the icon of the site.
 const siteIcon = (url: string | null): string => {
@@ -91,91 +117,126 @@ const siteIcon = (url: string | null): string => {
 const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={current ? `feeds-${current.id}` : 'feeds-overview'} pageTitle={current ? `${current.name} · ${dt('Feeds')}` : dt('Feeds')}>
-  <div class="fd" data-feeds data-config={JSON.stringify(config)} style={current ? `--fd-c:${current.color};--fd-ink:${current.ink}` : ''}>
+  <DashSettingsKit />
+  <div class="fd sx-page" data-feeds data-config={JSON.stringify(config)} style={current ? `--fd-c:${current.color};--fd-ink:${current.ink}` : ''}>
     <header class="fd-head">
       <div class="fd-title">
         {current ? <span class="fd-logo" style={`--fd-c:${current.color};--fd-ink:${current.ink}`}><Icon name={current.icon} width="22" height="22" /></span> : <span class="fd-logo fd-logo-all"><Icon name="ph:bell-ringing-fill" width="22" height="22" /></span>}
         <div>
           <h1>{current ? current.name : dt('Feeds')}</h1>
-          <p>{current ? dt('Petto posts what these accounts publish, in the channel you choose.') : dt('Follow accounts of other services and Petto posts what they publish: videos, live streams, posts and more.')}</p>
+          <p class="fd-lead">{current ? dt('Petto posts what these accounts publish, in the channel you choose.') : dt('Follow accounts of other services and Petto posts what they publish: videos, live streams, posts and more.')}</p>
         </div>
       </div>
-      <div class="fd-head-actions">
-        <span class={`fd-count${full ? ' fd-count-full' : ''}`} title={premium ? dt('The limit of Premium servers.') : dt('Free servers follow up to {count} accounts of each platform, Premium servers up to {premium}.', { count: String(freeLimit), premium: String(premiumLimit) })}>
-          <Icon name="ph:bell-ringing-fill" width="14" height="14" />{current ? dt('{used} of {limit} {name} accounts', { used: String(used), limit: String(limit), name: current.name }) : dt('{used} followed, up to {limit} of each platform', { used: String(used), limit: String(limit) })}
-        </span>
-        {current && !current.soon && <button type="button" class="btn btn-accent btn-sm" data-feed-new={current.id} disabled={!ready || full}><Icon name="ph:plus-bold" width="14" height="14" />{dt('New feed')}</button>}
-      </div>
+      {current && (
+        <div class="fd-head-actions">
+          <span class={`fd-count${full ? ' fd-count-full' : ''}`} title={premium ? dt('The limit of Premium servers.') : dt('Free servers follow up to {count} accounts of each platform, Premium servers up to {premium}.', { count: String(freeLimit), premium: String(premiumLimit) })}>
+            {dt('{used} of {limit} {name} accounts', { used: String(used), limit: String(limit), name: current.name })}
+          </span>
+          <a class="btn btn-ghost btn-sm" href={`/dash/guild/${guildId}/feeds`}><Icon name="ph:arrow-left-bold" width="13" height="13" />{dt('All feeds')}</a>
+          {!current.soon && <button type="button" class="btn btn-accent btn-sm" data-feed-new={current.id} disabled={!ready || full}><Icon name="ph:plus-bold" width="14" height="14" />{dt('New feed')}</button>}
+        </div>
+      )}
     </header>
 
     <div class="fd-flash" data-flash hidden role="status"></div>
     {!ready && <div class="fd-note fd-note-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('This arrives with the next Petto update.')}</div>}
-    {ready && full && !premium && current && <div class="fd-note"><Icon name="ph:crown-fill" width="15" height="15" />{dt('You follow the {count} {name} accounts a free server can. Premium servers can follow up to {premium} of each platform.', { count: String(limit), name: current.name, premium: String(premiumLimit) })} <a href="/premium">{dt('See Premium')}</a></div>}
+    {ready && full && !premium && current && <div class="fd-note"><Icon name="ph:crown-fill" width="15" height="15" /><span>{dt('You follow the {count} {name} accounts a free server can. Premium servers can follow up to {premium} of each platform.', { count: String(limit), name: current.name, premium: String(premiumLimit) })} <a href="/premium">{dt('See Premium')}</a></span></div>}
+
+    <DashStatTiles tiles={tiles} />
 
     {!current && (
-      <div class="fd-platforms" role="list" aria-label={dt('Platforms')}>
-        {FEED_PLATFORMS.filter((p) => !p.hidden).map((p, i) => (
-          p.soon
-            ? <div role="listitem" class="fd-plat fd-plat-soon" style={`--fd-c:${p.color};--fd-ink:${p.ink};--i:${i}`}><span class="fd-logo"><Icon name={p.icon} width="22" height="22" /></span><b>{p.name}</b><small>{dt('Coming soon')}</small></div>
-            : <a class="fd-plat" href={`/dash/guild/${guildId}/feeds?platform=${p.id}`} style={`--fd-c:${p.color};--fd-ink:${p.ink};--i:${i}`}><span class="fd-logo"><Icon name={p.icon} width="22" height="22" /></span><b>{p.name}</b><small>{countOf(p.id) ? dt('{count} of {limit} followed', { count: String(countOf(p.id)), limit: String(limit) }) : dt('Nothing followed yet')}</small></a>
-        ))}
-      </div>
+      <section class="sx-panel fd-picker" aria-labelledby="fd-pick-title">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:squares-four-fill" width="17" height="17" /></span>
+          <h2 id="fd-pick-title">{dt('Platforms')}</h2>
+        </div>
+        <p class="sx-hint">{dt('Pick a platform to see its accounts or to follow a new one.')}</p>
+        <nav class="fd-plats dgl-stagger" aria-label={dt('Platforms')}>
+          {FEED_PLATFORMS.filter((p) => !p.hidden).map((p) => {
+            const count = countOf(p.id);
+            return p.soon
+              ? <span class="fd-plat fd-plat-soon" style={`--fd-c:${p.color};--fd-ink:${p.ink}`}><span class="fd-logo"><Icon name={p.icon} width="16" height="16" /></span><b>{p.name}</b><em class="fd-plat-n">{dt('Coming soon')}</em></span>
+              : <a class="fd-plat" href={`/dash/guild/${guildId}/feeds?platform=${p.id}`} title={count ? dt('{count} of {limit} followed', { count: String(count), limit: String(limit) }) : dt('Nothing followed yet')} style={`--fd-c:${p.color};--fd-ink:${p.ink}`}>
+                <span class="fd-logo"><Icon name={p.icon} width="16" height="16" /></span><b>{p.name}</b>{count > 0 && <em class={`fd-plat-n${count >= limit ? ' fd-plat-n-full' : ''}`}><span>{count}</span><span class="fd-plat-lim">/{limit}</span></em>}
+              </a>;
+          })}
+        </nav>
+      </section>
+    )}
+
+    {shown.length > 0 && (
+      <section class="fd-listbox" aria-labelledby="fd-list-title">
+        <div class="fd-list-head">
+          <div class="fd-list-title"><h2 id="fd-list-title">{current ? dt('Accounts') : dt('Followed accounts')}</h2><span class="sx-tag">{shown.length}</span></div>
+          <label class="fd-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" data-feed-search placeholder={dt('Search accounts')} aria-label={dt('Search accounts')} autocomplete="off" /></label>
+        </div>
+        <ul class="fd-list dgl-stagger">
+          {shown.map((feed) => {
+            const p = platformById(feed.platform);
+            const status = statusOf(feed);
+            return (
+              <li class={`fd-feed fd-feed-${status.key}`} data-feed-row={feed.id} data-search={`${feed.accountName} ${p?.name ?? ''} ${channelName.get(feed.channelId) ?? ''}`.toLowerCase()} style={`--fd-c:${p?.color ?? '#888'};--fd-ink:${p?.ink ?? '#fff'}`}>
+                <div class="fd-top">
+                  <span class="fd-avatar">{feed.accountAvatar ? <img src={feed.accountAvatar} alt="" loading="lazy" referrerpolicy="no-referrer" data-platform={feed.platform} data-fallback={siteIcon(feed.accountUrl)} /> : p ? <Icon name={p.icon} width="20" height="20" /> : null}</span>
+                  <div class="fd-main">
+                    <div class="fd-name">{feed.accountUrl ? <a href={feed.accountUrl} target="_blank" rel="noopener noreferrer">{feed.accountName}</a> : <span>{feed.accountName}</span>}{!current && p && <span class="fd-plat-tag"><Icon name={p.icon} width="11" height="11" />{p.name}</span>}</div>
+                    <div class="fd-last"><Icon name="ph:clock-counter-clockwise-fill" width="12" height="12" />{feed.lastSentAt ? <span>{dt('Last notice')}: <time datetime={feed.lastSentAt} data-when data-keep>{agoText(dt, feed.lastSentAt, { locale })}</time></span> : dt('Nothing posted yet')}</div>
+                  </div>
+                  <span class={`fd-status fd-status-${status.key}`}>{status.label}</span>
+                </div>
+                <div class="fd-meta">
+                  <span class="fd-chans"><Icon name="ph:hash-bold" width="11" height="11" />{channelName.get(feed.channelId) ?? dt('deleted channel')}</span>
+                  {feed.types.map((type) => <span class="fd-type"><Icon name={typeIcon(type)} width="11" height="11" />{typeLabel(type)}</span>)}
+                  {p?.pace && <span class="fd-type"><Icon name="ph:timer-fill" width="11" height="11" />{paceShort(paceOf(feed.accountId))}</span>}
+                </div>
+                {status.detail && <div class="fd-err" title={status.detail}><Icon name="ph:warning-fill" width="13" height="13" /><span>{status.detail}</span></div>}
+                {channelClosed.has(feed.channelId) && <div class="fd-err"><Icon name="ph:warning-fill" width="13" height="13" /><span><strong>#{channelName.get(feed.channelId)}</strong>: {channelClosed.get(feed.channelId)}<span class="fd-err-fix">{dt('Give Petto the permission there, or edit the feed and pick another channel.')}</span></span></div>}
+                <div class="fd-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" data-feed-test={feed.id} title={dt('Send a test notice')} aria-label={dt('Send a test notice')}><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />{dt('Test')}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-feed-edit={feed.id} title={dt('Edit')} aria-label={dt('Edit')}><Icon name="ph:pencil-simple-bold" width="13" height="13" />{dt('Edit')}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" data-feed-toggle={feed.id} data-on={feed.enabled ? '1' : ''} title={feed.enabled ? dt('Pause') : dt('Resume')} aria-label={feed.enabled ? dt('Pause') : dt('Resume')}><Icon name={feed.enabled ? 'ph:pause-fill' : 'ph:play-fill'} width="13" height="13" />{feed.enabled ? dt('Pause') : dt('Resume')}</button>
+                  <button type="button" class="fd-del" data-feed-delete={feed.id} data-name={feed.accountName} title={dt('Stop following')} aria-label={dt('Stop following')}><Icon name="ph:trash-bold" width="13" height="13" />{dt('Remove')}</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    )}
+    <p class="sx-empty fd-nomatch" data-feed-nomatch hidden><Icon name="ph:magnifying-glass-bold" width="15" height="15" />{dt('No account matches your search.')}</p>
+
+    {shown.length === 0 && ready && (current ? (
+      <div class="fd-empty"><span class="fd-logo" style={`--fd-c:${current.color};--fd-ink:${current.ink}`}><Icon name={current.icon} width="24" height="24" /></span><h2>{dt('No {name} account followed yet', { name: current.name })}</h2><p>{dt('Add one and Petto will post its news here as soon as they happen.')}</p><button type="button" class="btn btn-accent btn-sm" data-feed-new={current.id} disabled={full}><Icon name="ph:plus-bold" width="14" height="14" />{dt('New feed')}</button></div>
+    ) : (
+      <div class="fd-empty"><span class="fd-logo fd-logo-all"><Icon name="ph:bell-ringing-fill" width="24" height="24" /></span><h2>{dt('No account followed yet')}</h2><p>{dt('Pick a platform to follow your first account.')}</p></div>
+    ))}
+
+    {current && (
+      <section class="sx-panel fd-about" aria-labelledby="fd-about-title">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon"><Icon name="ph:info-fill" width="17" height="17" /></span>
+          <h2 id="fd-about-title">{dt('What Petto posts')}</h2>
+        </div>
+        {(current.intro || current.account) && <p class="sx-lead fd-about-text">{current.intro ? dt(current.intro) : dt(current.account!.help)}</p>}
+        <div class="fd-kinds">{current.types.map((type) => <span class="fd-kind"><Icon name={typeIcon(type)} width="13" height="13" />{typeLabel(type)}</span>)}</div>
+      </section>
     )}
 
     {!current && (
-      <section class="fd-locked" aria-label={dt('Locked for now')}>
-        <div class="fd-locked-head"><Icon name="ph:lock-fill" width="15" height="15" /><b>{dt('Premium, locked for now')}</b><a href="/premium">{dt('See Premium')}</a></div>
-        <p>{dt('These services cost money to follow, so they will be Premium only to cover that cost. They unlock when they are ready.')}</p>
-        <ul>
+      <section class="sx-panel fd-locked" aria-label={dt('Locked for now')}>
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:var(--text-dim)"><Icon name="ph:lock-fill" width="17" height="17" /></span>
+          <h2>{dt('Premium, locked for now')}</h2>
+          <a class="fd-locked-link" href="/premium">{dt('See Premium')}</a>
+        </div>
+        <p class="sx-hint">{dt('These services cost money to follow, so they will be Premium only to cover that cost. They unlock when they are ready.')}</p>
+        <ul class="fd-locked-list">
           {LOCKED_PLATFORMS.map((p) => (
             <li style={`--fd-c:${p.color};--fd-ink:${p.ink}`}><span class="fd-logo"><Icon name={p.icon} width="16" height="16" /></span><div><b>{p.name}</b><small>{dt(p.reason)}</small></div><Icon name="ph:lock-fill" width="14" height="14" /></li>
           ))}
         </ul>
       </section>
     )}
-
-    {shown.length > 0 && (
-      <div class="fd-tools">
-        <label class="fd-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" data-feed-search placeholder={dt('Search accounts')} aria-label={dt('Search accounts')} autocomplete="off" /></label>
-      </div>
-    )}
-
-    {shown.length > 0 ? (
-      <ul class="fd-list">
-        {shown.map((feed, i) => {
-          const p = platformById(feed.platform);
-          const status = statusOf(feed);
-          return (
-            <li class="fd-row" data-feed-row={feed.id} data-search={`${feed.accountName} ${p?.name ?? ''} ${channelName.get(feed.channelId) ?? ''}`.toLowerCase()} style={`--fd-c:${p?.color ?? '#888'};--fd-ink:${p?.ink ?? '#fff'};--i:${Math.min(i, 8)}`}>
-              <span class="fd-avatar">{feed.accountAvatar ? <img src={feed.accountAvatar} alt="" loading="lazy" referrerpolicy="no-referrer" data-platform={feed.platform} data-fallback={siteIcon(feed.accountUrl)} /> : p ? <Icon name={p.icon} width="20" height="20" /> : null}</span>
-              <div class="fd-main">
-                <div class="fd-name">{feed.accountUrl ? <a href={feed.accountUrl} target="_blank" rel="noopener noreferrer">{feed.accountName}</a> : feed.accountName}{!current && p && <span class="fd-plat-tag"><Icon name={p.icon} width="11" height="11" />{p.name}</span>}</div>
-                <div class="fd-meta">
-                  <span class="fd-chans"><Icon name="ph:hash-bold" width="11" height="11" />{channelName.get(feed.channelId) ?? dt('deleted channel')}</span>
-                  {feed.types.map((type) => <span class="fd-type"><Icon name={typeIcon(type)} width="11" height="11" />{typeLabel(type)}</span>)}
-                  {p?.pace && <span class="fd-type"><Icon name="ph:timer-fill" width="11" height="11" />{paceLabel(paceOf(feed.accountId))}</span>}
-                </div>
-                <div class="fd-last">{feed.lastSentAt ? <>{dt('Last notice')}: <time datetime={feed.lastSentAt} data-when></time></> : dt('Nothing posted yet')}</div>
-                {status.detail && <div class="fd-err" title={status.detail}>{status.detail}</div>}
-                {channelClosed.has(feed.channelId) && <div class="fd-err"><strong>#{channelName.get(feed.channelId)}</strong>: {channelClosed.get(feed.channelId)}<span class="fd-err-fix">{dt('Give Petto the permission there, or edit the feed and pick another channel.')}</span></div>}
-              </div>
-              <span class={`fd-status fd-status-${status.key}`}>{status.label}</span>
-              <div class="fd-actions">
-                <button type="button" class="fd-icon" data-feed-test={feed.id} title={dt('Send a test notice')} aria-label={dt('Send a test notice')}><Icon name="ph:paper-plane-tilt-fill" width="15" height="15" /></button>
-                <button type="button" class="fd-icon" data-feed-edit={feed.id} title={dt('Edit')} aria-label={dt('Edit')}><Icon name="ph:pencil-simple-bold" width="15" height="15" /></button>
-                <button type="button" class="fd-icon" data-feed-toggle={feed.id} data-on={feed.enabled ? '1' : ''} title={feed.enabled ? dt('Pause') : dt('Resume')} aria-label={feed.enabled ? dt('Pause') : dt('Resume')}><Icon name={feed.enabled ? 'ph:pause-fill' : 'ph:play-fill'} width="15" height="15" /></button>
-                <button type="button" class="fd-icon fd-icon-danger" data-feed-delete={feed.id} data-name={feed.accountName} title={dt('Stop following')} aria-label={dt('Stop following')}><Icon name="ph:trash-bold" width="15" height="15" /></button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    ) : (
-      ready && (current ? (
-        <div class="fd-empty"><span class="fd-logo" style={`--fd-c:${current.color};--fd-ink:${current.ink}`}><Icon name={current.icon} width="26" height="26" /></span><h2>{dt('No {name} account followed yet', { name: current.name })}</h2><p>{dt('Add one and Petto will post its news here as soon as they happen.')}</p><button type="button" class="btn btn-accent btn-sm" data-feed-new={current.id} disabled={full}><Icon name="ph:plus-bold" width="14" height="14" />{dt('New feed')}</button></div>
-      ) : <p class="fd-hint">{dt('Pick a platform to follow your first account.')}</p>)
-    )}
-    <p class="fd-hint fd-none" data-feed-nomatch hidden>{dt('No account matches your search.')}</p>
   </div>
 
   <DashAcData roles={roles} channels={channels} vars={FEED_VARIABLES.map((variable) => ({ tok: variable.tok, desc: dt(variable.desc) }))} />
@@ -346,10 +407,10 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
       } catch { location.reload(); }
     };
 
-    // Dates are written in the viewer's own time zone.
+    // The exact date, in the viewer's own time zone, is the tooltip of the short "3h ago" the page was drawn with.
     root.querySelectorAll<HTMLTimeElement>('time[data-when]').forEach((el) => {
       const date = new Date(el.dateTime);
-      if (!Number.isNaN(date.getTime())) el.textContent = date.toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      if (!Number.isNaN(date.getTime())) el.title = date.toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' });
     });
 
     // Search of the page: filters the rows by account, platform or channel.
@@ -795,28 +856,28 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         return { ui: waitUi(flashBox, 'lines'), again: () => { button.dataset.confirmed = '1'; button.click(); } }; // Try again does not ask the question twice
       };
       if (button.dataset.feedTest) {
-        button.disabled = true;
+        button.disabled = true; button.classList.add('dgl-busy');
         const answer = await call('test', { id: Number(button.dataset.feedTest) }, waitInFlash());
-        button.disabled = false;
+        button.disabled = false; button.classList.remove('dgl-busy');
         if (answer.unreachable) return;
         flash(answer.message || (answer.ok ? text.saved : text.failed), answer.ok);
         return;
       }
       if (button.dataset.feedToggle) {
-        button.disabled = true;
+        button.disabled = true; button.classList.add('dgl-busy');
         const answer = await call('update', { id: Number(button.dataset.feedToggle), enabled: !button.dataset.on }, waitInFlash());
         if (answer.ok) { await refresh(button.dataset.on ? text.paused : text.resumed); return; }
-        button.disabled = false;
+        button.disabled = false; button.classList.remove('dgl-busy');
         if (!answer.unreachable) flash(answer.message || text.failed, false);
         return;
       }
       if (button.dataset.feedDelete) {
         const asked = button.dataset.confirmed === '1'; delete button.dataset.confirmed;
         if (!asked && !confirm(text.deleteAsk.replace('{name}', button.dataset.name ?? ''))) return;
-        button.disabled = true;
+        button.disabled = true; button.classList.add('dgl-busy');
         const answer = await call('delete', { id: Number(button.dataset.feedDelete) }, waitInFlash());
         if (answer.ok) { await refresh(text.removed.replace('{name}', button.dataset.name ?? '')); return; }
-        button.disabled = false;
+        button.disabled = false; button.classList.remove('dgl-busy');
         if (!answer.unreachable) flash(answer.message || text.failed, false);
       }
     });
@@ -834,81 +895,123 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
 </script>
 
 <style is:global>
-  .fd { --fd-c: var(--accent); max-width: 980px; }
-  .fd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 18px; }
-  .fd-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .fd-title h1 { margin: 0; font-size: 22px; }
-  .fd-title p { margin: 2px 0 0; font-size: 13px; color: var(--text-dim); max-width: 520px; }
+  .fd { --fd-c: var(--accent); display: block; }
+  .fd[hidden], .fd [hidden] { display: none !important; }
+  .fd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .fd-title { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 320px; }
+  .fd-title > div { min-width: 0; }
+  .fd-title h1 { margin: 0 0 4px; font-size: 24px; overflow-wrap: anywhere; }
+  .fd-lead { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-muted); max-width: 70ch; }
   .fd-logo { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; color: var(--fd-ink, #fff); background: var(--fd-c, var(--accent)); }
   .fd-logo-all { background: var(--accent-soft); color: var(--accent); }
-  .fd-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .fd-count { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--card); font-variant-numeric: tabular-nums; }
-  .fd-count-full { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, var(--border)); }
-  .fd-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px 14px; margin-bottom: 14px; }
+  .fd-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .fd-head-actions .btn, .fd-actions .btn, .fd-empty .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .fd-count { display: inline-flex; align-items: center; font: 600 12px var(--sans); color: var(--text-dim); border-radius: 999px; padding: 5px 12px; background: color-mix(in srgb, var(--text) 7%, transparent); font-variant-numeric: tabular-nums; }
+  .fd-count-full { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
+  .fd-note { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px 14px; margin-bottom: 14px; overflow-wrap: anywhere; }
+  .fd-note svg { flex: none; margin-top: 2px; }
   .fd-note a { color: var(--accent); }
-  .fd-note-warn { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, var(--border)); }
-  .fd-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--border); }
+  .fd-note-warn { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: var(--yellow); }
+  .fd-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--border); overflow-wrap: anywhere; }
   .fd-flash[hidden] { display: none; }
-  .fd-flash-ok { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 55%, transparent); }
-  .fd-flash-err { color: var(--red, #f87171); background: color-mix(in srgb, var(--red, #f87171) 10%, transparent); border-color: color-mix(in srgb, var(--red, #f87171) 50%, transparent); }
-  .fd-platforms { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; margin-bottom: 20px; }
-  .fd-plat { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 11px; align-items: center; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px; text-decoration: none; color: inherit; transition: border-color var(--m-base, .2s) ease, transform var(--m-base, .2s) var(--m-out, ease), box-shadow var(--m-base, .2s) ease; animation: m-rise-in var(--m-slow, .3s) var(--m-out, ease) both; animation-delay: calc(var(--i, 0) * var(--m-stagger, 40ms)); }
-  .fd-plat .fd-logo { grid-row: 1 / 3; width: 38px; height: 38px; }
-  .fd-plat b { font-size: 14px; align-self: end; }
-  .fd-plat small { font-size: 12px; color: var(--text-dim); align-self: start; }
-  a.fd-plat:hover { border-color: color-mix(in srgb, var(--fd-c) 55%, var(--border)); transform: translateY(-2px); box-shadow: 0 8px 24px -16px var(--fd-c); }
+  .fd-flash-ok { color: var(--green); background: var(--green-soft); border-color: var(--green); }
+  .fd-flash-err { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 55%, transparent); }
+  .fd-flash-wait { display: block; background: var(--card); }
+  .fd-picker, .fd-about, .fd-locked, .fd-empty, .fd-listbox { margin: 0 0 14px; }
+  .fd-picker { gap: 10px; }
+  .fd-picker .sx-hint { margin-top: -4px; }
+
+  /* The platforms: a chip for each one, with how many accounts follow it. */
+  .fd-plats { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+  .fd-plat { display: flex; align-items: center; gap: 9px; min-width: 0; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); padding: 7px 10px 7px 7px; text-decoration: none; color: inherit; transition: border-color var(--m-base, .2s) ease, background-color var(--m-base, .2s) ease; }
+  .fd-plat .fd-logo { width: 30px; height: 30px; border-radius: 9px; }
+  .fd-plat b { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fd-plat-n { flex: none; font: 600 11.5px var(--sans); border-radius: 999px; padding: 2px 8px; color: var(--accent); background: var(--accent-soft); font-variant-numeric: tabular-nums; }
+  .fd-plat-n-full { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  a.fd-plat:hover { border-color: color-mix(in srgb, var(--fd-c) 60%, var(--border)); background: var(--card-hover); }
+  a.fd-plat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .fd-plat-soon { opacity: .55; }
-  .fd-plat-soon .fd-logo { background: var(--bg-soft, var(--card-hover)); color: var(--text-dim); }
-  .fd-locked { border: 1px dashed var(--border); border-radius: 14px; padding: 14px; margin-bottom: 20px; background: var(--card); }
-  .fd-locked-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
-  .fd-locked-head a { margin-left: auto; font-size: 12.5px; color: var(--accent); }
-  .fd-locked p { margin: 6px 0 12px; font-size: 12.5px; color: var(--text-dim); }
-  .fd-locked ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
-  .fd-locked li { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 9px 11px; opacity: .8; }
-  .fd-locked li > div { flex: 1; min-width: 0; display: grid; gap: 1px; }
-  .fd-locked li b { font-size: 13.5px; }
-  .fd-locked li small { font-size: 11.5px; color: var(--text-dim); line-height: 1.35; }
-  .fd-locked li > :global(svg:last-child) { color: var(--text-dim); flex: none; }
-  .fd-locked .fd-logo { width: 30px; height: 30px; border-radius: 9px; }
-  .fd-tools { display: flex; margin-bottom: 10px; }
-  .fd-search { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 340px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 0 12px; color: var(--text-dim); }
+  .fd-plat-soon .fd-logo { background: var(--card-hover); color: var(--text-dim); }
+  .fd-plat-soon .fd-plat-n { color: var(--text-dim); background: color-mix(in srgb, var(--text) 8%, transparent); }
+
+  /* The accounts followed */
+  .fd-listbox { padding: 0; }
+  .fd-list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 10px; }
+  .fd-list-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fd-list-title h2 { margin: 0; font-size: 15.5px; }
+  .fd-search { display: flex; align-items: center; gap: 8px; flex: 0 1 300px; min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 0 12px; color: var(--text-dim); transition: border-color .15s ease, box-shadow .15s ease; }
+  .fd-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .fd-search svg { flex: none; }
   .fd-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13.5px; padding: 9px 0; outline: none; }
-  .fd-list { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 8px; }
-  .fd-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; border: 1px solid var(--border); border-left: 3px solid var(--fd-c); border-radius: 12px; background: var(--card); padding: 11px 12px; animation: m-rise-in var(--m-slow, .3s) var(--m-out, ease) both; animation-delay: calc(var(--i, 0) * var(--m-stagger, 40ms)); }
-  .fd-row[hidden] { display: none; }
-  .fd-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--bg-soft, var(--card-hover)); color: var(--fd-c); flex: none; }
+  .fd-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
+  .fd-feed { display: flex; flex-direction: column; gap: 10px; min-width: 0; border: 1px solid var(--border); border-left: 3px solid var(--fd-c); border-radius: 14px; background: var(--card); padding: 13px 14px 12px; transition: border-color var(--m-base, .2s) ease, box-shadow var(--m-base, .2s) ease; }
+  .fd-feed[hidden] { display: none; }
+  .fd-feed:hover { border-color: color-mix(in srgb, var(--fd-c) 40%, var(--border)); border-left-color: var(--fd-c); box-shadow: 0 6px 22px -16px var(--fd-c); }
+  .fd-feed-paused .fd-top, .fd-feed-off .fd-top { opacity: .7; }
+  .fd-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: center; }
+  .fd-avatar { width: 42px; height: 42px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--fd-c); color: var(--fd-ink, #fff); flex: none; }
   .fd-avatar img { width: 100%; height: 100%; object-fit: cover; }
   .fd-main { min-width: 0; display: grid; gap: 3px; }
-  .fd-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
-  .fd-name a { color: inherit; text-decoration: none; }
+  .fd-name { font-weight: 600; font-size: 14.5px; line-height: 1.3; display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+  .fd-name a { color: inherit; text-decoration: none; min-width: 0; }
   .fd-name a:hover { text-decoration: underline; }
   .fd-plat-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--fd-ink, #fff); background: var(--fd-c); border-radius: 999px; padding: 1px 8px; }
   .fd-meta { display: flex; flex-wrap: wrap; gap: 5px; }
-  .fd-chans, .fd-type { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); background: var(--bg-soft, var(--card-hover)); border-radius: 6px; padding: 2px 7px; }
-  .fd-last { font-size: 12px; color: var(--text-dim); }
-  .fd-err { font-size: 12px; line-height: 1.45; color: var(--red, #f87171); overflow-wrap: anywhere; }
+  .fd-chans, .fd-type { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted); background: color-mix(in srgb, var(--text) 6%, transparent); border-radius: 6px; padding: 2px 7px; max-width: 100%; overflow-wrap: anywhere; }
+  .fd-chans svg, .fd-type svg { flex: none; }
+  .fd-last { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); min-width: 0; }
+  .fd-last svg { flex: none; }
+  .fd-last time { color: var(--text-muted); }
+  .fd-err { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.45; color: var(--red); background: var(--red-soft); border-radius: 9px; padding: 7px 10px; overflow-wrap: anywhere; min-width: 0; }
+  .fd-err svg { flex: none; margin-top: 2px; }
+  .fd-feed-warn .fd-err, .fd-feed-wait .fd-err { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
   .fd-err-fix { display: block; opacity: .85; }
-  .fd-status { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; border: 1px solid var(--border); color: var(--text-muted); }
-  .fd-status-ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); }
-  .fd-status-warn, .fd-status-wait { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
-  .fd-status-off { color: var(--red, #f87171); border-color: color-mix(in srgb, var(--red, #f87171) 50%, transparent); }
-  .fd-actions { display: flex; gap: 4px; }
-  .fd-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--text-muted); cursor: pointer; transition: background .15s ease, color .15s ease; }
-  .fd-icon:hover { background: var(--card-hover); color: var(--text); }
-  .fd-icon-danger:hover { color: var(--red, #f87171); }
-  .fd-icon:disabled { opacity: .5; cursor: progress; }
-  .fd-empty { display: grid; justify-items: center; text-align: center; gap: 8px; border: 1px dashed var(--border); border-radius: 16px; padding: 34px 18px; background: var(--card); }
-  .fd-empty h2 { margin: 6px 0 0; font-size: 16px; }
+  .fd-status { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--sans); border-radius: 999px; padding: 3px 11px 3px 9px; white-space: nowrap; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .fd-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .7; }
+  .fd-status-ok { color: var(--green); background: var(--green-soft); }
+  .fd-status-ok::before { opacity: 1; box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
+  .fd-status-warn, .fd-status-wait { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
+  .fd-status-off { color: var(--red); background: var(--red-soft); }
+  .fd-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+  .fd-feed-paused [data-feed-toggle], .fd-feed-off [data-feed-toggle] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .fd-del { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; background: transparent; color: var(--red); font: 600 13px var(--sans); padding: 6px 10px; border-radius: 8px; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+  .fd-del:hover { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 35%, transparent); }
+  .fd-del:disabled, .fd-actions .btn:disabled { opacity: .55; cursor: progress; }
+  .fd-head-actions .btn:disabled, .fd-empty .btn:disabled { opacity: .5; }
+  .fd-nomatch { margin: 0 0 14px; }
+  .fd-nomatch[hidden] { display: none; }
+  .fd-nomatch svg { color: var(--text-dim); }
+
+  /* Nothing followed yet: one small box with the way in */
+  .fd-empty { display: grid; justify-items: center; text-align: center; gap: 6px; border: 1px dashed var(--border); border-radius: 14px; padding: 20px 18px; background: var(--card); }
+  .fd-empty h2 { margin: 6px 0 0; font-size: 16px; overflow-wrap: anywhere; }
   .fd-empty p { margin: 0 0 8px; font-size: 13.5px; color: var(--text-dim); max-width: 380px; }
-  .fd-hint { font-size: 13px; color: var(--text-dim); }
-  .fd-hint[hidden] { display: none; }
+
+  /* What a platform can post, and what to paste */
+  .fd-about { gap: 10px; }
+  .fd-about .fd-about-text { margin: 0; overflow-wrap: anywhere; }
+  .fd-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fd-kind { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; border: 1px solid var(--border); border-radius: 999px; padding: 5px 11px; color: var(--text-muted); }
+
+  /* The services that are Premium only, shown locked */
+  .fd-locked { border-style: dashed; gap: 10px; }
+  .fd-locked .sx-hint { margin-top: -4px; }
+  .fd-locked-link { margin-left: auto; font-size: 12.5px; color: var(--accent); white-space: nowrap; }
+  .fd-locked-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+  .fd-locked-list li { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border-soft); border-radius: 12px; padding: 9px 11px; min-width: 0; }
+  .fd-locked-list li > div { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .fd-locked-list li b { font-size: 13.5px; }
+  .fd-locked-list li small { font-size: 11.5px; color: var(--text-dim); line-height: 1.35; overflow-wrap: anywhere; }
+  .fd-locked-list li > svg { color: var(--text-dim); flex: none; }
+  .fd-locked-list .fd-logo { width: 30px; height: 30px; border-radius: 9px; }
 
   #fd-modal .mdl-box { width: min(480px, 100%); }
+  #fd-modal [hidden] { display: none !important; }
   #fd-modal .mdl-ico { background: var(--fd-c, var(--accent)); color: var(--fd-ink, #fff); }
-  .fd-form { display: grid; gap: 14px; min-width: 0; }
+  .fd-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
   .fd-sub { margin: 0; font-size: 12.5px; color: var(--text-dim); }
   .fd-sub:empty { display: none; }
-  .fd-field { display: grid; gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; position: relative; }
+  .fd-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; border: 0; padding: 0; margin: 0; position: relative; }
   .fd-field[hidden] { display: none; }
   .fd-field > label, .fd-set legend { font-size: 12.5px; font-weight: 600; color: var(--text); padding: 0; letter-spacing: .01em; }
   .fd-set legend { margin-bottom: 8px; float: left; width: 100%; }
@@ -918,7 +1021,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-field select { appearance: none; padding-right: 34px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath fill='%23999' d='M213.7 101.7l-80 80a8 8 0 0 1-11.4 0l-80-80a8 8 0 0 1 11.4-11.4L128 164.7l74.3-74.4a8 8 0 0 1 11.4 11.4Z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
   .fd-field textarea { resize: vertical; min-height: 72px; }
   .fd-field :is(input[type="text"], select, textarea):focus-visible { outline: none; border-color: var(--fd-c, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fd-c, var(--accent)) 22%, transparent); }
-  .fd-help { font-size: 12px; color: var(--text-dim); }
+  .fd-help { font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
   .fd-help:empty { display: none; }
 
   /* The search while typing: a box with a magnifier, a spinner and the list of accounts under it. */
@@ -970,7 +1073,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-chips, .fd-roles { display: flex; flex-wrap: wrap; gap: 6px; }
   .fd-chip { font: inherit; font-size: 11.5px; font-family: var(--mono); color: var(--text-muted); background: none; border: 1px dashed var(--border); border-radius: 999px; padding: 3px 10px; cursor: pointer; transition: color .15s ease, border-color .15s ease, background .15s ease; }
   .fd-chip:hover { color: var(--text); border-color: var(--fd-c, var(--accent)); background: color-mix(in srgb, var(--fd-c, var(--accent)) 10%, transparent); }
-  .fd-chip-role { font-family: var(--sans); font-size: 12.5px; color: var(--text); background: var(--bg-soft, var(--card-hover)); border: 1px solid var(--border); }
+  .fd-chip-role { font-family: var(--sans); font-size: 12.5px; color: var(--text); background: var(--bg-soft, var(--card-hover)); border: 1px solid var(--border); max-width: 100%; overflow-wrap: anywhere; text-align: left; }
   .fd-chip-role:hover { border-color: var(--red, #f87171); }
   .fd-check { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; white-space: nowrap; color: var(--text-muted); }
   .fd-more { border: 1px solid var(--border); border-radius: 12px; padding: 0; background: var(--bg-soft, transparent); }
@@ -982,7 +1085,6 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-more[open] { display: grid; gap: 0; }
   .fd-more[open] > :not(summary) + :not(summary) { margin-top: -2px; }
   .fd-more[open] { gap: 14px; }
-  .fd-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
   .fd-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .fd-tabs[hidden] { display: none; }
   .fd-tab { font: inherit; font-size: 12.5px; border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
@@ -1005,11 +1107,21 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   .fd-error[hidden] { display: none; }
   .fd-foot { display: flex; justify-content: flex-end; gap: 8px; }
   @media (max-width: 760px) {
-    .fd-row { grid-template-columns: auto minmax(0, 1fr); }
-    .fd-status { grid-column: 2; justify-self: start; }
-    .fd-actions { grid-column: 1 / -1; justify-content: flex-end; }
+    .fd-list { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 560px) {
+    .fd-top { grid-template-columns: auto minmax(0, 1fr); }
+    .fd-status { grid-column: 2; justify-self: start; margin-top: -4px; }
+    .fd-plats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* On a phone the count is a small bubble on the logo, so the name keeps its room. */
+    .fd-plat { position: relative; }
+    .fd-plat-n { position: absolute; top: -6px; left: 28px; padding: 1px 6px; font-size: 10.5px; line-height: 1.5; color: var(--accent-ink); background: var(--accent); box-shadow: 0 0 0 2px var(--card); }
+    .fd-plat-n-full { color: #1a1300; background: var(--yellow); }
+    .fd-plat-lim { display: none; }
+    .fd-search { flex: 1 1 100%; }
+    .fd-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fd-actions > * { justify-content: center; }
+    .fd-del { margin-left: 0; border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
     #fd-modal .mdl-box { gap: 12px; }
     .fd-form { gap: 12px; }
     .fd-chips[data-var-chips] { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -2px; padding: 0 2px 2px; }
@@ -1019,5 +1131,5 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
     .fd-foot { position: sticky; bottom: -16px; margin: 0 -14px -16px; padding: 12px 14px; background: var(--card); border-top: 1px solid var(--border); }
     .fd-foot .btn { flex: 1; justify-content: center; }
   }
-  @media (prefers-reduced-motion: reduce) { .fd-plat, .fd-row { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .fd-plat, .fd-feed { animation: none; } }
 </style>

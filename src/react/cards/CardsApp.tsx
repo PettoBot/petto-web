@@ -35,7 +35,58 @@ const errorText = (code?: string) => (code && ERRORS[code] ? t(ERRORS[code]) : t
 const IMAGE_ICON = 'M216 40H40a16 16 0 0 0-16 16v144a16 16 0 0 0 16 16h176a16 16 0 0 0 16-16V56a16 16 0 0 0-16-16m-60 48a12 12 0 1 1-12 12a12 12 0 0 1 12-12m60 112H40v-39.31l46.34-46.35a8 8 0 0 1 11.32 0L165 181.66a8 8 0 0 0 11.32-11.32l-17.66-17.65L173 138.34a8 8 0 0 1 11.31 0L216 170.07z';
 const PLUG_ICON = 'M237.66 77.66L203.31 112l26.35 26.34a8 8 0 0 1-11.32 11.32l-6.34-6.35l-53 53a40 40 0 0 1-56.57 0l-15.68-15.74l-49.09 49.09a8 8 0 0 1-11.32-11.32l49.09-49.09l-15.71-15.71a40 40 0 0 1 0-56.57l53-53l-6.35-6.34a8 8 0 0 1 11.32-11.32L144 52.69l34.34-34.35a8 8 0 1 1 11.32 11.32L155.31 64L192 100.69l34.34-34.35a8 8 0 0 1 11.32 11.32';
 
-/** A centered empty state that fills the rest of the panel. */
+const TROPHY_ICON = 'M232 64h-24V48a8 8 0 0 0-8-8H56a8 8 0 0 0-8 8v16H24A16 16 0 0 0 8 80v16a40 40 0 0 0 40 40h3.65A80.13 80.13 0 0 0 120 191.61V216H96a8 8 0 0 0 0 16h64a8 8 0 0 0 0-16h-24v-24.42c31.94-3.23 58.44-25.64 68.08-55.58H208a40 40 0 0 0 40-40V80a16 16 0 0 0-16-16M48 120a24 24 0 0 1-24-24V80h24v32q0 4 .39 8Zm184-24a24 24 0 0 1-24 24h-.5a82 82 0 0 0 .5-8.9V80h24Z';
+
+function Ico({ d, size = 14 }: { d: string; size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d={d} /></svg>;
+}
+
+/** A number that counts up the first time it shows, like the tiles of the other pages (and stays still when the person asked for less motion). */
+function CountUp({ value }: { value: number }) {
+  const [shown, setShown] = useState(0);
+  const first = useRef(true);
+  useEffect(() => {
+    if (!first.current || !(value > 0) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { first.current = false; setShown(value); return; }
+    first.current = false;
+    let frame = 0;
+    let started: number | null = null;
+    const step = (time: number) => {
+      if (started === null) started = time;
+      const progress = Math.min(1, (time - started) / 700);
+      setShown(Math.round(value * (1 - Math.pow(1 - progress, 3))));
+      if (progress < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return <>{shown.toLocaleString()}</>;
+}
+
+/** The numbers of this server's use: cards, pictures and storage against the limits, and the plan. All of it comes from the same overview the page already loads. */
+function UsageTiles({ overview, premium, premiumUrl }: { overview: Overview; premium: boolean; premiumUrl: string }) {
+  const { usage, limits } = overview;
+  const storageUsed = usage.storageBytes / 1048576;
+  const storageMax = Math.round(limits.storageBytes / 1048576);
+  const tiles: { tone: string; label: string; value: React.ReactNode; of?: string; sub: React.ReactNode }[] = [
+    { tone: 'voice', label: t('Image cards'), value: <CountUp value={usage.cards} />, of: `/ ${limits.cards}`, sub: t('{n} left', { n: Math.max(0, limits.cards - usage.cards) }) },
+    { tone: 'invites', label: t('Pictures'), value: <CountUp value={usage.assets} />, of: `/ ${limits.assets}`, sub: t('{n} left', { n: Math.max(0, limits.assets - usage.assets) }) },
+    { tone: 'reactions', label: t('Storage'), value: storageUsed.toFixed(1), of: `/ ${storageMax} MB`, sub: t('{n} left', { n: `${Math.max(0, storageMax - storageUsed).toFixed(1)} MB` }) },
+    { tone: 'messages', label: t('Plan'), value: premium ? t('Premium') : t('Free'), sub: premium ? t('Advanced editor and every font') : <a href={premiumUrl}>{t('See Premium')}</a> },
+  ];
+  return (
+    <div className="crd-tiles">
+      {tiles.map((tile, i) => (
+        <div key={tile.label} className="crd-tile" style={{ ['--m' as string]: `var(--crd-m-${tile.tone})`, ['--i' as string]: i }}>
+          <span className="crd-tile-label"><i />{tile.label}</span>
+          <b>{tile.value}{tile.of && <em>{tile.of}</em>}</b>
+          <span className="crd-tile-sub">{tile.sub}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A small box with an icon and a line or two: it takes only the room it needs. */
 function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
   return (
     <div className="crd-empty">
@@ -448,12 +499,36 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   return (
     <div className="ebr-app crd-app">
       {flash && <div className="ebr-flash">{flash}</div>}
+      <UsageTiles overview={overview} premium={premium} premiumUrl={premiumUrl} />
       <div className="ebr-layout">
         <aside className="ebr-list">
-          {overview.cards.map((c) => (
-            <button key={c.name} type="button" className={`ebr-list-item${c.name === selected ? ' active' : ''}`} onClick={() => pick(c.name)}>{c.name}{c.data.kind === 'rank' ? ' · rank' : ''}{c.data.mode === 'advanced' ? ' ★' : ''}</button>
-          ))}
-          <div className="ebr-limit-note">{overview.usage.cards}/{overview.limits.cards} {t('cards')}</div>
+          <div className="crd-list-head">
+            <h2>{t('Your cards')}</h2>
+            <span className="ebr-limit-note">{overview.usage.cards}/{overview.limits.cards} {t('cards')}</span>
+          </div>
+          {overview.cards.length > 0 && (
+            <div className="crd-items">
+              {overview.cards.map((c) => (
+                <button key={c.name} type="button" className={`ebr-list-item${c.name === selected ? ' active' : ''}`} title={c.name} aria-current={c.name === selected ? 'true' : undefined} onClick={() => pick(c.name)}>
+                  <Ico d={c.data.kind === 'rank' ? TROPHY_ICON : IMAGE_ICON} />
+                  <span className="crd-item-name">{c.name}</span>
+                  {c.data.kind === 'rank' && <span className="crd-item-tag">{t('Rank')}</span>}
+                  {c.data.mode === 'advanced' && <span className="crd-item-tag crd-item-adv" title={t('Advanced')}>★</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          <form className="ebr-create" onSubmit={handleCreate}>
+            <h3>{t('New card')}</h3>
+            <div className="crd-kinds" role="group" aria-label={t('Kind of card')}>
+              <button type="button" aria-pressed={newKind === 'welcome'} className={`crd-kind${newKind === 'welcome' ? ' active' : ''}`} onClick={() => setNewKind('welcome')}>{t('Welcome style')}</button>
+              <button type="button" aria-pressed={newKind === 'rank'} className={`crd-kind${newKind === 'rank' ? ' active' : ''}`} onClick={() => setNewKind('rank')}>{t('Rank card')}</button>
+            </div>
+            <div className="crd-create-row">
+              <input type="text" placeholder={newKind === 'rank' ? 'rank-card' : 'welcome-card'} maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} aria-label={t('Name')} />
+              <button type="submit" className="btn btn-accent btn-sm" disabled={overview.usage.cards >= overview.limits.cards}>{t('+ New')}</button>
+            </div>
+          </form>
           {!premium && (
             <div className="ebr-premium-limit">
               <strong>{t('Petto Premium')}</strong>
@@ -461,14 +536,6 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
               <a href={premiumUrl}>{t('See Premium')}</a>
             </div>
           )}
-          <form className="ebr-create" onSubmit={handleCreate}>
-            <select value={newKind} onChange={(e) => setNewKind(e.target.value as Kind)} aria-label={t('Kind of card')}>
-              <option value="welcome">{t('Welcome style')}</option>
-              <option value="rank">{t('Rank card')}</option>
-            </select>
-            <input type="text" placeholder={newKind === 'rank' ? 'rank-card' : 'welcome-card'} maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button type="submit" className="btn btn-ghost btn-sm" disabled={overview.usage.cards >= overview.limits.cards}>{t('+ New')}</button>
-          </form>
         </aside>
 
         {!selected ? (

@@ -1,11 +1,15 @@
 ---
+// Security: how well the server is protected (overview), which roles carry strong permissions (elevated roles) and which staff commands have an extra gate
+// besides the Discord permission (command coverage). Only the part picked in the address (?section=) is drawn; the three have links to each other.
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
-const dth = makeT(dashLang, true);
 interface RoleFinding { id: string; name: string; isEveryone: boolean; isAdmin: boolean; matched: string[]; severity: 'critical' | 'high' | 'medium'; }
 import type { AccessCommand } from '../utils/commandAccess';
 interface Protection { antinuke: boolean; antiSpam: boolean; antiRaid: boolean; verification: boolean; logs: boolean; }
@@ -26,6 +30,10 @@ interface Props {
 const { user, guildId, guildName, guildIcon, roleFindings, coverage, roleNames, securityScore, protection, recommendations, section } = Astro.props;
 
 const sectionMeta: Record<string, string> = { score: dt('Security overview'), elevated: dt('Elevated roles'), unrestricted: dt('Command coverage') };
+const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'score';
+const selectedTitle = sectionMeta[selectedSection];
+const base = `/dash/guild/${guildId}`;
+
 const gateOf = (c: AccessCommand) => (c.disabledServer ? 'disabled' : c.restrictRoles.length ? 'roles' : c.level > 0 ? 'level' : c.permissionNames.length ? 'discord' : 'open');
 const gateCount = (g: string) => coverage.filter((c) => gateOf(c) === g).length;
 const gates = [
@@ -35,238 +43,461 @@ const gates = [
   { id: 'open', label: dt('No gate'), hint: dt('Nothing extra: any member can use it.') },
   { id: 'disabled', label: dt('Disabled'), hint: dt('Turned off in the server.') },
 ];
-const covered = coverage.length ? Math.round(((gateCount('roles') + gateCount('level') + gateCount('disabled')) / coverage.length) * 100) : 100;
+const gated = gateCount('roles') + gateCount('level') + gateCount('disabled');
+const covered = coverage.length ? Math.round((gated / coverage.length) * 100) : 100;
 const coverageCats = [...new Map(coverage.map((c) => [c.category, c.categoryTitle])).entries()];
-const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'score';
-const selectedTitle = sectionMeta[selectedSection];
+
+// Each protection, where it is switched on, and what it does.
+const protections = [
+  { on: protection.antinuke, label: dt('Anti-nuke'), hint: dt('Answers destructive attacks, like mass bans and deleted channels.'), href: `${base}/antinuke`, icon: 'ph:siren-fill' },
+  { on: protection.antiSpam, label: dt('Anti-spam'), hint: dt('Blocks flooding and mass mentions.'), href: `${base}/moderation?section=protection`, icon: 'ph:funnel-fill' },
+  { on: protection.antiRaid, label: dt('Anti-raid'), hint: dt('Detects waves of joins.'), href: `${base}/moderation?section=protection`, icon: 'ph:users-three-fill' },
+  { on: protection.verification, label: dt('Verification'), hint: dt('Checks newcomers before they get in.'), href: `${base}/onboarding`, icon: 'ph:seal-check-fill' },
+  { on: protection.logs, label: dt('Audit logs'), hint: dt('Writes what happens in the server to a channel.'), href: `${base}/logging`, icon: 'ph:notebook-fill' },
+];
+const protectionsOn = protections.filter((p) => p.on).length;
+const scoreTone = securityScore >= 80 ? 'joins' : securityScore >= 55 ? 'reactions' : 'leaves';
+const scoreColor = securityScore >= 80 ? 'var(--green)' : securityScore >= 55 ? 'var(--yellow)' : 'var(--red)';
+
+// The permissions the check looks at, and which of the roles with elevated permissions hold each one.
+const roleLabel = (r: RoleFinding) => (r.isEveryone ? '@everyone' : r.name);
+const checked = [
+  { key: 'Administrator', holders: roleFindings.filter((r) => r.isAdmin) },
+  ...['Manage Server', 'Manage Roles', 'Manage Channels', 'Ban Members', 'Kick Members', 'Timeout Members', 'Manage Webhooks', 'Manage Messages', 'Mention @everyone', 'Manage Nicknames']
+    .map((key) => ({ key, holders: roleFindings.filter((r) => r.matched.includes(key)) })),
+];
+const adminRoles = roleFindings.filter((r) => r.isAdmin && !r.isEveryone).length;
+const elevatedOnly = roleFindings.filter((r) => r.severity === 'medium').length;
+const everyoneRisk = roleFindings.filter((r) => r.isEveryone).length;
+const serverRoles = Object.values(roleNames).filter((name) => name !== '@everyone').length;
 
 const SEVERITY_LABEL: Record<string, string> = { critical: dt('Critical'), high: dt('Admin role'), medium: dt('Elevated') };
+
+const tabs = [
+  { id: 'score', icon: 'ph:shield-check-fill', count: null as number | null },
+  { id: 'elevated', icon: 'ph:shield-warning-fill', count: roleFindings.length },
+  { id: 'unrestricted', icon: 'ph:keyhole-fill', count: null as number | null },
+];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'unrestricted' ? 'security-unrestricted' : 'security'} pageTitle={selectedTitle}>
-  <div class:list={['sc-root', { 'sc-fill': selectedSection !== 'unrestricted' }]}>
+  <DashSettingsKit />
+  <DashFormKit />
+  <div class="sc-page">
   <h1>{selectedTitle}</h1>
-
-  <div class:list={['sc-section', { 'sc-section-hidden': selectedSection !== 'score' }]}>
-    <div class="sc-score-card">
-      <div>
-        <span class="sc-eyebrow">{dt('Petto Security Score')}</span>
-        <strong>{securityScore}<small>/100</small></strong>
-        <p>{securityScore >= 80 ? dt('Good baseline. Keep reviewing it as the server grows.') : securityScore >= 55 ? dt('A few protections deserve attention.') : dt('Several high-impact protections are missing.')}</p>
-      </div>
-      <div class="sc-score-ring" style={`--score: ${securityScore * 3.6}deg`}><span>{securityScore}</span></div>
-    </div>
-    <h2><Icon name="ph:shield-check-fill" width="15" height="15" />{dt('Protection status')}</h2>
-    <div class="sc-protection-grid dgl-stagger">
-      {Object.entries({ 'Anti-nuke': protection.antinuke, 'Anti-spam': protection.antiSpam, 'Anti-raid': protection.antiRaid, Verification: protection.verification, 'Audit logs': protection.logs }).map(([label, enabled]) => (
-        <div class:list={['sc-protection', { enabled }]}><Icon name={enabled ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" /><span>{label}</span><b>{enabled ? dt('Enabled') : dt('Needs setup')}</b></div>
-      ))}
-    </div>
-    <section class="sc-card sc-recs">
-      <h2><Icon name="ph:lightbulb-fill" width="15" height="15" />{dt('Recommended next steps')}</h2>
-      {recommendations.length ? <ul class="sc-recommendations">{recommendations.slice(0, 6).map((recommendation) => <li>{recommendation}</li>)}</ul> : <p class="sc-blank"><Icon name="ph:check-circle-fill" width="22" height="22" />{dt('No high-impact gaps were found.')}</p>}
-    </section>
-  </div>
-
-  <div class:list={['sc-section', { 'sc-section-hidden': selectedSection !== 'elevated' }]}>
-    <h2><Icon name="ph:shield-warning-fill" width="15" height="15" /><Fragment set:html={dth('Roles with elevated permissions <span class="sc-count">{a}</span>', { a: (roleFindings.length) })} /></h2>
-    <p class="sc-section-note">{dt('Roles that can moderate, manage the server, or reach @everyone. Not necessarily wrong, review who\'s actually in each one.')}</p>
-    {roleFindings.length === 0 ? (
-      <p class="sc-blank sc-card"><Icon name="ph:check-circle-fill" width="22" height="22" />{dt('No roles outside the obvious admin ones carry elevated permissions.')}</p>
-    ) : (
-      <div class="sc-list">
-        {roleFindings.map((r) => (
-          <div class={`sc-row sc-row-${r.severity}`}>
-            <span class={`sc-sev sc-sev-${r.severity}`}>{SEVERITY_LABEL[r.severity]}</span>
-            <span class="sc-role-name">{r.isEveryone ? '@everyone' : r.name}</span>
-            <span class="sc-perms">
-              {r.isAdmin ? <span class="sc-perm-chip sc-perm-admin">{dt('Administrator')}</span> : r.matched.map((m) => <span class="sc-perm-chip">{m}</span>)}
-            </span>
-          </div>
-        ))}
-      </div>
-    )}
-  </div>
-
-  <div class:list={['sc-section', { 'sc-section-hidden': selectedSection !== 'unrestricted' }]} data-coverage>
-    <div class="cv-head">
-      <div class="cv-score">
-        <span class="sc-eyebrow">{dt('Extra protection')}</span>
-        <strong>{covered}<small>%</small></strong>
-        <p>{dt('{a} of {b} staff commands have a Petto level, a role restriction or are disabled. The rest rely on the Discord permission of the action.', { a: gateCount('roles') + gateCount('level') + gateCount('disabled'), b: coverage.length })}</p>
-      </div>
-      <div class="cv-bar" role="img" aria-label={dt('How the staff commands are protected')}>
-        {gates.map((g) => gateCount(g.id) > 0 && <i class={`cv-${g.id}`} style={`flex:${gateCount(g.id)}`} title={`${g.label}: ${gateCount(g.id)}`} />)}
-      </div>
-      <div class="cv-legend">
-        {gates.map((g) => (
-          <button type="button" class={`cv-key cv-${g.id}`} data-gate={g.id} aria-pressed="false" title={g.hint}><i />{g.label}<b>{gateCount(g.id)}</b></button>
-        ))}
-      </div>
-    </div>
-    <div class="cv-tools">
-      <label class="cv-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" placeholder={dt('Search a command')} data-cv-search /></label>
-      <a class="btn btn-ghost btn-sm" href={`/dash/guild/${guildId}/permissions`}><Icon name="ph:key-fill" width="13" height="13" />{dt('Set levels and roles')}</a>
-    </div>
-    {coverageCats.map(([cat, title]) => (
-      <details class="cv-cat" data-cv-cat open>
-        <summary><h3>{title}</h3><span class="cv-cat-n">{coverage.filter((c) => c.category === cat).length}</span></summary>
-        <ul class="cv-list">
-          {coverage.filter((c) => c.category === cat).map((c) => {
-            const gate = gateOf(c);
-            return (
-              <li class={`cv-row cv-${gate}`} data-gate={gate} data-name={`${c.name} ${c.aliases.join(' ')}`}>
-                <div class="cv-main"><code>{c.slash ? '/' : '!'}{c.name}</code><span>{c.desc}</span></div>
-                <div class="cv-tags">
-                  {c.disabledServer && <span class="cv-tag cv-t-off">{dt('Disabled')}</span>}
-                  {c.restrictRoles.map((id) => <span class="cv-tag cv-t-role">@{roleNames[id] ?? id}</span>)}
-                  {c.level > 0 && <span class="cv-tag cv-t-level">{dt('Level {a}', { a: c.level })}</span>}
-                  {c.permissionNames.map((p) => <span class="cv-tag cv-t-perm">{dt(p)}</span>)}
-                  {gate === 'open' && <span class="cv-tag cv-t-open">{dt('No gate')}</span>}
-                  {!c.disabledServer && c.disabledChannels.length > 0 && <span class="cv-tag cv-t-off">{dt('Off in {a} channels', { a: c.disabledChannels.length })}</span>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </details>
+  <nav class="sc-tabs" aria-label={dt('Security')}>
+    {tabs.map((tab) => (
+      <a href={`?section=${tab.id}`} class:list={['sc-tab', { on: selectedSection === tab.id }]} aria-current={selectedSection === tab.id ? 'page' : undefined}>
+        <Icon name={tab.icon} width="14" height="14" />{sectionMeta[tab.id]}{tab.count ? <em>{tab.count}</em> : null}
+      </a>
     ))}
-    <p class="sc-empty-note cv-none" hidden><Icon name="ph:check-circle-fill" width="14" height="14" />{dt('No command matches.')}</p>
+  </nav>
+
+  {selectedSection === 'score' && (
+    <div class="sc-body">
+      <DashStatTiles tiles={[
+        { label: dt('Security score'), value: securityScore, tone: scoreTone },
+        { label: dt('Protections on'), value: protectionsOn, text: `${protectionsOn} / ${protections.length}`, tone: 'voice' },
+        { label: dt('Elevated roles'), value: roleFindings.length, tone: 'leaves' },
+        { label: dt('Extra protection'), value: gated, tone: 'invites' },
+      ]} />
+
+      <div class="sc-duo">
+        <div class="sc-col">
+          <section class="sx-panel sc-score" style={`--sc:${scoreColor}`}>
+            <div class="sc-score-ring" style={`--score: ${securityScore * 3.6}deg`}><span>{securityScore}</span></div>
+            <div class="sc-score-text">
+              <h2>{dt('Petto Security Score')}</h2>
+              <p>{securityScore >= 80 ? dt('Good baseline. Keep reviewing it as the server grows.') : securityScore >= 55 ? dt('A few protections deserve attention.') : dt('Several high-impact protections are missing.')}</p>
+              <span class="sc-score-scale">{dt('Out of 100: every missing protection and every risky role takes points off.')}</span>
+            </div>
+          </section>
+
+          <section class="sx-panel sc-recs">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#f5c26b"><Icon name="ph:lightbulb-fill" width="17" height="17" /></span>
+              <h2>{dt('Recommended next steps')}</h2>
+              {recommendations.length > 0 && <span class="sx-tag">{Math.min(recommendations.length, 6)}</span>}
+            </div>
+            {recommendations.length ? (
+              <ul class="sc-steps dgl-stagger">
+                {recommendations.slice(0, 6).map((recommendation, i) => <li><b>{i + 1}</b><span>{recommendation}</span></li>)}
+              </ul>
+            ) : (
+              <p class="sx-empty sc-ok"><Icon name="ph:check-circle-fill" width="18" height="18" />{dt('No high-impact gaps were found.')}</p>
+            )}
+          </section>
+        </div>
+
+        <section class="sx-panel sc-prot">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:shield-check-fill" width="17" height="17" /></span>
+            <h2>{dt('Protection status')}</h2>
+            <span class="sx-tag sx-tag-accent">{protectionsOn} / {protections.length}</span>
+          </div>
+          <p class="sx-lead">{dt('Open one to turn it on or change it.')}</p>
+          <div class="sc-prot-list dgl-stagger">
+            {protections.map((p) => (
+              <a class:list={['sc-prot-row', { on: p.on }]} href={p.href}>
+                <span class="sc-prot-icon"><Icon name={p.icon} width="17" height="17" /></span>
+                <span class="sc-prot-main"><b>{p.label}</b><em>{p.hint}</em></span>
+                <span class="sc-prot-state"><Icon name={p.on ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="13" height="13" />{p.on ? dt('Enabled') : dt('Needs setup')}</span>
+                <Icon name="ph:arrow-right-bold" class="sc-go" width="13" height="13" />
+              </a>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div class="sc-duo sc-duo-start">
+        <section class="sx-panel">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#c98791"><Icon name="ph:shield-warning-fill" width="17" height="17" /></span>
+            <h2>{dt('Elevated roles')}</h2>
+            <span class="sx-tag">{roleFindings.length}</span>
+          </div>
+          <p class="sx-lead">{dt('Roles that can moderate, manage the server, or reach @everyone.')}</p>
+          {roleFindings.length === 0 ? (
+            <p class="sx-empty sc-ok"><Icon name="ph:check-circle-fill" width="18" height="18" />{dt('No roles outside the obvious admin ones carry elevated permissions.')}</p>
+          ) : (
+            <ul class="sc-mini">
+              {roleFindings.slice(0, 4).map((r) => (
+                <li><span class={`sc-sev sc-sev-${r.severity}`}>{SEVERITY_LABEL[r.severity]}</span><b>{roleLabel(r)}</b></li>
+              ))}
+              {roleFindings.length > 4 && <li class="sc-more">{dt('and {n} more', { n: roleFindings.length - 4 })}</li>}
+            </ul>
+          )}
+          <a class="sc-link" href="?section=elevated">{dt('Review the roles')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></a>
+        </section>
+
+        <section class="sx-panel">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:keyhole-fill" width="17" height="17" /></span>
+            <h2>{dt('Command coverage')}</h2>
+            <span class="sx-tag sx-tag-accent">{covered}%</span>
+          </div>
+          <p class="sx-lead">{dt('{a} of {b} staff commands have a Petto level, a role restriction or are disabled.', { a: gated, b: coverage.length })}</p>
+          <div class="cv-bar" role="img" aria-label={dt('How the staff commands are protected')}>
+            {gates.map((g) => gateCount(g.id) > 0 && <i class={`cv-${g.id}`} style={`flex:${gateCount(g.id)}`} title={`${g.label}: ${gateCount(g.id)}`} />)}
+          </div>
+          <ul class="sc-legend">
+            {gates.map((g) => <li class={`cv-${g.id}`}><i></i><span>{g.label}</span><b>{gateCount(g.id)}</b></li>)}
+          </ul>
+          <a class="sc-link" href="?section=unrestricted">{dt('Review the commands')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></a>
+        </section>
+      </div>
+    </div>
+  )}
+
+  {selectedSection === 'elevated' && (
+    <div class="sc-body">
+      <DashStatTiles tiles={[
+        { label: dt('Elevated roles'), value: roleFindings.length, tone: 'leaves' },
+        { label: dt('Administrator roles'), value: adminRoles, tone: 'reactions' },
+        { label: dt('Elevated only'), value: elevatedOnly, tone: 'messages' },
+        { label: dt('Roles in the server'), value: serverRoles, tone: 'voice' },
+      ]} />
+
+      {everyoneRisk > 0 && (
+        <div class="sx-flash sx-flash-bad"><Icon name="ph:warning-fill" width="15" height="15" />{dt('@everyone has elevated permissions.')}</div>
+      )}
+
+      <section class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#c98791"><Icon name="ph:shield-warning-fill" width="17" height="17" /></span>
+          <h2>{dt('Roles with elevated permissions')}</h2>
+          <span class="sx-tag">{roleFindings.length}</span>
+        </div>
+        <p class="sx-lead">{dt('Roles that can moderate, manage the server, or reach @everyone. Not necessarily wrong, review who\'s actually in each one.')}</p>
+        {roleFindings.length === 0 ? (
+          <p class="sx-empty sc-ok"><Icon name="ph:check-circle-fill" width="18" height="18" />{dt('No roles outside the obvious admin ones carry elevated permissions.')}</p>
+        ) : (
+          <ul class="sc-roles dgl-stagger">
+            {roleFindings.map((r) => (
+              <li class={`sc-role sc-role-${r.severity}`}>
+                <span class={`sc-sev sc-sev-${r.severity}`}>{SEVERITY_LABEL[r.severity]}</span>
+                <b class="sc-role-name">{roleLabel(r)}</b>
+                <span class="sc-perms">
+                  {r.isAdmin ? <span class="sc-perm sc-perm-admin">{dt('Administrator')}</span> : r.matched.map((m) => <span class="sc-perm">{dt(m)}</span>)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#9bd0f5"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+          <h2>{dt('Permissions that are checked')}</h2>
+        </div>
+        <p class="sx-lead">{dt('How many of the roles above hold each one. Administrator already includes all the others.')}</p>
+        <div class="sc-checks">
+          {checked.map((item) => (
+            <div class:list={['sc-check', { none: item.holders.length === 0 }]}>
+              <div class="sc-check-top"><b>{dt(item.key)}</b><span class="sx-tag">{item.holders.length}</span></div>
+              <div class="sc-check-bar"><i style={`width:${roleFindings.length ? Math.round((item.holders.length / roleFindings.length) * 100) : 0}%`}></i></div>
+              <p>{item.holders.length === 0 ? dt('No role has it.') : <>{item.holders.slice(0, 3).map(roleLabel).join(', ')}{item.holders.length > 3 ? ` +${item.holders.length - 3}` : ''}</>}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )}
+
+  {selectedSection === 'unrestricted' && (
+    <div class="sc-body" data-coverage>
+      <DashStatTiles tiles={[
+        { label: dt('Staff commands'), value: coverage.length, tone: 'voice' },
+        { label: dt('Extra protection'), value: gated, tone: 'joins' },
+        { label: dt('Discord only'), value: gateCount('discord'), tone: 'reactions' },
+        { label: dt('No gate'), value: gateCount('open'), tone: 'leaves' },
+      ]} />
+
+      <section class="sx-panel cv-sum">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:keyhole-fill" width="17" height="17" /></span>
+          <h2>{dt('Extra protection')}</h2>
+          <span class="sx-tag sx-tag-accent">{covered}%</span>
+        </div>
+        <p class="sx-lead">{dt('{a} of {b} staff commands have a Petto level, a role restriction or are disabled. The rest rely on the Discord permission of the action.', { a: gated, b: coverage.length })}</p>
+        <div class="cv-bar" role="img" aria-label={dt('How the staff commands are protected')}>
+          {gates.map((g) => gateCount(g.id) > 0 && <i class={`cv-${g.id}`} style={`flex:${gateCount(g.id)}`} title={`${g.label}: ${gateCount(g.id)}`} />)}
+        </div>
+        <div class="dfx-chips cv-chips" role="radiogroup" aria-label={dt('Filter')}>
+          <label class="dfx-chip cv-chip"><input type="radio" name="cv-gate" value="" checked />{dt('All')}<b>{coverage.length}</b></label>
+          {gates.map((g) => (
+            <label class={`dfx-chip cv-chip cv-${g.id}`} title={g.hint}><input type="radio" name="cv-gate" value={g.id} disabled={gateCount(g.id) === 0} /><i class="cv-dot"></i>{g.label}<b>{gateCount(g.id)}</b></label>
+          ))}
+        </div>
+      </section>
+
+      <div class="cv-tools">
+        <label class="cv-search"><Icon name="ph:magnifying-glass-bold" width="14" height="14" /><input type="search" placeholder={dt('Search a command')} aria-label={dt('Search a command')} data-cv-search /></label>
+        <span class="cv-bulk"><button type="button" class="btn btn-ghost btn-sm" data-cv-bulk="open">{dt('Expand all')}</button><button type="button" class="btn btn-ghost btn-sm" data-cv-bulk="close">{dt('Collapse all')}</button></span>
+        <a class="btn btn-ghost btn-sm" href={`${base}/permissions`}><Icon name="ph:key-fill" width="13" height="13" />{dt('Set levels and roles')}</a>
+      </div>
+
+      <div class="cv-cats">
+        {coverageCats.map(([cat, title]) => {
+          const list = coverage.filter((c) => c.category === cat);
+          return (
+            <details class="dfx-acc cv-cat" data-cv-cat data-total={list.length}>
+              <summary>
+                <span class="dfx-acc-title"><b>{title}</b></span>
+                <span class="cv-cat-bar" aria-hidden="true">{gates.map((g) => { const n = list.filter((c) => gateOf(c) === g.id).length; return n > 0 && <i class={`cv-${g.id}`} style={`flex:${n}`} />; })}</span>
+                <span class="sx-tag cv-cat-n" data-cv-n>{list.length}</span>
+                <svg class="dfx-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <ul class="cv-list">
+                {list.map((c) => {
+                  const gate = gateOf(c);
+                  return (
+                    <li class={`cv-row cv-${gate}`} data-gate={gate} data-name={`${c.name} ${c.aliases.join(' ')}`}>
+                      <div class="cv-main"><code>{c.slash ? '/' : '!'}{c.name}</code><span>{c.desc}</span></div>
+                      <div class="cv-tags">
+                        {c.disabledServer && <span class="cv-tag cv-t-off">{dt('Disabled')}</span>}
+                        {c.restrictRoles.map((id) => <span class="cv-tag cv-t-role">@{roleNames[id] ?? id}</span>)}
+                        {c.level > 0 && <span class="cv-tag cv-t-level">{dt('Level {a}', { a: c.level })}</span>}
+                        {c.permissionNames.map((p) => <span class="cv-tag cv-t-perm">{dt(p)}</span>)}
+                        {gate === 'open' && <span class="cv-tag cv-t-open">{dt('No gate')}</span>}
+                        {!c.disabledServer && c.disabledChannels.length > 0 && <span class="cv-tag cv-t-off">{dt('Off in {a} channels', { a: c.disabledChannels.length })}</span>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          );
+        })}
+      </div>
+      <p class="sx-empty cv-none" hidden><Icon name="ph:magnifying-glass-bold" width="16" height="16" />{dt('No command matches.')}</p>
+    </div>
+  )}
   </div>
+
   <script is:inline>
-    // Command coverage: search and the legend as filters. Works again when the dashboard swaps the page in.
+    // Command coverage: the search, the gate chips and the open/close of the groups. Works again when the dashboard swaps the page in.
     (function bind() {
       var root = document.querySelector('[data-coverage]:not([data-bound])');
       if (!root) return;
       root.setAttribute('data-bound', '1');
       var input = root.querySelector('[data-cv-search]');
-      var keys = Array.prototype.slice.call(root.querySelectorAll('.cv-key'));
-      var active = '';
+      var cats = Array.prototype.slice.call(root.querySelectorAll('[data-cv-cat]'));
+      var before = new Map();
+      var filtering = false;
+      var gate = function () { var on = root.querySelector('input[name="cv-gate"]:checked'); return on ? on.value : ''; };
       var apply = function () {
         var q = (input && input.value || '').trim().toLowerCase().replace(/^[!\/]/, '');
+        var active = gate();
+        var now = Boolean(q || active);
+        // While something is searched or filtered the groups with a match are open; when it is cleared they go back as they were.
+        if (now && !filtering) cats.forEach(function (cat) { before.set(cat, cat.open); });
         var any = false;
-        root.querySelectorAll('[data-cv-cat]').forEach(function (cat) {
+        cats.forEach(function (cat) {
           var shown = 0;
           cat.querySelectorAll('.cv-row').forEach(function (row) {
             var ok = (!active || row.getAttribute('data-gate') === active) && (!q || row.getAttribute('data-name').indexOf(q) !== -1 || row.textContent.toLowerCase().indexOf(q) !== -1);
             row.hidden = !ok; if (ok) shown++;
           });
           cat.hidden = shown === 0; if (shown) any = true;
+          var n = cat.querySelector('[data-cv-n]');
+          if (n) n.textContent = now ? shown + ' / ' + cat.getAttribute('data-total') : cat.getAttribute('data-total');
+          if (now) cat.open = shown > 0; else if (filtering) cat.open = Boolean(before.get(cat));
         });
+        filtering = now;
         var none = root.querySelector('.cv-none'); if (none) none.hidden = any;
       };
       if (input) input.addEventListener('input', apply);
-      keys.forEach(function (key) {
-        key.addEventListener('click', function () {
-          var gate = key.getAttribute('data-gate');
-          active = active === gate ? '' : gate;
-          keys.forEach(function (k) { k.setAttribute('aria-pressed', String(k.getAttribute('data-gate') === active)); });
-          apply();
+      root.querySelectorAll('input[name="cv-gate"]').forEach(function (radio) { radio.addEventListener('change', apply); });
+      root.querySelectorAll('[data-cv-bulk]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var open = button.getAttribute('data-cv-bulk') === 'open';
+          cats.forEach(function (cat) { if (!cat.hidden) cat.open = open; if (!filtering) before.set(cat, open); });
         });
       });
     })();
   </script>
-  </div>
 </DashGuildLayout>
 
 <style>
-  h1 { font-size: 24px; margin: 0 0 20px; }
-  h2 { font-size: 14.5px; margin: 0 0 6px; display: flex; align-items: center; gap: 9px; }
+  .sc-page { max-width: 1000px; }
+  h1 { font-size: 24px; margin: 0 0 14px; }
+  h2 { font-size: 15.5px; margin: 0; }
+  p { margin: 0; }
+  .sc-body { display: flex; flex-direction: column; gap: 14px; }
+  .sc-body > :global(.stt) { margin-bottom: 0; }
+  .sc-body > :global(.sx-flash) { margin-bottom: 0; }
 
-  .sc-section { margin-bottom: 32px; }
-  .sc-fill { display: flex; flex-direction: column; min-height: 100%; }
-  .sc-fill > .sc-section:not(.sc-section-hidden) { flex: 1 1 auto; display: flex; flex-direction: column; margin-bottom: 0; }
-  .sc-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px 18px; }
-  .sc-recs { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .sc-recs h2 { margin-bottom: 10px; }
-  .sc-fill > .sc-section > .sc-card:last-child { flex: 1 1 auto; }
-  .sc-blank { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 18px 0; font-size: 13px; color: var(--text-dim); text-align: center; }
-  .sc-blank :global(svg) { color: var(--green); }
-  .sc-card.sc-blank { padding: 18px; }
-  .sc-section-hidden { display: none; }
-  .sc-section-note { font-size: 12.5px; color: var(--text-dim); margin: 0 0 14px; max-width: 70ch; }
-  .sc-section-note a { color: var(--accent); text-decoration: none; }
-  .sc-section-note a:hover { text-decoration: underline; }
-  :global(.sc-count){ font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-weight: 400; }
+  /* The three parts, as chips that link to each other. */
+  .sc-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+  .sc-tab { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; color: var(--text-muted); text-decoration: none; transition: background-color .3s ease, border-color .3s ease, color .3s ease; }
+  .sc-tab:hover { background: var(--card-hover); color: var(--text); }
+  .sc-tab.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--accent); font-weight: 600; }
+  .sc-tab em { font-style: normal; font-size: 11.5px; font-variant-numeric: tabular-nums; border-radius: 999px; padding: 0 7px; background: color-mix(in srgb, var(--text) 9%, transparent); }
+  .sc-tab.on em { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
-  .sc-empty-note { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--green); margin: 0; }
-  /* The search and the legend of the command coverage hide rows, categories and the "no match" line with the hidden attribute. */
-  .cv-row[hidden], .cv-cat[hidden], .sc-empty-note[hidden] { display: none; }
+  .sc-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .sc-duo-start { align-items: start; }
+  .sc-duo > :global(.sx-panel), .sc-col > :global(.sx-panel) { animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .sc-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
-  .sc-score-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raise); }
-  .sc-eyebrow { display: block; color: var(--text-dim); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
-  .sc-score-card strong { display: block; color: var(--text); font-size: 44px; line-height: 1; }
-  .sc-score-card strong small { color: var(--text-dim); font-size: 16px; font-weight: 500; }
-  .sc-score-card p { color: var(--text-muted); font-size: 12.5px; margin: 8px 0 0; }
-  .sc-score-ring { width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent) var(--score), var(--border) 0); position: relative; flex-shrink: 0; }
-  .sc-score-ring::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--bg-raise); }
-  .sc-score-ring :global(span){ position: relative; z-index: 1; color: var(--text); font-size: 17px; font-weight: 700; }
-  .sc-protection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
-  .sc-protection { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted); background: var(--card); font-size: 12.5px; }
-  .sc-protection :global(svg) { color: var(--yellow); }
-  .sc-protection.enabled :global(svg) { color: var(--green); }
-  .sc-protection :global(b){ color: var(--text-dim); font-size: 10px; font-weight: 600; }
-  .sc-protection.enabled :global(b){ color: var(--green); }
-  .sc-protection:last-child:nth-child(odd) { grid-column: 1 / -1; }
-  .sc-recommendations { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 13px; line-height: 1.7; }
+  /* Score: the ring and what it says. */
+  .sc-score { flex-direction: row; align-items: center; gap: 20px; background: linear-gradient(180deg, color-mix(in srgb, var(--sc) 8%, var(--card)), var(--card) 75%); }
+  .sc-score-ring { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--sc) var(--score), color-mix(in srgb, var(--text) 12%, transparent) 0); position: relative; flex: none; }
+  .sc-score-ring::after { content: ''; position: absolute; inset: 8px; border-radius: 50%; background: var(--card); }
+  .sc-score-ring span { position: relative; z-index: 1; font-family: var(--serif); font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sc-score-text { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .sc-score-text p { font-size: 13.5px; line-height: 1.45; color: var(--text-muted); }
+  .sc-score-scale { font-size: 12px; line-height: 1.4; color: var(--text-dim); }
 
-  .sc-list { display: flex; flex-direction: column; gap: 8px; }
-  .sc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--card); }
-  .sc-row-critical { border-color: var(--red); background: var(--red-soft); }
-  .sc-role-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
-  .sc-perms { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-  .sc-perm-chip { font-size: 11px; color: var(--text-muted); background: var(--bg-raise); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
-  .sc-perm-admin { color: var(--red); border-color: var(--red); }
+  /* Next steps: a numbered list. */
+  .sc-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .sc-steps li { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); font-size: 13.5px; line-height: 1.4; color: var(--text-muted); }
+  .sc-steps b { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 15%, transparent); }
+  .sc-steps span { min-width: 0; overflow-wrap: anywhere; }
+  .sc-ok { color: var(--green); border-style: solid; border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: var(--green-soft); }
+  .sc-ok :global(svg) { color: var(--green); }
 
-  .sc-sev { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-radius: 6px; padding: 3px 8px; flex-shrink: 0; }
-  .sc-sev-critical { color: var(--red); background: color-mix(in srgb, var(--red) 18%, transparent); }
-  .sc-sev-high { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 18%, transparent); }
-  .sc-sev-medium { color: var(--text-dim); background: var(--bg-raise); }
+  /* Protection status: each row opens the page that changes it. */
+  .sc-prot { gap: 12px; }
+  .sc-prot .sx-lead { margin-top: -4px; }
+  .sc-prot-list { display: flex; flex-direction: column; gap: 8px; }
+  .sc-prot-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; text-decoration: none; color: inherit; background: var(--card); transition: background-color .3s ease, border-color .3s ease; }
+  .sc-prot-row:hover { background: var(--card-hover); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+  .sc-prot-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .sc-prot-row.on .sc-prot-icon { color: var(--green); background: var(--green-soft); }
+  .sc-prot-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .sc-prot-main b { font-size: 14px; font-weight: 600; }
+  .sc-prot-main em { font-style: normal; font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+  .sc-prot-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; border-radius: 999px; padding: 3px 10px 3px 8px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 13%, transparent); }
+  .sc-prot-row.on .sc-prot-state { color: var(--green); background: var(--green-soft); }
+  .sc-prot-row :global(.sc-go) { color: var(--text-dim); transition: transform .3s var(--m-out), color .3s ease; }
+  .sc-prot-row:hover :global(.sc-go) { color: var(--accent); transform: translateX(2px); }
 
-  .sc-cmd-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-  .sc-cmd-chip { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; background: var(--card); text-decoration: none; }
-  .sc-cmd-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
-  .sc-cmd-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
-  .sc-cmd-cat { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .sc-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+  .sc-link:hover { text-decoration: underline; }
+  .sc-mini { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .sc-mini li { display: flex; align-items: center; gap: 10px; min-width: 0; border: 1px solid var(--border-soft); border-radius: 12px; padding: 9px 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .sc-mini b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+  .sc-mini .sc-more { border-style: dashed; font-size: 12.5px; color: var(--text-dim); }
 
-
-  .cv-head { border: 1px solid var(--border); border-radius: 16px; background: var(--bg-raise); padding: 18px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 14px; animation: cv-rise .4s cubic-bezier(.2, .8, .2, 1) both; }
-  .cv-score strong { display: block; font-size: 40px; line-height: 1; }
-  .cv-score strong small { font-size: 16px; color: var(--text-dim); }
-  .cv-score p { margin: 8px 0 0; font-size: 12.5px; color: var(--text-muted); max-width: 70ch; }
-  .cv-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: var(--border); gap: 2px; }
-  .cv-bar i { display: block; height: 100%; animation: cv-grow .7s cubic-bezier(.2, .8, .2, 1) both; transform-origin: left; }
-  .cv-legend { display: flex; flex-wrap: wrap; gap: 6px; }
-  .cv-key { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
-  .cv-key i { width: 9px; height: 9px; border-radius: 50%; }
-  .cv-key b { color: var(--text); font-variant-numeric: tabular-nums; }
-  .cv-key[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  /* The coverage bar and its legend (also used by the command coverage part). */
   .cv-roles { --g: var(--green); } .cv-level { --g: var(--accent); } .cv-discord { --g: #fb923c; } .cv-open { --g: var(--red); } .cv-disabled { --g: var(--text-dim); }
-  .cv-bar i, .cv-key i { background: var(--g); }
-  .cv-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-  .cv-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 9px; padding: 0 10px; color: var(--text-dim); background: var(--card); }
+  .cv-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--text) 10%, transparent); gap: 2px; }
+  .cv-bar i { display: block; height: 100%; background: var(--g); animation: cv-grow .7s var(--m-out) both; transform-origin: left; }
+  .sc-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 4px 22px; }
+  .sc-legend li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 6px 0; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border-soft); }
+  .sc-legend i, .cv-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--g); flex: none; }
+  .sc-legend b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* Severity pills and the permissions of a role. */
+  .sc-sev { flex: none; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .sc-sev-critical { color: var(--red); background: color-mix(in srgb, var(--red) 16%, transparent); }
+  .sc-sev-high { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 16%, transparent); }
+  .sc-sev-medium { color: var(--text-muted); background: color-mix(in srgb, var(--text) 9%, transparent); }
+  .sc-roles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .sc-role { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border: 1px solid var(--border-soft); border-left: 3px solid var(--border); border-radius: 12px; padding: 11px 14px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; transition: background-color .3s ease; }
+  .sc-role:hover { background: var(--card-hover); }
+  .sc-role-critical { border-left-color: var(--red); background: var(--red-soft); }
+  .sc-role-high { border-left-color: var(--yellow); }
+  .sc-role-name { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+  .sc-perms { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; min-width: 0; }
+  .sc-perm { font-size: 12px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+  .sc-perm-admin { color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
+
+  .sc-checks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .sc-check { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-soft); border-radius: 12px; padding: 12px 14px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .sc-check-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .sc-check-top b { font-size: 13.5px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .sc-check-bar { height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
+  .sc-check-bar i { display: block; height: 100%; border-radius: inherit; background: var(--yellow); animation: cv-grow .7s var(--m-out) both; transform-origin: left; }
+  .sc-check p { font-size: 12px; line-height: 1.4; color: var(--text-dim); overflow-wrap: anywhere; }
+  .sc-check.none { opacity: .6; }
+
+  /* Command coverage */
+  .cv-chips { gap: 6px; }
+  .cv-chip { padding: 6px 12px; font-size: 12.5px; }
+  .cv-chip b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+  :global(.dfx-chip:has(input:checked)) .cv-dot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--g) 25%, transparent); }
+  .cv-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .cv-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 0 12px; color: var(--text-dim); background: var(--card); transition: border-color .25s ease, box-shadow .25s ease; }
   .cv-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .cv-search input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13.5px; padding: 8px 0; min-width: 0; }
-  .cv-cat > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; margin: 16px 0 8px; }
-  .cv-cat > summary::-webkit-details-marker { display: none; }
-  .cv-cat h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 0; }
-  .cv-cat-n { font-size: 11px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
-  .cv-cat > summary::after { content: ''; width: 7px; height: 7px; border-right: 1.5px solid var(--text-dim); border-bottom: 1.5px solid var(--text-dim); transform: rotate(45deg); margin-left: auto; transition: transform .2s ease; }
-  .cv-cat:not([open]) > summary::after { transform: rotate(-45deg); }
-  .cv-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .cv-row { border: 1px solid var(--border); border-left: 3px solid var(--g); border-radius: 11px; background: var(--card); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; min-width: 0; transition: background .15s ease, transform .15s ease; }
+  .cv-search input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13.5px; padding: 9px 0; min-width: 0; }
+  .cv-bulk { display: inline-flex; gap: 6px; }
+  .cv-cats { display: flex; flex-direction: column; gap: 8px; }
+  .cv-cat[hidden], .cv-row[hidden], .cv-none[hidden] { display: none; }
+  .cv-cat > summary { gap: 12px; }
+  .cv-cat-bar { flex: none; display: flex; width: 120px; height: 6px; border-radius: 99px; overflow: hidden; gap: 2px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .cv-cat-bar i { display: block; height: 100%; background: var(--g); }
+  .cv-cat-n { font-variant-numeric: tabular-nums; }
+  .cv-list { list-style: none; margin: 0; padding: 4px 14px 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .cv-row { border: 1px solid var(--border); border-left: 3px solid var(--g); border-radius: 11px; background: var(--card); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; min-width: 0; transition: background-color .15s ease; }
   .cv-row:hover { background: var(--card-hover); }
   .cv-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .cv-main code { font-family: var(--mono); font-size: 13px; color: var(--accent); }
-  .cv-main span { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+  .cv-main span { font-size: 12px; color: var(--text-muted); line-height: 1.4; overflow-wrap: anywhere; }
   .cv-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-  .cv-tag { font-size: 11px; border-radius: 6px; padding: 1px 7px; border: 1px solid var(--border); color: var(--text-muted); }
+  .cv-tag { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--border); color: var(--text-muted); }
   .cv-t-role { color: var(--green); } .cv-t-level { color: var(--accent); } .cv-t-perm { color: #fb923c; } .cv-t-open, .cv-t-off { color: var(--red); }
-  @keyframes cv-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   @keyframes cv-grow { from { transform: scaleX(0); } to { transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .cv-head, .cv-bar i { animation: none; } }
-  @media (max-width: 700px) { .cv-list { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .cv-bar i, .sc-check-bar i { animation: none; } }
+  /* The panel is about 370px narrower than the window (the side menu), so two columns need a wide window. */
+  @media (max-width: 1180px) { .sc-duo { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 900px) { .sc-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 720px) {
+    .cv-list { grid-template-columns: minmax(0, 1fr); padding-inline: 12px; }
+    .cv-cat-bar { display: none; }
+    .sc-score { gap: 16px; }
+    .sc-legend { grid-template-columns: minmax(0, 1fr); }
+  }
   @media (max-width: 560px) {
-    .sc-protection-grid { grid-template-columns: 1fr; }
-    .sc-score-card { padding: 16px; }
+    .sc-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .sc-check { padding: 10px 12px; }
+    .sc-check.none p { display: none; }
+    .sc-prot-row { grid-template-columns: auto minmax(0, 1fr); }
+    .sc-prot-row .sc-prot-state { grid-column: 2; justify-self: start; }
+    .sc-prot-row :global(.sc-go) { display: none; }
+    .sc-score { flex-direction: column; align-items: flex-start; }
+    .sc-perms { margin-left: 0; }
   }
 </style>
