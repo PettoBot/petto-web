@@ -6,6 +6,10 @@ import VariableHelp from './VariableHelp.astro';
 import SelectSource from './SelectSource.astro';
 import SelectChosen from './SelectChosen.astro';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
+import DashBotWait from './DashBotWait.astro';
 import { withPostNotes, type PostableChannel } from '../utils/channelPost';
 
 import { getDashLang, makeT } from '../i18n/dash';
@@ -66,206 +70,280 @@ const pingRowsJson = JSON.stringify(channels.map((c) => [c.id, c.name, pingOnJoi
 function targetLabel(target: string) {
   return target === 'humans' ? dt('Humans only') : target === 'bots' ? dt('Bots only') : dt('Everyone');
 }
+const hasTemplates = embedTemplateNames.length > 0;
+const channelName = (id: string | null) => channels.find((c) => c.id === id)?.name ?? '';
+
+// What is set up now (the tiles, the numbers on the tabs and the checklist): everything comes from the settings the page already reads.
+const messagesOn = [
+  Boolean(memberEvents.welcomeChannelId), Boolean(memberEvents.secondEnabled && memberEvents.secondChannelId), Boolean(memberEvents.leaveChannelId), Boolean(memberEvents.boostChannelId), Boolean(dmJoin.message || dmJoin.embedTemplate),
+].filter(Boolean).length;
+const bumpOn = Boolean(bump.channelId);
+const checklist = [
+  { done: Boolean(verification.unverifiedRoleId), label: dt('A role while unverified') },
+  { done: Boolean(verification.verifiedRoleId), label: dt('A role once verified') },
+  { done: Boolean(verification.panelChannelId), label: dt('A verification channel') },
+  { done: verification.enabled, label: dt('Verification turned on') },
+];
+const checklistDone = checklist.filter((item) => item.done).length;
+const methods: [string, string, string, string][] = [
+  ['turnstile', dt('Cloudflare check'), dt('The usual one'), 'ph:shield-check-fill'],
+  ['letters', dt('Letters in a picture'), dt('Type the letters of a picture'), 'ph:image-fill'],
+  ['both', dt('Both checks'), dt('The two, one after the other'), 'ph:seal-check-fill'],
+  ['discord', dt('Letters inside Discord (no link)'), dt('A button in the DM, no link'), 'ph:chat-circle-dots-fill'],
+];
+const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Humans only')], ['bots', dt('Bots only')]];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="onboarding" pageTitle="Onboarding">
+  <DashSettingsKit />
+  <div class="sx-page ob">
   <h1>{dt('Onboarding')}</h1>
   <DashAcData roles={roles} channels={channels.map((c) => ({ id: c.id, name: c.name }))} />
 
-  {saved && <div class="ob-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {saved && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+
+  <DashStatTiles tiles={[
+    { label: dt('Messages on'), value: messagesOn, tone: 'messages' },
+    { label: dt('Verification'), value: 0, text: verification.enabled ? dt('On') : dt('Off'), tone: 'joins' },
+    { label: dt('Join roles'), value: joinRoles.length, tone: 'voice' },
+    { label: dt('Ping channels'), value: pingOnJoin.channelIds.length, tone: 'reactions' },
+  ]} />
 
   <div class="ob-tabs" role="tablist" aria-label={dt('Onboarding')}>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="messages"><Icon name="ph:hand-waving-fill" width="15" height="15" /><span>{dt('Messages')}</span><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="verification"><Icon name="ph:seal-check-fill" width="15" height="15" /><span>{dt('Verification')}</span><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="arrival"><Icon name="ph:user-plus-fill" width="15" height="15" /><span>{dt('Roles and DM')}</span><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="ping"><Icon name="ph:bell-ringing-fill" width="15" height="15" /><span>{dt('Ping on join')}</span><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="bump"><Icon name="ph:arrow-fat-lines-up-fill" width="15" height="15" /><span>{dt('Bump')}</span><i class="ob-dot"></i></button>
+    <button type="button" class="ob-tab" role="tab" data-ob-tab="messages"><Icon name="ph:hand-waving-fill" width="15" height="15" /><span>{dt('Messages')}</span><em>{messagesOn}/5</em><i class="ob-dot"></i></button>
+    <button type="button" class="ob-tab" role="tab" data-ob-tab="verification"><Icon name="ph:seal-check-fill" width="15" height="15" /><span>{dt('Verification')}</span><em>{verification.enabled ? dt('On') : dt('Off')}</em><i class="ob-dot"></i></button>
+    <button type="button" class="ob-tab" role="tab" data-ob-tab="arrival"><Icon name="ph:user-plus-fill" width="15" height="15" /><span>{dt('Roles and DM')}</span><em>{joinRoles.length}</em><i class="ob-dot"></i></button>
+    <button type="button" class="ob-tab" role="tab" data-ob-tab="ping"><Icon name="ph:bell-ringing-fill" width="15" height="15" /><span>{dt('Ping on join')}</span><em>{pingOnJoin.enabled ? pingOnJoin.channelIds.length : dt('Off')}</em><i class="ob-dot"></i></button>
+    <button type="button" class="ob-tab" role="tab" data-ob-tab="bump"><Icon name="ph:arrow-fat-lines-up-fill" width="15" height="15" /><span>{dt('Bump')}</span><em>{bumpOn ? dt('On') : dt('Off')}</em><i class="ob-dot"></i></button>
   </div>
 
   <div class="ob-panels" id="ob-panels">
     <section class="ob-panel" data-ob-panel="messages">
-      <div class="ob-one">
-    <form method="POST" class="ob-card">
-      <input type="hidden" name="action" value="events" />
-      <div class="ob-secs">
-      <div class="ob-sec">
-      <div class="ob-card-head"><div class="ob-card-icon" style="--c:#a5ea7a"><Icon name="ph:hand-waving-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('Welcome')}</div></div>
-      <div class="ob-row"><label>{dt('Channel')}</label><select name="welcome_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.welcomeChannelId} prefix="#" /></select></div>
-      <div class="ob-row"><label>{dt('Message')}</label><textarea class="dgl-autogrow" rows="2" name="welcome_message" data-ac data-dp data-dp-template="welcome_embed_template" maxlength="300" placeholder={dt('Welcome {user} to {server_name}!')}>{memberEvents.welcomeMessage}</textarea><SilentMentionHint /></div>
-      {embedTemplateNames.length > 0 && (
-        <div class="ob-row"><label>{dt('Or use an embed template')}</label><select name="welcome_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.welcomeEmbedTemplate}>{n}</option>)}</select></div>
-      )}
-      {memberEvents.waitReady && (
-        <div class="ob-row">
-          <input type="hidden" name="wait_ready" value="1" />
-          <label>{dt('Send the welcome')}</label>
-          <select name="welcome_wait" data-ob-wait>
-            <option value="off" selected={memberEvents.welcomeWait === 'off'}>{dt('As soon as the member joins')}</option>
-            <option value="rules" selected={memberEvents.welcomeWait === 'rules'}>{dt('After the member accepts the rules')}</option>
-            <option value="rules_onboarding" selected={memberEvents.welcomeWait === 'rules_onboarding'}>{dt('After the rules and the onboarding')}</option>
-          </select>
-          <span class="ob-wait-note" data-ob-wait-note="off" hidden={memberEvents.welcomeWait !== 'off'}>{dt('The welcome goes out the moment the member joins, as it always did.')}</span>
-          <span class="ob-wait-note" data-ob-wait-note="rules" hidden={memberEvents.welcomeWait !== 'rules'}>{dt('It waits until the member accepts the server rules (Membership Screening). A member who never accepts them is never welcomed.')}</span>
-          <span class="ob-wait-note" data-ob-wait-note="rules_onboarding" hidden={memberEvents.welcomeWait !== 'rules_onboarding'}>{dt('It also waits until the member finishes Discord onboarding, but goes out anyway 10 minutes after the rules were accepted (30 minutes after joining when the server has no rules), because members can skip the onboarding.')}</span>
-          <span class="ob-wait-note">{dt('Needs Membership Screening or Onboarding turned on in Discord. The second welcome waits the same way. The DM and the ping on join always go out at once.')}</span>
-        </div>
-      )}
-      </div>
-      <div class="ob-sec">
-      <div class="ob-card-head"><div class="ob-card-icon" style="--c:#7ac7ea"><Icon name="ph:chats-circle-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('Second welcome')}</div>
-        <label class="ob-switch"><input type="checkbox" name="welcome_second_enabled" checked={memberEvents.secondEnabled} /><span></span></label>
-      </div>
-      <p class="ob-card-desc">{dt('A second welcome in another channel, for example the general chat. It is sent right after the first one.')}</p>
-      <div class="ob-row"><label>{dt('Channel')}</label><select name="welcome_second_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.secondChannelId} prefix="#" /></select></div>
-      <div class="ob-row"><label>{dt('Message')}</label><textarea class="dgl-autogrow" rows="2" name="welcome_second_message" data-ac data-dp data-dp-template="welcome_second_embed_template" maxlength="300" placeholder={dt('Say hi to {user}!')}>{memberEvents.secondMessage}</textarea><SilentMentionHint /></div>
-      {embedTemplateNames.length > 0 && (
-        <div class="ob-row"><label>{dt('Or use an embed template')}</label><select name="welcome_second_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.secondEmbedTemplate}>{n}</option>)}</select></div>
-      )}
-      </div>
-      <div class="ob-sec">
-      <div class="ob-card-head"><div class="ob-card-icon" style="--c:#94a3b8"><Icon name="ph:door-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('Leave')}</div></div>
-      <div class="ob-row"><label>{dt('Channel')}</label><select name="leave_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.leaveChannelId} prefix="#" /></select></div>
-      <div class="ob-row"><label>{dt('Message')}</label><textarea class="dgl-autogrow" rows="2" name="leave_message" data-ac data-dp data-dp-template="leave_embed_template" maxlength="300" placeholder={dt('{user} left the server.')}>{memberEvents.leaveMessage}</textarea><SilentMentionHint /></div>
-      {embedTemplateNames.length > 0 && (
-        <div class="ob-row"><label>{dt('Or use an embed template')}</label><select name="leave_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.leaveEmbedTemplate}>{n}</option>)}</select></div>
-      )}
-      </div>
-      <div class="ob-sec">
-      <div class="ob-card-head"><div class="ob-card-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('Boost')}</div></div>
-      <div class="ob-row"><label>{dt('Channel')}</label><select name="boost_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.boostChannelId} prefix="#" /></select></div>
-      <div class="ob-row"><label>{dt('Message')}</label><textarea class="dgl-autogrow" rows="2" name="boost_message" data-ac data-dp data-dp-template="boost_embed_template" maxlength="300" placeholder={dt('{user} just boosted the server!')}>{memberEvents.boostMessage}</textarea><SilentMentionHint /></div>
-      {embedTemplateNames.length > 0 && (
-        <div class="ob-row"><label>{dt('Or use an embed template')}</label><select name="boost_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.boostEmbedTemplate}>{n}</option>)}</select></div>
-      )}
-      <div class="ob-row"><label>{dt('Boost tier reached message')}</label><textarea class="dgl-autogrow" rows="2" name="boost_level_message" data-ac data-dp data-dp-template="boost_level_embed_template" maxlength="300" placeholder={dt('{server_name} just reached a new boost tier!')}>{memberEvents.boostLevelMessage}</textarea><SilentMentionHint /></div>
-      {embedTemplateNames.length > 0 && (
-        <div class="ob-row"><label>{dt('Or use an embed template')}</label><select name="boost_level_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.boostLevelEmbedTemplate}>{n}</option>)}</select></div>
-      )}
-      </div>
-      </div>
+      <form method="POST" class="ob-form">
+        <input type="hidden" name="action" value="events" />
+        <div class="ob-cols">
+          <div class="ob-col">
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#a5ea7a"><Icon name="ph:hand-waving-fill" width="17" height="17" /></span><h2>{dt('Welcome')}</h2></div>
+              <div class="sx-field"><label for="ob-w-ch">{dt('Channel')}</label><select id="ob-w-ch" name="welcome_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.welcomeChannelId} prefix="#" /></select></div>
+              <div class="sx-field ob-row"><label for="ob-w-msg">{dt('Message')}</label><textarea id="ob-w-msg" class="dgl-autogrow" rows="2" name="welcome_message" data-ac data-dp data-dp-template="welcome_embed_template" data-count maxlength="300" placeholder={dt('Welcome {user} to {server_name}!')}>{memberEvents.welcomeMessage}</textarea><SilentMentionHint /></div>
+              {hasTemplates && (
+                <div class="sx-field"><label for="ob-w-tpl">{dt('Or use an embed template')}</label><select id="ob-w-tpl" name="welcome_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.welcomeEmbedTemplate}>{n}</option>)}</select></div>
+              )}
+              {memberEvents.waitReady && (
+                <div class="sx-field">
+                  <input type="hidden" name="wait_ready" value="1" />
+                  <label for="ob-w-wait">{dt('Send the welcome')}</label>
+                  <select id="ob-w-wait" name="welcome_wait" data-ob-wait>
+                    <option value="off" selected={memberEvents.welcomeWait === 'off'}>{dt('As soon as the member joins')}</option>
+                    <option value="rules" selected={memberEvents.welcomeWait === 'rules'}>{dt('After the member accepts the rules')}</option>
+                    <option value="rules_onboarding" selected={memberEvents.welcomeWait === 'rules_onboarding'}>{dt('After the rules and the onboarding')}</option>
+                  </select>
+                  <span class="sx-hint ob-wait-note" data-ob-wait-note="off" hidden={memberEvents.welcomeWait !== 'off'}>{dt('The welcome goes out the moment the member joins, as it always did.')}</span>
+                  <span class="sx-hint ob-wait-note" data-ob-wait-note="rules" hidden={memberEvents.welcomeWait !== 'rules'}>{dt('It waits until the member accepts the server rules (Membership Screening). A member who never accepts them is never welcomed.')}</span>
+                  <span class="sx-hint ob-wait-note" data-ob-wait-note="rules_onboarding" hidden={memberEvents.welcomeWait !== 'rules_onboarding'}>{dt('It also waits until the member finishes Discord onboarding, but goes out anyway 10 minutes after the rules were accepted (30 minutes after joining when the server has no rules), because members can skip the onboarding.')}</span>
+                  <span class="sx-hint ob-wait-note">{dt('Needs Membership Screening or Onboarding turned on in Discord. The second welcome waits the same way. The DM and the ping on join always go out at once.')}</span>
+                </div>
+              )}
+            </section>
 
-      <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-      {embedTemplateNames.length > 0 && <p class="ob-card-desc">{dt('Templates are managed on the Embeds page.')}</p>}
-      <VariableHelp />
-    </form>
-
-      </div>
-    </section>
-    <section class="ob-panel" data-ob-panel="verification" hidden>
-      <div class="ob-one">
-      <form method="POST" class="ob-card ob-cols">
-        <input type="hidden" name="action" value="verification" />
-        <div class="ob-card-head">
-          <div class="ob-card-icon" style="--c:var(--accent)"><Icon name="ph:seal-check-fill" width="16" height="16" /></div>
-          <div class="ob-card-title">{dt('Verification')}</div>
-          <label class="ob-switch"><input type="checkbox" name="enabled" checked={verification.enabled} data-vf-switch data-no-dirty /><span></span></label>
-        </div>
-        <div class="ob-auto"><div><strong>{dt('Set it up for me')}</strong><span>{dt('Makes the roles and a #verify channel, posts the panel and turns verification on. What you already chose is kept.')}</span></div><button type="button" class="btn btn-accent btn-sm" data-vf-action="setup"><Icon name="ph:magic-wand-fill" width="14" height="14" /> {dt('Set it up')}</button></div>
-        <p class="ob-vf-msg" id="ob-vf-msg" role="status" hidden data-working={dt('Working on it…')} data-failed={dt('It could not be done. Try again.')} data-lost={dt('Petto stopped answering about the setup. Check the server and try again.')}></p>
-        <div class="ob-vf-progress" id="ob-vf-progress" hidden data-starting={dt('Starting…')} data-roles={dt('Making the roles…')} data-channels={dt('Setting up… {done}/{total} channels')} data-panel={dt('Posting the panel…')}>
-          <div class="ob-vf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
-          <span class="ob-vf-step" aria-live="polite"></span>
-        </div>
-        <p class="ob-vf-warn" id="ob-vf-warn" hidden data-missing={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL is not set.')} data-secret={dt('Members cannot get a verification link right now: Petto\'s VERIFY_TOKEN_SECRET is not set.')} data-invalid={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL is not a web address.')} data-local={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL points to localhost, which only opens on the bot\'s computer.')} data-letters={dt('Until it is fixed, the panel offers the letters inside Discord instead.')}></p>
-        <p class="ob-card-desc">{dt('A Cloudflare Turnstile captcha gate, new members must pass it to get in.')}</p>
-        <div class="ob-row"><label>{dt('Role while unverified')}</label><select name="unverified_role_id" data-give-role data-fill="ob-roles"><option value="">{dt('None')}</option><SelectChosen items={roles} selected={verification.unverifiedRoleId} /></select></div>
-        <div class="ob-row"><label>{dt('Role once verified')}</label><select name="verified_role_id" data-give-role data-fill="ob-roles"><option value="">{dt('None')}</option><SelectChosen items={roles} selected={verification.verifiedRoleId} /></select></div>
-        <div class="ob-row"><label>{dt('How members verify')}</label><select name="method" disabled={!verification.methodReady}>
-          <option value="turnstile" selected={verification.method === 'turnstile'}>{dt('Cloudflare check')}</option>
-          <option value="letters" selected={verification.method === 'letters'}>{dt('Letters in a picture')}</option>
-          <option value="both" selected={verification.method === 'both'}>{dt('Both checks')}</option>
-          <option value="discord" selected={verification.method === 'discord'}>{dt('Letters inside Discord (no link)')}</option>
-        </select></div>
-        {verification.methodReady && <input type="hidden" name="method_ready" value="1" />}
-        <p class="ob-sub">{dt('The Cloudflare check is the usual one. With letters, members type the letters of a picture (the link page needs no Cloudflare), on the page or with a button in the DM. With both, they do the two. Inside Discord, they only press a button in the DM and type the letters there, with no link at all.')}</p>
-        <div class="ob-row"><label>{dt('Verification DM design')}</label><select name="prompt_embed_template" data-dp-template-only><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === verification.promptTemplate}>{n}</option>)}</select></div>
-        <div class="ob-row"><label>{dt('Verified DM design')}</label><select name="verified_embed_template" data-dp-template-only><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === verification.verifiedTemplate}>{n}</option>)}</select></div>
-        <div class="ob-row"><label>{dt('Verification channel')}</label><select name="panel_channel_id" disabled={!verification.panelReady} data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={verification.panelChannelId} prefix="#" /></select></div>
-        {verification.panelReady && <input type="hidden" name="panel_ready" value="1" />}
-        <div class="ob-row"><label>{dt('Panel')}</label><button type="button" class="btn btn-ghost btn-sm" data-vf-action="panel" disabled={!verification.panelReady}><Icon name="ph:paper-plane-tilt-fill" width="14" height="14" /> {dt('Send the panel now')}</button></div>
-        <div class="ob-row"><label>{dt('Panel picture')}</label><input type="url" name="panel_image_url" value={verification.panelImage} maxlength="500" placeholder="https://..." disabled={!verification.imageReady} /></div>
-        {verification.imageReady && <input type="hidden" name="panel_image_ready" value="1" />}
-        <p class="ob-sub">{dt('An optional picture at the top of the panel. The link has to start with https. Save, then press Send the panel now to change a panel that is already posted.')}</p>
-        <label class="ob-check"><input type="checkbox" name="panel_repost" />{dt('Post the panel again when I save')}</label>
-        <p class="ob-sub">{dt('Petto posts a panel there with the verify buttons, so members can verify in the server and not only by DM. Only the member who presses a button sees the picture. Changing the method? Post the panel again.')}</p>
-        {verification.designReady && <input type="hidden" name="design_ready" value="1" />}
-        <p class="ob-sub">{dt('A saved design for the DM with the link. Put {verify.link} where the link goes.')}</p>
-        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-      </form>
-
-      </div>
-    </section>
-    <section class="ob-panel" data-ob-panel="arrival" hidden>
-      <div class="ob-grid">
-      <div class="ob-card">
-        <div class="ob-card-head"><div class="ob-card-icon" style="--c:#7ac45a"><Icon name="ph:user-plus-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('Join roles')}</div></div>
-        <p class="ob-card-desc">{dt('Roles given automatically the moment someone joins.')}</p>
-        {joinRoles.length > 0 && (
-          <div class="ob-jr-list">
-            {joinRoles.map((jr) => (
-              <div class="ob-jr-row">
-                <span class="ob-jr-role">{roleName(jr.roleId)}</span>
-                <span class="ob-jr-target">{targetLabel(jr.target)}</span>
-                <form method="POST" data-no-dirty><input type="hidden" name="action" value="remove_join_role" /><input type="hidden" name="role_id" value={jr.roleId} />
-                  <button type="submit" class="ob-jr-del" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="13" height="13" /></button>
-                </form>
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#7ac7ea"><Icon name="ph:chats-circle-fill" width="17" height="17" /></span><h2>{dt('Second welcome')}</h2>
+                <label class="sx-toggle-only"><input type="checkbox" name="welcome_second_enabled" checked={memberEvents.secondEnabled} aria-label={dt('Second welcome')} /><i class="sx-toggle"></i></label>
               </div>
-            ))}
+              <p class="sx-lead">{dt('A second welcome in another channel, for example the general chat. It is sent right after the first one.')}</p>
+              <div class="ob-body" data-sx-needs="welcome_second_enabled">
+                <div class="sx-field"><label for="ob-s-ch">{dt('Channel')}</label><select id="ob-s-ch" name="welcome_second_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.secondChannelId} prefix="#" /></select></div>
+                <div class="sx-field ob-row"><label for="ob-s-msg">{dt('Message')}</label><textarea id="ob-s-msg" class="dgl-autogrow" rows="2" name="welcome_second_message" data-ac data-dp data-dp-template="welcome_second_embed_template" data-count maxlength="300" placeholder={dt('Say hi to {user}!')}>{memberEvents.secondMessage}</textarea><SilentMentionHint /></div>
+                {hasTemplates && (
+                  <div class="sx-field"><label for="ob-s-tpl">{dt('Or use an embed template')}</label><select id="ob-s-tpl" name="welcome_second_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.secondEmbedTemplate}>{n}</option>)}</select></div>
+                )}
+              </div>
+            </section>
           </div>
-        )}
-        {joinRoles.length === 0 && <p class="ob-empty"><Icon name="ph:user-plus-fill" width="14" height="14" />{dt('No join roles yet. Pick one below.')}</p>}
-        <form method="POST" class="ob-jr-add" data-no-dirty>
-          <input type="hidden" name="action" value="add_join_role" />
-          <select name="role_id" required data-give-role data-fill="ob-roles">
-            <option value="" disabled selected>{dt('Role')}</option>
-          </select>
-          <select name="target">
-            <option value="all">{dt('Everyone')}</option>
-            <option value="humans">{dt('Humans only')}</option>
-            <option value="bots">{dt('Bots only')}</option>
-          </select>
-          <button type="submit" class="btn btn-ghost btn-sm">{dt('Add')}</button>
-        </form>
-      </div>
 
-      <form method="POST" class="ob-card ob-cols">
-        <input type="hidden" name="action" value="dm_join" />
-        <div class="ob-card-head"><div class="ob-card-icon" style="--c:#c792ea"><Icon name="ph:envelope-simple-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('DM on join')}</div></div>
-        <p class="ob-card-desc">{dt('A direct message sent to new members, separate from the channel welcome. Leave empty to turn off.')}</p>
-        <div class="ob-row"><label>{dt('Message')}</label><textarea class="dgl-autogrow" rows="2" name="dm_join_message" data-ac data-dp data-dp-template="dm_join_embed_template" maxlength="300" placeholder={dt('Welcome to {server_name}! Check out #rules to get started.')}>{dmJoin.message}</textarea><SilentMentionHint /></div>
-        {embedTemplateNames.length > 0 && (
-          <div class="ob-row"><label>{dt('Or use an embed template')}</label><select name="dm_join_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === dmJoin.embedTemplate}>{n}</option>)}</select></div>
-        )}
-        <VariableHelp />
-        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+          <div class="ob-col">
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#94a3b8"><Icon name="ph:door-fill" width="17" height="17" /></span><h2>{dt('Leave')}</h2></div>
+              <div class="sx-field"><label for="ob-l-ch">{dt('Channel')}</label><select id="ob-l-ch" name="leave_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.leaveChannelId} prefix="#" /></select></div>
+              <div class="sx-field ob-row"><label for="ob-l-msg">{dt('Message')}</label><textarea id="ob-l-msg" class="dgl-autogrow" rows="2" name="leave_message" data-ac data-dp data-dp-template="leave_embed_template" data-count maxlength="300" placeholder={dt('{user} left the server.')}>{memberEvents.leaveMessage}</textarea><SilentMentionHint /></div>
+              {hasTemplates && (
+                <div class="sx-field"><label for="ob-l-tpl">{dt('Or use an embed template')}</label><select id="ob-l-tpl" name="leave_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.leaveEmbedTemplate}>{n}</option>)}</select></div>
+              )}
+            </section>
+
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="17" height="17" /></span><h2>{dt('Boost')}</h2></div>
+              <div class="sx-field"><label for="ob-b-ch">{dt('Channel')}</label><select id="ob-b-ch" name="boost_channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={memberEvents.boostChannelId} prefix="#" /></select></div>
+              <div class="sx-field ob-row"><label for="ob-b-msg">{dt('Message')}</label><textarea id="ob-b-msg" class="dgl-autogrow" rows="2" name="boost_message" data-ac data-dp data-dp-template="boost_embed_template" data-count maxlength="300" placeholder={dt('{user} just boosted the server!')}>{memberEvents.boostMessage}</textarea><SilentMentionHint /></div>
+              {hasTemplates && (
+                <div class="sx-field"><label for="ob-b-tpl">{dt('Or use an embed template')}</label><select id="ob-b-tpl" name="boost_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.boostEmbedTemplate}>{n}</option>)}</select></div>
+              )}
+              <div class="sx-field ob-row"><label for="ob-b-lvl">{dt('Boost tier reached message')}</label><textarea id="ob-b-lvl" class="dgl-autogrow" rows="2" name="boost_level_message" data-ac data-dp data-dp-template="boost_level_embed_template" data-count maxlength="300" placeholder={dt('{server_name} just reached a new boost tier!')}>{memberEvents.boostLevelMessage}</textarea><SilentMentionHint /></div>
+              {hasTemplates && (
+                <div class="sx-field"><label for="ob-b-ltpl">{dt('Or use an embed template')}</label><select id="ob-b-ltpl" name="boost_level_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.boostLevelEmbedTemplate}>{n}</option>)}</select></div>
+              )}
+            </section>
+          </div>
+        </div>
+        <div class="ob-tools">
+          <div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+          {hasTemplates && <p class="sx-hint">{dt('Templates are managed on the Embeds page.')}</p>}
+          <VariableHelp />
+        </div>
       </form>
+    </section>
 
+    <section class="ob-panel" data-ob-panel="verification" hidden>
+      <form method="POST" class="ob-form ob-vf">
+        <input type="hidden" name="action" value="verification" />
+        <section class="sx-panel ob-box">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:var(--accent)"><Icon name="ph:seal-check-fill" width="17" height="17" /></span>
+            <h2>{dt('Verification')}</h2>
+            <label class="sx-toggle-only"><input type="checkbox" name="enabled" checked={verification.enabled} data-vf-switch data-no-dirty aria-label={dt('Verification')} /><i class="sx-toggle"></i></label>
+          </div>
+          <p class="sx-lead">{dt('A Cloudflare Turnstile captcha gate, new members must pass it to get in.')}</p>
+          <div class="ob-auto"><div><strong>{dt('Set it up for me')}</strong><span>{dt('Makes the roles and a #verify channel, posts the panel and turns verification on. What you already chose is kept.')}</span></div><button type="button" class="btn btn-accent btn-sm" data-vf-action="setup"><Icon name="ph:magic-wand-fill" width="14" height="14" /> {dt('Set it up')}</button></div>
+          <p class="ob-vf-msg" id="ob-vf-msg" role="status" hidden data-working={dt('Working on it…')} data-failed={dt('It could not be done. Try again.')} data-lost={dt('Petto stopped answering about the setup. Check the server and try again.')}></p>
+          <div class="ob-vf-progress" id="ob-vf-progress" hidden data-starting={dt('Starting…')} data-roles={dt('Making the roles…')} data-channels={dt('Setting up… {done}/{total} channels')} data-panel={dt('Posting the panel…')}>
+            <div class="ob-vf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+            <span class="ob-vf-step" aria-live="polite"></span>
+          </div>
+          <p class="ob-vf-warn" id="ob-vf-warn" hidden data-missing={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL is not set.')} data-secret={dt('Members cannot get a verification link right now: Petto\'s VERIFY_TOKEN_SECRET is not set.')} data-invalid={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL is not a web address.')} data-local={dt('Members cannot get a verification link right now: Petto\'s VERIFY_BASE_URL points to localhost, which only opens on the bot\'s computer.')} data-letters={dt('Until it is fixed, the panel offers the letters inside Discord instead.')}></p>
+        </section>
+
+        <div class="ob-cols">
+          <div class="ob-col">
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#7ac45a"><Icon name="ph:user-plus-fill" width="17" height="17" /></span><h2>{dt('Roles')}</h2></div>
+              <div class="sx-grid">
+                <div class="sx-field"><label for="ob-v-un">{dt('Role while unverified')}</label><select id="ob-v-un" name="unverified_role_id" data-give-role data-fill="ob-roles"><option value="">{dt('None')}</option><SelectChosen items={roles} selected={verification.unverifiedRoleId} /></select></div>
+                <div class="sx-field"><label for="ob-v-ok">{dt('Role once verified')}</label><select id="ob-v-ok" name="verified_role_id" data-give-role data-fill="ob-roles"><option value="">{dt('None')}</option><SelectChosen items={roles} selected={verification.verifiedRoleId} /></select></div>
+              </div>
+            </section>
+
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#5eead4"><Icon name="ph:shield-check-fill" width="17" height="17" /></span><h2 id="ob-method-h">{dt('How members verify')}</h2></div>
+              <div class="sx-choices ob-methods" role="radiogroup" aria-labelledby="ob-method-h">
+                {methods.map(([value, label, hint, icon]) => (
+                  <label class="sx-choice"><input type="radio" name="method" value={value} checked={verification.method === value} disabled={!verification.methodReady} /><span class="sx-choice-body"><Icon name={icon} width="17" height="17" /><b>{label}</b><em>{hint}</em></span></label>
+                ))}
+              </div>
+              {verification.methodReady && <input type="hidden" name="method_ready" value="1" />}
+              <p class="sx-hint">{dt('The Cloudflare check is the usual one. With letters, members type the letters of a picture (the link page needs no Cloudflare), on the page or with a button in the DM. With both, they do the two. Inside Discord, they only press a button in the DM and type the letters there, with no link at all.')}</p>
+            </section>
+
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#c792ea"><Icon name="ph:envelope-simple-fill" width="17" height="17" /></span><h2>{dt('Messages members get')}</h2></div>
+              <div class="sx-field"><label for="ob-v-prompt">{dt('Verification DM design')}</label><select id="ob-v-prompt" name="prompt_embed_template" data-dp-template-only><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === verification.promptTemplate}>{n}</option>)}</select></div>
+              <div class="sx-field"><label for="ob-v-done">{dt('Verified DM design')}</label><select id="ob-v-done" name="verified_embed_template" data-dp-template-only><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === verification.verifiedTemplate}>{n}</option>)}</select></div>
+              {verification.designReady && <input type="hidden" name="design_ready" value="1" />}
+              <p class="sx-hint">{dt('A saved design for the DM with the link. Put {verify.link} where the link goes.')}</p>
+            </section>
+          </div>
+
+          <div class="ob-col">
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#a5ea7a"><Icon name="ph:list-checks-fill" width="17" height="17" /></span><h2>{dt('Setup')}</h2><span class:list={['sx-tag', { 'sx-tag-accent': checklistDone === checklist.length }]}>{dt('{n} of {max}', { n: checklistDone, max: checklist.length })}</span></div>
+              <ul class="ob-checks">
+                {checklist.map((item) => <li class:list={{ done: item.done }}><Icon name={item.done ? 'ph:check-circle-fill' : 'ph:circle'} width="18" height="18" /><span>{item.label}</span></li>)}
+              </ul>
+            </section>
+
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#6ec6ff"><Icon name="ph:hash-fill" width="17" height="17" /></span><h2>{dt('Panel')}</h2></div>
+              <div class="sx-field"><label for="ob-v-ch">{dt('Verification channel')}</label><select id="ob-v-ch" name="panel_channel_id" disabled={!verification.panelReady} data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={verification.panelChannelId} prefix="#" /></select></div>
+              {verification.panelReady && <input type="hidden" name="panel_ready" value="1" />}
+              <div class="ob-panel-actions"><button type="button" class="btn btn-ghost btn-sm" data-vf-action="panel" disabled={!verification.panelReady}><Icon name="ph:paper-plane-tilt-fill" width="14" height="14" /> {dt('Send the panel now')}</button></div>
+              <div class="sx-field"><label for="ob-v-img">{dt('Panel picture')}</label><input id="ob-v-img" type="url" name="panel_image_url" value={verification.panelImage} maxlength="500" placeholder="https://..." disabled={!verification.imageReady} data-count /></div>
+              {verification.imageReady && <input type="hidden" name="panel_image_ready" value="1" />}
+              <p class="sx-hint">{dt('An optional picture at the top of the panel. The link has to start with https. Save, then press Send the panel now to change a panel that is already posted.')}</p>
+              <div class="sx-chips"><label class="sx-chip"><input type="checkbox" name="panel_repost" /><span>{dt('Post the panel again when I save')}</span></label></div>
+              <p class="sx-hint">{dt('Petto posts a panel there with the verify buttons, so members can verify in the server and not only by DM. Only the member who presses a button sees the picture. Changing the method? Post the panel again.')}</p>
+            </section>
+          </div>
+        </div>
+        <div class="ob-tools"><div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div></div>
+      </form>
+    </section>
+
+    <section class="ob-panel" data-ob-panel="arrival" hidden>
+      <div class="ob-cols">
+        <div class="ob-col">
+          <section class="sx-panel ob-box">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#7ac45a"><Icon name="ph:user-plus-fill" width="17" height="17" /></span><h2>{dt('Join roles')}</h2>{joinRoles.length > 0 && <span class="sx-tag">{joinRoles.length}</span>}</div>
+            <p class="sx-lead">{dt('Roles given automatically the moment someone joins.')}</p>
+            {joinRoles.length > 0 && (
+              <div class="sx-list ob-jr-list dgl-stagger">
+                {joinRoles.map((jr) => (
+                  <div class="sx-row ob-jr-row">
+                    <span class="ob-jr-role">{roleName(jr.roleId)}</span>
+                    <span class="sx-tag ob-jr-target">{targetLabel(jr.target)}</span>
+                    <form method="POST" data-no-dirty class="ob-jr-del"><input type="hidden" name="action" value="remove_join_role" /><input type="hidden" name="role_id" value={jr.roleId} />
+                      <button type="submit" class="sx-iconbtn" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="15" height="15" /></button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            )}
+            {joinRoles.length === 0 && <p class="ob-empty"><Icon name="ph:user-plus-fill" width="22" height="22" />{dt('No join roles yet. Pick one below.')}</p>}
+            <form method="POST" class="ob-jr-add sx-sub" data-no-dirty>
+              <input type="hidden" name="action" value="add_join_role" />
+              <h3>{dt('Add')}</h3>
+              <div class="sx-field"><label for="ob-jr-role">{dt('Role')}</label>
+                <select id="ob-jr-role" name="role_id" required data-give-role data-fill="ob-roles">
+                  <option value="" disabled selected>{dt('Role')}</option>
+                </select>
+              </div>
+              <div class="sx-field"><span class="sx-label" id="ob-jr-target-l">{dt('Who gets it')}</span>
+                <div class="dfx-chips" role="radiogroup" aria-labelledby="ob-jr-target-l">{targets.map(([value, label]) => <label class="dfx-chip"><input type="radio" name="target" value={value} checked={value === 'all'} />{label}</label>)}</div>
+              </div>
+              <div class="sx-foot"><button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button></div>
+            </form>
+          </section>
+        </div>
+
+        <div class="ob-col">
+          <form method="POST" class="sx-panel ob-box">
+            <input type="hidden" name="action" value="dm_join" />
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#c792ea"><Icon name="ph:envelope-simple-fill" width="17" height="17" /></span><h2>{dt('DM on join')}</h2></div>
+            <p class="sx-lead">{dt('A direct message sent to new members, separate from the channel welcome. Leave empty to turn off.')}</p>
+            <div class="sx-field ob-row"><label for="ob-dm-msg">{dt('Message')}</label><textarea id="ob-dm-msg" class="dgl-autogrow" rows="2" name="dm_join_message" data-ac data-dp data-dp-template="dm_join_embed_template" data-count maxlength="300" placeholder={dt('Welcome to {server_name}! Check out #rules to get started.')}>{dmJoin.message}</textarea><SilentMentionHint /></div>
+            {hasTemplates && (
+              <div class="sx-field"><label for="ob-dm-tpl">{dt('Or use an embed template')}</label><select id="ob-dm-tpl" name="dm_join_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === dmJoin.embedTemplate}>{n}</option>)}</select></div>
+            )}
+            <VariableHelp />
+            <div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+          </form>
+        </div>
       </div>
     </section>
+
     <section class="ob-panel" data-ob-panel="ping" hidden>
-      <div class="ob-one">
-      <form method="POST" class="ob-card ob-cols">
+      <form method="POST" class="ob-form">
         <input type="hidden" name="action" value="ping_on_join" />
-        <div class="ob-card-head">
-          <div class="ob-card-icon" style="--c:#5eead4"><Icon name="ph:bell-ringing-fill" width="16" height="16" /></div>
-          <div class="ob-card-title">{dt('Ping on join')}</div>
-          <label class="ob-switch"><input type="checkbox" name="enabled" checked={pingOnJoin.enabled} /><span></span></label>
-        </div>
-        <p class="ob-card-desc">{dt('Mentions new members in these channels, then cleans the ping up after the delay below (default 5s).')}</p>
-        {closedPings.length > 0 && (
-          <div class="ob-card-desc ob-warn" role="alert">
-            <strong>{dt('The ping will not arrive in these channels:')}</strong>
-            <ul class="ob-warn-list">{closedPings.map((c) => <li><span class="ob-warn-name">#{c.name}</span> <span class="ob-warn-why">{c.note}</span></li>)}</ul>
-            <span>{dt('Give Petto View Channel and Send Messages in them, or pick other channels.')}</span>
+        <section class="sx-panel ob-box">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#5eead4"><Icon name="ph:bell-ringing-fill" width="17" height="17" /></span>
+            <h2>{dt('Ping on join')}</h2>
+            <label class="sx-toggle-only"><input type="checkbox" name="enabled" checked={pingOnJoin.enabled} aria-label={dt('Ping on join')} /><i class="sx-toggle"></i></label>
           </div>
-        )}
-        <div class="ob-row" data-filterable>
-          <label>{dt('Channels')}</label>
-          <input type="text" class="dgl-filter-input" placeholder={dt('Search channels...')} data-filter-input />
-          {/* One row per channel (a box and its delay), drawn by the script below from the list the page carries: the same fields
-              the server used to write, without sending 150 copies of the row. */}
-          <div class="ob-role-list" data-filter-list data-poj-labels={JSON.stringify([dt('Delay'), dt('Seconds before the ping message is deleted')])}></div>
-          <script type="application/json" data-poj-rows set:html={pingRowsJson}></script>
-          <script is:inline>
+          <p class="sx-lead">{dt('Mentions new members in these channels, then cleans the ping up after the delay below (default 5s).')}</p>
+          {closedPings.length > 0 && (
+            <div class="ob-warn" role="alert">
+              <strong>{dt('The ping will not arrive in these channels:')}</strong>
+              <ul class="ob-warn-list">{closedPings.map((c) => <li><span class="ob-warn-name">#{c.name}</span> <span class="ob-warn-why">{c.note}</span></li>)}</ul>
+              <span>{dt('Give Petto View Channel and Send Messages in them, or pick other channels.')}</span>
+            </div>
+          )}
+          <div class="ob-row dfx-field ob-pick" data-filterable data-sx-needs="enabled">
+            <label>{dt('Channels')}</label>
+            <input type="text" class="dgl-filter-input" placeholder={dt('Search channels...')} data-filter-input />
+            {/* One row per channel (a box and its delay), drawn by the script below from the list the page carries: the same fields
+                the server used to write, without sending 150 copies of the row. */}
+            <div class="ob-role-list" data-filter-list data-poj-labels={JSON.stringify([dt('Delay'), dt('Seconds before the ping message is deleted')])}></div>
+            <script type="application/json" data-poj-rows set:html={pingRowsJson}></script>
+            <script is:inline>
             (function () {
               var holder = document.currentScript.previousElementSibling;
               var list = holder && holder.previousElementSibling;
@@ -306,38 +384,51 @@ function targetLabel(target: string) {
               list.appendChild(fragment);
             })();
           </script>
-        </div>
-        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+          </div>
+        </section>
+        <div class="ob-tools"><div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div></div>
       </form>
-      </div>
     </section>
-    <section class="ob-panel" data-ob-panel="bump" hidden>
-      <div class="ob-one">
-      <form method="POST" class="ob-card ob-cols">
-        <input type="hidden" name="action" value="bump" />
-        <div class="ob-card-head"><div class="ob-card-icon" style="--c:#fed53c"><Icon name="ph:arrow-fat-lines-up-fill" width="16" height="16" /></div><div class="ob-card-title">{dt('Bump reminder')}</div></div>
-        <p class="ob-card-desc"><Fragment set:html={dth('Reminds the server to <code>/bump</code> on Disboard once the cooldown ends.')} /></p>
-        <div class="ob-row"><label>{dt('Channel')}</label><select name="channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={bump.channelId} prefix="#" /></select></div>
-        <div class="ob-row"><label>{dt('Reminder message')}</label><textarea class="dgl-autogrow" rows="2" name="message" data-ac data-dp maxlength="300" placeholder={dt('It\'s time to /bump the server!')}>{bump.message}</textarea><SilentMentionHint /></div>
-        <div class="ob-row"><label>{dt('Thank-you message')}</label><textarea class="dgl-autogrow" rows="2" name="thankyou" data-ac maxlength="300" placeholder={dt('{user.mention} successfully bumped! Bump again {nextBump}.')}>{bump.thankyou}</textarea><SilentMentionHint /></div>
-        <div class="ob-row"><label>{dt('Reminder design')}</label><select name="reminder_embed_template" data-tpl-locks="message"><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === bump.reminderTemplate}>{n}</option>)}</select></div>
-        <div class="ob-row"><label>{dt('Thank-you design')}</label><select name="thankyou_embed_template" data-tpl-locks="thankyou"><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === bump.thankyouTemplate}>{n}</option>)}</select></div>
-        {bump.designReady && <input type="hidden" name="design_ready" value="1" />}
-        <VariableHelp />
-        <div class="ob-toggles">
-          <label class="ob-check"><input type="checkbox" name="pingable" checked={bump.pingable} />{dt('Ping everyone when due')}</label>
-          <label class="ob-check"><input type="checkbox" name="autolock" checked={bump.autolock} />{dt('Lock channel between bumps')}</label>
-          <label class="ob-check"><input type="checkbox" name="autoclean" checked={bump.autoclean} />{dt('Auto-delete chatter')}</label>
-        </div>
-        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-      </form>
 
-      </div>
+    <section class="ob-panel" data-ob-panel="bump" hidden>
+      <form method="POST" class="ob-form">
+        <input type="hidden" name="action" value="bump" />
+        <div class="ob-cols">
+          <div class="ob-col">
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#fed53c"><Icon name="ph:arrow-fat-lines-up-fill" width="17" height="17" /></span><h2>{dt('Bump reminder')}</h2></div>
+              <p class="sx-lead"><Fragment set:html={dth('Reminds the server to <code>/bump</code> on Disboard once the cooldown ends.')} /></p>
+              <div class="sx-field"><label for="ob-bp-ch">{dt('Channel')}</label><select id="ob-bp-ch" name="channel_id" data-fill="ob-ch"><option value="">{dt('Off')}</option><SelectChosen items={channels} selected={bump.channelId} prefix="#" /></select></div>
+              <div class="sx-field ob-row"><label for="ob-bp-msg">{dt('Reminder message')}</label><textarea id="ob-bp-msg" class="dgl-autogrow" rows="2" name="message" data-ac data-dp data-count maxlength="300" placeholder={dt('It\'s time to /bump the server!')}>{bump.message}</textarea><SilentMentionHint /></div>
+              <div class="sx-field"><label for="ob-bp-rtpl">{dt('Reminder design')}</label><select id="ob-bp-rtpl" name="reminder_embed_template" data-tpl-locks="message"><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === bump.reminderTemplate}>{n}</option>)}</select></div>
+              <div class="sx-field"><label for="ob-bp-thx">{dt('Thank-you message')}</label><textarea id="ob-bp-thx" class="dgl-autogrow" rows="2" name="thankyou" data-ac data-count maxlength="300" placeholder={dt('{user.mention} successfully bumped! Bump again {nextBump}.')}>{bump.thankyou}</textarea><SilentMentionHint /></div>
+              <div class="sx-field"><label for="ob-bp-ttpl">{dt('Thank-you design')}</label><select id="ob-bp-ttpl" name="thankyou_embed_template" data-tpl-locks="thankyou"><option value="">{dt('Usual message')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === bump.thankyouTemplate}>{n}</option>)}</select></div>
+              {bump.designReady && <input type="hidden" name="design_ready" value="1" />}
+            </section>
+          </div>
+          <div class="ob-col">
+            <section class="sx-panel ob-box">
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#f0a88f"><Icon name="ph:broom-fill" width="17" height="17" /></span><h2>{dt('While it waits')}</h2></div>
+              <div class="ob-toggles">
+                <label class="sx-switch"><input type="checkbox" name="pingable" checked={bump.pingable} /><span class="sx-switch-text"><b>{dt('Ping everyone when due')}</b></span><i class="sx-toggle"></i></label>
+                <label class="sx-switch"><input type="checkbox" name="autolock" checked={bump.autolock} /><span class="sx-switch-text"><b>{dt('Lock channel between bumps')}</b></span><i class="sx-toggle"></i></label>
+                <label class="sx-switch"><input type="checkbox" name="autoclean" checked={bump.autoclean} /><span class="sx-switch-text"><b>{dt('Auto-delete chatter')}</b></span><i class="sx-toggle"></i></label>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="ob-tools">
+          <div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+          <VariableHelp />
+        </div>
+      </form>
     </section>
   </div>
   <SelectSource name="ob-ch" items={channels.map((c) => ({ id: c.id, name: c.name, note: c.note }))} prefix="#" />
   <SelectSource name="ob-roles" items={roles.map((r) => ({ id: r.id, name: r.name }))} />
+  </div>
 
+  <DashBotWait />
   <script is:inline>
     // The verification card: set it up, post the panel and switch it on or off right away, without the Save button. The bot answers within
     // a moment; a long one (setting it up edits every channel of the server) comes back running, and the card shows how far it is by
@@ -562,116 +653,116 @@ function targetLabel(target: string) {
       show(hash || remembered() || 'messages', false);
     })();
   </script>
+  <DashFormKit />
 </DashGuildLayout>
 
 <style>
-  .ob-tabs { display: flex; gap: 6px; margin: 0 0 18px; padding: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow-x: auto; scrollbar-width: none; position: sticky; top: calc(var(--dgl-header-h, 60px) + 8px); z-index: 4; }
+  h1 { font-size: 24px; margin: 0 0 16px; }
+  .ob { max-width: 1040px; }
+  /* The tabs: the look of the other tabbed pages, with what is set on each. */
+  .ob-tabs { display: flex; gap: 6px; margin: 0 0 16px; padding: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow-x: auto; scrollbar-width: none; position: sticky; top: calc(var(--dgl-header-h, 60px) + 8px); z-index: 4; }
   .ob-tabs::-webkit-scrollbar { display: none; }
-  .ob-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background var(--m-base) ease, color var(--m-base) ease, transform var(--m-fast) var(--m-out); }
+  .ob-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background .18s ease, color .18s ease; }
   .ob-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
-  .ob-tab:active { transform: scale(var(--m-press)); transition-duration: var(--m-instant); }
+  .ob-tab:active { background: color-mix(in srgb, var(--text) 10%, transparent); }
   .ob-tab.on { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
   .ob-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ob-tab :global(svg) { flex: none; }
+  .ob-tab em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
   .ob-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); }
   .ob-tab.dirty .ob-dot { display: inline-block; animation: ob-pop var(--m-base) var(--m-soft); }
+  @keyframes ob-pop { from { transform: scale(0); } to { transform: scale(1); } }
   .ob-panel { padding: 0; }
   .ob-panel[hidden] { display: none; }
   .ob-panel.ob-in { animation: m-rise-in var(--m-slow) var(--m-out); }
-  .ob-one { display: flex; flex-direction: column; gap: 16px; }
-  /* Two balanced columns (the four message cards used to fall into three, leaving a tall void under the two short ones). */
-  .ob-secs { columns: 2 330px; column-gap: 22px; width: 100%; }
-  .ob-secs > .ob-sec { break-inside: avoid; margin: 0 0 18px; }
-  .ob-sec { display: flex; flex-direction: column; gap: 11px; min-width: 0; padding: 14px; border: 1px solid var(--border-soft, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--bg-raise) 55%, transparent); }
-  /* A card whose fields sit in columns on a wide screen instead of one long stack; the heading, the notes and the buttons take the whole row. */
-  .ob-card.ob-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px 22px; align-items: start; }
-  .ob-cols > .ob-card-head, .ob-cols > .ob-card-desc, .ob-cols > .ob-sub, .ob-cols > .ob-toggles, .ob-cols > button, .ob-cols > :global(.dp-slot), .ob-cols > :global(.dgl-varmenu-wrap), .ob-cols > :global(details) { grid-column: 1 / -1; }
-  .ob-cols > button { justify-self: start; }
-  .ob-cols > .ob-sub { margin: 0; }
-  .ob-cols .ob-role-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); max-height: 260px; }
-  .ob-cols > .ob-row[data-filterable] { grid-column: 1 / -1; }
-  .ob-card.is-dirty { border-color: color-mix(in srgb, var(--yellow) 55%, var(--border)); }
-  @keyframes ob-pop { from { transform: scale(0); } to { transform: scale(1); } }
   @media (prefers-reduced-motion: reduce) { .ob-panel.ob-in, .ob-tab.dirty .ob-dot { animation: none; } }
-  h1 { font-size: 24px; margin: 0 0 20px; }
-  .ob-sub { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin: 0; }
 
-  .ob-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .ob-form { display: flex; flex-direction: column; gap: 14px; }
+  .ob-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .ob-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .ob-box { gap: 14px; }
+  .ob-body { display: flex; flex-direction: column; gap: 14px; }
+  .ob-box .sx-field select { min-width: 0; }
+  .ob-box .sx-field input[type=url] { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; min-width: 0; transition: border-color .25s ease, box-shadow .25s ease; }
+  .ob-box .sx-field input[type=url]:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .ob-box .sx-field input:disabled, .ob-box .sx-field select:disabled { opacity: .55; cursor: not-allowed; }
+  .ob-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  /* its only button is the Save that the bar of unsaved changes stands in for: with nothing else in the row, no empty row is left */
+  .ob-save:not(:has(> :not(.dgl-bar-save))) { display: none; }
+  .ob-tools:not(:has(> :not(.ob-save))) { display: none; }
+  .ob-box :global(.dgl-varmenu-wrap) { margin-top: 2px; }
+  .sx-lead :global(code) { font-family: var(--mono); color: var(--accent); }
+  .ob-wait-note[hidden] { display: none; }
+  .ob-wait-note { overflow-wrap: anywhere; }
 
-  .ob-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-  .ob-col { display: flex; flex-direction: column; gap: 16px; }
-  .ob-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card); display: flex; flex-direction: column; gap: 11px; align-items: flex-start; }
-  .ob-card-head { display: flex; align-items: center; gap: 10px; width: 100%; }
-  .ob-card-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
-  .ob-card-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--text); }
-  .ob-card-desc { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin: 0; }
-  .ob-card-desc :global(code){ font-family: var(--mono); color: var(--accent); }
-
-  .ob-auto { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border: 1px dashed var(--accent); border-radius: 12px; padding: 12px 14px; background: var(--accent-soft); grid-column: 1 / -1; }
+  /* verification */
+  .ob-auto { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border: 1px dashed var(--accent); border-radius: 12px; padding: 12px 14px; background: var(--accent-soft); }
   .ob-auto div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
   .ob-auto strong { font-size: 14px; }
   .ob-auto span { font-size: 12.5px; color: var(--text-muted); }
-  .ob-vf-msg { margin: 0; font-size: 13px; grid-column: 1 / -1; }
+  .ob-auto .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .ob-vf-msg { margin: 0; font-size: 13px; }
+  .ob-vf-msg[hidden], .ob-vf-progress[hidden], .ob-vf-warn[hidden] { display: none; }
   .ob-vf-msg.ok { color: var(--green); }
   .ob-vf-msg.bad { color: var(--red); }
   .ob-busy { opacity: .7; cursor: progress; }
-  .ob-vf-progress { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+  .ob-vf-progress { display: flex; flex-direction: column; gap: 6px; }
   .ob-vf-bar { height: 8px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
   .ob-vf-bar span { display: block; height: 100%; width: 4%; border-radius: inherit; background: var(--accent); transition: width .4s ease; }
   .ob-vf-step { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-  .ob-vf-warn { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--yellow); }
+  .ob-vf-warn { margin: 0; font-size: 13px; color: var(--yellow); }
   @media (prefers-reduced-motion: reduce) { .ob-vf-bar span { transition: none; } }
-  .ob-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
-  .ob-switch input { opacity: 0; width: 0; height: 0; }
-  .ob-switch span { position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background 0.15s; cursor: pointer; }
-  .ob-switch span::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: var(--card); border-radius: 50%; transition: transform 0.15s; }
-  .ob-switch input:checked + span { background: var(--accent); }
-  .ob-switch input:checked + span::before { transform: translateX(14px); }
-  .ob-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ob-methods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ob-methods .sx-choice-body em { display: block; }
+  .ob-methods .sx-choice:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+  .ob-methods .sx-choice input:disabled { cursor: not-allowed; opacity: 0 !important; }
+  .ob-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .ob-checks li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); color: var(--text-muted); font-size: 13.5px; }
+  .ob-checks li :global(svg) { flex: none; color: var(--text-dim); }
+  .ob-checks li.done { color: var(--text); }
+  .ob-checks li.done :global(svg) { color: var(--green); }
+  .ob-panel-actions { display: flex; }
+  .ob-panel-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .ob-panel-actions .btn[disabled] { opacity: .55; cursor: not-allowed; }
 
-  .ob-row { display: flex; flex-direction: column; gap: 5px; width: 100%; }
-  .ob-wait-note { font-size: 11.5px; line-height: 1.4; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-dim); overflow-wrap: anywhere; }
-  .ob-wait-note[hidden] { display: none; }
-  .ob-row label { font-size: 10.5px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .ob-row input, .ob-row select, .ob-row textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 12.5px; }
-  .ob-row textarea { line-height: 1.45; resize: vertical; }
-  .ob-role-list { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raise); max-height: 110px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; }
-  .ob-role-item { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 5px 7px; border-radius: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
-  .ob-role-item:hover { background: var(--card-hover); color: var(--text); }
-  .ob-role-item input { flex-shrink: 0; accent-color: var(--accent); }
+  /* join roles */
+  .ob-jr-list { gap: 8px; }
+  .ob-jr-row { padding: 9px 12px; }
+  .ob-jr-role { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .ob-jr-del { margin: 0; flex: none; }
+  .ob-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 22px 16px; border: 1px dashed var(--border); border-radius: 12px; font-size: 13.5px; color: var(--text-dim); text-align: center; }
+  .ob-empty :global(svg) { color: var(--accent); }
+  .ob-jr-add { gap: 12px; }
+  .ob-jr-add .btn { display: inline-flex; align-items: center; gap: 6px; }
 
-  .ob-warn { color: #ff7a7a; overflow-wrap: anywhere; }
+  /* ping on join: the rows are drawn by the script */
+  .ob-warn { color: var(--red); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 45%, transparent); border-radius: 12px; padding: 10px 14px; font-size: 13px; overflow-wrap: anywhere; }
   .ob-warn strong { display: block; }
   .ob-warn-list { margin: 6px 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 4px; }
   .ob-warn-name { font-weight: 600; }
-  .ob-warn-why { display: block; font-size: 11.5px; opacity: .85; }
-  .ob-poj-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 7px; border-radius: 6px; }
-  .ob-poj-item:hover { background: var(--card-hover); }
-  .ob-poj-top { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; min-width: 0; }
-  .ob-row input.ob-poj-check { width: 14px; height: 14px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
+  .ob-warn-why { display: block; font-size: 12px; opacity: .85; }
+  .ob-pick { gap: 8px; }
+  .ob-pick .dgl-filter-input { max-width: 420px; }
+  .ob-role-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 8px; max-height: 440px; overflow-y: auto; padding: 2px; }
+  .ob-poj-item { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); transition: background-color .3s ease, border-color .3s ease; }
+  .ob-poj-item:hover { background: var(--card-hover); border-color: var(--border); }
+  .ob-poj-item:has(.ob-poj-check:checked) { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+  .ob-poj-top { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; min-width: 0; }
+  .ob-pick input.ob-poj-check { width: 16px; min-width: 16px; height: 16px; min-height: 16px; margin: 2px 0 0; padding: 0; flex-shrink: 0; accent-color: var(--accent); box-shadow: none; }
   /* The name of a channel is never cut: it wraps (on a phone too), and the reason Petto cannot post there sits under it. */
   .ob-poj-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
-  .ob-poj-name { white-space: normal; overflow-wrap: anywhere; color: var(--text-muted); font-size: 12px; line-height: 1.35; }
-  .ob-poj-note { color: #ff7a7a; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
-  .ob-poj-bottom { display: flex; align-items: center; gap: 6px; margin-left: 22px; cursor: default; }
-  .ob-poj-delay-label { font-size: 10.5px; color: var(--text-dim); }
-  .ob-row input.ob-poj-delay { width: 44px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; padding: 2px 5px; background: var(--card); color: var(--text); font-size: 11.5px; text-align: right; }
-  .ob-poj-unit { font-size: 11px; color: var(--text-dim); }
+  .ob-poj-name { white-space: normal; overflow-wrap: anywhere; color: var(--text); font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+  .ob-poj-note { color: var(--red); font-size: 11.5px; line-height: 1.35; overflow-wrap: anywhere; }
+  .ob-poj-bottom { display: flex; align-items: center; gap: 8px; cursor: default; }
+  .ob-poj-delay-label { font-size: 12px; color: var(--text-dim); flex: 1; }
+  .ob-pick input.ob-poj-delay { width: 56px; min-height: 32px; padding: 4px 6px; text-align: center; font-weight: 600; }
+  .ob-poj-unit { font-size: 12px; color: var(--text-dim); }
+  .ob-pick :global(.ob-poj-bottom .dfx-num) { border-radius: 8px; }
+  .ob-pick :global(.ob-poj-bottom .dfx-step) { width: 28px; font-size: 16px; }
+  .ob-pick :global(.ob-poj-bottom .dfx-num input[type="number"]) { min-height: 32px; padding: 2px 4px; }
 
-  .ob-toggles { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-  .ob-check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); }
+  .ob-toggles { display: flex; flex-direction: column; gap: 10px; }
 
-  .ob-jr-list { display: flex; flex-direction: column; width: 100%; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .ob-jr-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; font-size: 12.5px; background: var(--bg-raise); }
-  .ob-jr-row + .ob-jr-row { border-top: 1px solid var(--border-soft); }
-  .ob-jr-role { color: var(--text); font-weight: 500; }
-  .ob-jr-target { margin-left: auto; font-size: 11px; color: var(--text-dim); background: var(--card); border: 1px solid var(--border-soft); padding: 2px 7px; border-radius: 5px; }
-  .ob-empty { display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; font-size: 12.5px; color: var(--text-dim); }
-  .ob-jr-add { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; }
-  .ob-jr-add select { flex: 1 1 120px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 12.5px; }
-  .ob-jr-del { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; border-radius: 6px; flex-shrink: 0; display: flex; }
-  .ob-jr-del:hover { color: var(--red); background: var(--red-soft); }
-
-  @media (max-width: 780px) {
-    .ob-grid { grid-template-columns: 1fr; }
-  }
+  @media (max-width: 1060px) { .ob-cols { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 720px) { .ob-methods { grid-template-columns: minmax(0, 1fr); } }
 </style>
