@@ -4,6 +4,8 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import ColorPicker from './ColorPicker.astro';
 import DashAcData from './DashAcData.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
 import { UNICODE_EMOJIS } from '../utils/unicodeEmojis';
 import { getDashLang, makeT } from '../i18n/dash';
 import clientCode from '../scripts/reaction-role-builder.js?raw';
@@ -25,8 +27,11 @@ interface Props {
   editing: boolean;
   error?: string | null;
   saved?: boolean;
+  /** Messages with role buttons made here, and the buttons in all of them; null when they could not be read. */
+  counts?: { messages: number; buttons: number } | null;
 }
-const { user, guildId, guildName, guildIcon, channels, roles, customEmojis, templates, initial, editing, error, saved } = Astro.props;
+const { user, guildId, guildName, guildIcon, channels, roles, customEmojis, templates, initial, editing, error, saved, counts = null } = Astro.props;
+const buttonsHere = Array.isArray(initial.rows) ? (initial.rows as unknown[][]).reduce((sum, row) => sum + (Array.isArray(row) ? row.length : 0), 0) : 0;
 
 // Everything the script shows comes from here, already in the language of the person.
 const words = {
@@ -81,6 +86,7 @@ const data = { initial, editing, words, styles: styleOptions, roles, customEmoji
 const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="reaction-roles" pageTitle={editing ? dt('Edit reaction role') : dt('Create reaction role')}>
+  <DashSettingsKit />
   <div class="rb" id="rb">
     <div class="rb-top">
       <a class="rb-back" href={`/dash/guild/${guildId}/automation?section=reaction-roles`}><Icon name="ph:arrow-left-bold" width="13" height="13" />{dt('Back to reaction roles')}</a>
@@ -88,15 +94,24 @@ const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
     </div>
     <DashAcData roles={roles} channels={textChannels} emojis={customEmojis} />
 
-    {saved && !error && <div class="rb-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved. The message is up to date in Discord.')}</div>}
-    {error && <div class="rb-error" role="alert"><Icon name="ph:warning-fill" width="14" height="14" />{error}</div>}
+    {saved && !error && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved. The message is up to date in Discord.')}</div>}
+    {error && <div class="sx-flash sx-flash-bad" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{error}</div>}
     <div class="rb-error" id="rb-client-error" role="alert" hidden><Icon name="ph:warning-fill" width="14" height="14" /><span></span></div>
+
+    <DashStatTiles tiles={[
+      ...(counts ? [{ label: dt('Button messages'), value: counts.messages, tone: 'messages' as const }, { label: dt('Role buttons'), value: counts.buttons, tone: 'voice' as const }] : []),
+      { label: dt('Roles to pick from'), value: roles.length, tone: 'joins' as const },
+      ...(editing ? [{ label: dt('In this message'), value: buttonsHere, tone: 'invites' as const }] : []),
+    ]} />
 
     <form method="POST" id="rb-form" autocomplete="off">
       <input type="hidden" name="payload" id="rb-payload" />
 
-      <section class="rb-card">
-        <h2><Icon name="ph:hash-bold" width="15" height="15" />{dt('Channel')}</h2>
+      <section class="rb-card rb-channel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#9bd0f5"><Icon name="ph:hash-fill" width="17" height="17" /></span>
+          <h2>{dt('Channel')}</h2>
+        </div>
         <select id="rb-channel" aria-label={dt('Channel')} disabled={editing}>
           <option value="">{dt('Select a channel...')}</option>
           {textChannels.map((c) => <option value={c.id}>#{c.name}{c.type === 5 ? ' · ' + dt('Announcement channel') : ''}</option>)}
@@ -104,8 +119,11 @@ const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
         <p class="rb-hint">{editing ? dt('The message stays in its channel.') : dt('The message is posted in this channel. Announcement channels say so next to their name.')}</p>
       </section>
 
-      <section class="rb-card">
-        <h2><Icon name="ph:note-pencil-bold" width="15" height="15" />{dt('Message and role buttons')}</h2>
+      <section class="rb-card rb-builder">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#f0a88f"><Icon name="ph:cursor-click-fill" width="17" height="17" /></span>
+          <h2>{dt('Message and role buttons')}</h2>
+        </div>
 
         <div class="rb-panel">
           <h3><Icon name="ph:chat-text-fill" width="14" height="14" />{dt('Message')}</h3>
@@ -155,6 +173,7 @@ const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
       </section>
 
       <div class="rb-actions">
+        <p class="rb-hint">{editing ? dt('Saving changes the message in Discord.') : dt('Saving posts the message in the channel.')}</p>
         <button type="submit" class="rb-btn rb-primary" id="rb-save"><Icon name="ph:floppy-disk-fill" width="13" height="13" />{editing ? dt('Save changes') : dt('Create reaction role')}</button>
       </div>
     </form>
@@ -174,13 +193,17 @@ const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
 </DashGuildLayout>
 
 <style>
-  .rb { max-width: 760px; padding-bottom: 90px; }
-  .rb-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
-  .rb-top h1 { margin: 0; font-size: 22px; }
-  .rb-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 7px 10px; text-decoration: none; }
+  .rb { max-width: 900px; padding-bottom: 90px; }
+  .rb-top { display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .rb-top h1 { margin: 0; font-size: 22px; min-width: 0; overflow-wrap: anywhere; }
+  .rb-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); border: 1px solid var(--border); background: var(--card); border-radius: 9px; padding: 7px 11px; text-decoration: none; transition: color .25s ease, border-color .25s ease; }
   .rb-back:hover { color: var(--accent); border-color: var(--accent); }
-  .rb-card { border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raise); padding: 16px 18px; margin-bottom: 16px; }
-  .rb-card h2 { margin: 0 0 12px; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+  .rb-card { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-raise); padding: 18px; margin-bottom: 14px; min-width: 0; animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .rb-card > .rb-hint { margin: -6px 0 0; }
+  .rb-builder { animation-delay: var(--m-stagger); }
+  .rb-builder > .rb-panel { margin-bottom: 0; }
+  @media (max-width: 720px) { .rb-card { padding: 15px; } }
+  @media (prefers-reduced-motion: reduce) { .rb-card { animation: none; } }
   .rb-panel { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 14px; margin-bottom: 12px; }
   .rb-panel h3 { margin: 0 0 12px; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
   .rb-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; }
@@ -244,11 +267,15 @@ const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
   :global(.rb-pv-image) { display: block; max-width: 100%; border-radius: 6px; margin-top: 8px; }
   :global(.rb-pv-rows) { display: flex; flex-direction: column; gap: 6px; }
   :global(.rb-pv-row) { display: flex; flex-wrap: wrap; gap: 6px; }
-  :global(.rb-pv-button) { display: inline-flex; align-items: center; gap: 6px; border-radius: 4px; padding: 6px 14px; min-height: 32px; font-size: 13.5px; font-weight: 500; color: #fff; }
+  :global(.rb-pv-button) { display: inline-flex; align-items: center; gap: 6px; border-radius: 4px; padding: 6px 14px; min-height: 32px; font-size: 13.5px; font-weight: 500; color: #fff; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  :global(.rb-pv-button span) { min-width: 0; overflow-wrap: anywhere; }
+  :global(.rb-pv-button > span:not(:last-child)), :global(.rb-pv-button > img) { flex: none; }
   :global(.rb-pv-button img) { width: 18px; height: 18px; }
   :global(.rb-pv-empty) { color: #949ba4; font-style: italic; }
 
-  .rb-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .rb-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-top: 4px; }
+  .rb-actions .rb-hint { margin: 0; flex: 1 1 220px; min-width: 0; }
+  .rb-actions .rb-btn { margin-left: auto; }
   .rb-btn { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 9px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
   .rb-btn:hover { border-color: var(--accent); }
   .rb-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #111); }

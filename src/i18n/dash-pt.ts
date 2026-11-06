@@ -6133,4 +6133,9 @@ export const dashPt: Record<string, string> = {
   "Custom triggers": "Gatilhos próprios",
   "Longest, in lines": "O mais longo, em linhas",
   "A ready command to start from. It is not saved until you press Save.": "Um comando pronto para começar. Só é salvo quando você apertar Salvar.",
+  "Button messages": "Mensagens com botões",
+  "Roles to pick from": "Cargos para escolher",
+  "In this message": "Nesta mensagem",
+  "Saving changes the message in Discord.": "Ao salvar, a mensagem é alterada no Discord.",
+  "Saving posts the message in the channel.": "Ao salvar, a mensagem é publicada no canal.",
 };

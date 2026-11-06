@@ -6133,4 +6133,9 @@ export const dashEs: Record<string, string> = {
   "Custom triggers": "Activadores propios",
   "Longest, in lines": "El más largo, en líneas",
   "A ready command to start from. It is not saved until you press Save.": "Un comando listo para empezar. No se guarda hasta que pulses Guardar.",
+  "Button messages": "Mensajes con botones",
+  "Roles to pick from": "Roles para elegir",
+  "In this message": "En este mensaje",
+  "Saving changes the message in Discord.": "Al guardar se cambia el mensaje en Discord.",
+  "Saving posts the message in the channel.": "Al guardar se publica el mensaje en el canal.",
 };
