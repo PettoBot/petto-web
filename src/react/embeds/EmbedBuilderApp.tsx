@@ -14,6 +14,7 @@ import { type EmbedData, type LinkButton, type TemplateData, BUTTON_STYLES, empt
 import { questStarterV2 } from '../../utils/questTemplate';
 import { t } from './t';
 import { toast } from './toast';
+import { ask } from '../dglAsk';
 
 interface Props {
   guildId: string;
@@ -216,7 +217,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
 
   async function handleDelete() {
     if (!selected) return;
-    if (!window.confirm(t('Delete the "{name}" template? This can\'t be undone.', { name: selected }))) return;
+    if (!(await ask(t('Delete the "{name}" template? This can\'t be undone.', { name: selected }), { confirm: t('Delete') }))) return;
     const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'delete', name: selected }) });
     if (!res.ok) { notify(t("Couldn't delete that template."), 'error'); return; }
     setNames((n) => n.filter((x) => x !== selected));
@@ -411,7 +412,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
                 <Section title={t('Message')}>
                   <p className="v2e-intro">{t('A Components V2 message: containers with text, pictures, sections and link buttons. It has no message text and no embeds.')}</p>
                   <div className="v2e-starters">
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm(t('Replace this design with the Petto quest alert design?'))) update({ v2: questStarterV2() }); }}>{t('Use the quest alert design')}</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { void ask(t('Replace this design with the Petto quest alert design?'), { tone: 'neutral', confirm: t('Replace') }).then((ok) => { if (ok) update({ v2: questStarterV2() }); }); }}>{t('Use the quest alert design')}</button>
                   </div>
                   <V2Editor doc={data.v2} names={names} onChange={(v2) => update({ v2 })} />
                 </Section>

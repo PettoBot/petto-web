@@ -9,6 +9,7 @@ import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import DesignGallery, { type DesignInfo } from './DesignGallery';
 import { unknownVariables } from '../../utils/variableCheck';
 import { findSample, tokenValues, sampleContext } from '../../utils/variableSamples';
+import { ask } from '../dglAsk';
 import {
   type AssetInfo, type Background, type Basic, type CardData, type Fit, type Layer, type Overview, type Shadow, type Stroke,
   LEVELUP_HEIGHT, LEVELUP_TEXTS, RANK_DEFAULTS, RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
@@ -356,7 +357,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }
 
   async function pick(name: string) {
-    if (dirty && !window.confirm(t('You have unsaved changes. Leave without saving?'))) return;
+    if (dirty && !(await ask(t('You have unsaved changes. Leave without saving?'), { tone: 'neutral', confirm: t('Leave anyway') }))) return;
     const row = overview?.cards.find((c) => c.name === name);
     setSelected(name);
     stash.current = null;
@@ -415,7 +416,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }, [dirty]);
 
   async function handleDelete() {
-    if (!window.confirm(t('Delete the "{name}" card? Messages that use it are sent without the picture.', { name: selected }))) return;
+    if (!(await ask(t('Delete the "{name}" card? Messages that use it are sent without the picture.', { name: selected }), { confirm: t('Delete') }))) return;
     const res = await post(guildId, { action: 'delete', name: selected });
     if (!res.ok) { notify(errorText(), 'error'); return; }
     const body = await refresh();
@@ -449,7 +450,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }
 
   async function removeAsset(id: string) {
-    if (!window.confirm(t('Delete this picture? Cards that use it will draw without it.'))) return;
+    if (!(await ask(t('Delete this picture? Cards that use it will draw without it.'), { confirm: t('Delete') }))) return;
     const res = await post(guildId, { action: 'delete_asset', id });
     if (res.ok) await refresh();
     else notify(errorText(), 'error');
