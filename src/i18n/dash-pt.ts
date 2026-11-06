@@ -6058,4 +6058,9 @@ export const dashPt: Record<string, string> = {
   "Followed accounts": "Contas seguidas",
   "No account followed yet": "Você ainda não segue nenhuma conta",
   "What Petto posts": "O que o Petto publica",
+  "The pictures of welcome and rank messages. Design a card here, then pick it in an embed template, under Image card.": "As imagens das mensagens de boas-vindas e de rank. Crie um cartão aqui e depois escolha-o em um modelo de embed, em Cartão de imagem.",
+  "{n} left": "{n} livres",
+  "Advanced editor and every font": "Editor avançado e todas as fontes",
+  "Your cards": "Seus cartões",
+  "New card": "Novo cartão",
 };

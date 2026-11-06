@@ -6058,4 +6058,9 @@ export const dashEs: Record<string, string> = {
   "Followed accounts": "Cuentas seguidas",
   "No account followed yet": "Aún no sigues ninguna cuenta",
   "What Petto posts": "Qué publica Petto",
+  "The pictures of welcome and rank messages. Design a card here, then pick it in an embed template, under Image card.": "Las imágenes de los mensajes de bienvenida y de rank. Diseña una tarjeta aquí y luego elígela en una plantilla de embed, en Tarjeta de imagen.",
+  "{n} left": "{n} libres",
+  "Advanced editor and every font": "Editor avanzado y todas las fuentes",
+  "Your cards": "Tus tarjetas",
+  "New card": "Nueva tarjeta",
 };
