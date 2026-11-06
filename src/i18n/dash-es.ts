@@ -5689,4 +5689,5 @@ export const dashEs: Record<string, string> = {
   "The hours are shown to the member who opens a ticket.": "El horario se muestra al miembro que abre un ticket.",
   "Nobody can open a ticket outside the hours.": "Nadie puede abrir un ticket fuera del horario.",
   "Characters": "Caracteres",
+  "The list updates by itself while this page is open. Pick a ticket to read it and answer from here.": "La lista se actualiza sola mientras esta página está abierta. Elige un ticket para leerlo y responder desde aquí.",
 };

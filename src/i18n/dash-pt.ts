@@ -5689,4 +5689,5 @@ export const dashPt: Record<string, string> = {
   "The hours are shown to the member who opens a ticket.": "O horário é mostrado ao membro que abre um ticket.",
   "Nobody can open a ticket outside the hours.": "Ninguém pode abrir um ticket fora do horário.",
   "Characters": "Caracteres",
+  "The list updates by itself while this page is open. Pick a ticket to read it and answer from here.": "A lista se atualiza sozinha enquanto esta página está aberta. Escolha um ticket para lê-lo e responder daqui.",
 };
