@@ -5794,4 +5794,5 @@ export const dashEs: Record<string, string> = {
   "By protection": "Por protección",
   "Who set them off": "Quién las activó",
   "Counted over the actions shown.": "Contado sobre las acciones mostradas.",
+  "Trap triggers": "Disparos de la trampa",
 };

@@ -5794,4 +5794,5 @@ export const dashPt: Record<string, string> = {
   "By protection": "Por proteção",
   "Who set them off": "Quem as ativou",
   "Counted over the actions shown.": "Contado sobre as ações mostradas.",
+  "Trap triggers": "Disparos da armadilha",
 };
