@@ -5860,4 +5860,9 @@ export const dashPt: Record<string, string> = {
   "Petto's nickname, picture and banner in this server.": "O apelido, a imagem e o banner do Petto neste servidor.",
   "Download a copy of these settings, or reset them.": "Baixe uma cópia destas configurações ou redefina-as.",
   "Bring back the roles, channels and emojis of the server.": "Recupere os cargos, canais e emojis do servidor.",
+  "Avatar and banner": "Avatar e banner",
+  "Custom nickname": "Apelido próprio",
+  "Custom avatar": "Avatar próprio",
+  "Custom banner": "Banner próprio",
+  "Custom description": "Descrição própria",
 };

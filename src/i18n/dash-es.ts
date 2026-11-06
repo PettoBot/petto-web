@@ -5860,4 +5860,9 @@ export const dashEs: Record<string, string> = {
   "Petto's nickname, picture and banner in this server.": "El apodo, la imagen y el banner de Petto en este servidor.",
   "Download a copy of these settings, or reset them.": "Descarga una copia de estos ajustes, o restablécelos.",
   "Bring back the roles, channels and emojis of the server.": "Recupera los roles, canales y emojis del servidor.",
+  "Avatar and banner": "Avatar y banner",
+  "Custom nickname": "Apodo propio",
+  "Custom avatar": "Avatar propio",
+  "Custom banner": "Banner propio",
+  "Custom description": "Descripción propia",
 };
