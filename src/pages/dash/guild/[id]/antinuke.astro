@@ -134,16 +134,18 @@ if (Astro.request.method === 'POST') {
 // Only the tab on screen is read; the others are read when they are opened (see the script of the component).
 const needs = (...sections: string[]) => sections.includes(section);
 const when = <T,>(sections: string[], load: () => Promise<T>) => () => (needs(...sections) ? load() : Promise.resolve(null));
-const [guildInfo, configRes, rulesRes, eventsRes, automodRes, rolesRes, channelsRes, lockConfigRes, lockActiveRes] = await runBatched([
+const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+const [guildInfo, configRes, rulesRes, eventsRes, automodRes, rolesRes, channelsRes, lockConfigRes, lockActiveRes, weekRes] = await runBatched([
   () => getGuildInfo(id, botToken),
   () => fetch(`${apiUrl}/rest/v1/antinuke_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }),
   when(['rules', 'shared'], () => fetch(`${apiUrl}/rest/v1/antinuke_rules?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
-  when(['log'], () => fetch(`${apiUrl}/rest/v1/antinuke_events?guild_id=eq.${id}&select=*&order=created_at.desc&limit=30`, { headers: apiHeaders })),
+  when(['log', 'guard'], () => fetch(`${apiUrl}/rest/v1/antinuke_events?guild_id=eq.${id}&select=*&order=created_at.desc&limit=30`, { headers: apiHeaders })),
   when(['rules'], () => fetch(`${apiUrl}/rest/v1/automod_config?guild_id=eq.${id}&select=anti_raid_enabled,raid_join_threshold,raid_window_seconds,raid_action,anti_alt_enabled,anti_alt_min_age_days,anti_alt_action`, { headers: apiHeaders })),
   when(['rules', 'shared'], () => getGuildList(Astro, id, botToken, 'roles')),
   when(['rules', 'shared', 'lockdown'], () => getGuildList(Astro, id, botToken, 'channels')),
   when(['lockdown'], () => fetch(`${apiUrl}/rest/v1/lockdown_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders })),
   when(['lockdown'], () => fetch(`${apiUrl}/rest/v1/lockdowns?guild_id=eq.${id}&select=started_by,reason,started_at,ends_at,locked`, { headers: apiHeaders })),
+  when(['rules'], () => fetch(`${apiUrl}/rest/v1/antinuke_events?guild_id=eq.${id}&created_at=gte.${weekAgo}&select=id&limit=500`, { headers: apiHeaders })),
 ], 4);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -153,6 +155,7 @@ const viewerIsOwner = section === 'guard' ? userId === (await ownerOf()) : false
 const rows: RuleRow[] = rulesRes?.ok ? await rulesRes.json() : [];
 const protections = RULES.map((meta) => resolveRule(config, rows, meta));
 const events = eventsRes?.ok ? await eventsRes.json() : [];
+const eventsWeek = weekRes?.ok ? (await weekRes.json()).length : 0;
 const join = (automodRes?.ok ? (await automodRes.json())[0] : null) ?? {};
 const roles = (rolesRes?.ok ? await rolesRes.json() : []).filter((r: any) => r.name !== '@everyone').map((r: any) => ({ id: r.id, name: r.name }));
 const channels = (channelsRes?.ok ? await channelsRes.json() : []).filter((c: any) => c.type === 0 || c.type === 5).map((c: any) => ({ id: c.id, name: c.name }));
@@ -177,6 +180,7 @@ const lockdownActive = la ? { startedBy: la.started_by, reason: la.reason ?? '',
   blocked={blocked}
   shared={{ whitelistIds: (config.whitelist_ids ?? []).join(', '), whitelistRoleIds: config.whitelist_role_ids ?? [], alertChannelId: config.alert_channel_id ?? '', oldSwitch: Boolean(config.enabled) }}
   events={events}
+  eventsWeek={eventsWeek}
   lockdownConfig={lockdownConfig}
   lockdownActive={lockdownActive}
   roles={roles}
