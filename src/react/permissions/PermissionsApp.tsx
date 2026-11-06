@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import './permissions-app.css';
 import { toast } from '../embeds/toast';
 
@@ -34,6 +34,31 @@ const ICONS: Record<string, string> = {
 };
 function Ico({ name, size = 14 }: { name: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" style={{ flexShrink: 0 }}><path d={ICONS[name]} /></svg>;
+}
+
+// A number with minus and plus buttons around it (the same look as the counters of the other pages). The input keeps its own change and blur handlers; a press on
+// a button only moves its value (as typing would) and, after a short pause, tells `onSettle` so a level is saved once, not at every press.
+function NumberBox({ children, disabled, less, more, onSettle }: { children: ReactNode; disabled?: boolean; less: string; more: string; onSettle?: (input: HTMLInputElement) => void }) {
+  const box = useRef<HTMLSpanElement>(null);
+  const timer = useRef(0);
+  const step = (dir: number) => {
+    const input = box.current?.querySelector('input');
+    if (!input || input.disabled) return;
+    const min = input.min === '' ? 0 : Number(input.min); const max = input.max === '' ? 100 : Number(input.max);
+    const next = Math.min(max, Math.max(min, (Number(input.value) || 0) + dir));
+    if (String(next) === input.value) return;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, String(next));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    window.clearTimeout(timer.current);
+    if (onSettle) timer.current = window.setTimeout(() => onSettle(input), 700);
+  };
+  return (
+    <span className="pmx-num" ref={box}>
+      <button type="button" tabIndex={-1} aria-label={less} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => step(-1)}>−</button>
+      {children}
+      <button type="button" tabIndex={-1} aria-label={more} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={() => step(1)}>+</button>
+    </span>
+  );
 }
 
 const ADMIN = 1n << 3n;
@@ -81,6 +106,13 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
       setBusy(false);
     }
   }
+
+  // A level typed or stepped for a group: kept between 0 and 100, saved only when it changed, put back if it could not be saved.
+  const saveLevel = (g: Group, input: HTMLInputElement) => {
+    const v = Math.max(0, Math.min(100, Number(input.value) || 0));
+    input.value = String(v);
+    if (v !== g.level) call('update_group_level', { groupId: g.id, level: v }, t('Saved.')).then((ok) => { if (!ok) input.value = String(g.level); });
+  };
 
   // The preview: what the members of one role can use (with @everyone's permissions and level, as Discord and Petto add them up).
   const preview = useMemo(() => {
@@ -148,9 +180,11 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
                 <strong>{g.isBase ? '@everyone' : g.name}</strong>
                 <label className="pmx-level">
                   <span>{t('Level')}</span>
-                  <input type="number" min={0} max={100} defaultValue={g.level} disabled={!canEdit || busy}
-                    onBlur={(e) => { const input = e.currentTarget; const v = Math.max(0, Math.min(100, Number(input.value) || 0)); if (v !== g.level) call('update_group_level', { groupId: g.id, level: v }, t('Saved.')).then((ok) => { if (!ok) input.value = String(g.level); }); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }} />
+                  <NumberBox disabled={!canEdit || busy} less={t('Less')} more={t('More')} onSettle={(input) => saveLevel(g, input)}>
+                    <input type="number" min={0} max={100} defaultValue={g.level} disabled={!canEdit || busy}
+                      onBlur={(e) => saveLevel(g, e.currentTarget)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }} />
+                  </NumberBox>
                 </label>
                 {!g.isBase && canEdit && <button type="button" className="pmx-icon-btn" aria-label={t('Delete group')} disabled={busy} onClick={() => { if (confirm(t('Delete this group?'))) call('delete_group', { groupId: g.id }, t('Group deleted.')); }}><Ico name="trash" /></button>}
               </div>
@@ -178,11 +212,14 @@ export default function PermissionsApp({ guildId, roles, everyonePermissions, in
               )}
             </article>
           ))}
+          {groups.every((g) => g.isBase) && <div className="pmx-group pmx-group-hint"><strong>{t('No other groups yet')}</strong><span className="pmx-muted">{t('Create one below, like Moderators, then add the roles or members that should have its level.')}</span></div>}
         </div>
         {canEdit && (
           <form className="pmx-new" onSubmit={(e) => { e.preventDefault(); if (!newGroup.name.trim()) return; call('create_group', { name: newGroup.name.trim(), level: newGroup.level }, t('Group created.')).then((ok) => ok && setNewGroup({ name: '', level: 50 })); }}>
             <input type="text" maxLength={60} placeholder={t('New group, like Moderators')} value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.currentTarget.value })} />
-            <input type="number" min={0} max={100} value={newGroup.level} aria-label={t('Level')} onChange={(e) => setNewGroup({ ...newGroup, level: Math.max(0, Math.min(100, Number(e.currentTarget.value) || 0)) })} />
+            <NumberBox less={t('Less')} more={t('More')}>
+              <input type="number" min={0} max={100} value={newGroup.level} aria-label={t('Level')} onChange={(e) => setNewGroup({ ...newGroup, level: Math.max(0, Math.min(100, Number(e.currentTarget.value) || 0)) })} />
+            </NumberBox>
             <button type="submit" className="btn btn-ghost btn-sm" disabled={busy || !newGroup.name.trim()}><Ico name="plus" size={12} />{t('Create group')}</button>
           </form>
         )}

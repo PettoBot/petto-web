@@ -5820,4 +5820,8 @@ export const dashPt: Record<string, string> = {
   "Discord only": "Só Discord",
   "Mention @everyone": "Mencionar @everyone",
   "Elevated only": "Só elevados",
+  "!disablecommand turns a command off in the server or in some channels. Nobody skips it.": "!disablecommand desativa um comando no servidor ou em alguns canais. Ninguém pula isso.",
+  "!restrictcommand lets only some roles use a command.": "!restrictcommand deixa só alguns cargos usarem um comando.",
+  "No other groups yet": "Ainda não há outros grupos",
+  "Create one below, like Moderators, then add the roles or members that should have its level.": "Crie um abaixo, como Moderadores, e adicione os cargos ou membros que devem ter o nível dele.",
 };

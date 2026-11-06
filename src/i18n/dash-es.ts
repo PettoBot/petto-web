@@ -5820,4 +5820,8 @@ export const dashEs: Record<string, string> = {
   "Discord only": "Solo Discord",
   "Mention @everyone": "Mencionar @everyone",
   "Elevated only": "Solo elevados",
+  "!disablecommand turns a command off in the server or in some channels. Nobody skips it.": "!disablecommand apaga un comando en el servidor o en algunos canales. Nadie se lo salta.",
+  "!restrictcommand lets only some roles use a command.": "!restrictcommand deja que solo algunos roles usen un comando.",
+  "No other groups yet": "Aún no hay otros grupos",
+  "Create one below, like Moderators, then add the roles or members that should have its level.": "Crea uno abajo, como Moderadores, y añade los roles o miembros que deben tener su nivel.",
 };
