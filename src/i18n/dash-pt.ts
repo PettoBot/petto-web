@@ -6138,4 +6138,5 @@ export const dashPt: Record<string, string> = {
   "In this message": "Nesta mensagem",
   "Saving changes the message in Discord.": "Ao salvar, a mensagem é alterada no Discord.",
   "Saving posts the message in the channel.": "Ao salvar, a mensagem é publicada no canal.",
+  "Now: accounts younger than {a} are fake joins.": "Agora: contas com menos de {a} são entradas falsas.",
 };

@@ -85,7 +85,7 @@ interface ChartDef { title: string; sub: string; chip?: { change: number | null;
 const both = (make: (size: { W: number; H: number }) => string) => ({ s: make(SIZES.s), m: make(SIZES.m), l: make(SIZES.l) });
 
 const series = buildSeries(stats, analysis, memberTotal);
-const VOICE = { format: (v: number) => formatDuration(v * 3600, { locale: numLocale }), ticks: (t: number[]) => tickLabels(t, { locale: numLocale, num: num0, num1, fractional: true }) };
+const VOICE = { format: (v: number) => formatDuration(v * 3600, { locale: numLocale }), ticks: (t: number[]) => t.map((v) => (v === 0 ? '0' : formatDuration(v * 3600, { locale: numLocale }))) };
 const COUNT = { format: (v: number) => n(v), ticks: (t: number[]) => tickLabels(t, { locale: numLocale, num: num0, num1, fractional: false }) };
 
 /** A chart of a series of days: a smooth line (messages, voice, reactions, members) or bars (joins, leaves, net...), with today so far as the last point. */
@@ -137,6 +137,9 @@ const busiestOn = (values: number[]) => (peakIndex(values) === -1 ? dt('Not enou
 const busiestAt = (peak: { hour: number } | null) => (peak ? `${dt('Busiest at')} ${hourLabel(peak.hour)} ${BOT_TIME_LABEL}` : dt('Not enough data yet'));
 const change = (key: keyof typeof analysis.change, inverse = false) => (analysis.hasPrevious ? { change: analysis.change[key], inverse } : null);
 
+// How long the members who left had stayed: the edges of each group, in the short form of the dashboard.
+const stayed = (days: number) => formatDuration(days * 86_400, { locale: numLocale, max: 'mo' });
+const lifespanLabels = [`<${stayed(1)}`, `<${stayed(7)}`, `<${stayed(30)}`, `${stayed(30)}–${stayed(90)}`, `>${stayed(90)}`];
 const kindNames = ['Bans', 'Mutes', 'Warns', 'Kicks', 'Jails'];
 const kindValues = [stats.sanctions.byGroup.bans, stats.sanctions.byGroup.mutes, stats.sanctions.byGroup.warns, stats.sanctions.byGroup.kicks, stats.sanctions.byGroup.jails];
 const kindPeak = peakIndex(kindValues);
@@ -178,7 +181,7 @@ const panels: Record<string, { charts: ChartDef[]; columns?: SeriesKey[] }> = {
   data: { charts: [] },
   growth: { charts: [
     ...(series.members.points.length ? [membersChart()] : []),
-    categoryChart({ title: dt('How long members stayed before leaving'), sub: analysis.lifespanTotal ? dt('{a}% left within a week', { a: Math.round((analysis.earlyLeaveShare ?? 0) * 100) }) : dt('Nobody left in this period, or it was not counted yet.'), color: colorOf('growth'), values: analysis.lifespan, labels: ['Under a day', 'Under a week', 'Under a month', '1 to 3 months', 'Over 3 months'].map((label) => dt(label)) }),
+    categoryChart({ title: dt('How long members stayed before leaving'), sub: analysis.lifespanTotal ? dt('{a}% left within a week', { a: Math.round((analysis.earlyLeaveShare ?? 0) * 100) }) : dt('Nobody left in this period, or it was not counted yet.'), color: colorOf('growth'), values: analysis.lifespan, labels: lifespanLabels }),
     seriesChart('net', { title: dt('Net members gained per day'), sub: `${growth >= 0 ? '+' : ''}${n(growth)} ${dt('in total')}`, color: colorOf('growth'), shape: 'bars', span: Boolean(series.members.points.length) }),
   ], columns: ['joins', 'leaves', 'net', 'members'] },
   invites: { charts: [
@@ -287,7 +290,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
       {tables[id].rows.length > 0 && (
         <article class="st-card st-daily" data-st-daily>
           <h2>{dt('Day by day')}</h2>
-          <div class:list={['st-table-scroll', { 'st-fit': tables[id].columns.length < 2 }]} tabindex="0" role="region" aria-label={dt('Day by day')}>
+          <div class="st-table-scroll" tabindex="0" role="region" aria-label={dt('Day by day')}>
             <table class="st-table">
               <thead>
                 <tr>
@@ -482,7 +485,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
               <form method="POST" class="st-inv-stack" data-no-dirty>
                 {extended && <input type="hidden" name="extended" value="1" />}
                 <label class="st-inv-field"><span>{dt('Accounts younger than (days)')}</span><input type="number" name="days" min="0" max="365" step="1" inputmode="numeric" value={inviteSettings.fakeDays} required /></label>
-                <p class="st-inv-note">{inviteSettings.fakeDays ? dt('Now: accounts younger than {a} days are fake joins.', { a: inviteSettings.fakeDays }) : dt('Now: only members who come back are fake joins.')} {dt('With 0, a new account counts like any other.')}</p>
+                <p class="st-inv-note">{inviteSettings.fakeDays ? dt('Now: accounts younger than {a} are fake joins.', { a: formatDuration(inviteSettings.fakeDays * 86_400, { locale: numLocale }) }) : dt('Now: only members who come back are fake joins.')} {dt('With 0, a new account counts like any other.')}</p>
                 {extended && (
                   <Fragment>
                     <label class="st-inv-field"><span>{dt('Leaves quickly (minutes)')}</span><input type="number" name="quick_leave_minutes" min="0" max="1440" step="1" inputmode="numeric" value={inviteSettings.quickLeaveMinutes ?? 0} required /></label>
@@ -634,11 +637,16 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-panel { animation: m-rise-in var(--m-slow) var(--m-out) both; padding: 0; }
   .st-enter { animation: m-rise-in var(--m-slow) var(--m-out) both; }
   .st-charts { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 10px; margin-bottom: 10px; }
-  .st-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 10px; }
+  .st-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 10px; align-items: start; }
+  /* Four cards (Sanctions) are two and two, never three and one alone on the last row. */
+  .st-lists:has(> :nth-child(4):last-child) { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
   .st-card { border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 16px 16px 12px; min-width: 0; }
   .st-card h2 { font-size: 16.5px; margin: 0 0 2px; }
   .st-card-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 4px; }
   .st-lit { color: var(--tab); }
+  /* The pastel of each tab is for the dark theme: on the light one the text in it is darkened so it can be read. */
+  :global(:root[data-theme="light"]) .st-tab.current, :global(:root[data-theme="light"]) .st-lit { color: color-mix(in srgb, var(--tab) 55%, #20242c); }
+  @media (prefers-color-scheme: light) { :global(:root:not([data-theme="dark"])) .st-tab.current, :global(:root:not([data-theme="dark"])) .st-lit { color: color-mix(in srgb, var(--tab) 55%, #20242c); } }
   .st-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
   .st-card-head > div { min-width: 0; }
   .st-card-head .st-chip { flex: none; margin-top: 2px; }
@@ -646,7 +654,9 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-span { grid-column: 1 / -1; }
   /* The card picks the chart drawn for its own width, so a phone gets text that stays readable. */
   .st-chart { container-type: inline-size; }
-  .st-var { min-width: 0; }
+  /* When the card beside it is taller, the chart sits in the middle of what is left instead of leaving a dead strip at the bottom. */
+  .st-chart { display: flex; flex-direction: column; }
+  .st-var { min-width: 0; margin-block: auto; }
   @container (max-width: 429px) { .st-var-m, .st-var-l { display: none; } }
   @container (min-width: 430px) and (max-width: 619px) { .st-var-s, .st-var-l { display: none; } }
   @container (min-width: 620px) { .st-var-s, .st-var-m { display: none; } }
@@ -661,7 +671,6 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-table-scroll { overflow-x: auto; margin-top: 10px; border: 1px solid var(--border); border-radius: 12px; }
   .st-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .st-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
-  .st-fit { max-width: 480px; }
   .st-table th, .st-table td { padding: 9px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
   .st-table tr:last-child > * { border-bottom: 0; }
   .st-table thead th { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); background: color-mix(in srgb, var(--text) 3%, var(--card)); }
@@ -687,7 +696,10 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-inv-head p { font-size: 13px; color: var(--text-muted); margin: 0; max-width: 78ch; }
   .st-flash { font-size: 13px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 10px; padding: 9px 12px; }
   .st-flash-err { color: var(--red, #fe6465); background: color-mix(in srgb, var(--red, #fe6465) 12%, transparent); border-color: var(--red, #fe6465); }
-  .st-inv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; align-items: start; }
+  /* Roles and the adjust box one over the other, the settings (the tall one) next to them, so no column is left with a hole under it. */
+  .st-inv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
+  .st-inv-settings { grid-column: 2; grid-row: 1 / span 2; }
+  @media (max-width: 1040px) { .st-inv-grid { grid-template-columns: minmax(0, 1fr); } .st-inv-settings { grid-column: auto; grid-row: auto; } }
   .st-inv-card { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
   .st-inv-card h3 { display: flex; align-items: center; gap: 7px; font-size: 14px; margin: 0; }
   .st-inv-card h3 :global(svg) { color: var(--tab); }
