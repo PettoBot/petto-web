@@ -5743,4 +5743,7 @@ export const dashPt: Record<string, string> = {
   "Default": "Padrão",
   "{a} of 3 with a design": "{a} de 3 com design",
   "Usual messages": "As mensagens de sempre",
+  "Cases shown": "Casos mostrados",
+  "Still active": "Ainda ativos",
+  "With proof": "Com provas",
 };

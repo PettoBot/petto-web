@@ -5743,4 +5743,7 @@ export const dashEs: Record<string, string> = {
   "Default": "Predeterminado",
   "{a} of 3 with a design": "{a} de 3 con diseño",
   "Usual messages": "Los mensajes de siempre",
+  "Cases shown": "Casos mostrados",
+  "Still active": "Siguen activos",
+  "With proof": "Con pruebas",
 };
