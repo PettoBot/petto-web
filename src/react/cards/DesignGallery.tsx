@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DashSkeleton, useWait } from '../DashSkeleton';
 import { t } from '../embeds/t';
 
 type Names = Record<string, string>;
@@ -34,6 +35,7 @@ export default function DesignGallery({ guildId, currentSrc, onPick }: Props) {
   const [query, setQuery] = useState('');
   useEffect(() => { let alive = true; loadCatalog(guildId).then((value) => { if (alive) setCatalog(value); }); return () => { alive = false; }; }, [guildId]);
 
+  const wait = useWait(catalog === undefined);
   const shown = useMemo(() => {
     if (!catalog) return [];
     const needle = fold(query.trim());
@@ -41,7 +43,7 @@ export default function DesignGallery({ guildId, currentSrc, onPick }: Props) {
       && (!needle || Object.values(design.names).some((name) => fold(name).includes(needle)) || design.id.includes(needle)));
   }, [catalog, family, query]);
 
-  if (catalog === undefined) return <p className="ebr-empty-note">{t('Loading...')}</p>;
+  if (catalog === undefined || wait.skeleton) return wait.skeleton ? <DashSkeleton shape="cards" count={6} /> : null;
   if (!catalog) return <p className="ebr-empty-note">{t('The designs are not available right now.')}</p>;
   const current = currentSrc.startsWith('petto:') ? currentSrc.slice(6) : '';
 

@@ -4,6 +4,7 @@ import './cards.css';
 import { t } from '../embeds/t';
 import { toast } from '../embeds/toast';
 import { drawCard } from './cardCanvas';
+import { DashSkeleton, useWait, useRevealWhen } from '../DashSkeleton';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import DesignGallery, { type DesignInfo } from './DesignGallery';
 import { unknownVariables } from '../../utils/variableCheck';
@@ -489,8 +490,12 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     setDirty(true);
   }
 
+  // The first read waits with grey blocks (only if it takes more than 150 ms) and the app is uncovered from the top down when it arrives.
+  const wait = useWait(!overview && !loadError);
+  const appRef = useRef<HTMLDivElement>(null);
+  useRevealWhen(appRef, Boolean(overview), wait.waited);
   if (loadError) return <div className="ebr-app crd-app"><EmptyState icon={PLUG_ICON} title={t('Image cards are not available right now.')} /></div>;
-  if (!overview) return <p className="ebr-empty-note">{t('Loading...')}</p>;
+  if (!overview || wait.skeleton) return wait.skeleton ? <div className="ebr-app crd-app"><DashSkeleton shape="editor" /></div> : null;
 
   const isRank = draft.kind === 'rank';
   const basic = draft.basic ?? newCard(draft.kind ?? 'welcome').basic!;
@@ -502,7 +507,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const storageMax = Math.round(overview.limits.storageBytes / 1048576);
 
   return (
-    <div className="ebr-app crd-app">
+    <div className="ebr-app crd-app" ref={appRef}>
       {flash && <div className="ebr-flash">{flash}</div>}
       <UsageTiles overview={overview} premium={premium} premiumUrl={premiumUrl} />
       <div className="ebr-layout">
