@@ -78,6 +78,8 @@ interface Props {
   channelCategories: { id: string; name: string }[];
   managedWebhooks: ManagedWebhook[];
   serverCounters: ServerCounter[];
+  /** The Automation hub: how many each feature has (null when a count could not be read), which ones are on, and the timers' next run. */
+  overview?: { counts: Record<string, number | null>; on: Record<string, boolean>; timers: { total: number; running: number; nextRunAt: string | null } | null } | null;
   section?: string;
   customEmojis?: { id: string; name: string; animated: boolean }[];
 }
@@ -138,6 +140,31 @@ const timerWhen = (t: AutoTimer) => t.schedule === 'daily' ? dt('Every day at {a
 const timerWeekdays = [1, 2, 3, 4, 5, 6, 0].map((day) => ({ day, name: weekdayName(day, dashLang) }));
 const timerZones = selectedSection === 'timers' ? timeZoneList() : [];
 const timerNextText = (iso: string) => { const at = Date.parse(iso); return Number.isFinite(at) ? new Date(at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : ''; };
+// The hub, aliases, webhooks, reaction triggers, message reactions and timers (the ax2- parts of this file).
+const { overview = null } = Astro.props;
+const ax2Locale = dashLocale(dashLang);
+// How long until a moment, in the short text of the dashboard ("in 2h 15m"); a moment that has passed (or is about to) says it is due.
+const ax2In = (iso: string | null | undefined) => { const at = iso ? Date.parse(iso) : NaN; if (!Number.isFinite(at)) return '—'; const seconds = (at - Date.now()) / 1000; return seconds < 45 ? dt('Due now') : dt('in {a}', { a: formatDuration(seconds, { locale: ax2Locale }) }); };
+const ax2NextTimer = timers.filter((t) => !t.paused && t.nextRunAt).map((t) => t.nextRunAt).sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
+const ax2Repeats: [string, string][] = [['interval', dt('Every interval')], ['daily', dt('Every day')], ['weekly', dt('Every week')]];
+const ax2Modes: [string, string][] = [['contains', dt('contains')], ['startsWith', dt('starts with')], ['endsWith', dt('ends with')], ['exact', dt('exact')]];
+// An emoji as the dashboard saves it: a custom one is `<:name:id>` (drawn as its picture), anything else is the character itself.
+const ax2Emoji = (value: string) => { const m = /^<(a?):(\w+):(\d+)>$/.exec(value ?? ''); return m ? { src: `https://cdn.discordapp.com/emojis/${m[3]}.${m[1] ? 'gif' : 'png'}?size=48`, text: `:${m[2]}:` } : { src: '', text: value ?? '' }; };
+// The features of the hub, in the order of the side menu: its link, how many it has (or whether it is on), and its look.
+const ax2Hub = () => {
+  const n = (id: string) => overview?.counts[id] ?? null;
+  const boardCounts = ['starboard', 'monkeyboard', 'clownboard'].map(n);
+  const boards = boardCounts.every((c) => c === null) ? null : boardCounts.reduce<number>((sum, c) => sum + (c ?? 0), 0);
+  const base = `/dash/guild/${guildId}`;
+  const feature = (id: string, href: string, count: number | null, on: boolean | null = null) => ({ id, href, label: sectionMeta[id].label, desc: sectionMeta[id].description, icon: sectionIcons[id], color: sectionColors[id] ?? 'var(--accent)', n: count, on });
+  const inSection = (id: string, on: boolean | null = null) => feature(id, `${base}/automation?section=${id}`, n(id), on);
+  return [
+    inSection('custom-commands'), inSection('autoresponders'), inSection('sticky-messages'), inSection('reaction-roles'), inSection('reaction-messages'), inSection('reaction-triggers'),
+    inSection('auto-threads'), inSection('timers'), inSection('aliases'), inSection('disabled-commands'), inSection('webhooks'), feature('counters', `${base}/counters`, n('counters')),
+    inSection('voicemaster', overview ? Boolean(overview.on.voicemaster) : null), inSection('sticky-roles', overview ? Boolean(overview.on['sticky-roles']) : null),
+    { id: 'boards', href: `${base}/boards`, label: dt('Boards'), desc: dt('Collect the best messages of the server in a channel of their own.'), icon: 'ph:star-fill', color: sectionColors.starboard, n: boards, on: null },
+  ];
+};
 const sectionIcons: Record<string, string> = {
   'custom-commands': 'ph:chat-circle-dots-fill', autoresponders: 'ph:robot-fill', 'sticky-messages': 'ph:push-pin-fill',
   'reaction-roles': 'ph:smiley-fill', 'reaction-triggers': 'ph:smiley-fill', 'reaction-messages': 'ph:chat-circle-dots-fill',
@@ -150,6 +177,10 @@ const sectionColors: Record<string, string> = {
   'reaction-messages': '#f59e0b', 'auto-threads': '#5b8def', 'disabled-commands': '#fe6465', aliases: '#c792ea', timers: '#5eead4', starboard: '#fed53c',
   monkeyboard: '#c98b4a', voicemaster: 'var(--accent)', webhooks: '#a78bfa', 'sticky-roles': '#5eead4', counters: '#2dd4a7',
 };
+const ax2Features = selectedSection === 'overview' ? ax2Hub() : [];
+const ax2Timers = overview?.timers ?? null;
+const ax2InUse = ax2Features.filter((f) => f.on === true || (f.n ?? 0) > 0).length;
+const ax2Items = ax2Features.reduce((sum, f) => sum + (f.on === null ? f.n ?? 0 : 0), 0);
 // The match modes of an autoresponder, as the select of its form names them, and what each one does (the tooltip of its chip).
 const matchLabel: Record<string, string> = { contains: 'contains', startsWith: dt('starts with'), endsWith: dt('ends with'), exact: 'exact', regex: 'regex' };
 const matchHelp: Record<string, string> = {
@@ -181,11 +212,10 @@ const dcCategories = selectedSection !== 'disabled-commands' ? [] : (() => {
 const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders', 'sticky-messages', 'auto-threads'].includes(selectedSection);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'overview' ? 'automation-overview' : selectedSection} pageTitle={selectedMeta.label}>
+  <DashSettingsKit />
+  <DashFormKit />
   <div class="am-heading">
-    <div>
-      <p class="am-eyebrow">{dt('Configuration')}</p>
-      <h1>{selectedMeta.label}</h1>
-    </div>
+    <h1>{selectedMeta.label}</h1>
     {selectedSection !== 'overview' && <a class="am-overview-link" href={`/dash/guild/${guildId}/automation?section=overview`}><Icon name="ph:squares-four-fill" width="14" height="14" />{dt('Automation overview')}</a>}
   </div>
 
@@ -195,13 +225,25 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   {error && <div class="am-error"><Icon name="ph:warning-fill" width="13" height="13" />{error}</div>}
 
   {selectedSection === 'overview' && (
-  <div class:list={['am-overview', { 'am-section-hidden': selectedSection !== 'overview' }]}>
-    <div class="am-overview-grid dgl-stagger">
-      {Object.entries(sectionMeta).filter(([id]) => id !== 'overview').map(([id, meta]) => (
-        <a class="am-overview-card dgl-mod-card" style={`--c:${sectionColors[id] ?? 'var(--accent)'}`} href={id === 'counters' ? `/dash/guild/${guildId}/counters` : `/dash/guild/${guildId}/automation?section=${id}`}>
-          <span class="am-overview-icon"><Icon name={sectionIcons[id]} width="17" height="17" /></span>
-          <span><strong>{meta.label}</strong><small>{meta.description}</small></span>
-          <Icon name="ph:arrow-up-right" width="14" height="14" class="am-overview-arrow" />
+  <div class="ax2-page" data-section="overview">
+    <DashStatTiles tiles={[
+      { label: dt('Features in use'), value: ax2InUse, tone: 'joins' },
+      { label: dt('Items set up'), value: ax2Items, tone: 'invites' },
+      { label: dt('Timers running'), value: ax2Timers?.running ?? 0, text: ax2Timers ? undefined : '—', tone: 'voice' },
+      { label: dt('Next timer'), value: 0, text: ax2Timers?.nextRunAt ? ax2In(ax2Timers.nextRunAt) : '—', tone: 'reactions' },
+    ]} />
+    <div class="ax2-head">
+      <h2>{dt('Features')} <span class="ax2-count">{ax2Features.length}</span></h2>
+      <p>{sectionMeta.overview.description}</p>
+    </div>
+    <div class="ax2-hub dgl-stagger">
+      {ax2Features.map((f) => (
+        <a class="ax2-feat" style={`--c:${f.color}`} href={f.href} title={f.desc}>
+          <span class="ax2-feat-ico"><Icon name={f.icon} width="18" height="18" /></span>
+          <span class="ax2-feat-text"><b>{f.label}</b></span>
+          {f.on !== null
+            ? <span class:list={['ax2-feat-n', f.on ? 'is-on' : 'is-zero']}>{f.on ? dt('On') : dt('Off')}</span>
+            : <span class:list={['ax2-feat-n', { 'is-zero': !f.n }]}>{f.n === null ? '—' : f.n.toLocaleString(ax2Locale)}</span>}
         </a>
       ))}
     </div>
@@ -329,8 +371,6 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
 
   {selectedSection === 'sticky-roles' && (
   <div class="vmx-page" data-section="sticky-roles">
-    <DashSettingsKit />
-    <DashFormKit />
     <DashStatTiles tiles={[
       { label: dt('Sticky roles'), value: 0, text: stickyRolesEnabled ? dt('On') : dt('Off'), tone: stickyRolesEnabled ? 'joins' : 'leaves' },
       stickyRolesSaved >= 1000 ? { label: dt('Members waiting'), value: 0, text: '1000+', tone: 'invites' } : { label: dt('Members waiting'), value: stickyRolesSaved, tone: 'invites' },
@@ -562,8 +602,6 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
 
   {selectedSection === 'voicemaster' && (
   <div class="vmx-page" data-section="voicemaster">
-    <DashSettingsKit />
-    <DashFormKit />
     <DashStatTiles tiles={[
       { label: dt('Status'), value: 0, text: voiceMaster ? dt('Active') : dt('Not set up'), tone: voiceMaster ? 'joins' : 'leaves' },
       { label: dt('Creator channel'), value: 0, text: voiceMaster ? vmShort(vmName(voiceChannels, voiceMaster.creatorChannelId)) : '—', tone: 'voice' },
@@ -1244,6 +1282,117 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
 </DashGuildLayout>
 
 <style>
+  /* Automation hub, aliases, webhooks, reaction triggers, message reactions and timers (everything ax2-). */
+  .ax2-page { display: flex; flex-direction: column; max-width: 1000px; min-width: 0; }
+  .ax2-head { margin: 4px 0 14px; }
+  .ax2-head h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 16px; }
+  .ax2-head p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); max-width: 70ch; }
+  .ax2-count { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; }
+  .ax2-hub { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .ax2-feat { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); text-decoration: none; transition: border-color .3s ease, background-color .3s ease; }
+  .ax2-feat:hover { border-color: color-mix(in srgb, var(--c) 45%, var(--border)); background: var(--card-hover); }
+  .ax2-feat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ax2-feat-ico { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: color-mix(in srgb, var(--c) 72%, var(--text)); background: color-mix(in srgb, var(--c) 15%, transparent); }
+  .ax2-feat-text { flex: 1; min-width: 0; }
+  .ax2-feat-text b { font-size: 14px; overflow-wrap: anywhere; }
+  .ax2-feat-n { flex: none; min-width: 30px; box-sizing: border-box; text-align: center; font: 600 12.5px var(--mono); font-variant-numeric: tabular-nums; border-radius: 999px; padding: 3px 10px; color: color-mix(in srgb, var(--c) 72%, var(--text)); background: color-mix(in srgb, var(--c) 15%, transparent); }
+  .ax2-feat-n.is-zero { color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .ax2-feat-n.is-on { color: var(--green); background: var(--green-soft); }
+  @media (max-width: 1100px) { .ax2-hub { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 720px) { .ax2-hub { grid-template-columns: minmax(0, 1fr); gap: 8px; } .ax2-feat { padding: 9px 12px; } .ax2-feat-ico { width: 32px; height: 32px; } }
+  /* A small empty state, centred near the top of its area. */
+  .ax2-empty { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 16px; padding: 18px 16px; border: 1px dashed var(--border); border-radius: 12px; font-size: 13.5px; color: var(--text-dim); text-align: center; }
+  .ax2-empty :global(svg) { flex: none; color: var(--accent); }
+  /* The things a section has: a card each, one column (two when the card is short), that folds open into its form. */
+  .ax2-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 18px; }
+  .ax2-list:empty { display: none; }
+  .ax2-duo { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .ax2-item { border: 1px solid var(--border); border-radius: 14px; background: var(--card); min-width: 0; transition: border-color .3s ease, background-color .3s ease; }
+  .ax2-item:hover { border-color: color-mix(in srgb, var(--c, var(--accent)) 32%, var(--border)); }
+  .ax2-item[open] { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .ax2-sum { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 11px 10px 11px 12px; border-radius: 14px; list-style: none; cursor: pointer; }
+  .ax2-sum::-webkit-details-marker { display: none; }
+  .ax2-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ax2-ico { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; font-size: 18px; line-height: 1; color: color-mix(in srgb, var(--c, var(--accent)) 72%, var(--text)); background: color-mix(in srgb, var(--c, var(--accent)) 15%, transparent); }
+  .ax2-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .ax2-key { align-self: flex-start; max-width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax2-val { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .ax2-acts { flex: none; display: flex; align-items: center; gap: 4px; }
+  .ax2-act { display: inline-flex; align-items: center; gap: 6px; height: 30px; box-sizing: border-box; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; color: var(--text-muted); transition: color .25s ease, border-color .25s ease; }
+  .ax2-sum:hover .ax2-act, .ax2-item[open] .ax2-act { color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .ax2-t-close, .ax2-item[open] .ax2-t-edit { display: none; }
+  .ax2-item[open] .ax2-t-close { display: inline; }
+  .ax2-del { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--text-dim); cursor: pointer; transition: color .25s ease, background-color .25s ease; }
+  .ax2-del:hover { color: var(--red); background: var(--red-soft); }
+  .ax2-edit { display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 16px; border-top: 1px solid var(--border-soft); border-radius: 0 0 14px 14px; background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .ax2-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .ax2-foot .btn, .ax2-add .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .ax2-add { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); padding: 18px 20px; min-width: 0; margin-bottom: 18px; }
+  .ax2-add-title { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; }
+  .ax2-add-title :global(svg) { flex: none; color: var(--accent); }
+  .ax2-grid-narrow { grid-template-columns: minmax(0, 240px) minmax(0, 1fr); }
+  .ax2-page :global(.sx-field input[type="url"]), .ax2-page :global(.sx-field input[type="time"]) { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; min-width: 0; transition: border-color .25s ease, box-shadow .25s ease; }
+  .ax2-page :global(.sx-field input[type="url"]:focus-visible), .ax2-page :global(.sx-field input[type="time"]:focus-visible) { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  @media (max-width: 720px) {
+    .ax2-duo, .ax2-grid-narrow { grid-template-columns: minmax(0, 1fr); }
+    .ax2-add { padding: 15px; }
+  }
+  @media (max-width: 480px) { .ax2-act span { display: none; } .ax2-act { width: 30px; padding: 0; justify-content: center; } }
+  .ax2-foot:not(:has(> :not(.dgl-bar-save))) { display: none; }
+  .ax2-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .ax2-pill { flex: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 11px; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .ax2-pill.is-on { color: var(--green); background: var(--green-soft); }
+  .ax2-form { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .ax2-pane { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .ax2-pane[hidden] { display: none; }
+  /* A group that folds open (the embed and the more options of the webhook message). */
+  .ax2-fold { border: 1px solid var(--border); border-radius: 12px; background: var(--card); min-width: 0; }
+  .ax2-fold > summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; list-style: none; cursor: pointer; font-size: 13.5px; font-weight: 600; transition: background-color .25s ease; }
+  .ax2-fold > summary::-webkit-details-marker { display: none; }
+  .ax2-fold > summary:hover { background: var(--card-hover); }
+  .ax2-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ax2-fold-title { flex: 1; min-width: 0; }
+  .ax2-fold > summary :global(.ax2-caret) { flex: none; color: var(--text-dim); }
+  .ax2-fold[open] > summary :global(.ax2-caret) { transform: rotate(180deg); }
+  .ax2-fold-body { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 14px; }
+  .ax2-send .dfx-chips { margin-top: -2px; }
+  /* Wide rows answer a press with a soft highlight and never scale (the site scales summaries, links and labels that are pressed). */
+  .ax2-sum:active, .ax2-fold > summary:active, .ax2-feat:active, .ax2-page :global(label[for]):active { transform: none; filter: none; }
+  .ax2-sum:active, .ax2-fold > summary:active, .ax2-feat:active { background: color-mix(in srgb, var(--text) 7%, var(--card)); }
+  .ax2-add, .ax2-empty { animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  @media (prefers-reduced-motion: reduce) { .ax2-add, .ax2-empty { animation: none; } }
+  .ax2-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; }
+  .ax2-head-row > div { flex: 1 1 420px; min-width: 0; }
+  .ax2-danger { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text-dim); font: inherit; font-size: 12.5px; cursor: pointer; transition: color .25s ease, border-color .25s ease, background-color .25s ease; }
+  .ax2-danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--border)); background: var(--red-soft); }
+  .ax2-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+  .ax2-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; box-sizing: border-box; font-size: 11.5px; line-height: 1.4; color: var(--text-muted); background: color-mix(in srgb, var(--text) 6%, transparent); border-radius: 999px; padding: 2px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ax2-ico img { width: 22px; height: 22px; object-fit: contain; }
+  .ax2-grid-emoji { grid-template-columns: 64px minmax(0, 1fr); }
+  .ax2-emojis { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 7px; min-width: 0; font-size: 16px; line-height: 1.35; }
+  .ax2-emojis img { width: 20px; height: 20px; object-fit: contain; }
+  .ax2-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ax2-field-channel { max-width: 420px; }
+  /* Timers: the summary also holds the message as it looks in the channel, under the head. */
+  .ax2-sum-wrap { flex-wrap: wrap; align-items: flex-start; }
+  .ax2-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+  .ax2-in { color: var(--text-dim); }
+  .ax2-bubble { flex: 1 1 100%; box-sizing: border-box; }
+  .ax2-issue { flex: 1 1 100%; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--red); overflow-wrap: anywhere; }
+  .ax2-act-btn { background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+  .ax2-chips-row { flex: 1 1 100%; }
+  .ax2-chip :global(svg) { flex: none; }
+  .ax2-tm-when { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 14px; align-items: start; }
+  .ax2-tm-zone, .ax2-tm-note { grid-column: 1 / -1; }
+  .ax2-tm-int { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 440px; align-items: start; }
+  .ax2-tm-int .ax2-tm-note { grid-column: 1 / -1; }
+  .ax2-tm:has(input[name="schedule"][value="interval"]:checked) .ax2-tm-when { display: none; }
+  .ax2-tm:has(input[name="schedule"][value="daily"]:checked) .ax2-tm-int, .ax2-tm:has(input[name="schedule"][value="weekly"]:checked) .ax2-tm-int { display: none; }
+  .ax2-tm:has(input[name="schedule"][value="daily"]:checked) .ax2-tm-weekday { display: none; }
+  /* ax2-end */
+</style>
+
+<style>
   /* The starboard and monkeyboard forms: the options in two columns on a wide screen, the long parts across. */
   .am-section[data-section="starboard"] > form, .am-section[data-section="monkeyboard"] > form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; align-items: start; }
   .am-section[data-section="starboard"] > form > .am-add-row, .am-section[data-section="monkeyboard"] > form > .am-add-row,
@@ -1290,8 +1439,7 @@ const withMessages = ['webhooks', 'timers', 'custom-commands', 'autoresponders',
   .am-send-checks { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
   .am-news-icon { vertical-align: -2px; margin-right: 4px; }
 
-  .am-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-width: none; margin-bottom: 24px; }
-  .am-eyebrow { margin: 0 0 6px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .am-heading { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; max-width: none; margin-bottom: 20px; }
   h1 { font-size: 24px; margin: 0 0 6px; }
   .am-overview-link { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 8px 11px; font-size: 12px; text-decoration: none; white-space: nowrap; }
   .am-overview-link:hover { color: var(--accent); border-color: var(--accent); }
