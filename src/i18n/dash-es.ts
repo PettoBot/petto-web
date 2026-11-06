@@ -5702,4 +5702,13 @@ export const dashEs: Record<string, string> = {
   "Stacks": "Se suma",
   "Time stacks": "Tiempo se suma",
   "A level to take part, and extra entries for each level reached.": "Un nivel para participar, y entradas extra por cada nivel alcanzado.",
+  "The prize, how many people win and how long it runs.": "El premio, cuántas personas ganan y cuánto dura.",
+  "Where and how": "Dónde y cómo",
+  "The channel it is posted in and how members enter.": "El canal donde se publica y cómo participan los miembros.",
+  "Extras": "Extras",
+  "Everything here is optional.": "Todo esto es opcional.",
+  "winner": "ganador",
+  "winners": "ganadores",
+  "entries": "participaciones",
+  "entry": "participación",
 };

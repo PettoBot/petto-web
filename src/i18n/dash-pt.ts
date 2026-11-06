@@ -5702,4 +5702,13 @@ export const dashPt: Record<string, string> = {
   "Stacks": "Soma",
   "Time stacks": "Tempo soma",
   "A level to take part, and extra entries for each level reached.": "Um nível para participar e entradas extras para cada nível alcançado.",
+  "The prize, how many people win and how long it runs.": "O prêmio, quantas pessoas ganham e quanto tempo dura.",
+  "Where and how": "Onde e como",
+  "The channel it is posted in and how members enter.": "O canal onde é publicado e como os membros participam.",
+  "Extras": "Extras",
+  "Everything here is optional.": "Tudo aqui é opcional.",
+  "winner": "vencedor",
+  "winners": "vencedores",
+  "entries": "participações",
+  "entry": "participação",
 };
