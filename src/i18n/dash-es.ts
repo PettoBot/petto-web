@@ -5723,4 +5723,8 @@ export const dashEs: Record<string, string> = {
   "Pasting the same text over and over does not farm XP.": "Pegar el mismo texto una y otra vez no da XP.",
   "The roles of the levels they had come back with them.": "Los roles de los niveles que tenían vuelven con ellos.",
   "If they return, they start from zero.": "Si vuelven, empiezan desde cero.",
+  "Message rewards": "Recompensas de mensajes",
+  "Voice rewards": "Recompensas de voz",
+  "Highest level": "Nivel más alto",
+  "A role given to a member when they reach a level. Message levels and voice levels have their own rewards.": "Un rol que recibe un miembro al llegar a un nivel. Los niveles de mensajes y los de voz tienen sus propias recompensas.",
 };
