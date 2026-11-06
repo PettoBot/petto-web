@@ -6128,4 +6128,9 @@ export const dashEs: Record<string, string> = {
   "Your auto-threads": "Tus hilos automáticos",
   "Turn off commands": "Desactivar comandos",
   "Disabled now": "Desactivados ahora",
+  "1 line": "1 línea",
+  "Lines of code": "Líneas de código",
+  "Custom triggers": "Activadores propios",
+  "Longest, in lines": "El más largo, en líneas",
+  "A ready command to start from. It is not saved until you press Save.": "Un comando listo para empezar. No se guarda hasta que pulses Guardar.",
 };

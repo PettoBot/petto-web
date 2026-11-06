@@ -6128,4 +6128,9 @@ export const dashPt: Record<string, string> = {
   "Your auto-threads": "Seus tópicos automáticos",
   "Turn off commands": "Desativar comandos",
   "Disabled now": "Desativados agora",
+  "1 line": "1 linha",
+  "Lines of code": "Linhas de código",
+  "Custom triggers": "Gatilhos próprios",
+  "Longest, in lines": "O mais longo, em linhas",
+  "A ready command to start from. It is not saved until you press Save.": "Um comando pronto para começar. Só é salvo quando você apertar Salvar.",
 };
