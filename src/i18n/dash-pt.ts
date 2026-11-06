@@ -6027,4 +6027,12 @@ export const dashPt: Record<string, string> = {
   "Quick access": "Acesso rápido",
   "Turn a module on or off from here, or open its settings.": "Ative ou desative um módulo daqui, ou abra as configurações dele.",
   "{n} of {m} on": "{n} de {m} ativos",
+  "Members changed": "Membros alterados",
+  "Previews": "Prévias",
+  "Last job": "Último trabalho",
+  "Nothing running": "Nada em execução",
+  "How a job runs": "Como um trabalho é executado",
+  "Preview counts how many members would change and touches nobody.": "A prévia conta quantos membros seriam alterados e não mexe em ninguém.",
+  "A job runs in the background, one at a time per server, and goes on by itself if Petto restarts.": "Um trabalho roda em segundo plano, um por vez em cada servidor, e continua sozinho se o Petto reiniciar.",
+  "Large servers can take a few minutes: Discord paces it.": "Servidores grandes podem levar alguns minutos: o Discord controla o ritmo.",
 };

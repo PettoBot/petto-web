@@ -6027,4 +6027,12 @@ export const dashEs: Record<string, string> = {
   "Quick access": "Acceso rápido",
   "Turn a module on or off from here, or open its settings.": "Activa o desactiva un módulo desde aquí, o abre sus ajustes.",
   "{n} of {m} on": "{n} de {m} activos",
+  "Members changed": "Miembros cambiados",
+  "Previews": "Vistas previas",
+  "Last job": "Último trabajo",
+  "Nothing running": "Nada en ejecución",
+  "How a job runs": "Cómo se ejecuta un trabajo",
+  "Preview counts how many members would change and touches nobody.": "La vista previa cuenta cuántos miembros cambiarían y no toca a nadie.",
+  "A job runs in the background, one at a time per server, and goes on by itself if Petto restarts.": "Un trabajo corre en segundo plano, uno a la vez por servidor, y sigue solo si Petto se reinicia.",
+  "Large servers can take a few minutes: Discord paces it.": "Los servidores grandes pueden tardar unos minutos: Discord marca el ritmo.",
 };
