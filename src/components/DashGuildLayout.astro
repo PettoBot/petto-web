@@ -399,9 +399,9 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               <span>{dt('Sync server data')}</span>
             </button>
 
-            <button type="button" class="dgl-find" id="dgl-find" data-placeholder={dt('Jump to a page…')} data-empty={dt('No pages match.')} aria-haspopup="dialog">
+            <button type="button" class="dgl-find" id="dgl-find" data-placeholder={dt('Jump to a page or a setting…')} data-empty={dt('Nothing matches.')} data-pages-word={dt('Pages')} data-settings-word={dt('Settings')} data-settings-url="/dash/search-index.json" aria-haspopup="dialog">
               <Icon name="ph:magnifying-glass" width="14" height="14" />
-              <span>{dt('Search pages')}</span>
+              <span>{dt('Search pages and settings')}</span>
               <kbd>Ctrl K</kbd>
             </button>
 
@@ -1264,8 +1264,62 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       });
     });
 
-    // Ctrl+K (Cmd+K), "/" outside a field, or the search button of the menu: a small finder over the pages of the menu. Enter opens the
-    // page the usual way (the menu link is clicked, so it loads without a reload and keeps every guard).
+    // Ctrl+K (Cmd+K), "/" outside a field, or the search button of the menu: a small finder over the pages of the menu and, from two letters on, over the
+    // settings on each of them (the names come from /dash/search-index.json, made from the pages). Enter opens the page the usual way (the menu link is
+    // clicked, so it loads without a reload and keeps every guard); for a setting, the page then scrolls to it and lights it up for a moment.
+    var norm = function (text) { return String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); };
+    var pathOf = function (a) { try { return new URL(a.getAttribute('href'), window.location.href).pathname; } catch (e) { return ''; } };
+    var plain = function (path) { return String(path).replace(/^\/(?:es|pt-br)(?=\/)/i, ''); };
+    // The page the finder was sent to is read for the name it looked for: the field is scrolled to the middle of the screen and glows.
+    window.dglArrive = function (root) {
+      var target = window.dglFindTarget;
+      if (!target) return;
+      if (target.path && plain(window.location.pathname) !== plain(target.path)) return;
+      window.dglFindTarget = null;
+      root = root || document.getElementById('dgl-content');
+      if (!root) return;
+      var want = norm(target.label);
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      var node;
+      var hit = null;
+      while ((node = walker.nextNode())) {
+        var text = node.nodeValue;
+        if (!text || text.length > 220 || norm(text) !== want) continue;
+        var el = node.parentElement;
+        if (!el || el.closest('script, style, template, [hidden]')) continue;
+        // A fold that is shut holds the field: open it so there is something to show.
+        var shut = el.closest('details:not([open])');
+        if (shut) shut.open = true;
+        if (!el.getClientRects().length) continue;
+        hit = el;
+        break;
+      }
+      if (!hit) return;
+      var block = null;
+      [hit.closest('label'), hit.closest('[class*="field"], [class*="switch"], [class*="check"], [class*="row"]'), hit].some(function (candidate) {
+        if (candidate && candidate.getBoundingClientRect().height <= 340) { block = candidate; return true; }
+        return false;
+      });
+      block = block || hit;
+      var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      setTimeout(function () {
+        block.scrollIntoView({ block: 'center', behavior: calm ? 'auto' : 'smooth' });
+        block.classList.remove('dgl-find-hit');
+        void block.offsetWidth;
+        block.classList.add('dgl-find-hit');
+        setTimeout(function () { block.classList.remove('dgl-find-hit'); }, 2600);
+      }, 380);
+    };
+    // A link with #find=<name> (the finder's own address) does the same on a page that loads whole.
+    try {
+      var asked = /(?:^|[#&])find=([^&]+)/.exec(window.location.hash);
+      if (asked) {
+        window.dglFindTarget = { path: '', label: decodeURIComponent(asked[1].replace(/\+/g, ' ')) };
+        history.replaceState(history.state, '', window.location.pathname + window.location.search);
+        setTimeout(function () { window.dglArrive(); }, 120);
+      }
+    } catch (e) { /* the address is only a convenience */ }
+
     var palette = null;
     function openPalette() {
       var trigger = document.getElementById('dgl-find');
@@ -1285,25 +1339,76 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           var group = a.closest('.dgl-group');
           return { a: a, label: a.getAttribute('data-label') || a.textContent.trim(), group: group ? group.getAttribute('data-group') : '' };
         });
+        // The pages of the menu by the last word of their address (what the index is made of): only what the member can open is there.
+        var bySlug = {};
+        links.forEach(function (l) {
+          var parts = pathOf(l.a).split('/').filter(Boolean);
+          var slug = parts[parts.length - 1];
+          if (slug && !bySlug[slug] && !l.a.getAttribute('href').split('?')[1]) bySlug[slug] = l;
+        });
+        var settings = null;
+        var settingsUrl = trigger.getAttribute('data-settings-url');
+        if (settingsUrl) {
+          var lang = document.documentElement.getAttribute('lang') || '';
+          fetch(settingsUrl + '?lang=' + encodeURIComponent(lang === 'pt' ? 'pt-BR' : lang), { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (body) { if (body && body.pages) { settings = body.pages; if (!palette.veil.hidden) palette.draw(); } })
+            .catch(function () { /* the pages are still found */ });
+        }
         var shown = [];
         var index = 0;
+        var heading = function (text) { var h = document.createElement('div'); h.className = 'dgl-pal-sec'; h.textContent = text; list.appendChild(h); };
+        var lit = function (el, text, q) {
+          var at = norm(text).indexOf(q.split(' ')[0]);
+          if (!q || at < 0 || norm(text).length !== text.length) { el.textContent = text; return; }
+          var end = at + q.split(' ')[0].length;
+          el.appendChild(document.createTextNode(text.slice(0, at)));
+          var mark = document.createElement('mark');
+          mark.textContent = text.slice(at, end);
+          el.appendChild(mark);
+          el.appendChild(document.createTextNode(text.slice(end)));
+        };
         var draw = function () {
-          var q = input.value.trim().toLowerCase();
-          shown = links.filter(function (l) { return !q || (l.label + ' ' + l.group).toLowerCase().indexOf(q) !== -1; })
-            .sort(function (x, y) { return q ? Number(y.label.toLowerCase().indexOf(q) === 0) - Number(x.label.toLowerCase().indexOf(q) === 0) : 0; })
-            .slice(0, 40);
+          var q = norm(input.value);
+          var items = links.filter(function (l) { return !q || norm(l.label + ' ' + l.group).indexOf(q) !== -1; })
+            .sort(function (x, y) { return q ? Number(norm(y.label).indexOf(q) === 0) - Number(norm(x.label).indexOf(q) === 0) : 0; })
+            .slice(0, 40)
+            .map(function (l) { return { kind: 'page', l: l, name: l.label, where: l.group }; });
+          var pageCount = items.length;
+          if (settings && q.length >= 2) {
+            var words = q.split(' ');
+            var found = [];
+            Object.keys(settings).forEach(function (slug) {
+              var page = bySlug[slug];
+              if (!page) return;
+              settings[slug].forEach(function (label) {
+                var n = norm(label);
+                if (n === norm(page.label) || !words.every(function (w) { return n.indexOf(w) !== -1; })) return;
+                found.push({ kind: 'setting', l: page, name: label, where: page.label, score: n.indexOf(q) === 0 ? 0 : n.indexOf(' ' + q) !== -1 ? 1 : 2 });
+              });
+            });
+            found.sort(function (x, y) { return x.score - y.score || x.name.length - y.name.length; });
+            items = items.concat(found.slice(0, 30));
+          }
+          shown = items;
           index = Math.min(index, Math.max(0, shown.length - 1));
           list.innerHTML = '';
           if (!shown.length) { var none = document.createElement('div'); none.className = 'dgl-pal-empty'; none.textContent = trigger.getAttribute('data-empty') || ''; list.appendChild(none); return; }
-          shown.forEach(function (l, i) {
+          var both = pageCount > 0 && shown.length > pageCount;
+          shown.forEach(function (item, i) {
+            if (both && i === 0) heading(trigger.getAttribute('data-pages-word') || '');
+            if (both && i === pageCount) heading(trigger.getAttribute('data-settings-word') || '');
+            var l = item.l;
             var row = document.createElement('div');
-            row.className = 'dgl-pal-row' + (i === index ? ' on' : '') + (l.a.classList.contains('active') ? ' here' : '');
+            row.className = 'dgl-pal-row' + (i === index ? ' on' : '') + (item.kind === 'page' && l.a.classList.contains('active') ? ' here' : '') + (item.kind === 'setting' ? ' is-setting' : '');
             row.setAttribute('role', 'option');
             row.setAttribute('aria-selected', String(i === index));
             var icon = l.a.querySelector('svg');
             if (icon) row.appendChild(icon.cloneNode(true));
-            var name = document.createElement('span'); name.textContent = l.label; row.appendChild(name);
-            var where = document.createElement('small'); where.textContent = l.group; row.appendChild(where);
+            var name = document.createElement('span');
+            lit(name, item.name, item.kind === 'setting' ? q : '');
+            row.appendChild(name);
+            var where = document.createElement('small'); where.textContent = item.where; row.appendChild(where);
             row.addEventListener('mousedown', function (e) { e.preventDefault(); });
             row.addEventListener('click', function () { go(i); });
             list.appendChild(row);
@@ -1316,7 +1421,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           var on = list.querySelector('.dgl-pal-row.on');
           if (on) on.scrollIntoView({ block: 'nearest' });
         };
-        var go = function (i) { var l = shown[i]; closePalette(); if (l) l.a.click(); };
+        var go = function (i) {
+          var item = shown[i];
+          closePalette();
+          if (!item) return;
+          if (item.kind === 'setting') {
+            window.dglFindTarget = { path: pathOf(item.l.a), label: item.name };
+            // Already on that page: nothing loads, so it goes straight to the field.
+            if (item.l.a.classList.contains('active')) { window.dglArrive(); return; }
+          }
+          item.l.a.click();
+        };
         input.addEventListener('input', function () { index = 0; draw(); });
         input.addEventListener('keydown', function (e) {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); move(index + (e.key === 'ArrowDown' ? 1 : -1)); }
@@ -1600,6 +1715,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         executeScripts(fresh);
         runHeadScripts(doc.head);
         initContent(fresh);
+        if (window.dglArrive && window.dglFindTarget) setTimeout(function () { window.dglArrive(fresh); }, 80);
         if (window.PettoLevelingInit) window.PettoLevelingInit(fresh);
         if (window.PettoVoiceLevelingInit) window.PettoVoiceLevelingInit(fresh);
         if (window.PettoRankPreviewInit) window.PettoRankPreviewInit(fresh);
@@ -3151,6 +3267,13 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-pal-row.on { background: var(--accent-soft); color: var(--text); }
   .dgl-pal-row.on svg, .dgl-pal-row.here svg { color: var(--accent); }
   .dgl-pal-empty { padding: 22px 12px; text-align: center; color: var(--text-dim); font-size: 13px; }
+  .dgl-pal-sec { padding: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+  .dgl-pal-row mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--text); border-radius: 3px; padding: 0 1px; }
+  .dgl-pal-row.is-setting small { text-transform: none; letter-spacing: 0; font-family: var(--sans); font-size: 11.5px; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* What the finder arrived at: the field lights up for a moment. */
+  @keyframes dgl-find-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); background-color: color-mix(in srgb, var(--accent) 18%, transparent); } 45% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; background-color: transparent; } }
+  :global(.dgl-find-hit) { border-radius: 10px; outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 4px; animation: dgl-find-pulse 2.4s var(--m-out) 1 both; }
+  @media (prefers-reduced-motion: reduce) { :global(.dgl-find-hit) { animation: none; } }
   @media (prefers-reduced-motion: reduce) { .dgl-pal-veil, .dgl-pal { animation: none; } }
   /* Long names, links, IDs and code a member or the bot wrote wrap inside their box instead of pushing the page sideways on a phone. */
   .dgl-content { overflow-wrap: break-word; }
