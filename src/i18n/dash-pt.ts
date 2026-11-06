@@ -5549,4 +5549,13 @@ export const dashPt: Record<string, string> = {
   "Collapse all": "Fechar todas",
   "Pick a role, a channel or a variable and it goes where the cursor is in the text.": "Escolha um cargo, um canal ou uma variável e ele vai para onde está o cursor no texto.",
   "A saved embed is picked, so this text is not used. Take the embed off to write it.": "Há um embed salvo escolhido, então este texto não é usado. Remova o embed para escrevê-lo.",
+  "All changes saved": "Tudo salvo",
+  "Author": "Autor",
+  "Look": "Aparência",
+  "New template": "Novo modelo",
+  "Pick one of your templates above, or make a new one to start.": "Escolha um dos seus modelos acima, ou crie um novo para começar.",
+  "Row {n}": "Linha {n}",
+  "This message has no embeds. Add one to get a title, a description and a color.": "Esta mensagem não tem embeds. Adicione um para ter título, descrição e cor.",
+  "Unsaved changes": "Alterações não salvas",
+  "View": "Visualização",
 };

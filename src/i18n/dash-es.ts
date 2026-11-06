@@ -5549,4 +5549,13 @@ export const dashEs: Record<string, string> = {
   "Collapse all": "Cerrar todas",
   "Pick a role, a channel or a variable and it goes where the cursor is in the text.": "Elige un rol, un canal o una variable y se pone donde está el cursor en el texto.",
   "A saved embed is picked, so this text is not used. Take the embed off to write it.": "Hay un embed guardado elegido, así que este texto no se usa. Quita el embed para escribirlo.",
+  "All changes saved": "Todo guardado",
+  "Author": "Autor",
+  "Look": "Aspecto",
+  "New template": "Plantilla nueva",
+  "Pick one of your templates above, or make a new one to start.": "Elige una de tus plantillas arriba, o crea una nueva para empezar.",
+  "Row {n}": "Fila {n}",
+  "This message has no embeds. Add one to get a title, a description and a color.": "Este mensaje no tiene embeds. Añade uno para tener título, descripción y color.",
+  "Unsaved changes": "Cambios sin guardar",
+  "View": "Vista",
 };

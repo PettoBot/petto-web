@@ -10,7 +10,6 @@ interface Props { groups?: { label: string; vars: { tok: string; desc: string }[
 export default function VariablesPanel({ groups }: Props) {
   const shown = groups && groups.length > 0 ? groups : VARIABLE_GROUPS;
   const [copied, setCopied] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
 
   function copy(tok: string) {
     navigator.clipboard?.writeText(tok).then(() => {
@@ -21,11 +20,6 @@ export default function VariablesPanel({ groups }: Props) {
 
   return (
     <div className="ebr-varpanel">
-      <button type="button" className="ebr-varpanel-toggle" onClick={() => setOpen((v) => !v)}>
-        Variables
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ transform: open ? 'rotate(180deg)' : undefined }}><path d="m6 9 6 6 6-6" /></svg>
-      </button>
-      {open && (
         <div className="ebr-varpanel-body">
           <p className="ebr-varpanel-hint">{t('Click one to copy it, then paste it into whichever field needs it.')}</p>
           <p className="ebr-varpanel-hint">{t('Silent mention: write ! right before a mention (!@everyone, !@Role, !{user.mention}) and it shows without notifying anyone.')}</p>
@@ -41,7 +35,6 @@ export default function VariablesPanel({ groups }: Props) {
             </div>
           ))}
         </div>
-      )}
     </div>
   );
 }
