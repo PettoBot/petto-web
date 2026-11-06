@@ -45,6 +45,7 @@ export default defineConfig({
           'bug-fill', 'jar-label-fill', 'user-circle-dashed-fill', 'chat-circle-fill', 'user-circle-fill', 'browser-fill', 'scales-fill', 'list-checks-fill', 'tray-fill', 'pencil-simple-bold', 'cursor-click-fill', 'gear-six-fill', 'paint-brush-broad-fill', 'chat-teardrop-text-fill', 'copy-simple-bold', 'link-simple-bold', 'trash-bold', 'circle', 'plus-bold', 'arrow-square-out-bold', 'check-circle-fill',
           'arrow-right-bold', 'lock-fill', 'lightning-fill', 'sword-fill', 'hammer-fill', 'arrow-left-bold', 'hash-bold', 'note-pencil-bold', 'arrow-square-out-bold', 'cursor-fill',
           'archive-fill', 'arrows-clockwise-fill', 'arrow-bend-up-left-fill', 'arrow-counter-clockwise-bold', 'arrow-counter-clockwise-fill',
+          'text-aa-bold', 'list-checks-bold', 'eye-bold', 'users-three-bold', 'chat-teardrop-text-bold', 'browser-bold', 'cursor-click-bold',
           'arrow-down', 'arrow-fat-lines-up-fill', 'arrow-left', 'arrow-right', 'arrow-square-out', 'arrow-up', 'arrow-up-right', 'dots-six-vertical-bold', 'text-align-left-bold', 'caret-up-bold', 'caret-down-bold', 'clock-countdown-fill', 'link-simple-bold', 'bell-fill',
           'bell-ringing-fill', 'book-open-fill', 'buildings-fill', 'caret-down', 'caret-right', 'caret-left-bold',
           'caret-right-bold', 'caret-up-down', 'chart-bar', 'chart-bar-fill', 'chart-line-fill',
