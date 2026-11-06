@@ -6023,4 +6023,8 @@ export const dashEs: Record<string, string> = {
   "Messages members get": "Mensajes que reciben los miembros",
   "Who gets it": "Quién lo recibe",
   "While it waits": "Mientras espera",
+  "Missing a channel": "Falta un canal",
+  "Quick access": "Acceso rápido",
+  "Turn a module on or off from here, or open its settings.": "Activa o desactiva un módulo desde aquí, o abre sus ajustes.",
+  "{n} of {m} on": "{n} de {m} activos",
 };

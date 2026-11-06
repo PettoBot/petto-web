@@ -6023,4 +6023,8 @@ export const dashPt: Record<string, string> = {
   "Messages members get": "Mensagens que os membros recebem",
   "Who gets it": "Quem recebe",
   "While it waits": "Enquanto espera",
+  "Missing a channel": "Falta um canal",
+  "Quick access": "Acesso rápido",
+  "Turn a module on or off from here, or open its settings.": "Ative ou desative um módulo daqui, ou abra as configurações dele.",
+  "{n} of {m} on": "{n} de {m} ativos",
 };
