@@ -5734,4 +5734,7 @@ export const dashEs: Record<string, string> = {
   "Voice leveling is off, so nobody earns voice XP right now. You can still change this page, and what you save stays.": "Los niveles de voz están apagados, así que nadie gana XP de voz ahora. Aun así puedes cambiar esta página y lo que guardes se queda.",
   "Voice XP": "XP de voz",
   "voice XP": "XP de voz",
+  "Steps": "Pasos",
+  "First step": "Primer paso",
+  "Last step": "Último paso",
 };

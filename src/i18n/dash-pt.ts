@@ -5734,4 +5734,7 @@ export const dashPt: Record<string, string> = {
   "Voice leveling is off, so nobody earns voice XP right now. You can still change this page, and what you save stays.": "Os níveis de voz estão desligados, então ninguém ganha XP de voz agora. Você ainda pode mudar esta página e o que salvar fica guardado.",
   "Voice XP": "XP de voz",
   "voice XP": "XP de voz",
+  "Steps": "Passos",
+  "First step": "Primeiro passo",
+  "Last step": "Último passo",
 };
