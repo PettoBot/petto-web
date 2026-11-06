@@ -5659,4 +5659,8 @@ export const dashPt: Record<string, string> = {
   "{a} text · {b} voice · {c} categories": "{a} de texto · {b} de voz · {c} categorias",
   "On a panel": "Em um painel",
   "With a form": "Com formulário",
+  "Members blocked": "Membros bloqueados",
+  "Roles blocked": "Cargos bloqueados",
+  "Pick who it is, paste its ID and say why if you want to remember it.": "Escolha quem é, cole o ID e diga o motivo se quiser lembrar.",
+  "In Discord, turn on Developer Mode, right-click the member or the role and copy its ID.": "No Discord, ative o modo desenvolvedor, clique com o botão direito no membro ou no cargo e copie o ID.",
 };

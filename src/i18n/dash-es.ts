@@ -5659,4 +5659,8 @@ export const dashEs: Record<string, string> = {
   "{a} text · {b} voice · {c} categories": "{a} de texto · {b} de voz · {c} categorías",
   "On a panel": "En un panel",
   "With a form": "Con formulario",
+  "Members blocked": "Miembros bloqueados",
+  "Roles blocked": "Roles bloqueados",
+  "Pick who it is, paste its ID and say why if you want to remember it.": "Elige quién es, pega su ID y di el motivo si quieres recordarlo.",
+  "In Discord, turn on Developer Mode, right-click the member or the role and copy its ID.": "En Discord, activa el modo desarrollador, haz clic derecho en el miembro o el rol y copia su ID.",
 };
