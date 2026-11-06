@@ -5994,4 +5994,6 @@ export const dashEs: Record<string, string> = {
   "Reposted: {n}": "Republicados: {n}",
   "Ignores {n}": "Ignora {n}",
   "How reactions count": "Cómo cuentan las reacciones",
+  "Channels whose name shows a number, like the members of the server. Petto keeps them up to date.": "Canales cuyo nombre muestra un número, como los miembros del servidor. Petto los mantiene al día.",
+  "Your counters": "Tus contadores",
 };

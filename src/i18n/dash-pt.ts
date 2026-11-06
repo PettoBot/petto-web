@@ -5994,4 +5994,6 @@ export const dashPt: Record<string, string> = {
   "Reposted: {n}": "Repostadas: {n}",
   "Ignores {n}": "Ignora {n}",
   "How reactions count": "Como as reações contam",
+  "Channels whose name shows a number, like the members of the server. Petto keeps them up to date.": "Canais cujo nome mostra um número, como os membros do servidor. O Petto os mantém atualizados.",
+  "Your counters": "Seus contadores",
 };
