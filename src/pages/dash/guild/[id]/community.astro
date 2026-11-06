@@ -328,7 +328,7 @@ if (Astro.request.method === 'POST') {
 const COMMUNITY_SECTIONS = ['settings', 'reputation', 'boosters', 'polls'];
 const shown = COMMUNITY_SECTIONS.includes(section) ? section : 'settings';
 const needs = (...sections: string[]) => sections.includes(shown);
-const [guildInfo, reportRes, boosterRes, boosterListRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, repLogRes, pollsRes, templatesRes, prefixRes, messageLinksRes] = await Promise.all([
+const [guildInfo, reportRes, boosterRes, boosterListRes, rolesRes, channelsRes, reputationConfigRes, reputationRes, repLogRes, pollsRes, templatesRes, prefixRes, messageLinksRes, boosterCountRes, repCountRes, recentPollsRes] = await Promise.all([
   getGuildInfo(id, botToken),
   needs('settings') ? fetch(`${apiUrl}/rest/v1/report_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
   needs('settings', 'boosters') ? fetch(`${apiUrl}/rest/v1/booster_role_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
@@ -337,11 +337,15 @@ const [guildInfo, reportRes, boosterRes, boosterListRes, rolesRes, channelsRes, 
   needs('settings', 'polls', 'reputation') ? getGuildList(Astro, id, botToken, 'channels') : null,
   needs('settings', 'reputation') ? fetch(`${apiUrl}/rest/v1/reputation_config?guild_id=eq.${id}&select=*`, { headers: apiHeaders }) : null,
   needs('reputation') ? fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&points=gt.0&select=user_id,points&order=points.desc&limit=25`, { headers: { ...apiHeaders, Prefer: 'count=exact' } }) : null,
-  needs('reputation') ? fetch(`${apiUrl}/rest/v1/reputation_log?guild_id=eq.${id}&select=giver_id,receiver_id,channel_id,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }).catch(() => null) : null,
+  needs('reputation', 'settings') ? fetch(`${apiUrl}/rest/v1/reputation_log?guild_id=eq.${id}&select=giver_id,receiver_id,channel_id,created_at&order=created_at.desc&limit=${shown === 'settings' ? 5 : 20}`, { headers: apiHeaders }).catch(() => null) : null,
   needs('polls') ? fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,message_id,creator_id,question,options,image,multi,ends_at,closed,embed_template,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }) : null,
   needs('polls') ? fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name,data&order=name.asc`, { headers: apiHeaders }) : null,
   needs('boosters', 'reputation', 'settings') ? fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=prefix`, { headers: apiHeaders }).catch(() => null) : null,
   needs('settings') ? fetch(`${apiUrl}/rest/v1/message_link_settings?guild_id=eq.${id}&select=enabled,ignored_channels`, { headers: apiHeaders }).catch(() => null) : null,
+  // Community Settings also shows how much the other three parts hold (a count and the latest rows of each).
+  needs('settings') ? fetch(`${apiUrl}/rest/v1/booster_roles?guild_id=eq.${id}&select=user_id,created_at&order=created_at.desc&limit=50`, { headers: { ...apiHeaders, Prefer: 'count=exact' } }).catch(() => null) : null,
+  needs('settings') ? fetch(`${apiUrl}/rest/v1/reputation?guild_id=eq.${id}&points=gt.0&select=user_id&limit=100`, { headers: { ...apiHeaders, Prefer: 'count=exact' } }).catch(() => null) : null,
+  needs('settings') ? fetch(`${apiUrl}/rest/v1/polls?guild_id=eq.${id}&message_id=neq.pending&select=id,channel_id,creator_id,question,closed,created_at&order=created_at.desc&limit=20`, { headers: apiHeaders }).catch(() => null) : null,
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
@@ -423,12 +427,32 @@ const repLogRows = repLogRes?.ok ? await repLogRes.json().catch(() => []) : [];
 const repLog = (Array.isArray(repLogRows) ? repLogRows : []).map((row: any) => ({ giverId: String(row.giver_id), receiverId: String(row.receiver_id), channelId: row.channel_id ? String(row.channel_id) : null, at: String(row.created_at) }));
 const pollDesigns: string[] = (templatesRes?.ok ? await templatesRes.json() : []).filter((row: any) => isV2Data(row.data)).map((row: any) => String(row.name));
 
+// Community Settings: the numbers of the other parts and the latest thing that happened in them, newest first.
+const countOf = (res: Response | null, rows: unknown[]) => Number(String(res?.headers.get('content-range') ?? '').split('/')[1]) || rows.length;
+const boosterCountRows = boosterCountRes?.ok ? await boosterCountRes.json().catch(() => []) : [];
+const repCountRows = repCountRes?.ok ? await repCountRes.json().catch(() => []) : [];
+const recentPollRows = recentPollsRes?.ok ? await recentPollsRes.json().catch(() => []) : [];
+const recentPolls: { id: number; channelId: string; creatorId: string; question: string; closed: boolean; at: string }[] = (Array.isArray(recentPollRows) ? recentPollRows : []).map((row: any) => ({ id: Number(row.id), channelId: String(row.channel_id), creatorId: String(row.creator_id), question: String(row.question ?? ''), closed: Boolean(row.closed), at: String(row.created_at) }));
+const community = {
+  boosterRoles: countOf(boosterCountRes, boosterCountRows),
+  reputationMembers: countOf(repCountRes, repCountRows),
+  openPolls: recentPolls.filter((poll) => !poll.closed).length,
+  polls: recentPolls.length,
+  feed: ([
+    ...repLog.map((row) => ({ kind: 'rep' as const, at: row.at, userId: row.giverId, otherId: row.receiverId, channelId: row.channelId, text: '', closed: false })),
+    ...recentPolls.slice(0, 4).map((poll) => ({ kind: 'poll' as const, at: poll.at, userId: poll.creatorId, otherId: null as string | null, channelId: poll.channelId as string | null, text: poll.question, closed: poll.closed })),
+    ...(Array.isArray(boosterCountRows) ? boosterCountRows : []).slice(0, 4).map((row: any) => ({ kind: 'booster' as const, at: String(row.created_at ?? ''), userId: String(row.user_id), otherId: null as string | null, channelId: null as string | null, text: '', closed: false })),
+  ].filter((event) => event.at && !Number.isNaN(Date.parse(event.at)) && SNOWFLAKE.test(event.userId)) as { kind: 'rep' | 'poll' | 'booster'; at: string; userId: string; otherId: string | null; channelId: string | null; text: string; closed: boolean }[])
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 8),
+};
+
 // Names and pictures: one call to the bot for everyone on screen (kept for a while), as the leveling leaderboard does.
 const peopleIds = [...new Set([
   ...reputationRows.map((row: any) => String(row.user_id)),
   ...repLog.flatMap((row: { giverId: string; receiverId: string }) => [row.giverId, row.receiverId]),
   ...boosterRoles.flatMap((row) => [row.user_id, ...(row.shared_with ?? []).slice(0, 5)]),
   ...boosterStatus.withoutRole.slice(0, 12),
+  ...community.feed.flatMap((event) => [event.userId, event.otherId ?? '']),
 ])].filter((value) => SNOWFLAKE.test(value)).slice(0, 150) as string[];
 const profiles = peopleIds.length ? await getMemberProfiles(Astro, id, peopleIds, botToken, { userId: session.userId }) : new Map();
 const people: Record<string, { name: string; avatar: string }> = Object.fromEntries(peopleIds.map((userId) => {
@@ -468,6 +492,7 @@ const polls = rawPolls.map((poll) => {
   reputation={reputation}
   reputationTop={reputationTop}
   polls={polls}
+  community={community}
   pollError={pollError}
   people={people}
   pollDesigns={pollDesigns}

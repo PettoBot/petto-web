@@ -5,9 +5,14 @@ import UserChip from './UserChip.astro';
 import MultiSelect from './MultiSelect.astro';
 import ColorPicker from './ColorPicker.astro';
 import MemberPick from './MemberPick.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import DashStatTiles from './DashStatTiles.astro';
+import SxNumber from './SxNumber.astro';
 import type { BoosterRoleInfo } from '../utils/pettoBotApi';
 
-import { getDashLang, makeT } from '../i18n/dash';
+import { dashLocale, getDashLang, makeT } from '../i18n/dash';
+import { formatDuration } from '../utils/formatDuration';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const dth = makeT(dashLang, true);
@@ -31,6 +36,9 @@ interface ReputationConfig { enabled: boolean; cooldownHours: number; giverRoleI
 interface ReputationRow { userId: string; points: number; }
 interface RepLogRow { giverId: string; receiverId: string; channelId: string | null; at: string; }
 interface Poll { id: number; channel_id: string; message_id: string; embed_template?: string | null; question: string; options: string[]; image: string | null; multi: boolean; ends_at: string | null; closed: boolean; created_at: string; voters: number; counts: number[]; }
+interface CommunityEvent { kind: 'rep' | 'poll' | 'booster'; at: string; userId: string; otherId: string | null; channelId: string | null; text: string; closed: boolean; }
+/** What Community Settings shows of the other three parts: how many, and the latest thing that happened in them. */
+interface CommunityOverview { boosterRoles: number; reputationMembers: number; openPolls: number; polls: number; feed: CommunityEvent[]; }
 
 interface Props {
   user: { username: string; avatar: string | null };
@@ -53,583 +61,727 @@ interface Props {
   reputation: ReputationConfig;
   reputationTop: ReputationRow[];
   polls: Poll[];
+  community?: CommunityOverview;
   pollError: string | null;
   people?: Record<string, { name: string; avatar: string }>;
   pollDesigns?: string[];
   section?: string;
 }
-const { user, guildId, guildName, guildIcon, report, messageLinks = { enabled: false, ignoredChannels: [] }, booster, boosterRoles, boosterStatus, roleDetails, prefix, notice = null, reputationTotal = 0, repLog = [], roles, channels, saved, reputation, reputationTop, polls, pollError, people = {}, pollDesigns = [], section } = Astro.props;
+const { user, guildId, guildName, guildIcon, report, messageLinks = { enabled: false, ignoredChannels: [] }, booster, boosterRoles, boosterStatus, roleDetails, prefix, notice = null, reputationTotal = 0, repLog = [], roles, channels, saved, reputation, reputationTop, polls, community = { boosterRoles: 0, reputationMembers: 0, openPolls: 0, polls: 0, feed: [] }, pollError, people = {}, pollDesigns = [], section } = Astro.props;
 
 const sectionMeta: Record<string, string> = { settings: dt('Community settings'), reputation: dt('Reputation'), boosters: dt('Booster roles'), polls: dt('Polls') };
 const selectedSection = sectionMeta[section ?? ''] ? section ?? '' : 'settings';
 const selectedTitle = sectionMeta[selectedSection];
 
+const locale = dashLocale(dashLang);
+const num = (value: number) => value.toLocaleString(locale);
 function roleName(id: string) {
   return roles.find((r) => r.id === id)?.name ?? id;
 }
+function roleHex(id: string) {
+  const color = roleDetails.find((r) => r.id === id)?.color ?? 0;
+  return color ? `#${color.toString(16).padStart(6, '0')}` : null;
+}
+const channelName = (id: string | null) => (id ? channels.find((c) => c.id === id)?.name ?? id : null);
+const nameOf = (id: string) => people[id]?.name ?? id;
+const avatarOf = (id: string) => people[id]?.avatar ?? `https://cdn.discordapp.com/embed/avatars/${Number(id.slice(-3)) % 6}.png`;
+// "3h ago", "12d ago" (a date from a month on) and "20h" until a moment ahead: always the shared compact duration.
+const ago = (iso: string) => {
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  return seconds >= 30 * 86400 ? new Date(iso).toLocaleDateString(locale) : dt('{a} ago', { a: formatDuration(seconds, { locale }) });
+};
+const until = (iso: string) => formatDuration(Math.max(0, (new Date(iso).getTime() - Date.now()) / 1000), { locale });
 // Booster roles whose owner no longer boosts (or left): what "Clean up" would delete.
 const lapsed = boosterRoles.filter((row) => row.boosting === false || row.in_server === false);
+const eventIcon = { rep: 'ph:medal-fill', poll: 'ph:chart-bar-fill', booster: 'ph:sparkle-fill' } as const;
+const eventColor = { rep: '#fed53c', poll: '#6fb4ea', booster: '#f78fb3' } as const;
+const eventLabel = { rep: dt('Reputation'), poll: dt('Polls'), booster: dt('Booster roles') } as const;
+const unboostChoices: [string, string, string, string][] = [
+  ['keep', 'ph:lock-simple-fill', dt('Keep the role'), dt('Nothing happens. Use Clean up below when you want to remove old roles.')],
+  ['remove', 'ph:user-minus-fill', dt('Take it off'), dt('The role is taken off the member and the people it is shared with, and given back if they boost again.')],
+  ['delete', 'ph:trash-fill', dt('Delete it'), dt('The role is deleted, also when the member leaves the server.')],
+];
+const maxPoints = Math.max(1, reputationTop[0]?.points ?? 1);
+const pollVotes = polls.reduce((sum, poll) => sum + poll.voters, 0);
+const pollsOpen = polls.filter((poll) => !poll.closed).length;
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={selectedSection === 'settings' ? 'community' : `community-${selectedSection}`} pageTitle={selectedTitle}>
-  <div class:list={['cm-root', { 'cm-fill': selectedSection === 'settings' }]}>
+  <DashSettingsKit />
+  <DashFormKit />
   <h1>{selectedTitle}</h1>
 
-  {saved && !notice && <div class="cm-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
+  {saved && !notice && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
   {notice && (notice.ok
-    ? <div class="cm-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{notice.text}</div>
-    : <div class="cm-error" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{notice.text}</div>)}
+    ? <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{notice.text}</div>
+    : <div class="sx-flash sx-flash-bad" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{notice.text}</div>)}
 
   {selectedSection === 'settings' && (
-  <div class:list={['cm-grid dgl-stagger', { 'cm-section-hidden': selectedSection !== 'settings' }]}>
-    <form method="POST" class="cm-card">
-      <input type="hidden" name="action" value="report" />
-      <div class="cm-card-head">
-        <div class="cm-card-icon" style="--c:#fe6465"><Icon name="ph:flag-fill" width="16" height="16" /></div>
-        <div class="cm-card-title">{dt('Reports')}</div>
-        <label class="cm-switch"><input type="checkbox" name="enabled" checked={report.enabled} /><span></span></label>
-      </div>
-      <p class="cm-card-desc"><Fragment set:html={dth('Where <code>/report</code> and the "Report Message" action send reports to staff.')} /></p>
-      <div class="cm-row">
-        <label>{dt('Destination channel')}</label>
-        <select name="channel_id">
-          <option value="">{dt('None')}</option>
-          {channels.map((c) => <option value={c.id} selected={c.id === report.channelId}>#{c.name}</option>)}
-        </select>
-      </div>
-      <div class="cm-row">
-        <label><Fragment set:html={dth('Urgent moderator role <span class="cm-label-muted">optional</span>')} /></label>
-        <select name="urgent_role_id">
-          <option value="">{dt('No role mention')}</option>
-          {roles.map((r) => <option value={r.id} selected={r.id === report.urgentRoleId}>@{r.name}</option>)}
-        </select>
-        <span class="cm-help">{dt('Members can choose “Ping Moderators” in the report form. This role is mentioned only for those urgent reports.')}</span>
-      </div>
-      <label class="cm-check"><input type="checkbox" name="anonymous_reporting_enabled" checked={report.anonymousReportingEnabled} />{dt('Allow anonymous reports')}</label>
-      <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-    </form>
+  <div class="sx-page cm-page">
+    <DashStatTiles tiles={[
+      { label: dt('Reports'), value: 0, text: report.enabled ? dt('On') : dt('Off'), tone: 'messages' },
+      { label: dt('Message links'), value: 0, text: messageLinks.enabled ? dt('On') : dt('Off'), tone: 'voice' },
+      { label: dt('Booster roles'), value: community.boosterRoles, tone: 'invites' },
+      { label: dt('Members with points'), value: community.reputationMembers, tone: 'reactions' },
+      { label: dt('Open polls'), value: community.openPolls, tone: 'joins' },
+    ]} />
 
-    <form method="POST" class="cm-card">
-      <input type="hidden" name="action" value="message_links" />
-      <div class="cm-card-head">
-        <div class="cm-card-icon" style="--c:#7aa7ff"><Icon name="ph:link-fill" width="16" height="16" /></div>
-        <div class="cm-card-title">{dt('Message link embeds')}</div>
-        <label class="cm-switch"><input type="checkbox" name="enabled" checked={messageLinks.enabled} /><span></span></label>
-      </div>
-      <p class="cm-card-desc"><Fragment set:html={dth('When a member posts the link of a message of this server, Petto shows it in an embed. Also <code>{p}messagelinks</code>. Off until you turn it on.', { p: prefix })} /></p>
-      <div class="cm-row">
-        <label>{dt('Ignored channels')}</label>
-        <MultiSelect name="ignored_channels" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={messageLinks.ignoredChannels} placeholder={dt('None')} />
-        <span class="cm-help">{dt('Links posted in these channels, and messages that live in them, are never shown in embeds.')}</span>
-      </div>
-      <span class="cm-help">{dt('It only shows messages the member who posted the link can already see: links to other servers, and to NSFW channels from a channel that is not NSFW, are left alone.')}</span>
-      <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-    </form>
+    <div class="sx-duo cm-duo">
+      <form method="POST" class="sx-panel cm-form">
+        <input type="hidden" name="action" value="report" />
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#fe6465"><Icon name="ph:flag-fill" width="17" height="17" /></span>
+          <h2>{dt('Reports')}</h2>
+          <label class="sx-toggle-only"><input type="checkbox" name="enabled" checked={report.enabled} aria-label={dt('Reports')} /><i class="sx-toggle"></i></label>
+        </div>
+        <p class="sx-lead cm-lead"><Fragment set:html={dth('Where <code>/report</code> and the "Report Message" action send reports to staff.')} /></p>
+        <div class="cm-body" data-sx-needs="enabled">
+          <div class="sx-field">
+            <label for="cm-report-channel">{dt('Destination channel')}</label>
+            <select id="cm-report-channel" name="channel_id">
+              <option value="">{dt('None')}</option>
+              {channels.map((c) => <option value={c.id} selected={c.id === report.channelId}>#{c.name}</option>)}
+            </select>
+          </div>
+          <div class="sx-field">
+            <label for="cm-report-role"><Fragment set:html={dth('Urgent moderator role <span class="cm-label-muted">optional</span>')} /></label>
+            <select id="cm-report-role" name="urgent_role_id">
+              <option value="">{dt('No role mention')}</option>
+              {roles.map((r) => <option value={r.id} selected={r.id === report.urgentRoleId}>@{r.name}</option>)}
+            </select>
+            <span class="sx-hint">{dt('Members can choose “Ping Moderators” in the report form. This role is mentioned only for those urgent reports.')}</span>
+          </div>
+          <label class="sx-switch"><input type="checkbox" name="anonymous_reporting_enabled" checked={report.anonymousReportingEnabled} /><span class="sx-switch-text"><b>{dt('Allow anonymous reports')}</b></span><i class="sx-toggle"></i></label>
+        </div>
+        <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+      </form>
 
-    <a class="cm-card cm-card-link dgl-card" href={`/dash/guild/${guildId}/community?section=boosters`}>
-      <div class="cm-card-head">
-        <div class="cm-card-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="16" height="16" /></div>
-        <div class="cm-card-title">{dt('Booster roles')}</div>
-        <span class:list={['cm-pill', booster.enabled ? 'on' : 'off']}>{booster.enabled ? dt('On') : dt('Off')}</span>
-      </div>
-      <p class="cm-card-desc"><Fragment set:html={dth('Custom colored roles boosters create for themselves with <code>{p}boosterrole</code>: what they may change, limits, the name filter and every booster role.', { p: prefix })} /></p>
-      <span class="cm-link">{dt('Open booster roles')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></span>
-    </a>
+      <form method="POST" class="sx-panel cm-form">
+        <input type="hidden" name="action" value="message_links" />
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#7aa7ff"><Icon name="ph:link-fill" width="17" height="17" /></span>
+          <h2>{dt('Message link embeds')}</h2>
+          <label class="sx-toggle-only"><input type="checkbox" name="enabled" checked={messageLinks.enabled} aria-label={dt('Message link embeds')} /><i class="sx-toggle"></i></label>
+        </div>
+        <p class="sx-lead cm-lead"><Fragment set:html={dth('When a member posts the link of a message of this server, Petto shows it in an embed. Also <code>{p}messagelinks</code>. Off until you turn it on.', { p: prefix })} /></p>
+        <div class="cm-body" data-sx-needs="enabled">
+          <div class="sx-field">
+            <span class="sx-label">{dt('Ignored channels')}</span>
+            <MultiSelect name="ignored_channels" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={messageLinks.ignoredChannels} placeholder={dt('None')} />
+            <span class="sx-hint">{dt('Links posted in these channels, and messages that live in them, are never shown in embeds.')}</span>
+          </div>
+          <p class="cm-note"><Icon name="ph:eye-slash-fill" width="15" height="15" />{dt('It only shows messages the member who posted the link can already see: links to other servers, and to NSFW channels from a channel that is not NSFW, are left alone.')}</p>
+        </div>
+        <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+      </form>
+    </div>
 
-    <a class="cm-card cm-card-link dgl-card" href={`/dash/guild/${guildId}/community?section=reputation`}>
-      <div class="cm-card-head">
-        <div class="cm-card-icon" style="--c:#fed53c"><Icon name="ph:medal-fill" width="16" height="16" /></div>
-        <div class="cm-card-title">{dt('Reputation')}</div>
-        <span class:list={['cm-pill', reputation.enabled ? 'on' : 'off']}>{reputation.enabled ? dt('On') : dt('Off')}</span>
+    <div class="cm-links dgl-stagger">
+      <a class="cm-link" href={`/dash/guild/${guildId}/community?section=reputation`}>
+        <span class="sx-panel-icon" style="--c:#fed53c"><Icon name="ph:medal-fill" width="17" height="17" /></span>
+        <span class="cm-link-text">
+          <span class="cm-link-title"><b>{dt('Reputation')}</b><span class:list={['cm-pill', reputation.enabled ? 'on' : 'off']}>{reputation.enabled ? dt('On') : dt('Off')}</span></span>
+          <em><Fragment set:html={dth('A point members give each other with <code>{p}rep give</code>: who can give and where, reward roles, the leaderboard and the recent points.', { p: prefix })} /></em>
+          <small>{dt('{a} members with points · {b} reward roles', { a: num(community.reputationMembers), b: num(reputation.rewards.length) })}</small>
+        </span>
+        <Icon name="ph:arrow-right-bold" class="cm-link-go" width="14" height="14" />
+      </a>
+      <a class="cm-link" href={`/dash/guild/${guildId}/community?section=boosters`}>
+        <span class="sx-panel-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="17" height="17" /></span>
+        <span class="cm-link-text">
+          <span class="cm-link-title"><b>{dt('Booster roles')}</b><span class:list={['cm-pill', booster.enabled ? 'on' : 'off']}>{booster.enabled ? dt('On') : dt('Off')}</span></span>
+          <em><Fragment set:html={dth('Custom colored roles boosters create for themselves with <code>{p}boosterrole</code>: what they may change, limits, the name filter and every booster role.', { p: prefix })} /></em>
+          <small>{dt('{a} booster roles', { a: num(community.boosterRoles) })}</small>
+        </span>
+        <Icon name="ph:arrow-right-bold" class="cm-link-go" width="14" height="14" />
+      </a>
+      <a class="cm-link" href={`/dash/guild/${guildId}/community?section=polls`}>
+        <span class="sx-panel-icon" style="--c:#6fb4ea"><Icon name="ph:chart-bar-fill" width="17" height="17" /></span>
+        <span class="cm-link-text">
+          <span class="cm-link-title"><b>{dt('Polls')}</b></span>
+          <em>{dt('Publish a button-voted poll directly to a channel. Members can change their vote until you close it.')}</em>
+          <small>{dt('{a} open polls · {b} recent', { a: num(community.openPolls), b: num(community.polls) })}</small>
+        </span>
+        <Icon name="ph:arrow-right-bold" class="cm-link-go" width="14" height="14" />
+      </a>
+    </div>
+
+    <section class="sx-panel cm-feed">
+      <div class="sx-panel-head">
+        <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:clock-counter-clockwise-fill" width="17" height="17" /></span>
+        <h2>{dt('Latest in the community')}</h2>
       </div>
-      <p class="cm-card-desc"><Fragment set:html={dth('A point members give each other with <code>{p}rep give</code>: who can give and where, reward roles, the leaderboard and the recent points.', { p: prefix })} /></p>
-      <span class="cm-link">{dt('Open reputation')}<Icon name="ph:arrow-right-bold" width="12" height="12" /></span>
-    </a>
+      {community.feed.length === 0 ? (
+        <p class="sx-empty"><Icon name="ph:clock-counter-clockwise" width="20" height="20" />{dt('Points given, polls and booster roles show up here as they happen.')}</p>
+      ) : (
+        <ul class="cm-events" style={`--rows:${Math.ceil(community.feed.length / 2)}`}>
+          {community.feed.map((event) => (
+            <li class="cm-event" style={`--c:${eventColor[event.kind]}`}>
+              <span class="cm-event-icon"><Icon name={eventIcon[event.kind]} width="15" height="15" /></span>
+              <span class="cm-event-text">
+                <span>
+                  {event.kind === 'rep' && <Fragment set:html={dth('<b>{a}</b> gave a point to <b>{b}</b>', { a: nameOf(event.userId), b: nameOf(event.otherId ?? '') })} />}
+                  {event.kind === 'poll' && <Fragment set:html={dth('<b>{a}</b> started the poll “{b}”', { a: nameOf(event.userId), b: event.text.length > 70 ? `${event.text.slice(0, 69)}…` : event.text })} />}
+                  {event.kind === 'booster' && <Fragment set:html={dth('<b>{a}</b> got a booster role', { a: nameOf(event.userId) })} />}
+                </span>
+                <small>{eventLabel[event.kind]}{event.channelId ? ` · #${channelName(event.channelId)}` : ''}</small>
+              </span>
+              <time class="cm-event-when" datetime={event.at}>{ago(event.at)}</time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   </div>
   )}
 
   {selectedSection === 'reputation' && (
-    <div class="cm-page">
-      <div class="cm-stats dgl-stagger">
-        <div class="cm-stat"><b>{reputation.enabled ? dt('On') : dt('Off')}</b><span>{dt('Reputation')}</span></div>
-        <div class="cm-stat"><b>{reputationTotal}</b><span>{dt('Members with points')}</span></div>
-        <div class="cm-stat"><b>{reputationTop[0]?.points ?? 0}</b><span>{dt('Most points')}</span></div>
-        <div class="cm-stat"><b>{reputation.cooldownHours ? dt('{a} h', { a: reputation.cooldownHours }) : dt('None')}</b><span>{dt('Wait between gives')}</span></div>
-      </div>
+    <div class="sx-page cm-page">
+      <DashStatTiles tiles={[
+        { label: dt('Reputation'), value: 0, text: reputation.enabled ? dt('On') : dt('Off'), tone: 'joins' },
+        { label: dt('Members with points'), value: reputationTotal, tone: 'messages' },
+        { label: dt('Most points'), value: reputationTop[0]?.points ?? 0, tone: 'reactions' },
+        { label: dt('Reward roles'), value: reputation.rewards.length, tone: 'invites' },
+        { label: dt('Wait between gives'), value: 0, text: reputation.cooldownHours ? formatDuration(reputation.cooldownHours * 3600, { locale }) : dt('None'), tone: 'voice' },
+      ]} />
 
-      <form method="POST" class="cm-settings">
+      <form method="POST" class="sx-panel cm-form">
         <input type="hidden" name="action" value="reputation" />
-        <div class="cm-grid">
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#fed53c"><Icon name="ph:medal-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('Reputation')}</div>
-              <label class="cm-switch" title={dt('On')}><input type="checkbox" name="enabled" checked={reputation.enabled} /><span></span></label>
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#fed53c"><Icon name="ph:medal-fill" width="17" height="17" /></span>
+          <h2>{dt('Reputation')}</h2>
+          <label class="sx-toggle-only"><input type="checkbox" name="enabled" checked={reputation.enabled} aria-label={dt('Reputation')} /><i class="sx-toggle"></i></label>
+        </div>
+        <p class="sx-lead cm-lead">{dt('When off, nobody can give points. The points and the leaderboard stay.')}</p>
+        <div class="cm-cols" data-sx-needs="enabled">
+          <div class="cm-body">
+            <div class="sx-field">
+              <label for="cm-rep-wait">{dt('Wait between gives (hours)')}</label>
+              <SxNumber id="cm-rep-wait" name="cooldown_hours" value={reputation.cooldownHours} min="0" max="720" />
+              <span class="sx-hint">{dt('How long a member waits before giving another point. 0 = no wait.')}</span>
             </div>
-            <p class="cm-card-desc">{dt('When off, nobody can give points. The points and the leaderboard stay.')}</p>
-            <div class="cm-row">
-              <label>{dt('Wait between gives (hours)')}</label>
-              <input type="number" name="cooldown_hours" value={reputation.cooldownHours} min="0" max="720" />
-              <span class="cm-help">{dt('How long a member waits before giving another point. 0 = no wait.')}</span>
+            <div class="sx-sub">
+              <h3>{dt('Where')}</h3>
+              <div class="sx-field">
+                <span class="sx-label">{dt('Only in these channels')}</span>
+                <MultiSelect name="channel_ids" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={reputation.channelIds} placeholder={dt('Every channel')} />
+                <span class="sx-hint">{dt('Empty: every channel. Threads count as their channel.')}</span>
+              </div>
             </div>
           </div>
-
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#5b8def"><Icon name="ph:user-check-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('Who can give')}</div>
-            </div>
-            <div class="cm-row">
-              <label>{dt('Only members with these roles')}</label>
+          <div class="cm-body">
+            <h3 class="cm-h3">{dt('Who can give')}</h3>
+            <div class="sx-field">
+              <span class="sx-label">{dt('Only members with these roles')}</span>
               <MultiSelect name="giver_role_ids" options={roles} selected={reputation.giverRoleIds} placeholder={dt('Everyone')} />
-              <span class="cm-help">{dt('Empty: everyone can give.')}</span>
+              <span class="sx-hint">{dt('Empty: everyone can give.')}</span>
             </div>
-            <div class="cm-row">
-              <label>{dt('Blocked roles')}</label>
+            <div class="sx-field">
+              <span class="sx-label">{dt('Blocked roles')}</span>
               <MultiSelect name="blocked_role_ids" options={roles} selected={reputation.blockedRoleIds} placeholder={dt('None')} />
-              <span class="cm-help">{dt('Members with one of these roles can neither give nor receive points.')}</span>
-            </div>
-          </div>
-
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#2dd4a7"><Icon name="ph:hash-bold" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('Where')}</div>
-            </div>
-            <div class="cm-row">
-              <label>{dt('Only in these channels')}</label>
-              <MultiSelect name="channel_ids" options={channels.map((c) => ({ id: c.id, name: `#${c.name}` }))} selected={reputation.channelIds} placeholder={dt('Every channel')} />
-              <span class="cm-help">{dt('Empty: every channel. Threads count as their channel.')}</span>
+              <span class="sx-hint">{dt('Members with one of these roles can neither give nor receive points.')}</span>
             </div>
           </div>
         </div>
-        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+        <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
       </form>
 
-      <div class="cm-grid">
-        <div class="cm-card">
-          <div class="cm-card-head">
-            <div class="cm-card-icon" style="--c:#f78fb3"><Icon name="ph:gift-fill" width="16" height="16" /></div>
-            <div class="cm-card-title">{dt('Reward roles')}</div>
+      <div class="sx-duo cm-duo">
+        <section class="sx-panel">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#f78fb3"><Icon name="ph:gift-fill" width="17" height="17" /></span>
+            <h2>{dt('Reward roles')}</h2>
           </div>
-          <p class="cm-card-desc">{dt('A member gets the role when they reach the points. Roles already given stay when points are reset.')}</p>
-          {reputation.rewards.length > 0 && (
-            <div class="cm-rewards">
+          <p class="sx-lead cm-lead">{dt('A member gets the role when they reach the points. Roles already given stay when points are reset.')}</p>
+          {reputation.rewards.length > 0 ? (
+            <div class="sx-list">
               {reputation.rewards.map((reward) => (
-                <form method="POST" class="cm-reward" data-no-dirty>
+                <form method="POST" class="sx-row cm-reward" data-no-dirty>
                   <input type="hidden" name="action" value="rep_reward_remove" />
                   <input type="hidden" name="points" value={reward.points} />
-                  <b>{dt('{a} pts', { a: reward.points })}</b>
-                  <Icon name="ph:arrow-right" width="12" height="12" />
-                  <span>@{roleName(reward.roleId)}</span>
-                  <button type="submit" class="cm-rep-reset" title={dt('Remove')}><Icon name="ph:x-bold" width="12" height="12" /></button>
+                  <b class="cm-pts-badge">{dt('{a} pts', { a: num(reward.points) })}</b>
+                  <Icon name="ph:arrow-right" width="12" height="12" class="cm-arrow" />
+                  <span class="cm-role"><i class="cm-dot" style={`--c:${roleHex(reward.roleId) ?? 'var(--text-dim)'}`}></i>@{roleName(reward.roleId)}</span>
+                  <button type="submit" class="sx-iconbtn" title={dt('Remove')} aria-label={dt('Remove')}><Icon name="ph:x-bold" width="13" height="13" /></button>
                 </form>
               ))}
             </div>
+          ) : (
+            <p class="sx-empty"><Icon name="ph:gift-fill" width="20" height="20" />{dt('No reward roles yet. Add the first one below.')}</p>
           )}
-          <form method="POST" class="cm-reward-add" data-no-dirty>
+          <form method="POST" class="sx-sub cm-add" data-no-dirty>
             <input type="hidden" name="action" value="rep_reward_add" />
-            <div class="cm-row"><label>{dt('Points')}</label><input type="number" name="points" min="1" max="1000000" placeholder="10" required /></div>
-            <div class="cm-row">
-              <label>{dt('Role')}</label>
-              <select name="role_id" required>
-                <option value="" disabled selected>{dt('Choose a role')}</option>
-                {roleDetails.filter((r) => !r.managed).map((r) => <option value={r.id}>@{r.name}</option>)}
-              </select>
+            <h3>{dt('Add')}</h3>
+            <div class="cm-add-row">
+              <div class="sx-field"><label for="cm-reward-points">{dt('Points')}</label><SxNumber id="cm-reward-points" name="points" value="" min="1" max="1000000" placeholder="10" required /></div>
+              <div class="sx-field">
+                <label for="cm-reward-role">{dt('Role')}</label>
+                <select id="cm-reward-role" name="role_id" required>
+                  <option value="" disabled selected>{dt('Choose a role')}</option>
+                  {roleDetails.filter((r) => !r.managed).map((r) => <option value={r.id}>@{r.name}</option>)}
+                </select>
+              </div>
             </div>
-            <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button>
+            <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button></div>
           </form>
-        </div>
+        </section>
 
-        <form method="POST" class="cm-card" data-no-dirty>
+        <form method="POST" class="sx-panel cm-form" data-no-dirty>
           <input type="hidden" name="action" value="rep_set" />
-          <div class="cm-card-head">
-            <div class="cm-card-icon" style="--c:#a78bfa"><Icon name="ph:sliders-horizontal-fill" width="16" height="16" /></div>
-            <div class="cm-card-title">{dt('Change a member\'s points')}</div>
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#a78bfa"><Icon name="ph:sliders-horizontal-fill" width="17" height="17" /></span>
+            <h2>{dt('Change a member\'s points')}</h2>
           </div>
-          <p class="cm-card-desc">{dt('Sets the points of any member. 0 resets them.')}</p>
-          <div class="cm-row"><label>{dt('Member')}</label><MemberPick guildId={guildId} /></div>
-          <div class="cm-row"><label>{dt('Points')}</label><input type="number" name="points" min="0" max="1000000" value="0" required /></div>
-          <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
-        </form>
-
-        <div class="cm-card">
-          <div class="cm-card-head">
-            <div class="cm-card-icon" style="--c:#8b8fa3"><Icon name="ph:terminal-window-fill" width="16" height="16" /></div>
-            <div class="cm-card-title">{dt('Commands')}</div>
-          </div>
-          <ul class="cm-cmds">
-            <li><code>{prefix}rep give @member</code><span>{dt('Give a point')}</span></li>
-            <li><code>{prefix}rep view @member</code><span>{dt('See the points of a member')}</span></li>
-            <li><code>{prefix}rep leaderboard</code><span>{dt('The top 10')}</span></li>
-            <li><code>{prefix}rep reset @member</code><span>{dt('Reset a member (Manage Server)')}</span></li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="cm-two">
-        <div class="cm-section">
-          <div class="cm-section-head">
-            <h2><Fragment set:html={dth('Leaderboard <span class="cm-count">{a}</span>', { a: reputationTotal })} /></h2>
+          <p class="sx-lead cm-lead">{dt('Sets the points of any member. 0 resets them.')}</p>
+          <div class="cm-body">
+            <div class="sx-field"><span class="sx-label">{dt('Member')}</span><MemberPick guildId={guildId} /></div>
             {reputationTop.length > 0 && (
-              <form method="POST" data-no-dirty>
-                <input type="hidden" name="action" value="reset_all_reputation" />
-                <button type="submit" class="cm-del-text" data-confirm={dt('Reset the points of every member to 0? This cannot be undone.')}><Icon name="ph:arrow-counter-clockwise-bold" width="12" height="12" />{dt('Reset everyone')}</button>
-              </form>
+              <div class="sx-field">
+                <span class="sx-label">{dt('Pick from the top')}</span>
+                <div class="cm-picks">
+                  {reputationTop.slice(0, 5).map((r) => <button type="button" data-pick-quick={r.userId} data-pick-name={people[r.userId]?.name ?? r.userId}><img src={avatarOf(r.userId)} alt="" width="22" height="22" loading="lazy" /><span>{people[r.userId]?.name ?? r.userId}</span><b>{dt(r.points === 1 ? '{a} pt' : '{a} pts', { a: num(r.points) })}</b></button>)}
+                </div>
+              </div>
             )}
+            <div class="sx-field"><label for="cm-rep-points">{dt('Points')}</label><SxNumber id="cm-rep-points" name="points" value="0" min="0" max="1000000" required /></div>
           </div>
-          {reputationTop.length === 0 ? (
-            <div class="cm-empty"><Icon name="ph:medal" width="18" height="18" /><span><Fragment set:html={dth('Nobody has points yet. They appear here after the first <code>{p}rep give</code>.', { p: prefix })} /></span></div>
-          ) : (
-            <div class="cm-list cm-lb">
-              {reputationTop.map((r, index) => (
-                <div class="cm-list-row">
-                  <span class:list={['cm-rank', { top: index < 3 }]}>{index + 1}</span>
-                  <UserChip id={r.userId} person={people[r.userId]} />
-                  <span class="cm-rep-points">{dt(r.points === 1 ? '{a} pt' : '{a} pts', { a: r.points })}</span>
-                  <form method="POST" data-no-dirty>
-                    <input type="hidden" name="action" value="reset_reputation" />
-                    <input type="hidden" name="user_id" value={r.userId} />
-                    <button type="submit" class="cm-rep-reset" title={dt('Reset to 0')} data-confirm={dt('Reset the points of {a} to 0?', { a: people[r.userId]?.name ?? r.userId })}><Icon name="ph:arrow-counter-clockwise-fill" width="13" height="13" /></button>
-                  </form>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div class="cm-section">
-          <div class="cm-section-head"><h2>{dt('Recent points')}</h2></div>
-          {repLog.length === 0 ? (
-            <div class="cm-empty"><Icon name="ph:clock-counter-clockwise" width="18" height="18" /><span>{dt('The points given from now on are listed here.')}</span></div>
-          ) : (
-            <div class="cm-list cm-log">
-              {repLog.map((row) => (
-                <div class="cm-list-row">
-                  <UserChip id={row.giverId} person={people[row.giverId]} />
-                  <Icon name="ph:arrow-right-bold" width="12" height="12" class="cm-log-arrow" />
-                  <UserChip id={row.receiverId} person={people[row.receiverId]} />
-                  <span class="cm-log-meta">{row.channelId && <span>#{channels.find((c) => c.id === row.channelId)?.name ?? row.channelId}</span>}<time datetime={row.at} data-local-time>{row.at}</time></span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div>
+        </form>
       </div>
+
+      <section class="sx-panel cm-lb-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#e6c56f"><Icon name="ph:trophy-fill" width="17" height="17" /></span>
+          <h2>{dt('Leaderboard')} <span class="cm-count">{num(reputationTotal)}</span></h2>
+          {reputationTop.length > 0 && (
+            <form method="POST" data-no-dirty class="cm-inline">
+              <input type="hidden" name="action" value="reset_all_reputation" />
+              <button type="submit" class="cm-danger" data-confirm={dt('Reset the points of every member to 0? This cannot be undone.')}><Icon name="ph:arrow-counter-clockwise-bold" width="12" height="12" />{dt('Reset everyone')}</button>
+            </form>
+          )}
+        </div>
+        {reputationTop.length === 0 ? (
+          <p class="sx-empty"><Icon name="ph:medal" width="20" height="20" /><span><Fragment set:html={dth('Nobody has points yet. They appear here after the first <code>{p}rep give</code>.', { p: prefix })} /></span></p>
+        ) : (
+          <ol class="cm-lb" style={`--rows:${Math.ceil(reputationTop.length / 2)}`}>
+            {reputationTop.map((r, index) => (
+              <li class="cm-lb-row">
+                <span class:list={['cm-rank', index < 3 && `top-${index + 1}`]}>{index + 1}</span>
+                <UserChip id={r.userId} person={people[r.userId]} />
+                <span class="cm-lb-points">
+                  <b>{dt(r.points === 1 ? '{a} pt' : '{a} pts', { a: num(r.points) })}</b>
+                  <span class="cm-meter"><i style={`width:${Math.max(3, Math.round((r.points / maxPoints) * 100))}%`}></i></span>
+                </span>
+                <form method="POST" data-no-dirty class="cm-inline">
+                  <input type="hidden" name="action" value="reset_reputation" />
+                  <input type="hidden" name="user_id" value={r.userId} />
+                  <button type="submit" class="sx-iconbtn" title={dt('Reset to 0')} aria-label={dt('Reset to 0')} data-confirm={dt('Reset the points of {a} to 0?', { a: people[r.userId]?.name ?? r.userId })}><Icon name="ph:arrow-counter-clockwise-fill" width="14" height="14" /></button>
+                </form>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+
+      <section class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#6fb4ea"><Icon name="ph:clock-counter-clockwise-fill" width="17" height="17" /></span>
+          <h2>{dt('Recent points')}</h2>
+        </div>
+        {repLog.length === 0 ? (
+          <p class="sx-empty"><Icon name="ph:clock-counter-clockwise" width="20" height="20" />{dt('The points given from now on are listed here.')}</p>
+        ) : (
+          <ul class="cm-log">
+            {repLog.map((row) => (
+              <li class="cm-log-row">
+                <UserChip id={row.giverId} person={people[row.giverId]} />
+                <Icon name="ph:arrow-right-bold" width="12" height="12" class="cm-arrow" />
+                <UserChip id={row.receiverId} person={people[row.receiverId]} />
+                <span class="cm-log-meta">{row.channelId && <span>#{channelName(row.channelId)}</span>}<time datetime={row.at}>{ago(row.at)}</time></span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#8b8fa3"><Icon name="ph:terminal-window-fill" width="17" height="17" /></span>
+          <h2>{dt('Commands')}</h2>
+        </div>
+        <ul class="cm-cmds">
+          <li><code>{prefix}rep give @member</code><span>{dt('Give a point')}</span></li>
+          <li><code>{prefix}rep view @member</code><span>{dt('See the points of a member')}</span></li>
+          <li><code>{prefix}rep leaderboard</code><span>{dt('The top 10')}</span></li>
+          <li><code>{prefix}rep reset @member</code><span>{dt('Reset a member (Manage Server)')}</span></li>
+        </ul>
+      </section>
     </div>
   )}
 
   {selectedSection === 'boosters' && (
-    <div class="cm-page">
-      <div class="cm-stats dgl-stagger">
-        <div class="cm-stat"><b>{boosterRoles.length}</b><span>{dt('Booster roles')}</span></div>
-        <div class="cm-stat"><b>{boosterStatus.boostCount}</b><span>{dt('Boosts')}</span></div>
-        <div class="cm-stat"><b>{dt('Level {a}', { a: boosterStatus.premiumTier })}</b><span>{dt('Server boost level')}</span></div>
-        <div class="cm-stat"><b>{lapsed.length}</b><span>{dt('No longer boosting')}</span></div>
-      </div>
-      {!boosterStatus.live && <div class="cm-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto did not answer, so the list shows the saved roles without their Discord details. Changes may not work right now.')}</div>}
-      {boosterStatus.live && !boosterStatus.canManageRoles && <div class="cm-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto needs the Manage Roles permission to create and change booster roles.')}</div>}
+    <div class="sx-page cm-page">
+      <DashStatTiles tiles={[
+        { label: dt('Booster roles'), value: boosterRoles.length, tone: 'invites' },
+        { label: dt('Boosts'), value: boosterStatus.boostCount, tone: 'messages' },
+        { label: dt('Server boost level'), value: 0, text: dt('Level {a}', { a: boosterStatus.premiumTier }), tone: 'voice' },
+        { label: dt('No longer boosting'), value: lapsed.length, tone: 'leaves' },
+        { label: dt('Without a role'), value: boosterStatus.withoutRole.length, tone: 'reactions' },
+      ]} />
+      {!boosterStatus.live && <div class="sx-flash sx-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto did not answer, so the list shows the saved roles without their Discord details. Changes may not work right now.')}</div>}
+      {boosterStatus.live && !boosterStatus.canManageRoles && <div class="sx-flash sx-flash-warn"><Icon name="ph:warning-fill" width="15" height="15" />{dt('Petto needs the Manage Roles permission to create and change booster roles.')}</div>}
 
-      <form method="POST" class="cm-settings">
+      <form method="POST" class="sx-stack cm-settings">
         <input type="hidden" name="action" value="booster" />
-        <div class="cm-grid">
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('Booster roles')}</div>
-              <label class="cm-switch" title={dt('On')}><input type="checkbox" name="enabled" checked={booster.enabled} /><span></span></label>
+        <div class="sx-duo cm-duo">
+          <section class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#f78fb3"><Icon name="ph:sparkle-fill" width="17" height="17" /></span>
+              <h2>{dt('Booster roles')}</h2>
+              <label class="sx-toggle-only"><input type="checkbox" name="enabled" checked={booster.enabled} aria-label={dt('Booster roles')} /><i class="sx-toggle"></i></label>
             </div>
-            <p class="cm-card-desc">{dt('When off, boosters cannot create or change a role. They can still remove theirs, and staff can still manage them here.')}</p>
-            <div class="cm-row">
-              <label>{dt('Place new roles above')}</label>
-              <select name="base_role_id">
+            <p class="sx-lead cm-lead">{dt('When off, boosters cannot create or change a role. They can still remove theirs, and staff can still manage them here.')}</p>
+            <div class="sx-field" data-sx-needs="enabled">
+              <label for="cm-base-role">{dt('Place new roles above')}</label>
+              <select id="cm-base-role" name="base_role_id">
                 <option value="">{dt('The Server Booster role (default)')}</option>
                 {roles.map((r) => <option value={r.id} selected={r.id === booster.baseRoleId}>@{r.name}</option>)}
               </select>
-              <span class="cm-help">{dt('New booster roles go right above this role, newest on top, so their color shows. Petto\'s own role must be higher.')}</span>
+              <span class="sx-hint">{dt('New booster roles go right above this role, newest on top, so their color shows. Petto\'s own role must be higher.')}</span>
             </div>
-          </div>
+          </section>
 
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#a78bfa"><Icon name="ph:palette-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('What boosters can change')}</div>
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#5b8def"><Icon name="ph:users-three-fill" width="17" height="17" /></span>
+              <h2>{dt('Limits')}</h2>
             </div>
-            <label class="cm-check"><input type="checkbox" name="allow_gradient" checked={booster.allowGradient} />{dt('Gradients (a second color)')}</label>
-            <label class="cm-check"><input type="checkbox" name="allow_icon" checked={booster.allowIcon} />{dt('Role icons')}{boosterStatus.live && boosterStatus.premiumTier < 2 && <span class="cm-label-muted">{dt('(needs boost level 2)')}</span>}</label>
-            <div class="cm-row-trio">
-              <div class="cm-row">
-                <label>{dt('Color wait (h)')}</label>
-                <input type="number" name="color_cooldown_hours" value={booster.colorCooldownHours} min="0" max="720" />
-              </div>
-              <div class="cm-row">
-                <label>{dt('Rename wait (h)')}</label>
-                <input type="number" name="rename_cooldown_hours" value={booster.renameCooldownHours} min="0" max="720" />
-              </div>
-              <div class="cm-row">
-                <label>{dt('Icon wait (h)')}</label>
-                <input type="number" name="icon_cooldown_hours" value={booster.iconCooldownHours} min="0" max="720" />
-              </div>
+            <div class="sx-grid">
+              <div class="sx-field"><label for="cm-role-limit">{dt('Roles per booster')}</label><SxNumber id="cm-role-limit" name="role_limit" value={booster.roleLimit} min="0" max="25" /></div>
+              <div class="sx-field"><label for="cm-share-max">{dt('Share with up to')}</label><SxNumber id="cm-share-max" name="share_max" value={booster.shareMax} min="0" max="25" /></div>
             </div>
-            <span class="cm-help">{dt('Hours a booster waits between two changes of the same kind. 0 = no wait.')}</span>
-          </div>
-
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#5b8def"><Icon name="ph:users-three-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('Limits')}</div>
-            </div>
-            <div class="cm-row-pair">
-              <div class="cm-row">
-                <label>{dt('Roles per booster')}</label>
-                <input type="number" name="role_limit" value={booster.roleLimit} min="0" max="25" />
-              </div>
-              <div class="cm-row">
-                <label>{dt('Share with up to')}</label>
-                <input type="number" name="share_max" value={booster.shareMax} min="0" max="25" />
-              </div>
-            </div>
-            <span class="cm-help"><Fragment set:html={dth('0 = no limit. Boosters share their role with friends with <code>{p}boosterrole share @member</code>.', { p: prefix })} /></span>
-          </div>
-
-          <div class="cm-card">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#fe6465"><Icon name="ph:prohibit-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('Name filter')}</div>
-            </div>
-            <div class="cm-row">
-              <textarea name="filtered_words" rows="4" maxlength="6000" placeholder={dt('One word or phrase per line')}>{booster.filteredWords.join('\n')}</textarea>
-              <span class="cm-help">{dt('A role name that contains any of these is refused. Capital letters do not matter.')}</span>
-            </div>
-          </div>
-
-          <div class="cm-card cm-card-wide">
-            <div class="cm-card-head">
-              <div class="cm-card-icon" style="--c:#f5c945"><Icon name="ph:clock-counter-clockwise-fill" width="16" height="16" /></div>
-              <div class="cm-card-title">{dt('When a member stops boosting')}</div>
-            </div>
-            <div class="cm-choices">
-              <label class="cm-choice"><input type="radio" name="on_unboost" value="keep" checked={booster.onUnboost === 'keep'} /><span><b>{dt('Keep the role')}</b><small>{dt('Nothing happens. Use Clean up below when you want to remove old roles.')}</small></span></label>
-              <label class="cm-choice"><input type="radio" name="on_unboost" value="remove" checked={booster.onUnboost === 'remove'} /><span><b>{dt('Take it off')}</b><small>{dt('The role is taken off the member and the people it is shared with, and given back if they boost again.')}</small></span></label>
-              <label class="cm-choice"><input type="radio" name="on_unboost" value="delete" checked={booster.onUnboost === 'delete'} /><span><b>{dt('Delete it')}</b><small>{dt('The role is deleted, also when the member leaves the server.')}</small></span></label>
-            </div>
-          </div>
+            <span class="sx-hint"><Fragment set:html={dth('0 = no limit. Boosters share their role with friends with <code>{p}boosterrole share @member</code>.', { p: prefix })} /></span>
+          </section>
         </div>
-        <button type="submit" class="btn btn-ghost btn-sm">{dt('Save')}</button>
+
+        <section class="sx-panel" data-sx-needs="enabled">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#a78bfa"><Icon name="ph:palette-fill" width="17" height="17" /></span>
+            <h2>{dt('What boosters can change')}</h2>
+          </div>
+          <div class="sx-switches">
+            <label class="sx-switch"><input type="checkbox" name="allow_gradient" checked={booster.allowGradient} /><span class="sx-switch-text"><b>{dt('Gradients (a second color)')}</b></span><i class="sx-toggle"></i></label>
+            <label class="sx-switch"><input type="checkbox" name="allow_icon" checked={booster.allowIcon} /><span class="sx-switch-text"><b>{dt('Role icons')}</b>{boosterStatus.live && boosterStatus.premiumTier < 2 && <em>{dt('(needs boost level 2)')}</em>}</span><i class="sx-toggle"></i></label>
+          </div>
+          <div class="sx-sub">
+            <h3>{dt('Wait between changes')}</h3>
+            <div class="sx-grid sx-grid-3">
+              <div class="sx-field"><label for="cm-wait-color">{dt('Color wait (h)')}</label><SxNumber id="cm-wait-color" name="color_cooldown_hours" value={booster.colorCooldownHours} min="0" max="720" /></div>
+              <div class="sx-field"><label for="cm-wait-rename">{dt('Rename wait (h)')}</label><SxNumber id="cm-wait-rename" name="rename_cooldown_hours" value={booster.renameCooldownHours} min="0" max="720" /></div>
+              <div class="sx-field"><label for="cm-wait-icon">{dt('Icon wait (h)')}</label><SxNumber id="cm-wait-icon" name="icon_cooldown_hours" value={booster.iconCooldownHours} min="0" max="720" /></div>
+            </div>
+            <span class="sx-hint">{dt('Hours a booster waits between two changes of the same kind. 0 = no wait.')}</span>
+          </div>
+        </section>
+
+        <div class="sx-duo cm-duo">
+          <section class="sx-panel" data-sx-needs="enabled">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#fe6465"><Icon name="ph:prohibit-fill" width="17" height="17" /></span>
+              <h2>{dt('Name filter')}</h2>
+            </div>
+            <div class="sx-field">
+              <textarea id="cm-filter" name="filtered_words" class="dgl-autogrow sx-mono" rows="4" maxlength="6000" data-count aria-label={dt('Name filter')} placeholder={dt('One word or phrase per line')}>{booster.filteredWords.join('\n')}</textarea>
+              <span class="sx-hint">{dt('A role name that contains any of these is refused. Capital letters do not matter.')}</span>
+            </div>
+          </section>
+
+          <section class="sx-panel">
+            <div class="sx-panel-head">
+              <span class="sx-panel-icon" style="--c:#f5c945"><Icon name="ph:clock-counter-clockwise-fill" width="17" height="17" /></span>
+              <h2 id="cm-unboost-h">{dt('When a member stops boosting')}</h2>
+            </div>
+            <div class="cm-choices" role="radiogroup" aria-labelledby="cm-unboost-h">
+              {unboostChoices.map(([value, icon, title, hint]) => (
+                <label class="sx-choice"><input type="radio" name="on_unboost" value={value} checked={booster.onUnboost === value} /><span class="sx-choice-body"><Icon name={icon} width="17" height="17" /><b>{title}</b><em>{hint}</em></span></label>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save changes')}</button></div>
       </form>
 
-      <div class="cm-section">
-        <div class="cm-section-head">
-          <h2><Fragment set:html={dth('Booster roles in this server <span class="cm-count">{a}</span>', { a: boosterRoles.length })} /></h2>
-          {boosterRoles.length > 0 && (
-            <form method="POST" data-no-dirty>
-              <input type="hidden" name="action" value="br_cleanup" />
-              <button type="submit" class="btn btn-ghost btn-sm" data-confirm={dt('Delete the booster roles of every member who no longer boosts?')}><Icon name="ph:broom-fill" width="13" height="13" />{dt('Clean up ({a})', { a: lapsed.length })}</button>
-            </form>
-          )}
-        </div>
-        {boosterRoles.length === 0 ? (
-          <div class="cm-empty"><Icon name="ph:sparkle" width="18" height="18" /><span><Fragment set:html={dth('No booster roles yet. Boosters create theirs with <code>{p}boosterrole create</code>, or give one to a member below.', { p: prefix })} /></span></div>
-        ) : (
-          <div class="cm-br-list dgl-stagger">
-            {boosterRoles.map((row) => {
-              const state = row.boosting === true ? 'on' : row.in_server === false ? 'left' : row.boosting === false ? 'off' : 'unknown';
-              const label = state === 'on' ? dt('Boosting') : state === 'left' ? dt('Left the server') : state === 'off' ? dt('Not boosting') : dt('Unknown');
-              const roleTitle = row.exists ? (row.name ?? roleName(row.role_id)) : dt('Deleted role');
-              return (
-                <article class:list={['cm-br', { gone: !row.exists }]}>
-                  <div class="cm-br-main">
-                    <span class="cm-br-swatch" style={`--a:${row.color ?? '#7c8a94'};--b:${row.color2 ?? row.color ?? '#7c8a94'}`}>{row.icon && <img src={row.icon} alt="" width="18" height="18" loading="lazy" />}</span>
-                    <div class="cm-br-name">
-                      <b style={row.color ? `color:${row.color}` : undefined}>{roleTitle}</b>
-                      <code>{row.color ?? dt('No color')}{row.color2 ? ` → ${row.color2}` : ''}</code>
-                    </div>
-                    <UserChip id={row.user_id} person={people[row.user_id]} />
-                    <span class:list={['cm-pill', state]}>{label}</span>
-                    {row.shared_with.length > 0 && (
-                      <span class="cm-br-shared" title={row.shared_with.map((userId) => people[userId]?.name ?? userId).join(', ')}>
-                        {row.shared_with.slice(0, 4).map((userId) => <img src={people[userId]?.avatar ?? `https://cdn.discordapp.com/embed/avatars/${Number(userId.slice(-3)) % 6}.png`} alt="" width="18" height="18" loading="lazy" />)}
-                        <span>{dt('+{a} shared', { a: row.shared_with.length })}</span>
-                      </span>
-                    )}
-                  </div>
-                  <div class="cm-br-actions">
-                    {row.exists && (
-                      <details class="cm-br-edit">
-                        <summary><Icon name="ph:pencil-simple-fill" width="12" height="12" />{dt('Edit')}</summary>
-                        <form method="POST" class="cm-br-form" data-no-dirty>
-                          <input type="hidden" name="action" value="br_edit" />
-                          <input type="hidden" name="member_id" value={row.user_id} />
-                          <div class="cm-row"><label>{dt('Name')}</label><input type="text" name="name" value={roleTitle} maxlength="100" /></div>
-                          <div class="cm-br-colors">
-                            <ColorPicker name="hex" value={row.color ?? '#f78fb3'} label={dt('Color')} />
-                            <ColorPicker name="hex2" value={row.color2 ?? ''} allowNone label={dt('Second color')} />
-                          </div>
-                          <div class="cm-row"><label><Fragment set:html={dth('Icon <span class="cm-label-muted">a picture link or a custom emoji; leave empty to keep it</span>')} /></label><input type="text" name="icon" value="" maxlength="500" placeholder="https://… / <:emoji:123>" /></div>
-                          {row.icon && <label class="cm-check"><input type="checkbox" name="icon_remove" />{dt('Remove the icon')}</label>}
-                          <button type="submit" class="btn btn-ghost btn-sm">{dt('Save role')}</button>
-                        </form>
-                      </details>
-                    )}
-                    <form method="POST" data-no-dirty>
-                      <input type="hidden" name="action" value="br_remove" />
-                      <input type="hidden" name="member_id" value={row.user_id} />
-                      <button type="submit" class="cm-del-text" data-confirm={dt('Delete this booster role? The role is deleted in Discord.')}><Icon name="ph:trash-fill" width="12" height="12" />{dt('Delete')}</button>
-                    </form>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+      <div class="cm-sec-head">
+        <h2>{dt('Booster roles in this server')} <span class="cm-count">{num(boosterRoles.length)}</span></h2>
+        {boosterRoles.length > 0 && (
+          <form method="POST" data-no-dirty class="cm-inline">
+            <input type="hidden" name="action" value="br_cleanup" />
+            <button type="submit" class="btn btn-ghost btn-sm cm-btn" data-confirm={dt('Delete the booster roles of every member who no longer boosts?')}><Icon name="ph:broom-fill" width="13" height="13" />{dt('Clean up ({a})', { a: lapsed.length })}</button>
+          </form>
         )}
       </div>
-
-      <div class="cm-grid">
-        <form method="POST" class="cm-card" data-no-dirty>
-          <input type="hidden" name="action" value="br_set" />
-          <div class="cm-card-head">
-            <div class="cm-card-icon" style="--c:#2dd4a7"><Icon name="ph:gift-fill" width="16" height="16" /></div>
-            <div class="cm-card-title">{dt('Give a booster role')}</div>
-          </div>
-          <p class="cm-card-desc">{dt('Creates a role for a member, or changes the one they have. No limit or wait applies, like the staff command.')}</p>
-          <div class="cm-row"><label>{dt('Member')}</label><MemberPick guildId={guildId} /></div>
-          {boosterStatus.withoutRole.length > 0 && (
-            <div class="cm-row">
-              <label>{dt('Boosting without a role')}</label>
-              <div class="cm-pick-quick">
-                {boosterStatus.withoutRole.slice(0, 12).map((userId) => <button type="button" data-pick-quick={userId} data-pick-name={people[userId]?.name ?? userId}><img src={people[userId]?.avatar ?? ''} alt="" width="18" height="18" loading="lazy" />{people[userId]?.name ?? userId}</button>)}
-              </div>
-            </div>
-          )}
-          <div class="cm-row"><label>{dt('Role name')}</label><input type="text" name="name" maxlength="100" placeholder={dt('Leave empty to use their name')} /></div>
-          <div class="cm-br-colors">
-            <ColorPicker name="hex" value="#f78fb3" label={dt('Color')} />
-            <ColorPicker name="hex2" value="#5b8def" label={dt('Second color')} />
-          </div>
-          <label class="cm-check"><input type="checkbox" name="gradient" />{dt('Use the second color (gradient)')}</label>
-          <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Create or update')}</button>
-        </form>
-
-        <form method="POST" class="cm-card" data-no-dirty>
-          <input type="hidden" name="action" value="br_link" />
-          <div class="cm-card-head">
-            <div class="cm-card-icon" style="--c:#5b8def"><Icon name="ph:link-fill" width="16" height="16" /></div>
-            <div class="cm-card-title">{dt('Link an existing role')}</div>
-          </div>
-          <p class="cm-card-desc">{dt('Makes a role the server already has the booster role of a member, so they can change it with the commands. The member gets the role.')}</p>
-          <div class="cm-row"><label>{dt('Member')}</label><MemberPick guildId={guildId} /></div>
-          <div class="cm-row">
-            <label>{dt('Role')}</label>
-            <select name="role_id" required>
-              <option value="" disabled selected>{dt('Choose a role')}</option>
-              {roleDetails.filter((r) => !r.managed).map((r) => <option value={r.id}>@{r.name}</option>)}
-            </select>
-          </div>
-          <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:link-fill" width="12" height="12" />{dt('Link')}</button>
-        </form>
-
-        <div class="cm-card">
-          <div class="cm-card-head">
-            <div class="cm-card-icon" style="--c:#8b8fa3"><Icon name="ph:terminal-window-fill" width="16" height="16" /></div>
-            <div class="cm-card-title">{dt('Commands for boosters')}</div>
-          </div>
-          <ul class="cm-cmds">
-            <li><code>{prefix}boosterrole create {dt('name')} #hex</code><span>{dt('Create the role')}</span></li>
-            <li><code>{prefix}boosterrole color #hex #hex2</code><span>{dt('Change the color')}</span></li>
-            <li><code>{prefix}boosterrole rename {dt('name')}</code><span>{dt('Rename it')}</span></li>
-            <li><code>{prefix}boosterrole icon</code><span>{dt('Set an icon (link, emoji or attached image)')}</span></li>
-            <li><code>{prefix}boosterrole random</code><span>{dt('A random color')}</span></li>
-            <li><code>{prefix}boosterrole share @member</code><span>{dt('Share it')}</span></li>
-            <li><code>{prefix}boosterrole remove</code><span>{dt('Delete it')}</span></li>
-          </ul>
+      {boosterRoles.length === 0 ? (
+        <p class="sx-empty"><Icon name="ph:sparkle" width="20" height="20" /><span><Fragment set:html={dth('No booster roles yet. Boosters create theirs with <code>{p}boosterrole create</code>, or give one to a member below.', { p: prefix })} /></span></p>
+      ) : (
+        <div class="cm-br-list dgl-stagger">
+          {boosterRoles.map((row) => {
+            const state = row.boosting === true ? 'on' : row.in_server === false ? 'left' : row.boosting === false ? 'off' : 'unknown';
+            const label = state === 'on' ? dt('Boosting') : state === 'left' ? dt('Left the server') : state === 'off' ? dt('Not boosting') : dt('Unknown');
+            const roleTitle = row.exists ? (row.name ?? roleName(row.role_id)) : dt('Deleted role');
+            return (
+              <article class:list={['cm-br', { gone: !row.exists }]}>
+                <div class="cm-br-top">
+                  <span class="cm-br-swatch" style={`--a:${row.color ?? '#7c8a94'};--b:${row.color2 ?? row.color ?? '#7c8a94'}`}>{row.icon && <img src={row.icon} alt="" width="18" height="18" loading="lazy" />}</span>
+                  <div class="cm-br-name">
+                    <b style={row.color ? `color:${row.color}` : undefined}>{roleTitle}</b>
+                    <code>{row.color ?? dt('No color')}{row.color2 ? ` → ${row.color2}` : ''}</code>
+                  </div>
+                  <span class:list={['cm-pill', state]}>{label}</span>
+                  <form method="POST" data-no-dirty class="cm-inline">
+                    <input type="hidden" name="action" value="br_remove" />
+                    <input type="hidden" name="member_id" value={row.user_id} />
+                    <button type="submit" class="sx-iconbtn" title={dt('Delete')} aria-label={dt('Delete')} data-confirm={dt('Delete this booster role? The role is deleted in Discord.')}><Icon name="ph:trash-fill" width="14" height="14" /></button>
+                  </form>
+                </div>
+                <div class="cm-br-meta">
+                  <UserChip id={row.user_id} person={people[row.user_id]} />
+                  {row.shared_with.length > 0 && (
+                    <span class="cm-br-shared" title={row.shared_with.map((userId) => people[userId]?.name ?? userId).join(', ')}>
+                      {row.shared_with.slice(0, 4).map((userId) => <img src={avatarOf(userId)} alt="" width="20" height="20" loading="lazy" />)}
+                      <span>{dt('+{a} shared', { a: row.shared_with.length })}</span>
+                    </span>
+                  )}
+                  {row.created_at && <time class="cm-br-since" datetime={row.created_at} title={dt('Created')}><Icon name="ph:clock-fill" width="11" height="11" />{ago(row.created_at)}</time>}
+                </div>
+                {row.exists && (
+                  <details class="cm-br-edit">
+                    <summary><Icon name="ph:pencil-simple-fill" width="12" height="12" />{dt('Edit')}<Icon name="ph:caret-down-bold" class="cm-caret" width="12" height="12" /></summary>
+                    <form method="POST" class="cm-br-form" data-no-dirty>
+                      <input type="hidden" name="action" value="br_edit" />
+                      <input type="hidden" name="member_id" value={row.user_id} />
+                      <div class="sx-field"><label>{dt('Name')}</label><textarea name="name" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="100">{roleTitle}</textarea></div>
+                      <div class="cm-colors">
+                        <ColorPicker name="hex" value={row.color ?? '#f78fb3'} label={dt('Color')} />
+                        <ColorPicker name="hex2" value={row.color2 ?? ''} allowNone label={dt('Second color')} />
+                      </div>
+                      <div class="sx-field"><label><Fragment set:html={dth('Icon <span class="cm-label-muted">a picture link or a custom emoji; leave empty to keep it</span>')} /></label><textarea name="icon" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="500" inputmode="url" placeholder="https://… / <:emoji:123>"></textarea></div>
+                      {row.icon && <label class="sx-switch"><input type="checkbox" name="icon_remove" /><span class="sx-switch-text"><b>{dt('Remove the icon')}</b></span><i class="sx-toggle"></i></label>}
+                      <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm">{dt('Save role')}</button></div>
+                    </form>
+                  </details>
+                )}
+              </article>
+            );
+          })}
         </div>
+      )}
+
+      <div class="sx-duo cm-duo">
+        <form method="POST" class="sx-panel cm-form" data-no-dirty>
+          <input type="hidden" name="action" value="br_set" />
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#2dd4a7"><Icon name="ph:gift-fill" width="17" height="17" /></span>
+            <h2>{dt('Give a booster role')}</h2>
+          </div>
+          <p class="sx-lead cm-lead">{dt('Creates a role for a member, or changes the one they have. No limit or wait applies, like the staff command.')}</p>
+          <div class="cm-body">
+            <div class="sx-field"><span class="sx-label">{dt('Member')}</span><MemberPick guildId={guildId} /></div>
+            {boosterStatus.withoutRole.length > 0 && (
+              <div class="sx-field">
+                <span class="sx-label">{dt('Boosting without a role')}</span>
+                <div class="cm-quick">
+                  {boosterStatus.withoutRole.slice(0, 12).map((userId) => <button type="button" data-pick-quick={userId} data-pick-name={people[userId]?.name ?? userId}><img src={avatarOf(userId)} alt="" width="20" height="20" loading="lazy" />{people[userId]?.name ?? userId}</button>)}
+                </div>
+              </div>
+            )}
+            <div class="sx-field"><label for="cm-give-name">{dt('Role name')}</label><textarea id="cm-give-name" name="name" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="100" placeholder={dt('Leave empty to use their name')}></textarea></div>
+            <div class="cm-colors">
+              <ColorPicker name="hex" value="#f78fb3" label={dt('Color')} />
+              <ColorPicker name="hex2" value="#5b8def" label={dt('Second color')} />
+            </div>
+            <label class="sx-switch"><input type="checkbox" name="gradient" /><span class="sx-switch-text"><b>{dt('Use the second color (gradient)')}</b></span><i class="sx-toggle"></i></label>
+          </div>
+          <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:check-bold" width="12" height="12" />{dt('Create or update')}</button></div>
+        </form>
+
+        <form method="POST" class="sx-panel cm-form" data-no-dirty>
+          <input type="hidden" name="action" value="br_link" />
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#5b8def"><Icon name="ph:link-fill" width="17" height="17" /></span>
+            <h2>{dt('Link an existing role')}</h2>
+          </div>
+          <p class="sx-lead cm-lead">{dt('Makes a role the server already has the booster role of a member, so they can change it with the commands. The member gets the role.')}</p>
+          <div class="cm-body">
+            <div class="sx-field"><span class="sx-label">{dt('Member')}</span><MemberPick guildId={guildId} /></div>
+            {boosterStatus.withoutRole.length > 0 && (
+              <div class="sx-field">
+                <span class="sx-label">{dt('Boosting without a role')}</span>
+                <div class="cm-quick">
+                  {boosterStatus.withoutRole.slice(0, 12).map((userId) => <button type="button" data-pick-quick={userId} data-pick-name={people[userId]?.name ?? userId}><img src={avatarOf(userId)} alt="" width="20" height="20" loading="lazy" />{people[userId]?.name ?? userId}</button>)}
+                </div>
+              </div>
+            )}
+            <div class="sx-field">
+              <label for="cm-link-role">{dt('Role')}</label>
+              <select id="cm-link-role" name="role_id" required>
+                <option value="" disabled selected>{dt('Choose a role')}</option>
+                {roleDetails.filter((r) => !r.managed).map((r) => <option value={r.id}>@{r.name}</option>)}
+              </select>
+              <span class="sx-hint">{dt('Roles made by a bot or an integration are not listed.')}</span>
+            </div>
+          </div>
+          <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:link-fill" width="12" height="12" />{dt('Link')}</button></div>
+        </form>
       </div>
+
+      <section class="sx-panel">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#8b8fa3"><Icon name="ph:terminal-window-fill" width="17" height="17" /></span>
+          <h2>{dt('Commands for boosters')}</h2>
+        </div>
+        <ul class="cm-cmds">
+          <li><code>{prefix}boosterrole create {dt('name')} #hex</code><span>{dt('Create the role')}</span></li>
+          <li><code>{prefix}boosterrole color #hex #hex2</code><span>{dt('Change the color')}</span></li>
+          <li><code>{prefix}boosterrole rename {dt('name')}</code><span>{dt('Rename it')}</span></li>
+          <li><code>{prefix}boosterrole icon</code><span>{dt('Set an icon (link, emoji or attached image)')}</span></li>
+          <li><code>{prefix}boosterrole random</code><span>{dt('A random color')}</span></li>
+          <li><code>{prefix}boosterrole share @member</code><span>{dt('Share it')}</span></li>
+          <li><code>{prefix}boosterrole remove</code><span>{dt('Delete it')}</span></li>
+        </ul>
+      </section>
     </div>
   )}
 
   {selectedSection === 'polls' && (
-  <div class:list={['cm-section cm-polls', { 'cm-section-hidden': selectedSection !== 'polls' }]}>
-    <div class="cm-polls-head">
-      <div>
-        <h2>{dt('Create a poll')}</h2>
-        <p class="cm-section-sub">{dt('Publish a button-voted poll directly to a channel. Members can change their vote until you close it.')}</p>
-      </div>
-    </div>
-    {pollError && <div class="cm-error"><Icon name="ph:warning-fill" width="15" height="15" />{pollError}</div>}
-    <form method="POST" class="cm-card cm-poll-create" data-no-dirty>
+  <div class="sx-page cm-page">
+    <DashStatTiles tiles={[
+      { label: dt('Recent polls'), value: polls.length, tone: 'invites' },
+      { label: dt('Open polls'), value: pollsOpen, tone: 'joins' },
+      { label: dt('Closed polls'), value: polls.length - pollsOpen, tone: 'leaves' },
+      { label: dt('Votes cast'), value: pollVotes, tone: 'reactions' },
+    ]} />
+
+    {pollError && <div class="sx-flash sx-flash-bad" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{pollError}</div>}
+    <form method="POST" class="cm-create cm-poll-create" data-no-dirty>
       <input type="hidden" name="action" value="create_poll" />
-      <div class="cm-row">
-        <label>{dt('Question')}</label>
-        <input type="text" name="question" maxlength="200" placeholder={dt('What should we build next?')} required />
-      </div>
-      <div class="cm-row">
-        <label>{dt('Options')}</label>
-        <textarea name="options" rows="5" maxlength="800" placeholder={dt('One option per line\nA new command\nA dashboard module')} required></textarea>
-        <span class="cm-help">{dt('Use 2 to 10 options. Each option can be up to 80 characters.')}</span>
-      </div>
-      <div class="cm-row-pair">
-        <div class="cm-row">
-          <label>{dt('Channel')}</label>
-          <select name="channel_id" required>
-            <option value="" disabled selected>{dt('Choose a channel')}</option>
-            {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
-          </select>
+      <section class="sx-panel cm-form">
+        <div class="sx-panel-head">
+          <span class="sx-panel-icon" style="--c:#6fb4ea"><Icon name="ph:chart-bar-fill" width="17" height="17" /></span>
+          <h2>{dt('Create a poll')}</h2>
         </div>
-        <div class="cm-row">
-          <label>{dt('Auto-close in minutes')}</label>
-          <input type="number" name="duration_minutes" min="0" max="525600" placeholder={dt('0 = never')} />
+        <p class="sx-lead cm-lead">{dt('Publish a button-voted poll directly to a channel. Members can change their vote until you close it.')}</p>
+        <div class="cm-body">
+          <div class="sx-field"><label for="cm-poll-q">{dt('Question')}</label><textarea id="cm-poll-q" name="question" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="200" placeholder={dt('What should we build next?')} required></textarea></div>
+          <div class="sx-field">
+            <label for="cm-poll-opts">{dt('Options')}</label>
+            <textarea id="cm-poll-opts" name="options" class="dgl-autogrow" rows="4" maxlength="800" data-count placeholder={dt('One option per line\nA new command\nA dashboard module')} required></textarea>
+            <span class="sx-hint">{dt('Use 2 to 10 options. Each option can be up to 80 characters.')}</span>
+          </div>
+          <div class="sx-grid">
+            <div class="sx-field">
+              <label for="cm-poll-channel">{dt('Channel')}</label>
+              <select id="cm-poll-channel" name="channel_id" required>
+                <option value="" disabled selected>{dt('Choose a channel')}</option>
+                {channels.map((c) => <option value={c.id}>#{c.name}</option>)}
+              </select>
+            </div>
+            <div class="sx-field"><label for="cm-poll-close">{dt('Auto-close in minutes')}</label><SxNumber id="cm-poll-close" name="duration_minutes" value="" min="0" max="525600" placeholder={dt('0 = never')} /></div>
+            <div class="sx-field"><label for="cm-poll-image"><Fragment set:html={dth('Image URL <span class="cm-label-muted">optional</span>')} /></label><textarea id="cm-poll-image" name="image" class="dgl-autogrow sx-one" rows="1" data-one-line data-count maxlength="1000" inputmode="url" placeholder="https://..."></textarea></div>
+            <div class="sx-field">
+              <label for="cm-poll-design"><Fragment set:html={dth('Design <span class="cm-label-muted">optional</span>')} /></label>
+              <select id="cm-poll-design" name="embed_template">
+                <option value="">{dt('Petto card (default)')}</option>
+                {pollDesigns.map((name) => <option value={name}>{name}</option>)}
+              </select>
+            </div>
+          </div>
+          <span class="sx-hint cm-design-hint">{dt('Pick a saved V2 embed to design the poll with the poll variables. The vote buttons stay under it.')}</span>
+          <label class="sx-switch"><input type="checkbox" name="multi" /><span class="sx-switch-text"><b>{dt('Allow members to choose more than one option')}</b></span><i class="sx-toggle"></i></label>
         </div>
+        <div class="sx-foot cm-foot"><button type="submit" class="btn btn-accent btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />{dt('Publish poll')}</button></div>
+      </section>
+
+      <div class="cm-create-side">
+        <aside class="sx-panel cm-pv-panel" aria-label={dt('Preview')}>
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#f0a88f"><Icon name="ph:eye-fill" width="17" height="17" /></span>
+            <h2>{dt('Preview')}</h2>
+          </div>
+          <p class="sx-lead cm-lead">{dt('The poll as Petto posts it. It changes while you write.')}</p>
+          <div class="cm-pv" data-poll-preview aria-live="polite" data-sample-opts={JSON.stringify([dt('A new command'), dt('A dashboard module')])}>
+            <div class="cm-pv-q" data-pv-q>{dt('What should we build next?')}</div>
+            <div class="cm-pv-type" data-pv-type data-multi={dt('Multiple choice')}>{dt('Single choice')}</div>
+            <div class="cm-pv-opts" data-pv-opts></div>
+            <div class="cm-pv-foot">{dt('0 votes · open')}</div>
+          </div>
+        </aside>
+
+        <section class="sx-panel cm-running">
+          <div class="sx-panel-head">
+            <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:timer-fill" width="17" height="17" /></span>
+            <h2>{dt('Running now')}</h2>
+          </div>
+          {pollsOpen === 0 ? (
+            <p class="sx-empty"><Icon name="ph:chart-bar" width="20" height="20" />{dt('No poll is running right now.')}</p>
+          ) : (
+            <ul class="cm-run">
+              {polls.filter((poll) => !poll.closed).slice(0, 4).map((poll) => (
+                <li data-run={poll.id}>
+                  <b>{poll.question}</b>
+                  <small>#{channelName(poll.channel_id)} · <span data-run-voters>{poll.voters}</span> {dt('Voters')} · {poll.ends_at ? dt('Closes in {a}', { a: until(poll.ends_at) }) : dt('No end')}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
-      <div class="cm-row">
-        <label><Fragment set:html={dth('Image URL <span class="cm-label-muted">optional</span>')} /></label>
-        <input type="url" name="image" maxlength="1000" placeholder="https://..." />
-      </div>
-      <div class="cm-row">
-        <label><Fragment set:html={dth('Design <span class="cm-label-muted">optional</span>')} /></label>
-        <select name="embed_template">
-          <option value="">{dt('Petto card (default)')}</option>
-          {pollDesigns.map((name) => <option value={name}>{name}</option>)}
-        </select>
-        <span class="cm-help">{dt('Pick a saved V2 embed to design the poll with the poll variables. The vote buttons stay under it.')}</span>
-      </div>
-      <label class="cm-check"><input type="checkbox" name="multi" />{dt('Allow members to choose more than one option')}</label>
-      <div class="cm-pv" data-poll-preview aria-live="polite">
-        <div class="cm-pv-label">{dt('Preview')}</div>
-        <div class="cm-pv-q" data-pv-q>{dt('What should we build next?')}</div>
-        <div class="cm-pv-type" data-pv-type data-multi={dt('Multiple choice')}>{dt('Single choice')}</div>
-        <div class="cm-pv-opts" data-pv-opts></div>
-        <div class="cm-pv-foot">{dt('0 votes · open')}</div>
-      </div>
-      <button type="submit" class="btn btn-ghost btn-sm"><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />{dt('Publish poll')}</button>
     </form>
 
     <div class="cm-polls-existing" data-live-url={`/dash/guild/${guildId}/live?kind=polls`}>
-      <h2><Fragment set:html={dth('Recent polls <span class="cm-count">{a}</span>', { a: (polls.length) })} /></h2>
+      <div class="cm-sec-head">
+        <h2>{dt('Recent polls')} <span class="cm-count">{num(polls.length)}</span></h2>
+        {pollsOpen > 0 && <p class="sx-hint cm-live-hint"><i class="cm-live-dot"></i>{dt('The votes of open polls update by themselves.')}</p>}
+      </div>
       {polls.length === 0 ? (
-        <div class="cm-empty"><Icon name="ph:chart-bar" width="18" height="18" /><span>{dt('No polls have been published in this server yet.')}</span></div>
+        <p class="sx-empty"><Icon name="ph:chart-bar" width="20" height="20" />{dt('No polls have been published in this server yet.')}</p>
       ) : (
         <div class="cm-poll-list dgl-stagger">
           {polls.map((poll) => {
             const total = poll.voters;
+            const best = poll.closed ? Math.max(0, ...poll.counts) : 0;
             return (
-              <article class:list={['cm-poll-card', { closed: poll.closed }]} data-poll-id={poll.id} data-open={poll.closed ? '' : '1'}>
-                <div class="cm-poll-card-head"><div><h3>{poll.question}</h3><p>{dt('#{a} · {b} voter{c} · {d}', { a: (channels.find((c) => c.id === poll.channel_id)?.name ?? poll.channel_id), b: (total), c: (total === 1 ? '' : 's'), d: (poll.closed ? 'Closed' : 'Open') })}</p>
-                  <p class="cm-poll-meta">
-                    <span><Icon name="ph:users-three-fill" width="11" height="11" /> <b data-poll-voters>{total}</b></span>
-                    {poll.ends_at && !poll.closed && <span><Icon name="ph:clock-fill" width="11" height="11" /> {dt('Closes')} <time datetime={poll.ends_at} data-local-time>{poll.ends_at}</time></span>}
-                    {poll.multi && <span>{dt('Multiple choice')}</span>}
-                    {poll.embed_template && <span>{dt('Design')}: {poll.embed_template}</span>}
-                  </p></div><span class="cm-poll-status" data-poll-status data-label-live="Live" data-label-closed="Closed">{poll.closed ? 'Closed' : 'Live'}</span></div>
+              <article class:list={['cm-poll', { closed: poll.closed }]} data-poll-id={poll.id} data-open={poll.closed ? '' : '1'}>
+                <div class="cm-poll-head">
+                  <div class="cm-poll-title">
+                    <h3>{poll.question}</h3>
+                    <p>#{channelName(poll.channel_id)} · {ago(poll.created_at)}</p>
+                  </div>
+                  <span class="cm-poll-status" data-poll-status data-label-live={dt('Live')} data-label-closed={dt('Closed')}>{poll.closed ? dt('Closed') : dt('Live')}</span>
+                </div>
+                <p class="cm-poll-meta">
+                  <span><Icon name="ph:users-three-fill" width="12" height="12" /><b data-poll-voters>{total}</b> {dt('Voters')}</span>
+                  {poll.ends_at && !poll.closed && <span><Icon name="ph:clock-fill" width="12" height="12" />{dt('Closes in {a}', { a: until(poll.ends_at) })}</span>}
+                  {poll.multi && <span><Icon name="ph:check-circle-fill" width="12" height="12" />{dt('Multiple choice')}</span>}
+                  {poll.image && <span><Icon name="ph:image-fill" width="12" height="12" />{dt('Image')}</span>}
+                  {poll.embed_template && <span><Icon name="ph:palette-fill" width="12" height="12" />{poll.embed_template}</span>}
+                </p>
                 <div class="cm-poll-options">
                   {poll.options.map((option, index) => {
                     const count = poll.counts[index] ?? 0;
                     const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                    return <div class="cm-poll-option" data-poll-option={index}><div class="cm-poll-option-line"><span>{index + 1}. {option}</span><b data-poll-count>{count} · {pct}%</b></div><div class="cm-poll-bar"><i data-poll-bar style={`width:${pct}%`} /></div></div>;
+                    return (
+                      <div class:list={['cm-opt', { win: poll.closed && best > 0 && count === best }]} data-poll-option={index}>
+                        <div class="cm-opt-line"><span class="cm-opt-n">{index + 1}</span><span class="cm-opt-text">{option}</span><b data-poll-count>{count} · {pct}%</b></div>
+                        <div class="cm-meter"><i data-poll-bar style={`width:${pct}%`}></i></div>
+                      </div>
+                    );
                   })}
                 </div>
                 <div class="cm-poll-actions">
-                  <a class="cm-link" href={`https://discord.com/channels/${guildId}/${poll.channel_id}/${poll.message_id}`} target="_blank" rel="noopener"><Icon name="ph:arrow-square-out" width="13" height="13" />{dt('Open in Discord')}</a>
-                  {!poll.closed && <form method="POST"><input type="hidden" name="action" value="close_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-del-text" data-confirm={dt('End this poll now? Nobody can vote after that.')}><Icon name="ph:stop-circle-fill" width="13" height="13" />{dt('End poll')}</button></form>}
-                  <form method="POST"><input type="hidden" name="action" value="delete_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-del-text" data-confirm={dt('Delete this poll? Its message in Discord and its votes are removed.')}><Icon name="ph:trash-fill" width="13" height="13" />{dt('Delete')}</button></form>
+                  <a class="cm-act" href={`https://discord.com/channels/${guildId}/${poll.channel_id}/${poll.message_id}`} target="_blank" rel="noopener"><Icon name="ph:arrow-square-out" width="13" height="13" />{dt('Open in Discord')}</a>
+                  <span class="cm-poll-spacer"></span>
+                  {!poll.closed && <form method="POST" data-no-dirty class="cm-inline"><input type="hidden" name="action" value="close_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-danger" data-confirm={dt('End this poll now? Nobody can vote after that.')}><Icon name="ph:stop-circle-fill" width="13" height="13" />{dt('End poll')}</button></form>}
+                  <form method="POST" data-no-dirty class="cm-inline"><input type="hidden" name="action" value="delete_poll" /><input type="hidden" name="poll_id" value={poll.id} /><button type="submit" class="cm-danger" data-confirm={dt('Delete this poll? Its message in Discord and its votes are removed.')}><Icon name="ph:trash-fill" width="13" height="13" />{dt('Delete')}</button></form>
                 </div>
               </article>
             );
@@ -639,256 +791,298 @@ const lapsed = boosterRoles.filter((row) => row.boosting === false || row.in_ser
     </div>
   </div>
   )}
-  </div>
+
+  <script is:inline>
+    (function () {
+      var letters = ['\u{1F1E6}','\u{1F1E7}','\u{1F1E8}','\u{1F1E9}','\u{1F1EA}','\u{1F1EB}','\u{1F1EC}','\u{1F1ED}','\u{1F1EE}','\u{1F1EF}'];
+      function renderPollPreview(form) {
+        var box = form.querySelector('[data-poll-preview]');
+        if (!box) return;
+        var q = form.querySelector('[name="question"]').value.trim();
+        var lines = form.querySelector('[name="options"]').value.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 10);
+        var multi = form.querySelector('[name="multi"]').checked;
+        var qEl = box.querySelector('[data-pv-q]');
+        if (qEl) { if (!qEl.getAttribute('data-sample')) qEl.setAttribute('data-sample', qEl.textContent); qEl.textContent = q || qEl.getAttribute('data-sample'); }
+        var typeEl = box.querySelector('[data-pv-type]');
+        if (typeEl) { if (!typeEl.getAttribute('data-single')) typeEl.setAttribute('data-single', typeEl.textContent); typeEl.textContent = multi ? typeEl.getAttribute('data-multi') || typeEl.getAttribute('data-single') : typeEl.getAttribute('data-single'); }
+        var opts = box.querySelector('[data-pv-opts]');
+        if (!opts) return;
+        // Nothing written yet: two sample options show how the poll will look.
+        var sample = false;
+        if (!lines.length) { try { lines = JSON.parse(box.getAttribute('data-sample-opts') || '[]'); sample = true; } catch (e) { lines = []; } }
+        opts.classList.toggle('is-sample', sample);
+        opts.textContent = '';
+        lines.forEach(function (line, i) {
+          var row = document.createElement('div');
+          row.className = 'cm-pv-opt';
+          var name = document.createElement('span');
+          name.textContent = letters[i] + ' ' + line;
+          var bar = document.createElement('i');
+          row.appendChild(name); row.appendChild(bar);
+          opts.appendChild(row);
+        });
+      }
+      function init() {
+        var f = document.querySelector('.cm-poll-create');
+        if (f) renderPollPreview(f);
+      }
+      if (!window.__pollPreviewBound) {
+        window.__pollPreviewBound = true;
+        document.addEventListener('input', function (event) {
+          var form = event.target && event.target.closest ? event.target.closest('.cm-poll-create') : null;
+          if (form) renderPollPreview(form);
+        });
+        document.addEventListener('change', function (event) {
+          var form = event.target && event.target.closest ? event.target.closest('.cm-poll-create') : null;
+          if (form) renderPollPreview(form);
+        });
+      }
+      init();
+
+      // The votes of the open polls follow the votes as they come in, every 4 seconds while the page is in view.
+      if (!window.__pollLive) {
+        window.__pollLive = true;
+        var pollTimer = null;
+        var pollTick = function () {
+          var box = document.querySelector('.cm-polls-existing[data-live-url]');
+          var openPolls = box ? box.querySelectorAll('.cm-poll[data-open="1"]') : [];
+          if (!box || !openPolls.length || document.hidden) { pollTimer = setTimeout(pollTick, 4000); return; }
+          fetch(box.getAttribute('data-live-url'), { cache: 'no-store', headers: { Accept: 'application/json' } })
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (data) {
+              if (!data || !Array.isArray(data.polls)) return;
+              data.polls.forEach(function (poll) {
+                var card = box.querySelector('.cm-poll[data-poll-id="' + poll.id + '"]');
+                if (!card) return;
+                var voters = card.querySelector('[data-poll-voters]');
+                if (voters) voters.textContent = String(poll.voters);
+                var run = document.querySelector('.cm-run [data-run="' + poll.id + '"]');
+                if (run) {
+                  if (poll.closed) run.remove();
+                  else { var runVoters = run.querySelector('[data-run-voters]'); if (runVoters) runVoters.textContent = String(poll.voters); }
+                }
+                card.querySelectorAll('[data-poll-option]').forEach(function (row) {
+                  var index = Number(row.getAttribute('data-poll-option'));
+                  var count = poll.counts[index] || 0;
+                  var pct = poll.voters > 0 ? Math.round((count / poll.voters) * 100) : 0;
+                  var label = row.querySelector('[data-poll-count]');
+                  if (label) label.textContent = count + ' · ' + pct + '%';
+                  var bar = row.querySelector('[data-poll-bar]');
+                  if (bar) bar.style.width = pct + '%';
+                });
+                if (poll.closed && card.getAttribute('data-open') === '1') {
+                  card.setAttribute('data-open', '');
+                  card.classList.add('closed');
+                  var status = card.querySelector('[data-poll-status]');
+                  if (status) status.textContent = status.getAttribute('data-label-closed') || 'Closed';
+                  var end = card.querySelector('form [value="close_poll"]');
+                  if (end && end.closest('form')) end.closest('form').hidden = true;
+                }
+              });
+            })
+            .catch(function () {})
+            .then(function () { pollTimer = setTimeout(pollTick, 4000); });
+        };
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { clearTimeout(pollTimer); pollTimer = setTimeout(pollTick, 300); } });
+        pollTimer = setTimeout(pollTick, 4000);
+      }
+    })();
+  </script>
 </DashGuildLayout>
 
-<script is:inline>
-  (function () {
-    var letters = ['\u{1F1E6}','\u{1F1E7}','\u{1F1E8}','\u{1F1E9}','\u{1F1EA}','\u{1F1EB}','\u{1F1EC}','\u{1F1ED}','\u{1F1EE}','\u{1F1EF}'];
-    function renderPollPreview(form) {
-      var box = form.querySelector('[data-poll-preview]');
-      if (!box) return;
-      var q = form.querySelector('[name="question"]').value.trim();
-      var lines = form.querySelector('[name="options"]').value.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 10);
-      var multi = form.querySelector('[name="multi"]').checked;
-      var qEl = box.querySelector('[data-pv-q]');
-      if (qEl) { if (!qEl.getAttribute('data-sample')) qEl.setAttribute('data-sample', qEl.textContent); qEl.textContent = q || qEl.getAttribute('data-sample'); }
-      var typeEl = box.querySelector('[data-pv-type]');
-      if (typeEl) { if (!typeEl.getAttribute('data-single')) typeEl.setAttribute('data-single', typeEl.textContent); typeEl.textContent = multi ? typeEl.getAttribute('data-multi') || typeEl.getAttribute('data-single') : typeEl.getAttribute('data-single'); }
-      var opts = box.querySelector('[data-pv-opts]');
-      if (!opts) return;
-      opts.textContent = '';
-      lines.forEach(function (line, i) {
-        var row = document.createElement('div');
-        row.className = 'cm-pv-opt';
-        var name = document.createElement('span');
-        name.textContent = letters[i] + ' ' + line;
-        var bar = document.createElement('i');
-        row.appendChild(name); row.appendChild(bar);
-        opts.appendChild(row);
-      });
-    }
-    function init() {
-      var f = document.querySelector('.cm-poll-create');
-      if (f) renderPollPreview(f);
-      document.querySelectorAll('time[data-local-time]').forEach(function (t) { var d = new Date(t.getAttribute('datetime')); if (!isNaN(d.getTime())) t.textContent = d.toLocaleString(); });
-    }
-    if (!window.__pollPreviewBound) {
-      window.__pollPreviewBound = true;
-      document.addEventListener('input', function (event) {
-        var form = event.target && event.target.closest ? event.target.closest('.cm-poll-create') : null;
-        if (form) renderPollPreview(form);
-      });
-    }
-    init();
-
-    // The votes of the open polls follow the votes as they come in, every 4 seconds while the page is in view.
-    if (!window.__pollLive) {
-      window.__pollLive = true;
-      var pollTimer = null;
-      var pollTick = function () {
-        var box = document.querySelector('.cm-polls-existing[data-live-url]');
-        var openCards = box ? box.querySelectorAll('.cm-poll-card[data-open="1"]') : [];
-        if (!box || !openCards.length || document.hidden) { pollTimer = setTimeout(pollTick, 4000); return; }
-        fetch(box.getAttribute('data-live-url'), { cache: 'no-store', headers: { Accept: 'application/json' } })
-          .then(function (res) { return res.ok ? res.json() : null; })
-          .then(function (data) {
-            if (!data || !Array.isArray(data.polls)) return;
-            data.polls.forEach(function (poll) {
-              var card = box.querySelector('.cm-poll-card[data-poll-id="' + poll.id + '"]');
-              if (!card) return;
-              var voters = card.querySelector('[data-poll-voters]');
-              if (voters) voters.textContent = String(poll.voters);
-              card.querySelectorAll('[data-poll-option]').forEach(function (row) {
-                var index = Number(row.getAttribute('data-poll-option'));
-                var count = poll.counts[index] || 0;
-                var pct = poll.voters > 0 ? Math.round((count / poll.voters) * 100) : 0;
-                var label = row.querySelector('[data-poll-count]');
-                if (label) label.textContent = count + ' · ' + pct + '%';
-                var bar = row.querySelector('[data-poll-bar]');
-                if (bar) bar.style.width = pct + '%';
-              });
-              if (poll.closed && card.getAttribute('data-open') === '1') {
-                card.setAttribute('data-open', '');
-                card.classList.add('closed');
-                var status = card.querySelector('[data-poll-status]');
-                if (status) status.textContent = status.getAttribute('data-label-closed') || 'Closed';
-                var end = card.querySelector('form [value="close_poll"]');
-                if (end && end.closest('form')) end.closest('form').hidden = true;
-              }
-            });
-          })
-          .catch(function () {})
-          .then(function () { pollTimer = setTimeout(pollTick, 4000); });
-      };
-      document.addEventListener('visibilitychange', function () { if (!document.hidden) { clearTimeout(pollTimer); pollTimer = setTimeout(pollTick, 300); } });
-      pollTimer = setTimeout(pollTick, 4000);
-    }
-  })();
-</script>
-
 <style>
-  h1 { font-size: 24px; margin: 0 0 20px; }
-  h2 { font-size: 14.5px; margin: 0 0 14px; }
+  h1 { font-size: 24px; margin: 0 0 18px; }
+  h2 { margin: 0; }
 
-  .cm-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--green); background: var(--green-soft); border: 1px solid var(--green); border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; max-width: fit-content; }
+  .cm-page { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .cm-page > :global(.stt) { margin-bottom: 0; }
+  /* Two columns that follow the window (the panel is narrower than the window by the menu). */
+  .cm-duo { align-items: start; }
+  @media (max-width: 1000px) { .cm-duo { grid-template-columns: minmax(0, 1fr); } }
+  .cm-form { min-width: 0; }
+  .cm-lead { margin-top: -4px; }
+  .cm-lead :global(code), .cm-note :global(code), .cm-link-text :global(code), .cm-empty :global(code), .sx-empty :global(code), .sx-hint :global(code) { font-family: var(--mono); color: var(--accent); }
+  :global(.cm-label-muted) { font-size: 12px; color: var(--text-dim); font-weight: 400; }
+  .cm-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .cm-foot { padding-top: 2px; }
+  .cm-note { display: flex; gap: 9px; align-items: flex-start; margin: 0; padding: 11px 13px; border-radius: 11px; background: color-mix(in srgb, var(--text) 4%, var(--card)); font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+  .cm-note :global(svg) { flex: none; margin-top: 2px; color: var(--text-dim); }
+  .cm-inline { margin: 0; flex: none; }
+  .cm-count { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 999px; padding: 2px 9px; margin-left: 4px; vertical-align: 2px; }
+  .cm-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 6px 14px; flex-wrap: wrap; margin: 14px 0 -2px; }
+  .cm-sec-head h2 { font-size: 16px; }
+  .cm-btn { display: inline-flex; align-items: center; gap: 6px; }
+  .cm-danger { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; padding: 5px 9px; background: transparent; color: var(--red); font: 600 12.5px var(--sans); cursor: pointer; transition: background-color .25s ease; }
+  .cm-danger:hover { background: var(--red-soft); }
+  .cm-act { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; padding: 5px 9px; color: var(--accent); font: 600 12.5px var(--sans); text-decoration: none; transition: background-color .25s ease; }
+  .cm-act:hover { background: var(--accent-soft); }
+  .cm-act:active, .cm-danger:active { transform: none; filter: none; }
 
-  .cm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px; margin-bottom: 36px; }
-  .cm-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card); display: flex; flex-direction: column; gap: 13px; align-items: flex-start; }
-  .cm-card-head { display: flex; align-items: center; gap: 10px; width: 100%; }
-  .cm-card-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
-  .cm-card-title { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--text); }
-  .cm-card-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin: 0; }
-  .cm-card-desc :global(code){ font-family: var(--mono); color: var(--accent); }
+  .cm-pill { flex: none; border-radius: 999px; padding: 3px 10px; font: 600 11.5px var(--sans); color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); white-space: nowrap; }
+  .cm-pill.on { color: var(--green); background: var(--green-soft); }
+  .cm-pill.off, .cm-pill.left { color: var(--red); background: var(--red-soft); }
 
-  .cm-switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
-  .cm-switch input { opacity: 0; width: 0; height: 0; }
-  .cm-switch :global(span){ position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background 0.15s; cursor: pointer; }
-  .cm-switch :global(span::before){ content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: var(--card); border-radius: 50%; transition: transform 0.15s; }
-  .cm-switch input:checked + :global(span){ background: var(--accent); }
-  .cm-switch input:checked + :global(span::before){ transform: translateX(14px); }
-  .cm-switch input:focus-visible + :global(span){ outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* Community Settings: the way into the other parts, and the latest events. */
+  .cm-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .cm-link { display: flex; align-items: flex-start; gap: 13px; text-decoration: none; color: inherit; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 15px 16px; min-width: 0; transition: background-color .3s ease, border-color .3s ease; }
+  .cm-link:hover { background: var(--card-hover); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .cm-link:active { transform: none; filter: none; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .cm-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cm-link-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .cm-link-title { display: flex; align-items: center; gap: 9px; }
+  .cm-link-title b { font-size: 14.5px; }
+  .cm-link-text em { font-style: normal; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+  .cm-link-text small { font-size: 12px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .cm-link :global(.cm-link-go) { flex: none; margin-top: 9px; color: var(--text-dim); transition: transform .35s cubic-bezier(.22, 1, .36, 1), color .25s ease; }
+  .cm-link:hover :global(.cm-link-go) { color: var(--accent); transform: translateX(3px); }
+  .cm-feed { min-width: 0; }
+  .cm-events { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 1), auto); grid-auto-flow: column; gap: 6px 14px; }
+  .cm-event { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 8px 12px 8px 10px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .cm-event-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+  .cm-event-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+  .cm-event-text b { font-weight: 600; }
+  .cm-event-text small { font-size: 11.5px; color: var(--text-dim); }
+  .cm-event-when { font-size: 12px; color: var(--text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-  .cm-row { display: flex; flex-direction: column; gap: 5px; width: 100%; }
-  .cm-row label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-  .cm-row input, .cm-row select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; }
-  .cm-row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+  /* Reputation */
+  .cm-lb-panel { min-width: 0; }
+  .cm-lb-panel .sx-panel-head h2 { white-space: nowrap; }
+  .cm-lb { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 1), auto); grid-auto-flow: column; gap: 6px 14px; }
+  .cm-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; align-items: start; min-width: 0; }
+  .cm-h3 { margin: 0; font-size: 13.5px; color: var(--text-muted); font-weight: 600; }
+  .cm-lb-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(76px, 104px) 32px; align-items: center; gap: 10px; border: 1px solid var(--border-soft); border-radius: 12px; padding: 6px 6px 6px 9px; background: color-mix(in srgb, var(--text) 3%, var(--card)); transition: background-color .3s ease, border-color .3s ease; }
+  .cm-lb-row:hover { border-color: var(--border); background: var(--card-hover); }
+  .cm-rank { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; font: 700 12px var(--mono); color: var(--text-dim); background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .cm-rank.top-1 { color: #1a1300; background: #e6c56f; }
+  .cm-rank.top-2 { color: #14181d; background: #c3ccd8; }
+  .cm-rank.top-3 { color: #1d1108; background: #d39a6a; }
+  .cm-lb-row :global(.uc) { min-width: 0; }
+  .cm-lb-points { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .cm-lb-points b { font: 600 12.5px var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+  .cm-meter { width: 100%; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+  .cm-meter i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transform-origin: left; animation: cm-grow .8s var(--m-out) backwards; }
+  @keyframes cm-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .cm-reward { align-items: center; }
+  .cm-pts-badge { flex: none; font: 700 12px var(--mono); color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 10px; font-variant-numeric: tabular-nums; }
+  .cm-reward :global(.cm-arrow), .cm-log :global(.cm-arrow) { flex: none; color: var(--text-dim); }
+  .cm-role { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  .cm-add { margin-top: 2px; }
+  .cm-add-row { display: grid; grid-template-columns: minmax(130px, 170px) minmax(0, 1fr); gap: 12px; align-items: end; }
+  .cm-add .btn { display: inline-flex; align-items: center; gap: 6px; }
+  .cm-log { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+  .cm-log-row { display: flex; align-items: center; gap: 9px; border: 1px solid var(--border-soft); border-radius: 12px; padding: 7px 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .cm-log-row :global(.uc) { flex: 1 1 0; min-width: 0; }
+  .cm-log-row :global(.uc-text code) { display: none; }
+  .cm-log-meta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 11.5px; line-height: 1.3; color: var(--text-dim); white-space: nowrap; max-width: 42%; }
+  .cm-log-meta span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .cm-cmds { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+  .cm-cmds li { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .cm-cmds code { font-family: var(--mono); font-size: 12.5px; color: var(--accent); overflow-wrap: anywhere; }
+  .cm-cmds span { font-size: 12.5px; color: var(--text-dim); }
 
-  .cm-section { margin-bottom: 30px; }
-  .cm-section-sub { font-size: 12.5px; color: var(--text-dim); margin: -6px 0 18px; max-width: 68ch; line-height: 1.5; }
-  .cm-section-hidden { display: none; }
-  :global(.cm-count){ font-family: var(--mono); font-size: 11px; color: var(--text-dim); font-weight: 400; }
-  .cm-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-width: 520px; }
-  .cm-list-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; font-size: 13px; background: var(--card); }
-  .cm-list-row + .cm-list-row { border-top: 1px solid var(--border-soft); }
-  .cm-list-row :global(code){ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
-  .cm-swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--sw); margin-left: auto; }
-  .cm-rep-points { margin-left: auto; font-family: var(--mono); color: var(--accent); font-size: 12px; }
-  .cm-rep-reset { border: none; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; border-radius: 6px; display: flex; }
-  .cm-rep-reset:hover { color: var(--red); background: var(--red-soft); }
-  .cm-error { display: flex; align-items: center; gap: 8px; color: var(--red); background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); border-radius: 9px; padding: 10px 12px; margin: 0 0 16px; font-size: 12.5px; }
-  .cm-polls-head h2 { margin-bottom: 8px; }
-  .cm-poll-create { max-width: 940px; margin-bottom: 30px; }
-  .cm-poll-create textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 110px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
-  .cm-help, :global(.cm-label-muted){ font-size: 11px; color: var(--text-dim); font-weight: 400; text-transform: none; letter-spacing: 0; }
-  .cm-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
-  .cm-check input { accent-color: var(--accent); }
-  .cm-polls-existing h2 { margin-bottom: 14px; }
-  .cm-poll-list { display: grid; gap: 12px; max-width: 940px; }
-  .cm-poll-card { border: 1px solid var(--border); border-radius: 13px; padding: 15px 16px; background: var(--card); }
-  .cm-poll-card.closed { opacity: 0.72; }
-  .cm-poll-card-head { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; margin-bottom: 14px; }
-  .cm-poll-card h3 { font-size: 14px; line-height: 1.35; margin: 0 0 5px; color: var(--text); }
-  .cm-poll-card p { font-size: 11.5px; color: var(--text-dim); margin: 0; }
-  .cm-poll-status { flex-shrink: 0; border: 1px solid var(--border); border-radius: 999px; padding: 4px 8px; color: var(--accent); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-  .cm-poll-card.closed .cm-poll-status { color: var(--text-dim); }
-  .cm-poll-options { display: grid; gap: 9px; margin-bottom: 14px; }
-  .cm-poll-option-line { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-muted); }
-  .cm-poll-option-line :global(span){ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cm-poll-option-line :global(b){ flex-shrink: 0; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; font-weight: 500; }
-  .cm-poll-bar { height: 5px; margin-top: 5px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
-  .cm-poll-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-  .cm-poll-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 5px !important; }
-  .cm-poll-meta span { display: inline-flex; align-items: center; gap: 4px; }
-  .cm-poll-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
-  .cm-poll-actions form { margin: 0; }
-  .cm-link { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--sans); color: var(--accent); text-decoration: none; }
-  .cm-pv { border: 1px solid var(--border-soft); border-left: 3px solid #f0a88f; border-radius: 10px; padding: 11px 13px; background: var(--bg-raise); display: grid; gap: 6px; }
-  .cm-pv-label { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
-  .cm-pv-q { font-weight: 700; font-size: 14px; color: var(--text); }
-  .cm-pv-type, .cm-pv-foot { font-size: 11px; color: var(--text-dim); }
-  .cm-pv-opts { display: grid; gap: 8px; margin: 4px 0; }
-  .cm-pv-opts :global(.cm-pv-opt span) { font-size: 12.5px; color: var(--text-muted); }
-  .cm-pv-opts :global(.cm-pv-opt i) { display: block; height: 5px; margin-top: 4px; border-radius: 999px; background: var(--border-soft); }
-  .cm-del-text { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: transparent; color: var(--red); font: 600 12px var(--sans); cursor: pointer; }
-  .cm-empty { display: flex; align-items: center; gap: 8px; max-width: 700px; border: 1px dashed var(--border); border-radius: 12px; padding: 18px; color: var(--text-dim); font-size: 12.5px; }
-
-  /* Booster roles and Reputation pages */
-  .cm-page { display: flex; flex-direction: column; }
-  .cm-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 18px; max-width: 940px; }
-  .cm-stat { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 11px 13px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .cm-stat b { font-size: 17px; color: var(--text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cm-stat span { font-size: 11px; color: var(--text-dim); }
-  .cm-warn { display: flex; align-items: center; gap: 8px; color: var(--yellow, #f5c945); background: color-mix(in srgb, var(--yellow, #f5c945) 12%, transparent); border: 1px solid color-mix(in srgb, var(--yellow, #f5c945) 45%, transparent); border-radius: 9px; padding: 9px 12px; margin: 0 0 16px; font-size: 12.5px; max-width: 940px; }
-  .cm-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-bottom: 30px; }
-  .cm-settings .cm-grid { margin-bottom: 0; width: 100%; }
-  .cm-card-wide { grid-column: 1 / -1; }
-  .cm-row textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px; background: var(--bg-raise); color: var(--text); font-family: var(--mono); font-size: 12.5px; line-height: 1.45; }
-  .cm-row-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
-  .cm-check .cm-label-muted { margin-left: 2px; }
-  .cm-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
-  .cm-choice { display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg-raise); cursor: pointer; }
-  .cm-choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-raise)); }
-  .cm-choice input { accent-color: var(--accent); margin-top: 2px; }
-  .cm-choice span { display: flex; flex-direction: column; gap: 3px; }
-  .cm-choice b { font-size: 13px; color: var(--text); }
-  .cm-choice small { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
-  .cm-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; max-width: 940px; }
-  .cm-section-head h2 { margin: 0; }
-  .cm-section-head form { margin: 0; }
-  .cm-pill { flex-shrink: 0; border-radius: 999px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); color: var(--text-dim); white-space: nowrap; }
-  .cm-pill.on { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, transparent); background: var(--green-soft); }
-  .cm-pill.off, .cm-pill.left { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); background: var(--red-soft); }
-  .cm-br-list { display: grid; gap: 8px; max-width: 940px; }
-  .cm-br { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 10px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  .cm-br.gone { opacity: .7; }
-  .cm-br-main { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; flex: 1 1 420px; }
-  .cm-br-swatch { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--a), var(--b)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  /* Booster roles */
+  .cm-settings { margin: 0; }
+  .cm-choices { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .cm-choices :global(.sx-choice-body) { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: start; padding: 11px 13px; }
+  .cm-choices :global(.sx-choice-body > svg) { grid-row: 1 / span 2; margin-top: 2px; }
+  .cm-br-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  @media (max-width: 1000px) { .cm-br-list, .cm-poll-list, .cm-cols, .cm-links, .cm-events, .cm-lb { grid-template-columns: minmax(0, 1fr); } .cm-events, .cm-lb { grid-template-rows: none; grid-auto-flow: row; } .cm-lb { max-height: 520px; overflow-y: auto; scrollbar-width: thin; } }
+  .cm-br { display: flex; flex-direction: column; gap: 11px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 14px 14px 12px 16px; min-width: 0; transition: border-color .3s ease; }
+  .cm-br:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+  .cm-br.gone { opacity: .72; }
+  .cm-br-top { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .cm-br-swatch { flex: none; width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--a), var(--b)); display: grid; place-items: center; }
   .cm-br-swatch img { border-radius: 4px; }
-  .cm-br-name { display: flex; flex-direction: column; min-width: 120px; max-width: 220px; }
-  .cm-br-name b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cm-br-name code { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
-  .cm-br-shared { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: var(--text-dim); }
+  .cm-br-name { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+  .cm-br-name b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-br-name code { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .cm-br-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-width: 0; }
+  .cm-br-meta :global(.uc) { flex: 1 1 150px; }
+  .cm-br-shared { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--text-dim); }
   .cm-br-shared img { border-radius: 50%; border: 2px solid var(--card); margin-left: -6px; }
   .cm-br-shared img:first-child { margin-left: 0; }
-  .cm-br-shared span { margin-left: 5px; }
-  .cm-br-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 6px; }
-  .cm-br-actions form { margin: 0; }
-  .cm-br-edit summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--sans); color: var(--accent); cursor: pointer; }
-  .cm-br-edit summary::-webkit-details-marker { display: none; }
-  .cm-br-edit[open] { flex-basis: 100%; }
-  .cm-br-form { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg-raise); min-width: min(360px, 80vw); }
-  .cm-br-colors { display: flex; gap: 8px; flex-wrap: wrap; }
-  .cm-pick-quick { display: flex; flex-wrap: wrap; gap: 6px; }
-  .cm-pick-quick button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-raise); color: var(--text-muted); padding: 3px 9px 3px 3px; font: 12px var(--sans); cursor: pointer; }
-  .cm-pick-quick button:hover { border-color: var(--accent); color: var(--text); }
-  .cm-pick-quick img { border-radius: 50%; }
-  .cm-cmds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; width: 100%; }
-  .cm-cmds li { display: flex; flex-direction: column; gap: 1px; }
-  .cm-cmds code { font-family: var(--mono); font-size: 12px; color: var(--accent); word-break: break-word; }
-  .cm-cmds span { font-size: 11.5px; color: var(--text-dim); }
-  .cm-rewards { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-  .cm-reward { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); border: 1px solid var(--border-soft); border-radius: 9px; padding: 5px 6px 5px 10px; background: var(--bg-raise); margin: 0; }
-  .cm-reward b { font-family: var(--mono); color: var(--accent); font-size: 12px; }
-  .cm-reward span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cm-reward-add { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: end; width: 100%; margin: 0; }
-  .cm-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 20px; max-width: 940px; }
-  .cm-two .cm-list { max-width: none; }
-  .cm-rank { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font: 600 11px var(--mono); color: var(--text-dim); background: var(--bg-raise); flex-shrink: 0; }
-  .cm-rank.top { color: #1a1300; background: #fed53c; }
-  .cm-lb :global(.uc){ min-width: 0; flex: 1; }
-  .cm-log .cm-log-arrow { color: var(--text-dim); flex-shrink: 0; }
-  .cm-log .cm-list-row { flex-wrap: wrap; row-gap: 4px; }
-  .cm-log .cm-list-row :global(.uc){ flex: 1 1 0; min-width: 0; }
-  .cm-log-meta { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 10px; font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
-  .cm-fill { display: flex; flex-direction: column; min-height: 100%; }
-  .cm-fill > .cm-grid { flex: 1 1 auto; grid-template-rows: auto 1fr; margin-bottom: 0; }
-  .cm-card-link .cm-link { margin-top: auto; }
-  .cm-card-link { text-decoration: none; color: inherit; transition: border-color var(--m-fast) var(--m-std); }
-  .cm-card-link:hover { border-color: var(--accent); }
+  .cm-br-shared span { margin-left: 7px; }
+  .cm-br-since { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .cm-br-edit { interpolate-size: allow-keywords; border-top: 1px solid var(--border-soft); margin: 0 -4px 0 -2px; padding-top: 8px; }
+  .cm-br-edit > summary { list-style: none; display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 8px; font: 600 12.5px var(--sans); color: var(--accent); cursor: pointer; transition: background-color .25s ease; }
+  .cm-br-edit > summary::-webkit-details-marker { display: none; }
+  .cm-br-edit > summary:hover { background: var(--accent-soft); }
+  .cm-br-edit > summary:active { transform: none; filter: none; }
+  .cm-br-edit :global(.cm-caret) { margin-left: auto; color: var(--text-dim); transition: transform .45s cubic-bezier(.22, 1, .36, 1); }
+  .cm-br-edit[open] :global(.cm-caret) { transform: rotate(180deg); }
+  .cm-br-edit::details-content { block-size: 0; overflow: clip; opacity: 0; transition: block-size .45s cubic-bezier(.22, 1, .36, 1), opacity .3s ease, content-visibility .45s allow-discrete; }
+  .cm-br-edit[open]::details-content { block-size: auto; opacity: 1; }
+  .cm-br-form { display: flex; flex-direction: column; gap: 12px; align-items: stretch; margin: 0; padding: 12px 6px 4px; }
+  .cm-colors { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cm-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cm-quick button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-muted); padding: 4px 12px 4px 4px; font: 13px var(--sans); cursor: pointer; transition: background-color .3s ease, border-color .3s ease, color .3s ease; }
+  .cm-quick button:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .cm-quick img { border-radius: 50%; }
+  .cm-picks { display: flex; flex-direction: column; gap: 5px; }
+  .cm-picks button { display: flex; align-items: center; gap: 10px; width: 100%; border: 1px solid var(--border-soft); border-radius: 10px; background: color-mix(in srgb, var(--text) 3%, var(--card)); color: var(--text-muted); padding: 5px 12px 5px 8px; font: 13.5px var(--sans); text-align: left; cursor: pointer; transition: background-color .3s ease, border-color .3s ease, color .3s ease; }
+  .cm-picks button:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .cm-picks button:active { transform: none; filter: none; }
+  .cm-picks img { border-radius: 50%; flex: none; }
+  .cm-picks span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-picks b { flex: none; font: 600 12px var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+  .cm-page :global(.sx-field .mp-input) { padding-right: 30px; }
+  /* The search box inside a multi select sits in the select's own border: the field style of the kit must not add a second one. */
+  .cm-page :global(.sx-field input.dgl-ms-input), .cm-page :global(.sx-field input.dgl-ms-input:focus-visible) { border: 0; border-radius: 0; padding: 0; background: transparent; box-shadow: none; width: auto; }
 
-  @media (max-width: 760px) {
-    .cm-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .cm-choices { grid-template-columns: 1fr; }
-  }
+  /* Polls */
+  .cm-create { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; margin: 0; }
+  .cm-create > .sx-panel, .cm-create-side > .sx-panel { animation: m-rise-in var(--m-slow) var(--m-out) both; }
+  .cm-create-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .cm-create-side > .sx-panel:nth-child(2) { animation-delay: var(--m-stagger); }
+  .cm-run { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .cm-run li { display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--card)); min-width: 0; }
+  .cm-run b { font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .cm-run small { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .cm-design-hint { margin-top: -6px; }
+  @media (max-width: 1000px) { .cm-create { grid-template-columns: minmax(0, 1fr); } }
+  .cm-pv { display: grid; gap: 9px; border: 1px solid var(--border-soft); border-left: 4px solid #f0a88f; border-radius: 12px; padding: 15px 16px; background: var(--bg-raise); min-width: 0; }
+  .cm-pv-q { font-weight: 700; font-size: 15.5px; line-height: 1.35; overflow-wrap: anywhere; }
+  .cm-pv-type, .cm-pv-foot { font-size: 12px; color: var(--text-dim); }
+  .cm-pv-opts { display: grid; gap: 11px; margin: 4px 0; }
+  .cm-pv-opts :global(.cm-pv-opt span) { font-size: 13.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+  .cm-pv-opts :global(.cm-pv-opt i) { display: block; height: 6px; margin-top: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .cm-pv-opts.is-sample { opacity: .55; }
+  .cm-live-hint { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+  .cm-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
+  .cm-poll-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .cm-poll { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 15px 16px 10px; min-width: 0; transition: border-color .3s ease; }
+  .cm-poll:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+  .cm-poll-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .cm-poll-title { min-width: 0; }
+  .cm-poll h3 { margin: 0 0 3px; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+  .cm-poll-title p { margin: 0; font-size: 12px; color: var(--text-dim); }
+  .cm-poll-status { flex: none; border-radius: 999px; padding: 3px 11px; font: 600 12px var(--sans); color: var(--green); background: var(--green-soft); }
+  .cm-poll.closed .cm-poll-status { color: var(--text-dim); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .cm-poll-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; margin: 0; font-size: 12px; color: var(--text-dim); }
+  .cm-poll-meta span { display: inline-flex; align-items: center; gap: 5px; }
+  .cm-poll-meta b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .cm-poll-options { display: flex; flex-direction: column; gap: 11px; }
+  .cm-opt-line { display: flex; align-items: baseline; gap: 9px; font-size: 13px; color: var(--text-muted); }
+  .cm-opt-n { flex: none; width: 18px; font: 600 11.5px var(--mono); color: var(--text-dim); }
+  .cm-opt-text { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
+  .cm-opt-line b { flex: none; font: 500 11.5px var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .cm-opt .cm-meter { height: 6px; margin-top: 6px; }
+  .cm-poll.closed .cm-opt .cm-meter i { background: color-mix(in srgb, var(--text) 32%, transparent); }
+  .cm-poll.closed .cm-opt.win .cm-meter i { background: var(--accent); }
+  .cm-opt.win .cm-opt-text { color: var(--text); font-weight: 600; }
+  .cm-opt.win .cm-opt-line b { color: var(--accent); }
+  .cm-poll-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; padding-top: 8px; border-top: 1px solid var(--border-soft); margin: 0 -6px; }
+  .cm-poll-spacer { flex: 1; }
 
-  @media (max-width: 480px) {
-    .cm-row-pair { grid-template-columns: 1fr; }
-    .cm-row-trio { grid-template-columns: 1fr 1fr 1fr; }
-    .cm-reward-add { grid-template-columns: 1fr; }
+  /* The grids that were two columns on a wide window: one column on a narrow one. */
+  @media (max-width: 720px) {
+    .cm-add-row { grid-template-columns: minmax(0, 1fr); }
+    .cm-log, .cm-cmds { grid-template-columns: minmax(0, 1fr); }
+    .cm-lb-row { grid-template-columns: 26px minmax(0, 1fr) 72px 30px; gap: 8px; }
+    .cm-event { grid-template-columns: 32px minmax(0, 1fr); }
+    .cm-event-when { grid-column: 2; }
+    .cm-poll-actions { margin: 0; }
   }
-
-  @media (max-width: 660px) {
-    .cm-grid { grid-template-columns: 1fr; }
-  }
+  @media (prefers-reduced-motion: reduce) { .cm-meter i, .cm-create > .sx-panel, .cm-create-side > .sx-panel { animation: none; } }
 </style>
