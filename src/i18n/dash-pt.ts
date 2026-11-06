@@ -6042,4 +6042,12 @@ export const dashPt: Record<string, string> = {
   "Own pictures": "Imagens próprias",
   "Your look": "Seu visual",
   "No kind of message has a look of its own yet.": "Nenhum tipo de mensagem tem um visual próprio ainda.",
+  "Petto answers the first questions in a ticket from what you write here, and hands over to staff when needed.": "O Petto responde as primeiras perguntas de um ticket com o que você escreve aqui e passa para a staff quando for preciso.",
+  "Replies this month": "Respostas neste mês",
+  "Replies per ticket": "Respostas por ticket",
+  "Ticket types": "Tipos de ticket",
+  "Hand-over words": "Palavras de transferência",
+  "The instructions, the knowledge and the hand-over list together can have up to {n} characters.": "As instruções, o conhecimento e a lista de transferência juntos podem ter até {n} caracteres.",
+  "Together": "No total",
+  "Last saved {a}": "Salvo pela última vez {a}",
 };

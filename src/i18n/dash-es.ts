@@ -6042,4 +6042,12 @@ export const dashEs: Record<string, string> = {
   "Own pictures": "Imágenes propias",
   "Your look": "Tu aspecto",
   "No kind of message has a look of its own yet.": "Ningún tipo de mensaje tiene un aspecto propio todavía.",
+  "Petto answers the first questions in a ticket from what you write here, and hands over to staff when needed.": "Petto responde las primeras preguntas de un ticket con lo que escribes aquí y pasa al staff cuando hace falta.",
+  "Replies this month": "Respuestas este mes",
+  "Replies per ticket": "Respuestas por ticket",
+  "Ticket types": "Tipos de ticket",
+  "Hand-over words": "Palabras de traspaso",
+  "The instructions, the knowledge and the hand-over list together can have up to {n} characters.": "Las instrucciones, el conocimiento y la lista de traspaso juntos pueden tener hasta {n} caracteres.",
+  "Together": "En total",
+  "Last saved {a}": "Guardado por última vez {a}",
 };
