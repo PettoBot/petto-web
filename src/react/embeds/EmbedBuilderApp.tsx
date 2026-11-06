@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import './embeds.css';
 import FormatToolbar from './FormatToolbar';
 import SilentHint from './SilentHint';
+import GrowField from './GrowField';
+import Section from './Section';
 import Preview from './Preview';
 import V2Editor from '../v2/V2Editor';
 import ButtonActions from './ButtonActions';
@@ -63,9 +65,11 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const cardsEnabled = apiPath === 'embeds-api';
   const [cardNames, setCardNames] = useState<{ name: string; data: unknown }[]>([]);
   const [cardImage, setCardImage] = useState('');
+  const [newOpen, setNewOpen] = useState(initialTemplateNames.length === 0);
+  const [view, setView] = useState<'edit' | 'preview'>('edit');
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   // The template as it was loaded or last saved: what "discard" on the dashboard's bar of unsaved changes goes back to.
   const savedData = useRef<TemplateData | null>(null);
@@ -258,24 +262,42 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   }
 
   const e = data.embeds[activeEmbed];
+  const mv = (list: unknown[], from: number, to: number) => { const copy = [...list]; const [item] = copy.splice(from, 1); copy.splice(to, 0, item); return copy; };
 
   const cardField = cardsEnabled ? (
-                <div className="ebr-field">
-                  <div className="ebr-field-head"><label>{t('Image card')}</label></div>
-                  <div className="ebr-card-pick">
-                    <select value={data.card?.name ?? ''} onChange={(ev) => { const name = ev.target.value; const next = { ...data }; if (name) next.card = { name, placement: data.card?.placement ?? 'default' }; else delete next.card; setData(next); setDirty(true); }}>
-                      <option value="">{t('No image card')}</option>
-                      {cardNames.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                      {data.card && !cardNames.some((c) => c.name === data.card!.name) && <option value={data.card.name}>{data.card.name}</option>}
-                    </select>
-                    <select value={data.card?.placement ?? 'default'} disabled={!data.card} onChange={(ev) => update({ card: { name: data.card!.name, placement: ev.target.value as 'default' | 'embed' | 'attachment' } })}>
-                      <option value="default">{data.v2 ? t('At the top of the first container') : t('Inside the first embed')}</option>
-                      <option value="attachment">{t('Above the message, as a file')}</option>
-                    </select>
-                  </div>
-                  <a className="ebr-card-link" href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a>
-                </div>
+    <Section title={t('Image card')} defaultOpen={Boolean(data.card)}>
+      <div className="ebr-card-pick">
+        <select value={data.card?.name ?? ''} onChange={(ev) => { const name = ev.target.value; const next = { ...data }; if (name) next.card = { name, placement: data.card?.placement ?? 'default' }; else delete next.card; setData(next); setDirty(true); }}>
+          <option value="">{t('No image card')}</option>
+          {cardNames.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+          {data.card && !cardNames.some((c) => c.name === data.card!.name) && <option value={data.card.name}>{data.card.name}</option>}
+        </select>
+        <select value={data.card?.placement ?? 'default'} disabled={!data.card} onChange={(ev) => update({ card: { name: data.card!.name, placement: ev.target.value as 'default' | 'embed' | 'attachment' } })}>
+          <option value="default">{data.v2 ? t('At the top of the first container') : t('Inside the first embed')}</option>
+          <option value="attachment">{t('Above the message, as a file')}</option>
+        </select>
+        <a className="ebr-card-link" href={`/dash/guild/${guildId}/cards`}>{t('Make or edit cards')}</a>
+      </div>
+    </Section>
   ) : null;
+
+  const reactionsField = (
+    <Section title={t('Reactions')} defaultOpen={Boolean(data.reactions?.length)}>
+      <div className="ebr-field">
+        <input type="text" className="ebr-reactions-input" value={(data.reactions ?? []).join(' ')} maxLength={400} placeholder="🌸 🎀 <:name:123456789>" aria-label={t('Reactions')}
+          onChange={(ev) => { const list = readReactions(ev.target.value.split(/\s+/)); const next = { ...data }; if (list.length) next.reactions = list; else delete next.reactions; setData(next); setDirty(true); }} />
+        <span className="ebr-hint">{t('Up to 5 emojis, separated by spaces. Petto adds them to the message when it sends it. It is the same as writing {reactreply:emoji} for each one.')}</span>
+      </div>
+    </Section>
+  );
+
+  const previewNode = data.v2
+    ? <V2Preview doc={data.v2} cardImage={cardImage} cardPlacement={data.card?.placement} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />
+    : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />;
+
+  const trash = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" /></svg>;
+  const upIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>;
+  const downIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>;
 
   return (
     <div className="ebr-app">
@@ -293,195 +315,234 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
         </div>
       )}
 
-      <div className="ebr-layout">
-        <aside className="ebr-list">
-          {names.length === 0 && <p className="ebr-empty-note">{t('No templates yet.')}</p>}
+      <div className="ebr-top">
+        <div className="ebr-chips" role="tablist" aria-label={t('Templates')}>
           {names.map((n) => (
-            <button key={n} type="button" className={`ebr-list-item${n === selected ? ' active' : ''}`} onClick={() => setSelected(n)}>
-              {n}
-            </button>
+            <button key={n} type="button" role="tab" aria-selected={n === selected} className={`ebr-chip${n === selected ? ' active' : ''}`} onClick={() => setSelected(n)}>{n}</button>
           ))}
-          <div className="ebr-limit-note">{maxTemplates ? t('{n}/{max} saved', { n: names.length, max: maxTemplates }) : t('{n} saved themes · unlimited', { n: names.length })}</div>
-          <div className="ebr-import">
-            <textarea rows={2} placeholder={t('Paste an import code or JSON')} value={importText} onChange={(ev) => setImportText(ev.target.value)} />
-            <button type="button" className="btn btn-ghost btn-sm" onClick={handleImportText} disabled={!importText.trim()}>{t('Import')}</button>
-          </div>
-          <form className="ebr-create" onSubmit={handleCreate}>
-            <input type="text" placeholder="new-template-name" maxLength={40} value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button type="submit" className="btn btn-ghost btn-sm">{t('+ New')}</button>
-            {apiPath === 'embeds-api' && <button type="button" className="btn btn-ghost btn-sm" title={t('A message made of containers, pictures and sections (Components V2)')} onClick={() => handleCreate(null, true)} disabled={!newName.trim()}>{t('+ New V2')}</button>}
-          </form>
-        </aside>
+          <button type="button" className={`ebr-chip-new${newOpen ? ' open' : ''}`} aria-expanded={newOpen} onClick={() => setNewOpen((o) => !o)}>{t('+ New')}</button>
+        </div>
+        <span className="ebr-limit-note">{maxTemplates ? t('{n}/{max} saved', { n: names.length, max: maxTemplates }) : t('{n} saved themes · unlimited', { n: names.length })}</span>
+      </div>
 
-        {!selected ? (
-          <p className="ebr-empty-note">{t('Create a template on the left to get started.')}</p>
-        ) : loading ? (
-          <p className="ebr-empty-note">{t('Loading...')}</p>
-        ) : (
-          <div className="ebr-editor">
-            <div className="ebr-preview-col">
-              <div className="ebr-preview-label">{t('Preview')}</div>
-              {data.v2 ? <V2Preview doc={data.v2} cardImage={cardImage} cardPlacement={data.card?.placement} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} /> : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />}
+      <div className="ebr-new" data-open={newOpen}>
+        <div className="ebr-new-inner" {...(newOpen ? {} : { inert: '' })}>
+          <form className="ebr-new-card" onSubmit={handleCreate}>
+            <strong>{t('New template')}</strong>
+            <input type="text" placeholder="new-template-name" aria-label={t('New template')} maxLength={40} value={newName} onChange={(ev) => setNewName(ev.target.value)} />
+            <div className="ebr-new-actions">
+              <button type="submit" className="btn btn-accent btn-sm" disabled={!newName.trim()}>{t('+ New')}</button>
+              {apiPath === 'embeds-api' && <button type="button" className="btn btn-ghost btn-sm" title={t('A message made of containers, pictures and sections (Components V2)')} onClick={() => handleCreate(null, true)} disabled={!newName.trim()}>{t('+ New V2')}</button>}
             </div>
+          </form>
+          <div className="ebr-new-card">
+            <strong>{t('Import')}</strong>
+            <GrowField value={importText} onChange={setImportText} rows={2} placeholder={t('Paste an import code or JSON')} aria-label={t('Paste an import code or JSON')} className="ebr-mono" />
+            <div className="ebr-new-actions"><button type="button" className="btn btn-ghost btn-sm" onClick={handleImportText} disabled={!importText.trim()}>{t('Import')}</button></div>
+          </div>
+        </div>
+      </div>
 
-            <div className="ebr-form-col">
-              <VariablesPanel groups={variableGroups} />
-              <div className="ebr-field">
-                <div className="ebr-field-head"><label>{t('Reactions')}</label></div>
-                <input type="text" className="ebr-reactions-input" value={(data.reactions ?? []).join(' ')} maxLength={400} placeholder="🌸 🎀 <:name:123456789>"
-                  onChange={(ev) => { const list = readReactions(ev.target.value.split(/\s+/)); const next = { ...data }; if (list.length) next.reactions = list; else delete next.reactions; setData(next); setDirty(true); }} />
-                <span className="ebr-hint">{t('Up to 5 emojis, separated by spaces. Petto adds them to the message when it sends it. It is the same as writing {reactreply:emoji} for each one.')}</span>
-              </div>
-              {data.v2 ? (
-                <>
+      {!selected ? (
+        <div className="ebr-empty">
+          <p className="ebr-empty-note">{names.length === 0 ? t('No templates yet.') : ''}</p>
+          <p className="ebr-empty-note">{t('Pick one of your templates above, or make a new one to start.')}</p>
+        </div>
+      ) : loading ? (
+        <div className="ebr-skeleton" aria-hidden="true"><i /><i /><i /></div>
+      ) : (
+        <div className="ebr-editor" data-view={view}>
+          <div className="ebr-head">
+            <div className="ebr-head-title">
+              <h2>{selected}</h2>
+              <span className={`ebr-state${dirty ? ' dirty' : ''}`}><i />{dirty ? t('Unsaved changes') : t('All changes saved')}</span>
+            </div>
+            <div className="ebr-head-actions">
+              <button type="button" className="btn btn-accent btn-sm" onClick={(ev) => { keepWidth(ev); handleSave(); }} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
+              <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete} aria-label={t('Delete this template')} title={t('Delete this template')}>{trash}<span>{t('Delete this template')}</span></button>
+            </div>
+          </div>
+
+          <div className="ebr-switch" role="tablist" aria-label={t('View')}>
+            <button type="button" role="tab" aria-selected={view === 'edit'} onClick={() => setView('edit')}>{t('Edit')}</button>
+            <button type="button" role="tab" aria-selected={view === 'preview'} onClick={() => setView('preview')}>{t('Preview')}</button>
+          </div>
+
+          <div className="ebr-form-col">
+            {data.v2 ? (
+              <>
+                <Section title={t('Message')}>
                   <p className="v2e-intro">{t('A Components V2 message: containers with text, pictures, sections and link buttons. It has no message text and no embeds.')}</p>
                   <div className="v2e-starters">
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm(t('Replace this design with the Petto quest alert design?'))) update({ v2: questStarterV2() }); }}>{t('Use the quest alert design')}</button>
                   </div>
-                  {cardField}
                   <V2Editor doc={data.v2} names={names} onChange={(v2) => update({ v2 })} />
-                </>
-              ) : (
+                </Section>
+                {cardField}
+                {reactionsField}
+              </>
+            ) : (
               <>
-              <div className="ebr-field">
-                <div className="ebr-field-head"><label>{t('Message content')}</label></div>
-                <textarea ref={contentRef} data-ac="" rows={2} maxLength={2000} value={data.content} onChange={(ev) => update({ content: ev.target.value })} />
-                <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
-                <SilentHint />
-              </div>
-
-              {cardField}
-
-              <div className="ebr-embed-tabs">
-                {data.embeds.map((_, i) => (
-                  <button key={i} type="button" className={`ebr-tab${i === activeEmbed ? ' active' : ''}`} onClick={() => setActiveEmbed(i)}>
-                    Embed {i + 1}
-                    <span className="ebr-tab-x" onClick={(ev) => { ev.stopPropagation(); removeEmbed(i); }}>×</span>
-                  </button>
-                ))}
-                {data.embeds.length < maxEmbeds && <button type="button" className="ebr-tab-add" onClick={addEmbed}>{t('+ Add embed')}</button>}
-              </div>
-
-              {e && (
-                <div className="ebr-embed-form">
+                <Section title={t('Message')}>
                   <div className="ebr-field">
-                    <label>{t('Title')}</label>
-                    <input ref={titleRef} type="text" data-ac="vars,emojis" maxLength={256} value={e.title} onChange={(ev) => updateEmbed(activeEmbed, { title: ev.target.value })} />
-                    <FormatToolbar targetRef={titleRef} onChange={(v) => updateEmbed(activeEmbed, { title: v })} />
+                    <label>{t('Message content')}</label>
+                    <GrowField ref={contentRef} data-ac="" rows={3} maxLength={2000} counter value={data.content} onChange={(v) => update({ content: v })} />
+                    <FormatToolbar targetRef={contentRef} onChange={(v) => update({ content: v })} />
+                    <SilentHint />
                   </div>
-                  <div className="ebr-field">
-                    <label>{t('Description')}</label>
-                    <textarea ref={descRef} data-ac="" rows={4} maxLength={4096} value={e.description} onChange={(ev) => updateEmbed(activeEmbed, { description: ev.target.value })} />
-                    <FormatToolbar targetRef={descRef} onChange={(v) => updateEmbed(activeEmbed, { description: v })} />
-                  </div>
-                  <div className="ebr-row-pair">
-                    <div className="ebr-field">
-                      <label>{t('Color')}</label>
-                      <EmbedColorPicker value={e.color} onChange={(color) => updateEmbed(activeEmbed, { color })} />
-                    </div>
-                    <div className="ebr-field">
-                      <label>{t('Title link URL')}</label>
-                      <input type="text" value={e.url} onChange={(ev) => updateEmbed(activeEmbed, { url: ev.target.value })} placeholder="https://..." />
-                    </div>
-                  </div>
-                  <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>{t('Thumbnail URL')}</label><input type="text" value={e.thumbnail} onChange={(ev) => updateEmbed(activeEmbed, { thumbnail: ev.target.value })} placeholder="https://..." /></div>
-                    <div className="ebr-field"><label>{t('Image URL')}</label><input type="text" value={e.image} onChange={(ev) => updateEmbed(activeEmbed, { image: ev.target.value })} placeholder="https://..." /></div>
-                  </div>
-                  <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>{t('Author name')}</label><input type="text" data-ac="vars" value={e.author.name} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, name: ev.target.value } })} /></div>
-                    <div className="ebr-field"><label>{t('Author icon URL')}</label><input type="text" value={e.author.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, icon: ev.target.value } })} placeholder="https://..." /></div>
-                  </div>
-                  <div className="ebr-field">
-                    <label>{t('Author link URL')}</label>
-                    <input type="text" value={e.author.url ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { author: { ...e.author, url: ev.target.value } })} placeholder="https://..." />
-                  </div>
-                  <div className="ebr-row-pair">
-                    <div className="ebr-field"><label>{t('Footer text')}</label><input type="text" data-ac="vars" value={e.footer.text} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: ev.target.value } })} /></div>
-                    <div className="ebr-field"><label>{t('Footer icon URL')}</label><input type="text" value={e.footer.icon ?? ''} onChange={(ev) => updateEmbed(activeEmbed, { footer: { ...e.footer, icon: ev.target.value } })} placeholder="https://..." /></div>
-                  </div>
-                  <label className="ebr-check"><input type="checkbox" checked={e.timestamp} onChange={(ev) => updateEmbed(activeEmbed, { timestamp: ev.target.checked })} />{t('Show current time in the footer')}</label>
+                </Section>
 
-                  <div className="ebr-fields-section">
-                    <h3>{t('Fields')} <span className="ebr-count">{e.fields.length}/25</span></h3>
-                    {e.fields.map((f, fi) => (
-                      <div key={fi} className="ebr-field-row-edit">
-                        <input type="text" data-ac="vars,emojis" placeholder={t('Name')} maxLength={256} value={f.name} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, name: ev.target.value } : x)) })} />
-                        <textarea className="dgl-autogrow" data-ac="" rows={2} placeholder={t('Value')} maxLength={1024} value={f.value} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, value: ev.target.value } : x)) })} />
-                        <label className="ebr-check"><input type="checkbox" checked={f.inline} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, inline: ev.target.checked } : x)) })} />{t('Inline')}</label>
-                        <button type="button" className="ebr-del" onClick={() => updateEmbed(activeEmbed, { fields: e.fields.filter((_, i) => i !== fi) })}>×</button>
+                <Section title={t('Embeds')} meta={`${data.embeds.length}/${maxEmbeds}`}>
+                  <div className="ebr-embed-tabs">
+                    {data.embeds.map((_, i) => (
+                      <div key={i} className={`ebr-tab${i === activeEmbed ? ' active' : ''}`}>
+                        <button type="button" className="ebr-tab-main" onClick={() => setActiveEmbed(i)}>Embed {i + 1}</button>
+                        <button type="button" className="ebr-tab-x" onClick={() => removeEmbed(i)} aria-label={t('Remove')} title={t('Remove')}>×</button>
                       </div>
                     ))}
-                    {e.fields.length < 25 && (
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateEmbed(activeEmbed, { fields: [...e.fields, { name: '', value: '', inline: false }] })}>{t('+ Add field')}</button>
-                    )}
+                    {data.embeds.length < maxEmbeds && <button type="button" className="ebr-tab-add" onClick={addEmbed}>{t('+ Add embed')}</button>}
                   </div>
-                </div>
-              )}
 
-              <div className="ebr-fields-section">
-                <h3>{t('Buttons')}</h3>
-                {data.buttons.map((row, ri) => (
-                  <div key={ri} className="ebr-btn-row-edit">
-                    {row.map((b, bi) => {
-                      const isAction = Boolean(b.actions?.length);
-                      return (
-                        <div key={bi} className="ebr-btn-box">
-                          <div className="ebr-btn-edit">
-                            <select value={isAction ? 'action' : 'link'} onChange={(ev) => setButtonKind(ri, bi, ev.target.value as 'link' | 'action')} aria-label={t('Button type')}>
-                              <option value="link">{t('Link')}</option>
-                              <option value="action">{t('Action')}</option>
-                            </select>
-                            <input type="text" placeholder={t('Label')} maxLength={80} value={b.label} onChange={(ev) => updateButton(ri, bi, { label: ev.target.value })} />
-                            {!isAction && <input type="text" placeholder="https://..." value={b.url} onChange={(ev) => updateButton(ri, bi, { url: ev.target.value })} />}
-                            {isAction && (
-                              <select value={b.style ?? 'grey'} onChange={(ev) => updateButton(ri, bi, { style: ev.target.value as LinkButton['style'] })} aria-label={t('Color')}>
-                                {BUTTON_STYLES.map((style) => <option key={style} value={style}>{t(STYLE_LABELS[style])}</option>)}
-                              </select>
-                            )}
-                            {allowButtonEmoji && <input type="text" placeholder={t('Emoji')} maxLength={4} className="ebr-btn-emoji" value={b.emoji} onChange={(ev) => updateButton(ri, bi, { emoji: ev.target.value })} />}
-                            <button type="button" className="ebr-del" onClick={() => removeButton(ri, bi)}>×</button>
-                          </div>
-                          {isAction && <ButtonActions actions={b.actions ?? []} names={names} onChange={(actions) => (actions.length ? updateButton(ri, bi, { actions }) : updateButton(ri, bi, { actions: undefined, style: undefined }))} />}
+                  {e ? (
+                    <div className="ebr-embed-form" key={activeEmbed}>
+                      <Section level="sub" title={t('Text')}>
+                        <div className="ebr-field">
+                          <label>{t('Title')}</label>
+                          <GrowField ref={titleRef} single data-ac="vars,emojis" maxLength={256} counter value={e.title} onChange={(v) => updateEmbed(activeEmbed, { title: v })} />
+                          <FormatToolbar targetRef={titleRef} onChange={(v) => updateEmbed(activeEmbed, { title: v })} />
                         </div>
-                      );
-                    })}
-                    {row.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => addButton(ri)}>{t('+ Button')}</button>}
+                        <div className="ebr-field">
+                          <label>{t('Description')}</label>
+                          <GrowField ref={descRef} data-ac="" rows={4} maxLength={4096} counter value={e.description} onChange={(v) => updateEmbed(activeEmbed, { description: v })} />
+                          <FormatToolbar targetRef={descRef} onChange={(v) => updateEmbed(activeEmbed, { description: v })} />
+                        </div>
+                      </Section>
+
+                      <Section level="sub" title={t('Look')}>
+                        <div className="ebr-row-pair">
+                          <div className="ebr-field"><label>{t('Color')}</label><EmbedColorPicker value={e.color} onChange={(color) => updateEmbed(activeEmbed, { color })} /></div>
+                          <div className="ebr-field"><label>{t('Title link URL')}</label><GrowField single value={e.url} placeholder="https://..." onChange={(v) => updateEmbed(activeEmbed, { url: v })} /></div>
+                        </div>
+                        <div className="ebr-row-pair">
+                          <div className="ebr-field"><label>{t('Thumbnail URL')}</label><GrowField single value={e.thumbnail} placeholder="https://..." onChange={(v) => updateEmbed(activeEmbed, { thumbnail: v })} /></div>
+                          <div className="ebr-field"><label>{t('Image URL')}</label><GrowField single value={e.image} placeholder="https://..." onChange={(v) => updateEmbed(activeEmbed, { image: v })} /></div>
+                        </div>
+                      </Section>
+
+                      <Section level="sub" title={t('Author')} defaultOpen={Boolean(e.author.name || e.author.icon || e.author.url)}>
+                        <div className="ebr-row-pair">
+                          <div className="ebr-field"><label>{t('Author name')}</label><GrowField single data-ac="vars" value={e.author.name} onChange={(v) => updateEmbed(activeEmbed, { author: { ...e.author, name: v } })} /></div>
+                          <div className="ebr-field"><label>{t('Author icon URL')}</label><GrowField single value={e.author.icon ?? ''} placeholder="https://..." onChange={(v) => updateEmbed(activeEmbed, { author: { ...e.author, icon: v } })} /></div>
+                        </div>
+                        <div className="ebr-field"><label>{t('Author link URL')}</label><GrowField single value={e.author.url ?? ''} placeholder="https://..." onChange={(v) => updateEmbed(activeEmbed, { author: { ...e.author, url: v } })} /></div>
+                      </Section>
+
+                      <Section level="sub" title={t('Footer')} defaultOpen={Boolean(e.footer.text || e.footer.icon || e.timestamp)}>
+                        <div className="ebr-row-pair">
+                          <div className="ebr-field"><label>{t('Footer text')}</label><GrowField single data-ac="vars" value={e.footer.text} onChange={(v) => updateEmbed(activeEmbed, { footer: { ...e.footer, text: v } })} /></div>
+                          <div className="ebr-field"><label>{t('Footer icon URL')}</label><GrowField single value={e.footer.icon ?? ''} placeholder="https://..." onChange={(v) => updateEmbed(activeEmbed, { footer: { ...e.footer, icon: v } })} /></div>
+                        </div>
+                        <label className="ebr-switchrow"><input type="checkbox" checked={e.timestamp} onChange={(ev) => updateEmbed(activeEmbed, { timestamp: ev.target.checked })} /><span>{t('Show current time in the footer')}</span></label>
+                      </Section>
+
+                      <Section level="sub" title={t('Fields')} meta={`${e.fields.length}/25`} defaultOpen={e.fields.length > 0}>
+                        <div className="ebr-items">
+                          {e.fields.map((f, fi) => (
+                            <div key={fi} className="ebr-item ebr-rise">
+                              <div className="ebr-item-main">
+                                <GrowField single data-ac="vars,emojis" placeholder={t('Name')} aria-label={t('Name')} maxLength={256} value={f.name} onChange={(v) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, name: v } : x)) })} />
+                                <GrowField data-ac="" rows={2} placeholder={t('Value')} aria-label={t('Value')} maxLength={1024} value={f.value} onChange={(v) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, value: v } : x)) })} />
+                                <label className="ebr-switchrow ebr-switchrow-sm"><input type="checkbox" checked={f.inline} onChange={(ev) => updateEmbed(activeEmbed, { fields: e.fields.map((x, i) => (i === fi ? { ...x, inline: ev.target.checked } : x)) })} /><span>{t('Inline')}</span></label>
+                              </div>
+                              <div className="ebr-item-tools">
+                                <button type="button" className="ebr-icon" disabled={fi === 0} onClick={() => updateEmbed(activeEmbed, { fields: mv(e.fields, fi, fi - 1) as typeof e.fields })} aria-label={t('Move up')} title={t('Move up')}>{upIcon}</button>
+                                <button type="button" className="ebr-icon" disabled={fi === e.fields.length - 1} onClick={() => updateEmbed(activeEmbed, { fields: mv(e.fields, fi, fi + 1) as typeof e.fields })} aria-label={t('Move down')} title={t('Move down')}>{downIcon}</button>
+                                <button type="button" className="ebr-icon ebr-icon-del" onClick={() => updateEmbed(activeEmbed, { fields: e.fields.filter((_, i) => i !== fi) })} aria-label={t('Remove')} title={t('Remove')}>{trash}</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {e.fields.length < 25 && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateEmbed(activeEmbed, { fields: [...e.fields, { name: '', value: '', inline: false }] })}>{t('+ Add field')}</button>
+                        )}
+                      </Section>
+                    </div>
+                  ) : (
+                    <p className="ebr-empty-note">{t('This message has no embeds. Add one to get a title, a description and a color.')}</p>
+                  )}
+                </Section>
+
+                {cardField}
+                {reactionsField}
+
+                <Section title={t('Buttons')} meta={data.buttons.length ? `${data.buttons.length}/5` : undefined} defaultOpen={data.buttons.length > 0}>
+                  <div className="ebr-items">
+                    {data.buttons.map((row, ri) => (
+                      <div key={ri} className="ebr-btn-row-edit ebr-rise">
+                        <div className="ebr-btn-row-title">{t('Row {n}', { n: ri + 1 })}</div>
+                        {row.map((b, bi) => {
+                          const isAction = Boolean(b.actions?.length);
+                          return (
+                            <div key={bi} className="ebr-btn-box">
+                              <div className="ebr-btn-edit">
+                                <div className="ebr-seg" role="group" aria-label={t('Button type')}>
+                                  <button type="button" aria-pressed={!isAction} onClick={() => isAction && setButtonKind(ri, bi, 'link')}>{t('Link')}</button>
+                                  <button type="button" aria-pressed={isAction} onClick={() => !isAction && setButtonKind(ri, bi, 'action')}>{t('Action')}</button>
+                                </div>
+                                <GrowField single placeholder={t('Label')} aria-label={t('Label')} maxLength={80} value={b.label} onChange={(v) => updateButton(ri, bi, { label: v })} />
+                                {!isAction && <GrowField single placeholder="https://..." aria-label="URL" value={b.url} onChange={(v) => updateButton(ri, bi, { url: v })} />}
+                                {isAction && (
+                                  <select value={b.style ?? 'grey'} onChange={(ev) => updateButton(ri, bi, { style: ev.target.value as LinkButton['style'] })} aria-label={t('Color')}>
+                                    {BUTTON_STYLES.map((style) => <option key={style} value={style}>{t(STYLE_LABELS[style])}</option>)}
+                                  </select>
+                                )}
+                                {allowButtonEmoji && <input type="text" placeholder={t('Emoji')} aria-label={t('Emoji')} maxLength={4} className="ebr-btn-emoji" value={b.emoji} onChange={(ev) => updateButton(ri, bi, { emoji: ev.target.value })} />}
+                                <button type="button" className="ebr-icon ebr-icon-del" onClick={() => removeButton(ri, bi)} aria-label={t('Remove')} title={t('Remove')}>{trash}</button>
+                              </div>
+                              {isAction && <ButtonActions actions={b.actions ?? []} names={names} onChange={(actions) => (actions.length ? updateButton(ri, bi, { actions }) : updateButton(ri, bi, { actions: undefined, style: undefined }))} />}
+                            </div>
+                          );
+                        })}
+                        {row.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => addButton(ri)}>{t('+ Button')}</button>}
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {data.buttons.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={addButtonRow}>{t('+ Add button row')}</button>}
-              </div>
-
+                  {data.buttons.length < 5 && <button type="button" className="btn btn-ghost btn-sm" onClick={addButtonRow}>{t('+ Add button row')}</button>}
+                </Section>
               </>
-              )}
+            )}
 
-              <div className="ebr-actions">
-                <button type="button" className="btn btn-accent btn-sm" onClick={(ev) => { keepWidth(ev); handleSave(); }} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
-                <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete}>{t('Delete this template')}</button>
-              </div>
+            <Section title={t('Variables')} defaultOpen={false}>
+              <VariablesPanel groups={variableGroups} />
+            </Section>
+          </div>
 
-              <div className="ebr-tools">
-                <h3>{t('Test and share')}</h3>
-                {allowTestSend ? (<>
+          <aside className="ebr-preview-col">
+            <div className="ebr-preview-card">
+              <div className="ebr-preview-label">{t('Preview')}</div>
+              {previewNode}
+            </div>
+            <div className="ebr-tools">
+              <h3>{t('Test and share')}</h3>
+              {allowTestSend ? (<>
                 <div className="ebr-tools-row">
-                  <select value={sendTarget} onChange={(ev) => setSendTarget(ev.target.value)}>
+                  <select value={sendTarget} onChange={(ev) => setSendTarget(ev.target.value)} aria-label={t('Test and share')}>
                     <option value="dm">{t('My direct messages')}</option>
                     {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
                   </select>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={(ev) => { keepWidth(ev); handleSendTest(); }} disabled={sending || dirty}>{sending ? t('Sending...') : t('Send test')}</button>
                 </div>
                 {dirty && <p className="ebr-tools-note">{t('Save your changes first, the test sends the saved template.')}</p>}
-                </>) : (testSendNote ? <p className="ebr-tools-note">{testSendNote}</p> : null)}
-                <div className="ebr-tools-row">
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('code')}>{t('Copy share code')}</button>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('json')}>{t('Copy JSON')}</button>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={openInGenerator}>{t('Open in Embed Generator')}</button>
-                </div>
+              </>) : (testSendNote ? <p className="ebr-tools-note">{testSendNote}</p> : null)}
+              <div className="ebr-tools-row">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('code')}>{t('Copy share code')}</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('json')}>{t('Copy JSON')}</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={openInGenerator}>{t('Open in Embed Generator')}</button>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
