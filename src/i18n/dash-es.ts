@@ -5712,4 +5712,9 @@ export const dashEs: Record<string, string> = {
   "entries": "participaciones",
   "entry": "participación",
   "Minutes to level 10": "Minutos para el nivel 10",
+  "Rank cards": "Tarjetas de rango",
+  "Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.": "Los niveles están apagados, así que nadie gana XP ahora. Aun así puedes cambiar esta página y lo que guardes se queda.",
+  "A picture with the avatar and the progress bar.": "Una imagen con el avatar y la barra de progreso.",
+  "The same numbers, as text in Discord.": "Los mismos números, como texto en Discord.",
+  "The picture and the text together.": "La imagen y el texto juntos.",
 };

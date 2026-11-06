@@ -5712,4 +5712,9 @@ export const dashPt: Record<string, string> = {
   "entries": "participações",
   "entry": "participação",
   "Minutes to level 10": "Minutos para o nível 10",
+  "Rank cards": "Cartões de rank",
+  "Leveling is off, so nobody earns XP right now. You can still change this page, and what you save stays.": "Os níveis estão desligados, então ninguém ganha XP agora. Você ainda pode mudar esta página e o que salvar fica guardado.",
+  "A picture with the avatar and the progress bar.": "Uma imagem com o avatar e a barra de progresso.",
+  "The same numbers, as text in Discord.": "Os mesmos números, como texto no Discord.",
+  "The picture and the text together.": "A imagem e o texto juntos.",
 };
