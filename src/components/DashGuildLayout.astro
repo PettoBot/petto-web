@@ -660,12 +660,22 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     var layout = document.querySelector('.dgl-layout');
     if (!layout || !window.ResizeObserver) return;
     var watched = null;
-    var ro = new ResizeObserver(function () { tell(); });
+    var last = -1;
+    var pending = 0;
+    // The height is written on the menu itself (the only thing that reads it), not on the layout: a custom property that changes on the
+    // layout is inherited by every element of the page, and the whole page was styled again each time the page grew or shrank (every
+    // frame of a fold that opens: that was the stutter). It is also written at most once per frame and only when the number changed.
+    var ro = new ResizeObserver(function () { schedule(); });
+    function schedule() { if (pending) return; pending = requestAnimationFrame(function () { pending = 0; tell(); }); }
     function tell() {
       var panel = document.getElementById('dgl-content');
+      var side = document.getElementById('dgl-side');
       if (!panel) return;
       if (panel !== watched) { if (watched) ro.unobserve(watched); watched = panel; ro.observe(panel); }
-      layout.style.setProperty('--dgl-panel-h', panel.offsetHeight + 'px');
+      var height = panel.offsetHeight;
+      if (height === last || !side) return;
+      last = height;
+      side.style.setProperty('--dgl-panel-h', height + 'px');
     }
     new MutationObserver(tell).observe(layout, { childList: true });
     tell();
@@ -2199,6 +2209,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           var fromBar = dirtyForms.indexOf(form) !== -1;
           if (saveBarBtn && fromBar) { saveBarBtn.disabled = true; setBarState('saving', cdt('Saving...')); }
           if (!fromBar) startProgress();
+          // A form that says what it does (data-progress="Deleting...|Almost done...") shows the card of the work until the answer is drawn.
+          var work = form.hasAttribute('data-progress') && !fromBar && window.dglProgress ? window.dglProgress(form.getAttribute('data-progress'), { title: form.getAttribute('data-progress-title') || undefined }) : null;
           // A form that goes through the bot (data-bot-wait: refresh the counters, send a timer now) says what is going on while Petto answers.
           var waiting = form.hasAttribute('data-bot-wait') && window.__dglBotWait ? window.__dglBotWait.watch() : null;
 
@@ -2238,6 +2250,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               if (!ok) restoreBtn();
               if (saveBarBtn) saveBarBtn.disabled = false;
               if (!ok) setBarState('error', cdt('Something went wrong, try again.'));
+              if (work) work.close();
               finishProgress();
             })
             .catch(function () {
@@ -2245,6 +2258,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               restoreBtn();
               if (saveBarBtn) saveBarBtn.disabled = false;
               setBarState(fromBar ? 'error' : null, cdt('Something went wrong, try again.'));
+              if (work) work.close();
               finishProgress();
             });
         });
@@ -2868,6 +2882,15 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         var summary = box.querySelector(':scope > summary');
         if (!summary) return;
         box.dataset.animBound = '1';
+        // Whoever opens it (a click, a script, the search), the content fades in. Only its opacity and position change: the height is never
+        // animated (that laid the whole page out on every frame), what follows slides with transforms (dglMotion.flip).
+        var born = performance.now();
+        box.addEventListener('toggle', function () {
+          if (!box.open || performance.now() - born < 700 || window.dglMotion.reduced()) return;
+          box.classList.add('is-opening');
+          clearTimeout(box._opening);
+          box._opening = setTimeout(function () { box.classList.remove('is-opening'); }, 320);
+        });
         summary.addEventListener('click', function (event) {
           if (window.dglMotion.reduced()) return;
           // A button, link or field inside the summary does its own thing.
@@ -3334,6 +3357,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   /* A fold: while it slides, its content stays inside; the content fades in after it opens (also when a script opens it). */
   .dgl-content details > summary { cursor: pointer; transition: background-color .18s ease, color .18s ease; }
   .dgl-content details.is-closing > *:not(summary) { animation: dgl-close 150ms var(--m-in) both; }
+  .dgl-content details.is-opening > *:not(summary) { animation: dgl-open 240ms var(--m-out) both; }
   .dgl-content details > summary > svg, .dgl-content details > summary .caret, .dgl-content details > summary .chevron { transition: transform .28s cubic-bezier(.3, 1, .4, 1); }
   @keyframes dgl-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
   @keyframes dgl-close { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px); } }
@@ -3343,7 +3367,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-tab { transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .14s ease; }
   .dgl-tab:active { transform: scale(.97); }
   @media (prefers-reduced-motion: reduce) {
-    .dgl-content details.is-closing > *:not(summary), .dgl-ms-dropdown:not([hidden]), [data-panel]:not([hidden]) { animation: none; }
+    .dgl-content details.is-closing > *:not(summary), .dgl-content details.is-opening > *:not(summary), .dgl-ms-dropdown:not([hidden]), [data-panel]:not([hidden]) { animation: none; }
     .dgl-content .btn { transition: none; }
   }
   @media (max-width: 880px) {

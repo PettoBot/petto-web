@@ -88,6 +88,58 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
     // dglPrompt(text, { field: { placeholder, value, maxLength, inputMode }, title, confirm }) settles with the written text, or null for no.
     window.dglPrompt = function (text, opts) { return ask(text, Object.assign({ tone: 'neutral', field: {} }, opts)).then(function (answer) { return answer === false ? null : String(answer); }); };
 
+    // A card that says what is going on while something takes a moment ("Deleting backup...", then "Removing the saved files...", then
+    // "Almost done..."): a turning ring and a line of text that changes by itself, the last one stays. Scripts call
+    //   var work = window.dglProgress(['Deleting backup...', 'Removing the saved files...', 'Almost done...'], { title: 'Deleting' })
+    // and `work.close()` when it is over (`work.set(text)` shows a line at once). It cannot be dismissed (the work is under way); it closes
+    // by itself after a minute at most, and a form with data-progress="a|b|c" shows it when it is sent.
+    var working = null;
+    window.dglProgress = function (messages, opts) {
+      opts = opts || {};
+      if (working) working.close();
+      var list = (Array.isArray(messages) ? messages : String(messages || '').split('|')).map(function (m) { return String(m).trim(); }).filter(Boolean);
+      var layer = document.createElement('div');
+      layer.className = 'dgl-ask dgl-work';
+      layer.setAttribute('role', 'alertdialog'); layer.setAttribute('aria-modal', 'true'); layer.setAttribute('aria-busy', 'true');
+      var box = document.createElement('div'); box.className = 'dgl-ask-box neutral';
+      var ring = document.createElement('span'); ring.className = 'dgl-work-ring'; ring.setAttribute('aria-hidden', 'true');
+      var title = document.createElement('h2'); title.className = 'dgl-ask-title'; title.textContent = opts.title || list[0] || '';
+      var line = document.createElement('p'); line.className = 'dgl-ask-text dgl-work-line'; line.setAttribute('role', 'status'); line.setAttribute('aria-live', 'polite');
+      box.append(ring, title, line); layer.appendChild(box);
+      var index = 0, timer = 0, closed = false, guard = 0;
+      function show(text) { line.classList.remove('in'); void line.offsetWidth; line.textContent = text; line.classList.add('in'); }
+      function next() {
+        if (closed) return;
+        show(list[Math.min(index, list.length - 1)] || '');
+        index += 1;
+        if (index < list.length) timer = setTimeout(next, opts.every || 1700);
+      }
+      var handle = {
+        set: function (text) { clearTimeout(timer); show(text); },
+        close: function () {
+          if (closed) return;
+          closed = true; clearTimeout(timer); clearTimeout(guard);
+          if (working === handle) working = null;
+          var done = function () { layer.remove(); document.documentElement.classList.remove('dgl-ask-open'); };
+          if (window.dglMotion) window.dglMotion.leave(layer, done); else done();
+        },
+      };
+      working = handle;
+      document.documentElement.classList.add('dgl-ask-open');
+      document.body.appendChild(layer);
+      next();
+      guard = setTimeout(handle.close, 60000);
+      return handle;
+    };
+    // A form that is sent the usual way (the page loads again) shows the card until the new page arrives; one that the dashboard sends
+    // without leaving the page asks for it itself (the submit handler of the layout) and closes it when the answer is drawn.
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (!form || !form.getAttribute || !form.hasAttribute('data-progress') || event.defaultPrevented) return;
+      window.dglProgress(form.getAttribute('data-progress'), { title: form.getAttribute('data-progress-title') || undefined });
+    });
+    window.addEventListener('pageshow', function (event) { if (event.persisted && working) working.close(); });
+
     // data-confirm on a button or on a form: the action waits for a yes. The answer is given once; then the same click or submit goes on.
     var passing = false;
     document.addEventListener('click', function (event) {
@@ -139,6 +191,11 @@ const words = { title: dt('Are you sure?'), confirm: dt('Confirm'), cancel: dt('
   .dgl-ask-no:hover { background: var(--card-hover); }
   .dgl-ask-yes:active, .dgl-ask-no:active { transform: scale(.985); }
   .dgl-ask-yes:focus-visible, .dgl-ask-no:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dgl-work .dgl-ask-box { padding: 30px 22px 28px; }
+  .dgl-work-ring { align-self: center; box-sizing: border-box; width: 46px; height: 46px; margin-bottom: 16px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--accent) 22%, transparent); border-top-color: var(--accent); animation: dgl-work-spin 900ms linear infinite; }
+  .dgl-work-line { margin: 0; min-height: 1.5em; }
+  .dgl-work-line.in { animation: m-rise-in 320ms var(--m-out) both; }
+  @keyframes dgl-work-spin { to { transform: rotate(360deg); } }
   html.dgl-ask-open, html.dgl-ask-open body { overflow: hidden; }
-  @media (prefers-reduced-motion: reduce) { .dgl-ask, .dgl-ask-box { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .dgl-ask, .dgl-ask-box, .dgl-work-line.in { animation: none; } .dgl-work-ring { animation-duration: 2.4s; } }
 </style>
