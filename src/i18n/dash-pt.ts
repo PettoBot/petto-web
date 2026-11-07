@@ -6177,4 +6177,6 @@ export const dashPt: Record<string, string> = {
   "Next lines": "Próximas linhas",
   "Previous part: {name}": "Parte anterior: {name}",
   "Next part: {name}": "Próxima parte: {name}",
+  "Equal to {a} of voice in a row": "Equivale a {a} de voz seguida",
+  "Voice hours add up the time of every member: 5 people for 1 hour count as 5 hours.": "As horas de voz somam o tempo de cada membro: 5 pessoas por 1 hora contam como 5 horas.",
 };
