@@ -682,7 +682,7 @@ export const CONFIG_SCHEMA: Record<string, readonly ColumnSpec[]> = {
     ["webhook_avatar", "text", null],
     ["title", "text", "Anonymous confession #{confession.number}"],
     ["footer", "text", "Confession ID: {confession.id}"],
-    ["color", "num", 10873466],
+    ["color", "num", 16772761],
     ["button_label", "text", "Confess"],
     ["reply_label", "text", "Reply anonymously"],
     ["panel_text", "text", "Press the button and write it. Nobody will know it was you."],
