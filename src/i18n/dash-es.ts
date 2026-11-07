@@ -6173,4 +6173,8 @@ export const dashEs: Record<string, string> = {
   "Resetting the configuration": "Reiniciando la configuración",
   "Checking the file again…|Saving the settings…|Updating the server…": "Revisando el archivo otra vez…|Guardando los ajustes…|Actualizando el servidor…",
   "Applying the file": "Aplicando el archivo",
+  "Previous lines": "Líneas anteriores",
+  "Next lines": "Líneas siguientes",
+  "Previous part: {name}": "Parte anterior: {name}",
+  "Next part: {name}": "Parte siguiente: {name}",
 };

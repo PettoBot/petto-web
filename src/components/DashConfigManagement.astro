@@ -35,6 +35,10 @@ const texts = {
   copied: dt('Copied'),
   matches: dt('{n} matches'),
   noMatches: dt('No matches.'),
+  moreBefore: dt('Previous lines'),
+  moreAfter: dt('Next lines'),
+  partBefore: dt('Previous part: {name}'),
+  partAfter: dt('Next part: {name}'),
   server: dt('Server'),
   sections: {
     bot_profile: dt('Bot profile'),
@@ -94,7 +98,6 @@ const texts = {
         <span class="cm-count" data-cm-count aria-live="polite"></span>
       </label>
       <label class="dfx-chip"><input type="checkbox" data-cm-only />{dt('Only matching lines')}</label>
-      <label class="dfx-chip"><input type="checkbox" data-cm-wrap />{dt('Wrap lines')}</label>
     </div>
 
     <div class="cm-body">
@@ -193,19 +196,14 @@ const texts = {
       var countEl = root.querySelector('[data-cm-count]');
       var linesEl = root.querySelector('[data-cm-lines]');
       var onlyEl = root.querySelector('[data-cm-only]');
-      var wrapEl = root.querySelector('[data-cm-wrap]');
       var copyBtn = root.querySelector('[data-cm-copy]');
       var copyLabel = root.querySelector('[data-cm-copy-l]');
       var yamlBtn = root.querySelector('[data-cm-yaml]');
       var text = '';
       var lines = [];
-      var rows = [];
       var sections = [];
-      var hits = [];
-      var cur = -1;
       var vals = {};
       // The part chosen from the list or a tile stays marked while the file settles there, even when it is too near the end to reach the top.
-      var forced = '';
 
       function fill(s, n) { return String(s).replace('{n}', n); }
       function el(tag, cls, t) { var n = document.createElement(tag); if (cls) n.className = cls; if (t != null) n.textContent = t; return n; }
@@ -272,63 +270,195 @@ const texts = {
         return out;
       }
 
-      function addPiece(parent, cls, str, q, hitList) {
-        var host = cls ? el('span', 'y-' + cls) : parent;
-        if (!q) { host.appendChild(document.createTextNode(str)); }
-        else {
-          var low = str.toLowerCase(), at = 0, i;
-          while ((i = low.indexOf(q, at)) !== -1) {
-            if (i > at) host.appendChild(document.createTextNode(str.slice(at, i)));
-            var mark = el('mark', 'cm-hit', str.slice(i, i + q.length));
-            host.appendChild(mark); hitList.push(mark);
-            at = i + q.length;
-          }
-          if (at < str.length) host.appendChild(document.createTextNode(str.slice(at)));
+      // ---- The viewer shows ONE part of the file at a time (Moderation, Automation...), in pieces of about 1,500 px of height at most, with the
+      // ---- long lines wrapped. The box used to be the whole file: 700 lines, 1,600 px wide, 12,500 px tall, and a phone (which draws the pixels
+      // ---- three times over) could not keep that in its graphics memory: the browser stopped working when a button was pressed. The chips and
+      // ---- tiles change the part that is shown, and a part longer than a piece has a row at each end to go to the lines before or after.
+      var ROW = 20;      // the height of a line, in pixels (also the line-height of the box)
+      var GUT = 52;      // the room on the left for the number of the line
+      var tokens = [];   // the pieces of each line, made when the line is first needed
+      var htmlCache = [];// the markup of each line for the current search
+      var lowLines = []; // the lines in lowercase (made at the first search)
+      var hitList = [];  // every match of the search: { line, k } (k: which match of that line)
+      var hitLine = [];  // 1 for each line that has a match
+      var secOf = [];    // the part each line belongs to
+      var q = '';        // the search, lowercase
+      var win = null;    // the box of the lines that are shown
+      var secIdx = 0, lineList = [], chunks = [], chunkIdx = 0, rowEls = [];
+      var charW = 7.2, cpl = 40, budget = 1500, boxW = 0;
+      var curMark = null, searchTimer = 0, flashTimer = 0, cur = -1;
+      var reduceMedia = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+
+      var AMP = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+      function esc(str) { return str.replace(/[&<>]/g, function (c) { return AMP[c]; }); }
+      function markHtml(str) {
+        var low = str.toLowerCase(), at = 0, i, out = '';
+        while ((i = low.indexOf(q, at)) !== -1) {
+          out += esc(str.slice(at, i)) + '<mark class="cm-hit">' + esc(str.slice(i, i + q.length)) + '</mark>';
+          at = i + q.length;
         }
-        if (cls) parent.appendChild(host);
+        return out + esc(str.slice(at));
+      }
+      function lineHtml(i) {
+        var h = htmlCache[i];
+        if (h !== undefined) return h;
+        var p = tokens[i] || (tokens[i] = pieces(lines[i]));
+        var out = '';
+        for (var k = 0; k < p.length; k++) {
+          var inner = q ? markHtml(p[k][1]) : esc(p[k][1]);
+          out += p[k][0] ? '<span class="y-' + p[k][0] + '">' + inner + '</span>' : inner;
+        }
+        return (htmlCache[i] = out || ' ');
+      }
+      function paintCur(row, hit) {
+        var m = row.getElementsByClassName('cm-hit')[hit.k];
+        if (m) { if (curMark && curMark !== m) curMark.classList.remove('cur'); m.classList.add('cur'); curMark = m; }
       }
 
-      function draw() {
-        var q = qEl.value.trim().toLowerCase();
-        var only = onlyEl.checked && q;
-        hits = []; cur = -1;
-        var frag = document.createDocumentFragment();
-        rows = [];
-        lines.forEach(function (line, i) {
-          var row = el('div', 'cm-line');
-          var n = el('span', 'cm-n', String(i + 1));
-          var t = el('span', 'cm-t');
-          var before = hits.length;
-          pieces(line).forEach(function (p) { addPiece(t, p[0], p[1], q, hits); });
-          if (!t.firstChild) t.appendChild(document.createTextNode(' '));
-          if (only && hits.length === before) row.hidden = true;
-          row.append(n, t);
-          frag.appendChild(row);
-          rows.push(row);
+      // How wide a letter is and how many fit on a line of the box: the pieces are cut so each is about as tall as the budget (and the box
+      // never has more to carry than that).
+      function measure() {
+        var probe = el('span');
+        probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:inherit';
+        probe.textContent = '0000000000000000000000000000000000000000';
+        codeEl.appendChild(probe);
+        charW = probe.getBoundingClientRect().width / 40 || 7.2;
+        probe.remove();
+        boxW = codeEl.clientWidth;
+        cpl = Math.max(12, Math.floor((boxW - GUT - 18) / charW));
+        budget = Math.max(900, Math.min(1600, Math.floor(480000 / Math.max(240, boxW))));
+      }
+      function chunkify(list) {
+        var out = [], from = 0, h = 0;
+        for (var k = 0; k < list.length; k++) {
+          var lh = Math.max(1, Math.ceil(lines[list[k]].length / cpl)) * ROW;
+          if (h + lh > budget && k - from >= 20) { out.push([from, k]); from = k; h = 0; }
+          h += lh;
+        }
+        out.push([from, list.length]);
+        return out;
+      }
+
+      function buildBox() {
+        win = el('div', 'cm-win');
+        codeEl.replaceChildren(win);
+        rowEls = []; curMark = null;
+        measure();
+        win.addEventListener('click', function (e) {
+          var b = e.target.closest ? e.target.closest('[data-more]') : null;
+          if (!b) return;
+          var act = b.getAttribute('data-more');
+          if (act === 'chunk-prev') { chunkIdx -= 1; drawChunk(true); }
+          else if (act === 'chunk-next') { chunkIdx += 1; drawChunk(true); }
+          else if (act === 'sec-prev') showSection(secIdx - 1, null, false, 'end');
+          else if (act === 'sec-next') showSection(secIdx + 1, null, false);
         });
-        codeEl.replaceChildren(frag);
-        codeEl.classList.toggle('wrap', wrapEl.checked);
-        countEl.textContent = q ? (hits.length ? fill(T.matches, hits.length) : T.noMatches) : '';
-        countEl.classList.toggle('none', Boolean(q) && !hits.length);
-        if (q && hits.length) step(1);
-        activeSection();
       }
 
-      function top(row) { return row.offsetTop; }
-      function scrollRow(row, smooth) {
-        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        codeEl.scrollTo({ top: Math.max(0, top(row) - 6), behavior: smooth && !reduce ? 'smooth' : 'auto' });
+      function moreRow(act, text) { return '<button type="button" class="cm-more" data-more="' + act + '">' + esc(text) + '</button>'; }
+      // Draws the piece that is shown: its lines (as one block of markup, so the browser lays it out once), and the rows at its ends.
+      function drawChunk(toTop) {
+        if (!win) return;
+        curMark = null;
+        var c = chunks[chunkIdx] || [0, 0];
+        var html = '';
+        if (chunkIdx > 0) html += moreRow('chunk-prev', T.moreBefore);
+        else if (secIdx > 0 && !onlyOn()) html += moreRow('sec-prev', fill2(T.partBefore, sections[secIdx - 1].label));
+        for (var k = c[0]; k < c[1]; k++) { var i = lineList[k]; html += '<div class="cm-line" data-n="' + (i + 1) + '">' + lineHtml(i) + '</div>'; }
+        if (c[0] === c[1]) html += '<p class="cm-none">' + esc(T.noMatches) + '</p>';
+        if (chunkIdx < chunks.length - 1) html += moreRow('chunk-next', T.moreAfter);
+        else if (secIdx < sections.length - 1 && !onlyOn()) html += moreRow('sec-next', fill2(T.partAfter, sections[secIdx + 1].label));
+        win.innerHTML = html;
+        rowEls = Array.prototype.slice.call(win.getElementsByClassName('cm-line'));
+        if (cur >= 0 && hitList[cur]) { var r = rowFor(hitList[cur].line); if (r) paintCur(r, hitList[cur]); }
+        if (toTop) codeEl.scrollTop = 0;
+      }
+      function fill2(str, name) { return String(str).replace('{name}', name); }
+      function onlyOn() { return Boolean(onlyEl.checked && q); }
+      function rowFor(line) {
+        var n = String(line + 1);
+        for (var k = 0; k < rowEls.length; k++) if (rowEls[k].getAttribute('data-n') === n) return rowEls[k];
+        return null;
+      }
+
+      // Shows a part of the file (from the first line of its piece, or from the piece that holds `focusLine`).
+      function showSection(idx, focusLine, light, where) {
+        if (idx < 0 || idx >= sections.length) return;
+        secIdx = idx;
+        var s = sections[idx], from = idx === 0 ? 0 : s.line, to = s.end, only = onlyOn();
+        lineList = [];
+        for (var i = from; i < to; i++) if (!only || hitLine[i]) lineList.push(i);
+        chunks = chunkify(lineList);
+        chunkIdx = where === 'end' ? chunks.length - 1 : 0;
+        if (focusLine != null) {
+          var pos = lineList.indexOf(focusLine);
+          for (var c = 0; c < chunks.length && pos >= 0; c++) if (pos >= chunks[c][0] && pos < chunks[c][1]) { chunkIdx = c; break; }
+        }
+        drawChunk(true);
+        markChip(s);
+        if (light) lightFirstLines();
+      }
+      // The first lines of the part light up for a moment (the class goes on after the lines are drawn, so nothing is measured in between).
+      function lightFirstLines() {
+        clearTimeout(flashTimer);
+        rowEls.forEach(function (r) { r.classList.remove('flash'); });
+        if (reduceMedia && reduceMedia.matches) return;
+        var mine = rowEls.slice(0, 3);
+        requestAnimationFrame(function () { mine.forEach(function (r) { r.classList.add('flash'); }); });
+        flashTimer = setTimeout(function () { mine.forEach(function (r) { r.classList.remove('flash'); }); }, 1500);
+      }
+      function markChip(found) {
+        sections.forEach(function (s) { s.btn.classList.toggle('on', s === found); });
+        // The chip of the part that is shown is in view in the strip of chips (the strip scrolls sideways on a phone).
+        if (found.btn.scrollIntoView && navEl.scrollWidth > navEl.clientWidth + 2) navEl.scrollTo({ left: Math.max(0, found.btn.offsetLeft - 12), behavior: 'auto' });
+      }
+
+      // The search runs on the text of the lines (never on what is on screen), a moment after the person stops typing, and over the whole file:
+      // each chip says how many matches its part has, and Enter goes from one to the next, changing the part that is shown when it has to.
+      function runSearch() {
+        clearTimeout(searchTimer); searchTimer = 0;
+        q = qEl.value.trim().toLowerCase();
+        htmlCache = []; hitList = []; hitLine = []; cur = -1; curMark = null;
+        var perSec = sections.map(function () { return 0; });
+        if (q) {
+          if (!lowLines.length) for (var z = 0; z < lines.length; z++) lowLines.push(lines[z].toLowerCase());
+          for (var i = 0; i < lines.length; i++) {
+            // Most lines do not hold the search at all: they are skipped before their pieces are looked at.
+            if (lowLines[i].indexOf(q) === -1) continue;
+            var p = tokens[i] || (tokens[i] = pieces(lines[i]));
+            var found = 0;
+            for (var k = 0; k < p.length; k++) {
+              var low = p[k][1].toLowerCase(), at = 0, x;
+              while ((x = low.indexOf(q, at)) !== -1) { hitList.push({ line: i, k: found++ }); at = x + q.length; }
+            }
+            if (found) { hitLine[i] = 1; perSec[secOf[i]] += found; }
+          }
+        }
+        sections.forEach(function (s, i) {
+          var n = s.btn.querySelector('.cm-nav-n');
+          n.textContent = q ? String(perSec[i]) : String(s.line + 1);
+          s.btn.classList.toggle('has', Boolean(q) && perSec[i] > 0);
+          s.btn.classList.toggle('none', Boolean(q) && perSec[i] === 0);
+        });
+        countEl.textContent = q ? (hitList.length ? fill(T.matches, hitList.length) : T.noMatches) : '';
+        countEl.classList.toggle('none', Boolean(q) && !hitList.length);
+        // The part that is shown is drawn again (the search marks and, with "only matching lines", the lines change), at the first match.
+        if (q && hitList.length) { showSection(secOf[hitList[0].line], hitList[0].line, false); step(1); }
+        else showSection(secIdx, null, false);
       }
       // Enter goes to the next match, Shift+Enter to the one before.
       function step(dir) {
-        if (!hits.length) return;
-        if (cur >= 0) hits[cur].classList.remove('cur');
-        cur = (cur + dir + hits.length) % hits.length;
-        var mark = hits[cur];
-        mark.classList.add('cur');
-        var row = mark.closest('.cm-line');
+        if (searchTimer) runSearch();
+        if (!hitList.length) return;
+        cur = (cur + dir + hitList.length) % hitList.length;
+        var hit = hitList[cur];
+        var row = secOf[hit.line] === secIdx ? rowFor(hit.line) : null;
+        if (!row) { showSection(secOf[hit.line], hit.line, false); row = rowFor(hit.line); }
+        else if (curMark) { curMark.classList.remove('cur'); curMark = null; }
+        if (!row) return;
+        paintCur(row, hit);
         var y = row.offsetTop, box = codeEl.clientHeight;
-        if (y < codeEl.scrollTop + 8 || y > codeEl.scrollTop + box - 40) codeEl.scrollTo({ top: Math.max(0, y - box / 3), behavior: 'auto' });
+        if (y < codeEl.scrollTop + 8 || y > codeEl.scrollTop + box - 60) codeEl.scrollTo({ top: Math.max(0, y - box / 3), behavior: 'auto' });
       }
 
       function buildSections() {
@@ -339,8 +469,10 @@ const texts = {
           if (m) sections.push({ key: m[1], label: T.sections[m[1]] || m[1], line: i });
         });
         sections.forEach(function (s, i) { s.end = i + 1 < sections.length ? sections[i + 1].line : lines.length; });
+        secOf = new Array(lines.length);
+        sections.forEach(function (s, i) { for (var k = (i === 0 ? 0 : s.line); k < s.end; k++) secOf[k] = i; });
         navEl.replaceChildren();
-        sections.forEach(function (s) {
+        sections.forEach(function (s, i) {
           var b = el('button', 'cm-nav-i');
           b.type = 'button'; b.dataset.key = s.key;
           b.append(el('span', 'cm-nav-l', s.label), el('span', 'cm-nav-n', String(s.line + 1)));
@@ -349,37 +481,28 @@ const texts = {
           s.btn = b;
         });
       }
+      // A chip or a tile: the part is shown from its top, and its first lines light up. A search that left lines out is shown whole again.
       function jump(key) {
-        var s = sections.filter(function (x) { return x.key === key; })[0];
-        if (!s || !rows[s.line]) return;
-        // A line filtered out by the search is shown again, so the part can be seen.
-        if (onlyEl.checked) { onlyEl.checked = false; draw(); }
-        forced = key;
-        scrollRow(rows[s.line], true);
-        activeSection();
-        // The first lines of the part light up for a moment (the class is put back on the next frame, so the page is not laid out in the middle).
-        var lit = []; for (var i = s.line; i < Math.min(s.end, s.line + 3); i++) { if (rows[i]) { rows[i].classList.remove('flash'); lit.push(rows[i]); } }
-        requestAnimationFrame(function () { lit.forEach(function (r) { r.classList.add('flash'); }); });
-        root.querySelector('[data-cm-code]').focus({ preventScroll: true });
+        var idx = -1; sections.forEach(function (x, i) { if (x.key === key) idx = i; });
+        if (idx < 0) return;
+        if (onlyEl.checked) { onlyEl.checked = false; }
+        showSection(idx, null, true);
+        // The keyboard follows the file (arrows scroll it) when there is a keyboard; on a phone nothing needs the focus and moving it costs a frame.
+        if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) codeEl.focus({ preventScroll: true });
       }
-      var frame = 0;
-      function activeSection() {
-        if (!sections.length || !rows.length) return;
-        var y = codeEl.scrollTop + 12, found = sections[0];
-        sections.forEach(function (s) { var r = rows[s.line]; if (r && !r.hidden && r.offsetTop <= y) found = s; });
-        if (forced) found = sections.filter(function (s) { return s.key === forced; })[0] || found;
-        sections.forEach(function (s) { s.btn.classList.toggle('on', s === found); });
-      }
-      ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function (ev) { codeEl.addEventListener(ev, function () { forced = ''; }, { passive: true }); });
-      codeEl.addEventListener('scroll', function () { if (frame) return; frame = requestAnimationFrame(function () { frame = 0; activeSection(); }); });
+      // When the box changes width (a phone turned around) the pieces are cut again, and the one that was shown stays where it was.
+      if (window.ResizeObserver) new ResizeObserver(function () {
+        if (!win || !lines.length || Math.abs(codeEl.clientWidth - boxW) < 24) return;
+        var keep = lineList[(chunks[chunkIdx] || [0])[0]];
+        measure(); showSection(secIdx, keep == null ? null : keep, false);
+      }).observe(codeEl);
 
-      qEl.addEventListener('input', function () { forced = ''; draw(); });
+      qEl.addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 120); });
       qEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
-        else if (e.key === 'Escape' && qEl.value) { e.preventDefault(); qEl.value = ''; draw(); }
+        else if (e.key === 'Escape' && qEl.value) { e.preventDefault(); qEl.value = ''; runSearch(); }
       });
-      onlyEl.addEventListener('change', draw);
-      wrapEl.addEventListener('change', function () { codeEl.classList.toggle('wrap', wrapEl.checked); activeSection(); });
+      onlyEl.addEventListener('change', function () { runSearch(); });
       root.querySelectorAll('[data-jump]').forEach(function (b) { b.addEventListener('click', function () { if (text) jump(b.dataset.jump); }); });
 
       function copyText(s) {
@@ -426,11 +549,10 @@ const texts = {
             text = body.replace(/\n$/, '');
             lines = text.split('\n');
             linesEl.textContent = fill(T.lines, lines.length);
-            parse(); drawTiles(); buildSections(); draw();
+            parse(); drawTiles(); buildSections(); tokens = []; htmlCache = []; lowLines = []; hitList = []; hitLine = []; cur = -1; secIdx = 0;
+            buildBox(); runSearch();
             // Open past the banner, on the first setting; the banner is still there above.
-            if (sections.length && rows[sections[0].line]) { codeEl.scrollTop = Math.max(0, rows[sections[0].line].offsetTop - 8); activeSection(); }
-            // The file is uncovered from the top down instead of popping in.
-            if (!(window.dglMotion && window.dglMotion.reduced())) { codeEl.classList.add('dgl-reveal-down'); codeEl.addEventListener('animationend', function done(e) { if (e.target !== codeEl) return; codeEl.classList.remove('dgl-reveal-down'); codeEl.removeEventListener('animationend', done); }); }
+            if (sections.length) { var g = rowFor(sections[0].line); if (g) codeEl.scrollTop = Math.max(0, g.offsetTop - 8); }
           })
           .catch(failed);
       }
@@ -448,6 +570,10 @@ const texts = {
   @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) .cm { --cm-moderation: #a85565; --cm-onboarding: #3f7a52; --cm-automation: #3a7fb8; --cm-logging: #b07a0c; --cm-tickets: #7b55c4; --cm-leveling: #c4573a; --cm-design: #4a5fd0; }
   }
+  /* The panels come in with a short rise (m-rise-in, from the settings kit). The kit keeps the finished animation alive (fill-mode "both"), and a
+     phone keeps every panel as a layer of its own for as long as it lives (about 1 MP each, nine times more pixels at a phone's density). The rise
+     ends exactly where the panel rests, so it needs no fill after it: the animation goes away when it ends and the layer with it. */
+  .cm.sx-stack > .sx-panel, .cm .sx-duo.cm-duo > .sx-panel { animation-fill-mode: backwards; }
   .cm .cm-intro { margin: 0; max-width: 70ch; }
   .cm .sx-lead a, .cm .sx-hint a { color: var(--accent); }
 
@@ -483,10 +609,10 @@ const texts = {
   .cm .cm-count.none { color: var(--red); }
 
   .cm .cm-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; grid-template-rows: auto minmax(0, 1fr); }
-  .cm .cm-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cm .cm-nav { display: flex; flex-wrap: wrap; gap: 6px; contain: layout style; }
   .cm .cm-nav-i { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: 7px; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; background: var(--card); color: var(--text-muted); font-family: var(--sans); font-size: 12.5px; cursor: pointer; transition: background-color .25s ease, border-color .25s ease, color .25s ease; }
   .cm .cm-nav-i:hover { color: var(--text); background: var(--card-hover); }
-  .cm .cm-nav-i.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .cm .cm-nav-i.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
   .cm .cm-nav-n { font-family: var(--mono); font-size: 10px; opacity: .6; }
   @container cmv (min-width: 820px) {
     .cm .cm-body { grid-template-columns: 176px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 14px; align-items: stretch; }
@@ -497,18 +623,19 @@ const texts = {
 
   /* The box has the height; the code scrolls inside it, so a long file never makes the page endless. */
   .cm .cm-codebox { position: relative; height: clamp(360px, 62vh, 700px); min-width: 0; }
-  .cm .cm-code { position: absolute; inset: 0; background: var(--bg-raise); border: 1px solid var(--border-soft); border-radius: 10px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.65; padding: 8px 0; outline: none; }
+  /* One part of the file at a time (about 1,500 px tall at most) and the long lines wrap: the box never scrolls sideways and never holds more
+     than a few screens, so the browser has little to keep in memory (the whole file was 1,600 x 12,500 px). */
+  .cm .cm-code { position: absolute; inset: 0; background: var(--bg-raise); border: 1px solid var(--border-soft); border-radius: 10px; overflow-x: hidden; overflow-y: auto; font-family: var(--mono); font-size: 12px; line-height: 20px; overflow-anchor: none; overscroll-behavior: contain; padding: 8px 0; outline: none; }
   .cm .cm-code:focus-visible { border-color: var(--accent); }
-  .cm .cm-line { display: flex; min-width: max-content; }
-  .cm .cm-code.wrap .cm-line { min-width: 0; }
-  .cm .cm-line[hidden] { display: none; }
-  .cm .cm-n { position: sticky; left: 0; flex: 0 0 auto; width: 46px; box-sizing: border-box; padding-right: 12px; text-align: right; color: var(--text-dim); opacity: .7; background: var(--bg-raise); user-select: none; font-size: 11px; }
-  .cm .cm-t { padding: 0 16px 0 6px; white-space: pre; color: var(--text); }
-  .cm .cm-code.wrap .cm-t { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
-  .cm .cm-line.flash .cm-t, .cm .cm-line.flash .cm-n { animation: cm-flash 1.4s ease-out; }
+  .cm .cm-line { position: relative; min-height: 20px; padding: 0 16px 0 52px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+  .cm .cm-line::before { content: attr(data-n); position: absolute; left: 0; top: 0; width: 46px; box-sizing: border-box; padding-right: 12px; text-align: right; color: var(--text-dim); opacity: .7; user-select: none; font-size: 11px; }
+  .cm .cm-line.flash { animation: cm-flash 1.4s ease-out; }
   @keyframes cm-flash { from { background: var(--accent-soft); } to { background: transparent; } }
-  .cm .cm-line.flash .cm-n { animation-name: cm-flash-n; }
-  @keyframes cm-flash-n { from { background: var(--accent-soft); } to { background: var(--bg-raise); } }
+  .cm .cm-more { display: block; box-sizing: border-box; width: calc(100% - 24px); margin: 6px 12px; padding: 9px 12px; border: 1px dashed var(--border); border-radius: 8px; background: transparent; color: var(--text-muted); font: 600 12.5px var(--sans); text-align: center; cursor: pointer; transition: background-color .14s ease, color .14s ease; }
+  .cm .cm-more:hover { background: var(--card-hover); color: var(--text); }
+  .cm .cm-none { margin: 0; padding: 18px; color: var(--text-dim); font-family: var(--sans); font-size: 13px; }
+  .cm .cm-nav-i.none { opacity: .45; }
+  .cm .cm-nav-i.has { border-color: color-mix(in srgb, var(--yellow) 55%, var(--border)); }
   .cm .cm-code .y-k { color: var(--accent); }
   .cm .cm-code .y-p { color: var(--text-dim); }
   .cm .cm-code .y-s { color: #a5ea7a; }
@@ -558,5 +685,5 @@ const texts = {
     .cm .cm-nav { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
     .cm .cm-danger .btn, .cm .cm-actions .btn { width: 100%; justify-content: center; }
   }
-  @media (prefers-reduced-motion: reduce) { .cm .cm-line.flash .cm-t, .cm .cm-line.flash .cm-n, .cm .cm-skel span { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .cm .cm-line.flash, .cm .cm-skel span { animation: none; } }
 </style>
