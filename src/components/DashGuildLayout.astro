@@ -1256,14 +1256,21 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     function syncInert() { if (dglSide) dglSide.inert = Boolean(drawerQuery && drawerQuery.matches && !dglSide.classList.contains('open')); }
     if (drawerQuery && drawerQuery.addEventListener) drawerQuery.addEventListener('change', syncInert);
     syncInert();
-    function scrollsInside(node) {
-      for (; node && node !== dglSide; node = node.parentElement) {
+    // What may scroll under a finger while the page is held still: the drawer's own list, and the server sheet that opens from the drawer
+    // (it is a box of its own, not inside the drawer, so it needs to be named too).
+    function scrollsInside(node, host) {
+      for (; node && node !== host; node = node.parentElement) {
         var overflow = getComputedStyle(node).overflowY;
         if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 1) return true;
       }
       return false;
     }
-    function guardTouch(event) { if (!(dglSide && dglSide.contains(event.target) && scrollsInside(event.target))) event.preventDefault(); }
+    function guardTouch(event) {
+      var target = event.target;
+      if (!target || !target.closest) { event.preventDefault(); return; }
+      var host = dglSide && dglSide.contains(target) ? dglSide : target.closest('.ds-sheet');
+      if (!(host && scrollsInside(target, host))) event.preventDefault();
+    }
     function lockPage(on) {
       if (on) document.addEventListener('touchmove', guardTouch, { passive: false });
       else document.removeEventListener('touchmove', guardTouch);
@@ -1611,46 +1618,51 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // The bar moves at one steady speed from the first moment, so it never rushes and then stalls. Its pace is the time the
     // last few moves actually took: it reaches 80% when the page is expected to arrive, then keeps creeping forward ever more slowly
     // instead of stopping. When the page arrives it runs to the end in a blink and fades.
-    var progressFrame = 0;
+    var progressAnim = null;
     var progressHideTimer = null;
     var progressStartedAt = 0;
-    var progressWidth = 0;
     var recentLoads = [];
     function expectedLoadMs() {
       if (!recentLoads.length) return 450;
       var avg = recentLoads.reduce(function (sum, ms) { return sum + ms; }, 0) / recentLoads.length;
       return Math.min(2500, Math.max(300, avg));
     }
+    // The bar is an animation of the browser (Web Animations: it runs on the compositor, not on the page's thread), so it does not
+    // ask the page for a style on every frame while the page is busy loading and drawing; it used to be moved by a script at each frame.
     function startProgress() {
       if (!progressEl) return;
       clearTimeout(progressHideTimer);
-      cancelAnimationFrame(progressFrame);
+      if (progressAnim) { progressAnim.cancel(); progressAnim = null; }
       progressStartedAt = Date.now();
       var expected = expectedLoadMs();
       progressEl.style.transition = 'opacity 0.2s ease';
       progressEl.style.opacity = '1';
-      progressWidth = 0;
       progressEl.style.transform = 'scaleX(0)';
-      function frame() {
-        var t = Date.now() - progressStartedAt;
-        // Straight line to 80% when the page is expected, then the same speed that slows down smoothly toward 95%
-        // (no step in the pace, and never a full stop if the page is late).
-        var speed = 80 / expected;
-        progressWidth = t < expected ? speed * t : 80 + 15 * ((t - expected) * speed / 15) / (((t - expected) * speed / 15) + 1);
-        // Only a transform moves (the GPU draws it): the bar never makes the page lay itself out again while it loads.
-        progressEl.style.transform = 'scaleX(' + (progressWidth / 100).toFixed(4) + ')';
-        progressFrame = requestAnimationFrame(frame);
-      }
-      progressFrame = requestAnimationFrame(frame);
+      if (!progressEl.animate) return;
+      // Straight line to 80% when the page is expected, then a long, ever slower creep toward 95% (it never stops if the page is late).
+      var tail = 8000;
+      progressAnim = progressEl.animate([
+        { transform: 'scaleX(0)', easing: 'linear', offset: 0 },
+        { transform: 'scaleX(0.8)', easing: 'cubic-bezier(0.1, 0.5, 0.3, 1)', offset: expected / (expected + tail) },
+        { transform: 'scaleX(0.95)', offset: 1 }
+      ], { duration: expected + tail, fill: 'forwards' });
     }
     function finishProgress() {
       hideContentSkeleton();
       if (!progressEl) return;
-      cancelAnimationFrame(progressFrame);
       if (progressStartedAt) {
         recentLoads.push(Date.now() - progressStartedAt);
         if (recentLoads.length > 5) recentLoads.shift();
         progressStartedAt = 0;
+      }
+      // The bar stops where it is, then runs to the end and fades.
+      if (progressAnim) {
+        var reached = new DOMMatrix(getComputedStyle(progressEl).transform).a;
+        progressAnim.cancel();
+        progressAnim = null;
+        progressEl.style.transition = 'none';
+        progressEl.style.transform = 'scaleX(' + reached.toFixed(4) + ')';
+        void progressEl.offsetWidth;
       }
       // Arrived: run to the end, fade, and reset, all in about a third of a second so the bar never lingers after the page.
       progressEl.style.transition = 'transform 0.12s ease-out, opacity 0.2s ease 0.08s';
