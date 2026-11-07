@@ -239,7 +239,7 @@ const touch = (path) => fetch(`${origin()}${path}`, { headers: { 'user-agent': W
 // The pages of a server, by the files of the build: each one loads its code (and the menu's) the first time it is asked for. Asked for
 // a server id that is not one, a page stops at the session check, so this only loads code and reads nothing.
 const GUILD_PAGES = new URL('./build/dist/server/pages/dash/guild/_id_/', import.meta.url);
-const NOT_A_GUILD_PAGE = /-(?:api|file|image|live|export|restore|status|search|preview)$|^(?:events|version|live|role-blocks)$/;
+const NOT_A_GUILD_PAGE = /-(?:api|file|image|live|export|import|restore|status|search|preview)$|^(?:events|version|live|role-blocks)$/;
 const guildPages = () => {
   try {
     return readdirSync(GUILD_PAGES).filter((file) => file.endsWith('.astro.mjs')).map((file) => file.slice(0, -'.astro.mjs'.length)).filter((name) => !NOT_A_GUILD_PAGE.test(name));

@@ -1281,6 +1281,37 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (open) setTimeout(function () { document.getElementById('dgl-side-close')?.focus({ preventScroll: true }); }, 60);
       else if (wasOpen) menuBtn?.focus({ preventScroll: true });
     }
+    // A page chosen in the open drawer waits for the drawer to be out of the way: the drawer slides away on its own (quickly: it was chosen,
+    // not dismissed), and only when it has finished does anything else start (the progress bar, the placeholder, the reading of the page and
+    // the redraw). Doing both at once made the slide stutter. The end is the `transitionend` of the drawer; if it never comes (the browser
+    // skipped the transition, a hidden tab, a reduced-motion setting) a timer calls it anyway, so a link can never be left waiting.
+    var DRAWER_PICK_MS = 230;
+    var closeToken = 0;
+    function afterMenuClosed(done) {
+      var token = ++closeToken;
+      var isDrawer = Boolean(dglSide && drawerQuery && drawerQuery.matches && dglSide.classList.contains('open'));
+      if (!isDrawer) { done(); return; }
+      if (window.dglMotion && window.dglMotion.reduced && window.dglMotion.reduced()) { setDrawer(false); done(); return; }
+      var finished = false;
+      var timer = 0;
+      var finish = function () {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        dglSide.removeEventListener('transitionend', onEnd);
+        dglSide.classList.remove('dgl-picking');
+        menuBackdrop?.classList.remove('dgl-picking');
+        // One frame later, so the first frame of the new work does not share a frame with the end of the slide.
+        requestAnimationFrame(function () { if (token === closeToken) done(); });
+      };
+      var onEnd = function (event) { if (event.target === dglSide && event.propertyName === 'transform') finish(); };
+      dglSide.addEventListener('transitionend', onEnd);
+      timer = setTimeout(finish, DRAWER_PICK_MS + 160);
+      dglSide.classList.add('dgl-picking');
+      menuBackdrop?.classList.add('dgl-picking');
+      setDrawer(false);
+    }
+    window.dglAfterMenuClosed = afterMenuClosed;
     menuBtn?.addEventListener('click', function () { setDrawer(!dglSide?.classList.contains('open')); });
     menuBackdrop?.addEventListener('click', function () { setDrawer(false); });
     document.getElementById('dgl-side-close')?.addEventListener('click', function () { setDrawer(false); });
@@ -1295,7 +1326,16 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // otherwise it stays open covering the freshly-loaded page.
     document.querySelectorAll('.dgl-nav').forEach(function (nav) {
       nav.addEventListener('click', function (e) {
-        if (e.target.closest('a')) setDrawer(false);
+        var link = e.target.closest('a');
+        if (!link) return;
+        // A page that loads as a whole (data-full) leaves after the drawer is out of the way, like the others; with a modifier key
+        // (a new tab) the browser does what it always does.
+        if (link.classList.contains('dgl-link') && link.hasAttribute('data-full') && !dirtyForm && e.button === 0 && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) && !link.target && drawerQuery && drawerQuery.matches && dglSide?.classList.contains('open')) {
+          e.preventDefault();
+          afterMenuClosed(function () { window.location.href = link.href; });
+          return;
+        }
+        setDrawer(false);
       });
     });
 
@@ -2154,26 +2194,32 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           if (dirtyForm) { e.preventDefault(); shakeSaveBar(); return; }
           if (!href) return;
           e.preventDefault();
-          startProgress();
-          var ready = prefetchedPages.get(href);
-          if (!(ready && !ready.pending && prefetchUsable(ready))) showContentSkeleton(href);
-          setMenuLabel(a);
-          getPage(href)
-            .then(function (answer) {
-              if (!answer || !answer.ok) throw new Error('navigation failed');
-              return swapContent(answer.html, href).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
-            })
-            .then(function (ok) {
-              if (ok) {
-                updateActiveLink(href);
-                finishProgress();
-                // A change heard while this copy was on its way is read now (it is a no-op when the copy is current).
-                refreshCurrent(false);
-              }
-              else window.location.href = href;
-            })
-            .catch(function () { window.location.href = href; });
+          // From the open drawer on a phone, the page starts to load only once the drawer is out of the way.
+          afterMenuClosed(function () {
+            startProgress();
+            var ready = prefetchedPages.get(href);
+            if (!(ready && !ready.pending && prefetchUsable(ready))) showContentSkeleton(href);
+            setMenuLabel(a);
+            getPage(href)
+              .then(function (answer) {
+                if (!answer || !answer.ok) throw new Error('navigation failed');
+                return swapContent(answer.html, href).then(function (ok) { if (ok) setShownVersion(answer.version); return ok; });
+              })
+              .then(function (ok) {
+                if (ok) {
+                  updateActiveLink(href);
+                  finishProgress();
+                  // A change heard while this copy was on its way is read now (it is a no-op when the copy is current).
+                  refreshCurrent(false);
+                }
+                else window.location.href = href;
+              })
+              .catch(function () { window.location.href = href; });
+          });
         });
+        // A finger on a link of the open drawer already asks for its page (only the network: nothing is drawn), so it is on its way
+        // while the drawer slides out and the redraw that follows has nothing to wait for.
+        if (href) a.addEventListener('pointerdown', function (event) { if (event.pointerType === 'touch' && dglSide && dglSide.contains(a) && dglSide.classList.contains('open')) prefetchPage(href, true); }, { passive: true });
       });
     }
 
@@ -3196,8 +3242,11 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     /* It slides in decelerating and out accelerating; it stays visible until it is fully out (visibility waits for the slide). */
     .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 18px 18px 0; margin: 0; transform: translateX(-105%) !important; transition: transform var(--dgl-drawer-out) var(--dgl-drawer-ease-out) !important; will-change: transform; contain: layout; overscroll-behavior: contain; }
     .dgl-side.open, .dgl-side.reveal.open { transform: none !important; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--dgl-drawer-in) var(--dgl-drawer-ease-in) !important; }
-    /* A softer drawer: it starts gently, takes a little over half a second and settles slowly, and it leaves a little quicker than it came. The veil behind it fades with it. */
-    :root { --dgl-drawer-in: 580ms; --dgl-drawer-out: 440ms; --dgl-drawer-ease-in: cubic-bezier(.33, 0, .2, 1); --dgl-drawer-ease-out: cubic-bezier(.4, 0, .2, 1); }
+    /* A soft but quick drawer: it comes in decelerating in 0.4 s and leaves in 0.3 s (0.23 s when a page was chosen). The veil behind it fades with it. */
+    :root { --dgl-drawer-in: 400ms; --dgl-drawer-out: 300ms; --dgl-drawer-pick: 230ms; --dgl-drawer-ease-in: cubic-bezier(.25, .8, .25, 1); --dgl-drawer-ease-out: cubic-bezier(.4, 0, .6, 1); }
+    /* A page chosen in the drawer: it leaves a little quicker, and the page loads only after it (see afterMenuClosed). */
+    .dgl-side.dgl-picking { transition-duration: var(--dgl-drawer-pick) !important; }
+    .dgl-backdrop.dgl-picking.dgl-leave { animation-duration: var(--dgl-drawer-pick) !important; }
     .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); touch-action: none; animation: m-fade-in var(--dgl-drawer-in) ease backwards; }
     .dgl-backdrop.dgl-leave { animation: m-fade-out var(--dgl-drawer-out) ease both !important; }
     .dgl-backdrop[hidden] { display: none; }
