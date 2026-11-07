@@ -1250,14 +1250,34 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     // On a phone the menu is a drawer at the side: a button opens it, and it closes with the backdrop, the X, Escape or a link.
     var menuBtn = document.getElementById('dgl-menu-btn');
     var menuBackdrop = document.getElementById('dgl-backdrop');
+    // Closed, the drawer is only moved out of the way (a transform: nothing else about it changes, so opening it restyles nothing); it is
+    // taken out of the tab order and away from screen readers with `inert` instead of visibility (visibility is inherited by every item of the menu).
+    var drawerQuery = window.matchMedia ? window.matchMedia('(max-width: 880px)') : null;
+    function syncInert() { if (dglSide) dglSide.inert = Boolean(drawerQuery && drawerQuery.matches && !dglSide.classList.contains('open')); }
+    if (drawerQuery && drawerQuery.addEventListener) drawerQuery.addEventListener('change', syncInert);
+    syncInert();
+    function scrollsInside(node) {
+      for (; node && node !== dglSide; node = node.parentElement) {
+        var overflow = getComputedStyle(node).overflowY;
+        if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 1) return true;
+      }
+      return false;
+    }
+    function guardTouch(event) { if (!(dglSide && dglSide.contains(event.target) && scrollsInside(event.target))) event.preventDefault(); }
+    function lockPage(on) {
+      if (on) document.addEventListener('touchmove', guardTouch, { passive: false });
+      else document.removeEventListener('touchmove', guardTouch);
+    }
     function setDrawer(open) {
       var wasOpen = !!dglSide?.classList.contains('open');
       if (wasOpen === open) return;
       dglSide?.classList.toggle('open', open);
       if (menuBackdrop) { if (open) { window.dglMotion.stay(menuBackdrop); menuBackdrop.hidden = false; } else window.dglMotion.hide(menuBackdrop); }
       menuBtn?.setAttribute('aria-expanded', String(open));
-      // The page under the drawer does not scroll, and it stays exactly where it was (no jump to the top when the drawer closes).
-      document.documentElement.classList.toggle('dgl-drawer-open', open);
+      // The page under the drawer does not scroll and stays exactly where it was. It is not locked with overflow on the page (that took the
+      // sticky bars off the screen for a moment and restyled everything): touches outside what scrolls inside the drawer are simply not scrolls.
+      lockPage(open);
+      syncInert();
       if (open) setTimeout(function () { document.getElementById('dgl-side-close')?.focus({ preventScroll: true }); }, 60);
       else if (wasOpen) menuBtn?.focus({ preventScroll: true });
     }
@@ -1268,6 +1288,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     mobileToggle?.addEventListener('click', function () {
       var isOpen = dglSide?.classList.contains('open');
       dglSide?.classList.toggle('open', !isOpen);
+      syncInert();
       mobileToggle.setAttribute('aria-expanded', String(!isOpen));
     });
     // Collapse the mobile nav back down once a link inside it is actually followed,
@@ -3173,14 +3194,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     .dgl-layout { display: block; }
     /* The menu is a drawer at the side, closed until the button is pressed, so it never covers the page. */
     /* It slides in decelerating and out accelerating; it stays visible until it is fully out (visibility waits for the slide). */
-    .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 18px 18px 0; margin: 0; transform: translateX(-105%) !important; transition: transform var(--dgl-drawer-out) var(--dgl-drawer-ease-out), visibility 0s linear var(--dgl-drawer-out) !important; visibility: hidden; will-change: transform; }
-    .dgl-side.open, .dgl-side.reveal.open { transform: none !important; visibility: visible; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--dgl-drawer-in) var(--dgl-drawer-ease-in), visibility 0s !important; }
+    .dgl-side, .dgl-side.reveal { position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 1001; display: flex; flex-direction: column; width: min(86vw, 320px); height: 100dvh !important; max-height: none !important; overflow: hidden; border-radius: 0 18px 18px 0; margin: 0; transform: translateX(-105%) !important; transition: transform var(--dgl-drawer-out) var(--dgl-drawer-ease-out) !important; will-change: transform; contain: layout; overscroll-behavior: contain; }
+    .dgl-side.open, .dgl-side.reveal.open { transform: none !important; box-shadow: 0 0 40px rgba(0,0,0,.55); transition: transform var(--dgl-drawer-in) var(--dgl-drawer-ease-in) !important; }
     /* A softer drawer: it starts gently, takes a little over half a second and settles slowly, and it leaves a little quicker than it came. The veil behind it fades with it. */
     :root { --dgl-drawer-in: 580ms; --dgl-drawer-out: 440ms; --dgl-drawer-ease-in: cubic-bezier(.33, 0, .2, 1); --dgl-drawer-ease-out: cubic-bezier(.4, 0, .2, 1); }
     .dgl-backdrop { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.55); touch-action: none; animation: m-fade-in var(--dgl-drawer-in) ease both; }
     .dgl-backdrop.dgl-leave { animation: m-fade-out var(--dgl-drawer-out) ease both !important; }
-    /* What is inside the drawer comes up a little after it, one block after the other. */
-    .dgl-side.open > :not(.dgl-drawer-head) { animation: m-fade-in 460ms ease both; animation-delay: 120ms; }
     .dgl-backdrop[hidden] { display: none; }
     /* The close button floats over the banner at the top of the drawer, so the drawer starts with the banner and no extra row. */
     .dgl-drawer-head { display: flex; position: absolute; z-index: 5; top: 0; right: 0; padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 0 0; }
@@ -3348,7 +3367,6 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
      component that sets its own font, like the mono counts, keeps it). */
   :where(.dgl-content :is(h2, h3)) :where(small, em, [class*="-status"], [class*="-badge"], [class*="-tag"], [class*="-hint"], [class*="-note"], [class*="-pill"]) { font-family: var(--sans); }
   /* The page under the open drawer does not scroll (and keeps its place). */
-  html.dgl-drawer-open, html.dgl-drawer-open body { overflow: hidden; }
   /* The Save button of a form that the bar of unsaved changes already saves. */
   .dgl-bar-save { display: none !important; }
   /* The invisible area that makes a small control easy to hit (see bindTapTargets). */
