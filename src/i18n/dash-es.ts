@@ -6177,4 +6177,6 @@ export const dashEs: Record<string, string> = {
   "Next lines": "Líneas siguientes",
   "Previous part: {name}": "Parte anterior: {name}",
   "Next part: {name}": "Parte siguiente: {name}",
+  "Equal to {a} of voice in a row": "Equivale a {a} de voz seguida",
+  "Voice hours add up the time of every member: 5 people for 1 hour count as 5 hours.": "Las horas de voz suman el tiempo de cada miembro: 5 personas durante 1 hora cuentan como 5 horas.",
 };

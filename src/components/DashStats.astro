@@ -67,7 +67,9 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const FULL_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const n = (value: number) => Math.round(value).toLocaleString(numLocale);
 /** Voice time, short: 45s, 35m, 1h 5m, 2d 3h. */
-const hoursText = (seconds: number) => formatDuration(seconds, { locale: numLocale });
+const hoursText = (seconds: number) => formatDuration(seconds, { locale: numLocale, max: 'h' });
+/** What a long voice time equals as days in a row (shown next to the hours, which can pass 24 in a day: every member adds up). */
+const inARow = (seconds: number) => (Math.abs(seconds) >= 86_400 ? dt('Equal to {a} of voice in a row', { a: formatDuration(seconds, { locale: numLocale }) }) : '');
 const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString(numLocale, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const dayText = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T00:00:00Z`).toLocaleDateString(numLocale, { ...opts, timeZone: 'UTC' });
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
@@ -85,7 +87,7 @@ interface ChartDef { title: string; sub: string; chip?: { change: number | null;
 const both = (make: (size: { W: number; H: number }) => string) => ({ s: make(SIZES.s), m: make(SIZES.m), l: make(SIZES.l) });
 
 const series = buildSeries(stats, analysis, memberTotal);
-const VOICE = { format: (v: number) => formatDuration(v * 3600, { locale: numLocale }), ticks: (t: number[]) => t.map((v) => (v === 0 ? '0' : formatDuration(v * 3600, { locale: numLocale }))) };
+const VOICE = { format: (v: number) => formatDuration(v * 3600, { locale: numLocale, max: 'h' }), ticks: (t: number[]) => t.map((v) => (v === 0 ? '0' : formatDuration(v * 3600, { locale: numLocale, max: 'h' }))) };
 const COUNT = { format: (v: number) => n(v), ticks: (t: number[]) => tickLabels(t, { locale: numLocale, num: num0, num1, fractional: false }) };
 
 /** A chart of a series of days: a smooth line (messages, voice, reactions, members) or bars (joins, leaves, net...), with today so far as the last point. */
@@ -161,7 +163,7 @@ const panels: Record<string, { charts: ChartDef[]; columns?: SeriesKey[] }> = {
     seriesChart('reactions', { title: dt('Reactions per day'), sub: `${n(stats.totals.reactions)} ${dt('in total')}`, color: colorOf('reactions'), shape: 'line', chip: change('reactions'), summary: true, span: true }),
   ], columns: ['messages', 'reactions'] },
   voice: { charts: [
-    seriesChart('voice', { title: dt('Voice hours per day'), sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}`, color: colorOf('voice'), shape: 'line', hours: true, chip: change('voiceSeconds'), summary: true }),
+    seriesChart('voice', { title: dt('Voice hours per day'), sub: `${hoursText(stats.totals.voiceSeconds)} ${dt('in total')}${inARow(stats.totals.voiceSeconds) ? ` · ${inARow(stats.totals.voiceSeconds)}` : ''}`, color: colorOf('voice'), shape: 'line', hours: true, chip: change('voiceSeconds'), summary: true }),
     hoursChart(true),
   ], columns: ['voice'] },
   joins: { charts: [
@@ -195,7 +197,7 @@ const COLUMN_LABEL: Record<SeriesKey, string> = { messages: 'Messages', reaction
 const COLUMN_COLOR: Record<SeriesKey, string> = { messages: 'messages', reactions: 'reactions', voice: 'voice', joins: 'joins', leaves: 'leaves', invited: 'invites', sanctions: 'sanctions', net: 'growth', members: 'growth' };
 // Which way a rise reads: more of these is good (up), bad (inverse) or just a count (neutral).
 const COLUMN_TONE: Record<SeriesKey, 'up' | 'inverse' | 'neutral'> = { messages: 'up', reactions: 'up', voice: 'up', joins: 'up', leaves: 'inverse', invited: 'up', sanctions: 'neutral', net: 'up', members: 'up' };
-const cellText = (key: SeriesKey, value: number) => (key === 'voice' ? formatDuration(value, { locale: numLocale }) : n(value));
+const cellText = (key: SeriesKey, value: number) => (key === 'voice' ? formatDuration(value, { locale: numLocale, max: 'h' }) : n(value));
 const changeText = (key: SeriesKey, value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${cellText(key, Math.abs(value))}`;
 const toneOf = (key: SeriesKey, value: number) => (value === 0 || COLUMN_TONE[key] === 'neutral' ? 'flat' : (value > 0) === (COLUMN_TONE[key] === 'up') ? 'good' : 'bad');
 const TABLE_ROWS = 14;
@@ -205,10 +207,10 @@ const tables = Object.fromEntries(Object.entries(panels).map(([id, panel]) => {
   return [id, { columns, rows }];
 }));
 
-const tiles: { label: string; value: string; count: number | null; color: string; change?: { value: number | null; inverse: boolean } }[] = [
+const tiles: { label: string; value: string; hint?: string; count: number | null; color: string; change?: { value: number | null; inverse: boolean } }[] = [
   { label: 'Messages', value: n(stats.totals.messages), count: stats.totals.messages, color: 'messages', change: { value: analysis.change.messages, inverse: false } },
   { label: 'Active members', value: n(stats.totals.activeMembers), count: stats.totals.activeMembers, color: 'messages' },
-  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), count: null, color: 'voice', change: { value: analysis.change.voiceSeconds, inverse: false } },
+  { label: 'Voice', value: hoursText(stats.totals.voiceSeconds), hint: inARow(stats.totals.voiceSeconds), count: null, color: 'voice', change: { value: analysis.change.voiceSeconds, inverse: false } },
   { label: 'Joined', value: n(stats.totals.joins), count: stats.totals.joins, color: 'joins', change: { value: analysis.change.joins, inverse: false } },
   { label: 'Left', value: n(stats.totals.leaves), count: stats.totals.leaves, color: 'leaves', change: { value: analysis.change.leaves, inverse: true } },
   { label: 'Through invites', value: n(stats.totals.invited), count: stats.totals.invited, color: 'invites', change: { value: analysis.change.invited, inverse: false } },
@@ -257,6 +259,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
         <div class="st-tile" style={`--m:var(--m-${tile.color});--i:${i}`}>
           <span class="st-tile-label"><i class="st-swatch"></i>{dt(tile.label)}</span>
           <b data-count={tile.count ?? undefined}>{tile.value}</b>
+          {tile.hint && <small class="st-tile-hint">{tile.hint}</small>}
           <span class="st-chips">{chip && <Fragment><span class={`st-chip st-chip-${chip.tone}`}><b>{chip.arrow ? `${chip.arrow} ` : ''}{chip.text}</b></span><small>{dt('vs before')}</small></Fragment>}</span>
         </div>
       );
@@ -307,7 +310,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
                     {tables[id].columns.map((key) => {
                       const cell = row.cells[key];
                       return cell
-                        ? <td><span class="st-v">{cellText(key, cell.value)}</span>{cell.change !== null && <span class={`st-d st-d-${toneOf(key, cell.change)}`}> ({changeText(key, cell.change)})</span>}</td>
+                        ? <td><span class="st-v" title={key === 'voice' ? inARow(cell.value) || undefined : undefined}>{cellText(key, cell.value)}</span>{cell.change !== null && <span class={`st-d st-d-${toneOf(key, cell.change)}`}> ({changeText(key, cell.change)})</span>}</td>
                         : <td class="st-none">–</td>;
                     })}
                   </tr>
@@ -315,6 +318,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
               </tbody>
             </table>
           </div>
+          {tables[id].columns.includes('voice') && <p class="st-voice-note">{dt('Voice hours add up the time of every member: 5 people for 1 hour count as 5 hours.')}</p>}
           {tables[id].rows.length > TABLE_ROWS && <button type="button" class="st-more" data-st-more data-more={dt('Show all {a} days', { a: tables[id].rows.length })} data-less={dt('Show fewer days')}>{dt('Show all {a} days', { a: tables[id].rows.length })}</button>}
         </article>
       )}
@@ -612,6 +616,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
     :root:not([data-theme="dark"]) .st-root { --m-messages: #c4573a; --m-reactions: #b07a0c; --m-voice: #3a7fb8; --m-joins: #3f7a52; --m-leaves: #a85565; --m-invites: #7b55c4; --m-sanctions: #b07a0c; --m-growth: #3f7a52; }
   }
   .st-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 3px; background: var(--m, var(--accent)); flex: none; }
+  .st-tile-hint { margin-top: -2px; font-size: 11.5px; line-height: 1.3; color: var(--text-dim); overflow-wrap: anywhere; }
   .st-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
   .st-tile { position: relative; border: 1px solid var(--border); border-radius: 14px; padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow: hidden;
     background: linear-gradient(180deg, color-mix(in srgb, var(--m) 9%, var(--card)), var(--card) 70%); }
@@ -668,6 +673,7 @@ const bestMessage = bestDayOf(stats.daily.messages);
   .st-empty-box { margin: 10px 0 4px; padding: 26px 10px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; line-height: 1.5; }
   /* The day by day table keeps its own horizontal scroll, so the page never scrolls sideways; the day stays in view. */
   .st-daily { margin-bottom: 10px; }
+  .st-voice-note { margin: 8px 2px 0; font-size: 12.5px; line-height: 1.4; color: var(--text-dim); }
   .st-table-scroll { overflow-x: auto; margin-top: 10px; border: 1px solid var(--border); border-radius: 12px; }
   .st-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .st-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }

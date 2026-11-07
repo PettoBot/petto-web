@@ -20,6 +20,15 @@ assert.equal(formatDuration(null, { empty: '' }), '', 'a place can choose what n
 assert.equal(formatDuration(1234 * 3600), '51d 10h', 'a day is the biggest unit by default');
 assert.equal(formatDuration(1234 * 3600 + 5 * 60, { max: 'w' }), '7w 2d', 'weeks only where they are allowed');
 assert.equal(formatDuration(100 * 86_400, { max: 'mo' }), '3mo 10d', 'months only where they are allowed');
+// Voice time adds up every member, so it never goes to days: hours (and the minutes next to them), with the thousands separator.
+assert.equal(formatDuration(2 * 86_400 + 6 * 3600, { max: 'h' }), '54h', 'two days and six hours is 54h');
+assert.equal(formatDuration(54 * 3600 + 12 * 60, { max: 'h' }), '54h 12m', 'minutes stay next to the hours');
+assert.equal(formatDuration(25 * 60, { max: 'h' }), '25m', 'under an hour is minutes');
+assert.equal(formatDuration(5 * 3600 + 24 * 60, { max: 'h' }), '5h 24m', 'under a day is as before');
+assert.equal(formatDuration(98_304 * 3600, { max: 'h', locale: 'en-US' }), '98,304h', 'thousands of hours get the separator');
+assert.equal(formatDuration(98_304 * 3600, { max: 'h', locale: 'es-ES' }), '98.304h', 'in Spanish too');
+assert.equal(formatDuration(-(30 * 3600), { max: 'h' }), '-30h', 'a negative change keeps its sign');
+assert.equal(formatDuration(2 * 86_400 + 6 * 3600), '2d 6h', 'the days form is still there for the equivalent');
 assert.equal(formatDuration(400 * 86_400, { max: 'y' }), '1y 1mo', 'years only where they are allowed');
 assert.equal(formatDuration(3 * 86_400 + 4 * 3600, { max: 'w' }), '3d 4h', 'less than a week stays in days');
 assert.equal(formatDuration(12_345 * 86_400, { locale: 'en-US' }), '12,345d', 'thousands separator (English)');
