@@ -6173,4 +6173,8 @@ export const dashPt: Record<string, string> = {
   "Resetting the configuration": "Reiniciando a configuração",
   "Checking the file again…|Saving the settings…|Updating the server…": "Verificando o arquivo de novo…|Salvando as configurações…|Atualizando o servidor…",
   "Applying the file": "Aplicando o arquivo",
+  "Previous lines": "Linhas anteriores",
+  "Next lines": "Próximas linhas",
+  "Previous part: {name}": "Parte anterior: {name}",
+  "Next part: {name}": "Próxima parte: {name}",
 };
