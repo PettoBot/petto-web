@@ -92,7 +92,8 @@ export async function readTeamRows(astro: any): Promise<TeamRow[] | null> {
     const res = await fetch(`${config.url}/rest/v1/site_team?select=id,position,user_id,sort_order&order=sort_order.asc,id.asc&limit=1000`, { headers: config.headers });
     if (!res.ok) return null;
     const rows = await res.json();
-    return Array.isArray(rows) ? rows.filter((row: any) => (TEAM_POSITIONS as readonly string[]).includes(row.position)) as TeamRow[] : null;
+    // `id` is a bigint in the database and the answer carries it as text ("34"): it is a number from here on, so it can be compared with the one of a form.
+    return Array.isArray(rows) ? rows.filter((row: any) => (TEAM_POSITIONS as readonly string[]).includes(row.position)).map((row: any) => ({ ...row, id: Number(row.id) })) as TeamRow[] : null;
   } catch {
     return null;
   }
@@ -190,7 +191,9 @@ export async function moveTeamMember(astro: any, rowId: number, direction: 'up' 
   if (!other) return { ok: true };
   // Equal orders cannot be swapped, so the whole position is numbered again first.
   const order = list.map((entry) => entry.id);
-  [order[index], order[order.indexOf(other.id)]] = [other.id, row.id];
+  // The places are worked out before the swap: `order.indexOf` inside the swap is read after the first half of it, and moving down changed nothing.
+  const otherIndex = index + (direction === 'up' ? -1 : 1);
+  [order[index], order[otherIndex]] = [order[otherIndex], order[index]];
   for (const [place, id] of order.entries()) {
     if (!(await write(astro, `site_team?id=eq.${id}`, 'PATCH', { sort_order: place + 1 }, { Prefer: 'return=minimal' }))) return { ok: false, error: 'database' };
   }
