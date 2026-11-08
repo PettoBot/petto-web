@@ -164,42 +164,47 @@ if (Astro.request.method === 'POST') {
     }
 
     if (!error) {
-      // nick/avatar/banner/bio are all real Discord fields on the same "Modify Current Member"
-      // endpoint, applied together in one PATCH call.
-      const bioChanged = description !== (stored.bot_description ?? '');
-      if (nickname !== (stored.bot_nickname ?? '') || avatarDataUri !== undefined || bannerDataUri !== undefined || bioChanged) {
-        const applied = await setBotGuildProfile(id, botToken, { nick: nickname || null, avatarDataUri, bannerDataUri, bio: description || null });
-        if (!applied) discordWarning = true;
-      }
-
-      const dbRes = await fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
-        method: 'POST',
-        headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({
-          guild_id: id,
-          bot_nickname: nickname || null,
-          bot_avatar_url: nextAvatarUrl || null,
-          bot_banner_url: nextBannerUrl || null,
-          bot_description: description || null,
-          updated_at: new Date().toISOString(),
-        }),
-      });
-
-      if (dbRes.ok) saved = true;
-      else error = 'discord_rejected';
-
-      // The name style, only when it changed. Discord's answer decides: a style it refuses is not saved.
+      // The name style is read first: a style that is not valid stops the save before anything is sent (nothing is half saved).
       const parsedStyle = parseNameStyleForm(form);
       if ('error' in parsedStyle) {
         error = parsedStyle.error;
-        saved = false;
-      } else if (!sameNameStyle(parsedStyle.style, await loadNameStyle())) {
-        if (await setBotNameStyle(id, botToken, parsedStyle.style)) {
-          if (!(await saveNameStyle(parsedStyle.style))) error = 'discord_rejected';
-        } else {
-          error = 'name_style_rejected';
-          saved = false;
-        }
+      } else {
+        // The profile (Discord and the database) and the name style do not depend on each other, so they are saved at the same time
+        // instead of one after the other: a save used to wait for up to five calls, one by one.
+        // nick/avatar/banner/bio are all real Discord fields on the same "Modify Current Member" endpoint, applied together in one PATCH call.
+        const bioChanged = description !== (stored.bot_description ?? '');
+        const profileChanged = nickname !== (stored.bot_nickname ?? '') || avatarDataUri !== undefined || bannerDataUri !== undefined || bioChanged;
+        const saveProfile = async () => {
+          const [applied, dbRes] = await Promise.all([
+            profileChanged ? setBotGuildProfile(id, botToken, { nick: nickname || null, avatarDataUri, bannerDataUri, bio: description || null }) : Promise.resolve(true),
+            fetch(`${apiUrl}/rest/v1/guilds?on_conflict=guild_id`, {
+              method: 'POST',
+              headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+              body: JSON.stringify({
+                guild_id: id,
+                bot_nickname: nickname || null,
+                bot_avatar_url: nextAvatarUrl || null,
+                bot_banner_url: nextBannerUrl || null,
+                bot_description: description || null,
+                updated_at: new Date().toISOString(),
+              }),
+              signal: AbortSignal.timeout(15_000),
+            }).catch(() => null),
+          ]);
+          if (!applied) discordWarning = true;
+          return Boolean(dbRes?.ok);
+        };
+        // Only when it changed. Discord's answer decides: a style it refuses is not saved.
+        const saveStyle = async (): Promise<'same' | 'ok' | 'database' | 'rejected'> => {
+          if (sameNameStyle(parsedStyle.style, await loadNameStyle())) return 'same';
+          if (!(await setBotNameStyle(id, botToken, parsedStyle.style))) return 'rejected';
+          return (await saveNameStyle(parsedStyle.style)) ? 'ok' : 'database';
+        };
+        const [profileSaved, styleResult] = await Promise.all([saveProfile(), saveStyle()]);
+        if (profileSaved) saved = true;
+        else error = 'discord_rejected';
+        if (styleResult === 'rejected') { error = 'name_style_rejected'; saved = false; }
+        else if (styleResult === 'database') error = 'discord_rejected';
       }
     }
   }

@@ -164,27 +164,27 @@ async function readBotIdentity(guildId: string, botToken: string): Promise<{ nam
 }
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const IMAGE_FETCH_TIMEOUT_MS = 8_000;
+// Discord answers a profile change in a second or two; one that does not answer in this time is reported as not applied.
+const DISCORD_WRITE_TIMEOUT_MS = 15_000;
 
 /** Fetches an image URL server-side and returns it as a `data:` URI, the format Discord's member-avatar endpoint expects. Returns null on any failure so callers can show a clean error instead of a stack trace. */
 export async function imageUrlToDataUri(url: string): Promise<{ dataUri: string } | { error: 'fetch_failed' | 'too_large' }> {
-  let res: Response;
+  // A host that never answers must not keep the save waiting: the image has a few seconds, the body included.
+  const signal = AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS);
   try {
-    res = await fetch(url);
+    const res = await fetch(url, { signal });
+    if (!res.ok) return { error: 'fetch_failed' };
+
+    const contentType = res.headers.get('content-type') ?? 'image/png';
+    if (!contentType.startsWith('image/')) return { error: 'fetch_failed' };
+
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_AVATAR_BYTES) return { error: 'too_large' };
+    return { dataUri: `data:${contentType};base64,${Buffer.from(buf).toString('base64')}` };
   } catch {
     return { error: 'fetch_failed' };
   }
-  if (!res.ok) return { error: 'fetch_failed' };
-
-  const contentType = res.headers.get('content-type') ?? 'image/png';
-  if (!contentType.startsWith('image/')) return { error: 'fetch_failed' };
-
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_AVATAR_BYTES) return { error: 'too_large' };
-
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return { dataUri: `data:${contentType};base64,${btoa(binary)}` };
 }
 
 /** Converts an uploaded file (from a multipart form) to a `data:` URI, the counterpart to `imageUrlToDataUri` for the "upload instead of link" path. */
@@ -193,10 +193,7 @@ export async function fileToDataUri(file: File): Promise<{ dataUri: string } | {
   if (file.size > MAX_AVATAR_BYTES) return { error: 'too_large' };
 
   const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return { dataUri: `data:${file.type};base64,${btoa(binary)}` };
+  return { dataUri: `data:${file.type};base64,${Buffer.from(buf).toString('base64')}` };
 }
 
 /**
@@ -219,11 +216,12 @@ export async function setBotGuildProfile(guildId: string, botToken: string, patc
     method: 'PATCH',
     headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+    signal: AbortSignal.timeout(DISCORD_WRITE_TIMEOUT_MS),
+  }).catch(() => null);
   // The bot's look in this server changed in Discord: its saved copy is behind until the bot saves it again.
   noteGuildWrite(guildId);
   forgetMemberSelf(guildId);
-  return res.ok;
+  return Boolean(res?.ok);
 }
 
 /**
@@ -238,10 +236,11 @@ export async function setBotNameStyle(guildId: string, botToken: string, style: 
       method: 'PATCH',
       headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
+      signal: AbortSignal.timeout(DISCORD_WRITE_TIMEOUT_MS),
+    }).catch(() => null);
     noteGuildWrite(guildId);
     forgetMemberSelf(guildId);
-    return res.ok;
+    return Boolean(res?.ok);
   };
   if (style) return send(nameStyleBody(style));
   // Clearing: Discord does not document these fields, so the accepted way of saying "no style" is tried in order.
@@ -299,8 +298,34 @@ function forgetMemberSelf(guildId: string): void {
   void invalidate(botLookKey(guildId)).catch(() => {});
 }
 
+/** The bot's id, which is the first part of its token (null when the token does not look like one). */
+export function botUserIdFromToken(botToken: string): string | null {
+  try {
+    const value = atob(botToken.split('.')[0]);
+    return /^\d{15,22}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the bot has its own avatar or banner in this server, asked to Discord itself (never a kept copy) because this decides whether
+ * something must be taken off. A picture that was uploaded keeps no link in our database, so the database cannot say. null when Discord
+ * cannot be asked.
+ */
+export async function getGuildLookOverrides(guildId: string, botToken: string): Promise<{ avatar: boolean; banner: boolean } | null> {
+  const botId = botUserIdFromToken(botToken);
+  if (!botId) return null;
+  try {
+    const read = await readGuildMemberSelf(guildId, botToken, botId);
+    return read ? { avatar: Boolean(read.avatarUrl), banner: Boolean(read.bannerUrl) } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readGuildMemberSelf(guildId: string, botToken: string, botUserId: string): Promise<{ nick: string | null; avatarUrl: string | null; bannerUrl: string | null } | null> {
-  const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/${botUserId}`, { headers: { Authorization: `Bot ${botToken}` } });
+  const res = await fetch(`https://discord.com/api/guilds/${guildId}/members/${botUserId}`, { headers: { Authorization: `Bot ${botToken}` }, signal: AbortSignal.timeout(DISCORD_WRITE_TIMEOUT_MS) });
   if (!res.ok) return null;
   const member = await res.json();
   const avatarUrl = member.avatar ? `https://cdn.discordapp.com/guilds/${guildId}/users/${member.user.id}/avatars/${member.avatar}.png?size=128` : null;
