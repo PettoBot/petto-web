@@ -1,5 +1,5 @@
 import { getEnv } from './env';
-import { setBotNameStyle } from './discord';
+import { setBotNameStyle, setBotGuildProfile, getGuildLookOverrides } from './discord';
 import { cached, invalidatePrefix } from './sharedCache';
 
 export type PremiumStatus = 'free' | 'pending' | 'active' | 'past_due' | 'canceled' | 'expired';
@@ -396,9 +396,14 @@ export async function resetGuildPremiumCustomizationIfStale(astro: any, guildId:
   const rows = guildResponse?.ok ? ((await guildResponse.json().catch(() => null)) as any[] | null) : null;
   const row = Array.isArray(rows) ? (rows[0] ?? {}) : null;
   if (row && !row.bot_avatar_url && !row.bot_banner_url && !row.bot_description && !row.bot_name_style) {
-    if (checkedClean.size > 5000) checkedClean.clear();
-    checkedClean.set(guildId, Date.now() + CLEAN_CHECK_MS);
-    return;
+    // Nothing is saved here, but a picture that was uploaded (not linked) is saved nowhere: only Discord knows it is still on.
+    const botToken = getEnv(astro, 'DISCORD_TOKEN');
+    const overrides = botToken ? await getGuildLookOverrides(guildId, botToken) : null;
+    if (!overrides?.avatar && !overrides?.banner) {
+      if (checkedClean.size > 5000) checkedClean.clear();
+      checkedClean.set(guildId, Date.now() + CLEAN_CHECK_MS);
+      return;
+    }
   }
   await resetGuildPremiumCustomization(astro, guildId);
 }
@@ -406,13 +411,20 @@ export async function resetGuildPremiumCustomizationIfStale(astro: any, guildId:
 export async function resetGuildPremiumCustomization(astro: any, guildId: string): Promise<boolean> {
   const settings = config(astro);
   if (!settings || !/^\d{15,22}$/.test(String(guildId))) return false;
+  const botToken = getEnv(astro, 'DISCORD_TOKEN');
 
-  const guildResponse = await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, {
-    headers: headers(settings.key),
-  }).catch(() => null);
+  // The database and Discord are asked together: the saved link of the picture (none when it was uploaded) and the pictures Discord has on.
+  const [guildResponse, overrides] = await Promise.all([
+    fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}&select=bot_nickname,bot_avatar_url,bot_banner_url,bot_description`, {
+      headers: headers(settings.key),
+    }).catch(() => null),
+    botToken ? getGuildLookOverrides(guildId, botToken) : Promise.resolve(null),
+  ]);
   if (!guildResponse?.ok) return false;
-  const guildRows = guildResponse?.ok ? await guildResponse.json() as Array<Record<string, string | null>> : [];
+  const guildRows = await guildResponse.json() as Array<Record<string, string | null>>;
   const hasPremiumCustomization = Boolean(guildRows[0]?.bot_avatar_url || guildRows[0]?.bot_banner_url || guildRows[0]?.bot_description);
+  // An uploaded avatar or banner leaves no link in the database, so what Discord says counts as much as what was saved.
+  const discordHasLook = Boolean(overrides?.avatar || overrides?.banner);
 
   const databaseReset = !hasPremiumCustomization || await fetch(`${settings.url}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(guildId)}`, {
     method: 'PATCH',
@@ -420,18 +432,13 @@ export async function resetGuildPremiumCustomization(astro: any, guildId: string
     body: JSON.stringify({ bot_avatar_url: null, bot_banner_url: null, bot_description: null, updated_at: new Date().toISOString() }),
   }).then((response) => response.ok).catch(() => false);
 
-  const botToken = getEnv(astro, 'DISCORD_TOKEN');
   await resetNameStyle(settings, botToken, guildId);
   if (!botToken) return databaseReset;
 
-  if (!hasPremiumCustomization) return databaseReset;
+  if (!hasPremiumCustomization && !discordHasLook) return databaseReset;
 
-  const discordReset = await fetch(`https://discord.com/api/guilds/${guildId}/members/@me`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ avatar: null, banner: null, bio: null }),
-  }).then((response) => response.ok).catch(() => false);
-
+  // Through setBotGuildProfile, so that the copies of the bot's look kept by the dashboard are forgotten and the page shows the real one.
+  const discordReset = await setBotGuildProfile(guildId, botToken, { avatarDataUri: null, bannerDataUri: null, bio: null });
   return databaseReset && discordReset;
 }
 
