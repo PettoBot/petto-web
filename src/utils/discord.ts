@@ -91,10 +91,15 @@ export async function getGuildList(astro: { request?: Request }, guildId: string
     }
   }
 
-  const res = await fetch(`https://discord.com/api/guilds/${guildId}/${kind}`, { headers: { Authorization: `Bot ${botToken}` } });
-  const text = await res.text();
-  if (res.status === 200) guildListCache.set(key, { status: res.status, text, expiresAt: Date.now() + GUILD_LIST_TTL_MS });
-  return new Response(text, { status: res.status });
+  // Discord that does not answer in a few seconds is a failed list (504), not a page that waits for it: callers already handle a list that is not ok.
+  try {
+    const res = await fetch(`https://discord.com/api/guilds/${guildId}/${kind}`, { headers: { Authorization: `Bot ${botToken}` }, signal: AbortSignal.timeout(DISCORD_LIST_TIMEOUT_MS) });
+    const text = await res.text();
+    if (res.status === 200) guildListCache.set(key, { status: res.status, text, expiresAt: Date.now() + GUILD_LIST_TTL_MS });
+    return new Response(text, { status: res.status });
+  } catch {
+    return new Response('[]', { status: 504 });
+  }
 }
 
 const BOT_IDENTITY_TTL_MS = 10 * 60_000;
@@ -167,6 +172,7 @@ const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const IMAGE_FETCH_TIMEOUT_MS = 8_000;
 // Discord answers a profile change in a second or two; one that does not answer in this time is reported as not applied.
 const DISCORD_WRITE_TIMEOUT_MS = 15_000;
+const DISCORD_LIST_TIMEOUT_MS = 8_000;
 
 /** Fetches an image URL server-side and returns it as a `data:` URI, the format Discord's member-avatar endpoint expects. Returns null on any failure so callers can show a clean error instead of a stack trace. */
 export async function imageUrlToDataUri(url: string): Promise<{ dataUri: string } | { error: 'fetch_failed' | 'too_large' }> {
