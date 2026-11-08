@@ -1672,6 +1672,7 @@ export const dashPt: Record<string, string> = {
   "+ New": "+ Novo",
   "Create a template on the left to get started.": "Crie um template à esquerda para começar.",
   "Loading...": "Carregando...",
+  "Loading image...": "Carregando imagem...",
   "Preview": "Prévia",
   "Message content": "Conteúdo da mensagem",
   "+ Add embed": "+ Adicionar embed",

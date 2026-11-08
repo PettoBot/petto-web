@@ -308,16 +308,19 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   }, [draft, selected, requestPreview, live]);
 
   const drawSeq = useRef(0);
+  // True while a picture or font of the card is still coming, so the preview says so instead of looking empty.
+  const [loadingPicture, setLoadingPicture] = useState(false);
   useEffect(() => {
     if (!live || !canvasRef.current) return;
     const seq = ++drawSeq.current;
+    setLoadingPicture(true);
     void drawCard(canvasRef.current, drawn, {
       context: { userId, userName, serverName, memberCount: 1204 },
       avatarUrl: userAvatarUrl,
       serverIconUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
-    }, () => seq === drawSeq.current);
+    }, () => seq === drawSeq.current, (waiting) => { if (seq === drawSeq.current) setLoadingPicture(waiting); });
   }, [drawn, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
@@ -559,6 +562,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
               <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
               <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}`, ['--crd-ar' as string]: draft.width / draft.height }}>
                 {live ? <canvas ref={canvasRef} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {live && loadingPicture && <div className="crd-stage-loading" role="status"><span className="crd-wheel" aria-hidden="true" />{t('Loading image...')}</div>}
                 {!live && previewFailed && (
                   <div className="crd-stage-empty crd-stage-failed">
                     <span>{t('The preview could not be drawn.')}</span>

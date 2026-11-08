@@ -1672,6 +1672,7 @@ export const dashEs: Record<string, string> = {
   "+ New": "+ Nueva",
   "Create a template on the left to get started.": "Crea una plantilla a la izquierda para empezar.",
   "Loading...": "Cargando...",
+  "Loading image...": "Cargando imagen...",
   "Preview": "Vista previa",
   "Message content": "Contenido del mensaje",
   "+ Add embed": "+ Añadir embed",

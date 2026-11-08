@@ -488,12 +488,12 @@ function paintCard(target: HTMLCanvasElement, card: CardData, env: CardEnv, need
  * Draws the card at once with what is already here, and draws it again each time a font or a picture it needed arrives, so a slow picture (a big design coming
  * through the bot) never leaves the preview empty: the colors, shapes and texts show first and the picture joins when it comes.
  */
-export async function drawCard(target: HTMLCanvasElement, card: CardData, env: CardEnv, isCurrent: () => boolean, onPainted?: () => void): Promise<void> {
+export async function drawCard(target: HTMLCanvasElement, card: CardData, env: CardEnv, isCurrent: () => boolean, onPainted?: (waiting: boolean) => void): Promise<void> {
   for (let pass = 0; pass < 60; pass += 1) {
     if (!isCurrent()) return;
     const needs: Needs = [];
     paintCard(target, card, env, needs);
-    onPainted?.();
+    onPainted?.(needs.length > 0);
     if (!needs.length) return;
     await Promise.race(needs);
   }
