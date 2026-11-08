@@ -6234,4 +6234,8 @@ export const dashEs: Record<string, string> = {
   "Off: the message is not in Discord. Turn it on to post it.": "Apagado: el mensaje no está en Discord. Enciéndelo para publicarlo.",
   "Couldn't remove the panel message from Discord, so it was not turned off.": "No se pudo quitar el mensaje del panel de Discord, así que no se apagó.",
   "Couldn't turn that panel off, try again.": "No se pudo apagar ese panel, inténtalo de nuevo.",
+  "Choose avatar": "Elegir avatar",
+  "Choose banner": "Elegir banner",
+  "Pick one of Petto's pictures, upload your own (under 2MB) or paste a link. Reset goes back to the default avatar.": "Elige una imagen de Petto, sube la tuya (menos de 2 MB) o pega un enlace. Reset vuelve al avatar por defecto.",
+  "Pick one of Petto's banners, upload your own (under 2MB) or paste a link. It is shown behind the avatar on the preview card.": "Elige un banner de Petto, sube el tuyo (menos de 2 MB) o pega un enlace. Se muestra detrás del avatar en la tarjeta de vista previa.",
 };

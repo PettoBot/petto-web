@@ -5,9 +5,13 @@
 
 export interface NameStyle { fontId: number; effectId: number; colors: number[] }
 
+/**
+ * The fonts Discord has for a display name, with the id it uses (docs.discord.food, Display Name Font). The label is the name Discord shows. Tempo is
+ * 12 (Zilla Slab): 1 is a deprecated font (Bangers) that this page sent as Tempo before, see LEGACY_FONT_IDS.
+ */
 export const NAME_FONTS = [
-  { id: 11, label: 'Default' },
-  { id: 1, label: 'Tempo' },
+  { id: 11, label: 'gg sans' },
+  { id: 12, label: 'Tempo' },
   { id: 3, label: 'Sakura' },
   { id: 4, label: 'Jellybean' },
   { id: 6, label: 'Modern' },
@@ -16,19 +20,22 @@ export const NAME_FONTS = [
   { id: 10, label: 'Vampyre' },
 ] as const;
 
+/** Ids this page used to send that mean another font now: a style saved with one is read as the new id, and is sent again with it on the next save. */
+export const LEGACY_FONT_IDS: Record<number, number> = { 1: 12 };
+
 /**
- * How each font looks on the page (the tiles of the picker and the preview). Discord draws the real ones, these are the closest free fonts, kept in
- * public/fonts/namestyle. The default font is the one of the dashboard.
+ * How each font looks on the page (the tiles of the picker and the preview): the same typefaces Discord uses where they are free to host (Zilla Slab, Cherry Bomb One,
+ * Chicle, MuseoModerno, Pixelify Sans), and the closest ones for the other two. Kept in public/fonts/namestyle. The default is the font of the dashboard.
  */
 export const NAME_FONT_STACKS: Record<number, string> = {
   11: 'inherit',
-  1: "'Josefin Sans', sans-serif",
-  3: "'Caveat', cursive",
-  4: "'Chewy', cursive",
-  6: "'Fredoka', sans-serif",
-  7: "'MedievalSharp', serif",
-  8: "'Press Start 2P', monospace",
-  10: "'Cormorant Garamond', serif",
+  12: "'Zilla Slab', serif", // Tempo
+  3: "'Cherry Bomb One', cursive", // Sakura
+  4: "'Chicle', cursive", // Jellybean
+  6: "'MuseoModerno', sans-serif", // Modern
+  7: "'MedievalSharp', serif", // Medieval (Discord's is Néo-Castel, which is not on Google Fonts)
+  8: "'Pixelify Sans', monospace", // 8bit
+  10: "'Cormorant Garamond', serif", // Vampyre (Discord's is Sinistre, which is not on Google Fonts)
 };
 
 /** `colors` is how many colors the effect takes: Discord refuses any other number. */
@@ -50,7 +57,7 @@ export const intToHex = (value: number): string => `#${Math.max(0, Math.min(0xff
 export function readNameStyle(raw: unknown): NameStyle | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, unknown>;
-  const font = NAME_FONTS.find((item) => item.id === Number(value.fontId));
+  const font = NAME_FONTS.find((item) => item.id === (LEGACY_FONT_IDS[Number(value.fontId)] ?? Number(value.fontId)));
   const effect = NAME_EFFECTS.find((item) => item.id === Number(value.effectId));
   if (!font || !effect || !Array.isArray(value.colors)) return null;
   const colors = value.colors.map(Number).filter((color) => Number.isInteger(color) && color >= 0 && color <= 0xffffff);

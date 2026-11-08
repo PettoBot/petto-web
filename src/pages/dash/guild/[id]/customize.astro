@@ -4,7 +4,7 @@ import DashCustomize from '../../../../components/DashCustomize.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, imageUrlToDataUri, fileToDataUri, setBotGuildProfile, setBotNameStyle, getGuildMemberSelf, getBotProfile, getBotDescription } from '../../../../utils/discord';
-import { parseNameStyleForm, readNameStyle, sameNameStyle } from '../../../../utils/nameStyle';
+import { parseNameStyleForm, readNameStyle, sameNameStyle, LEGACY_FONT_IDS } from '../../../../utils/nameStyle';
 import { hasPremiumForGuild, resetGuildPremiumCustomizationIfStale } from '../../../../utils/premium';
 import { cached } from '../../../../utils/sharedCache';
 
@@ -44,15 +44,20 @@ async function loadConfig() {
 
 // The name style lives in its own column and its own requests: a database that does not have the column yet, or a
 // Discord that refuses the fields, must not stop the rest of the profile from loading or saving.
-async function loadNameStyle() {
+async function loadNameStyleRaw(): Promise<unknown> {
   try {
     const res = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${id}&select=bot_name_style`, { headers: apiHeaders });
     const rows = res.ok ? await res.json() : [];
-    return readNameStyle(rows[0]?.bot_name_style);
+    return rows[0]?.bot_name_style ?? null;
   } catch {
     return null;
   }
 }
+async function loadNameStyle() {
+  return readNameStyle(await loadNameStyleRaw());
+}
+// A style saved with an id that meant another font (Tempo was sent as 1, a deprecated font) is sent again, with the right one, on the next save.
+const hasLegacyFont = (raw: unknown): boolean => Number((raw as { fontId?: unknown } | null)?.fontId) in LEGACY_FONT_IDS;
 
 async function saveNameStyle(style: ReturnType<typeof readNameStyle>): Promise<boolean> {
   const res = await fetch(`${apiUrl}/rest/v1/guilds?guild_id=eq.${encodeURIComponent(id)}`, {
@@ -196,7 +201,8 @@ if (Astro.request.method === 'POST') {
         };
         // Only when it changed. Discord's answer decides: a style it refuses is not saved.
         const saveStyle = async (): Promise<'same' | 'ok' | 'database' | 'rejected'> => {
-          if (sameNameStyle(parsedStyle.style, await loadNameStyle())) return 'same';
+          const stored = await loadNameStyleRaw();
+          if (sameNameStyle(parsedStyle.style, readNameStyle(stored)) && !hasLegacyFont(stored)) return 'same';
           if (!(await setBotNameStyle(id, botToken, parsedStyle.style))) return 'rejected';
           return (await saveNameStyle(parsedStyle.style)) ? 'ok' : 'database';
         };

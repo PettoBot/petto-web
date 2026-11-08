@@ -167,12 +167,33 @@ async function drawBackground(ctx: Ctx, card: CardData, env: CardEnv) {
   }
 }
 
+/** A hexagon with its point up that fills `w` by `h`, with its corners rounded by `radius` (as the bot draws it). */
+function hexagonPath(ctx: Ctx, w: number, h: number, radius: number) {
+  const points: [number, number][] = [];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (Math.PI / 3) * i - Math.PI / 2;
+    points.push([Math.cos(angle) * (w / 2), Math.sin(angle) * (h / 2)]);
+  }
+  const r = Math.max(0, Math.min(radius, Math.min(w, h) / 4));
+  const toward = (a: [number, number], b: [number, number], d: number): [number, number] => { const dx = b[0] - a[0]; const dy = b[1] - a[1]; const len = Math.hypot(dx, dy) || 1; return [a[0] + (dx / len) * d, a[1] + (dy / len) * d]; };
+  ctx.beginPath();
+  points.forEach((point, i) => {
+    const start = toward(point, points[(i + 5) % 6], r);
+    const end = toward(point, points[(i + 1) % 6], r);
+    if (i === 0) ctx.moveTo(start[0], start[1]); else ctx.lineTo(start[0], start[1]);
+    ctx.quadraticCurveTo(point[0], point[1], end[0], end[1]);
+  });
+  ctx.closePath();
+}
+
 function drawShape(ctx: Ctx, layer: ShapeLayer) {
   setShadow(ctx, layer.shadow);
   ctx.fillStyle = layer.fill;
   if (layer.shape === 'circle') {
     ctx.beginPath();
     ctx.ellipse(0, 0, layer.w / 2, layer.h / 2, 0, 0, Math.PI * 2);
+  } else if (layer.shape === 'hexagon') {
+    hexagonPath(ctx, layer.w, layer.h, layer.radius);
   } else {
     roundedPath(ctx, -layer.w / 2, -layer.h / 2, layer.w, layer.h, layer.radius);
   }
@@ -292,17 +313,57 @@ function wrapLines(ctx: Ctx, value: string, maxWidth: number): string[] {
   return lines.slice(0, MAX_TEXT_LINES);
 }
 
-function drawText(ctx: Ctx, layer: TextLayer, env: CardEnv) {
+const FIT_MIN = 0.55;
+/** The first `max` lines, with the last one shortened (and an ellipsis at its end) so that it fits `maxWidth`. */
+function ellipsize(ctx: Ctx, lines: string[], max: number, maxWidth: number): string[] {
+  const kept = lines.slice(0, max);
+  let last = `${kept[max - 1]}…`;
+  while (maxWidth && last.length > 1 && ctx.measureText(last).width > maxWidth) last = `${last.slice(0, -2).trimEnd()}…`;
+  kept[max - 1] = last;
+  return kept;
+}
+
+/** The size and lines a text takes: a text with `fit` gets smaller, down to 55%, until it fits its width in the lines it may use; one that still does not fit is cut with an ellipsis. */
+function layOut(ctx: Ctx, layer: TextLayer, value: string): { size: number; lines: string[] } {
+  const wrapped = (size: number) => {
+    ctx.font = canvasFont(layer.font, layer.weight, size);
+    if ('letterSpacing' in ctx) (ctx as Ctx & { letterSpacing: string }).letterSpacing = `${(layer.spacing * size) / layer.size}px`;
+    return wrapLines(ctx, value, layer.w);
+  };
+  let size = layer.size;
+  let lines = wrapped(size);
+  const maxLines = layer.maxLines ?? 0;
+  if (layer.fit && layer.w > 0) {
+    const allowed = maxLines > 0 ? maxLines : MAX_TEXT_LINES;
+    while (lines.length > allowed && size > layer.size * FIT_MIN) { size = Math.max(layer.size * FIT_MIN, size * 0.93); lines = wrapped(size); }
+  }
+  if (maxLines > 0 && lines.length > maxLines) lines = ellipsize(ctx, lines, maxLines, layer.w);
+  return { size, lines };
+}
+
+/** Draws a text and gives back the width of its widest line, or null when there was nothing to draw. */
+function drawText(ctx: Ctx, layer: TextLayer, env: CardEnv): number | null {
   let value = resolveText(layer.text, env);
   if (layer.upper) value = value.toUpperCase();
-  if (!value) return;
-  ctx.font = canvasFont(layer.font, layer.weight, layer.size);
+  if (!value) return null;
   ctx.textAlign = layer.align;
   ctx.textBaseline = 'middle';
-  if ('letterSpacing' in ctx) (ctx as Ctx & { letterSpacing: string }).letterSpacing = `${layer.spacing}px`;
-  const lines = wrapLines(ctx, value.replace(/\r/g, ''), layer.w);
-  const lineHeight = layer.size * layer.lineHeight;
+  const { size, lines } = layOut(ctx, layer, value.replace(/\r/g, ''));
+  const lineHeight = size * layer.lineHeight;
   const top = -((lines.length - 1) * lineHeight) / 2;
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
+  if (layer.pill) {
+    const { padX, padY } = layer.pill;
+    const boxW = width + padX * 2;
+    const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - size);
+    const left = layer.align === 'center' ? -boxW / 2 : layer.align === 'right' ? -width - padX : -padX;
+    ctx.save();
+    ctx.globalAlpha *= layer.pill.opacity;
+    ctx.fillStyle = layer.pill.color;
+    roundedPath(ctx, left, -boxH / 2, boxW, boxH, layer.pill.radius);
+    ctx.fill();
+    ctx.restore();
+  }
   lines.forEach((line, index) => {
     const y = top + index * lineHeight;
     if (layer.stroke) {
@@ -316,6 +377,38 @@ function drawText(ctx: Ctx, layer: TextLayer, env: CardEnv) {
     ctx.fillText(line, 0, y);
     clearShadow(ctx);
   });
+  return width;
+}
+
+/**
+ * The layers of a basic card come from its layout without the settings the bot fills in when it saves a card (line height, no stroke, no shadow...): this gives them,
+ * so the same layer draws the same here and there. A layer that already has them is left as it is.
+ */
+export function withDefaults(layers: Layer[]): Layer[] {
+  return layers.map((raw) => {
+    const layer = { rotation: 0, opacity: 1, showIf: '', follow: '', gap: 12, ...raw } as Layer & Record<string, unknown>;
+    const shadow = (layer as { shadow?: unknown }).shadow;
+    (layer as { shadow?: unknown }).shadow = shadow && typeof shadow === 'object' ? shadow : null;
+    if (layer.type === 'text') Object.assign(layer, { lineHeight: layer.lineHeight ?? 1.15, spacing: layer.spacing ?? 0, upper: layer.upper === true, stroke: layer.stroke ?? null, w: layer.w ?? 0, pill: layer.pill ?? null });
+    if (layer.type === 'shape') Object.assign(layer, { stroke: layer.stroke ?? null, radius: layer.radius ?? 0 });
+    if (layer.type === 'avatar') Object.assign(layer, { border: layer.border ?? null });
+    if (layer.type === 'image') Object.assign(layer, { radius: layer.radius ?? 0 });
+    return layer as Layer;
+  });
+}
+
+/** How far a layer reaches to the left of its x, so a layer that follows another one starts after it. */
+function leftReach(layer: Layer): number {
+  if (layer.type === 'shape' || layer.type === 'image' || layer.type === 'bar') return layer.w / 2;
+  if (layer.type === 'avatar') return layer.size / 2;
+  return layer.type === 'text' && layer.align === 'left' && layer.pill ? layer.pill.padX : 0;
+}
+/** How far a text of `width` reaches to the right of its x (with the padding of its pill). */
+function rightReach(layer: TextLayer, width: number): number {
+  const pad = layer.pill ? layer.pill.padX : 0;
+  if (layer.align === 'center') return width / 2 + pad;
+  if (layer.align === 'right') return pad;
+  return width + pad;
 }
 
 /** Draws the card into `target`. Everything is drawn off screen first and copied in one step, so the picture never shows half a card. */
@@ -331,17 +424,30 @@ export async function drawCard(target: HTMLCanvasElement, card: CardData, env: C
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   await drawBackground(ctx, card, env);
+  // The right edge of every layer that was drawn, by id, for the layers that follow one.
+  const edges = new Map<string, number>();
   for (const layer of card.layers as Layer[]) {
+    // A layer with `showIf` is only drawn when that text is not empty: a variable this preview cannot give (the decoration of the avatar, the nameplate) stays as it
+    // was written, and counts as empty here.
+    if (layer.showIf) {
+      const shown = resolveText(layer.showIf, env).trim();
+      if (!shown || shown === layer.showIf.trim()) continue;
+    }
+    let x = layer.x;
+    const anchor = layer.follow ? layer.follow.split(',').find((id) => edges.has(id)) : null;
+    if (anchor) x = (edges.get(anchor) as number) + (layer.gap ?? 12) + leftReach(layer);
     ctx.save();
     try {
       ctx.globalAlpha = layer.opacity;
-      ctx.translate(layer.x, layer.y);
+      ctx.translate(x, layer.y);
       if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-      if (layer.type === 'shape') drawShape(ctx, layer);
-      else if (layer.type === 'image') await drawImage(ctx, layer, env);
-      else if (layer.type === 'bar') drawBar(ctx, layer, env);
-      else if (layer.type === 'avatar') drawAvatar(ctx, layer, await loadPicture(layer.source === 'server' ? env.serverIconUrl : env.avatarUrl));
-      else drawText(ctx, layer, env);
+      let right: number | null = null;
+      if (layer.type === 'shape') { drawShape(ctx, layer); right = x + layer.w / 2; }
+      else if (layer.type === 'image') { await drawImage(ctx, layer, env); right = x + layer.w / 2; }
+      else if (layer.type === 'bar') { drawBar(ctx, layer, env); right = x + layer.w / 2; }
+      else if (layer.type === 'avatar') { drawAvatar(ctx, layer, await loadPicture(layer.source === 'server' ? env.serverIconUrl : env.avatarUrl)); right = x + layer.size / 2; }
+      else { const width = drawText(ctx, layer, env); if (width !== null) right = x + rightReach(layer, width); }
+      if (right !== null) edges.set(layer.id, right);
     } finally {
       ctx.restore();
     }

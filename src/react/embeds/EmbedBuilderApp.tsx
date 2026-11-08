@@ -12,6 +12,8 @@ import VariablesPanel from './VariablesPanel';
 import EmbedColorPicker from './EmbedColorPicker';
 import { type EmbedData, type LinkButton, type TemplateData, BUTTON_STYLES, emptyEmbed, emptyButton, emptyAction, emptyTemplate, emptyV2, normalizeTemplateData, encodeShareCode, decodeShareCode, readReactions } from './types';
 import { questStarterV2 } from '../../utils/questTemplate';
+import { drawCard, withDefaults } from '../cards/cardCanvas';
+import { buildBasicLayers } from '../cards/basicLayers';
 import { t } from './t';
 import { toast } from './toast';
 import { ask } from '../dglAsk';
@@ -135,17 +137,29 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     fetch(`/dash/guild/${guildId}/cards-api`).then((r) => (r.ok ? r.json() : null)).then((body) => { if (body?.cards) setCardNames(body.cards); }).catch(() => {});
   }, [guildId, cardsEnabled]);
 
-  // The picture of the chosen card, drawn by the bot, so the preview shows what members will see.
+  // The picture of the chosen card is drawn right here, in the browser (a basic card with the layers of its layout), so it is there as soon as the card is chosen:
+  // asking the bot to draw it took seconds, and sometimes never came. The decoration of the avatar and the nameplate only show in the real message.
   useEffect(() => {
     const row = data.card ? cardNames.find((c) => c.name === data.card!.name) : null;
     if (!row) { setCardImage(''); return; }
     let cancelled = false;
-    fetch(`/dash/guild/${guildId}/cards-api`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'preview', data: row.data }) })
-      .then((r) => (r.ok ? r.blob() : null))
-      .then((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); })
-      .catch(() => {});
+    const card = row.data.mode === 'basic'
+      ? { ...row.data, layers: withDefaults(buildBasicLayers(row.data.basic ?? {}, row.data.width, row.data.height, row.data.kind === 'rank' ? 'rank' : 'welcome')) }
+      : row.data;
+    const canvas = document.createElement('canvas');
+    canvas.width = card.width; canvas.height = card.height;
+    void drawCard(canvas, card as typeof row.data, {
+      context: { userId: '', userName: 'Petto', serverName, memberCount: 1204 },
+      avatarUrl: userAvatarUrl,
+      serverIconUrl: guildIconUrl,
+      assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
+      designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
+    }, () => !cancelled).then(() => {
+      if (cancelled) return;
+      canvas.toBlob((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); });
+    }).catch(() => {});
     return () => { cancelled = true; };
-  }, [data.card?.name, cardNames, guildId]);
+  }, [data.card?.name, cardNames, guildId, userAvatarUrl, guildIconUrl, serverName]);
 
   useEffect(() => {
     if (!flash) return;

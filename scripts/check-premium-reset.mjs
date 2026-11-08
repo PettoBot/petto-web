@@ -94,6 +94,23 @@ for (const [name, groups] of [['avatar', presets.avatarPresetGroups()], ['banner
 }
 assert.deepEqual(presets.avatarPresetGroups()[0].items.map((item) => item.id), ['default', 'christmas', 'halloween'], 'the recommended avatars are Petto by default, at Christmas and at Halloween');
 for (const font of style.NAME_FONTS) assert.ok(style.NAME_FONT_STACKS[font.id], `the font ${font.label} has a look for its tile`);
-for (const file of ['josefin-sans', 'caveat', 'chewy', 'fredoka', 'medievalsharp', 'press-start-2p', 'cormorant-garamond']) assert.ok(existsSync(`${root}public/fonts/namestyle/${file}.woff2`), `the font file ${file} is there`);
+for (const file of ['zilla-slab', 'cherry-bomb-one', 'chicle', 'museomoderno', 'medievalsharp', 'pixelify-sans', 'cormorant-garamond']) assert.ok(existsSync(`${root}public/fonts/namestyle/${file}.woff2`), `the font file ${file} is there`);
+
+// The ids of the fonts are Discord's (docs.discord.food): Tempo is 12 (Zilla Slab), not the deprecated 1 that was sent before, and a style saved with 1 is read as 12.
+assert.deepEqual(style.NAME_FONTS.map((font) => [font.label, font.id]), [['gg sans', 11], ['Tempo', 12], ['Sakura', 3], ['Jellybean', 4], ['Modern', 6], ['Medieval', 7], ['8bit', 8], ['Vampyre', 10]], 'the fonts and their ids are the ones of Discord');
+assert.equal(style.readNameStyle({ fontId: 1, effectId: 3, colors: [255] }).fontId, 12, 'a style saved with the old id of Tempo is read with the right one');
+assert.equal(style.readNameStyle({ fontId: 12, effectId: 3, colors: [255] }).fontId, 12);
+assert.equal(style.readNameStyle({ fontId: 2, effectId: 3, colors: [255] }), null, 'a deprecated font is not a style');
+assert.match(style.NAME_FONT_STACKS[3], /Cherry Bomb One/, 'Sakura is Cherry Bomb One');
+assert.match(style.NAME_FONT_STACKS[4], /Chicle/, 'Jellybean is Chicle');
+assert.match(style.NAME_FONT_STACKS[12], /Zilla Slab/, 'Tempo is Zilla Slab');
+assert.match(style.NAME_FONT_STACKS[6], /MuseoModerno/, 'Modern is MuseoModerno');
+assert.match(style.NAME_FONT_STACKS[8], /Pixelify Sans/, '8bit is Pixelify Sans');
+assert.ok(/hasLegacyFont\(stored\)/.test(page), 'a style saved with an old font id is sent again on the next save');
+
+// The avatar and the banner are chosen in the picker only: the panel has no link or upload field in sight (the fields that carry the choice are hidden).
+assert.ok(/<input id="avatar_url" type="url" name="avatar_url" value=\{avatarUrl\} hidden \/>/.test(customize) && /<input id="banner_url" type="url" name="banner_url" value=\{bannerUrl\} hidden \/>/.test(customize), 'the link fields are hidden');
+assert.ok(!/class="cz-upload"/.test(customize), 'no "Or upload a file" field in the panel');
+assert.ok(/data-cz-pick="avatar"[^>]*aria-haspopup/.test(customize.slice(customize.indexOf('cz-choose'))) && /dt\('Choose banner'\)/.test(customize), 'two buttons open the picker');
 
 console.log('premium reset: ok');
