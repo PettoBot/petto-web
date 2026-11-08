@@ -154,8 +154,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       serverIconUrl: guildIconUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
-    }, () => !cancelled).then(() => {
-      if (cancelled) return;
+    }, () => !cancelled, () => {
+      // Every pass is shown: a picture that is slow to come joins the card later instead of keeping the whole card away.
       canvas.toBlob((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); });
     }).catch(() => {});
     return () => { cancelled = true; };
