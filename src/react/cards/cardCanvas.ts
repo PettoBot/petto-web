@@ -37,16 +37,24 @@ function realFont(family: string, weight: number): { family: string; weight: num
   return { family: name, weight: weight_ };
 }
 
+const fontsReady = new Set<string>();
+
+/** Starts a font (once) and says whether it is already there; the promise is for whoever wants to wait for it. */
 function loadFont(family: string, weight: number): Promise<void> {
   const font = realFont(family, weight);
   const key = `${font.family} ${font.weight}`;
   let pending = loadedFonts.get(key);
   if (!pending) {
     const face = new FontFace(key, `url(${FONT_BASE}${slugOf(font.family)}-${font.weight}.woff2) format("woff2")`);
-    pending = face.load().then((loaded) => { document.fonts.add(loaded); }).catch(() => { loadedFonts.delete(key); });
+    pending = face.load().then((loaded) => { document.fonts.add(loaded); fontsReady.add(key); }).catch(() => { loadedFonts.delete(key); });
     loadedFonts.set(key, pending);
   }
   return pending;
+}
+
+function fontIsReady(family: string, weight: number): boolean {
+  const font = realFont(family, weight);
+  return fontsReady.has(`${font.family} ${font.weight}`);
 }
 
 function canvasFont(family: string, weight: number, size: number): string {
@@ -57,19 +65,37 @@ function canvasFont(family: string, weight: number, size: number): string {
 // ---- pictures ----
 
 const pictures = new Map<string, Promise<HTMLImageElement | null>>();
+/** The pictures that have arrived (null: it could not be read), so a drawing can use them without waiting. */
+const arrived = new Map<string, HTMLImageElement | null>();
 
 function loadPicture(url: string): Promise<HTMLImageElement | null> {
   let pending = pictures.get(url);
   if (!pending) {
     pending = new Promise((resolve) => {
       const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => resolve(null);
+      image.onload = () => { arrived.set(url, image); resolve(image); };
+      // A picture that failed is left out for half a minute (so the drawing does not ask again at once) and then it may be tried again.
+      image.onerror = () => {
+        arrived.set(url, null);
+        setTimeout(() => { arrived.delete(url); pictures.delete(url); }, 30000);
+        resolve(null);
+      };
       image.src = url;
     });
     pictures.set(url, pending);
   }
   return pending;
+}
+
+/** What a drawing is still waiting for: the pictures and fonts it asked for that were not there yet. */
+type Needs = Promise<unknown>[];
+
+/** The picture if it is already here; otherwise it starts coming, the drawing goes on without it, and `needs` says so. */
+function peekPicture(url: string, needs: Needs): HTMLImageElement | null {
+  if (!url) return null;
+  if (arrived.has(url)) return arrived.get(url) ?? null;
+  needs.push(loadPicture(url));
+  return null;
 }
 
 function resolveText(text: string, env: CardEnv): string {
@@ -78,18 +104,18 @@ function resolveText(text: string, env: CardEnv): string {
 }
 
 /** The picture for a layer or background source: an uploaded file, a variable such as {user.avatar}, or a link. */
-async function loadSource(src: string, env: CardEnv): Promise<HTMLImageElement | null> {
+function loadSource(src: string, env: CardEnv, needs: Needs): HTMLImageElement | null {
   const token = src.trim();
-  if (token === '{user.avatar}' || token === '{user_avatar}' || token === '{user.display_avatar}') return loadPicture(env.avatarUrl);
-  if (token === '{guild.icon}' || token === '{server_icon}') return loadPicture(env.serverIconUrl);
+  if (token === '{user.avatar}' || token === '{user_avatar}' || token === '{user.display_avatar}') return peekPicture(env.avatarUrl, needs);
+  if (token === '{guild.icon}' || token === '{server_icon}') return peekPicture(env.serverIconUrl, needs);
   const value = resolveText(src, env).trim();
   if (!value) return null;
   const asset = /^asset:(\d{1,18})$/.exec(value);
-  if (asset) return loadPicture(env.assetUrl(asset[1]));
+  if (asset) return peekPicture(env.assetUrl(asset[1]), needs);
   // One of the pictures that come with Petto.
   const own = /^petto:([a-z0-9-]{3,30})$/.exec(value);
-  if (own) return loadPicture(env.designUrl(own[1]));
-  return /^https:\/\//i.test(value) ? loadPicture(value) : null;
+  if (own) return peekPicture(env.designUrl(own[1]), needs);
+  return /^https:\/\//i.test(value) ? peekPicture(value, needs) : null;
 }
 
 // ---- drawing ----
@@ -134,7 +160,7 @@ function fitRect(iw: number, ih: number, bx: number, by: number, bw: number, bh:
   return { x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h };
 }
 
-async function drawBackground(ctx: Ctx, card: CardData, env: CardEnv) {
+function drawBackground(ctx: Ctx, card: CardData, env: CardEnv, needs: Needs) {
   const { background, width, height } = card;
   ctx.fillStyle = background.color;
   ctx.fillRect(0, 0, width, height);
@@ -149,7 +175,7 @@ async function drawBackground(ctx: Ctx, card: CardData, env: CardEnv) {
     ctx.fillRect(0, 0, width, height);
   }
   if (background.image) {
-    const image = await loadSource(background.image.src, env);
+    const image = loadSource(background.image.src, env, needs);
     if (image) {
       const box = fitRect(image.naturalWidth, image.naturalHeight, 0, 0, width, height, background.image.fit);
       ctx.save();
@@ -206,9 +232,9 @@ function drawShape(ctx: Ctx, layer: ShapeLayer) {
   }
 }
 
-async function drawImage(ctx: Ctx, layer: ImageLayer, env: CardEnv) {
+function drawImage(ctx: Ctx, layer: ImageLayer, env: CardEnv, needs: Needs) {
   if (!layer.src) return;
-  const image = await loadSource(layer.src, env);
+  const image = loadSource(layer.src, env, needs);
   if (!image) return;
   setShadow(ctx, layer.shadow);
   if (layer.shadow) {
@@ -412,18 +438,17 @@ function rightReach(layer: TextLayer, width: number): number {
 }
 
 /** Draws the card into `target`. Everything is drawn off screen first and copied in one step, so the picture never shows half a card. */
-export async function drawCard(target: HTMLCanvasElement, card: CardData, env: CardEnv, isCurrent: () => boolean): Promise<void> {
-  // Fonts and pictures come first, so the drawing itself has nothing left to wait for.
-  const fonts = card.layers.filter((l): l is TextLayer => l.type === 'text').map((l) => loadFont(l.font, l.weight));
-  await Promise.all(fonts);
-  if (!isCurrent()) return;
-
+/** One pass of the drawing, from what is here now. Whatever is not here yet (a font, a picture) is left out and listed in `needs`. */
+function paintCard(target: HTMLCanvasElement, card: CardData, env: CardEnv, needs: Needs) {
+  for (const layer of card.layers) {
+    if (layer.type === 'text' && !fontIsReady(layer.font, layer.weight)) needs.push(loadFont(layer.font, layer.weight));
+  }
   const canvas = document.createElement('canvas');
   canvas.width = card.width;
   canvas.height = card.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  await drawBackground(ctx, card, env);
+  drawBackground(ctx, card, env, needs);
   // The right edge of every layer that was drawn, by id, for the layers that follow one.
   const edges = new Map<string, number>();
   for (const layer of card.layers as Layer[]) {
@@ -443,19 +468,33 @@ export async function drawCard(target: HTMLCanvasElement, card: CardData, env: C
       if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
       let right: number | null = null;
       if (layer.type === 'shape') { drawShape(ctx, layer); right = x + layer.w / 2; }
-      else if (layer.type === 'image') { await drawImage(ctx, layer, env); right = x + layer.w / 2; }
+      else if (layer.type === 'image') { drawImage(ctx, layer, env, needs); right = x + layer.w / 2; }
       else if (layer.type === 'bar') { drawBar(ctx, layer, env); right = x + layer.w / 2; }
-      else if (layer.type === 'avatar') { drawAvatar(ctx, layer, await loadPicture(layer.source === 'server' ? env.serverIconUrl : env.avatarUrl)); right = x + layer.size / 2; }
+      else if (layer.type === 'avatar') { drawAvatar(ctx, layer, peekPicture(layer.source === 'server' ? env.serverIconUrl : env.avatarUrl, needs)); right = x + layer.size / 2; }
       else { const width = drawText(ctx, layer, env); if (width !== null) right = x + rightReach(layer, width); }
       if (right !== null) edges.set(layer.id, right);
     } finally {
       ctx.restore();
     }
   }
-  if (!isCurrent()) return;
   if (target.width !== card.width) target.width = card.width;
   if (target.height !== card.height) target.height = card.height;
   const out = target.getContext('2d');
   out?.clearRect(0, 0, card.width, card.height);
   out?.drawImage(canvas, 0, 0);
+}
+
+/**
+ * Draws the card at once with what is already here, and draws it again each time a font or a picture it needed arrives, so a slow picture (a big design coming
+ * through the bot) never leaves the preview empty: the colors, shapes and texts show first and the picture joins when it comes.
+ */
+export async function drawCard(target: HTMLCanvasElement, card: CardData, env: CardEnv, isCurrent: () => boolean, onPainted?: () => void): Promise<void> {
+  for (let pass = 0; pass < 60; pass += 1) {
+    if (!isCurrent()) return;
+    const needs: Needs = [];
+    paintCard(target, card, env, needs);
+    onPainted?.();
+    if (!needs.length) return;
+    await Promise.race(needs);
+  }
 }
