@@ -1685,12 +1685,14 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       freshHead.querySelectorAll('link[rel="stylesheet"]').forEach(function (link) {
         if (existingHrefs.has(link.href)) return;
         var clone = link.cloneNode(true);
+        // true when the stylesheet loaded, false when it failed or did not arrive in time: the page is then NOT drawn (it would show as bare HTML,
+        // with no style) and the caller opens it the normal way, where the browser holds the page back until its styles are there.
         stylesheetLoads.push(new Promise(function (resolve) {
           var settled = false;
-          function done() { if (settled) return; settled = true; resolve(); }
-          clone.addEventListener('load', done, { once: true });
-          clone.addEventListener('error', done, { once: true });
-          window.setTimeout(done, 1800);
+          function done(ok) { if (settled) return; settled = true; resolve(ok === true); }
+          clone.addEventListener('load', function () { done(true); }, { once: true });
+          clone.addEventListener('error', function () { done(false); }, { once: true });
+          window.setTimeout(function () { done(false); }, 6000);
           document.head.appendChild(clone);
         }));
       });
@@ -1699,7 +1701,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       freshHead.querySelectorAll('style').forEach(function (style) {
         if (!existingStyleText.has(style.textContent)) document.head.appendChild(style.cloneNode(true));
       });
-      return Promise.all(stylesheetLoads);
+      return Promise.all(stylesheetLoads).then(function (results) { return results.every(Boolean); });
     }
 
     // Nodes inserted via replaceWith/innerHTML never execute their <script> tags, that's a
@@ -1794,7 +1796,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       if (!fresh || !current) return Promise.resolve(false);
       // Keep the current section on screen until the new module stylesheet is ready.
       // Otherwise the fresh HTML briefly paints unstyled before its Astro CSS arrives.
-      return syncHeadAssets(doc.head).then(function () {
+      return syncHeadAssets(doc.head).then(function (stylesReady) {
+        if (!stylesReady) return false;
         // The fresh node carries the server-rendered "reveal" class (opacity:0 until an
         // IntersectionObserver, set up once at initial page load, adds "in"). That observer
         // never sees this node since it didn't exist yet, so without this it would replace
