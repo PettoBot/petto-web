@@ -16,6 +16,7 @@ import { drawCard, withDefaults } from '../cards/cardCanvas';
 import { buildBasicLayers } from '../cards/basicLayers';
 import { t } from './t';
 import { toast } from './toast';
+import { useRevealWhen } from '../DashSkeleton';
 import { ask } from '../dglAsk';
 
 interface Props {
@@ -62,7 +63,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // A template is named from the start: the editor waits (grey blocks) instead of showing an empty one for a moment first.
+  const [loading, setLoading] = useState(Boolean(initialSelected));
   const [sendTarget, setSendTarget] = useState('dm');
   const [sending, setSending] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ data: TemplateData; name: string } | null>(null);
@@ -70,10 +72,16 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const cardsEnabled = apiPath === 'embeds-api';
   const [cardNames, setCardNames] = useState<{ name: string; data: unknown }[]>([]);
   const [cardImage, setCardImage] = useState('');
+  // The picture of the chosen card is on its way (the card is being read or drawn): the preview shows a soft shimmer where it will be.
+  const [cardsLoaded, setCardsLoaded] = useState(false);
+  const [cardFailed, setCardFailed] = useState(false);
   const [newOpen, setNewOpen] = useState(initialTemplateNames.length === 0);
   const [view, setView] = useState<'edit' | 'preview'>('edit');
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  // The app is uncovered from the top down when it appears, like the rest of the dashboard.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useRevealWhen(rootRef, true, true);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   // The template as it was loaded or last saved: what "discard" on the dashboard's bar of unsaved changes goes back to.
@@ -136,7 +144,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
 
   useEffect(() => {
     if (!cardsEnabled) return;
-    fetch(`/dash/guild/${guildId}/cards-api`).then((r) => (r.ok ? r.json() : null)).then((body) => { if (body?.cards) setCardNames(body.cards); }).catch(() => {});
+    fetch(`/dash/guild/${guildId}/cards-api`).then((r) => (r.ok ? r.json() : null)).then((body) => { if (body?.cards) setCardNames(body.cards); }).catch(() => {}).finally(() => setCardsLoaded(true));
   }, [guildId, cardsEnabled]);
 
   // The picture of the chosen card is drawn right here, in the browser (a basic card with the layers of its layout), so it is there as soon as the card is chosen:
@@ -145,6 +153,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     const row = data.card ? cardNames.find((c) => c.name === data.card!.name) : null;
     if (!row) { setCardImage(''); return; }
     let cancelled = false;
+    setCardFailed(false);
     const card = row.data.mode === 'basic'
       ? { ...row.data, layers: withDefaults(buildBasicLayers(row.data.basic ?? {}, row.data.width, row.data.height, row.data.kind === 'rank' ? 'rank' : 'welcome')) }
       : row.data;
@@ -161,8 +170,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     }, () => !cancelled, () => {
       // Every pass is shown: a picture that is slow to come joins the card later instead of keeping the whole card away.
       // A picture of a host that does not allow CORS makes the canvas impossible to save; the card then stays as the last pass left it.
-      try { canvas.toBlob((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); }); } catch { /* tainted canvas */ }
-    }).catch(() => {});
+      try { canvas.toBlob((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); }); } catch { if (!cancelled) setCardFailed(true); /* tainted canvas */ }
+    }).catch(() => { if (!cancelled) setCardFailed(true); });
     return () => { cancelled = true; };
   }, [data.card?.name, cardNames, guildId, userAvatarUrl, decorationUrl, nameplateUrl, guildIconUrl, serverName]);
 
@@ -348,16 +357,18 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     </Section>
   );
 
+  const cardPending = Boolean(data.card?.name) && !cardImage && !cardFailed && (!cardsLoaded || cardNames.some((c) => c.name === data.card?.name));
+
   const previewNode = data.v2
-    ? <V2Preview doc={data.v2} cardImage={cardImage} cardPlacement={data.card?.placement} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />
-    : <Preview data={data} cardImage={cardImage} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />;
+    ? <><V2Preview doc={data.v2} cardImage={cardImage} cardPlacement={data.card?.placement} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />{cardPending && <div className="ebr-card-shimmer" aria-hidden="true" />}</>
+    : <Preview data={data} cardImage={cardImage} cardPending={cardPending} botName={botName} botIcon={botIcon} userAvatarUrl={userAvatarUrl} guildIconUrl={guildIconUrl} serverName={serverName} />;
 
   const trash = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" /></svg>;
   const upIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>;
   const downIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>;
 
   return (
-    <div className="ebr-app">
+    <div className="ebr-app" ref={rootRef}>
       {flash && <div className="ebr-flash">{flash}</div>}
 
       {pendingImport && (

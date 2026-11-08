@@ -2,11 +2,11 @@ import type { TemplateData } from './types';
 import { renderMessage, defaultContext } from '../../utils/discordPreview';
 import { t } from './t';
 
-interface Props { data: TemplateData; cardImage?: string; botName: string; botIcon: string; userAvatarUrl: string; guildIconUrl: string; serverName: string }
+interface Props { data: TemplateData; cardImage?: string; cardPending?: boolean; botName: string; botIcon: string; userAvatarUrl: string; guildIconUrl: string; serverName: string }
 
 // The same renderer the rest of the dashboard uses, so the builder shows variables filled in with
 // sample values, custom emojis, mentions and links the way the message will look in the channel.
-export default function Preview({ data, cardImage, botName, botIcon, userAvatarUrl, guildIconUrl, serverName }: Props) {
+export default function Preview({ data, cardImage, cardPending, botName, botIcon, userAvatarUrl, guildIconUrl, serverName }: Props) {
   const html = renderMessage(
     {
       content: data.content,
@@ -20,6 +20,7 @@ export default function Preview({ data, cardImage, botName, botIcon, userAvatarU
     <div className="ebr-preview">
       <div dangerouslySetInnerHTML={{ __html: html }} />
       {cardImage && (data.card?.placement === 'attachment' || data.embeds.length === 0) && <img src={cardImage} alt="" style={{ display: 'block', maxWidth: '100%', borderRadius: 8, marginTop: 8 }} />}
+      {cardPending && <div className="ebr-card-shimmer" aria-hidden="true" />}
       <p className="ebr-preview-note">{t('Sample values fill the variables here, the bot uses the real ones when it sends the message. Unknown variables stay highlighted.')}</p>
     </div>
   );
