@@ -3,11 +3,18 @@
 // data-dp, optionally paired with a saved embed template select (data-dp-template) and an
 // "embed" checkbox (data-dp-embed). A select marked data-dp-template-only previews the chosen
 // template by itself. The preview is drawn with the same renderer the Embed Builder uses.
+import { userCardData } from '../utils/discordCosmetics.mjs';
+interface Props { user: { username: string; avatar: string | null; decoration?: string | null; nameplate?: { asset: string; palette: string } | null }; guildName: string; guildIcon: string }
+const { user, guildName, guildIcon } = Astro.props;
+// The person looking: what an image card of a message is drawn with (the picture, decoration and nameplate come from the session).
+const look = userCardData(user);
 ---
+<span hidden data-dp-me data-name={user.username} data-avatar={user.avatar ?? '/assets/mascot-icon.webp'} data-decoration={look.decoration?.still?.replace('size=96', 'size=256') ?? ''} data-nameplate={look.nameplate?.still ?? ''} data-server={guildName} data-server-icon={guildIcon}></span>
 <script>
   import { renderMessage, renderV2Message, defaultContext, type PreviewMessage } from '../utils/discordPreview';
   import { normalizeTemplateData } from '../react/embeds/types';
   import { parseEmbedScript } from '../utils/embedScript';
+  import { cardImageUrl } from '../utils/cardPreviewImage';
 
   const guildId = () => location.pathname.match(/\/dash\/guild\/(\d+)/)?.[1] ?? '';
   const translate = (key: string): string => ((window as unknown as { cdt?: (k: string) => string }).cdt ? (window as unknown as { cdt: (k: string) => string }).cdt(key) : key);
@@ -32,6 +39,35 @@
     return pending;
   }
 
+  /**
+   * The image card a template sends, drawn here with the avatar of the person looking: put in the first embed (or at the top of the first container of a
+   * Components V2 message) like the bot sends it, or, when it goes as an attachment (or there is no embed), as a picture under the message.
+   */
+  async function withCard(message: PreviewMessage | null): Promise<{ message: PreviewMessage | null; attachment: string }> {
+    const ref = (message as { card?: { name?: string; placement?: string } } | null)?.card;
+    const me = document.querySelector<HTMLElement>('[data-dp-me]');
+    if (!message || !ref?.name || !me) return { message, attachment: '' };
+    const url = await cardImageUrl(ref.name, {
+      guildId: guildId(), userName: me.dataset.name ?? '', avatarUrl: me.dataset.avatar ?? '', serverName: me.dataset.server ?? '', serverIconUrl: me.dataset.serverIcon ?? '',
+      decorationUrl: me.dataset.decoration || undefined, nameplateUrl: me.dataset.nameplate || undefined,
+    });
+    if (!url) return { message, attachment: '' };
+    const inside = ref.placement !== 'attachment';
+    const v2 = (message as { v2?: { components?: any[] } }).v2;
+    if (v2) {
+      const gallery = { type: 12, items: [{ media: { url } }] };
+      const components = [...(v2.components ?? [])];
+      const first = components[0];
+      if (inside && first?.type === 17) components[0] = { ...first, components: [gallery, ...(first.components ?? [])] };
+      else components.unshift(gallery);
+      return { message: { ...message, v2: { ...v2, components } } as PreviewMessage, attachment: '' };
+    }
+    if (inside && message.embeds?.length) {
+      return { message: { ...message, embeds: message.embeds.map((e, i) => (i === 0 ? { ...e, image: url } : e)) }, attachment: '' };
+    }
+    return { message, attachment: `<img class="dp-embed-image dp-card-attachment" src="${url}" alt="">` };
+  }
+
   const rowOf = (el: HTMLElement) => (el.closest('.ob-row, .lv-field, .gw-field, .tk-field') as HTMLElement | null) ?? el.parentElement!;
 
   function slotFor(anchor: HTMLElement): HTMLElement {
@@ -51,8 +87,12 @@
     slot.hidden = !message;
     if (!message) return;
     // Writing the same markup again would restart image loads and trigger the page observer.
+    const withPicture = await withCard(message);
+    message = withPicture.message as PreviewMessage;
     const v2 = (message as { v2?: { components?: unknown[] } }).v2;
-    const html = v2 ? renderV2Message(v2 as never, context()) : renderMessage(message, context());
+    let html = v2 ? renderV2Message(v2 as never, context()) : renderMessage(message, context());
+    // A card sent as an attachment goes inside the message, under what it says.
+    if (withPicture.attachment) html = html.replace(/<\/div><\/div>$/, `${withPicture.attachment}</div></div>`);
     if (slot.dataset.dpHtml !== html) {
       // The first time a preview is drawn it is uncovered from the top down instead of popping in (later changes of the same preview just update).
       const first = !slot.dataset.dpHtml;
@@ -124,10 +164,11 @@
     let html = '';
     let templateHtml = '';
     if (name) {
-      const message = await loadTemplate(name);
+      const withPicture = await withCard(await loadTemplate(name));
+      const message = withPicture.message;
       if (message) {
         const v2 = (message as { v2?: { components?: unknown[] } }).v2;
-        templateHtml = bodyOf(v2 ? renderV2Message(v2 as never, context()) : renderMessage(message, context()));
+        templateHtml = bodyOf(v2 ? renderV2Message(v2 as never, context()) : renderMessage(message, context())) + withPicture.attachment;
       }
     }
     // A reply written as embed code ({embed}&v{title: ...}) is drawn as the embed it makes.
