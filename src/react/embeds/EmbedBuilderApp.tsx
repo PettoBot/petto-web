@@ -16,6 +16,7 @@ import { drawCard, withDefaults } from '../cards/cardCanvas';
 import { buildBasicLayers } from '../cards/basicLayers';
 import { t } from './t';
 import { toast } from './toast';
+import { useRevealWhen } from '../DashSkeleton';
 import { ask } from '../dglAsk';
 
 interface Props {
@@ -62,7 +63,8 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // A template is named from the start: the editor waits (grey blocks) instead of showing an empty one for a moment first.
+  const [loading, setLoading] = useState(Boolean(initialSelected));
   const [sendTarget, setSendTarget] = useState('dm');
   const [sending, setSending] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ data: TemplateData; name: string } | null>(null);
@@ -77,6 +79,9 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [view, setView] = useState<'edit' | 'preview'>('edit');
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  // The app is uncovered from the top down when it appears, like the rest of the dashboard.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useRevealWhen(rootRef, true, true);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   // The template as it was loaded or last saved: what "discard" on the dashboard's bar of unsaved changes goes back to.
@@ -363,7 +368,7 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const downIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>;
 
   return (
-    <div className="ebr-app">
+    <div className="ebr-app" ref={rootRef}>
       {flash && <div className="ebr-flash">{flash}</div>}
 
       {pendingImport && (

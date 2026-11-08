@@ -505,7 +505,8 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   // The first read waits with grey blocks (only if it takes more than 150 ms) and the app is uncovered from the top down when it arrives.
   const wait = useWait(!overview && !loadError);
   const appRef = useRef<HTMLDivElement>(null);
-  useRevealWhen(appRef, Boolean(overview), wait.waited);
+  // What arrives is always uncovered from the top down (not only when the read was slow), so the editor never just pops in.
+  useRevealWhen(appRef, Boolean(overview), true);
   if (loadError) return <div className="ebr-app crd-app"><EmptyState icon={PLUG_ICON} title={t('Image cards are not available right now.')} /></div>;
   if (!overview || wait.skeleton) return wait.skeleton ? <div className="ebr-app crd-app"><DashSkeleton shape="editor" /></div> : null;
 
