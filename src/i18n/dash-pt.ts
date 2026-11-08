@@ -6234,4 +6234,8 @@ export const dashPt: Record<string, string> = {
   "Off: the message is not in Discord. Turn it on to post it.": "Desligado: a mensagem não está no Discord. Ligue para publicá-la.",
   "Couldn't remove the panel message from Discord, so it was not turned off.": "Não foi possível tirar a mensagem do painel do Discord, então ele não foi desligado.",
   "Couldn't turn that panel off, try again.": "Não foi possível desligar esse painel, tente de novo.",
+  "Choose avatar": "Escolher avatar",
+  "Choose banner": "Escolher banner",
+  "Pick one of Petto's pictures, upload your own (under 2MB) or paste a link. Reset goes back to the default avatar.": "Escolha uma imagem do Petto, envie a sua (menos de 2 MB) ou cole um link. Reset volta ao avatar padrão.",
+  "Pick one of Petto's banners, upload your own (under 2MB) or paste a link. It is shown behind the avatar on the preview card.": "Escolha um banner do Petto, envie o seu (menos de 2 MB) ou cole um link. Ele aparece atrás do avatar no cartão de prévia.",
 };

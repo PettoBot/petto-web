@@ -6,17 +6,19 @@ export type Fit = 'cover' | 'contain' | 'stretch';
 export interface Stroke { color: string; width: number }
 export interface Shadow { color: string; blur: number; x: number; y: number }
 
-interface LayerBase { id: string; x: number; y: number; rotation: number; opacity: number }
+interface LayerBase { id: string; x: number; y: number; rotation: number; opacity: number; showIf?: string; follow?: string; gap?: number }
+export interface Pill { color: string; opacity: number; padX: number; padY: number; radius: number }
 export interface TextLayer extends LayerBase {
   type: 'text'; text: string; size: number; font: string; weight: number; color: string; align: Align; w: number;
   lineHeight: number; spacing: number; upper: boolean; stroke: Stroke | null; shadow: Shadow | null;
+  maxLines?: number; fit?: boolean; pill?: Pill | null;
 }
 export interface ImageLayer extends LayerBase { type: 'image'; src: string; w: number; h: number; fit: Fit; radius: number; shadow: Shadow | null }
 export interface AvatarLayer extends LayerBase {
   type: 'avatar'; source: 'user' | 'server'; size: number; shape: 'circle' | 'rounded' | 'square'; border: Stroke | null; shadow: Shadow | null;
 }
 export interface ShapeLayer extends LayerBase {
-  type: 'shape'; shape: 'rect' | 'circle'; w: number; h: number; fill: string; radius: number; stroke: Stroke | null; shadow: Shadow | null;
+  type: 'shape'; shape: 'rect' | 'circle' | 'hexagon'; w: number; h: number; fill: string; radius: number; stroke: Stroke | null; shadow: Shadow | null;
 }
 export interface BarLayer extends LayerBase {
   type: 'bar'; w: number; h: number; radius: number; fill: string; fill2: string; track: string; trackOpacity: number; value: string; shadow: Shadow | null;

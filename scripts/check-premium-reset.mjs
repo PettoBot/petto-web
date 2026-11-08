@@ -108,4 +108,9 @@ assert.match(style.NAME_FONT_STACKS[6], /MuseoModerno/, 'Modern is MuseoModerno'
 assert.match(style.NAME_FONT_STACKS[8], /Pixelify Sans/, '8bit is Pixelify Sans');
 assert.ok(/hasLegacyFont\(stored\)/.test(page), 'a style saved with an old font id is sent again on the next save');
 
+// The avatar and the banner are chosen in the picker only: the panel has no link or upload field in sight (the fields that carry the choice are hidden).
+assert.ok(/<input id="avatar_url" type="url" name="avatar_url" value=\{avatarUrl\} hidden \/>/.test(customize) && /<input id="banner_url" type="url" name="banner_url" value=\{bannerUrl\} hidden \/>/.test(customize), 'the link fields are hidden');
+assert.ok(!/class="cz-upload"/.test(customize), 'no "Or upload a file" field in the panel');
+assert.ok(/data-cz-pick="avatar"[^>]*aria-haspopup/.test(customize.slice(customize.indexOf('cz-choose'))) && /dt\('Choose banner'\)/.test(customize), 'two buttons open the picker');
+
 console.log('premium reset: ok');

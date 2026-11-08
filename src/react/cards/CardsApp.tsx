@@ -3,7 +3,8 @@ import '../embeds/embeds.css';
 import './cards.css';
 import { t } from '../embeds/t';
 import { toast } from '../embeds/toast';
-import { drawCard } from './cardCanvas';
+import { drawCard, withDefaults } from './cardCanvas';
+import { buildBasicLayers } from './basicLayers';
 import { DashSkeleton, useWait, useRevealWhen } from '../DashSkeleton';
 import EmbedColorPicker from '../embeds/EmbedColorPicker';
 import DesignGallery, { type DesignInfo } from './DesignGallery';
@@ -296,9 +297,10 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
     }
   }, [guildId]);
 
-  // The basic editor has no layers to drag, so the bot draws it. The advanced editor is drawn right here while it is
-  // edited, and the bot's own drawing is only asked for when "Exact preview" is on.
-  const live = draft.mode === 'advanced' && !exact;
+  // Both editors are drawn right here, in the browser, while they are edited (a basic card with the layers of its layout, src/react/cards/basicLayers.ts), so the
+  // picture is there at once. The bot's own drawing, which also shows the decoration of the avatar and the nameplate, is only asked for when "Exact preview" is on.
+  const live = !exact;
+  const drawn = useMemo<CardData>(() => (draft.mode === 'basic' ? { ...draft, layers: withDefaults(buildBasicLayers(draft.basic ?? {}, draft.width, draft.height, draft.kind === 'rank' ? 'rank' : 'welcome')) } : draft), [draft]);
   useEffect(() => {
     if (!selected || live) return;
     const timer = setTimeout(() => { void requestPreview(draft); }, 300);
@@ -309,14 +311,14 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   useEffect(() => {
     if (!live || !canvasRef.current) return;
     const seq = ++drawSeq.current;
-    void drawCard(canvasRef.current, draft, {
+    void drawCard(canvasRef.current, drawn, {
       context: { userId, userName, serverName, memberCount: 1204 },
       avatarUrl: userAvatarUrl,
       serverIconUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
     }, () => seq === drawSeq.current);
-  }, [draft, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
+  }, [drawn, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
   function editBasic(patch: Partial<Basic>) { setDraft((d) => ({ ...d, basic: { ...(d.basic as Basic), ...patch } })); setDirty(true); }
@@ -563,7 +565,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => void requestPreview(draft)}>{t('Try again')}</button>
                   </div>
                 )}
-                {live && draft.layers.map((l) => {
+                {live && draft.mode === 'advanced' && draft.layers.map((l) => {
                   const box = layerBox(l);
                   return (
                     <div key={l.id} className={`crd-handle${l.id === activeLayer ? ' active' : ''}`}
@@ -572,9 +574,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
                   );
                 })}
               </div>
-              {draft.mode === 'advanced' && (
-                <label className="ebr-check"><input type="checkbox" checked={exact} onChange={(e) => setExact(e.target.checked)} />{t('Exact preview, drawn by Petto')}</label>
-              )}
+              <label className="ebr-check"><input type="checkbox" checked={exact} onChange={(e) => setExact(e.target.checked)} />{t('Exact preview, drawn by Petto')}</label>
               <p className="ebr-preview-note">{t('The preview is drawn by Petto with your name and avatar. Variables fill in when the message is sent.')}</p>
               <div className="crd-assets">
                 <div className="ebr-preview-label">{t('Uploaded pictures')} <span className="ebr-count">{overview.usage.assets}/{overview.limits.assets} · {storageMb}/{storageMax} MB</span></div>
