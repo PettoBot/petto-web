@@ -37,4 +37,6 @@ assert.ok(/value="disable"/.test(readFileSync(`${root}src/components/DashTickets
 const quick = readFileSync(`${root}src/components/DashQuickAccess.astro`, 'utf8');
 assert.ok(/words\.channelNeeded/.test(quick) && /hint\.setAttribute\('role', 'alert'\)/.test(quick), 'a switch that needs a channel answers with a warning that says so');
 
+assert.ok(/r\.tone !== 'none' && r\.on/.test(quick) && /filter\(\(r\) => r\.tone !== 'none'\)\.length/.test(quick), 'x of y on counts only what has an on or off: Customize and Backups are not in it');
+
 console.log('slow pages: ok');
