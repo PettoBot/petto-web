@@ -311,6 +311,9 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const drawSeq = useRef(0);
   // True while a picture or font of the card is still coming, so the preview says so instead of looking empty.
   const [loadingPicture, setLoadingPicture] = useState(false);
+  // True once the card of the editor has been drawn the first time: until then the preview shows a soft shimmer, and the picture fades in.
+  const [painted, setPainted] = useState(false);
+  useEffect(() => { setPainted(false); }, [selected]);
   useEffect(() => {
     if (!live || !canvasEl) return;
     const seq = ++drawSeq.current;
@@ -323,7 +326,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       nameplateUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
-    }, () => seq === drawSeq.current, (waiting) => { if (seq === drawSeq.current) setLoadingPicture(waiting); });
+    }, () => seq === drawSeq.current, (waiting) => { if (seq === drawSeq.current) { setLoadingPicture(waiting); setPainted(true); } });
   }, [drawn, live, canvasEl, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, decorationUrl, nameplateUrl, guildId]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
@@ -560,11 +563,12 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
         {!selected ? (
           <EmptyState icon={IMAGE_ICON} title={t('No cards yet.')} hint={t('Name a card and press + New to make the first one.')} />
         ) : (
-          <div className="ebr-editor">
+          <div className="ebr-editor ebr-fade" key={selected}>
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
               <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}`, ['--crd-ar' as string]: draft.width / draft.height }}>
-                {live ? <canvas ref={setCanvasEl} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {live ? <canvas ref={setCanvasEl} className={`crd-canvas${painted ? ' is-ready' : ''}`} width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {live && !painted && <div className="crd-stage-shimmer" aria-hidden="true" />}
                 {live && loadingPicture && <div className="crd-stage-loading" role="status"><span className="crd-wheel" aria-hidden="true" />{t('Loading image...')}</div>}
                 {!live && previewFailed && (
                   <div className="crd-stage-empty crd-stage-failed">

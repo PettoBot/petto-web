@@ -62,7 +62,7 @@ export default function DesignGallery({ guildId, currentSrc, onPick }: Props) {
         <div className="crd-design-grid">
           {shown.map((design) => (
             <button key={design.id} type="button" className={`crd-design${design.id === current ? ' active' : ''}`} aria-pressed={design.id === current} title={nameOf(design.names)} onClick={() => onPick(design)}>
-              <img src={`/dash/guild/${guildId}/cards-api?design=${design.id}&size=thumb`} alt="" width={320} height={156} loading="lazy" decoding="async" style={{ background: design.color }} />
+              <img className="crd-thumb" src={`/dash/guild/${guildId}/cards-api?design=${design.id}&size=thumb`} alt="" width={320} height={156} loading="lazy" decoding="async" style={{ background: design.color }} onLoad={(e) => e.currentTarget.classList.add('is-loaded')} />
               <span>{nameOf(design.names)}</span>
             </button>
           ))}
