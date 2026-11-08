@@ -6226,4 +6226,12 @@ export const dashPt: Record<string, string> = {
   "Couldn't turn that ticket type off, try again.": "Não foi possível desligar esse tipo de ticket, tente de novo.",
   "This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted. Use Turn off instead: nobody can open it, and the history stays.": "Este tipo tem tickets salvos. Apagá-lo também apagaria o histórico e as transcrições, então ele não foi apagado. Use Desligar: ninguém poderá abri-lo e o histórico fica.",
   "To turn this on you need to pick a channel first.": "Para ligar isto você precisa escolher um canal primeiro.",
+  "Delete panel": "Apagar painel",
+  "Move to another channel": "Mover para outro canal",
+  "Takes the message down from Discord. The panel and its settings stay here, and nobody can open a ticket from it until you turn it on.": "Tira a mensagem do Discord. O painel e as configurações ficam aqui, e ninguém poderá abrir um ticket por ele até você ligá-lo.",
+  "Turn this panel off? Its message is deleted from Discord, so nobody can open a ticket from it. The panel stays here and you can turn it on again.": "Desligar este painel? A mensagem dele é apagada do Discord e ninguém poderá abrir um ticket por ele. O painel fica aqui e você pode ligá-lo de novo.",
+  "Posts the message in Discord again.": "Publica a mensagem no Discord de novo.",
+  "Off: the message is not in Discord. Turn it on to post it.": "Desligado: a mensagem não está no Discord. Ligue para publicá-la.",
+  "Couldn't remove the panel message from Discord, so it was not turned off.": "Não foi possível tirar a mensagem do painel do Discord, então ele não foi desligado.",
+  "Couldn't turn that panel off, try again.": "Não foi possível desligar esse painel, tente de novo.",
 };

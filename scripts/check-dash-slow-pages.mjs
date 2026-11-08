@@ -39,4 +39,12 @@ assert.ok(/words\.channelNeeded/.test(quick) && /hint\.setAttribute\('role', 'al
 
 assert.ok(/r\.tone !== 'none' && r\.on/.test(quick) && /filter\(\(r\) => r\.tone !== 'none'\)\.length/.test(quick), 'x of y on counts only what has an on or off: Customize and Backups are not in it');
 
+// Ticket panels: the actions are in sight with words (turn off or on, resend, delete, move), and a panel that is off stays off (a change to its types does not post it).
+const panelsUi = readFileSync(`${root}src/components/DashTickets.astro`, 'utf8');
+assert.ok(!/class="tk-more"/.test(panelsUi), 'the actions of a panel are not in a folded box any more');
+assert.ok(/value="unpost_panel"/.test(panelsUi) && /dt\('Turn on'\)/.test(panelsUi) && /dt\('Delete panel'\)/.test(panelsUi), 'a panel has Turn off, Turn on and a Delete panel button with its word');
+assert.ok(/if \(!panel\.message_id && !post\) return true;/.test(tickets), 'a panel that is off is not posted by a change to its types');
+assert.ok(/refreshPanelById\(String\(panel\.id\), true\)/.test(tickets) && /refreshPanelById\(panelId, true\)/.test(tickets), 'creating and resending a panel do post it');
+assert.ok(/action === 'unpost_panel'/.test(tickets) && /message_id: null/.test(tickets.slice(tickets.indexOf("action === 'unpost_panel'"))), 'turning a panel off takes its message down and keeps the panel');
+
 console.log('slow pages: ok');

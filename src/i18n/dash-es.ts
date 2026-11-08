@@ -6226,4 +6226,12 @@ export const dashEs: Record<string, string> = {
   "Couldn't turn that ticket type off, try again.": "No se pudo apagar ese tipo de ticket, inténtalo de nuevo.",
   "This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted. Use Turn off instead: nobody can open it, and the history stays.": "Este tipo tiene tickets guardados. Borrarlo también borraría su historial y sus transcripciones, así que no se borró. Usa Apagar: nadie podrá abrirlo y el historial se queda.",
   "To turn this on you need to pick a channel first.": "Para encenderlo necesitas elegir un canal primero.",
+  "Delete panel": "Borrar panel",
+  "Move to another channel": "Mover a otro canal",
+  "Takes the message down from Discord. The panel and its settings stay here, and nobody can open a ticket from it until you turn it on.": "Quita el mensaje de Discord. El panel y sus ajustes se quedan aquí, y nadie podrá abrir un ticket desde él hasta que lo enciendas.",
+  "Turn this panel off? Its message is deleted from Discord, so nobody can open a ticket from it. The panel stays here and you can turn it on again.": "¿Apagar este panel? Su mensaje se borra de Discord y nadie podrá abrir un ticket desde él. El panel se queda aquí y puedes encenderlo otra vez.",
+  "Posts the message in Discord again.": "Vuelve a publicar el mensaje en Discord.",
+  "Off: the message is not in Discord. Turn it on to post it.": "Apagado: el mensaje no está en Discord. Enciéndelo para publicarlo.",
+  "Couldn't remove the panel message from Discord, so it was not turned off.": "No se pudo quitar el mensaje del panel de Discord, así que no se apagó.",
+  "Couldn't turn that panel off, try again.": "No se pudo apagar ese panel, inténtalo de nuevo.",
 };
