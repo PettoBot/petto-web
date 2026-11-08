@@ -215,6 +215,9 @@ if (Astro.request.method === 'POST') {
     const maxOpenPerUser = Math.max(1, Math.min(10, Number(form.get('max_open_per_user') ?? 1) || 1));
     const panelId = String(form.get('panel_id') ?? '').trim() || null;
 
+    // The panel the type was on before: when it moves to another one (or to none) the old panel is drawn again too, or its button would stay there.
+    const beforeRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: apiHeaders }).catch(() => null);
+    const [before] = beforeRes?.ok ? await beforeRes.json().catch(() => []) : [];
     const res = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
       method: 'PATCH',
       headers: { ...apiHeaders, Prefer: 'return=minimal' },
@@ -229,6 +232,7 @@ if (Astro.request.method === 'POST') {
     if (res.ok) {
       saved = true;
       if (panelId) await refreshPanelById(panelId);
+      if (before?.panel_id && String(before.panel_id) !== String(panelId ?? '')) await refreshPanelById(String(before.panel_id));
     } else error = dt("Couldn't save that ticket type, try again.");
     if (emojiInvalid && res.ok) error = dt("That is not an emoji Discord accepts on a button. Use a normal emoji, or a custom one pasted as <:name:123456789012345678>. The rest was saved and the emoji did not change.");
   } else if (action === 'create_ticket_form' || action === 'update_ticket_form') {
@@ -277,6 +281,21 @@ if (Astro.request.method === 'POST') {
       if (res.ok) saved = true;
       else error = dt("Couldn't remove that ticket blacklist entry.");
     }
+  } else if (action === 'disable') {
+    // Turning a type off = taking it off its panel: its button goes away (the panel is drawn again), so nobody can open it, and every ticket it
+    // had, with its history, stays. It is turned on again by picking a panel for it.
+    const categoryId = encodeURIComponent(String(form.get('category_id') ?? '').trim());
+    const beforeRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: apiHeaders }).catch(() => null);
+    const [before] = beforeRes?.ok ? await beforeRes.json().catch(() => []) : [];
+    const res = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...apiHeaders, Prefer: 'return=minimal' },
+      body: JSON.stringify({ panel_id: null }),
+    });
+    if (res.ok) {
+      saved = true;
+      if (before?.panel_id) await refreshPanelById(String(before.panel_id));
+    } else error = dt("Couldn't turn that ticket type off, try again.");
   } else if (action === 'delete') {
     const rawCategoryId = String(form.get('category_id') ?? '').trim();
     const categoryId = encodeURIComponent(rawCategoryId);
@@ -287,7 +306,7 @@ if (Astro.request.method === 'POST') {
     if (!Array.isArray(used)) {
       error = dt("Couldn't check whether this type has tickets, so it was not deleted. Try again.");
     } else if (used.length > 0) {
-      error = dt('This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted.');
+      error = dt('This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted. Use Turn off instead: nobody can open it, and the history stays.');
     } else {
     const categoryRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?id=eq.${categoryId}&guild_id=eq.${id}&select=panel_id`, { headers: apiHeaders });
     const [category] = categoryRes.ok ? await categoryRes.json() : [];
@@ -322,7 +341,7 @@ if (Astro.request.method === 'POST') {
       });
       if (createRes.ok) {
         const [panel] = await createRes.json();
-        const ok = await refreshPanelById(String(panel.id));
+        const ok = await refreshPanelById(String(panel.id), true);
         saved = ok;
         if (!ok) error = panelFailure(dt('The panel was created but could not be posted.'));
       } else {
@@ -371,7 +390,8 @@ if (Astro.request.method === 'POST') {
         if (!moveRes.ok) {
           error = dt("Couldn't move that panel.");
         } else {
-          const ok = await refreshPanelById(panelId);
+          // A panel that was off is only moved: it stays off. One that was posted is posted again in its new channel.
+          const ok = panel.message_id ? await refreshPanelById(panelId, true) : true;
           saved = ok;
           if (!ok) error = panelFailure(dt('The panel was moved but could not be posted there.'));
         }
@@ -393,11 +413,25 @@ if (Astro.request.method === 'POST') {
         if (!clearRes.ok) {
           error = dt("Couldn't prepare the panel for resend.");
         } else {
-          const ok = await refreshPanelById(panelId);
+          const ok = await refreshPanelById(panelId, true);
           saved = ok;
           if (!ok) error = panelFailure(dt("Couldn't resend the panel."));
         }
       }
+    }
+  } else if (action === 'unpost_panel') {
+    // Turn a panel off: its message is taken down from Discord and the panel stays here, with all its settings. Nothing posts it again until it is turned on.
+    const panelId = String(form.get('panel_id') ?? '').trim();
+    const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
+    const [panel] = panelRes.ok ? await panelRes.json() : [];
+    if (!panel) {
+      error = dt('That panel was not found.');
+    } else if (!(await removePanelMessage(panel.channel_id, panel.message_id))) {
+      error = dt("Couldn't remove the panel message from Discord, so it was not turned off.");
+    } else {
+      const clearRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ message_id: null }) });
+      logTicketPanel('unpost-panel', { panelId, status: clearRes.status, ok: clearRes.ok });
+      if (clearRes.ok) saved = true; else error = dt("Couldn't turn that panel off, try again.");
     }
   } else if (action === 'delete_panel') {
     const panelId = String(form.get('panel_id') ?? '').trim();
@@ -527,10 +561,12 @@ async function removePanelMessage(channelId: string, messageId: string | null): 
 }
 
 /** Re-renders a panel's live message from its current title/description/style/categories, used after any change that could affect what's shown (category add/edit tied to this panel, panel edit, resend). */
-async function refreshPanelById(panelId: string): Promise<boolean> {
+async function refreshPanelById(panelId: string, post = false): Promise<boolean> {
   const panelRes = await fetch(`${apiUrl}/rest/v1/ticket_panels?id=eq.${panelId}&guild_id=eq.${id}&select=*`, { headers: apiHeaders });
   const [panel] = panelRes.ok ? await panelRes.json() : [];
   if (!panel) return false;
+  // A panel that is turned off (no message in Discord) stays off: a change to its types or its text does not post it. Only creating, resending, turning on and moving a posted panel (post) do.
+  if (!panel.message_id && !post) return true;
   const categoriesRes = await fetch(`${apiUrl}/rest/v1/ticket_categories?guild_id=eq.${id}&panel_id=eq.${panelId}&select=key,label,emoji,description,button_style&order=id.asc`, { headers: apiHeaders });
   const cats = (categoriesRes?.ok ? await categoriesRes.json() : []).map((c: any) => ({ key: c.key, label: c.label, emoji: c.emoji, description: c.description, buttonStyle: c.button_style ?? 'primary' }));
   const templateData = await getTemplateData(panel.embed_template);

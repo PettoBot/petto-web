@@ -16,6 +16,21 @@ export const NAME_FONTS = [
   { id: 10, label: 'Vampyre' },
 ] as const;
 
+/**
+ * How each font looks on the page (the tiles of the picker and the preview). Discord draws the real ones, these are the closest free fonts, kept in
+ * public/fonts/namestyle. The default font is the one of the dashboard.
+ */
+export const NAME_FONT_STACKS: Record<number, string> = {
+  11: 'inherit',
+  1: "'Josefin Sans', sans-serif",
+  3: "'Caveat', cursive",
+  4: "'Chewy', cursive",
+  6: "'Fredoka', sans-serif",
+  7: "'MedievalSharp', serif",
+  8: "'Press Start 2P', monospace",
+  10: "'Cormorant Garamond', serif",
+};
+
 /** `colors` is how many colors the effect takes: Discord refuses any other number. */
 export const NAME_EFFECTS = [
   { id: 1, label: 'Solid', colors: 1 },

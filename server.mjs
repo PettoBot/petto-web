@@ -177,6 +177,8 @@ const latencyPath = (url) => {
 // The server's own warm-up reads (below) are not visits: they used to be counted, and the first one after each deploy, which loads the
 // code of the dashboard, made /dash look slow.
 const WARMUP_AGENT = 'petto-warmup';
+const SLOW_REQUEST_MS = 2500;
+const slowSeen = new Map();
 const withLatency = (listener) => (req, res) => {
   const url = req.url ?? '/';
   if (!DASH_REQUEST.test(url) || NOT_A_PAGE.test(url.split('?')[0]) || req.headers['user-agent'] === WARMUP_AGENT) return listener(req, res);
@@ -187,6 +189,13 @@ const withLatency = (listener) => (req, res) => {
     // that was asked, the status and what the browser sent (a size and a kind of body, never what was in it).
     if (entry.s >= 400 || (!['GET', 'HEAD'].includes(String(req.method)) && entry.s >= 300 && entry.s < 400)) {
       console.warn(`[web] ${req.method} ${entry.u} -> ${entry.s} (${entry.t} ms, body ${req.headers['content-length'] ?? '?'} bytes, ${String(req.headers['content-type'] ?? 'no type').split(';')[0]}, from ${req.headers.referer ? new URL(req.headers.referer, 'http://x').pathname : 'no referer'})`);
+    }
+    // A dashboard page that took a long to answer says so in the log of the host, with where its time went (the Server-Timing parts: auth, db,
+    // discord, bot, render), so a slow page can be traced without guessing. At most one line for each path every 20 seconds.
+    if (entry.t >= SLOW_REQUEST_MS && entry.s < 400 && !(slowSeen.get(entry.p) > Date.now() - 20_000)) {
+      if (slowSeen.size > 200) slowSeen.clear();
+      slowSeen.set(entry.p, Date.now());
+      console.warn(`[web] slow ${req.method} ${entry.u} (${entry.t} ms, ${entry.st || 'no timing'})`);
     }
     latency.entries.push(entry);
     latency.total += 1;
