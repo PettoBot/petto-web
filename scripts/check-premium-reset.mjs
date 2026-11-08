@@ -3,7 +3,7 @@
 // profile and the name style at the same time, the notice of the locked fields does not follow the scroll, and a host that never answers cannot
 // keep a save waiting.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { build } from 'esbuild';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -76,5 +76,24 @@ assert.ok(/Promise\.all\(\[saveProfile\(\), saveStyle\(\)\]\)/.test(page), 'the 
 const discord = readFileSync(`${root}src/utils/discord.ts`, 'utf8');
 assert.ok(/AbortSignal\.timeout\(IMAGE_FETCH_TIMEOUT_MS\)/.test(discord), 'an image host that does not answer is given up on');
 assert.ok(/signal: AbortSignal\.timeout\(DISCORD_WRITE_TIMEOUT_MS\)/.test(discord), 'a Discord that does not answer is given up on');
+
+// 7. The picker of the pencils, the samples, the fonts of the tiles and the redirect after a save.
+assert.ok(/data-cz-pick="avatar"/.test(customize) && /data-cz-pick="banner"/.test(customize), 'both pencils open the picker');
+assert.ok(!/data-focus="(avatar|banner)_url"/.test(customize), 'and no longer only jump to the field');
+assert.ok(/<dialog id="czPicker"/.test(customize) && /See Premium plans/.test(customize.slice(customize.indexOf('czPicker'))), 'a server without Premium sees the plans in the picker, not the fields');
+assert.ok(/Astro\.redirect\(`\$\{Astro\.url\.pathname\}.*, 303\)/.test(page), 'a save answers with a redirect to the page (reloading does not send the form again)');
+const bundle = async (file) => { const r = await build({ entryPoints: [`${root}${file}`], bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent' }); return import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString('base64')}`); };
+const presets = await bundle('src/utils/customizePresets.ts');
+const style = await bundle('src/utils/nameStyle.ts');
+for (const [name, groups] of [['avatar', presets.avatarPresetGroups()], ['banner', presets.bannerPresetGroups(null)]]) {
+  const items = groups.flatMap((group) => group.items);
+  assert.ok(items.length >= 8, `${name}: there are samples to pick`);
+  assert.equal(new Set(items.map((item) => item.src)).size, items.length, `${name}: no sample is repeated`);
+  for (const item of items.filter((item) => item.src.startsWith('/'))) assert.ok(existsSync(`${root}public${item.src}`), `${name}: ${item.src} exists`);
+  for (const item of items) assert.ok(item.src.startsWith('/') || item.src.startsWith('https://'), `${name}: ${item.id} is a site file or an https link`);
+}
+assert.deepEqual(presets.avatarPresetGroups()[0].items.map((item) => item.id), ['default', 'christmas', 'halloween'], 'the recommended avatars are Petto by default, at Christmas and at Halloween');
+for (const font of style.NAME_FONTS) assert.ok(style.NAME_FONT_STACKS[font.id], `the font ${font.label} has a look for its tile`);
+for (const file of ['josefin-sans', 'caveat', 'chewy', 'fredoka', 'medievalsharp', 'press-start-2p', 'cormorant-garamond']) assert.ok(existsSync(`${root}public/fonts/namestyle/${file}.woff2`), `the font file ${file} is there`);
 
 console.log('premium reset: ok');
