@@ -16,7 +16,7 @@ import {
   LEVELUP_HEIGHT, LEVELUP_TEXTS, RANK_DEFAULTS, RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
 } from './cardTypes';
 
-interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string }
+interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string; decorationUrl?: string; nameplateUrl?: string }
 
 const ERRORS: Record<string, string> = {
   premium_required: 'This card uses the advanced editor or a Premium font, which needs Premium.',
@@ -213,7 +213,7 @@ function SourceField({ value, onChange, assets, onUpload, uploading }: { value: 
   );
 }
 
-export default function CardsApp({ guildId, premiumUrl, initialSelected, userId, userName, userAvatarUrl, serverName, serverIconUrl }: Props) {
+export default function CardsApp({ guildId, premiumUrl, initialSelected, userId, userName, userAvatarUrl, serverName, serverIconUrl, decorationUrl, nameplateUrl }: Props) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState(initialSelected);
@@ -318,10 +318,12 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
       context: { userId, userName, serverName, memberCount: 1204 },
       avatarUrl: userAvatarUrl,
       serverIconUrl,
+      decorationUrl,
+      nameplateUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
     }, () => seq === drawSeq.current, (waiting) => { if (seq === drawSeq.current) setLoadingPicture(waiting); });
-  }, [drawn, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
+  }, [drawn, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, decorationUrl, nameplateUrl, guildId]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
   function editBasic(patch: Partial<Basic>) { setDraft((d) => ({ ...d, basic: { ...(d.basic as Basic), ...patch } })); setDirty(true); }

@@ -15,6 +15,9 @@ export interface CardEnv {
   assetUrl: (id: string) => string;
   /** The address of one of the designs that come with Petto, by its id. */
   designUrl: (id: string) => string;
+  /** The decoration of the person's avatar and their nameplate (the still pictures), when they have them: what `{user.avatar_decoration}` and `{user.nameplate}` stand for. */
+  decorationUrl?: string;
+  nameplateUrl?: string;
 }
 
 // ---- fonts ----
@@ -72,15 +75,25 @@ function loadPicture(url: string): Promise<HTMLImageElement | null> {
   let pending = pictures.get(url);
   if (!pending) {
     pending = new Promise((resolve) => {
-      const image = new Image();
-      image.onload = () => { arrived.set(url, image); resolve(image); };
-      // A picture that failed is left out for half a minute (so the drawing does not ask again at once) and then it may be tried again.
-      image.onerror = () => {
-        arrived.set(url, null);
-        setTimeout(() => { arrived.delete(url); pictures.delete(url); }, 30000);
-        resolve(null);
+      // The picture is asked for with CORS first: a canvas that drew a picture without it cannot be turned into a file (the embed builder does that with the card),
+      // and Discord's pictures allow it. If the host does not, it is asked for again without (fine for showing it, not for saving the canvas).
+      const attempts: { cors: boolean; bust: boolean }[] = /^https?:\/\//.test(url) ? [{ cors: true, bust: false }, { cors: true, bust: true }, { cors: false, bust: false }] : [{ cors: false, bust: false }];
+      const attempt = (index: number) => {
+        const { cors, bust } = attempts[index];
+        const image = new Image();
+        if (cors) image.crossOrigin = 'anonymous';
+        image.onload = () => { arrived.set(url, image); resolve(image); };
+        image.onerror = () => {
+          if (index + 1 < attempts.length) { attempt(index + 1); return; }
+          // A picture that failed is left out for half a minute (so the drawing does not ask again at once) and then it may be tried again.
+          arrived.set(url, null);
+          setTimeout(() => { arrived.delete(url); pictures.delete(url); }, 30000);
+          resolve(null);
+        };
+        // The second try adds a parameter so the browser does not hand back the copy it kept from a request made without CORS.
+        image.src = bust ? `${url}${url.includes('?') ? '&' : '?'}cors=1` : url;
       };
-      image.src = url;
+      attempt(0);
     });
     pictures.set(url, pending);
   }
@@ -100,7 +113,11 @@ function peekPicture(url: string, needs: Needs): HTMLImageElement | null {
 
 function resolveText(text: string, env: CardEnv): string {
   const values = tokenValues(env.context);
-  return text.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (match, token) => findSample(values, token)?.text ?? match);
+  return text.replace(/\{\s*([a-zA-Z0-9_.:|-]+)\s*\}/g, (match, token) => {
+    if (token === 'user.avatar_decoration') return env.decorationUrl ?? '';
+    if (token === 'user.nameplate') return env.nameplateUrl ?? '';
+    return findSample(values, token)?.text ?? match;
+  });
 }
 
 /** The picture for a layer or background source: an uploaded file, a variable such as {user.avatar}, or a link. */
