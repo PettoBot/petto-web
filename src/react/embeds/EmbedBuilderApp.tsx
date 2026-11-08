@@ -23,6 +23,8 @@ interface Props {
   botName: string;
   botIcon: string;
   userAvatarUrl: string;
+  decorationUrl?: string;
+  nameplateUrl?: string;
   guildIconUrl: string;
   initialTemplateNames: string[];
   initialSelected: string;
@@ -51,7 +53,7 @@ async function api(guildId: string, apiPath: string, path: string, init?: Reques
 
 const STYLE_LABELS: Record<string, string> = { blurple: 'Blurple', green: 'Green', grey: 'Grey', red: 'Red' };
 
-export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups, apiPath = 'embeds-api', maxEmbeds = 10, allowTestSend = true, allowButtonEmoji = true, maxTemplates, testSendNote }: Props) {
+export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, decorationUrl, nameplateUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups, apiPath = 'embeds-api', maxEmbeds = 10, allowTestSend = true, allowButtonEmoji = true, maxTemplates, testSendNote }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
   const [data, setData] = useState<TemplateData>(emptyTemplate());
@@ -152,14 +154,17 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
       context: { userId: '', userName: 'Petto', serverName, memberCount: 1204 },
       avatarUrl: userAvatarUrl,
       serverIconUrl: guildIconUrl,
+      decorationUrl,
+      nameplateUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
     }, () => !cancelled, () => {
       // Every pass is shown: a picture that is slow to come joins the card later instead of keeping the whole card away.
-      canvas.toBlob((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); });
+      // A picture of a host that does not allow CORS makes the canvas impossible to save; the card then stays as the last pass left it.
+      try { canvas.toBlob((blob) => { if (blob && !cancelled) setCardImage((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(blob); }); }); } catch { /* tainted canvas */ }
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [data.card?.name, cardNames, guildId, userAvatarUrl, guildIconUrl, serverName]);
+  }, [data.card?.name, cardNames, guildId, userAvatarUrl, decorationUrl, nameplateUrl, guildIconUrl, serverName]);
 
   useEffect(() => {
     if (!flash) return;

@@ -16,7 +16,7 @@ import {
   LEVELUP_HEIGHT, LEVELUP_TEXTS, RANK_DEFAULTS, RANK_VARIABLE_CHOICES, VARIABLE_CHOICES, layerBox, newCard, newLayer, type Kind,
 } from './cardTypes';
 
-interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string }
+interface Props { guildId: string; premiumUrl: string; initialSelected: string; userId: string; userName: string; userAvatarUrl: string; serverName: string; serverIconUrl: string; decorationUrl?: string; nameplateUrl?: string }
 
 const ERRORS: Record<string, string> = {
   premium_required: 'This card uses the advanced editor or a Premium font, which needs Premium.',
@@ -213,7 +213,7 @@ function SourceField({ value, onChange, assets, onUpload, uploading }: { value: 
   );
 }
 
-export default function CardsApp({ guildId, premiumUrl, initialSelected, userId, userName, userAvatarUrl, serverName, serverIconUrl }: Props) {
+export default function CardsApp({ guildId, premiumUrl, initialSelected, userId, userName, userAvatarUrl, serverName, serverIconUrl, decorationUrl, nameplateUrl }: Props) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState(initialSelected);
@@ -232,7 +232,8 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   const [activeLayer, setActiveLayer] = useState<string | null>(null);
   const [lockedNote, setLockedNote] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The canvas is kept in state (not only in a ref): the card is drawn when the canvas appears, whenever that happens (the editor can show up after the data is in).
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [exact, setExact] = useState(false);
   // The layers of the advanced editor while the basic tab is open, so switching tabs does not lose them.
   const stash = useRef<Layer[] | null>(null);
@@ -311,17 +312,19 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
   // True while a picture or font of the card is still coming, so the preview says so instead of looking empty.
   const [loadingPicture, setLoadingPicture] = useState(false);
   useEffect(() => {
-    if (!live || !canvasRef.current) return;
+    if (!live || !canvasEl) return;
     const seq = ++drawSeq.current;
     setLoadingPicture(true);
-    void drawCard(canvasRef.current, drawn, {
+    void drawCard(canvasEl, drawn, {
       context: { userId, userName, serverName, memberCount: 1204 },
       avatarUrl: userAvatarUrl,
       serverIconUrl,
+      decorationUrl,
+      nameplateUrl,
       assetUrl: (id) => `/dash/guild/${guildId}/cards-api?asset=${id}`,
       designUrl: (id) => `/dash/guild/${guildId}/cards-api?design=${id}&size=full`,
     }, () => seq === drawSeq.current, (waiting) => { if (seq === drawSeq.current) setLoadingPicture(waiting); });
-  }, [drawn, live, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, guildId]);
+  }, [drawn, live, canvasEl, selected, userId, userName, serverName, userAvatarUrl, serverIconUrl, decorationUrl, nameplateUrl, guildId]);
 
   function edit(patch: Partial<CardData>) { setDraft((d) => ({ ...d, ...patch })); setDirty(true); }
   function editBasic(patch: Partial<Basic>) { setDraft((d) => ({ ...d, basic: { ...(d.basic as Basic), ...patch } })); setDirty(true); }
@@ -561,7 +564,7 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
             <div className="ebr-preview-col">
               <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
               <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}`, ['--crd-ar' as string]: draft.width / draft.height }}>
-                {live ? <canvas ref={canvasRef} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                {live ? <canvas ref={setCanvasEl} className="crd-canvas" width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
                 {live && loadingPicture && <div className="crd-stage-loading" role="status"><span className="crd-wheel" aria-hidden="true" />{t('Loading image...')}</div>}
                 {!live && previewFailed && (
                   <div className="crd-stage-empty crd-stage-failed">
