@@ -6219,4 +6219,5 @@ export const dashPt: Record<string, string> = {
   "Recommended": "Recomendados",
   "Christmas": "Natal",
   "Halloween": "Halloween",
+  "Removing…": "Removendo…",
 };
