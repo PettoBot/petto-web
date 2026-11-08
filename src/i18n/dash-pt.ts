@@ -6220,4 +6220,10 @@ export const dashPt: Record<string, string> = {
   "Christmas": "Natal",
   "Halloween": "Halloween",
   "Removing…": "Removendo…",
+  "Take it off its panel: nobody can open it, and its tickets and history stay. To turn it on again, pick a panel for it.": "Tire-o do painel: ninguém poderá abri-lo, e os tickets e o histórico ficam. Para ligá-lo de novo, escolha um painel para ele.",
+  "Turn this type off? It leaves its panel, so nobody can open it. Its tickets and history stay, and you can turn it on again by picking a panel.": "Desligar este tipo? Ele sai do painel e ninguém poderá abri-lo. Os tickets e o histórico ficam, e você pode ligá-lo de novo escolhendo um painel.",
+  "Turned off: it is not on any panel, so nobody can open it. Pick a panel below to turn it on.": "Desligado: não está em nenhum painel, então ninguém pode abri-lo. Escolha um painel abaixo para ligá-lo.",
+  "Couldn't turn that ticket type off, try again.": "Não foi possível desligar esse tipo de ticket, tente de novo.",
+  "This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted. Use Turn off instead: nobody can open it, and the history stays.": "Este tipo tem tickets salvos. Apagá-lo também apagaria o histórico e as transcrições, então ele não foi apagado. Use Desligar: ninguém poderá abri-lo e o histórico fica.",
+  "To turn this on you need to pick a channel first.": "Para ligar isto você precisa escolher um canal primeiro.",
 };

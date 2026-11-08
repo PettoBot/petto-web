@@ -27,4 +27,14 @@ assert.ok(!/waitInFlash/.test(feedsPage), 'no action of a row waits in the box a
 assert.ok(/await refresh\('', true\)/.test(del) && /row\.remove\(\)/.test(del), 'the row goes away at once and the list is read again quietly, after');
 assert.ok(/cache: 'no-store'/.test(feedsPage.slice(feedsPage.indexOf('const refresh'), feedsPage.indexOf('const toast'))), 'the list read again never comes from a copy kept by the browser');
 
+// Tickets: a type with history cannot be deleted, so it can be turned off (taken off its panel, the panel is drawn again, nothing is erased); and a type that
+// moves to another panel (or to none) draws the panel it left again, or its button would stay on it.
+const tickets = readFileSync(`${root}src/pages/dash/guild/[id]/tickets.astro`, 'utf8');
+assert.ok(/action === 'disable'/.test(tickets) && /body: JSON\.stringify\(\{ panel_id: null \}\)/.test(tickets), 'a ticket type can be turned off without deleting anything');
+assert.ok(/String\(before\.panel_id\) !== String\(panelId \?\? ''\)\) await refreshPanelById\(String\(before\.panel_id\)\)/.test(tickets), 'the panel a type left is drawn again');
+assert.ok(/Use Turn off instead/.test(tickets), 'the refusal to delete says what to do instead');
+assert.ok(/value="disable"/.test(readFileSync(`${root}src/components/DashTickets.astro`, 'utf8')), 'the types have a Turn off button');
+const quick = readFileSync(`${root}src/components/DashQuickAccess.astro`, 'utf8');
+assert.ok(/words\.channelNeeded/.test(quick) && /hint\.setAttribute\('role', 'alert'\)/.test(quick), 'a switch that needs a channel answers with a warning that says so');
+
 console.log('slow pages: ok');

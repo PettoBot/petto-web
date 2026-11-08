@@ -6220,4 +6220,10 @@ export const dashEs: Record<string, string> = {
   "Christmas": "Navidad",
   "Halloween": "Halloween",
   "Removing…": "Quitando…",
+  "Take it off its panel: nobody can open it, and its tickets and history stay. To turn it on again, pick a panel for it.": "Quítalo de su panel: nadie podrá abrirlo, y sus tickets y su historial se quedan. Para encenderlo otra vez, elige un panel para él.",
+  "Turn this type off? It leaves its panel, so nobody can open it. Its tickets and history stay, and you can turn it on again by picking a panel.": "¿Apagar este tipo? Sale de su panel y nadie podrá abrirlo. Sus tickets y su historial se quedan, y puedes encenderlo otra vez eligiendo un panel.",
+  "Turned off: it is not on any panel, so nobody can open it. Pick a panel below to turn it on.": "Apagado: no está en ningún panel, así que nadie puede abrirlo. Elige un panel abajo para encenderlo.",
+  "Couldn't turn that ticket type off, try again.": "No se pudo apagar ese tipo de ticket, inténtalo de nuevo.",
+  "This type has tickets saved. Deleting it would also erase their history and transcripts, so it was not deleted. Use Turn off instead: nobody can open it, and the history stays.": "Este tipo tiene tickets guardados. Borrarlo también borraría su historial y sus transcripciones, así que no se borró. Usa Apagar: nadie podrá abrirlo y el historial se queda.",
+  "To turn this on you need to pick a channel first.": "Para encenderlo necesitas elegir un canal primero.",
 };
