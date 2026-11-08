@@ -19,4 +19,12 @@ const server = readFileSync(`${root}server.mjs`, 'utf8');
 assert.ok(/\[web\] slow \$\{req\.method\} \$\{entry\.u\}/.test(server) && /entry\.t >= SLOW_REQUEST_MS/.test(server), 'a slow page is written in the log with its timing');
 assert.ok(/slowSeen\.get\(entry\.p\) > Date\.now\(\) - 20_000/.test(server), 'at most one line for each path every twenty seconds');
 
+// The Feeds page: removing a feed waits in its own row, does not scroll the page to the box at the top, and does not read the whole list again before it answers.
+const feedsPage = readFileSync(`${root}src/components/DashFeeds.astro`, 'utf8');
+const del = feedsPage.slice(feedsPage.indexOf('if (button.dataset.feedDelete)'));
+assert.ok(/working\(button, text\.removing\)/.test(del), 'the row says it is removing (spinner and word on its own button)');
+assert.ok(!/waitInFlash/.test(feedsPage), 'no action of a row waits in the box at the top any more (it scrolled the page up to it)');
+assert.ok(/await refresh\('', true\)/.test(del) && /row\.remove\(\)/.test(del), 'the row goes away at once and the list is read again quietly, after');
+assert.ok(/cache: 'no-store'/.test(feedsPage.slice(feedsPage.indexOf('const refresh'), feedsPage.indexOf('const toast'))), 'the list read again never comes from a copy kept by the browser');
+
 console.log('slow pages: ok');

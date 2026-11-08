@@ -6219,4 +6219,5 @@ export const dashEs: Record<string, string> = {
   "Recommended": "Recomendados",
   "Christmas": "Navidad",
   "Halloween": "Halloween",
+  "Removing…": "Quitando…",
 };
