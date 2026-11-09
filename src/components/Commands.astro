@@ -3,6 +3,7 @@ import { Icon } from 'astro-icon/components';
 import Base from '../layouts/Base.astro';
 import { useTranslations, localePath, type Locale } from '../i18n/ui';
 import { renderSyntax } from '../utils/syntax';
+import generated from '../data/commands.generated.json';
 
 interface Props {
   lang: Locale;
@@ -36,7 +37,10 @@ const ui = lang === 'es'
 // A row is typed with the prefix (`!ban user`) and, when the command is also registered with Discord, with a slash (`/ban user`): the page shows
 // either one (the switch above the search). The slash form comes from the row itself: a syntax that starts with `/`, or the `/...` entry of "Also"
 // (`/action love hug`) followed by the arguments of the syntax.
-function slashOf(syntax: string, also: readonly string[] = []): string | null {
+// The lookups of the Integrations (`!github user`, `!minecraft skin`...) are the groups of `/search` (`/search github user`): the ones that are one of its groups have a slash form.
+const searchGroups = new Set<string>(((generated as { name: string; subcommands?: string[] }[]).find((command) => command.name === 'search')?.subcommands) ?? []);
+function slashOf(syntax: string, also: readonly string[] = [], integration = false): string | null {
+  if (integration && searchGroups.has(syntax.replace(/^[!/]/, '').split(/\s+/)[0])) return `/search ${syntax.replace(/^[!/]/, '')}`;
   const args = syntax.split(/\s+/).filter((word) => /^[<[]/.test(word)).join(' ');
   const via = also.find((value) => value.startsWith('/'));
   if (via) return args ? `${via} ${args}` : via;
@@ -157,7 +161,7 @@ const catIcon: Record<string, string> = {
               <div class="cat-list">
                 {cat.cmds.map(([name, syntax, desc, also]) => {
                   const id = rowId(name);
-                  const slash = slashOf(syntax, also);
+                  const slash = slashOf(syntax, also, Boolean(cat.group));
                   const prefixText = prefixSyntax(syntax);
                   const slashText = slash;
                   const example = exampleOf(prefixText);
@@ -325,6 +329,19 @@ const catIcon: Record<string, string> = {
     if (pickerName) pickerName.textContent = link?.querySelector('span')?.textContent ?? '';
     if (pickerCount && cat) pickerCount.textContent = String(countOf(cat));
   }
+  // A heading of a group (Integrations) is shown only while some category under it is (with a slash, or a search, some have nothing to show).
+  function syncGroupHeadings() {
+    for (const list of [document.querySelector('.toc-links'), document.querySelector('.cat-sheet-list')]) {
+      if (!list) continue;
+      let heading: HTMLElement | null = null;
+      let any = false;
+      const close = () => { if (heading) heading.hidden = !any; };
+      for (const node of Array.from(list.children) as HTMLElement[]) {
+        if (node.classList.contains('toc-group')) { close(); heading = node; any = false; } else if (!node.hidden) any = true;
+      }
+      close();
+    }
+  }
   function applyMode(next: 'slash' | 'prefix', remember = true) {
     mode = next;
     if (bodyBox) bodyBox.dataset.mode = mode;
@@ -345,6 +362,7 @@ const catIcon: Record<string, string> = {
     const here = cats.find((item) => item.id === current);
     if (mode === 'slash' && here && countOf(here) === 0) { const first = cats.find((item) => countOf(item) > 0); if (first) activate(first.id, { scroll: false, hash: false }); }
     runSearch();
+    syncGroupHeadings();
     updatePicker();
   }
   modeButtons.forEach((button) => button.addEventListener('click', () => applyMode(button.dataset.mode === 'slash' ? 'slash' : 'prefix')));
@@ -436,6 +454,7 @@ const catIcon: Record<string, string> = {
     });
     if (words.length && visible === 0) { tocLinks.forEach((a) => a.removeAttribute('hidden')); sheetButtons.forEach((b) => b.removeAttribute('hidden')); }
     if (noResults) noResults.style.display = words.length && visible === 0 ? 'block' : 'none';
+    if (typeof syncGroupHeadings === 'function') syncGroupHeadings();
   }
   input?.addEventListener('input', runSearch);
 
