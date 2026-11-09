@@ -214,13 +214,20 @@ export async function callFeedbackCard(astro: any, call: CardCall): Promise<{ ch
     const response = await fetch(`${config.baseUrl}/api/feedback/card/${call.action}`, {
       method: 'POST',
       signal: AbortSignal.timeout(8_000),
-      headers: config.headers,
+      // The bot's /api routes read the key from this header (the database route, /rest/v1, reads apikey and Authorization).
+      headers: { ...config.headers, 'X-Petto-Dashboard-Key': config.headers.apikey },
       body: JSON.stringify({ post: { id, discord_channel_id, discord_message_id } }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // Said in the log (never the key): without it a refusal looks like a board that works and a card that never comes.
+      const error: any = await response.json().catch(() => null);
+      console.warn(`Asking the bot to ${call.action} the Discord card of feedback post ${id} failed: it answered ${response.status} ${error?.error ?? ''}`.trim());
+      return null;
+    }
     const payload: any = await response.json().catch(() => null);
     return payload?.messageId ? { channelId: String(payload.channelId), messageId: String(payload.messageId) } : null;
-  } catch {
+  } catch (error) {
+    console.warn(`Asking the bot to ${call.action} the Discord card of feedback post ${call.post.id} failed: it could not be reached (${(error as Error)?.message ?? 'error'})`);
     return null;
   }
 }
