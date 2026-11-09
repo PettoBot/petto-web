@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDashboardSession } from '../../../../utils/dashAuth';
-import { callFeedbackBot, currentVote, getPost, setVote, tooMany } from '../../../../utils/feedback';
+import { callFeedbackCard, currentVote, getPost, setVote, tooMany } from '../../../../utils/feedback';
 
 export const prerender = false;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
@@ -24,7 +24,7 @@ export const POST: APIRoute = async (context) => {
   const next = before === value ? 0 : value;
   if (!(await setVote(context, id, session.userId, next))) return json({ ok: false, error: 'unavailable' }, 503);
   const fresh = (await getPost(context, id)) ?? post;
-  const refresh = callFeedbackBot(context, { action: 'update', post: fresh });
+  const refresh = callFeedbackCard(context, { action: 'update', post: fresh });
   const wait = (context.locals as any)?.runtime?.ctx?.waitUntil;
   if (typeof wait === 'function') wait.call((context.locals as any).runtime.ctx, refresh);
   return json({ ok: true, vote: next, up: fresh.votes_up, down: fresh.votes_down });

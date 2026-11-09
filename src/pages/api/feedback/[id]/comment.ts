@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDashboardSession } from '../../../../utils/dashAuth';
-import { addComment, callFeedbackBot, getPost, isStaff, readComment, tooMany } from '../../../../utils/feedback';
+import { addComment, callFeedbackCard, getPost, isStaff, readComment, tooMany } from '../../../../utils/feedback';
 
 export const prerender = false;
 
@@ -22,7 +22,7 @@ export const POST: APIRoute = async (context) => {
   const created = await addComment(context, id, { userId: session.userId, username: session.username, avatar: session.avatar }, body, await isStaff(context, session.userId));
   if (!created) return back('?error=unavailable');
   const fresh = (await getPost(context, id)) ?? post;
-  const refresh = callFeedbackBot(context, { action: 'update', post: fresh });
+  const refresh = callFeedbackCard(context, { action: 'update', post: fresh });
   const wait = (context.locals as any)?.runtime?.ctx?.waitUntil;
   if (typeof wait === 'function') wait.call((context.locals as any).runtime.ctx, refresh);
   return back('?commented=1');
