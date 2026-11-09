@@ -1,6 +1,6 @@
 // The feedback board (petto.sbs/feedback): ideas, feedback and bugs that people write and vote on. The posts live in the bot's
-// database (tables `feedback_posts`, `feedback_votes`, `feedback_comments`). Each new post is also published in the Petto server by the
-// feedback bot (the `feed` service), which puts like and dislike buttons on the message; a press there comes back here as a vote.
+// database (tables `feedback_posts`, `feedback_votes`, `feedback_comments`). Each new post is also published in the Petto server by Petto itself,
+// as a card with like and dislike buttons; a press there is saved by Petto straight in the same tables.
 import { getEnv } from './env';
 import { getTeamIds } from './team';
 
@@ -202,19 +202,20 @@ export async function isStaff(astro: any, userId: string): Promise<boolean> {
   return [...ids.owners, ...ids.programming, ...ids.support].includes(userId);
 }
 
-// The feedback bot, a small service of its own with its own token (the `feed` project). It publishes a post in the Petto server and keeps
-// the message up to date. Nothing here is needed for the board to work: without it the posts are only on the website.
-type BotCall = { action: 'publish' | 'update' | 'remove'; post: Post; commentCount?: number };
-export async function callFeedbackBot(astro: any, call: BotCall): Promise<{ channelId: string; messageId: string } | null> {
-  const url = getEnv(astro, 'FEEDBACK_BOT_URL')?.replace(/\/+$/, '');
-  const secret = getEnv(astro, 'FEEDBACK_BOT_SECRET');
-  if (!url || !secret) return null;
+// The card of a post in the Petto server is Petto's: the bot publishes it, keeps it up to date and deletes it when the website asks (its
+// route `/api/feedback/card/<action>`, with the same key as the database). Nothing here is needed for the board to work: without it the
+// posts are only on the website.
+type CardCall = { action: 'publish' | 'update' | 'remove'; post: Post };
+export async function callFeedbackCard(astro: any, call: CardCall): Promise<{ channelId: string; messageId: string } | null> {
+  const config = api(astro);
+  if (!config) return null;
   try {
-    const response = await fetch(`${url}/${call.action}`, {
+    const { id, discord_channel_id, discord_message_id } = call.post;
+    const response = await fetch(`${config.baseUrl}/api/feedback/card/${call.action}`, {
       method: 'POST',
       signal: AbortSignal.timeout(8_000),
-      headers: { 'Content-Type': 'application/json', 'X-Feedback-Secret': secret },
-      body: JSON.stringify({ post: call.post, site: getEnv(astro, 'PUBLIC_SITE_URL') ?? 'https://petto.sbs' }),
+      headers: config.headers,
+      body: JSON.stringify({ post: { id, discord_channel_id, discord_message_id } }),
     });
     if (!response.ok) return null;
     const payload: any = await response.json().catch(() => null);

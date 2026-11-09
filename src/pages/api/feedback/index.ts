@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDashboardSession } from '../../../utils/dashAuth';
-import { callFeedbackBot, createPost, readPost, saveDiscordMessage, tooMany } from '../../../utils/feedback';
+import { callFeedbackCard, createPost, readPost, saveDiscordMessage, tooMany } from '../../../utils/feedback';
 
 export const prerender = false;
 
@@ -28,7 +28,7 @@ export const POST: APIRoute = async (context) => {
   if (!post) return fail('unavailable', 503);
 
   // The post is also published in the Petto server. If the feedback bot is not there, the board still works.
-  const publish = callFeedbackBot(context, { action: 'publish', post }).then((sent) => (sent ? saveDiscordMessage(context, post.id, sent.channelId, sent.messageId) : undefined));
+  const publish = callFeedbackCard(context, { action: 'publish', post }).then((sent) => (sent ? saveDiscordMessage(context, post.id, sent.channelId, sent.messageId) : undefined));
   const wait = (context.locals as any)?.runtime?.ctx?.waitUntil;
   if (typeof wait === 'function') wait.call((context.locals as any).runtime.ctx, publish); else await publish;
   return wantsJson ? json({ ok: true, id: post.id }) : redirect(`/feedback/${post.id}?new=1`, 303);

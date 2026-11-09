@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDashboardSession } from '../../../../utils/dashAuth';
-import { addComment, callFeedbackBot, deletePost, getPost, isStaff, isStatus, setStatus } from '../../../../utils/feedback';
+import { addComment, callFeedbackCard, deletePost, getPost, isStaff, isStatus, setStatus } from '../../../../utils/feedback';
 
 export const prerender = false;
 
@@ -20,7 +20,7 @@ export const POST: APIRoute = async (context) => {
 
   if (action === 'delete') {
     if (!staff && post.user_id !== session.userId) return new Response('Forbidden', { status: 403 });
-    await callFeedbackBot(context, { action: 'remove', post });
+    await callFeedbackCard(context, { action: 'remove', post });
     await deletePost(context, id);
     return redirect('/feedback?deleted=1', 303);
   }
@@ -31,7 +31,7 @@ export const POST: APIRoute = async (context) => {
   const changed = await setStatus(context, id, status, note);
   if (!changed) return redirect(`/feedback/${id}?error=unavailable`, 303);
   if (note.trim()) await addComment(context, id, { userId: session.userId, username: session.username, avatar: session.avatar }, `Status: ${status.replace('_', ' ')}. ${note.trim()}`.slice(0, 1000), true);
-  const refresh = callFeedbackBot(context, { action: 'update', post: (await getPost(context, id)) ?? changed });
+  const refresh = callFeedbackCard(context, { action: 'update', post: (await getPost(context, id)) ?? changed });
   const wait = (context.locals as any)?.runtime?.ctx?.waitUntil;
   if (typeof wait === 'function') wait.call((context.locals as any).runtime.ctx, refresh); else await refresh;
   return redirect(`/feedback/${id}?updated=1`, 303);
