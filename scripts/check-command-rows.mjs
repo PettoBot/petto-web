@@ -38,7 +38,13 @@ for (const lang of ['en', 'es', 'pt-BR']) {
       assert.ok(row, `${lang}: "${name}" is a row`);
       assert.ok(row[1].startsWith(`!${name}`), `${lang}: "${name}" is written with its full name (${row[1]})`);
       assert.equal(row[2], leaf.desc[lang], `${lang}: "${name}" has its own description`);
-      if (command.slash) assert.ok(row[3].includes(`/${name}`), `${lang}: "${name}" shows its slash form`);
+      // The slash form is `/cmd path`; a command that takes the options of its `user` subcommand directly shows `/cmd` for that one (`/ban`) and none for the rest
+      // (`/unban`, `/banlist` are commands of their own), and a subcommand only for the prefix (`automod control`, `ban users`) has none.
+      const here = leaf.path.join(' ');
+      const hidden = (command.slashHidden ?? []).some((each) => here === each || here.startsWith(`${each} `));
+      const form = command.slashFlatten ? (leaf.path.join(' ') === command.slashFlatten ? `/${command.name}` : null) : `/${name}`;
+      if (command.slash && !hidden && form) assert.ok(row[3].some((value) => value === form || value.startsWith(`${form} `)), `${lang}: "${name}" shows its slash form`);
+      if (command.slash && (hidden || !form)) assert.ok(!row[3].some((value) => value === `/${name}` || value.startsWith(`/${name} `)), `${lang}: "${name}" does not show a slash form it does not have`);
       for (const arg of leaf.args.slice(0, 6)) assert.ok(row[1].includes(arg.required ? `<${arg.name}>` : `[${arg.name}]`), `${lang}: "${name}" shows its argument ${arg.name}`);
     }
   }

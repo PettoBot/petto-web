@@ -20,6 +20,11 @@ interface GeneratedCommand {
   category: string;
   contextMenu: boolean;
   slash?: boolean;
+  // `/ban` takes the options of this subcommand directly; the paths (`users`, `temp`) that have no slash form.
+  slashFlatten?: string;
+  slashHidden?: string[];
+  // Options only the prefix reads, by subcommand (`ban user` has `duration`: the slash form is `/tempban`).
+  slashHiddenOptions?: Record<string, string[]>;
   aliases: string[];
   description: string;
   subcommands: string[];
@@ -31,7 +36,7 @@ interface GeneratedCommand {
 }
 
 const categoryOf: Record<string, string[]> = {
-  moderation: ['protect', 'mod', 'modtools', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
+  moderation: ['banlist', 'mutelist', 'jaillist', 'jailsetup', 'warnescalation', 'imagemute', 'imageunmute', 'reactionmute', 'reactionunmute', 'protect', 'mod', 'modtools', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
   tickets: ['ticket', 'quickreply', 'forum', 'forumconfig'],
   leveling: ['levels', 'level', 'rank', 'top', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
@@ -39,8 +44,8 @@ const categoryOf: Record<string, string[]> = {
   community: ['community', 'social', 'contributions', 'specialchannels', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
   onboarding: ['greet', 'welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
-  info: ['ai', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'bots', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
-  setup: ['prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed', 'send', 'pagination'],
+  info: ['rolemembers', 'servericon', 'serverbanner', 'serversplash', 'topcommands', 'ai', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'bots', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
+  setup: ['customize', 'prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed', 'send', 'pagination'],
   // `action` stands for every interaction action (hug, pat, slap...): they are the subcommands of /action, and each gets its own row below.
   roleplay: ['action', 'game', '8ball', 'rps', 'ship', 'quote', 'image', 'uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare'],
 };
@@ -77,11 +82,18 @@ function syntaxOf(cmd: GeneratedCommand): string {
  * and the other ways to type it: the slash form when the command is a slash command, the short commands that reach it (`!lock`), the aliases of the command
  * (`!tk close`) and the words typed in place of the subcommand. The name is what the search of the page looks at.
  */
+/** The slash form of the subcommand a command takes directly (`/ban <user> [delete_message_days] [reason]`): its arguments, without the ones only the prefix reads. */
+function slashFlat(cmd: GeneratedCommand, leaf: GeneratedLeaf, path: string): string {
+  const hidden = new Set(cmd.slashHiddenOptions?.[path] ?? []);
+  const args = argsText(leaf.args.filter((arg) => !hidden.has(arg.name)));
+  return args ? `/${cmd.name} ${args}` : `/${cmd.name}`;
+}
+
 function leafRows(cmd: GeneratedCommand, lang: CatalogLocale): (readonly [string, string, string, string[]])[] {
   return (cmd.leaves ?? []).map((leaf) => {
     const path = leaf.path.join(' ');
     const also = [
-      ...(cmd.slash ? [`/${cmd.name} ${path}`] : []),
+      ...(cmd.slash && !(cmd.slashHidden ?? []).some((hidden) => path === hidden || path.startsWith(`${hidden} `)) ? (cmd.slashFlatten ? (path === cmd.slashFlatten ? [slashFlat(cmd, leaf, path)] : []) : [`/${cmd.name} ${path}`]) : []),
       ...leaf.shortcuts.map((alias) => `!${alias}`),
       ...cmd.aliases.map((alias) => `!${alias} ${path}`),
       ...leaf.words.map((word) => `!${cmd.name} ${word}`),

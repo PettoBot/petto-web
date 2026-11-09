@@ -101,6 +101,10 @@ for (const cmd of client.commands.values()) {
     slash: (json.type ?? 1) !== 1 || Boolean(!cmd.prefixOnly && (cmd.slashOnly || cmd.registerSlash || cmd.category === 'roleplay')),
     aliases: cmd.aliases ?? [],
     description: json.description ?? '',
+    // `/ban` takes the options of its `user` subcommand directly (no `/ban user`); the subcommands that are only for the prefix (they have no slash form).
+    ...(cmd.slashFlatten ? { slashFlatten: cmd.slashFlatten } : {}),
+    ...(cmd.prefixOnlyOptions ? { slashHiddenOptions: cmd.prefixOnlyOptions } : {}),
+    ...((cmd.prefixOnlySubcommands?.length || cmd.slashHiddenSubcommands?.length) ? { slashHidden: [...(cmd.prefixOnlySubcommands ?? []), ...(cmd.slashHiddenSubcommands ?? [])] } : {}),
     subcommands: (json.options ?? []).filter((o) => optionTypes[o.type]).map((o) => o.name),
     args: (json.options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) })),
     // The interaction actions are the subcommands of /action: each one in its group, with the words that reach it with the prefix and its
