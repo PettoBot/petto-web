@@ -11,6 +11,7 @@ import DashFormKit from './DashFormKit.astro';
 import DashStatTiles from './DashStatTiles.astro';
 import DashBotWait from './DashBotWait.astro';
 import { withPostNotes, type PostableChannel } from '../utils/channelPost';
+import type { VerifyChecks } from '../utils/verifyChecks';
 
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
@@ -35,7 +36,7 @@ interface MemberEvents {
   boostLevelMessage: string;
   boostLevelEmbedTemplate: string;
 }
-interface Verification { methodReady: boolean; method: string; designReady: boolean; promptTemplate: string; verifiedTemplate: string; enabled: boolean; unverifiedRoleId: string | null; verifiedRoleId: string | null; panelReady: boolean; panelChannelId: string | null; imageReady: boolean; panelImage: string; }
+interface Verification { checksReady: boolean; checks: VerifyChecks; methodReady: boolean; method: string; designReady: boolean; promptTemplate: string; verifiedTemplate: string; enabled: boolean; unverifiedRoleId: string | null; verifiedRoleId: string | null; panelReady: boolean; panelChannelId: string | null; imageReady: boolean; panelImage: string; }
 interface Bump { designReady: boolean; thankyouTemplate: string; reminderTemplate: string; channelId: string | null; message: string; thankyou: string; pingable: boolean; autolock: boolean; autoclean: boolean; }
 interface DmJoin { message: string; embedTemplate: string; }
 interface PingOnJoin { enabled: boolean; channelIds: string[]; delaysSeconds: Record<string, number>; }
@@ -90,6 +91,12 @@ const methods: [string, string, string, string][] = [
   ['letters', dt('Letters in a picture'), dt('Type the letters of a picture'), 'ph:image-fill'],
   ['both', dt('Both checks'), dt('The two, one after the other'), 'ph:seal-check-fill'],
   ['discord', dt('Letters inside Discord (no link)'), dt('A button in the DM, no link'), 'ph:chat-circle-dots-fill'],
+];
+// The extra checks: three have a mode (off, tell the staff, block); the email code is on or off.
+const checkModes: [string, string][] = [['off', dt('Off')], ['warn', dt('Tell the staff')], ['block', dt('Block')]];
+const checkRows: [string, string, string, string, string][] = [
+  ['tor', 'ph:detective-fill', dt('Tor network'), dt('Members connecting through the Tor network.'), verification.checks.tor],
+  ['alt', 'ph:users-three-fill', dt('Alt accounts'), dt('The same connection or email as another member, or as a banned one. Only coded fingerprints are kept, for 90 days.'), verification.checks.alt],
 ];
 const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Humans only')], ['bots', dt('Bots only')]];
 ---
@@ -231,6 +238,54 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
               </div>
               {verification.methodReady && <input type="hidden" name="method_ready" value="1" />}
               <p class="sx-hint">{dt('The Cloudflare check is the usual one. With letters, members type the letters of a picture (the link page needs no Cloudflare), on the page or with a button in the DM. With both, they do the two. Inside Discord, they only press a button in the DM and type the letters there, with no link at all.')}</p>
+            </section>
+
+            <section class="sx-panel ob-box" data-vf-checks>
+              <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#ffb86c"><Icon name="ph:detective-fill" width="17" height="17" /></span><h2>{dt('Extra checks')}</h2></div>
+              <p class="sx-hint">{dt('On top of the captcha. "Tell the staff" lets the member in and writes it in the verification log. "Block" stops them and tells them why.')}</p>
+              <div class="ob-chk-list">
+                {checkRows.map(([key, icon, title, hint, current]) => (
+                  <div class="ob-chk">
+                    <span class="ob-chk-icon"><Icon name={icon} width="18" height="18" /></span>
+                    <div class="ob-chk-text"><b>{title}</b><em>{hint}</em></div>
+                    <div class="ob-seg" role="radiogroup" aria-label={title}>
+                      {checkModes.map(([value, label]) => <label><input type="radio" name={`chk_${key}`} value={value} checked={current === value} disabled={!verification.checksReady} /><span>{label}</span></label>)}
+                    </div>
+                  </div>
+                ))}
+                <div class="ob-chk ob-chk-wide">
+                  <span class="ob-chk-icon"><Icon name="ph:identification-card-fill" width="18" height="18" /></span>
+                  <div class="ob-chk-text"><b>{dt('Discord account')}</b><em>{dt('Accounts that are too new, have no avatar or are flagged by Discord.')}</em></div>
+                  <div class="ob-seg" role="radiogroup" aria-label={dt('Discord account')}>
+                    {checkModes.map(([value, label]) => <label><input type="radio" name="chk_account" value={value} checked={verification.checks.account.mode === value} disabled={!verification.checksReady} /><span>{label}</span></label>)}
+                  </div>
+                  <div class="ob-chk-more">
+                    <div class="sx-field"><label for="ob-chk-age">{dt('Minimum age (days)')}</label><input id="ob-chk-age" type="number" name="chk_account_age" min="0" max="365" value={verification.checks.account.min_age_days} disabled={!verification.checksReady} /></div>
+                    <div class="sx-chips">
+                      <label class="sx-chip"><input type="checkbox" name="chk_account_avatar" checked={verification.checks.account.no_avatar} disabled={!verification.checksReady} /><span>{dt('Needs an avatar')}</span></label>
+                      <label class="sx-chip"><input type="checkbox" name="chk_account_flagged" checked={verification.checks.account.flagged} disabled={!verification.checksReady} /><span>{dt('Refuse accounts flagged by Discord')}</span></label>
+                    </div>
+                  </div>
+                </div>
+                <div class="ob-chk ob-chk-wide">
+                  <span class="ob-chk-icon"><Icon name="ph:envelope-simple-fill" width="18" height="18" /></span>
+                  <div class="ob-chk-text"><b>{dt('Email code')}</b><em>{dt('Members type a 6-digit code sent to their email. Petto does not keep the email.')}</em></div>
+                  <label class="sx-toggle-only"><input type="checkbox" name="chk_email" checked={verification.checks.email.required} disabled={!verification.checksReady} aria-label={dt('Email code')} /><i class="sx-toggle"></i></label>
+                  <div class="ob-chk-more">
+                    <div class="sx-chips">
+                      <label class="sx-chip"><input type="checkbox" name="chk_email_common" checked={verification.checks.email.common_only} disabled={!verification.checksReady} /><span>{dt('Only well-known providers')}</span></label>
+                      <label class="sx-chip"><input type="checkbox" name="chk_email_disposable" checked={verification.checks.email.block_disposable} disabled={!verification.checksReady} /><span>{dt('Refuse throwaway emails')}</span></label>
+                    </div>
+                    <div class="sx-grid">
+                      <div class="sx-field"><label for="ob-chk-allow">{dt('Only these domains')}</label><input id="ob-chk-allow" type="text" name="chk_email_allow" value={verification.checks.email.allowed_domains.join(', ')} placeholder="school.edu, company.com" maxlength="900" disabled={!verification.checksReady} /></div>
+                      <div class="sx-field"><label for="ob-chk-deny">{dt('Never these domains')}</label><input id="ob-chk-deny" type="text" name="chk_email_deny" value={verification.checks.email.blocked_domains.join(', ')} placeholder="example.com" maxlength="900" disabled={!verification.checksReady} /></div>
+                    </div>
+                    <p class="sx-hint">{dt('Well-known providers are Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton and similar: addresses of a personal or company domain are refused. Fill "Only these domains" to accept your own (a school, a company) instead. Addresses with a + sign are never accepted.')}</p>
+                  </div>
+                </div>
+              </div>
+              {verification.checksReady && <input type="hidden" name="checks_ready" value="1" />}
+              <p class="sx-hint">{dt('Tor, alt accounts and the email code need the verification page, so they do not work with "Letters inside Discord (no link)". The Discord account check works everywhere.')}</p>
             </section>
 
             <section class="sx-panel ob-box">
@@ -721,6 +776,35 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
   .ob-checks li :global(svg) { flex: none; color: var(--text-dim); }
   .ob-checks li.done { color: var(--text); }
   .ob-checks li.done :global(svg) { color: var(--green); }
+  /* extra checks of the verification */
+  .ob-chk-list { display: flex; flex-direction: column; gap: 10px; }
+  .ob-chk { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; padding: 12px 13px; border: 1px solid var(--border-soft); border-radius: 13px; background: color-mix(in srgb, var(--text) 3%, var(--card)); }
+  .ob-chk-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+  .ob-chk-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ob-chk-text b { font-size: 14px; }
+  .ob-chk-text em { font-style: normal; font-size: 12.5px; color: var(--text-muted); }
+  .ob-chk > .ob-seg { grid-column: 2 / -1; justify-self: start; }
+  .ob-chk > .sx-toggle-only { grid-column: 3; grid-row: 1; }
+  .ob-seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 11px; background: var(--card); }
+  .ob-seg label { position: relative; cursor: pointer; }
+  .ob-seg input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+  .ob-seg span { display: block; padding: 6px 11px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; transition: background .18s ease, color .18s ease; }
+  .ob-seg label:hover span { color: var(--text); }
+  .ob-seg label:has(input:checked) span { background: var(--accent-soft); color: var(--accent); }
+  .ob-seg label:has(input[value="block"]:checked) span { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+  .ob-seg label:has(input[value="warn"]:checked) span { background: color-mix(in srgb, var(--yellow) 16%, transparent); color: var(--yellow); }
+  .ob-seg label:has(input:focus-visible) span { box-shadow: 0 0 0 3px var(--accent-soft); }
+  .ob-seg label:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+  .ob-chk .sx-toggle-only input:checked ~ .sx-toggle { background: var(--green); }
+  .ob-chk .sx-toggle-only input:checked ~ .sx-toggle::after { transform: translateX(16px); }
+  .ob-chk .sx-toggle-only input:focus-visible ~ .sx-toggle { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ob-chk .sx-toggle-only input:disabled ~ .sx-toggle { opacity: .55; }
+  .ob-chk-more { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--border-soft); }
+  .ob-chk-more .sx-field input[type=number], .ob-chk-more .sx-field input[type=text] { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; min-width: 0; }
+  .ob-chk-more .sx-field input[type=number] { max-width: 140px; }
+  .ob-chk-more .sx-field input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .ob-chk-more .sx-field input:disabled { opacity: .55; cursor: not-allowed; }
+  @media (max-width: 640px) { .ob-chk > .ob-seg { grid-column: 1 / -1; justify-self: stretch; display: flex; } .ob-seg label { flex: 1; } .ob-seg span { text-align: center; } }
   .ob-panel-actions { display: flex; }
   .ob-panel-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
   .ob-panel-actions .btn[disabled] { opacity: .55; cursor: not-allowed; }
