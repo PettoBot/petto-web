@@ -36,7 +36,7 @@ interface MemberEvents {
   boostLevelMessage: string;
   boostLevelEmbedTemplate: string;
 }
-interface Verification { checksReady: boolean; checks: VerifyChecks; methodReady: boolean; method: string; designReady: boolean; promptTemplate: string; verifiedTemplate: string; enabled: boolean; unverifiedRoleId: string | null; verifiedRoleId: string | null; panelReady: boolean; panelChannelId: string | null; imageReady: boolean; panelImage: string; }
+interface Verification { dmReady: boolean; dmOnJoin: boolean; checksReady: boolean; checks: VerifyChecks; methodReady: boolean; method: string; designReady: boolean; promptTemplate: string; verifiedTemplate: string; enabled: boolean; unverifiedRoleId: string | null; verifiedRoleId: string | null; panelReady: boolean; panelChannelId: string | null; imageReady: boolean; panelImage: string; }
 interface Bump { designReady: boolean; thankyouTemplate: string; reminderTemplate: string; channelId: string | null; message: string; thankyou: string; pingable: boolean; autolock: boolean; autoclean: boolean; }
 interface DmJoin { message: string; embedTemplate: string; }
 interface PingOnJoin { enabled: boolean; channelIds: string[]; delaysSeconds: Record<string, number>; }
@@ -92,6 +92,7 @@ const methods: [string, string, string, string][] = [
   ['letters', dt('Letters in a picture'), dt('Type the letters of a picture'), 'ph:image-fill'],
   ['both', dt('Both checks'), dt('The two, one after the other'), 'ph:seal-check-fill'],
   ['discord', dt('Letters inside Discord (no link)'), dt('A button in the DM, no link'), 'ph:chat-circle-dots-fill'],
+  ['email', dt('Email code (no captcha)'), dt('A code sent to their email'), 'ph:envelope-simple-fill'],
 ];
 // The extra checks: three have a mode (off, tell the staff, block); the email code is on or off.
 const checkModes: [string, string][] = [['off', dt('Off')], ['warn', dt('Tell the staff')], ['block', dt('Block')]];
@@ -240,6 +241,7 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
               </div>
               {verification.methodReady && <input type="hidden" name="method_ready" value="1" />}
               <p class="sx-hint">{dt('The Cloudflare check is the usual one. With letters, members type the letters of a picture (the link page needs no Cloudflare), on the page or with a button in the DM. With both, they do the two. Inside Discord, they only press a button in the DM and type the letters there, with no link at all.')}</p>
+              <p class="sx-hint ob-email-note" id="ob-email-note" hidden={verification.method !== 'email'}>{dt('The email code proves that the member has an inbox, not that they are a person. A captcha plus the email (the Email code of Extra checks) is the strongest. It needs the verification link and a way to send the email.')}</p>
             </section>
 
             <section class="sx-panel ob-box" data-vf-checks>
@@ -283,6 +285,7 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
                       <div class="sx-field"><label for="ob-chk-deny">{dt('Never these domains')}</label><input id="ob-chk-deny" type="text" name="chk_email_deny" value={verification.checks.email.blocked_domains.join(', ')} placeholder="example.com" maxlength="900" disabled={!verification.checksReady} /></div>
                     </div>
                     <p class="sx-hint">{dt('Well-known providers are Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton and similar: addresses of a personal or company domain are refused. Fill "Only these domains" to accept your own (a school, a company) instead. Addresses with a + sign are never accepted.')}</p>
+                <p class="sx-hint ob-email-note" id="ob-email-forced" hidden={verification.method !== 'email'}>{dt('With the Email code method, the code is always asked, whatever this switch says.')}</p>
                   </div>
                 </div>
               </div>
@@ -317,6 +320,9 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
               <p class="sx-hint">{dt('An optional picture at the top of the panel. The link has to start with https. Save, then press Send the panel now to change a panel that is already posted.')}</p>
               <div class="sx-chips"><label class="sx-chip"><input type="checkbox" name="panel_repost" /><span>{dt('Post the panel again when I save')}</span></label></div>
               <p class="sx-hint">{dt('Petto posts a panel there with the verify buttons, so members can verify in the server and not only by DM. Only the member who presses a button sees the picture. Changing the method? Post the panel again.')}</p>
+              <div class="sx-chips"><label class="sx-chip"><input type="checkbox" name="dm_on_join" checked={verification.dmOnJoin} disabled={!verification.dmReady || !verification.panelChannelId} data-vf-dm /><span>{dt('Send the DM when someone joins')}</span></label></div>
+              {verification.dmReady && <input type="hidden" name="dm_ready" value="1" />}
+              <p class="sx-hint">{dt('When it is off, members verify from the panel of the channel. It only turns off when a channel is chosen for the panel.')}</p>
             </section>
           </div>
         </div>
@@ -651,6 +657,23 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
   </script>
 
   <script is:inline>
+    // The method "Email code": its warnings show only while it is chosen. The DM when someone joins can be turned off only with a channel for the panel.
+    (function () {
+      var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="method"]'));
+      var notes = [document.getElementById('ob-email-note'), document.getElementById('ob-email-forced')];
+      function method() { var on = radios.filter(function (r) { return r.checked; })[0]; return on ? on.value : ''; }
+      function showNotes() { var on = method() === 'email'; notes.forEach(function (n) { if (n) n.hidden = !on; }); }
+      radios.forEach(function (r) { r.addEventListener('change', showNotes); });
+      var select = document.querySelector('select[name="panel_channel_id"]');
+      var dm = document.querySelector('[data-vf-dm]');
+      var dmReady = document.querySelector('input[name="dm_ready"]');
+      function dmState() { if (!select || !dm || !dmReady) return; dm.disabled = !select.value; if (!select.value) dm.checked = true; }
+      if (select) select.addEventListener('change', dmState);
+      dmState();
+    })();
+  </script>
+
+  <script is:inline>
     // "Send the welcome": only the line of the chosen way is shown.
     (function () {
       var select = document.querySelector('[data-ob-wait]');
@@ -768,6 +791,8 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
   .ob-vf-bar span { display: block; height: 100%; width: 4%; border-radius: inherit; background: var(--accent); transition: width .4s ease; }
   .ob-vf-step { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .ob-vf-warn { margin: 0; font-size: 13px; color: var(--yellow); }
+  .ob-email-note { color: var(--yellow); }
+  .ob-email-note[hidden] { display: none; }
   @media (prefers-reduced-motion: reduce) { .ob-vf-bar span { transition: none; } }
   .ob-methods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ob-methods .sx-choice-body em { display: block; }

@@ -37,4 +37,8 @@ assert.ok(page.includes("callPettoVerification(Astro, id, String(session.userId)
 assert.ok(page.includes('fallbackInfo') && page.includes("Astro.request.method === 'POST' && !guildInfo"), 'after a save the page comes back even if the name of the server cannot be read');
 assert.ok(card.includes('problem && <div class="sx-flash sx-flash-bad" role="alert">'), 'the problem is shown in a red line');
 assert.ok(readFileSync(`${root}src/utils/discord.ts`, 'utf8').includes('could not be read:'), 'a server Discord does not give is in the log');
+// The method "Email code" and the switch for the DM when someone joins.
+assert.ok(card.includes("['email', dt('Email code (no captcha)')") && page.includes("'discord', 'email'].includes(String(form.get('method')))"), 'the email code is a method that can be chosen and saved');
+assert.ok(page.includes("dm_on_join: form.get('dm_on_join') === 'on' || !String(form.get('panel_channel_id') ?? '').trim()"), 'the DM can be off only with a channel for the panel');
+assert.ok(card.includes('name="dm_on_join"') && card.includes('name="dm_ready"') && card.includes('data-vf-dm'), 'the card has the switch of the DM');
 console.log('verify checks: ok');
