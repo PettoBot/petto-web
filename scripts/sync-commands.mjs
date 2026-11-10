@@ -104,6 +104,7 @@ for (const cmd of client.commands.values()) {
     // `/ban` takes the options of its `user` subcommand directly (no `/ban user`); the subcommands that are only for the prefix (they have no slash form).
     ...(cmd.slashFlatten ? { slashFlatten: cmd.slashFlatten } : {}),
     ...(cmd.prefixOnlyOptions ? { slashHiddenOptions: cmd.prefixOnlyOptions } : {}),
+    ...(cmd.slashOptionOrder ? { slashOptionOrder: cmd.slashOptionOrder } : {}),
     ...((cmd.prefixOnlySubcommands?.length || cmd.slashHiddenSubcommands?.length) ? { slashHidden: [...(cmd.prefixOnlySubcommands ?? []), ...(cmd.slashHiddenSubcommands ?? [])] } : {}),
     subcommands: (json.options ?? []).filter((o) => optionTypes[o.type]).map((o) => o.name),
     args: (json.options ?? []).filter((o) => !optionTypes[o.type]).map((o) => ({ name: o.name, required: Boolean(o.required) })),
