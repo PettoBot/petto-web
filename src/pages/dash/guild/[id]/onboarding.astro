@@ -7,6 +7,7 @@ import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
 import { postableChannel } from '../../../../utils/channelPost';
 import { checksFromForm, normalizeChecks } from '../../../../utils/verifyChecks';
+import { callPettoVerification } from '../../../../utils/pettoBotApi';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
 
@@ -28,6 +29,8 @@ const apiHeaders = {
 };
 
 let saved = false;
+// What went wrong while saving (the page says it, and the log has the detail): a save the bot refused, or a panel it could not post.
+let problem: string | null = null;
 
 // The design columns exist once the bot that added them runs. They are sent when the page knew about them
 // (design_ready) or a design was chosen, so saving the rest never breaks before that.
@@ -74,7 +77,7 @@ if (Astro.request.method === 'POST') {
     });
     saved = true;
   } else if (action === 'verification') {
-    await fetch(`${apiUrl}/rest/v1/verification_config?on_conflict=guild_id`, {
+    const saveResponse = await fetch(`${apiUrl}/rest/v1/verification_config?on_conflict=guild_id`, {
       method: 'POST',
       headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
@@ -93,8 +96,21 @@ if (Astro.request.method === 'POST') {
         ...(form.get('checks_ready') ? { checks: checksFromForm(form) } : {}),
         updated_at: new Date().toISOString(),
       }),
-    });
-    saved = true;
+    }).catch((error) => { console.error(`[onboarding] saving the verification of ${id}: the bot could not be reached:`, (error as Error)?.message); return null; });
+    if (!saveResponse || !saveResponse.ok) {
+      if (saveResponse) console.error(`[onboarding] saving the verification of ${id}: the bot answered ${saveResponse.status} ${(await saveResponse.text().catch(() => '')).slice(0, 300)}`);
+      problem = dt('The verification settings could not be saved. Try again in a moment.');
+    } else {
+      saved = true;
+      // "Post the panel again when I save": the bot is asked now, so the panel is in the channel when the page comes back (the job that follows the dashboard only looks every two minutes).
+      if (form.get('panel_ready') && form.get('panel_repost') === 'on' && String(form.get('panel_channel_id') ?? '').trim()) {
+        const posted = await callPettoVerification(Astro, id, String(session.userId), 'panel');
+        if (!posted.ok) {
+          console.error(`[onboarding] posting the verification panel of ${id} again: ${posted.down ? 'the bot did not answer' : posted.message}`);
+          problem = `${dt('The settings were saved, but the panel could not be posted:')} ${posted.down ? dt('Petto did not answer. Press "Send the panel now" in a moment.') : posted.message}`;
+        }
+      }
+    }
   } else if (action === 'bump') {
     await fetch(`${apiUrl}/rest/v1/bump_reminders?on_conflict=guild_id`, {
       method: 'POST',
@@ -172,7 +188,12 @@ const [guildInfo, eventsRes, verificationRes, bumpRes, pojConfigRes, pojChannels
   () => getGuildList(Astro, id, botToken, 'channels'),
   () => fetch(`${apiUrl}/rest/v1/embed_templates?guild_id=eq.${id}&select=name&order=name.asc`, { headers: apiHeaders }),
 ], 6);
-if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+// A save has already happened when this runs: if Discord does not give the name of the server this time, the page still comes back (with a plain name)
+// instead of sending the person away with "something went wrong" after the change was saved.
+const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
+if (fallbackInfo) console.error(`[onboarding] the name of the server ${id} could not be read after a save; showing the page with a plain name`);
+if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const serverInfo = (guildInfo ?? fallbackInfo)!;
 
 const eventsRows = eventsRes.ok ? await eventsRes.json() : [];
 const e = eventsRows[0] ?? {};
@@ -250,8 +271,8 @@ const channels = allChannels
 <DashOnboarding
   user={session}
   guildId={id}
-  guildName={guildInfo.name}
-  guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  guildName={serverInfo.name}
+  guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'}
   memberEvents={memberEvents}
   verification={verification}
   bump={bump}
@@ -262,4 +283,5 @@ const channels = allChannels
   channels={channels}
   embedTemplateNames={embedTemplateNames}
   saved={saved}
+  problem={problem}
 />
