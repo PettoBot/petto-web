@@ -34,7 +34,11 @@ export async function getGuildInfo(guildId: string, botToken: string): Promise<{
   }
 
   const res = await fetch(`https://discord.com/api/guilds/${guildId}`, { headers: { Authorization: `Bot ${botToken}` } });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // Discord's answer names the cause (401: wrong DISCORD_TOKEN, 403/404: the bot is not in the server, 429 or an HTML page: this host is rate limited).
+    console.error(`[discord] the server ${guildId} could not be read: ${res.status} ${(await res.clone().text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160)}`);
+    return null;
+  }
   const guild = await res.json();
   const value = { id: guild.id, name: guild.name, icon: guildIconUrl(guild) };
   guildInfoCache.set(cacheKey, { value, expiresAt: Date.now() + GUILD_INFO_TTL_MS, epoch });

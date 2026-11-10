@@ -31,4 +31,10 @@ assert.ok(card.includes('name={`chk_${key}`}') && card.includes("['tor', ") && c
 for (const name of ['chk_account', 'chk_account_age', 'chk_account_avatar', 'chk_account_flagged', 'chk_email', 'chk_email_common', 'chk_email_disposable', 'chk_email_allow', 'chk_email_deny', 'checks_ready']) assert.ok(card.includes(name), `the card has ${name}`);
 const page = readFileSync(`${root}src/pages/dash/guild/[id]/onboarding.astro`, 'utf8');
 assert.ok(page.includes("form.get('checks_ready') ? { checks: checksFromForm(form) }"), 'the checks are saved only when the bot has them');
+// A save that fails says so (the page and the log), "post the panel again" asks the bot at once, and a name of the server that cannot be read after a save does not send the person away.
+assert.ok(page.includes('saveResponse.ok') && page.includes('console.error(`[onboarding] saving the verification'), 'a refused save is logged and shown');
+assert.ok(page.includes("callPettoVerification(Astro, id, String(session.userId), 'panel')") && page.includes("form.get('panel_repost') === 'on'"), 'the panel is posted again at once when asked');
+assert.ok(page.includes('fallbackInfo') && page.includes("Astro.request.method === 'POST' && !guildInfo"), 'after a save the page comes back even if the name of the server cannot be read');
+assert.ok(card.includes('problem && <div class="sx-flash sx-flash-bad" role="alert">'), 'the problem is shown in a red line');
+assert.ok(readFileSync(`${root}src/utils/discord.ts`, 'utf8').includes('could not be read:'), 'a server Discord does not give is in the log');
 console.log('verify checks: ok');
