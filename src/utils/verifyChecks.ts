@@ -5,7 +5,7 @@ export interface VerifyChecks {
   tor: CheckMode;
   alt: CheckMode;
   account: { mode: CheckMode; min_age_days: number; no_avatar: boolean; flagged: boolean };
-  email: { required: boolean; block_disposable: boolean; allowed_domains: string[]; blocked_domains: string[] };
+  email: { required: boolean; common_only: boolean; block_disposable: boolean; allowed_domains: string[]; blocked_domains: string[] };
 }
 
 const MODES: CheckMode[] = ['off', 'warn', 'block'];
@@ -34,7 +34,7 @@ export function normalizeChecks(raw: unknown): VerifyChecks {
     tor: mode(source.tor),
     alt: mode(source.alt),
     account: { mode: mode(account.mode), min_age_days: Number.isFinite(days) ? Math.min(365, Math.max(0, days)) : 0, no_avatar: account.no_avatar === true, flagged: account.flagged !== false },
-    email: { required: email.required === true, block_disposable: email.block_disposable !== false, allowed_domains: domainList(email.allowed_domains), blocked_domains: domainList(email.blocked_domains) },
+    email: { required: email.required === true, common_only: email.common_only !== false, block_disposable: email.block_disposable !== false, allowed_domains: domainList(email.allowed_domains), blocked_domains: domainList(email.blocked_domains) },
   };
 }
 
@@ -44,6 +44,6 @@ export function checksFromForm(form: FormData): VerifyChecks {
     tor: form.get('chk_tor'),
     alt: form.get('chk_alt'),
     account: { mode: form.get('chk_account'), min_age_days: form.get('chk_account_age'), no_avatar: form.get('chk_account_avatar') === 'on', flagged: form.get('chk_account_flagged') === 'on' },
-    email: { required: form.get('chk_email') === 'on', block_disposable: form.get('chk_email_disposable') === 'on', allowed_domains: form.get('chk_email_allow'), blocked_domains: form.get('chk_email_deny') },
+    email: { required: form.get('chk_email') === 'on', common_only: form.get('chk_email_common') === 'on', block_disposable: form.get('chk_email_disposable') === 'on', allowed_domains: form.get('chk_email_allow'), blocked_domains: form.get('chk_email_deny') },
   });
 }

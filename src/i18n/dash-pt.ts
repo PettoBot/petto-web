@@ -6255,6 +6255,7 @@ export const dashPt: Record<string, string> = {
   "Refuse throwaway emails": "Recusar e-mails temporários",
   "Only these domains": "Só estes domínios",
   "Never these domains": "Nunca estes domínios",
-  "Leave \"Only these domains\" empty to accept any domain. The code is sent by Petto with Resend: it needs RESEND_API_KEY and RESEND_FROM, and until they are set members are not asked for it.": "Deixe «Só estes domínios» vazio para aceitar qualquer domínio. O Petto envia o código com o Resend: precisa de RESEND_API_KEY e RESEND_FROM, e até estarem definidas os membros não são pedidos.",
   "Tor, alt accounts and the email code need the verification page, so they do not work with \"Letters inside Discord (no link)\". The Discord account check works everywhere.": "Tor, contas alternativas e o código por e-mail precisam da página de verificação, então não funcionam com «Letras dentro do Discord (sem link)». A checagem da conta do Discord funciona em todos os modos.",
+  "Only well-known providers": "Só provedores conhecidos",
+  "Well-known providers are Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton and similar: addresses of a personal or company domain are refused. Fill \"Only these domains\" to accept your own (a school, a company) instead. Addresses with a + sign are never accepted.": "Os provedores conhecidos são Gmail, Outlook, Hotmail, Yahoo, iCloud, Proton e parecidos: endereços de um domínio pessoal ou de empresa são recusados. Preencha «Só estes domínios» para aceitar os seus (uma escola, uma empresa). Endereços com um sinal + nunca são aceitos.",
 };
