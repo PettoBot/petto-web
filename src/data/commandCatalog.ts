@@ -23,8 +23,10 @@ interface GeneratedCommand {
   // `/ban` takes the options of this subcommand directly; the paths (`users`, `temp`) that have no slash form.
   slashFlatten?: string;
   slashHidden?: string[];
-  // Options only the prefix reads, by subcommand (`ban user` has `duration`: the slash form is `/tempban`).
+  // Options only the prefix reads, by subcommand (none today: `/ban` and `/mute` take the optional `duration` too).
   slashHiddenOptions?: Record<string, string[]>;
+  // The order of the options in the `/` menu when it is not the one the prefix reads (`/ban <user> [duration] [reason] [delete_message_days]`).
+  slashOptionOrder?: string[];
   aliases: string[];
   description: string;
   subcommands: string[];
@@ -44,7 +46,7 @@ const categoryOf: Record<string, string[]> = {
   community: ['community', 'social', 'contributions', 'specialchannels', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
   onboarding: ['greet', 'welcome', 'leave', 'boost', 'dmonjoin', 'poj', 'joinrole', 'verify', 'bumpreminder'],
   logging: ['logs'],
-  info: ['rolemembers', 'servericon', 'serverbanner', 'serversplash', 'topcommands', 'ai', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'bots', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
+  info: ['rolemembers', 'servericon', 'serverbanner', 'serversplash', 'topcommands', 'ai', 'feedback', 'bot', 'search', 'activity', 'avatar', 'banner', 'botinfo', 'channelinfo', 'color', 'emojiinfo', 'jumbo', 'minecraft', 'github', 'roblox', 'steam', 'twitch', 'youtube', 'lastfm', 'deezer', 'itunes', 'wikipedia', 'anilist', 'pokemon', 'package', 'tmdb', 'chess', 'modrinth', 'crypto', 'currency', 'animal', 'firstmessage', 'inviteinfo', 'permissions', 'ping', 'premium', 'roleinfo', 'roles', 'emojis', 'channels', 'boosters', 'bots', 'inrole', 'serverinfo', 'snowflake', 'spotify', 'summary', 'uptime', 'userinfo', 'usercosmetics', 'version', 'calc', 'time', 'weather', 'wiki', 'choose', 'roll', 'server', 'user', 'stats'],
   setup: ['customize', 'prefix', 'embed', 'help', 'permission', 'alias', 'backup', 'moderation', 'security', 'setup', 'webhook', 'sender', 'cmdconfig', 'myprefix', 'restrictcommand', 'language', 'editembed', 'send', 'pagination'],
   // `action` stands for every interaction action (hug, pat, slap...): they are the subcommands of /action, and each gets its own row below.
   roleplay: ['action', 'game', '8ball', 'rps', 'ship', 'quote', 'image', 'uwu', 'coinflip', 'wouldyourather', 'neverhaveiever', 'truthordare'],
@@ -82,10 +84,12 @@ function syntaxOf(cmd: GeneratedCommand): string {
  * and the other ways to type it: the slash form when the command is a slash command, the short commands that reach it (`!lock`), the aliases of the command
  * (`!tk close`) and the words typed in place of the subcommand. The name is what the search of the page looks at.
  */
-/** The slash form of the subcommand a command takes directly (`/ban <user> [delete_message_days] [reason]`): its arguments, without the ones only the prefix reads. */
+/** The slash form of the subcommand a command takes directly (`/ban <user> [duration] [reason] [delete_message_days]`): its arguments, without the ones only the prefix reads. */
 function slashFlat(cmd: GeneratedCommand, leaf: GeneratedLeaf, path: string): string {
   const hidden = new Set(cmd.slashHiddenOptions?.[path] ?? []);
-  const args = argsText(leaf.args.filter((arg) => !hidden.has(arg.name)));
+  const order = cmd.slashOptionOrder ?? [];
+  const rank = (name: string) => { const at = order.indexOf(name); return at === -1 ? order.length : at; };
+  const args = argsText(leaf.args.filter((arg) => !hidden.has(arg.name)).sort((a, b) => rank(a.name) - rank(b.name)));
   return args ? `/${cmd.name} ${args}` : `/${cmd.name}`;
 }
 
