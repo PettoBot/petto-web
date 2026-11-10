@@ -102,7 +102,7 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="antinuke" pageTitle={dt('Anti-raid & nuke')}>
   <DashSettingsKit />
   <DashFormKit />
-  <div class="anx-page">
+  <div class="anx-page" data-an-words data-saved={dt('Saved.')} data-failed={dt('It could not be saved, try again.')}>
   <h1>{dt('Anti-raid & nuke')} <span class="an-count">{dt('{n} of {total} active', { n: active, total: protections.length })}</span></h1>
   <DashAcData roles={roles} channels={channels} />
 
@@ -140,7 +140,7 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
           <span class="an-text"><b>{dt('Anti Raid')}</b><em>{dt('Reacts when many accounts join in a few seconds.')}</em></span>
           <Icon name="ph:caret-down-bold" class="an-caret" width="13" height="13" />
         </button>
-        <label class="sx-switch anx-sw"><input type="checkbox" name="anti_raid_enabled" checked={join.raidEnabled} data-an-auto aria-label={dt('Anti Raid')} /><span class="sx-toggle"></span></label>
+        <label class="sx-switch anx-sw"><input type="checkbox" name="anti_raid_enabled" checked={join.raidEnabled} data-an-auto data-no-dirty aria-label={dt('Anti Raid')} /><span class="sx-toggle"></span></label>
       </div>
       <div class="an-body" hidden>
         <div class="sx-grid">
@@ -184,7 +184,7 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
             <Icon name="ph:caret-down-bold" class="an-caret" width="13" height="13" />
           </button>
           {p.followsOldSwitch && <span class="anx-old" title={dt('It follows the old single switch. Save it to tune it on its own.')}>{dt('Old switch')}</span>}
-          <label class="sx-switch anx-sw"><input type="checkbox" name="enabled" checked={p.enabled} data-an-auto aria-label={info.label} /><span class="sx-toggle"></span></label>
+          <label class="sx-switch anx-sw"><input type="checkbox" name="enabled" checked={p.enabled} data-an-auto data-no-dirty aria-label={info.label} /><span class="sx-toggle"></span></label>
         </div>
         <div class="an-body" hidden>
           <div class="sx-grid">
@@ -575,9 +575,60 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
           .catch(function () { anSay(restoreFailed, false); restore.disabled = false; });
       }
     });
+    // The switch of a protection saves by itself, in the background, and the page stays as it is (nothing is read again or redrawn, no "unsaved changes" bar):
+    // the switch has already moved, a small ring turns on its knob while it is saved, and it goes back with a toast only if the save fails.
+    // A fast hand on many switches never sends a save twice at once for the same protection (each form is saved one change after the other), and never more
+    // than three at a time in all, each one with the form as it is when its turn comes.
+    var anTails = new WeakMap(); var anActive = 0; var anWaiting = [];
+    var anPump = function () {
+      while (anActive < 3 && anWaiting.length) {
+        var job = anWaiting.shift(); anActive += 1;
+        job().then(function () { anActive -= 1; anPump(); });
+      }
+    };
+    var anRun = function (form, job) {
+      var next = (anTails.get(form) || Promise.resolve()).then(function () { return new Promise(function (resolve) { anWaiting.push(function () { return job().then(resolve, resolve); }); anPump(); }); });
+      anTails.set(form, next);
+      return next;
+    };
+    var anWords = function () { var box = document.querySelector('[data-an-words]'); return { saved: (box && box.getAttribute('data-saved')) || 'Saved.', failed: (box && box.getAttribute('data-failed')) || 'It could not be saved, try again.' }; };
+    var anRecount = function () {
+      var count = document.querySelector('.an-count');
+      if (!count) return;
+      var on = document.querySelectorAll('[data-an-row] input[name="enabled"][data-an-auto]:checked').length;
+      count.textContent = count.textContent.replace(/\d+/, String(on));
+    };
     document.addEventListener('change', function (event) {
-      var auto = event.target.closest && event.target.closest('[data-an-auto]');
-      if (auto && auto.form) auto.form.requestSubmit();
+      var input = event.target.closest && event.target.closest('[data-an-auto]');
+      if (!input || !input.form) return;
+      var form = input.form; var want = input.checked; var wrap = input.closest('.sx-switch'); var words = anWords();
+      if (wrap) { wrap.setAttribute('data-anx-pending', String((Number(wrap.getAttribute('data-anx-pending')) || 0) + 1)); wrap.setAttribute('data-anx-busy', '1'); }
+      anRecount();
+      anRun(form, function () {
+        return fetch(location.pathname + location.search, { method: 'POST', credentials: 'same-origin', headers: { 'X-Dash-Partial': '1' }, body: new FormData(form) })
+          .then(function (res) {
+            if (!res.ok) throw new Error(words.failed);
+            return res.text();
+          })
+          .then(function (html) {
+            // A refusal comes back as the page with a red line (the same sign the page uses for it).
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            var bad = doc.querySelector('#dgl-content .sx-flash-bad');
+            if (!doc.querySelector('#dgl-content') || bad) throw new Error((bad && bad.textContent.trim()) || words.failed);
+          })
+          .then(function () { if (window.dglToast) window.dglToast(words.saved, { kind: 'ok', ms: 1400 }); })
+          .catch(function (error) {
+            input.checked = !want;
+            anRecount();
+            anSay(error && error.message ? error.message : words.failed, false);
+          })
+          .then(function () {
+            if (!wrap) return;
+            var left = (Number(wrap.getAttribute('data-anx-pending')) || 1) - 1;
+            wrap.setAttribute('data-anx-pending', String(left));
+            if (left <= 0) wrap.removeAttribute('data-anx-busy');
+          });
+      });
     });
   }
 </script>
@@ -618,6 +669,14 @@ const sharedAccounts = shared.whitelistIds.split(/[\s,]+/).filter(Boolean).lengt
   .anx-old { flex: none; font: 600 11px var(--sans); color: var(--yellow); border: 1px solid color-mix(in srgb, var(--yellow) 55%, transparent); border-radius: 999px; padding: 2px 8px; }
   .anx-sw.sx-switch { flex: none; width: 40px; height: 24px; padding: 0; gap: 0; border: 0; border-radius: 999px; background: none; }
   .anx-sw.sx-switch:hover { background: none; }
+  /* While a switch is being saved a small ring turns on its knob (the switch itself has already moved), as in the quick access of the overview. */
+  .anx-sw .sx-toggle::before { content: ''; position: absolute; z-index: 2; top: 6px; left: 6px; box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, #1b1b1b 18%, transparent); border-top-color: #1b1b1b; opacity: 0; transform: translateX(0) rotate(0); transition: opacity .15s ease; pointer-events: none; }
+  .anx-sw input:checked ~ .sx-toggle { --anx-x: 16px; }
+  .anx-sw input:checked ~ .sx-toggle::before { transform: translateX(16px) rotate(0); }
+  .anx-sw[data-anx-busy='1'] .sx-toggle::before { opacity: 1; animation: anx-ring .8s linear infinite; }
+  .anx-sw[data-anx-busy='1'] .sx-toggle { cursor: progress; }
+  @keyframes anx-ring { from { transform: translateX(var(--anx-x, 0)) rotate(0); } to { transform: translateX(var(--anx-x, 0)) rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .anx-sw[data-anx-busy='1'] .sx-toggle::before { animation-duration: 2.4s; } }
   .an-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--border-soft); }
   .an-body[hidden] { display: none; }
   @media (prefers-reduced-motion: no-preference) { .an-row.open .an-body { animation: m-rise-in var(--m-base) var(--m-out); } }

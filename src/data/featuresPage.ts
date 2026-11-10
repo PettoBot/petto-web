@@ -54,6 +54,12 @@ const en: FeaturesCopy = {
       commands: ['!lockdown', '!automod', '!antinuke', '!honeypot'], shots: ['anti-scam', 'honeypot'],
     },
     {
+      id: 'verification', icon: 'ph:seal-check-fill', color: 'green', title: 'Verification that checks and keeps almost nothing',
+      desc: 'New members pass a check before they can talk: a captcha, a code sent to their email, or both, with extra checks that you turn on one by one.',
+      points: ['The check: a captcha from Cloudflare, letters in a picture (on a page or inside Discord), or only a code sent to the member’s email, with no captcha', 'Extra checks, each one off, tell the staff or block: Tor, alt accounts, and the age, avatar and flags of the Discord account', 'For the email code the member types an address, or presses “Use my Discord email” and logs in with Discord; only well-known providers are accepted (no + aliases, no throwaway emails)', 'The panel and the DM are cards you can read at a glance; the DM can be turned off when the server has a panel, and a member who already verified is not asked again because of a role', 'What we do not keep: Petto does not save emails or IP addresses. The email is only used to send the code (an email provider, Resend, delivers it), the code lives in memory for ten minutes, and the Discord login reads the email once and drops the access. The Cloudflare captcha is handled by Cloudflare under its own policy', 'What we do keep: that a member passed, and when, so a link works only once; and, only if you turn on the alt accounts check, a coded fingerprint of the IP and of the email for 90 days, which cannot be turned back into either'],
+      commands: ['!verify setup', '!verify checks', '!verify channel', '!verify send'], shots: ['verify-panel', 'verify-dm'],
+    },
+    {
       id: 'tickets', icon: 'ph:chat-teardrop-text-fill', color: 'blue', title: 'Tickets with a panel of your own',
       desc: 'Members open a private channel with the team; you choose how the panel looks, who answers and when.',
       points: ['Panels you can design, schedule and limit, with priority, notes and transfer between staff members', 'A welcome message and a channel name that use the member’s data', 'The transcript is kept when the ticket closes'],
@@ -86,7 +92,7 @@ const en: FeaturesCopy = {
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'A community that feels alive',
       desc: 'The small things that make a server yours.',
-      points: ['Welcome and verification, including a letters-in-an-image captcha', 'Birthdays, polls, suggestions, confessions and a starboard', 'Counters, a counting game and voice channels the members control', 'Partners, uploads and a public leaderboard page'],
+      points: ['Welcome messages in the channel and by DM', 'Birthdays, polls, suggestions, confessions and a starboard', 'Counters, a counting game and voice channels the members control', 'Partners, uploads and a public leaderboard page'],
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
@@ -128,6 +134,12 @@ const es: FeaturesCopy = {
       commands: ['!lockdown', '!automod', '!antinuke', '!honeypot'], shots: ['anti-scam', 'honeypot'],
     },
     {
+      id: 'verification', icon: 'ph:seal-check-fill', color: 'green', title: 'Verificación que comprueba y casi no guarda nada',
+      desc: 'Los miembros nuevos pasan una comprobación antes de poder hablar: un captcha, un código enviado a su correo, o los dos, con comprobaciones extra que activas una por una.',
+      points: ['La comprobación: un captcha de Cloudflare, letras en una imagen (en una página o dentro de Discord), o solo un código enviado al correo del miembro, sin captcha', 'Comprobaciones extra, cada una apagada, avisar al staff o bloquear: Tor, cuentas alternativas, y la edad, el avatar y las marcas de la cuenta de Discord', 'Para el código por correo el miembro escribe una dirección, o pulsa «Usar el correo de mi Discord» e inicia sesión con Discord; solo se aceptan proveedores conocidos (sin alias con +, sin correos temporales)', 'El panel y el MD son tarjetas que se leen de un vistazo; el MD se puede apagar cuando el servidor tiene un panel, y a un miembro que ya se verificó no se le vuelve a pedir por culpa de un rol', 'Lo que no guardamos: Petto no guarda correos ni direcciones IP. El correo solo se usa para enviar el código (lo entrega un proveedor de correo, Resend), el código vive en memoria diez minutos, y el inicio de sesión con Discord lee el correo una vez y suelta el acceso. El captcha de Cloudflare lo trata Cloudflare bajo su propia política', 'Lo que sí guardamos: que un miembro pasó, y cuándo, para que un enlace funcione una sola vez; y, solo si activas la comprobación de cuentas alternativas, una huella cifrada de la IP y del correo durante 90 días, que no se puede volver a ninguno de los dos'],
+      commands: ['!verify setup', '!verify checks', '!verify channel', '!verify send'], shots: ['verify-panel', 'verify-dm'],
+    },
+    {
       id: 'tickets', icon: 'ph:chat-teardrop-text-fill', color: 'blue', title: 'Tickets con un panel a tu manera',
       desc: 'Los miembros abren un canal privado con el equipo; tú eliges cómo se ve el panel, quién responde y cuándo.',
       points: ['Paneles que puedes diseñar, programar y limitar, con prioridad, notas y traspaso entre miembros del staff', 'Un mensaje de bienvenida y un nombre de canal que usan los datos del miembro', 'La transcripción se guarda cuando el ticket se cierra'],
@@ -160,7 +172,7 @@ const es: FeaturesCopy = {
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'Una comunidad que se siente viva',
       desc: 'Los detalles pequeños que hacen que un servidor sea tuyo.',
-      points: ['Bienvenida y verificación, incluido un captcha de letras en una imagen', 'Cumpleaños, encuestas, sugerencias, confesiones y un starboard', 'Contadores, un juego de contar y canales de voz que controlan los miembros', 'Partners, uploads y una página pública de leaderboard'],
+      points: ['Mensajes de bienvenida en el canal y por MD', 'Cumpleaños, encuestas, sugerencias, confesiones y un starboard', 'Contadores, un juego de contar y canales de voz que controlan los miembros', 'Partners, uploads y una página pública de leaderboard'],
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
@@ -202,6 +214,12 @@ const ptBR: FeaturesCopy = {
       commands: ['!lockdown', '!automod', '!antinuke', '!honeypot'], shots: ['anti-scam', 'honeypot'],
     },
     {
+      id: 'verification', icon: 'ph:seal-check-fill', color: 'green', title: 'Verificação que checa e quase não guarda nada',
+      desc: 'Os membros novos passam por uma checagem antes de poder falar: um captcha, um código enviado ao e-mail, ou os dois, com checagens extras que você liga uma a uma.',
+      points: ['A checagem: um captcha da Cloudflare, letras em uma imagem (em uma página ou dentro do Discord), ou só um código enviado ao e-mail do membro, sem captcha', 'Checagens extras, cada uma desligada, avisar a staff ou bloquear: Tor, contas alternativas, e a idade, o avatar e as marcas da conta do Discord', 'Para o código por e-mail o membro digita um endereço, ou aperta “Usar o e-mail do meu Discord” e entra com o Discord; só provedores conhecidos são aceitos (sem aliases com +, sem e-mails descartáveis)', 'O painel e a DM são cartões que se leem de relance; a DM pode ser desligada quando o servidor tem um painel, e um membro que já se verificou não é pedido de novo por causa de um cargo', 'O que não guardamos: o Petto não guarda e-mails nem endereços IP. O e-mail só é usado para enviar o código (um provedor de e-mail, o Resend, entrega), o código vive na memória por dez minutos, e o login com o Discord lê o e-mail uma vez e solta o acesso. O captcha da Cloudflare é tratado pela Cloudflare sob a própria política', 'O que sim guardamos: que um membro passou, e quando, para que um link funcione uma única vez; e, só se você ligar a checagem de contas alternativas, uma impressão cifrada do IP e do e-mail por 90 dias, que não dá para voltar a nenhum dos dois'],
+      commands: ['!verify setup', '!verify checks', '!verify channel', '!verify send'], shots: ['verify-panel', 'verify-dm'],
+    },
+    {
       id: 'tickets', icon: 'ph:chat-teardrop-text-fill', color: 'blue', title: 'Tickets com um painel do seu jeito',
       desc: 'Os membros abrem um canal privado com a equipe; você escolhe como o painel aparece, quem responde e quando.',
       points: ['Painéis que você pode desenhar, agendar e limitar, com prioridade, notas e transferência entre membros da equipe', 'Uma mensagem de boas-vindas e um nome de canal que usam os dados do membro', 'A transcrição é guardada quando o ticket é fechado'],
@@ -234,7 +252,7 @@ const ptBR: FeaturesCopy = {
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'Uma comunidade que parece viva',
       desc: 'Os pequenos detalhes que fazem um servidor ser seu.',
-      points: ['Boas-vindas e verificação, incluindo um captcha de letras em uma imagem', 'Aniversários, enquetes, sugestões, confissões e um starboard', 'Contadores, um jogo de contar e canais de voz que os membros controlam', 'Parceiros, uploads e uma página pública de leaderboard'],
+      points: ['Mensagens de boas-vindas no canal e por DM', 'Aniversários, enquetes, sugestões, confissões e um starboard', 'Contadores, um jogo de contar e canais de voz que os membros controlam', 'Parceiros, uploads e uma página pública de leaderboard'],
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
