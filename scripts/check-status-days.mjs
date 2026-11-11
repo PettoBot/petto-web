@@ -1,7 +1,7 @@
 // Checks the rules that turn status checks into the daily state (src/utils/statusDays.mjs): green, amber, red and grey, the days before
 // the first check, the failure of a single window against two in a row, two sources, gaps, and the current state.
 import assert from 'node:assert/strict';
-import { DAY_MS, SLOT_MS, currentState, dayMarkers, dayStartOf, lastDays, summarizeDay } from '../src/utils/statusDays.mjs';
+import { DAY_MS, RESTART_FORGIVE_MS, SLOT_MS, currentState, dayMarkers, dayStartOf, lastDays, restartSlots, summarizeDay } from '../src/utils/statusDays.mjs';
 
 const day = Date.UTC(2026, 10, 1);
 const nextDay = day + DAY_MS;
@@ -73,4 +73,40 @@ assert.equal(marks[85].s, 'warn'); assert.equal(marks[86].s, 'nodata', 'a measur
 assert.equal(marks[87].s, 'up'); assert.equal(marks[88].s, 'nodata'); assert.equal(marks[89].s, 'up', 'today has no summary yet');
 assert.ok(dayMarkers(days, new Map(), null).every((m) => m.s === 'pre'), 'before anything was ever checked every day is unmeasured');
 assert.equal(dayStartOf(day + 5), day);
+// A restart of the website (a deploy) is not an outage: while it is away the site's own check is missing and the bot's check of the public address fails.
+// The website writes down when it starts; the windows after its last good check up to that start are left out when that took 10 minutes or less.
+const deploy = (from, count, restartAt) => {
+  const rows = full().filter((entry) => !(entry.source === 'web' && entry.slot >= day + from * SLOT_MS && entry.slot < day + (from + count) * SLOT_MS));
+  const broken = fail(rows, from, count, ['bot']);
+  return { rows: broken, restart: restartAt };
+};
+const brief = deploy(100, 3, day + 102 * SLOT_MS + 30_000); // 3 windows (6 minutes) and then the website starts
+assert.equal(summarizeDay(brief.rows, day, day, after).state, 'down', 'without the restart written down, 3 failed windows are an outage');
+const forgiven = restartSlots(brief.rows, [brief.restart]);
+assert.deepEqual([...forgiven].sort((a, b) => a - b), [100, 101, 102].map((n) => day + n * SLOT_MS), 'the windows after the last good one, up to the one of the restart');
+const calm = summarizeDay(brief.rows, day, day, after, forgiven);
+assert.equal(calm.state, 'up', 'a restart of a few minutes leaves the day green');
+assert.equal(calm.downMinutes, 0);
+assert.equal(calm.gapMinutes, 0, 'the missing checks of the website while it started are not a gap either');
+assert.equal(calm.checks, 717, 'the windows that a restart explains are not counted as checked');
+
+// The same days without that: other failures of the day still count (a restart forgives only its own windows).
+const mixedDay = fail(brief.rows, 400, 2, ['web', 'bot']);
+assert.equal(summarizeDay(mixedDay, day, day, after, restartSlots(mixedDay, [brief.restart])).state, 'down', 'a real outage on the same day still turns it red');
+
+// Away for too long (more than 10 minutes) is an outage, even if the website then starts.
+const long = deploy(100, 12, day + 111 * SLOT_MS + 30_000);
+assert.equal(restartSlots(long.rows, [long.restart]).size, 0, 'longer than RESTART_FORGIVE_MS forgives nothing');
+assert.equal(summarizeDay(long.rows, day, day, after, restartSlots(long.rows, [long.restart])).state, 'down');
+assert.equal(RESTART_FORGIVE_MS, 10 * 60_000);
+
+// A restart with nothing wrong before it forgives nothing; one far from the failure does not forgive it.
+assert.equal(restartSlots(full(), [day + 200 * SLOT_MS + 1000]).size, 0, 'all good: nothing to forgive');
+const farFailure = fail(full(), 100, 3);
+assert.equal(restartSlots(farFailure, [day + 500 * SLOT_MS]).size, 0, 'a restart long after the failure does not explain it');
+assert.equal(summarizeDay(farFailure, day, day, after, restartSlots(farFailure, [day + 500 * SLOT_MS])).state, 'down');
+assert.equal(restartSlots(farFailure, [Number.NaN]).size, 0, 'a restart that cannot be read is ignored');
+// The first window of a restart with no good check before it is its own.
+assert.deepEqual([...restartSlots([row(day, 'bot', false)], [day + 1000])], [day]);
+
 console.log('Checked the status days: green, amber, red, grey, the days before the first check, and the current state.');

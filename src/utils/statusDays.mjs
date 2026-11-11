@@ -13,12 +13,16 @@
 //  - grey  ('nodata') fewer than a quarter of the windows have any check (nothing was watching)
 //  - green ('up')     otherwise
 // Days before the first check ever are not judged at all ('pre'); the page shows them as green and says they were not measured.
+// A restart of the website (a deploy) is forgiven: the website writes down each time it starts, and the windows of the SITE between its last good
+// check and that start are left out of the judgement (neither failed nor missing) when that took 10 minutes or less (see `restartSlots`).
 
 export const SLOT_MS = 2 * 60_000;
 export const DAY_MS = 86_400_000;
 export const DAYS_SHOWN = 90;
 /** A run of this many windows with no check at all (6 minutes) is a gap worth showing. */
 export const GAP_SLOTS = 3;
+/** A website that was down for this long or less before it started again was restarted (a deploy), not broken: those windows are not judged. */
+export const RESTART_FORGIVE_MS = 10 * 60_000;
 /** Under this share (a quarter) of the windows with a check, the day has no data. */
 export const MIN_COVERAGE = 0.25;
 /** How long a check stays in the database. */
@@ -28,6 +32,30 @@ export const slotOf = (time) => Math.floor(time / SLOT_MS) * SLOT_MS;
 export const dayStartOf = (time) => Math.floor(time / DAY_MS) * DAY_MS;
 export const dayKey = (time) => new Date(time).toISOString().slice(0, 10);
 export const dayTime = (key) => Date.parse(`${key}T00:00:00.000Z`);
+
+/**
+ * The windows of the site that a restart explains. `siteChecks` are the checks of the service `site` (any source, any day), `restarts` the moments (ms) the
+ * website started. For each restart: the windows after the last good one (every row ok) up to the window the restart is in, those that are not good, when
+ * the website was away `RESTART_FORGIVE_MS` or less. A restart with no good check before it forgives only its own window. Returns a Set of window starts.
+ * @param {Check[]} siteChecks @param {number[]} restarts @returns {Set<number>}
+ */
+export function restartSlots(siteChecks, restarts) {
+  const bySlot = new Map();
+  for (const check of siteChecks) { const list = bySlot.get(check.slot) ?? []; list.push(check); bySlot.set(check.slot, list); }
+  const good = (slot) => { const rows = bySlot.get(slot); return Boolean(rows?.length) && rows.every((entry) => entry.ok); };
+  const goodSlots = [...bySlot.keys()].filter(good).sort((a, b) => a - b);
+  const out = new Set();
+  for (const at of restarts) {
+    if (!Number.isFinite(at)) continue;
+    const boot = slotOf(at);
+    let lastGood = null;
+    for (const slot of goodSlots) { if (slot < boot) lastGood = slot; else break; }
+    const start = lastGood === null ? boot : lastGood + SLOT_MS;
+    if (at - start > RESTART_FORGIVE_MS) continue; // it was away for too long: that is an outage, not a restart
+    for (let slot = start; slot <= boot; slot += SLOT_MS) if (!good(slot)) out.add(slot);
+  }
+  return out;
+}
 
 /** @typedef {{ slot: number, source: string, ok: boolean, ms?: number | null }} Check */
 /** @typedef {'up' | 'warn' | 'down' | 'nodata'} DayState */
@@ -39,9 +67,10 @@ export const dayTime = (key) => Date.parse(`${key}T00:00:00.000Z`);
  * @param {number} dayStart start of the UTC day (ms)
  * @param {number} monitoringStart the first check ever (ms)
  * @param {number} now (ms)
+ * @param {Set<number>} [excused] windows that a restart explains (`restartSlots`): left out, neither failed nor missing nor expected
  * @returns {DaySummary | null} null when there is nothing to judge (the day is before the first check or has not started)
  */
-export function summarizeDay(checks, dayStart, monitoringStart, now) {
+export function summarizeDay(checks, dayStart, monitoringStart, now, excused = new Set()) {
   const first = Math.max(dayStart, slotOf(monitoringStart));
   // The window that is still going is not judged yet; one that already has a check counts.
   const last = Math.min(dayStart + DAY_MS - SLOT_MS, slotOf(now) - SLOT_MS);
@@ -69,7 +98,9 @@ export function summarizeDay(checks, dayStart, monitoringStart, now) {
   };
   const closeMissing = () => { if (missingRun >= GAP_SLOTS) gapSlots += missingRun; missingRun = 0; };
 
+  let excusedCount = 0;
   for (let slot = first; slot <= end; slot += SLOT_MS) {
+    if (excused.has(slot)) { excusedCount += 1; closeFailRun(); closeMissing(); continue; }
     const rows = bySlot.get(slot);
     if (!rows) { closeFailRun(); missingRun += 1; continue; }
     closeMissing();
@@ -84,7 +115,7 @@ export function summarizeDay(checks, dayStart, monitoringStart, now) {
   }
   closeFailRun(); closeMissing();
 
-  const expected = Math.round((end - first) / SLOT_MS) + 1;
+  const expected = Math.max(1, Math.round((end - first) / SLOT_MS) + 1 - excusedCount);
   const downMinutes = confirmedSlots * (SLOT_MS / 60_000);
   const gapMinutes = gapSlots * (SLOT_MS / 60_000);
   /** @type {DayState} */
