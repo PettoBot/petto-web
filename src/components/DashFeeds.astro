@@ -31,8 +31,10 @@ interface Props {
   premiumLimit: number;
   freeLimit: number;
   ready: boolean;
+  /** The Petto team sees the exact error of a feed under it; a server never does. */
+  teamView?: boolean;
 }
-const { user, guildId, guildName, guildIcon, platform, feeds, channels, roles, limit, premium, premiumLimit, freeLimit, ready } = Astro.props;
+const { user, guildId, guildName, guildIcon, platform, feeds, channels, roles, limit, premium, premiumLimit, freeLimit, ready, teamView = false } = Astro.props;
 const current = platform ? platformById(platform) : null;
 const shown = current ? feeds.filter((feed) => platformGroup(current.id).includes(feed.platform)) : feeds; // the animals that were a platform each are shown with the animals
 const channelName = new Map(channels.map((channel) => [channel.id, channel.name]));
@@ -69,13 +71,17 @@ const ERROR_TEXT: Record<string, string> = {
   permission: dt('Petto cannot post in that channel.'),
   canPostHere: dt('Petto can post in #{channel}.'), cannotPostHere: dt('Give Petto the permission there, or pick another channel, or nothing will arrive.'),
   channelGone: dt('The channel no longer exists.'),
-  send: dt('The last notice could not be sent.'),
+  send: dt('The last notice could not be sent. Petto will try again with the next one.'),
+  sendRejected: dt('Discord did not accept the last notice. Check the message of this feed: it may be too long or have something Discord refuses.'),
+  sendBusy: dt('Discord did not answer in time. Petto will try again with the next notice.'),
+  blocked: dt('The site does not let Petto read this account right now. Petto keeps trying.'),
   accountGone: dt('The account no longer exists.'),
   noFeed: dt('The address is a web page, not a feed. Use the link of the RSS or Atom feed itself.'),
   rateLimited: dt('The site asks Petto to wait. It will try again by itself.'),
   unavailable: dt('The account cannot be read right now. Petto keeps trying.'),
 };
-const errorText = (code: string | null): string => (code ? ERROR_TEXT[code] ?? code : '');
+// A code that is not here is never shown as it is (it is a word of the bot, not of the person): the team sees the exact error under the feed.
+const errorText = (code: string | null): string => (code ? ERROR_TEXT[code] ?? dt('Something is wrong with this feed. Petto keeps trying.') : '');
 const statusOf = (feed: FeedRow): { key: string; label: string; detail: string } => {
   if (!feed.enabled && feed.failures >= 5) return { key: 'off', label: dt('Turned off'), detail: errorText(feed.lastError) };
   if (!feed.enabled) return { key: 'paused', label: dt('Paused'), detail: errorText(feed.lastError) };
@@ -190,6 +196,7 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
                   {p?.pace && <span class="fd-type"><Icon name="ph:timer-fill" width="11" height="11" />{paceShort(paceOf(feed.accountId))}</span>}
                 </div>
                 {status.detail && <div class="fd-err" title={status.detail}><Icon name="ph:warning-fill" width="13" height="13" /><span>{status.detail}</span></div>}
+                {teamView && feed.lastErrorDetail && <div class="fd-err fd-err-team" data-team-error><Icon name="ph:bug-fill" width="13" height="13" /><span><strong>{dt('Team')}:</strong> <code>{feed.lastErrorDetail}</code></span></div>}
                 {channelClosed.has(feed.channelId) && <div class="fd-err"><Icon name="ph:warning-fill" width="13" height="13" /><span><strong>#{channelName.get(feed.channelId)}</strong>: {channelClosed.get(feed.channelId)}<span class="fd-err-fix">{dt('Give Petto the permission there, or edit the feed and pick another channel.')}</span></span></div>}
                 <div class="fd-actions">
                   <button type="button" class="btn btn-ghost btn-sm" data-feed-test={feed.id} title={dt('Send a test notice')} aria-label={dt('Send a test notice')}><Icon name="ph:paper-plane-tilt-fill" width="13" height="13" />{dt('Test')}</button>
@@ -416,6 +423,58 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
           window.scrollTo({ top: place.y, left: 0, behavior: 'instant' });
         }
       } catch { if (!quiet) location.reload(); }
+    };
+
+    // A feed that is removed: it fades out, then the rows after it slide to their new places (they are measured before and after, and each one starts where it was and
+    // moves to where it is now), so the ones below do not jump up. With reduced motion it just goes.
+    const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+    const removeRow = async (row: HTMLElement) => {
+      const list = row.parentElement;
+      const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const others = list ? [...list.children].filter((el): el is HTMLElement => el instanceof HTMLElement && el !== row && !el.hidden && el.offsetParent !== null) : [];
+      const before = new Map(others.map((el) => [el, el.getBoundingClientRect()]));
+      row.classList.add('fd-feed-gone');
+      await sleep(still ? 0 : 220);
+      row.remove();
+      if (still || !list) return;
+      const moved = others.filter((el) => {
+        const from = before.get(el)!, to = el.getBoundingClientRect();
+        const dx = from.left - to.left, dy = from.top - to.top;
+        if (!dx && !dy) return false;
+        el.style.transition = 'none'; el.style.transform = `translate(${dx}px, ${dy}px)`;
+        return true;
+      });
+      if (!moved.length) return;
+      void list.getBoundingClientRect(); // the start is drawn before the move begins
+      moved.forEach((el) => { el.style.transition = 'transform .34s cubic-bezier(.2,.7,.2,1)'; el.style.transform = ''; });
+      await sleep(360);
+      moved.forEach((el) => { el.style.transition = ''; });
+    };
+
+    // The numbers of the page (the tiles, the count of the platform, the count of the list and the counts of the platforms) are read again in the background and written
+    // where they are, without touching anything else. A failure changes nothing.
+    const syncNumbers = async () => {
+      try {
+        const res = await fetch(location.href, { headers: { Accept: 'text/html' }, credentials: 'same-origin', cache: 'no-store' });
+        if (!res.ok) return;
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const next = doc.querySelector<HTMLElement>('[data-feeds]');
+        if (!next) return;
+        const copy = (selector: string) => {
+          const now = [...root.querySelectorAll<HTMLElement>(selector)], then = [...next.querySelectorAll<HTMLElement>(selector)];
+          now.forEach((el, i) => { const fresh = then[i]; if (fresh && el.textContent !== fresh.textContent) { el.removeAttribute('data-count'); el.textContent = fresh.textContent; if (el.title !== fresh.title) el.title = fresh.title; } });
+        };
+        copy('.stt-tile > b'); copy('.fd-count'); copy('.fd-list-title .sx-tag');
+        root.querySelectorAll<HTMLAnchorElement>('a.fd-plat').forEach((link) => {
+          const fresh = [...next.querySelectorAll<HTMLAnchorElement>('a.fd-plat')].find((other) => other.getAttribute('href') === link.getAttribute('href'));
+          if (!fresh) return;
+          link.title = fresh.title;
+          const badge = link.querySelector<HTMLElement>('.fd-plat-n'), wanted = fresh.querySelector<HTMLElement>('.fd-plat-n');
+          if (badge && wanted) { badge.className = wanted.className; badge.innerHTML = wanted.innerHTML; }
+          else if (badge && !wanted) badge.remove();
+          else if (!badge && wanted) link.appendChild(wanted.cloneNode(true));
+        });
+      } catch { /* the numbers stay as they were */ }
     };
 
     // The answer of an action on a row is a message at the bottom of the screen (the box at the top of the page is out of sight from a long list and
@@ -902,9 +961,11 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
         const answer = await call('delete', { id: Number(button.dataset.feedDelete) });
         if (!answer.ok) { done(); toast(failure(answer), false); return; }
         toast(text.removed.replace('{name}', button.dataset.name ?? ''), true);
-        // The row goes away at once (it folds up), and the page is read again in the background only to bring the counters up to date.
-        if (row) { row.classList.add('fd-feed-gone'); await new Promise((resolve) => window.setTimeout(resolve, 260)); row.remove(); }
-        await refresh('', true);
+        // The row fades out, the ones after it slide up into its place, and only the numbers are brought up to date, in place: nothing is swapped, so nothing blinks or
+        // plays its entrance again. The list is swapped as a whole only when this was the last one (the empty message takes its place).
+        if (row) await removeRow(row);
+        if (!root.querySelector('[data-feed-row]')) await refresh('', true);
+        else await syncNumbers();
       }
     });
 
@@ -1159,8 +1220,11 @@ const typeLabel = (id: string): string => dt(typeTable[id]?.label ?? id);
   }
   /* A row that is working dims, and the button shows a spinner; a row that was removed folds up. */
   .fd-feed-busy { opacity: .6; pointer-events: none; }
-  .fd-feed-gone { overflow: hidden; pointer-events: none; animation: fd-fold .26s ease forwards; }
-  @keyframes fd-fold { from { opacity: .6; max-height: 400px; } to { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: -6px; border-width: 0; } }
+  /* The row that is removed fades and shrinks a little in its place; the rows after it then slide up (DashFeeds script, removeRow). */
+  .fd-feed-gone { pointer-events: none; animation: fd-out .22s ease forwards; }
+  @keyframes fd-out { from { opacity: .6; transform: scale(1); } to { opacity: 0; transform: scale(.94); } }
   @media (prefers-reduced-motion: reduce) { .fd-feed-gone { animation: none; opacity: 0; } }
+  .fd-feed .fd-err-team { color: var(--text-muted); background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .fd-err-team code { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; overflow-wrap: anywhere; }
   @media (prefers-reduced-motion: reduce) { .fd-plat, .fd-feed { animation: none; } }
 </style>

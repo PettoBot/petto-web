@@ -175,6 +175,8 @@ export interface FeedRow {
   failures: number;
   lastSentAt: string | null;
   lastError: string | null;
+  /** The exact error, in a line, for the Petto team only (a server never sees it). */
+  lastErrorDetail: string | null;
   createdAt: string;
 }
 
@@ -187,6 +189,6 @@ export function feedFromRow(row: any): FeedRow {
     options: row.options && typeof row.options === 'object' ? { image: typeof row.options.image === 'boolean' ? row.options.image : undefined, button: typeof row.options.button === 'boolean' ? row.options.button : undefined } : {},
     filters: { include: list(row.filters?.include), exclude: list(row.filters?.exclude) },
     enabled: row.enabled !== false, ready: row.ready !== false, failures: Number(row.failures) || 0, lastSentAt: row.last_sent_at ?? null,
-    lastError: row.last_error ?? null, createdAt: String(row.created_at ?? ''),
+    lastError: row.last_error ?? null, lastErrorDetail: row.last_error_detail ? String(row.last_error_detail).slice(0, 500) : null, createdAt: String(row.created_at ?? ''),
   };
 }

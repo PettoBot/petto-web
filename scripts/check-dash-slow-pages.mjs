@@ -24,7 +24,10 @@ const feedsPage = readFileSync(`${root}src/components/DashFeeds.astro`, 'utf8');
 const del = feedsPage.slice(feedsPage.indexOf('if (button.dataset.feedDelete)'));
 assert.ok(/working\(button, text\.removing\)/.test(del), 'the row says it is removing (spinner and word on its own button)');
 assert.ok(!/waitInFlash/.test(feedsPage), 'no action of a row waits in the box at the top any more (it scrolled the page up to it)');
-assert.ok(/await refresh\('', true\)/.test(del) && /row\.remove\(\)/.test(del), 'the row goes away at once and the list is read again quietly, after');
+assert.ok(/await removeRow\(row\)/.test(del) && /await syncNumbers\(\)/.test(del), 'the row fades out and the ones after it slide up, and only the numbers are read again, in place');
+assert.ok(!/await refresh\('', true\);\s*\n\s*\}\s*\);/.test(del) && /if \(!root\.querySelector\('\[data-feed-row\]'\)\) await refresh\('', true\)/.test(del), 'the list is swapped as a whole only when the last feed was removed');
+const motion = feedsPage.slice(feedsPage.indexOf('const removeRow'), feedsPage.indexOf('const syncNumbers'));
+assert.ok(/getBoundingClientRect/.test(motion) && /translate\(/.test(motion) && /prefers-reduced-motion/.test(motion), 'the rows after the removed one are measured before and after and slide to their places, and reduced motion is respected');
 assert.ok(/cache: 'no-store'/.test(feedsPage.slice(feedsPage.indexOf('const refresh'), feedsPage.indexOf('const toast'))), 'the list read again never comes from a copy kept by the browser');
 
 // Tickets: a type with history cannot be deleted, so it can be turned off (taken off its panel, the panel is drawn again, nothing is erased); and a type that

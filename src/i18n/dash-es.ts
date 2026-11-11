@@ -6311,4 +6311,9 @@ export const dashEs: Record<string, string> = {
   "That channel is not valid.": "Ese canal no es válido.",
   "Only administrators can change role quotas, the same as the command.": "Solo los administradores pueden cambiar las cuotas de rol, igual que el comando.",
   "Quota removed.": "Cuota quitada.",
+  "The last notice could not be sent. Petto will try again with the next one.": "El último aviso no se pudo enviar. Petto lo intentará de nuevo con el siguiente.",
+  "Discord did not accept the last notice. Check the message of this feed: it may be too long or have something Discord refuses.": "Discord no aceptó el último aviso. Revisa el mensaje de este feed: puede ser demasiado largo o tener algo que Discord rechaza.",
+  "Discord did not answer in time. Petto will try again with the next notice.": "Discord no respondió a tiempo. Petto lo intentará de nuevo con el siguiente aviso.",
+  "The site does not let Petto read this account right now. Petto keeps trying.": "El sitio no deja que Petto lea esta cuenta ahora mismo. Petto sigue intentándolo.",
+  "Something is wrong with this feed. Petto keeps trying.": "Algo falla con este feed. Petto sigue intentándolo.",
 };

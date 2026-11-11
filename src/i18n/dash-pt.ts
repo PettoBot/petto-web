@@ -6311,4 +6311,9 @@ export const dashPt: Record<string, string> = {
   "That channel is not valid.": "Esse canal não é válido.",
   "Only administrators can change role quotas, the same as the command.": "Só administradores podem mudar as cotas de cargo, igual ao comando.",
   "Quota removed.": "Cota removida.",
+  "The last notice could not be sent. Petto will try again with the next one.": "O último aviso não pôde ser enviado. O Petto tentará de novo com o próximo.",
+  "Discord did not accept the last notice. Check the message of this feed: it may be too long or have something Discord refuses.": "O Discord não aceitou o último aviso. Confira a mensagem deste feed: pode ser longa demais ou ter algo que o Discord recusa.",
+  "Discord did not answer in time. Petto will try again with the next notice.": "O Discord não respondeu a tempo. O Petto tentará de novo com o próximo aviso.",
+  "The site does not let Petto read this account right now. Petto keeps trying.": "O site não deixa o Petto ler esta conta agora. O Petto continua tentando.",
+  "Something is wrong with this feed. Petto keeps trying.": "Algo está errado com este feed. O Petto continua tentando.",
 };
