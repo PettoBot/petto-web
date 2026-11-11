@@ -6,11 +6,16 @@
 // The Discord bot writes the rest (the public address of the site, the database, itself) with source 'bot', so when one side is down the
 // other still records it. A day is never green because nobody looked: see statusDays.mjs.
 import { getEnv } from './env';
-import { DAY_MS, RETENTION_DAYS, SLOT_MS, dayKey, dayStartOf, dayTime, slotOf, summarizeDay, type Check, type DaySummary } from './statusDays.mjs';
+import { DAY_MS, RETENTION_DAYS, SLOT_MS, dayKey, dayStartOf, dayTime, restartSlots, slotOf, summarizeDay, type Check, type DaySummary } from './statusDays.mjs';
 
 export const SERVICES = ['bot', 'site', 'database'] as const;
 export type ServiceId = (typeof SERVICES)[number];
 export const STARTED_KEY = 'status_monitoring_started_at';
+/** bot_settings key with the moments the website started (a JSON list of ISO times): a restart is a deploy, not an outage (see restartSlots in statusDays.mjs). */
+export const RESTARTS_KEY = 'status_web_restarts';
+const MAX_RESTARTS = 60;
+/** When this process started (the website restarts when a change is deployed). */
+const BOOT_AT = Date.now();
 
 const SOURCE = 'web';
 /** The bot's heartbeat is written every 10 seconds (60 with a database that is struggling); older than this and the bot is not reporting. */
@@ -102,6 +107,7 @@ let running = false;
 let lastPrune = 0;
 let caughtUp = false;
 let startedAt: number | null = null;
+let restartWritten = false;
 
 const toRow = (check: Fresh) => ({ slot: new Date(check.slot).toISOString(), service: check.service, source: SOURCE, ok: check.ok, latency_ms: check.ms === null ? null : Math.round(check.ms), detail: check.detail });
 
@@ -149,11 +155,41 @@ async function readDay(context: Context, dayStart: number): Promise<Map<string, 
   return byService;
 }
 
-async function judgeDay(context: Context, dayStart: number, started: number, now: number) {
+/** The moments the website started, newest last; [] when none are written or they cannot be read. */
+export async function readRestarts(context: Context): Promise<number[]> {
+  try {
+    const rows = await rest(context, 'GET', `bot_settings?key=eq.${RESTARTS_KEY}&select=value`);
+    const parsed: unknown = rows?.[0]?.value ? JSON.parse(String(rows[0].value)) : [];
+    return Array.isArray(parsed) ? parsed.map((entry) => Date.parse(String(entry))).filter((time) => Number.isFinite(time)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Writes down that this process started (once per process), keeping the last restarts within the retention of the checks. Never throws: the status cycle goes on without it. */
+export async function recordRestart(context: Context, now: number = Date.now(), bootAt: number = BOOT_AT): Promise<void> {
+  if (restartWritten) return;
+  try {
+    const known = await readRestarts(context);
+    const iso = new Date(bootAt).toISOString();
+    const kept = known.filter((time) => now - time <= RETENTION_DAYS * DAY_MS && time !== bootAt).map((time) => new Date(time).toISOString());
+    const next = [...kept, iso].slice(-MAX_RESTARTS);
+    await rest(context, 'POST', 'bot_settings?on_conflict=key', { key: RESTARTS_KEY, value: JSON.stringify(next), updated_at: new Date(now).toISOString() }, 'resolution=merge-duplicates,return=minimal');
+    restartWritten = true;
+  } catch (error) {
+    console.warn('[status] could not write down the restart:', (error as Error)?.message);
+  }
+}
+
+async function judgeDay(context: Context, dayStart: number, started: number, now: number, restarts: number[]) {
   const byService = await readDay(context, dayStart);
   const out: Record<string, unknown>[] = [];
   for (const service of SERVICES) {
-    const summary: DaySummary | null = summarizeDay(byService.get(service) ?? [], dayStart, started, now);
+    const checks = byService.get(service) ?? [];
+    // Only the website can be explained by its own restart; the bot and the database are judged as they are.
+    const nearby = restarts.filter((time) => time >= dayStart - SLOT_MS && time < dayStart + DAY_MS + SLOT_MS);
+    const excused = service === 'site' && nearby.length ? restartSlots(checks, nearby) : undefined;
+    const summary: DaySummary | null = summarizeDay(checks, dayStart, started, now, excused);
     if (!summary) continue;
     out.push({ day: dayKey(dayStart), service, state: summary.state, checks: summary.checks, failed: summary.failed, unconfirmed: summary.unconfirmed, down_minutes: summary.downMinutes, gap_minutes: summary.gapMinutes, avg_ms: summary.avgMs, max_ms: summary.maxMs, updated_at: new Date(now).toISOString() });
   }
@@ -162,6 +198,7 @@ async function judgeDay(context: Context, dayStart: number, started: number, now
 
 /** Today every round; yesterday during the first half hour of a day (late checks and the final state); and after a restart every day since the last one that was judged. */
 async function summarize(context: Context, started: number, now: number) {
+  const restarts = await readRestarts(context);
   const today = dayStartOf(now);
   const days = new Set<number>([today]);
   if (now - today < 30 * 60_000) days.add(today - DAY_MS);
@@ -171,7 +208,7 @@ async function summarize(context: Context, started: number, now: number) {
     const from = Math.max(dayStartOf(started), today - 95 * DAY_MS, Math.min(last, today) - DAY_MS);
     for (let day = from; day < today; day += DAY_MS) days.add(day);
   }
-  for (const day of [...days].sort((a, b) => a - b)) await judgeDay(context, day, started, now);
+  for (const day of [...days].sort((a, b) => a - b)) await judgeDay(context, day, started, now, restarts);
   caughtUp = true;
 }
 
@@ -207,6 +244,7 @@ export async function runStatusCycle(context: Context, origin: string, now = Dat
       console.warn(`[status] could not save the checks (${pending.length} waiting):`, (error as Error)?.message);
       return { saved: 0, kept: pending.length };
     }
+    await recordRestart(context, now); // once per process: a restart is not an outage
     try {
       const started = await ensureStarted(context);
       if (started !== null) { await summarize(context, started, now); await prune(context, now); }
