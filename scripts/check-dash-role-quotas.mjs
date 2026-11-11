@@ -2,7 +2,7 @@
 // that Support mode cannot write the page, and that the page is in the menu, the modules list, the module statuses and the role access sections.
 // Run: node scripts/check-dash-role-quotas.mjs
 import { readFileSync } from 'node:fs';
-import { MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES, DEFAULTS, canEditRoleQuotas, cleanRule, periodEnd, validateRule } from '../src/utils/roleQuotas.mjs';
+import { MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES, MAX_CHANNELS, MAX_REMIND_HOURS, CHANNEL_MODES, DEFAULTS, canEditRoleQuotas, cleanRule, periodEnd, validateRule } from '../src/utils/roleQuotas.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -18,7 +18,8 @@ const role = { id: ROLE, managed: false };
 const rule = (extra = {}) => validateRule({ role, guildId: GUILD, messages: 50, ...extra });
 
 // --- the limits are the bot's ---
-same('limits', [MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES], [25, 100000, 90, 20]);
+same('limits', [MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES, MAX_CHANNELS, MAX_REMIND_HOURS], [25, 100000, 90, 20, 25, 72]);
+same('ways to count', [...CHANNEL_MODES], ['all', 'only', 'except']);
 same('defaults: a week, 3 in a row', DEFAULTS, { periodDays: 7, strikes: 3 });
 
 // --- validation, in the order of the bot ---
@@ -40,9 +41,27 @@ same('too many', rule({ existingRoleIds: many }).error, 'tooMany');
 same('replacing one that exists is not a new one', rule({ existingRoleIds: [ROLE, ...many.slice(1)] }).ok, true);
 same('DMs off', rule({ notifyDm: false }).rule.notify_dm, false);
 
+// --- where the messages count, and the reminder (the same as the bot's `channels` and `remind`) ---
+const CH = '1290000000000000300';
+same('by default: every channel and no reminder', [good.rule.channel_mode, good.rule.channel_ids, good.rule.remind_hours], ['all', [], 0]);
+same('a way that does not exist', rule({ channelMode: 'sideways' }).error, 'badChannelMode');
+same('"only" needs channels', rule({ channelMode: 'only' }).error, 'noChannels');
+same('a channel that is not an id', rule({ channelMode: 'only', channelIds: ['general'] }).error, 'badChannel');
+same('too many channels', rule({ channelMode: 'except', channelIds: Array.from({ length: MAX_CHANNELS + 1 }, (_, i) => `129000000000000${String(4000 + i)}`) }).error, 'tooManyChannels');
+same('"all" keeps no list', rule({ channelMode: 'all', channelIds: [CH] }).rule.channel_ids, []);
+same('no repeats', rule({ channelMode: 'except', channelIds: [CH, CH] }).rule.channel_ids, [CH]);
+same('"only" with a channel', [rule({ channelMode: 'only', channelIds: [CH] }).rule.channel_mode, rule({ channelMode: 'only', channelIds: [CH] }).rule.channel_ids], ['only', [CH]]);
+for (const bad of [-1, 73, 'x', '1.5']) same(`reminder ${JSON.stringify(bad)}`, rule({ remindHours: bad }).error, 'badRemind');
+same('a reminder', rule({ remindHours: '24' }).rule.remind_hours, 24);
+same('the longest reminder', rule({ remindHours: MAX_REMIND_HOURS }).ok, true);
+
 // --- what the page shows ---
 const clean = cleanRule({ role_id: ROLE, period_days: 14, min_messages: 30, max_strikes: 2, notify_dm: false, report_channel_id: '1290000000000000200', period_started_at: '2026-11-01T00:00:00Z', last_run_at: null, last_met: null });
 same('a clean rule', [clean.roleId, clean.periodDays, clean.minMessages, clean.maxStrikes, clean.notifyDm, clean.reportChannelId, clean.lastMet], [ROLE, 14, 30, 2, false, '1290000000000000200', null]);
+const where = cleanRule({ channel_mode: 'except', channel_ids: [CH, 'x'], remind_hours: 12 });
+same('the channels and the reminder of a rule', [where.channelMode, where.channelIds, where.remindHours], ['except', [CH], 12]);
+same('a rule from before: every channel, no reminder', [cleanRule({}).channelMode, cleanRule({}).channelIds, cleanRule({}).remindHours], ['all', [], 0]);
+same('a way that is not known is every channel', cleanRule({ channel_mode: 'zzz' }).channelMode, 'all');
 same('a report channel that is not an id is dropped', cleanRule({ report_channel_id: 'x' }).reportChannelId, null);
 same('the period ends', periodEnd('2026-11-01T00:00:00.000Z', 7), '2026-11-08T00:00:00.000Z');
 same('no end for a bad start', periodEnd('nope', 7), null);
@@ -60,6 +79,8 @@ check('the page asks for the permissions of Discord, not the cookie', /canEditRo
 check('the page does not write when it cannot edit', /if \(!canEdit\) message = \{ kind: 'err'/.test(page));
 check('the same validation as the bot', /validateRule\(\{/.test(page));
 check('a report channel outside the server is not kept', /channelById\.has\(reportId\)/.test(page));
+check('only places of this server are kept', /placeById\.has\(each\)/.test(page) && /form\.getAll\('channel_ids'\)/.test(page));
+check('the page shows the channels and the reminder, not who is below', /data-rq-where/.test(read('src/components/DashRoleQuotas.astro')) && /name="remind_hours"/.test(read('src/components/DashRoleQuotas.astro')));
 check('saving starts a new period with the count at zero', /period_started_at/.test(read('src/utils/roleQuotas.mjs')) && /messages: 0/.test(page));
 check('who has strikes is a number per role, never who', /select=role_id/.test(page) && !/user_id/.test(page));
 check('the menu', /id: 'role-quotas'/.test(read('src/components/DashGuildLayout.astro')));

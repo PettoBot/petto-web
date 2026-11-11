@@ -6,6 +6,10 @@ export const MAX_RULES = 25;
 export const MAX_PERIOD_DAYS = 90;
 export const MAX_MESSAGES = 100000;
 export const MAX_STRIKES = 20;
+export const MAX_CHANNELS = 25;
+export const MAX_REMIND_HOURS = 72;
+/** Where the messages count: every channel, only the listed ones, or every one but the listed. A listed id can be a channel or a category. */
+export const CHANNEL_MODES = Object.freeze(['all', 'only', 'except']);
 export const SNOWFLAKE = /^\d{15,25}$/;
 /** @type {{ readonly periodDays: number, readonly strikes: number }} */
 export const DEFAULTS = Object.freeze({ periodDays: 7, strikes: 3 });
@@ -18,9 +22,9 @@ const whole = (value) => {
 /**
  * The same checks as the bot's `rolequota set`. `role` has `id` and `managed` (null when it does not exist in the server), `guildId` is the server and
  * `existingRoleIds` are the roles that already have a quota. Returns `{ ok: true, rule }` or `{ ok: false, error }`.
- * @param {{ role: { id: string, managed: boolean } | null, guildId: string, messages: any, periodDays?: any, strikes?: any, notifyDm?: boolean, reportChannelId?: string | null, existingRoleIds?: string[] }} input
+ * @param {{ role: { id: string, managed: boolean } | null, guildId: string, messages: any, periodDays?: any, strikes?: any, notifyDm?: boolean, reportChannelId?: string | null, channelMode?: string, channelIds?: string[], remindHours?: any, existingRoleIds?: string[] }} input
  */
-export function validateRule({ role, guildId, messages, periodDays = DEFAULTS.periodDays, strikes = DEFAULTS.strikes, notifyDm = true, reportChannelId = null, existingRoleIds = [] }) {
+export function validateRule({ role, guildId, messages, periodDays = DEFAULTS.periodDays, strikes = DEFAULTS.strikes, notifyDm = true, reportChannelId = null, channelMode = 'all', channelIds = [], remindHours = 0, existingRoleIds = [] }) {
   if (!role) return { ok: false, error: 'noRole' };
   if (role.id === guildId) return { ok: false, error: 'everyone' };
   if (role.managed) return { ok: false, error: 'managed' };
@@ -33,10 +37,27 @@ export function validateRule({ role, guildId, messages, periodDays = DEFAULTS.pe
   if (!existingRoleIds.includes(role.id) && existingRoleIds.length >= MAX_RULES) return { ok: false, error: 'tooMany' };
   const channel = reportChannelId ? String(reportChannelId) : null;
   if (channel && !SNOWFLAKE.test(channel)) return { ok: false, error: 'badChannel' };
+  const where = validateChannels(channelMode, channelIds);
+  if (!where.ok) return where;
+  const remind = whole(remindHours);
+  if (!Number.isInteger(remind) || remind < 0 || remind > MAX_REMIND_HOURS) return { ok: false, error: 'badRemind' };
   return {
     ok: true,
-    rule: { role_id: role.id, period_days: days, min_messages: min, max_strikes: max, notify_dm: Boolean(notifyDm), report_channel_id: channel, period_started_at: new Date().toISOString() },
+    rule: {
+      role_id: role.id, period_days: days, min_messages: min, max_strikes: max, notify_dm: Boolean(notifyDm), report_channel_id: channel,
+      channel_mode: where.mode, channel_ids: where.ids, remind_hours: remind, period_started_at: new Date().toISOString(),
+    },
   };
+}
+
+/** The same as the bot's `validateChannels`: `all` keeps no list, `only` needs at least one, at most 25 ids and no repeats. Returns `{ ok: true, mode, ids }` or `{ ok: false, error }`. */
+export function validateChannels(mode = 'all', ids = []) {
+  if (!CHANNEL_MODES.includes(mode)) return { ok: false, error: 'badChannelMode' };
+  const list = [...new Set((ids ?? []).map(String))];
+  if (list.some((id) => !SNOWFLAKE.test(id))) return { ok: false, error: 'badChannel' };
+  if (list.length > MAX_CHANNELS) return { ok: false, error: 'tooManyChannels' };
+  if (mode === 'only' && !list.length) return { ok: false, error: 'noChannels' };
+  return { ok: true, mode, ids: mode === 'all' ? [] : list };
 }
 
 /** A row of `role_quotas` as the page shows it. */
@@ -48,6 +69,9 @@ export function cleanRule(row) {
     maxStrikes: Number(row?.max_strikes) || DEFAULTS.strikes,
     notifyDm: row?.notify_dm !== false,
     reportChannelId: SNOWFLAKE.test(String(row?.report_channel_id ?? '')) ? String(row.report_channel_id) : null,
+    channelMode: CHANNEL_MODES.includes(row?.channel_mode) ? row.channel_mode : 'all',
+    channelIds: Array.isArray(row?.channel_ids) ? row.channel_ids.map(String).filter((id) => SNOWFLAKE.test(id)) : [],
+    remindHours: Number.isInteger(Number(row?.remind_hours)) && Number(row?.remind_hours) > 0 ? Number(row.remind_hours) : 0,
     startedAt: String(row?.period_started_at ?? ''),
     lastRunAt: row?.last_run_at ? String(row.last_run_at) : null,
     lastMet: Number.isFinite(Number(row?.last_met)) && row?.last_met !== null ? Number(row.last_met) : null,

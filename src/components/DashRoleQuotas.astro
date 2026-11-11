@@ -10,6 +10,7 @@ interface Rule {
   roleId: string; roleName: string | null; roleColor: number; periodDays: number; minMessages: number; maxStrikes: number; notifyDm: boolean;
   reportChannelId: string | null; reportChannelName: string | null; startedAt: string; endsAt: string | null; lastRunAt: string | null;
   lastMet: number | null; lastMissed: number | null; lastRemoved: number | null; withStrikes: number;
+  channelMode: 'all' | 'only' | 'except'; channelNames: { name: string; category: boolean }[]; channelIds: string[]; remindHours: number;
 }
 interface Props {
   user: { username: string; avatar: string | null; userId?: string };
@@ -19,18 +20,20 @@ interface Props {
   rules: Rule[];
   roles: { id: string; name: string; hasRule: boolean }[];
   channels: { id: string; name: string }[];
+  places: { id: string; name: string; category: boolean; parent: string }[];
   state: 'ok' | 'unavailable' | 'error';
   canEdit: boolean;
   message: { kind: 'ok' | 'err'; text: string } | null;
   max: number;
-  limits: { messages: number; days: number; strikes: number; defaultDays: number; defaultStrikes: number };
+  limits: { messages: number; days: number; strikes: number; channels: number; remind: number; defaultDays: number; defaultStrikes: number };
 }
-const { user, guildId, guildName, guildIcon, rules, roles, channels, state, canEdit, message, max, limits } = Astro.props;
+const { user, guildId, guildName, guildIcon, rules, roles, channels, places, state, canEdit, message, max, limits } = Astro.props;
 const hex = (color: number) => (color > 0 ? `#${color.toString(16).padStart(6, '0')}` : '#99aab5');
 const day = (iso: string | null) => {
   const date = iso ? new Date(iso) : null;
   return date && Number.isFinite(date.getTime()) ? date.toLocaleString(dashLang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 };
+const where = (rule: Rule) => (rule.channelNames.length ? rule.channelNames.map((place) => (place.category ? place.name : `#${place.name}`)).join(', ') : dt('a channel that is gone'));
 const ready = state === 'ok';
 const editable = ready && canEdit;
 ---
@@ -72,6 +75,10 @@ const editable = ready && canEdit;
                 <p class="rq-meta">
                   {rule.withStrikes > 0 ? dt('{n} member(s) with strikes now.', { n: rule.withStrikes }) : dt('Nobody has strikes now.')}
                   {rule.lastRunAt && rule.lastMet !== null && <span> · {dt('Last period: {met} met, {missed} below, {removed} lost the role.', { met: rule.lastMet ?? 0, missed: rule.lastMissed ?? 0, removed: rule.lastRemoved ?? 0 })}</span>}
+                </p>
+                <p class="rq-meta" data-rq-where>
+                  {rule.channelMode === 'all' ? dt('Counts messages in every channel.') : rule.channelMode === 'only' ? dt('Counts only in {where}.', { where: where(rule) }) : dt('Counts everywhere except {where}.', { where: where(rule) })}
+                  {rule.remindHours > 0 && <span> · {dt('Members below the quota are reminded {n} hour(s) before the period ends.', { n: rule.remindHours })}</span>}
                 </p>
                 <p class="rq-meta">
                   {rule.notifyDm ? dt('Members are told by DM.') : dt('No DMs.')}
@@ -118,6 +125,29 @@ const editable = ready && canEdit;
             </select>
             <em>{dt('Optional. The result of each period is posted there.')}</em>
           </label>
+          <label class="rq-field"><span>{dt('Where the messages count')}</span>
+            <select name="channel_mode" data-rq-mode disabled={!editable}>
+              <option value="all">{dt('Every channel')}</option>
+              <option value="only">{dt('Only these channels')}</option>
+              <option value="except">{dt('All but these channels')}</option>
+            </select>
+          </label>
+          <fieldset class="rq-places" data-rq-places hidden>
+            <legend>{dt('Channels and categories (up to {max})', { max: limits.channels })}</legend>
+            <div class="rq-place-list">
+              {places.map((place) => (
+                <label class:list={['rq-place', { 'rq-place-cat': place.category }]}>
+                  <input type="checkbox" name="channel_ids" value={place.id} disabled={!editable} />
+                  <span>{place.category ? place.name : `#${place.name}`}{!place.category && place.parent ? <em> · {place.parent}</em> : null}</span>
+                </label>
+              ))}
+            </div>
+            <em class="rq-sub">{dt('A category covers all its channels, and a thread follows its channel.')}</em>
+          </fieldset>
+          <label class="rq-field"><span>{dt('Reminder before the period ends (hours)')}</span>
+            <input type="number" name="remind_hours" min="0" max={limits.remind} step="1" value="0" inputmode="numeric" disabled={!editable} />
+            <em>{dt('0 is off. Members below the quota get a DM this many hours before the end.')}</em>
+          </label>
           <label class="rq-check"><input type="checkbox" name="notify_dm" checked disabled={!editable} /><span>{dt('Tell members by DM when they fall short')}</span></label>
           <button class="btn btn-accent btn-sm" type="submit" disabled={!editable || rules.length >= max}><Icon name="ph:plus-bold" width="12" height="12" />{dt('Save quota')}</button>
           <p class="rq-hint">{dt('A role has one quota: saving it again replaces the old one and starts a new period now. Petto needs Manage Roles and a role above this one to take it away.')}</p>
@@ -135,6 +165,15 @@ const editable = ready && canEdit;
     </section>
   </div>
 </DashGuildLayout>
+
+<script>
+  // The list of channels only matters for "only" and "all but": the form works without this, it just shows the list.
+  const mode = document.querySelector<HTMLSelectElement>('[data-rq-mode]');
+  const places = document.querySelector<HTMLElement>('[data-rq-places]');
+  const sync = () => { if (mode && places) places.hidden = mode.value === 'all'; };
+  mode?.addEventListener('change', sync);
+  sync();
+</script>
 
 <style>
   .rq { max-width: 1180px; display: flex; flex-direction: column; min-height: 100%; }
@@ -176,6 +215,15 @@ const editable = ready && canEdit;
   .rq-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
   .rq-form button[type="submit"] { align-self: flex-start; }
   .rq-form button[type="submit"]:disabled { opacity: .5; cursor: not-allowed; }
+  .rq-places { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px 10px; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .rq-places[hidden] { display: none; }
+  .rq-places legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+  .rq-place-list { max-height: 190px; overflow: auto; display: grid; gap: 2px; }
+  .rq-place { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 4px; border-radius: 6px; min-width: 0; }
+  .rq-place:hover { background: var(--accent-soft); }
+  .rq-place span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rq-place-cat { font-weight: 700; }
+  .rq-place em, .rq-sub { font-style: normal; font-size: 12px; color: var(--text-dim); }
   .rq-hint { font-size: 12.5px; color: var(--text-dim); margin: 0; }
   .rq-how { margin-top: 16px; }
   .rq-notes { margin: 0; padding: 12px 16px 14px 32px; display: grid; gap: 6px; font-size: 13.5px; color: var(--text-muted); }
