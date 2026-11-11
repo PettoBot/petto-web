@@ -6,7 +6,7 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { getCachedUserGuilds } from '../../../../utils/discordCache';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { SNOWFLAKE, MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES, DEFAULTS, canEditRoleQuotas, cleanRule, validateRule, periodEnd } from '../../../../utils/roleQuotas.mjs';
+import { SNOWFLAKE, MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES, MAX_CHANNELS, MAX_REMIND_HOURS, DEFAULTS, canEditRoleQuotas, cleanRule, validateRule, periodEnd } from '../../../../utils/roleQuotas.mjs';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -40,6 +40,10 @@ const errors: Record<string, string> = {
   badStrikes: dt('The periods in a row must be a whole number from 1 to {max}.', { max: MAX_STRIKES }),
   tooMany: dt('A server can have up to {max} role quotas. Remove one first.', { max: MAX_RULES }),
   badChannel: dt('That channel is not valid.'),
+  badChannelMode: dt('That is not a valid way to count.'),
+  noChannels: dt('Choose at least one channel or category for "Only these".'),
+  tooManyChannels: dt('You can choose up to {max} channels or categories.', { max: MAX_CHANNELS }),
+  badRemind: dt('The reminder must be a whole number of hours from 0 to {max}.', { max: MAX_REMIND_HOURS }),
 };
 const tableMissing = (res: Response | null, body: any) => Boolean(res && (res.status === 404 || ['PGRST205', '42P01'].includes(String(body?.code ?? ''))));
 
@@ -52,6 +56,9 @@ const allChannels: any[] = channelsRes.ok ? ((await channelsRes.json().catch(() 
 const roleById = new Map(allRoles.map((r: any) => [String(r.id), r]));
 const textChannels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0));
 const channelById = new Map(textChannels.map((c: any) => [String(c.id), c]));
+// Where the messages can be counted: text and announcement channels, forums and categories (a thread follows its channel).
+const places = allChannels.filter((c: any) => [0, 4, 5, 15].includes(Number(c.type))).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0));
+const placeById = new Map(places.map((c: any) => [String(c.id), c]));
 
 const readRules = async () => {
   const res = await fetch(`${apiUrl}/rest/v1/role_quotas?guild_id=eq.${id}&select=*&order=created_at.asc`, { headers: apiHeaders }).catch(() => null);
@@ -78,6 +85,10 @@ if (Astro.request.method === 'POST') {
       notifyDm: form.get('notify_dm') === 'on',
       // A channel that is not in the list of the server is not kept (the field is optional).
       reportChannelId: reportId && channelById.has(reportId) ? reportId : null,
+      channelMode: String(form.get('channel_mode') || 'all'),
+      // Only places of this server are kept, so a made-up id never reaches the table.
+      channelIds: form.getAll('channel_ids').map(String).filter((each) => placeById.has(each)),
+      remindHours: form.get('remind_hours') || 0,
       existingRoleIds: loaded.rows.map((row) => String(row.role_id)),
     });
     if (!checked.ok) message = { kind: 'err', text: errors[checked.error] ?? dt('Something went wrong, try again.') };
@@ -121,6 +132,8 @@ const rules = loaded.rows.map(cleanRule).map((rule) => {
     roleName: role ? String(role.name) : null,
     roleColor: role && Number(role.color) > 0 ? Number(role.color) : 0,
     reportChannelName: channel ? String(channel.name) : null,
+    // The names of the channels and categories where messages count (or not), in the order of the server; one that is gone is left out.
+    channelNames: rule.channelIds.map((each) => placeById.get(each)).filter(Boolean).map((place: any) => ({ name: String(place.name), category: Number(place.type) === 4 })),
     endsAt: periodEnd(rule.startedAt, rule.periodDays),
     withStrikes: withStrikes.get(rule.roleId) ?? 0,
   };
@@ -132,7 +145,9 @@ const roles = allRoles
   .sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0))
   .map((role: any) => ({ id: String(role.id), name: String(role.name), hasRule: used.has(String(role.id)) }));
 const channels = textChannels.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+const categoryName = (place: any) => (place.parent_id ? String(placeById.get(String(place.parent_id))?.name ?? '') : '');
+const placeOptions = places.map((c: any) => ({ id: String(c.id), name: String(c.name), category: Number(c.type) === 4, parent: categoryName(c) }));
 ---
 <DashRoleQuotas user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
-  rules={rules} roles={roles} channels={channels} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES}
-  limits={{ messages: MAX_MESSAGES, days: MAX_PERIOD_DAYS, strikes: MAX_STRIKES, defaultDays: DEFAULTS.periodDays, defaultStrikes: DEFAULTS.strikes }} />
+  rules={rules} roles={roles} channels={channels} places={placeOptions} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES}
+  limits={{ messages: MAX_MESSAGES, days: MAX_PERIOD_DAYS, strikes: MAX_STRIKES, channels: MAX_CHANNELS, remind: MAX_REMIND_HOURS, defaultDays: DEFAULTS.periodDays, defaultStrikes: DEFAULTS.strikes }} />
