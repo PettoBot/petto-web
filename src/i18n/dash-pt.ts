@@ -6316,4 +6316,6 @@ export const dashPt: Record<string, string> = {
   "Discord did not answer in time. Petto will try again with the next notice.": "O Discord não respondeu a tempo. O Petto tentará de novo com o próximo aviso.",
   "The site does not let Petto read this account right now. Petto keeps trying.": "O site não deixa o Petto ler esta conta agora. O Petto continua tentando.",
   "Something is wrong with this feed. Petto keeps trying.": "Algo está errado com este feed. O Petto continua tentando.",
+  "It was turned off after {n} failures in a row. Fix the cause and press Resume.": "Foi desligado após {n} falhas seguidas. Corrija a causa e clique em Retomar.",
+  "Since {when}.": "Desde {when}.",
 };
