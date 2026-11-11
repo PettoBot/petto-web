@@ -1,0 +1,138 @@
+---
+export const prerender = false;
+import DashRoleQuotas from '../../../../components/DashRoleQuotas.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getCachedUserGuilds } from '../../../../utils/discordCache';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { SNOWFLAKE, MAX_RULES, MAX_MESSAGES, MAX_PERIOD_DAYS, MAX_STRIKES, DEFAULTS, canEditRoleQuotas, cleanRule, validateRule, periodEnd } from '../../../../utils/roleQuotas.mjs';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+
+// The bot changes role quotas with Administrator only (a quota takes a role away by itself), so the page asks for the same: the visitor's own permissions in the
+// server, read from Discord, never the cookie. Someone let in by a role of the dashboard, and the Petto owner in Support mode (this page is not in supportEdit.ts:
+// it stays closed), only look.
+let canEdit = false;
+if (!auth.devView && !auth.access) {
+  const guilds = await getCachedUserGuilds(session.accessToken, Astro.request, { forAccess: true }).catch(() => []);
+  canEdit = canEditRoleQuotas(guilds.find((g: any) => g.id === id));
+}
+
+const errors: Record<string, string> = {
+  noRole: dt('That role does not exist.'),
+  everyone: dt('@everyone cannot have a quota.'),
+  managed: dt('A role that an integration manages cannot have a quota.'),
+  badMessages: dt('The messages must be a whole number from 1 to {max}.', { max: MAX_MESSAGES }),
+  badPeriod: dt('The period must be a whole number of days from 1 to {max}.', { max: MAX_PERIOD_DAYS }),
+  badStrikes: dt('The periods in a row must be a whole number from 1 to {max}.', { max: MAX_STRIKES }),
+  tooMany: dt('A server can have up to {max} role quotas. Remove one first.', { max: MAX_RULES }),
+  badChannel: dt('That channel is not valid.'),
+};
+const tableMissing = (res: Response | null, body: any) => Boolean(res && (res.status === 404 || ['PGRST205', '42P01'].includes(String(body?.code ?? ''))));
+
+let message: { kind: 'ok' | 'err'; text: string } | null = null;
+let missingAfterWrite = false;
+const [guildInfo, rolesRes, channelsRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'roles'), getGuildList(Astro, id, botToken, 'channels')]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const allRoles: any[] = rolesRes.ok ? ((await rolesRes.json().catch(() => [])) as any[]) : [];
+const allChannels: any[] = channelsRes.ok ? ((await channelsRes.json().catch(() => [])) as any[]) : [];
+const roleById = new Map(allRoles.map((r: any) => [String(r.id), r]));
+const textChannels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0));
+const channelById = new Map(textChannels.map((c: any) => [String(c.id), c]));
+
+const readRules = async () => {
+  const res = await fetch(`${apiUrl}/rest/v1/role_quotas?guild_id=eq.${id}&select=*&order=created_at.asc`, { headers: apiHeaders }).catch(() => null);
+  const body: any = res ? await res.json().catch(() => null) : null;
+  if (res?.ok && Array.isArray(body)) return { state: 'ok' as const, rows: body as any[] };
+  return { state: tableMissing(res, body) ? ('unavailable' as const) : ('error' as const), rows: [] as any[] };
+};
+let loaded = await readRules();
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  if (!canEdit) message = { kind: 'err', text: dt('Only administrators can change role quotas, the same as the command.') };
+  else if (loaded.state !== 'ok') message = { kind: 'err', text: loaded.state === 'unavailable' ? dt('Role quotas are not available yet. Petto is being updated: try again in a few minutes.') : dt('The role quotas could not be read. Try again in a moment.') };
+  else if (action === 'set') {
+    const roleId = String(form.get('role_id') ?? '');
+    const found = SNOWFLAKE.test(roleId) ? roleById.get(roleId) : null;
+    const reportId = String(form.get('report_channel_id') ?? '');
+    const checked = validateRule({
+      role: found ? { id: String(found.id), managed: Boolean(found.managed) } : null,
+      guildId: id,
+      messages: form.get('messages'),
+      periodDays: form.get('period_days') || DEFAULTS.periodDays,
+      strikes: form.get('strikes') || DEFAULTS.strikes,
+      notifyDm: form.get('notify_dm') === 'on',
+      // A channel that is not in the list of the server is not kept (the field is optional).
+      reportChannelId: reportId && channelById.has(reportId) ? reportId : null,
+      existingRoleIds: loaded.rows.map((row) => String(row.role_id)),
+    });
+    if (!checked.ok) message = { kind: 'err', text: errors[checked.error] ?? dt('Something went wrong, try again.') };
+    else {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      // Saving a quota starts its period now, the same as the command (the counts of the old one go with it: they are the old period's).
+      const res = await fetch(`${apiUrl}/rest/v1/role_quotas?on_conflict=guild_id,role_id`, {
+        method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, ...checked.rule }),
+      }).catch(() => null);
+      if (res?.ok) {
+        // What was counted for the old period does not count for the new one (the strikes stay), the same as the command.
+        await fetch(`${apiUrl}/rest/v1/role_quota_members?guild_id=eq.${id}&role_id=eq.${checked.rule.role_id}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ messages: 0 }) }).catch(() => null);
+        message = { kind: 'ok', text: dt('Saved.') };
+      } else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
+    }
+  } else if (action === 'remove') {
+    const roleId = String(form.get('role_id') ?? '');
+    if (!SNOWFLAKE.test(roleId)) message = { kind: 'err', text: dt('Something went wrong, try again.') };
+    else {
+      const res = await fetch(`${apiUrl}/rest/v1/role_quotas?guild_id=eq.${id}&role_id=eq.${roleId}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+      message = res?.ok ? { kind: 'ok', text: dt('Quota removed.') } : { kind: 'err', text: dt('Something went wrong, try again.') };
+    }
+  }
+  if (message?.kind === 'ok') loaded = await readRules();
+}
+if (missingAfterWrite) loaded = { state: 'unavailable', rows: [] };
+
+// How many members of each role are below the quota right now (strikes in a row): a number per role, never who.
+const strikesRes = loaded.state === 'ok' && loaded.rows.length
+  ? await fetch(`${apiUrl}/rest/v1/role_quota_members?guild_id=eq.${id}&strikes=gt.0&select=role_id&limit=5000`, { headers: apiHeaders }).catch(() => null)
+  : null;
+const withStrikes = new Map<string, number>();
+if (strikesRes?.ok) for (const row of (await strikesRes.json().catch(() => [])) as any[]) withStrikes.set(String(row.role_id), (withStrikes.get(String(row.role_id)) ?? 0) + 1);
+
+const rules = loaded.rows.map(cleanRule).map((rule) => {
+  const role = roleById.get(rule.roleId);
+  const channel = rule.reportChannelId ? channelById.get(rule.reportChannelId) : null;
+  return {
+    ...rule,
+    roleName: role ? String(role.name) : null,
+    roleColor: role && Number(role.color) > 0 ? Number(role.color) : 0,
+    reportChannelName: channel ? String(channel.name) : null,
+    endsAt: periodEnd(rule.startedAt, rule.periodDays),
+    withStrikes: withStrikes.get(rule.roleId) ?? 0,
+  };
+});
+const used = new Set(rules.map((rule) => rule.roleId));
+// @everyone is every member and an integration's role cannot be taken away by hand: the bot refuses both.
+const roles = allRoles
+  .filter((role: any) => String(role.id) !== id && !role.managed)
+  .sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0))
+  .map((role: any) => ({ id: String(role.id), name: String(role.name), hasRule: used.has(String(role.id)) }));
+const channels = textChannels.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+---
+<DashRoleQuotas user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  rules={rules} roles={roles} channels={channels} state={loaded.state} canEdit={canEdit} message={message} max={MAX_RULES}
+  limits={{ messages: MAX_MESSAGES, days: MAX_PERIOD_DAYS, strikes: MAX_STRIKES, defaultDays: DEFAULTS.periodDays, defaultStrikes: DEFAULTS.strikes }} />
