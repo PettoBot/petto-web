@@ -11,7 +11,7 @@ export interface AccessRule { role_id: string; sections: string[]; can_edit: boo
 export const ACCESS_SECTIONS: { id: string; label: string; pages: string[] }[] = [
   { id: 'dashboard', label: 'Dashboard', pages: ['modules', 'stats', 'general', 'customize', 'backups'] },
   { id: 'design', label: 'Design', pages: ['embeds', 'cards'] },
-  { id: 'moderation', label: 'Moderation', pages: ['moderation', 'antinuke', 'antiscam', 'honeypot', 'role-triggers', 'automod', 'lockdown'] },
+  { id: 'moderation', label: 'Moderation', pages: ['moderation', 'antinuke', 'antiscam', 'honeypot', 'role-triggers', 'role-quotas', 'automod', 'lockdown'] },
   { id: 'appeals', label: 'Appeals', pages: ['appeals'] },
   { id: 'security', label: 'Security', pages: ['onboarding', 'verification', 'security', 'permissions', 'audit', 'logging'] },
   { id: 'leveling', label: 'Leveling', pages: ['leveling'] },

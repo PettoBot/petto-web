@@ -92,7 +92,7 @@ const en: FeaturesCopy = {
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'A community that feels alive',
       desc: 'The small things that make a server yours.',
-      points: ['Welcome messages in the channel and by DM', 'Birthdays, polls, suggestions, confessions and a starboard', 'Counters, a counting game and voice channels the members control', 'Partners, uploads and a public leaderboard page'],
+      points: ['Welcome messages in the channel and by DM', 'Birthdays, polls, suggestions, confessions and a starboard', 'Counters, a counting game and voice channels the members control', 'Partners, uploads and a public leaderboard page', 'Role quotas: ask a role for a number of messages in each period, and Petto takes the role away from who misses it too many times in a row'],
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
@@ -172,7 +172,7 @@ const es: FeaturesCopy = {
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'Una comunidad que se siente viva',
       desc: 'Los detalles pequeños que hacen que un servidor sea tuyo.',
-      points: ['Mensajes de bienvenida en el canal y por MD', 'Cumpleaños, encuestas, sugerencias, confesiones y un starboard', 'Contadores, un juego de contar y canales de voz que controlan los miembros', 'Partners, uploads y una página pública de leaderboard'],
+      points: ['Mensajes de bienvenida en el canal y por MD', 'Cumpleaños, encuestas, sugerencias, confesiones y un starboard', 'Contadores, un juego de contar y canales de voz que controlan los miembros', 'Partners, uploads y una página pública de leaderboard', 'Cuotas de rol: pide a un rol una cantidad de mensajes por periodo, y Petto le quita el rol a quien falla demasiadas veces seguidas'],
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
@@ -252,7 +252,7 @@ const ptBR: FeaturesCopy = {
     {
       id: 'community', icon: 'ph:users-three-fill', color: 'green', title: 'Uma comunidade que parece viva',
       desc: 'Os pequenos detalhes que fazem um servidor ser seu.',
-      points: ['Mensagens de boas-vindas no canal e por DM', 'Aniversários, enquetes, sugestões, confissões e um starboard', 'Contadores, um jogo de contar e canais de voz que os membros controlam', 'Parceiros, uploads e uma página pública de leaderboard'],
+      points: ['Mensagens de boas-vindas no canal e por DM', 'Aniversários, enquetes, sugestões, confissões e um starboard', 'Contadores, um jogo de contar e canais de voz que os membros controlam', 'Parceiros, uploads e uma página pública de leaderboard', 'Cotas de cargo: peça a um cargo uma quantidade de mensagens por período, e o Petto tira o cargo de quem falha vezes demais seguidas'],
       commands: ['!birthday', '!poll', '!suggest', '!starboard'], shots: ['poll'],
     },
     {
