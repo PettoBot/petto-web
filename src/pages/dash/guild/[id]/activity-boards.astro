@@ -1,0 +1,123 @@
+---
+export const prerender = false;
+import DashActivityBoards from '../../../../components/DashActivityBoards.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { getCachedUserGuilds } from '../../../../utils/discordCache';
+import { ensureGuildRow } from '../../../../utils/ensureGuild';
+import { KINDS, canEditActivityBoards, cleanBoard, messageIds, statsProblem, validateBoard } from '../../../../utils/activityBoards.mjs';
+import { makeT, getDashLang } from '../../../../i18n/dash';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+const apiHeaders = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+
+// The command needs Manage Server, so the page asks for the same: the visitor's own permissions in the server, read from Discord, never the cookie.
+// Someone let in by a role of the dashboard, and the Petto owner in Support mode (this page is not in supportEdit.ts: it stays closed), only look.
+let canEdit = false;
+if (!auth.devView && !auth.access) {
+  const guilds = await getCachedUserGuilds(session.accessToken, Astro.request, { forAccess: true }).catch(() => []);
+  canEdit = canEditActivityBoards(guilds.find((g: any) => g.id === id));
+}
+
+const errors: Record<string, string> = {
+  badKind: dt('Choose chat or voice.'),
+  badChannel: dt('Choose a text or announcement channel of this server.'),
+  statsOff: dt('This server turned its statistics off, so there is nothing to show.'),
+  membersOff: dt('This server keeps statistics without members, so there is no leaderboard of members.'),
+};
+// What the bot saved when it could not write a board.
+const reasons: Record<string, string> = {
+  statsOff: errors.statsOff,
+  membersOff: errors.membersOff,
+  channel: dt('Petto cannot use that channel: it has to be a text or announcement channel that Petto can see.'),
+  permissions: dt('Petto needs View Channel, Send Messages and Read Message History in that channel.'),
+  error: dt('Something went wrong. Petto will try again in a few minutes.'),
+};
+const tableMissing = (res: Response | null, body: any) => Boolean(res && (res.status === 404 || ['PGRST205', '42P01'].includes(String(body?.code ?? ''))));
+
+let message: { kind: 'ok' | 'err'; text: string } | null = null;
+let missingAfterWrite = false;
+const [guildInfo, channelsRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'channels')]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const allChannels: any[] = channelsRes.ok ? ((await channelsRes.json().catch(() => [])) as any[]) : [];
+const textChannels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0));
+const channelById = new Map(textChannels.map((c: any) => [String(c.id), c]));
+
+const readRows = async () => {
+  const res = await fetch(`${apiUrl}/rest/v1/activity_leaderboards?guild_id=eq.${id}&select=*&order=kind.asc`, { headers: apiHeaders }).catch(() => null);
+  const body: any = res ? await res.json().catch(() => null) : null;
+  if (res?.ok && Array.isArray(body)) return { state: 'ok' as const, rows: body as any[] };
+  return { state: tableMissing(res, body) ? ('unavailable' as const) : ('error' as const), rows: [] as any[] };
+};
+// Statistics turned off (or kept without members) in this server: there is nothing a board could show.
+const statsRes = await fetch(`${apiUrl}/rest/v1/stats_config?guild_id=eq.${id}&select=enabled,members_enabled`, { headers: apiHeaders }).catch(() => null);
+const statsRows: any = statsRes?.ok ? await statsRes.json().catch(() => []) : [];
+const problem = statsProblem(Array.isArray(statsRows) ? statsRows[0] : null);
+
+// The messages of a board that goes away or moves: Petto deletes them (best effort; they may be gone already).
+const deleteMessages = async (channelId: string, ids: string[]) => {
+  for (const messageId of ids) {
+    await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, { method: 'DELETE', headers: { Authorization: `Bot ${botToken}` } }).catch(() => null);
+  }
+};
+
+let loaded = await readRows();
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const kind = String(form.get('kind') ?? '');
+  const current = loaded.rows.find((row) => row.kind === kind);
+  if (!canEdit) message = { kind: 'err', text: dt('Only people with Manage Server can change the leaderboards, the same as the command.') };
+  else if (loaded.state !== 'ok') message = { kind: 'err', text: loaded.state === 'unavailable' ? dt('The leaderboards are not available yet. Petto is being updated: try again in a few minutes.') : dt('The leaderboards could not be read. Try again in a moment.') };
+  else if (action === 'set') {
+    const checked = validateBoard({ kind, channelId: form.get('channel_id'), channelIds: [...channelById.keys()] });
+    if (!checked.ok) message = { kind: 'err', text: errors[checked.error] ?? dt('Something went wrong, try again.') };
+    else if (problem) message = { kind: 'err', text: errors[problem] };
+    else {
+      await ensureGuildRow(apiUrl, apiHeaders, id);
+      const sameChannel = current && String(current.channel_id) === checked.board.channel_id;
+      // Another channel: the old messages are deleted and the three are written again in the new one; the same channel: Petto goes on editing them.
+      if (current && !sameChannel) await deleteMessages(String(current.channel_id), messageIds(current));
+      const res = sameChannel
+        ? await fetch(`${apiUrl}/rest/v1/activity_leaderboards?guild_id=eq.${id}&kind=eq.${checked.board.kind}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ last_refreshed_at: null, last_error: null }) }).catch(() => null)
+        : await fetch(`${apiUrl}/rest/v1/activity_leaderboards?on_conflict=guild_id,kind`, {
+          method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ guild_id: id, ...checked.board, daily_message_id: null, weekly_message_id: null, monthly_message_id: null, last_refreshed_at: null, last_error: null }),
+        }).catch(() => null);
+      if (res?.ok) message = { kind: 'ok', text: dt('Saved. Petto writes the three cards within a few minutes.') };
+      else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
+    }
+  } else if (action === 'remove') {
+    if (!KINDS.includes(kind)) message = { kind: 'err', text: errors.badKind };
+    else if (!current) message = { kind: 'err', text: dt('Something went wrong, try again.') };
+    else {
+      const res = await fetch(`${apiUrl}/rest/v1/activity_leaderboards?guild_id=eq.${id}&kind=eq.${kind}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+      if (res?.ok) { await deleteMessages(String(current.channel_id), messageIds(current)); message = { kind: 'ok', text: dt('Leaderboards removed.') }; }
+      else message = { kind: 'err', text: dt('Something went wrong, try again.') };
+    }
+  }
+  if (message?.kind === 'ok') loaded = await readRows();
+}
+if (missingAfterWrite) loaded = { state: 'unavailable', rows: [] };
+
+const byKind = new Map(loaded.rows.map((row) => [String(row.kind), cleanBoard(row)]));
+const boards = KINDS.map((kind) => {
+  const board = byKind.get(kind) ?? null;
+  const channel = board?.channelId ? channelById.get(board.channelId) : null;
+  return { kind, board, channelName: board ? (channel ? String(channel.name) : null) : null };
+});
+const channels = textChannels.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+---
+<DashActivityBoards user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
+  boards={boards} channels={channels} state={loaded.state} canEdit={canEdit} message={message} problem={problem ? errors[problem] : null} reasons={reasons} />

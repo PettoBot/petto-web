@@ -12,7 +12,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
   const row = (table: string, columns: string) => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&select=${columns}`, { headers }).catch(() => null);
   const total = (table: string, extra = '') => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${extra}&select=guild_id&limit=1`, { headers: { ...headers, Prefer: 'count=exact' } }).catch(() => null);
   
-  const [events, verification, automod, antinuke, logs, level, tickets, giveaways, starboard, monkeyboard, birthdays, reactionRoles, responders, commands, webhooks, embeds, cards, suggestions, counting, confessions, formsOpen, counters, honeypots, roleTriggers, roleQuotas] = await runBatched([
+  const [events, verification, automod, antinuke, logs, level, tickets, giveaways, starboard, monkeyboard, birthdays, reactionRoles, responders, commands, webhooks, embeds, cards, suggestions, counting, confessions, formsOpen, counters, honeypots, roleTriggers, roleQuotas, activityBoards] = await runBatched([
     row('member_events_config', 'welcome_channel_id,leave_channel_id,boost_channel_id'),
     row('verification_config', 'enabled'),
     row('automod_config', 'word_filter_enabled,anti_spam_enabled,anti_raid_enabled,anti_alt_enabled'),
@@ -38,6 +38,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
     total('honeypots'),
     total('role_triggers'),
     total('role_quotas'),
+    total('activity_leaderboards'),
   ], 6);
   
   async function first(res: Response | null): Promise<Record<string, any> | null | undefined> {
@@ -59,6 +60,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
   const honeypotCount = count(honeypots);
   const roleTriggerCount = count(roleTriggers);
   const roleQuotaCount = count(roleQuotas);
+  const activityBoardCount = count(activityBoards);
   const responderCount = count(responders); const commandCount = count(commands); const webhookCount = count(webhooks); const embedCount = count(embeds); const cardCount = count(cards);
   
   const statuses: Record<string, { state: ModuleState; note: string }> = {};
@@ -70,6 +72,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
   set('honeypot', honeypotCount !== undefined, (honeypotCount ?? 0) > 0, honeypotCount ? String(honeypotCount) : '');
   set('role-triggers', roleTriggerCount !== undefined, (roleTriggerCount ?? 0) > 0, roleTriggerCount ? String(roleTriggerCount) : '');
   set('role-quotas', roleQuotaCount !== undefined, (roleQuotaCount ?? 0) > 0, roleQuotaCount ? String(roleQuotaCount) : '');
+  set('activity-boards', activityBoardCount !== undefined, (activityBoardCount ?? 0) > 0, activityBoardCount ? String(activityBoardCount) : '');
   set('logging', logCount !== undefined, (logCount ?? 0) > 0, logCount ? String(logCount) : '');
   set('leveling', lv !== undefined, Boolean(lv?.enabled));
   set('tickets', ticketCount !== undefined, (ticketCount ?? 0) > 0, ticketCount ? String(ticketCount) : '');
