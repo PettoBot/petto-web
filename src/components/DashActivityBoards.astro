@@ -6,7 +6,7 @@ import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang === 'pt-BR' ? '/pt-br' : ''}/community/activity-leaderboards`;
-interface Board { kind: string; channelId: string; refreshedAt: string | null; error: string | null; messages: number }
+interface Board { kind: string; channelId: string; refreshedAt: string | null; error: string | null; messages: number; periods: string[] }
 interface RoleBoard { kind: string; role: { roleId: string; holderId: string | null; error: string | null } | null; roleName: string | null; holderName: string | null }
 interface Props {
   user: { username: string; avatar: string | null; userId?: string };
@@ -31,6 +31,9 @@ const day = (iso: string | null) => {
   const date = iso ? new Date(iso) : null;
   return date && Number.isFinite(date.getTime()) ? date.toLocaleString(dashLang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 };
+// The cards a board can have, in the order they are posted (the same as the bot's).
+const periodOptions = [{ value: 'monthly', label: dt('Month') }, { value: 'weekly', label: dt('Week') }, { value: 'daily', label: dt('Day') }];
+const periodsOf = (board: Board | null) => (board?.periods?.length ? board.periods : periodOptions.map((option) => option.value));
 const ready = state === 'ok';
 const editable = ready && canEdit;
 const roleEditable = editable && roleState === 'ok';
@@ -43,7 +46,7 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
       <h1>{dt('Activity leaderboards')}</h1>
       <a class="btn btn-sm ab-docs" href={docsUrl} target="_blank" rel="noopener"><Icon name="ph:book-open-fill" width="13" height="13" />{dt('Read the docs')}</a>
     </header>
-    <p class="ab-lead">{dt('Post the most active members in a channel: a card for the month, the week and the day, updated every hour.')}</p>
+    <p class="ab-lead">{dt('Post the most active members in a channel: a card for the month, the week and the day (all of them or only some), updated every few minutes.')}</p>
 
     {message && <div class:list={['ab-flash', { 'ab-flash-err': message.kind === 'err' }]} role="status"><Icon name={message.kind === 'ok' ? 'ph:check-circle-fill' : 'ph:warning-fill'} width="15" height="15" />{message.text}</div>}
     {state === 'unavailable' && <div class="ab-flash ab-flash-warn"><Icon name="ph:plug-fill" width="15" height="15" />{dt('The leaderboards are not available yet. Petto is being updated: try again in a few minutes.')}</div>}
@@ -61,7 +64,7 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
             </span>
           </div>
           <p class="ab-hint">{kindHint(kind)}</p>
-          {board && <p class="ab-where">{dt('Posted in')} <b>{channelName ? `#${channelName}` : dt('a channel that is gone')}</b></p>}
+          {board && <p class="ab-where">{dt('Posted in')} <b>{channelName ? `#${channelName}` : dt('a channel that is gone')}</b> · {periodsOf(board).map((value) => periodOptions.find((option) => option.value === value)?.label).join(', ')}</p>}
           {board?.error && <p class="ab-problem">{reasons[board.error] ?? reasons.error}</p>}
           <form method="POST" class="ab-form" data-no-dirty>
             <input type="hidden" name="action" value="set" />
@@ -72,6 +75,15 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
                 {channels.map((channel) => <option value={channel.id} selected={board?.channelId === channel.id}>#{channel.name}</option>)}
               </select>
             </label>
+            <fieldset class="ab-periods" disabled={!editable}>
+              <legend>{dt('Cards')}</legend>
+              <div class="ab-chips">
+                {periodOptions.map((option) => (
+                  <label class="ab-chip"><input type="checkbox" name="periods" value={option.value} checked={periodsOf(board).includes(option.value)} /><span>{option.label}</span></label>
+                ))}
+              </div>
+              <p class="ab-periods-hint">{dt('Choose the cards this board has: at least one.')}</p>
+            </fieldset>
             <button class="btn btn-accent btn-sm" type="submit" disabled={!editable || Boolean(problem)}><Icon name="ph:check-bold" width="12" height="12" />{board ? dt('Save') : dt('Post the leaderboards')}</button>
           </form>
           {editable && board && (
@@ -118,15 +130,25 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
     <section class="ab-card ab-how">
       <div class="ab-card-head"><h2>{dt('How it works')}</h2></div>
       <ul class="ab-notes">
-        <li>{dt('Each kind posts three cards in its channel (the month, the week and the day) and Petto edits the same messages once an hour. If someone deletes one, Petto writes the three again.')}</li>
+        <li>{dt('Each kind posts a card in its channel for each period you choose (the month, the week, the day) and Petto edits the same messages about every 5 minutes, only when the numbers change. If someone deletes one, Petto writes them again.')}</li>
         <li>{dt('Days, weeks (Monday to Sunday) and months are counted in GMT-5, the time of Petto.')}</li>
         <li>{dt('Petto uses the numbers it already keeps for the statistics of the server, never what was said. Members who asked not to be counted, bots and members who left are not shown.')}</li>
-        <li>{dt('Petto needs View Channel, Send Messages and Read Message History in the channel. If you change the channel, the old messages are deleted and the three are written again in the new one.')}</li>
+        <li>{dt('Petto needs View Channel, Send Messages and Read Message History in the channel. If you change the channel, the old messages are deleted and the cards are written again in the new one. If you take a card away its message is deleted, and if you add one they are all written again so they stay in order.')}</li>
         <li>{dt('The role goes to the number 1 of the week when the week ends (Monday, GMT-5). Petto needs Manage Roles and the role has to be below its highest role. When you choose a role, last week\'s number 1 gets it within a few minutes.')}</li>
       </ul>
     </section>
   </div>
 </DashGuildLayout>
+
+<script>
+  // At least one card has to be checked; the page that receives the form checks it too, this only saves the trip.
+  document.querySelectorAll<HTMLElement>('.ab-periods').forEach((box) => {
+    box.closest('form')?.addEventListener('submit', (event) => {
+      if (!box.querySelector('input:checked')) { event.preventDefault(); box.classList.add('ab-periods-bad'); }
+    });
+    box.addEventListener('change', () => box.classList.remove('ab-periods-bad'));
+  });
+</script>
 
 <style>
   .ab { max-width: 1180px; display: flex; flex-direction: column; min-height: 100%; }
@@ -153,6 +175,18 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
   .ab-field > span { font-size: 13px; font-weight: 600; }
   .ab-field select { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; }
   .ab-field select:disabled { opacity: .6; }
+  .ab-periods { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .ab-periods legend { font-size: 13px; font-weight: 600; padding: 0; margin: 0 0 5px; }
+  .ab-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ab-chip { position: relative; cursor: pointer; }
+  .ab-chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .ab-chip span { display: inline-block; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); font-size: 13px; font-weight: 600; transition: background .12s, color .12s, border-color .12s; }
+  .ab-chip input:checked + span { background: color-mix(in srgb, var(--green) 16%, transparent); border-color: color-mix(in srgb, var(--green) 60%, transparent); color: var(--green); }
+  .ab-chip input:focus-visible + span { outline: 2px solid var(--green); outline-offset: 2px; }
+  .ab-periods:disabled .ab-chip { cursor: not-allowed; }
+  .ab-periods:disabled .ab-chip span { opacity: .6; }
+  .ab-periods-hint { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+  .ab-periods-bad .ab-periods-hint { color: var(--red, #ff6b6b); }
   .ab-form button[type="submit"] { align-self: flex-start; }
   .ab-form button[type="submit"]:disabled { opacity: .5; cursor: not-allowed; }
   .ab-role { border-top: 1px solid var(--border); margin-top: 6px; }

@@ -1,24 +1,34 @@
-// Activity leaderboards ("the most active members of the chat and of the voice, in a channel, a card for the month, the week and the day, edited every hour").
+// Activity leaderboards ("the most active members of the chat and of the voice, in a channel, a card for each period the server chose (the month, the week, the day), edited about every 5 minutes").
 // The rules are the bot's (petto-bot src/utils/activityLeaderboard.ts and src/db/activityLeaderboards.ts, table `activity_leaderboards`): keep both equal.
 // Plain JavaScript so scripts/check-dash-activity-boards.mjs runs it with node alone.
 
 export const KINDS = Object.freeze(['chat', 'voice']);
 export const SNOWFLAKE = /^\d{15,25}$/;
+/** The cards a board can have, in the order they are posted (the same list and order as the bot's `PERIODS`). */
+export const PERIODS = Object.freeze(['monthly', 'weekly', 'daily']);
+
+/** The periods in the order of `PERIODS`, once each, only the real ones. A list with none of them is every period (a row from before the choice has them all). */
+export function cleanPeriods(value) {
+  const wanted = new Set(Array.isArray(value) ? value.map(String) : []);
+  const chosen = PERIODS.filter((period) => wanted.has(period));
+  return chosen.length ? chosen : [...PERIODS];
+}
 /** The reasons the bot saves when it cannot write a board (`last_error`). */
 export const REASONS = Object.freeze(['statsOff', 'membersOff', 'channel', 'permissions', 'error']);
 /** The reasons the bot saves when it cannot give the role of the most active member (`activity_top_roles.last_error`). */
 export const ROLE_REASONS = Object.freeze(['statsOff', 'membersOff', 'role', 'permissions', 'error']);
 
 /**
- * What the form sent, checked: the kind, and a channel of the server (`channelIds` are the text and announcement channels it has).
- * Returns `{ ok: true, board: { kind, channel_id } }` or `{ ok: false, error: 'badKind' | 'badChannel' }`.
- * @param {{ kind: unknown, channelId: unknown, channelIds: string[] }} input
+ * What the form sent, checked: the kind, a channel of the server (`channelIds` are the text and announcement channels it has) and the cards (`periods`, the checked boxes: at
+ * least one real period; left out it is all of them). Returns `{ ok: true, board: { kind, channel_id, periods } }` or `{ ok: false, error: 'badKind' | 'badChannel' | 'badPeriods' }`.
+ * @param {{ kind: unknown, channelId: unknown, channelIds: string[], periods?: unknown }} input
  */
-export function validateBoard({ kind, channelId, channelIds }) {
+export function validateBoard({ kind, channelId, channelIds, periods }) {
   if (!KINDS.includes(String(kind))) return { ok: false, error: 'badKind' };
   const channel = String(channelId ?? '');
   if (!SNOWFLAKE.test(channel) || !channelIds.includes(channel)) return { ok: false, error: 'badChannel' };
-  return { ok: true, board: { kind: String(kind), channel_id: channel } };
+  if (periods !== undefined && (!Array.isArray(periods) || !periods.some((period) => PERIODS.includes(String(period))))) return { ok: false, error: 'badPeriods' };
+  return { ok: true, board: { kind: String(kind), channel_id: channel, periods: cleanPeriods(periods) } };
 }
 
 /** A row of `activity_leaderboards` as the page shows it (the ids of the messages are not shown). */
@@ -30,6 +40,7 @@ export function cleanBoard(row) {
     channelId: SNOWFLAKE.test(String(row?.channel_id ?? '')) ? String(row.channel_id) : '',
     refreshedAt: refreshed && Number.isFinite(refreshed.getTime()) ? refreshed.toISOString() : null,
     error,
+    periods: cleanPeriods(row?.periods),
     messages: [row?.daily_message_id, row?.weekly_message_id, row?.monthly_message_id].filter((id) => SNOWFLAKE.test(String(id ?? ''))).length,
   };
 }
