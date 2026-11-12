@@ -284,7 +284,7 @@ export const CONFIG_SCHEMA: Record<string, readonly ColumnSpec[]> = {
     ["only_xp_role_ids", "list", []],
     ["ignored_category_ids", "list", []],
     ["voice_ignored_category_ids", "list", []],
-    ["reset_on_leave", "bool", false],
+    ["keep_xp", "bool", false],
     ["restore_roles", "bool", true],
     ["leaderboard_public", "bool", false],
     ["leaderboard_slug", "text", null],

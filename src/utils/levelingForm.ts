@@ -132,7 +132,7 @@ export const storedRules = (c: Record<string, any>) => ({
   multiplierMode: c.multiplier_mode ?? 'highest',
   multiplierCap: Number(c.multiplier_cap ?? 20),
   voteBoost: c.vote_boost_enabled ?? true,
-  resetOnLeave: c.reset_on_leave ?? false,
+  keepXp: c.keep_xp ?? false,
   restoreRoles: c.restore_roles ?? true,
   noXpRoleIds: (c.no_xp_role_ids ?? []) as string[],
   onlyXpRoleIds: (c.only_xp_role_ids ?? []) as string[],
@@ -222,7 +222,7 @@ export function readRulesForm(form: FormData) {
     xp_multiplier: clamp(Math.round(formNumber(form, 'xp_multiplier', 1) * 100) / 100, 0, 20),
     multiplier_mode: ['highest', 'stack', 'sum'].includes(String(form.get('multiplier_mode'))) ? String(form.get('multiplier_mode')) : 'highest',
     multiplier_cap: clamp(Math.round(formNumber(form, 'multiplier_cap', 20) * 100) / 100, 1, 100),
-    reset_on_leave: form.get('reset_on_leave') === 'on',
+    keep_xp: form.get('keep_xp') === 'on',
     restore_roles: form.get('restore_roles') === 'on',
     no_xp_role_ids: ids(form.getAll('no_xp_role_ids')),
     only_xp_role_ids: ids(form.getAll('only_xp_role_ids')),
@@ -295,7 +295,7 @@ export function rulesFormEntries(rules: StoredRules): Entries {
   text(e, 'daily_bonus_xp', rules.dailyBonusXp); text(e, 'streak_bonus_xp', rules.streakBonusXp); text(e, 'streak_max_days', rules.streakMaxDays);
   text(e, 'xp_multiplier', rules.xpMultiplier); text(e, 'multiplier_mode', rules.multiplierMode); text(e, 'multiplier_cap', rules.multiplierCap);
   many(e, 'no_xp_role_ids', rules.noXpRoleIds); many(e, 'only_xp_role_ids', rules.onlyXpRoleIds);
-  on(e, 'vote_boost', rules.voteBoost); on(e, 'restore_roles', rules.restoreRoles); on(e, 'reset_on_leave', rules.resetOnLeave);
+  on(e, 'vote_boost', rules.voteBoost); on(e, 'restore_roles', rules.restoreRoles); on(e, 'keep_xp', rules.keepXp);
   return e;
 }
 
