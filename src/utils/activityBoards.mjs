@@ -31,7 +31,7 @@ export function validateBoard({ kind, channelId, channelIds, periods }) {
   return { ok: true, board: { kind: String(kind), channel_id: channel, periods: cleanPeriods(periods) } };
 }
 
-/** A row of `activity_leaderboards` as the page shows it (the ids of the messages are not shown). */
+/** A row of `activity_leaderboards` as the page shows it (the ids of the messages are not shown; `messages` counts them: one, or up to three for a board written the older way). */
 export function cleanBoard(row) {
   const refreshed = row?.last_refreshed_at ? new Date(row.last_refreshed_at) : null;
   const error = REASONS.includes(String(row?.last_error ?? '')) ? String(row.last_error) : null;
@@ -41,13 +41,13 @@ export function cleanBoard(row) {
     refreshedAt: refreshed && Number.isFinite(refreshed.getTime()) ? refreshed.toISOString() : null,
     error,
     periods: cleanPeriods(row?.periods),
-    messages: [row?.daily_message_id, row?.weekly_message_id, row?.monthly_message_id].filter((id) => SNOWFLAKE.test(String(id ?? ''))).length,
+    messages: messageIds(row).length,
   };
 }
 
-/** The ids of the three messages of a row that can be deleted. */
+/** The ids of the messages of a row that can be deleted: the one message of the board and, for a board written the older way (a message for each period), those three. */
 export function messageIds(row) {
-  return [row?.monthly_message_id, row?.weekly_message_id, row?.daily_message_id].map((id) => String(id ?? '')).filter((id) => SNOWFLAKE.test(id));
+  return [row?.message_id, row?.monthly_message_id, row?.weekly_message_id, row?.daily_message_id].map((id) => String(id ?? '')).filter((id) => SNOWFLAKE.test(id));
 }
 
 /**
