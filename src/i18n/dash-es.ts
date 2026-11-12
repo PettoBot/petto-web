@@ -2731,6 +2731,8 @@ export const dashEs: Record<string, string> = {
   "How the level-up announcement is sent": "Cómo se envía el aviso de subida de nivel",
   "Give the reward roles back to a member who returns": "Devolver los roles de recompensa a un miembro que vuelve",
   "Wipe the XP and level of a member who leaves": "Borrar el XP y el nivel de un miembro que se va",
+  "Keep the XP and level of a member who leaves": "Conservar el XP y el nivel de un miembro que se va",
+  "Off: their XP is deleted and, if they return, they start from zero.": "Desactivado: se borra su XP y, si vuelve, empieza desde cero.",
   "Approved": "Aprobada",
   "Denied": "Rechazada",
   "Considering": "En consideración",

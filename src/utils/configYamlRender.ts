@@ -260,7 +260,7 @@ const NOTE: Record<string, string> = {
   vote_boost_enabled: 'true so voters get extra XP',
   no_xp_role_ids: 'Roles that give no XP (ids)',
   only_xp_role_ids: 'Only these roles give XP (ids, empty for everyone)',
-  reset_on_leave: 'true to erase XP when a member leaves',
+  keep_xp: 'true to keep the XP of a member who leaves (off: it is erased)',
   restore_roles: 'true to give reward roles back to a returning member',
   leaderboard_public: 'true to share the leaderboard on the website',
   leaderboard_slug: 'Address of the public leaderboard',

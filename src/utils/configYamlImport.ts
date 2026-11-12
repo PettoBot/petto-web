@@ -259,7 +259,7 @@ const LEVELING_FORMS: LevelingForm[] = [
     read: (form) => readRankForm(form),
   },
   {
-    columns: { ...identity('min_message_chars', 'anti_repeat', 'voice_min_members', 'voice_ignore_muted', 'daily_bonus_xp', 'streak_bonus_xp', 'streak_max_days', 'xp_multiplier', 'multiplier_mode', 'multiplier_cap', 'reset_on_leave', 'restore_roles', 'no_xp_role_ids', 'only_xp_role_ids', 'daily_xp_cap', 'voice_alone_percent'), vote_boost_enabled: 'vote_boost' },
+    columns: { ...identity('min_message_chars', 'anti_repeat', 'voice_min_members', 'voice_ignore_muted', 'daily_bonus_xp', 'streak_bonus_xp', 'streak_max_days', 'xp_multiplier', 'multiplier_mode', 'multiplier_cap', 'keep_xp', 'restore_roles', 'no_xp_role_ids', 'only_xp_role_ids', 'daily_xp_cap', 'voice_alone_percent'), vote_boost_enabled: 'vote_boost' },
     entries: (row) => rulesFormEntries(storedRules(row)),
     read: (form) => { const { row, newest } = readRulesForm(form); return { ...row, ...newest, vote_boost_enabled: newest.vote_boost_enabled }; },
   },

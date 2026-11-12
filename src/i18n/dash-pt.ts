@@ -2731,6 +2731,8 @@ export const dashPt: Record<string, string> = {
   "How the level-up announcement is sent": "Como o aviso de subida de nível é enviado",
   "Give the reward roles back to a member who returns": "Devolver os cargos de recompensa a um membro que volta",
   "Wipe the XP and level of a member who leaves": "Apagar o XP e o nível de um membro que sai",
+  "Keep the XP and level of a member who leaves": "Manter o XP e o nível de um membro que sai",
+  "Off: their XP is deleted and, if they return, they start from zero.": "Desligado: o XP é excluído e, se voltar, começa do zero.",
   "Approved": "Aprovada",
   "Denied": "Recusada",
   "Considering": "Em consideração",
