@@ -7,12 +7,17 @@ const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang === 'pt-BR' ? '/pt-br' : ''}/community/activity-leaderboards`;
 interface Board { kind: string; channelId: string; refreshedAt: string | null; error: string | null; messages: number }
+interface RoleBoard { kind: string; role: { roleId: string; holderId: string | null; error: string | null } | null; roleName: string | null; holderName: string | null }
 interface Props {
   user: { username: string; avatar: string | null; userId?: string };
   guildId: string;
   guildName: string;
   guildIcon: string;
   boards: { kind: string; board: Board | null; channelName: string | null }[];
+  roleBoards: RoleBoard[];
+  roles: { id: string; name: string }[];
+  roleState: 'ok' | 'unavailable' | 'error';
+  roleReasons: Record<string, string>;
   channels: { id: string; name: string }[];
   state: 'ok' | 'unavailable' | 'error';
   canEdit: boolean;
@@ -20,13 +25,15 @@ interface Props {
   problem: string | null;
   reasons: Record<string, string>;
 }
-const { user, guildId, guildName, guildIcon, boards, channels, state, canEdit, message, problem, reasons } = Astro.props;
+const { user, guildId, guildName, guildIcon, boards, roleBoards, roles, roleState, roleReasons, channels, state, canEdit, message, problem, reasons } = Astro.props;
+const roleOf = (kind: string) => roleBoards.find((entry) => entry.kind === kind) ?? null;
 const day = (iso: string | null) => {
   const date = iso ? new Date(iso) : null;
   return date && Number.isFinite(date.getTime()) ? date.toLocaleString(dashLang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 };
 const ready = state === 'ok';
 const editable = ready && canEdit;
+const roleEditable = editable && roleState === 'ok';
 const kindTitle = (kind: string) => (kind === 'voice' ? dt('Voice leaderboards') : dt('Chat leaderboards'));
 const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend the most minutes in voice channels.') : dt('The members who send the most messages.'));
 ---
@@ -74,6 +81,36 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
               <button class="btn btn-ghost btn-sm" type="submit" data-confirm={dt('Remove these leaderboards and delete their messages?')} aria-label={dt('Remove')}><Icon name="ph:trash-bold" width="13" height="13" /><span>{dt('Remove')}</span></button>
             </form>
           )}
+          <div class="ab-role" data-ab-role={kind}>
+            <h3>{kind === 'voice' ? dt('Role of the most active talker') : dt('Role of the most active chatter')}</h3>
+            <p class="ab-hint ab-role-hint">{dt('When each week ends, the number 1 of the week gets this role and the one who had it loses it.')}</p>
+            {roleOf(kind)?.role && (
+              <p class="ab-where">
+                {dt('Role')} <b>{roleOf(kind)?.roleName ? `@${roleOf(kind)?.roleName}` : dt('a role that is gone')}</b> ·
+                {roleOf(kind)?.role?.holderId ? <>{' '}{dt('has it now:')}{' '}<b>{roleOf(kind)?.holderName ?? dt('a member who left')}</b></> : <>{' '}{dt('nobody has it yet')}</>}
+              </p>
+            )}
+            {roleOf(kind)?.role?.error && <p class="ab-problem">{roleReasons[roleOf(kind)!.role!.error!] ?? roleReasons.error}</p>}
+            {roleState !== 'ok' && ready && <p class="ab-problem">{roleState === 'unavailable' ? dt('The roles are not available yet. Petto is being updated: try again in a few minutes.') : dt('The roles could not be read. Try again in a moment.')}</p>}
+            <form method="POST" class="ab-form ab-form-role" data-no-dirty>
+              <input type="hidden" name="action" value="role-set" />
+              <input type="hidden" name="kind" value={kind} />
+              <label class="ab-field"><span>{dt('Role')}</span>
+                <select name="role_id" required disabled={!roleEditable}>
+                  <option value="">{dt('Choose a role')}</option>
+                  {roles.map((role) => <option value={role.id} selected={roleOf(kind)?.role?.roleId === role.id}>@{role.name}</option>)}
+                </select>
+              </label>
+              <button class="btn btn-accent btn-sm" type="submit" disabled={!roleEditable || Boolean(problem)}><Icon name="ph:check-bold" width="12" height="12" />{roleOf(kind)?.role ? dt('Save') : dt('Give this role')}</button>
+            </form>
+            {roleEditable && roleOf(kind)?.role && (
+              <form method="POST" class="ab-remove" data-no-dirty>
+                <input type="hidden" name="action" value="role-remove" />
+                <input type="hidden" name="kind" value={kind} />
+                <button class="btn btn-ghost btn-sm" type="submit" data-confirm={dt('Stop giving this role and take it from who has it?')} aria-label={dt('Remove the role')}><Icon name="ph:trash-bold" width="13" height="13" /><span>{dt('Remove the role')}</span></button>
+              </form>
+            )}
+          </div>
         </section>
       ))}
     </div>
@@ -85,6 +122,7 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
         <li>{dt('Days, weeks (Monday to Sunday) and months are counted in GMT-5, the time of Petto.')}</li>
         <li>{dt('Petto uses the numbers it already keeps for the statistics of the server, never what was said. Members who asked not to be counted, bots and members who left are not shown.')}</li>
         <li>{dt('Petto needs View Channel, Send Messages and Read Message History in the channel. If you change the channel, the old messages are deleted and the three are written again in the new one.')}</li>
+        <li>{dt('The role goes to the number 1 of the week when the week ends (Monday, GMT-5). Petto needs Manage Roles and the role has to be below its highest role. When you choose a role, last week\'s number 1 gets it within a few minutes.')}</li>
       </ul>
     </section>
   </div>
@@ -117,6 +155,9 @@ const kindHint = (kind: string) => (kind === 'voice' ? dt('The members who spend
   .ab-field select:disabled { opacity: .6; }
   .ab-form button[type="submit"] { align-self: flex-start; }
   .ab-form button[type="submit"]:disabled { opacity: .5; cursor: not-allowed; }
+  .ab-role { border-top: 1px solid var(--border); margin-top: 6px; }
+  .ab-role h3 { font-size: 14px; margin: 0; padding: 12px 16px 0; }
+  .ab-role-hint { padding-top: 4px; }
   .ab-remove { margin: 0; padding: 0 16px 14px; }
   .ab-remove :global(button) { color: var(--red, #e5484d); }
   .ab-how { margin-top: 16px; }

@@ -6,6 +6,8 @@ export const KINDS = Object.freeze(['chat', 'voice']);
 export const SNOWFLAKE = /^\d{15,25}$/;
 /** The reasons the bot saves when it cannot write a board (`last_error`). */
 export const REASONS = Object.freeze(['statsOff', 'membersOff', 'channel', 'permissions', 'error']);
+/** The reasons the bot saves when it cannot give the role of the most active member (`activity_top_roles.last_error`). */
+export const ROLE_REASONS = Object.freeze(['statsOff', 'membersOff', 'role', 'permissions', 'error']);
 
 /**
  * What the form sent, checked: the kind, and a channel of the server (`channelIds` are the text and announcement channels it has).
@@ -58,4 +60,29 @@ export function canEditActivityBoards(guild) {
   } catch {
     return false;
   }
+}
+
+/**
+ * The role the form sent, checked: the kind, and a role of the server that Petto can hand out at all (`roles` are the roles of the server with `id` and `managed`; `guildId` is the
+ * id of @everyone). That Petto is above the role is not checked here: the bot checks it when it gives the role and the page shows what it says.
+ * Returns `{ ok: true, role: { kind, role_id } }` or `{ ok: false, error: 'badKind' | 'badRole' }`.
+ * @param {{ kind: unknown, roleId: unknown, roles: { id: string, managed?: boolean }[], guildId: string }} input
+ */
+export function validateRole({ kind, roleId, roles, guildId }) {
+  if (!KINDS.includes(String(kind))) return { ok: false, error: 'badKind' };
+  const id = String(roleId ?? '');
+  const role = SNOWFLAKE.test(id) && id !== String(guildId) ? roles.find((each) => String(each.id) === id) : null;
+  if (!role || role.managed) return { ok: false, error: 'badRole' };
+  return { ok: true, role: { kind: String(kind), role_id: id } };
+}
+
+/** A row of `activity_top_roles` as the page shows it. */
+export function cleanRole(row) {
+  const error = ROLE_REASONS.includes(String(row?.last_error ?? '')) ? String(row.last_error) : null;
+  return {
+    kind: KINDS.includes(String(row?.kind)) ? String(row.kind) : 'chat',
+    roleId: SNOWFLAKE.test(String(row?.role_id ?? '')) ? String(row.role_id) : '',
+    holderId: SNOWFLAKE.test(String(row?.holder_id ?? '')) ? String(row.holder_id) : null,
+    error,
+  };
 }

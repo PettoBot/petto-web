@@ -6,7 +6,7 @@ import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { getCachedUserGuilds } from '../../../../utils/discordCache';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { KINDS, canEditActivityBoards, cleanBoard, messageIds, statsProblem, validateBoard } from '../../../../utils/activityBoards.mjs';
+import { KINDS, canEditActivityBoards, cleanBoard, cleanRole, messageIds, statsProblem, validateBoard, validateRole } from '../../../../utils/activityBoards.mjs';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const { id } = Astro.params as { id: string };
@@ -33,6 +33,7 @@ if (!auth.devView && !auth.access) {
 const errors: Record<string, string> = {
   badKind: dt('Choose chat or voice.'),
   badChannel: dt('Choose a text or announcement channel of this server.'),
+  badRole: dt('Choose a role of this server that is not @everyone and not the role of a bot or of boosters.'),
   statsOff: dt('This server turned its statistics off, so there is nothing to show.'),
   membersOff: dt('This server keeps statistics without members, so there is no leaderboard of members.'),
 };
@@ -44,18 +45,36 @@ const reasons: Record<string, string> = {
   permissions: dt('Petto needs View Channel, Send Messages and Read Message History in that channel.'),
   error: dt('Something went wrong. Petto will try again in a few minutes.'),
 };
+// What the bot saved when it could not give the role of the most active member.
+const roleReasons: Record<string, string> = {
+  statsOff: errors.statsOff,
+  membersOff: errors.membersOff,
+  role: dt('Petto cannot use that role: it was deleted, or it is @everyone or the role of a bot or of boosters.'),
+  permissions: dt('Petto needs Manage Roles, and that role has to be below its highest role.'),
+  error: dt('Something went wrong. Petto will try again in an hour.'),
+};
 const tableMissing = (res: Response | null, body: any) => Boolean(res && (res.status === 404 || ['PGRST205', '42P01'].includes(String(body?.code ?? ''))));
 
 let message: { kind: 'ok' | 'err'; text: string } | null = null;
 let missingAfterWrite = false;
-const [guildInfo, channelsRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'channels')]);
+const [guildInfo, channelsRes, rolesRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'channels'), getGuildList(Astro, id, botToken, 'roles')]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const allChannels: any[] = channelsRes.ok ? ((await channelsRes.json().catch(() => [])) as any[]) : [];
 const textChannels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0));
 const channelById = new Map(textChannels.map((c: any) => [String(c.id), c]));
+const allRoles: any[] = rolesRes.ok ? ((await rolesRes.json().catch(() => [])) as any[]) : [];
+// Roles that can be handed out: not @everyone, not the role of a bot or of boosters. The highest first, as Discord shows them.
+const usableRoles = allRoles.filter((r: any) => String(r.id) !== id && !r.managed).sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0));
+const roleById = new Map(allRoles.map((r: any) => [String(r.id), r]));
 
 const readRows = async () => {
   const res = await fetch(`${apiUrl}/rest/v1/activity_leaderboards?guild_id=eq.${id}&select=*&order=kind.asc`, { headers: apiHeaders }).catch(() => null);
+  const body: any = res ? await res.json().catch(() => null) : null;
+  if (res?.ok && Array.isArray(body)) return { state: 'ok' as const, rows: body as any[] };
+  return { state: tableMissing(res, body) ? ('unavailable' as const) : ('error' as const), rows: [] as any[] };
+};
+const readRoleRows = async () => {
+  const res = await fetch(`${apiUrl}/rest/v1/activity_top_roles?guild_id=eq.${id}&select=*&order=kind.asc`, { headers: apiHeaders }).catch(() => null);
   const body: any = res ? await res.json().catch(() => null) : null;
   if (res?.ok && Array.isArray(body)) return { state: 'ok' as const, rows: body as any[] };
   return { state: tableMissing(res, body) ? ('unavailable' as const) : ('error' as const), rows: [] as any[] };
@@ -72,7 +91,16 @@ const deleteMessages = async (channelId: string, ids: string[]) => {
   }
 };
 
+// The role of the most active member goes away from who has it when the role changes or is removed (best effort: they may have left, or Petto may not be allowed).
+const takeRole = async (holderId: unknown, roleId: unknown) => {
+  const holder = String(holderId ?? '');
+  const role = String(roleId ?? '');
+  if (!/^\d{15,25}$/.test(holder) || !/^\d{15,25}$/.test(role)) return;
+  await fetch(`https://discord.com/api/v10/guilds/${id}/members/${holder}/roles/${role}`, { method: 'DELETE', headers: { Authorization: `Bot ${botToken}` } }).catch(() => null);
+};
+
 let loaded = await readRows();
+let loadedRoles = await readRoleRows();
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
@@ -98,6 +126,36 @@ if (Astro.request.method === 'POST') {
       if (res?.ok) message = { kind: 'ok', text: dt('Saved. Petto writes the three cards within a few minutes.') };
       else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
     }
+  } else if (action === 'role-set' || action === 'role-remove') {
+    const currentRole = loadedRoles.rows.find((row) => row.kind === kind);
+    if (loadedRoles.state !== 'ok') message = { kind: 'err', text: loadedRoles.state === 'unavailable' ? dt('The roles are not available yet. Petto is being updated: try again in a few minutes.') : dt('The roles could not be read. Try again in a moment.') };
+    else if (action === 'role-remove') {
+      if (!KINDS.includes(kind)) message = { kind: 'err', text: errors.badKind };
+      else if (!currentRole) message = { kind: 'err', text: dt('Something went wrong, try again.') };
+      else {
+        const res = await fetch(`${apiUrl}/rest/v1/activity_top_roles?guild_id=eq.${id}&kind=eq.${kind}`, { method: 'DELETE', headers: apiHeaders }).catch(() => null);
+        if (res?.ok) { await takeRole(currentRole.holder_id, currentRole.role_id); message = { kind: 'ok', text: dt('Role removed.') }; }
+        else message = { kind: 'err', text: dt('Something went wrong, try again.') };
+      }
+    } else {
+      const checked = validateRole({ kind, roleId: form.get('role_id'), roles: usableRoles.map((r: any) => ({ id: String(r.id), managed: false })), guildId: id });
+      if (!checked.ok) message = { kind: 'err', text: errors[checked.error] ?? dt('Something went wrong, try again.') };
+      else if (problem) message = { kind: 'err', text: errors[problem] };
+      else {
+        await ensureGuildRow(apiUrl, apiHeaders, id);
+        const sameRole = currentRole && String(currentRole.role_id) === checked.role.role_id;
+        // Another role: the old one is taken from who has it. The same role keeps its holder. Either way it is due now: last week's number 1 gets it at the next look.
+        if (currentRole && !sameRole) await takeRole(currentRole.holder_id, currentRole.role_id);
+        const res = sameRole
+          ? await fetch(`${apiUrl}/rest/v1/activity_top_roles?guild_id=eq.${id}&kind=eq.${checked.role.kind}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ awarded_week: null, last_checked_at: null, last_error: null }) }).catch(() => null)
+          : await fetch(`${apiUrl}/rest/v1/activity_top_roles?on_conflict=guild_id,kind`, {
+            method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify({ guild_id: id, ...checked.role, holder_id: null, awarded_week: null, last_checked_at: null, last_error: null }),
+          }).catch(() => null);
+        if (res?.ok) message = { kind: 'ok', text: dt('Saved. Petto gives the role when each week ends, and last week\'s most active member gets it within a few minutes.') };
+        else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
+      }
+    }
   } else if (action === 'remove') {
     if (!KINDS.includes(kind)) message = { kind: 'err', text: errors.badKind };
     else if (!current) message = { kind: 'err', text: dt('Something went wrong, try again.') };
@@ -107,9 +165,9 @@ if (Astro.request.method === 'POST') {
       else message = { kind: 'err', text: dt('Something went wrong, try again.') };
     }
   }
-  if (message?.kind === 'ok') loaded = await readRows();
+  if (message?.kind === 'ok') { loaded = await readRows(); loadedRoles = await readRoleRows(); }
 }
-if (missingAfterWrite) loaded = { state: 'unavailable', rows: [] };
+if (missingAfterWrite) { loaded = { state: 'unavailable', rows: [] }; loadedRoles = { state: 'unavailable', rows: [] }; }
 
 const byKind = new Map(loaded.rows.map((row) => [String(row.kind), cleanBoard(row)]));
 const boards = KINDS.map((kind) => {
@@ -117,7 +175,20 @@ const boards = KINDS.map((kind) => {
   const channel = board?.channelId ? channelById.get(board.channelId) : null;
   return { kind, board, channelName: board ? (channel ? String(channel.name) : null) : null };
 });
+const roleByKind = new Map(loadedRoles.rows.map((row) => [String(row.kind), cleanRole(row)]));
+// Who has each role now: the name Discord shows for them (best effort; a member who left shows as such).
+const holderName = async (userId: string | null) => {
+  if (!userId) return null;
+  const res = await fetch(`https://discord.com/api/v10/guilds/${id}/members/${userId}`, { headers: { Authorization: `Bot ${botToken}` } }).catch(() => null);
+  const member: any = res?.ok ? await res.json().catch(() => null) : null;
+  return member ? String(member.nick ?? member.user?.global_name ?? member.user?.username ?? '') || null : null;
+};
+const roleBoards = await Promise.all(KINDS.map(async (kind) => {
+  const role = roleByKind.get(kind) ?? null;
+  const found = role?.roleId ? roleById.get(role.roleId) : null;
+  return { kind, role, roleName: role ? (found ? String(found.name) : null) : null, holderName: role ? await holderName(role.holderId) : null };
+}));
 const channels = textChannels.map((c: any) => ({ id: String(c.id), name: String(c.name) }));
 ---
 <DashActivityBoards user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'}
-  boards={boards} channels={channels} state={loaded.state} canEdit={canEdit} message={message} problem={problem ? errors[problem] : null} reasons={reasons} />
+  boards={boards} roleBoards={roleBoards} roles={usableRoles.map((r: any) => ({ id: String(r.id), name: String(r.name) }))} roleState={loadedRoles.state} roleReasons={roleReasons} channels={channels} state={loaded.state} canEdit={canEdit} message={message} problem={problem ? errors[problem] : null} reasons={reasons} />
