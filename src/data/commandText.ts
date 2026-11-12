@@ -71,7 +71,7 @@ export const commandText: Record<string, CommandText> = {
   levels: ['Levels and XP: your rank, the leaderboard of the server and the settings of the leveling system.', 'Niveles y XP: tu rango, la tabla del servidor y los ajustes del sistema de niveles.', 'Níveis e XP: seu rank, o ranking do servidor e as configurações do sistema de níveis.'],
   level: ['Configure the XP and leveling system, rewards, and multipliers.', 'Configura el sistema de XP y niveles, sus recompensas y multiplicadores.', 'Configura o sistema de XP e níveis, suas recompensas e multiplicadores.'],
   rank: ['View your level and XP rank, or someone else’s.', 'Consulta tu nivel y rango de XP, o el de otra persona.', 'Consulta seu nível e ranking de XP, ou o de outra pessoa.'],
-  top: ['Server XP leaderboard.', 'Tabla de clasificación de XP del servidor.', 'Ranking de XP do servidor.'],
+  leaderboard: ['Server XP leaderboard.', 'Tabla de clasificación de XP del servidor.', 'Ranking de XP do servidor.'],
   rep: ['A simple reputation point members can give each other.', 'Un punto de reputación simple que los miembros pueden darse entre sí.', 'Um ponto de reputação simples que os membros podem dar uns aos outros.'],
 
   giveaway: ['Run and manage giveaways, with templates, messages, and entry modes.', 'Crea y administra sorteos, con plantillas, mensajes y modos de entrada.', 'Cria e gerencia sorteios, com modelos, mensagens e modos de entrada.'],

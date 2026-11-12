@@ -40,7 +40,7 @@ interface GeneratedCommand {
 const categoryOf: Record<string, string[]> = {
   moderation: ['banlist', 'mutelist', 'jaillist', 'jailsetup', 'warnescalation', 'imagemute', 'imageunmute', 'reactionmute', 'reactionunmute', 'protect', 'mod', 'modtools', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
   tickets: ['ticket', 'quickreply', 'forum', 'forumconfig'],
-  leveling: ['levels', 'level', 'rank', 'top', 'rep'],
+  leveling: ['levels', 'level', 'rank', 'leaderboard', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
   automation: ['automation', 'message', 'automod', 'autoresponder', 'autothread', 'customcommand', 'disablecommand', 'honeypot', 'roletrigger', 'rolequota', 'reaction', 'reactionrole', 'starboard', 'monkeyboard', 'clownboard', 'stickymessage', 'stickyroles', 'timer', 'voicemaster', 'responder', 'panel', 'vanity', 'guildtag', 'identity', 'feed', 'messagelinks'],
   community: ['community', 'social', 'contributions', 'specialchannels', 'remind', 'invites', 'afk', 'me', 'birthday', 'profilehistory', 'boosterrole', 'report', 'poll', 'counter', 'steal', 'partner', 'partnerconfig', 'uploads', 'uploadconfig', 'request', 'requestconfig', 'form', 'review', 'profile', 'profileconfig', 'quests', 'globalranking', 'votes', 'confession', 'confess', 'suggestion', 'suggest', 'counting', 'rollouts', 'imgonly', 'urlonly'],
