@@ -2,7 +2,7 @@
 // what a row looks like on the page, and that the page is in the menu, the modules list, the module statuses and the role access sections, and closed to Support mode.
 // Run: node scripts/check-dash-activity-boards.mjs
 import { readFileSync } from 'node:fs';
-import { KINDS, REASONS, ROLE_REASONS, canEditActivityBoards, cleanBoard, cleanRole, messageIds, statsProblem, validateBoard, validateRole } from '../src/utils/activityBoards.mjs';
+import { KINDS, PERIODS, REASONS, cleanPeriods, ROLE_REASONS, canEditActivityBoards, cleanBoard, cleanRole, messageIds, statsProblem, validateBoard, validateRole } from '../src/utils/activityBoards.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -20,7 +20,15 @@ same('kinds', [...KINDS], ['chat', 'voice']);
 same('reasons the bot saves', [...REASONS], ['statsOff', 'membersOff', 'channel', 'permissions', 'error']);
 
 // --- what the form sends ---
-same('a good board', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH, OTHER] }), { ok: true, board: { kind: 'chat', channel_id: CH } });
+same('the same periods, in the same order, as the bot', [...PERIODS], ['monthly', 'weekly', 'daily']);
+same('a good board has all the cards when none is said', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH, OTHER] }), { ok: true, board: { kind: 'chat', channel_id: CH, periods: ['monthly', 'weekly', 'daily'] } });
+same('only the week', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH], periods: ['weekly'] }).board.periods, ['weekly']);
+same('the checked boxes are put in order, once each', validateBoard({ kind: 'voice', channelId: CH, channelIds: [CH], periods: ['daily', 'monthly', 'daily'] }).board.periods, ['monthly', 'daily']);
+same('a word that is not a period is dropped', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH], periods: ['weekly', 'hourly'] }).board.periods, ['weekly']);
+same('no box checked is refused', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH], periods: [] }).error, 'badPeriods');
+same('only things that are not periods is refused', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH], periods: ['hourly'] }).error, 'badPeriods');
+same('periods that are not a list are refused', validateBoard({ kind: 'chat', channelId: CH, channelIds: [CH], periods: 'weekly' }).error, 'badPeriods');
+same('cleanPeriods of a row from before the choice (none) is all of them', [cleanPeriods(undefined), cleanPeriods(null), cleanPeriods([])], [['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily'], ['monthly', 'weekly', 'daily']]);
 same('voice too', validateBoard({ kind: 'voice', channelId: OTHER, channelIds: [CH, OTHER] }).ok, true);
 same('a kind that does not exist', validateBoard({ kind: 'text', channelId: CH, channelIds: [CH] }).error, 'badKind');
 same('no kind', validateBoard({ kind: undefined, channelId: CH, channelIds: [CH] }).error, 'badKind');
@@ -31,6 +39,8 @@ same('no channel', validateBoard({ kind: 'chat', channelId: '', channelIds: [CH]
 // --- what a row looks like ---
 const clean = cleanBoard({ kind: 'voice', channel_id: CH, last_refreshed_at: '2026-11-12T02:00:00Z', last_error: null, daily_message_id: '1290000000000000301', weekly_message_id: '1290000000000000302', monthly_message_id: null });
 same('a clean row', [clean.kind, clean.channelId, clean.refreshedAt, clean.error, clean.messages], ['voice', CH, '2026-11-12T02:00:00.000Z', null, 2]);
+same('the cards of a row', cleanBoard({ kind: 'chat', channel_id: CH, periods: ['daily', 'weekly'] }).periods, ['weekly', 'daily']);
+same('a row without the column has all the cards', cleanBoard({ kind: 'chat', channel_id: CH }).periods, ['monthly', 'weekly', 'daily']);
 same('waiting to be written', cleanBoard({ kind: 'chat', channel_id: CH, last_refreshed_at: null }).refreshedAt, null);
 same('a reason the bot saved is kept', cleanBoard({ kind: 'chat', channel_id: CH, last_error: 'permissions' }).error, 'permissions');
 same('a reason that is not one of them is dropped', cleanBoard({ kind: 'chat', channel_id: CH, last_error: 'SELECT * FROM x' }).error, null);
@@ -86,6 +96,11 @@ check('the role is written only by who can edit and with the same validation', /
 check('only roles that can be handed out are kept', /usableRoles\.map/.test(page) && /!r\.managed/.test(page));
 check('a role that changes or goes away is taken from who has it', (page.match(/await takeRole\(/g) ?? []).length === 2);
 check('choosing a role makes it due at once', /awarded_week: null, last_checked_at: null, last_error: null/.test(page));
+check('the cards that are checked are sent to the validation and saved in both writes', /periods: form\.getAll\('periods'\)/.test(page) && /periods: checked\.board\.periods, last_refreshed_at: null/.test(page) && /\.\.\.checked\.board, daily_message_id: null/.test(page));
+check('a board with no cards is refused with its own message', /badPeriods: dt\(/.test(page));
+const component = read('src/components/DashActivityBoards.astro');
+check('the form has a box for each period, in the order they are posted', /name="periods"/.test(component) && /value: 'monthly'.*value: 'weekly'.*value: 'daily'/.test(component.replace(/\n/g, ' ')));
+check('nothing says that the boards are updated every hour any more', !/once an hour|updated every hour/.test(component + page));
 check('the menu', /id: 'activity-boards'/.test(read('src/components/DashGuildLayout.astro')));
 check('the modules list', /id: 'activity-boards'/.test(read('src/utils/dashModules.ts')));
 check('the module statuses', /set\('activity-boards'/.test(read('src/utils/moduleStatuses.ts')));

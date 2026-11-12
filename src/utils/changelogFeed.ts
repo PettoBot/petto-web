@@ -6,7 +6,9 @@ const SITE = 'https://petto.sbs';
 const RSS_LANGUAGE: Record<Locale, string> = { en: 'en', es: 'es', 'pt-BR': 'pt-BR' };
 const MONTHS: Record<string, number> = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
 
-type Entry = { version: string; display?: string; name?: string; date: string; items: readonly string[] };
+/** A block that stands out above the list of a version: a security notice (red), a warning (yellow), a change that breaks something (orange) or plain information. */
+export type Notice = { kind: 'security' | 'warning' | 'breaking' | 'info' | string; title: string; text: string };
+type Entry = { version: string; display?: string; name?: string; date: string; items: readonly string[]; notices?: readonly Notice[] };
 
 /**
  * Compares two versions of the changelog: `0.7.9` < `0.7.9-1` < `0.7.10`. A patch (`-1`, shown `~1`) comes after the version it patches, and a
@@ -56,9 +58,11 @@ const escapeXml = (text: string) => plainText(text).replace(/&/g, '&amp;').repla
 
 /** A short summary of a version: its first changes, as plain text. */
 function summary(entry: Entry): string {
-  const lines = entry.items.slice(0, 3).map((item) => clip(plainText(item), 220));
-  const more = entry.items.length - lines.length;
-  return clip(lines.join(' · '), 700) + (more > 0 ? ` (+${more})` : '');
+  // A notice comes first: someone who only reads the feed should not miss a security notice.
+  const notices = (entry.notices ?? []).map((notice) => clip(plainText(`${notice.title}: ${notice.text}`), 320));
+  const lines = [...notices, ...entry.items.slice(0, 3).map((item) => clip(plainText(item), 220))];
+  const more = entry.items.length - Math.min(entry.items.length, 3);
+  return clip(lines.join(' · '), 1000) + (more > 0 ? ` (+${more})` : '');
 }
 
 export function changelogFeedUrl(lang: Locale): string {

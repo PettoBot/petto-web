@@ -33,6 +33,7 @@ if (!auth.devView && !auth.access) {
 const errors: Record<string, string> = {
   badKind: dt('Choose chat or voice.'),
   badChannel: dt('Choose a text or announcement channel of this server.'),
+  badPeriods: dt('Choose at least one card: the month, the week or the day.'),
   badRole: dt('Choose a role of this server that is not @everyone and not the role of a bot or of boosters.'),
   statsOff: dt('This server turned its statistics off, so there is nothing to show.'),
   membersOff: dt('This server keeps statistics without members, so there is no leaderboard of members.'),
@@ -109,21 +110,22 @@ if (Astro.request.method === 'POST') {
   if (!canEdit) message = { kind: 'err', text: dt('Only people with Manage Server can change the leaderboards, the same as the command.') };
   else if (loaded.state !== 'ok') message = { kind: 'err', text: loaded.state === 'unavailable' ? dt('The leaderboards are not available yet. Petto is being updated: try again in a few minutes.') : dt('The leaderboards could not be read. Try again in a moment.') };
   else if (action === 'set') {
-    const checked = validateBoard({ kind, channelId: form.get('channel_id'), channelIds: [...channelById.keys()] });
+    const checked = validateBoard({ kind, channelId: form.get('channel_id'), channelIds: [...channelById.keys()], periods: form.getAll('periods').map(String) });
     if (!checked.ok) message = { kind: 'err', text: errors[checked.error] ?? dt('Something went wrong, try again.') };
     else if (problem) message = { kind: 'err', text: errors[problem] };
     else {
       await ensureGuildRow(apiUrl, apiHeaders, id);
       const sameChannel = current && String(current.channel_id) === checked.board.channel_id;
-      // Another channel: the old messages are deleted and the three are written again in the new one; the same channel: Petto goes on editing them.
+      // Another channel: the old messages are deleted and the cards are written again in the new one; the same channel: Petto goes on editing them (it deletes the card of a period that
+      // was taken away, and writes them all again when one was added).
       if (current && !sameChannel) await deleteMessages(String(current.channel_id), messageIds(current));
       const res = sameChannel
-        ? await fetch(`${apiUrl}/rest/v1/activity_leaderboards?guild_id=eq.${id}&kind=eq.${checked.board.kind}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ last_refreshed_at: null, last_error: null }) }).catch(() => null)
+        ? await fetch(`${apiUrl}/rest/v1/activity_leaderboards?guild_id=eq.${id}&kind=eq.${checked.board.kind}`, { method: 'PATCH', headers: { ...apiHeaders, Prefer: 'return=minimal' }, body: JSON.stringify({ periods: checked.board.periods, last_refreshed_at: null, last_error: null }) }).catch(() => null)
         : await fetch(`${apiUrl}/rest/v1/activity_leaderboards?on_conflict=guild_id,kind`, {
           method: 'POST', headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
           body: JSON.stringify({ guild_id: id, ...checked.board, daily_message_id: null, weekly_message_id: null, monthly_message_id: null, last_refreshed_at: null, last_error: null }),
         }).catch(() => null);
-      if (res?.ok) message = { kind: 'ok', text: dt('Saved. Petto writes the three cards within a few minutes.') };
+      if (res?.ok) message = { kind: 'ok', text: dt('Saved. Petto writes the cards within a few minutes.') };
       else { missingAfterWrite = tableMissing(res, await res?.json().catch(() => null)); message = { kind: 'err', text: dt('Something went wrong, try again.') }; }
     }
   } else if (action === 'role-set' || action === 'role-remove') {
