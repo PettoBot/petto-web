@@ -5,14 +5,15 @@ import type { Session } from '../utils/session';
 import DashPanelHead from './DashPanelHead.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 
-// The changelog editor (staff only): write a version in Markdown, with notices (security, warning, breaking, information) that stand out above the list, in the three
-// languages, with a live preview that looks like the public changelog. The form keeps its state in the page and sends it as one JSON field.
+// The changelog editor (staff only, Staff → Changelog): write a version in Markdown, with notices (security, warning, breaking, information) that stand out above the list, in the
+// three languages, with a live preview that looks like the public changelog. The form keeps its state in the page and sends it as one JSON field; the page that receives it
+// (src/pages/dash/changelog-admin.astro) checks it again and saves it in the `site_changelog` table, and the public changelog shows the published ones.
 interface Notice { kind: string; title: string; text: string }
 interface Lang { notices: Notice[]; items: string[] }
 interface Draft { version: string; name: string; date: string; published: boolean; langs: Record<'en' | 'es' | 'pt', Lang> }
-interface Row { version: string; name: string; date: string; published: boolean; notices: number }
-interface Props { user: Session; rows: Row[]; draft: Draft; error?: string; saved?: boolean }
-const { user, rows, draft, error, saved = false } = Astro.props;
+interface Row { version: string; name: string; date: string; published: boolean; notices: number; source: 'db' | 'code' }
+interface Props { user: Session; rows: Row[]; draft: Draft; isNew?: boolean; inDb?: boolean; inCode?: boolean; error?: string; saved?: boolean; deleted?: boolean; unavailable?: boolean }
+const { user, rows, draft, isNew = false, inDb = false, inCode = false, error, saved = false, deleted = false, unavailable = false } = Astro.props;
 const dt = makeT(getDashLang(Astro));
 const kinds = [
   { value: 'security', label: dt('Security notice') },
@@ -23,7 +24,7 @@ const kinds = [
 const tabs = [{ key: 'en', label: 'English' }, { key: 'es', label: 'Español' }, { key: 'pt', label: 'Português' }];
 ---
 
-<DashMeLayout user={user} active="staff-credits" pageTitle="Changelog">
+<DashMeLayout user={user} active="staff-changelog" pageTitle="Changelog">
   <div class="ce-wrap" data-ce>
     <DashPanelHead title={dt('Changelog')} eyebrow={dt('Staff')} icon="ph:clock-counter-clockwise-fill" back={false}>
       <a class="btn btn-ghost btn-sm" href="/changelog" target="_blank" rel="noopener"><Icon name="ph:arrow-square-out" width="14" height="14" /> {dt('See the page')}</a>
@@ -31,25 +32,35 @@ const tabs = [{ key: 'en', label: 'English' }, { key: 'es', label: 'Español' },
 
     {error && <div class="ce-alert error"><Icon name="ph:warning-fill" width="17" height="17" /> {error}</div>}
     {saved && !error && <div class="ce-alert success"><Icon name="ph:check-circle-fill" width="17" height="17" /> {dt('Saved.')}</div>}
+    {deleted && !error && <div class="ce-alert success"><Icon name="ph:check-circle-fill" width="17" height="17" /> {dt('Removed from the database.')}</div>}
+    {unavailable && <div class="ce-alert error"><Icon name="ph:plug-fill" width="17" height="17" /> {dt('The database could not be read, so only the versions written in the code are listed. Saving may not work.')}</div>}
 
     <div class="ce-versions">
       {rows.map((row) => (
-        <button type="button" class:list={['ce-version', { 'is-current': row.version === draft.version }]}>
+        <a href={`/dash/changelog-admin?v=${encodeURIComponent(row.version)}`} class:list={['ce-version', { 'is-current': !isNew && row.version === draft.version }]}>
           <b>v{row.version}</b>{row.name && <span> “{row.name}”</span>}
           <small>{row.date}</small>
           {row.notices > 0 && <i class="ce-pill ce-pill-red"><Icon name="ph:shield-warning-fill" width="11" height="11" /> {row.notices}</i>}
           {!row.published && <i class="ce-pill">{dt('Draft')}</i>}
-        </button>
+          {row.source === 'code' && <i class="ce-pill">{dt('In the code')}</i>}
+        </a>
       ))}
-      <button type="button" class="ce-version ce-new"><Icon name="ph:plus-bold" width="13" height="13" /> {dt('New version')}</button>
+      <a href="/dash/changelog-admin?new=1" class:list={['ce-version', 'ce-new', { 'is-current': isNew }]}><Icon name="ph:plus-bold" width="13" height="13" /> {dt('New version')}</a>
     </div>
 
+    <p class="ce-origin">
+      {isNew ? dt('A new version. It is not shown on the site until you save it as published.')
+        : inDb ? dt('Saved in the database. Published versions show on the changelog and in its RSS feed within a minute.')
+        : dt('Written in the code of the website. Saving it here replaces it on the site with what you write.')}
+    </p>
+
     <form method="POST" class="ce-grid" data-no-dirty>
+      <input type="hidden" name="action" value="save" />
       <input type="hidden" name="draft" value="" data-ce-json />
       <section class="ce-editor">
         <div class="ce-card">
           <div class="ce-fields">
-            <label>{dt('Version')}<input data-ce-field="version" value={draft.version} placeholder="0.7.12" maxlength="20" /></label>
+            <label>{dt('Version')}<input data-ce-field="version" value={draft.version} placeholder="0.7.12" maxlength="20" readonly={!isNew} required /></label>
             <label>{dt('Code name')}<input data-ce-field="name" value={draft.name} placeholder="Brownie" maxlength="40" /></label>
             <label>{dt('Date')}<input data-ce-field="date" type="date" value={draft.date} /></label>
             <label class="ce-check"><input data-ce-field="published" type="checkbox" checked={draft.published} /> {dt('Published')}</label>
@@ -99,6 +110,13 @@ const tabs = [{ key: 'en', label: 'English' }, { key: 'es', label: 'Español' },
         </div>
       </aside>
     </form>
+    {inDb && (
+      <form method="POST" class="ce-delete" data-no-dirty>
+        <input type="hidden" name="action" value="delete" />
+        <input type="hidden" name="version" value={draft.version} />
+        <button class="btn btn-ghost btn-sm" type="submit" data-confirm={inCode ? dt('Remove this version from the database? The one written in the code shows again.') : dt('Remove this version from the database? It disappears from the site.')}><Icon name="ph:trash-bold" width="13" height="13" /> {dt('Remove from the database')}</button>
+      </form>
+    )}
   </div>
 </DashMeLayout>
 
@@ -195,6 +213,10 @@ const tabs = [{ key: 'en', label: 'English' }, { key: 'es', label: 'Español' },
   .ce-alert { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 11px 14px; font-size: 13.5px; margin-bottom: 14px; border: 1px solid; }
   .ce-alert.error { color: var(--red, #fe6465); background: color-mix(in srgb, currentColor 10%, transparent); }
   .ce-alert.success { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+  .ce-origin { margin: 0 0 14px; font-size: 13px; color: var(--text-dim); }
+  .ce-delete { margin: 18px 0 0; }
+  .ce-delete :global(button) { color: var(--red, #e5484d); }
+  .ce-version { text-decoration: none; }
   .ce-versions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
   .ce-version { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--border-soft); border-radius: 999px; padding: 7px 14px; background: transparent; color: var(--text-muted); font-family: var(--sans); font-size: 13px; cursor: pointer; }
   .ce-version b { color: var(--text); }

@@ -4,5 +4,5 @@ import type { APIRoute } from 'astro';
 import { changelogRssResponse } from '../../utils/changelogFeed';
 
 export const prerender = false;
-export const GET: APIRoute = () => changelogRssResponse('en');
-export const HEAD: APIRoute = () => changelogRssResponse('en', 'HEAD');
+export const GET: APIRoute = (context) => changelogRssResponse('en', 'GET', context);
+export const HEAD: APIRoute = (context) => changelogRssResponse('en', 'HEAD', context);
