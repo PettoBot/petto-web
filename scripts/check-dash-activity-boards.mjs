@@ -47,6 +47,9 @@ same('a reason that is not one of them is dropped', cleanBoard({ kind: 'chat', c
 same('a channel that is not an id is dropped', cleanBoard({ kind: 'chat', channel_id: 'x' }).channelId, '');
 same('a date that cannot be read', cleanBoard({ kind: 'chat', channel_id: CH, last_refreshed_at: 'nope' }).refreshedAt, null);
 same('the messages to delete, the month first', messageIds({ daily_message_id: '1290000000000000301', weekly_message_id: null, monthly_message_id: '1290000000000000303' }), ['1290000000000000303', '1290000000000000301']);
+same('the one message of a board is deleted, and so are the ones of the older way', messageIds({ message_id: '1290000000000000300', daily_message_id: '1290000000000000301', weekly_message_id: '1290000000000000302', monthly_message_id: '1290000000000000303' }), ['1290000000000000300', '1290000000000000303', '1290000000000000302', '1290000000000000301']);
+same('a board of one message counts one', cleanBoard({ kind: 'chat', channel_id: CH, message_id: '1290000000000000300' }).messages, 1);
+same('an id that is not one is not deleted', messageIds({ message_id: 'x; drop table', daily_message_id: '1290000000000000301' }), ['1290000000000000301']);
 same('no messages', messageIds({}), []);
 
 // --- statistics off, or kept without members: no board can show anything ---
@@ -96,7 +99,7 @@ check('the role is written only by who can edit and with the same validation', /
 check('only roles that can be handed out are kept', /usableRoles\.map/.test(page) && /!r\.managed/.test(page));
 check('a role that changes or goes away is taken from who has it', (page.match(/await takeRole\(/g) ?? []).length === 2);
 check('choosing a role makes it due at once', /awarded_week: null, last_checked_at: null, last_error: null/.test(page));
-check('the cards that are checked are sent to the validation and saved in both writes', /periods: form\.getAll\('periods'\)/.test(page) && /periods: checked\.board\.periods, last_refreshed_at: null/.test(page) && /\.\.\.checked\.board, daily_message_id: null/.test(page));
+check('the cards that are checked are sent to the validation and saved in both writes', /periods: form\.getAll\('periods'\)/.test(page) && /periods: checked\.board\.periods, last_refreshed_at: null/.test(page) && /\.\.\.checked\.board, message_id: null, daily_message_id: null, weekly_message_id: null, monthly_message_id: null, card_state: \{\}/.test(page));
 check('a board with no cards is refused with its own message', /badPeriods: dt\(/.test(page));
 const component = read('src/components/DashActivityBoards.astro');
 check('the form has a box for each period, in the order they are posted', /name="periods"/.test(component) && /value: 'monthly'.*value: 'weekly'.*value: 'daily'/.test(component.replace(/\n/g, ' ')));
