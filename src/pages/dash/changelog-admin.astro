@@ -1,0 +1,84 @@
+---
+// Staff → Changelog: the owner and the team write the versions of the public changelog here (table `site_changelog`, see src/utils/changelogDb.ts). The page checks everything the
+// editor sends again (src/utils/changelogStore.mjs) and never trusts the browser.
+export const prerender = false;
+import DashChangelogAdmin from '../../components/DashChangelogAdmin.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { getEnv } from '../../utils/env';
+import { canEditChangelog, deleteRow, readRows, saveRow } from '../../utils/changelogDb';
+import { codeEntries } from '../../utils/changelogFeed';
+import { cleanLang, compareVersions, draftFromCode, isoFromEnglish, validateDraft, validDate, VERSION } from '../../utils/changelogStore.mjs';
+import { makeT, getDashLang } from '../../i18n/dash';
+
+const dt = makeT(getDashLang(Astro));
+const session = await getDashboardSession(Astro);
+if (!session) return Astro.redirect('/dash');
+if (!(await canEditChangelog(Astro, session.userId))) return Astro.redirect('/dash/manage?error=forbidden');
+if (!getEnv(Astro, 'PETTO_BOT_API_URL')) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const errors: Record<string, string> = {
+  invalid: dt('That request was not valid.'),
+  version: dt('The version has to look like 0.7.12 (or 0.7.12-1 for a patch).'),
+  date: dt('Choose a real date.'),
+  empty: dt('Write at least one change or one notice in English: the other languages show it when they have nothing of their own.'),
+  database: dt('The database did not accept the change. Try again.'),
+  not_configured: dt('The dashboard is not connected to the bot database.'),
+};
+
+let error: string | undefined;
+let override: any = null;
+const rows = await readRows(Astro);
+
+if (Astro.request.method.toUpperCase() === 'POST') {
+  const origin = Astro.request.headers.get('origin');
+  if (origin && origin !== Astro.url.origin) return Astro.redirect('/dash/changelog-admin?error=invalid');
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  if (action === 'save') {
+    let parsed: any = null;
+    const text = String(form.get('draft') ?? '');
+    if (text.length <= 200_000) { try { parsed = JSON.parse(text); } catch { parsed = null; } }
+    const checked = validateDraft(parsed);
+    if (!checked.ok) { error = checked.error; override = parsed; }
+    else {
+      const result = await saveRow(Astro, checked.row as any, session.userId);
+      if (result.ok) return Astro.redirect(`/dash/changelog-admin?v=${encodeURIComponent(checked.row.version)}&saved=1`);
+      error = 'error' in result ? result.error : 'database'; override = parsed;
+    }
+  } else if (action === 'delete') {
+    const version = String(form.get('version') ?? '');
+    if (!VERSION.test(version)) return Astro.redirect('/dash/changelog-admin?error=invalid');
+    const result = await deleteRow(Astro, version);
+    return Astro.redirect(result.ok ? `/dash/changelog-admin?deleted=1` : `/dash/changelog-admin?v=${encodeURIComponent(version)}&error=${'error' in result ? result.error : 'database'}`);
+  } else return Astro.redirect('/dash/changelog-admin?error=invalid');
+}
+error ??= Astro.url.searchParams.get('error') ?? undefined;
+
+// The versions written in the code of the website, in the three languages, and the ones saved in the database.
+const code = { en: codeEntries('en'), es: codeEntries('es'), pt: codeEntries('pt-BR') };
+const codeFor = (version: string) => ({ en: code.en.find((e) => e.version === version), es: code.es.find((e) => e.version === version), pt: code.pt.find((e) => e.version === version) });
+const byVersion = new Map<string, { version: string; name: string; date: string; published: boolean; notices: number; source: 'db' | 'code' }>();
+for (const entry of code.en) byVersion.set(entry.version, { version: entry.version, name: entry.name ?? '', date: isoFromEnglish(entry.date) ?? entry.date, published: true, notices: (entry as any).notices?.length ?? 0, source: 'code' });
+for (const row of rows ?? []) byVersion.set(row.version, { version: row.version, name: row.name, date: String(row.release_date).slice(0, 10), published: row.published, notices: cleanLang(row.content?.en).notices.length, source: 'db' });
+const list = [...byVersion.values()].sort((a, b) => compareVersions(b.version, a.version));
+
+const isNew = Astro.url.searchParams.get('new') === '1' || (override && !byVersion.has(String(override.version)));
+const wanted = Astro.url.searchParams.get('v') ?? String(override?.version ?? '');
+const current = byVersion.get(wanted) ?? (isNew ? undefined : list[0]);
+const row = current ? (rows ?? []).find((r) => r.version === current.version) : undefined;
+const inCode = Boolean(current && code.en.some((e) => e.version === current.version));
+
+let draft: any;
+if (override) draft = { version: String(override.version ?? ''), name: String(override.name ?? ''), date: validDate(override.date) ?? '', published: override.published === true, langs: { en: cleanLang(override.langs?.en), es: cleanLang(override.langs?.es), pt: cleanLang(override.langs?.pt) } };
+else if (row) draft = { version: row.version, name: row.name, date: String(row.release_date).slice(0, 10), published: row.published, langs: { en: cleanLang(row.content?.en), es: cleanLang(row.content?.es), pt: cleanLang(row.content?.pt) } };
+else if (current) {
+  const found = codeFor(current.version);
+  draft = draftFromCode(current.date, current.name, current.version, { en: found.en, es: found.es, pt: found.pt });
+} else {
+  draft = { version: '', name: '', date: new Date().toISOString().slice(0, 10), published: false, langs: { en: { notices: [], items: [] }, es: { notices: [], items: [] }, pt: { notices: [], items: [] } } };
+}
+const saved = Astro.url.searchParams.get('saved') === '1';
+const deleted = Astro.url.searchParams.get('deleted') === '1';
+---
+
+<DashChangelogAdmin user={session} rows={list} draft={draft} isNew={Boolean(isNew)} inDb={Boolean(row)} inCode={inCode} error={error ? (errors[error] ?? errors.invalid) : undefined} saved={saved} deleted={deleted} unavailable={rows === null} />

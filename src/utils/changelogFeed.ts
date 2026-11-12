@@ -1,6 +1,8 @@
 // The RSS 2.0 feed of the changelog (/changelog/rss.xml, /es/changelog/rss.xml, /pt-br/changelog/rss.xml), built from the same entries as
 // the changelog pages (src/i18n/ui.ts, changelogPage.entries), so Discord bots and feed readers can follow the releases of Petto.
 import { useTranslations, localePath, type Locale } from '../i18n/ui';
+import { mergeEntries, compareVersions as compare } from './changelogStore.mjs';
+import { publishedEntries } from './changelogDb';
 
 const SITE = 'https://petto.sbs';
 const RSS_LANGUAGE: Record<Locale, string> = { en: 'en', es: 'es', 'pt-BR': 'pt-BR' };
@@ -14,23 +16,23 @@ type Entry = { version: string; display?: string; name?: string; date: string; i
  * Compares two versions of the changelog: `0.7.9` < `0.7.9-1` < `0.7.10`. A patch (`-1`, shown `~1`) comes after the version it patches, and a
  * version without a patch number before any of its patches.
  */
-export function compareVersions(a: string, b: string): number {
-  const parse = (version: string) => {
-    const [main, patch] = String(version).split('-');
-    return { parts: main.split('.').map((part) => Number.parseInt(part, 10) || 0), patch: patch === undefined ? -1 : Number.parseInt(patch, 10) || 0 };
-  };
-  const x = parse(a);
-  const y = parse(b);
-  for (let i = 0; i < Math.max(x.parts.length, y.parts.length); i += 1) {
-    const diff = (x.parts[i] ?? 0) - (y.parts[i] ?? 0);
-    if (diff) return diff;
-  }
-  return x.patch - y.patch;
+export const compareVersions: (a: string, b: string) => number = compare;
+
+const DB_LANG: Record<Locale, 'en' | 'es' | 'pt'> = { en: 'en', es: 'es', 'pt-BR': 'pt' };
+
+/** The entries written in the code, newest first (nothing from the database, nothing asked). */
+export function codeEntries(lang: Locale): Entry[] {
+  return [...(useTranslations(lang).changelogPage.entries as readonly Entry[])].sort((a, b) => compareVersions(b.version, a.version));
 }
 
-/** The entries of a language, newest first. */
-export function changelogEntries(lang: Locale): Entry[] {
-  return [...(useTranslations(lang).changelogPage.entries as readonly Entry[])].sort((a, b) => compareVersions(b.version, a.version));
+/**
+ * The entries of a language, newest first: the ones written in the code and the published ones that the team wrote in the dashboard (a version of the table replaces the one of the
+ * same number in the code). `astro` (the page or the route) tells where the database is; without it, only the code.
+ */
+export async function changelogEntries(lang: Locale, astro?: unknown): Promise<Entry[]> {
+  const inCode = codeEntries(lang);
+  if (!astro) return inCode;
+  return mergeEntries(inCode, await publishedEntries(astro, DB_LANG[lang])) as Entry[];
 }
 
 /** The day of an English changelog date ("October 29, 2026"), at midnight UTC (never a time still to come); null when it cannot be read. */
@@ -70,12 +72,12 @@ export function changelogFeedUrl(lang: Locale): string {
 }
 
 /** The RSS 2.0 document of the changelog in a language. */
-export function changelogRss(lang: Locale): string {
+export async function changelogRss(lang: Locale, astro?: unknown): Promise<string> {
   const page = useTranslations(lang).changelogPage;
   const base = `${SITE}${localePath[lang]}`;
   // The dates are read from the English entries (one format), by version; a version with no readable date takes the time of the build.
-  const englishDates = new Map(changelogEntries('en').map((entry) => [entry.version, englishDate(entry.date)]));
-  const entries = changelogEntries(lang);
+  const englishDates = new Map((await changelogEntries('en', astro)).map((entry) => [entry.version, englishDate(entry.date)]));
+  const entries = await changelogEntries(lang, astro);
   const fallback = new Date(__BUILD_TIME__);
   // Versions of the same day get a minute each, the newest last, so a reader that sorts by date keeps them in order.
   const sameDay = new Map<number, number>();
@@ -129,8 +131,8 @@ export function changelogRss(lang: Locale): string {
 export const CHANGELOG_RSS_CACHE = 'public, max-age=900, s-maxage=3600, stale-while-revalidate=86400, stale-if-error=86400';
 
 /** The answer of a feed route. */
-export function changelogRssResponse(lang: Locale, method = 'GET'): Response {
-  const body = changelogRss(lang);
+export async function changelogRssResponse(lang: Locale, method = 'GET', astro?: unknown): Promise<Response> {
+  const body = await changelogRss(lang, astro);
   return new Response(method === 'HEAD' ? null : body, {
     headers: { 'Content-Type': 'application/rss+xml; charset=utf-8', 'Cache-Control': CHANGELOG_RSS_CACHE, 'X-Content-Type-Options': 'nosniff' },
   });
