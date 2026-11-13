@@ -2,7 +2,7 @@
 // the first check, the failure of a single window against two in a row, two sources, gaps, and the current state.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DAY_MS, RESTART_FORGIVE_MS, SLOT_MS, UNCONFIRMED_WARN_SLOTS, applyNotes, currentState, dayMarkers, dayStartOf, lastDays, restartSlots, summarizeDay } from '../src/utils/statusDays.mjs';
+import { DAY_MS, RESTART_FORGIVE_MS, SLOT_MS, UNCONFIRMED_WARN_SLOTS, applyNotes, currentState, dayMarkers, incidentDays, dayStartOf, lastDays, restartSlots, summarizeDay } from '../src/utils/statusDays.mjs';
 
 const day = Date.UTC(2026, 10, 1);
 const nextDay = day + DAY_MS;
@@ -138,5 +138,27 @@ console.log('Checked the status days: green, amber, red, grey, the days before t
     assert.match(note.day, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(Array.isArray(note.services) && note.services.length && note.services.every((id) => ['bot', 'site', 'database'].includes(id)), 'known services');
     assert.ok(Number.isFinite(note.minutes) && note.minutes > 0 && note.minutes <= 1440);
+    assert.ok(note.note && typeof note.note.en === 'string' && typeof note.note.es === 'string' && typeof note.note['pt-BR'] === 'string', 'the note is written in English, Spanish and Portuguese');
   }
+}
+
+// The list of past incidents: every recent day is there, and a day with nothing says so (like Discord Status). Days nobody measured are not listed.
+{
+  const days = lastDays(Date.UTC(2026, 10, 13, 12), 90); // ends 2026-11-13
+  const incidents = [
+    { day: '2026-11-13', service: 'bot', kind: 'down', minutes: 35, unconfirmed: 0 },
+    { day: '2026-11-13', service: 'site', kind: 'down', minutes: 35, unconfirmed: 0 },
+    { day: '2026-11-09', service: 'site', kind: 'warn', minutes: 0, unconfirmed: 3 },
+  ];
+  const list = incidentDays(days, incidents, '2026-11-04');
+  assert.equal(list.length, 10, 'from today back to the first measured day (4 November): 10 days');
+  assert.equal(list[0].day, '2026-11-13'); assert.equal(list[0].today, true, 'newest first, and today is marked');
+  assert.equal(list[0].incidents.length, 2); assert.equal(list[1].today, false);
+  assert.deepEqual(list.map((entry) => entry.incidents.length), [2, 0, 0, 0, 1, 0, 0, 0, 0, 0], 'a day with nothing is listed with no incidents');
+  assert.equal(list.at(-1).day, '2026-11-04', 'it stops at the first measured day');
+  assert.equal(incidentDays(days, incidents, '2026-10-01').length, 14, 'at most 14 days by default');
+  assert.equal(incidentDays(days, incidents, '2026-10-01', 5).length, 5);
+  assert.deepEqual(incidentDays(days, incidents, null), [], 'nothing measured yet: nothing to say');
+  assert.deepEqual(incidentDays([], incidents, '2026-11-04'), []);
+  assert.deepEqual(incidentDays(days, [], '2026-11-12').map((entry) => entry.incidents.length), [0, 0], 'two measured days with nothing');
 }

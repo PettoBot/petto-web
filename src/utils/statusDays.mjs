@@ -169,6 +169,24 @@ export function applyNotes(marks, service, notes) {
   });
 }
 
+/**
+ * The last days with what happened on each, newest first, like the "Past incidents" of Discord Status: every day is listed, and a day with nothing is there to say so.
+ * Days before the first check are not listed (nothing was measured then, so "no incidents" would be a promise nobody checked). Nothing at all before the first check.
+ * @param {string[]} days the UTC day keys, oldest first, ending today @param {{ day: string }[]} incidents @param {string | null} startedKey the first measured day or null
+ * @param {number} [count] how many days @returns {{ day: string, today: boolean, incidents: any[] }[]}
+ */
+export function incidentDays(days, incidents, startedKey, count = 14) {
+  const out = [];
+  if (!startedKey || !days.length) return out;
+  const today = days[days.length - 1];
+  for (let index = days.length - 1; index >= 0 && out.length < count; index -= 1) {
+    const day = days[index];
+    if (day < startedKey) break;
+    out.push({ day, today: day === today, incidents: incidents.filter((incident) => incident.day === day) });
+  }
+  return out;
+}
+
 /** The 90 day keys, oldest first, ending today (UTC). */
 export function lastDays(now, count = DAYS_SHOWN) {
   const today = dayStartOf(now);

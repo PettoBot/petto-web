@@ -4,6 +4,7 @@ import Base from '../layouts/Base.astro';
 import { useTranslations, localePath, type Locale } from '../i18n/ui';
 import { getEnv } from '../utils/env';
 import { getStatusHistory, startedDay, type StatusHistory } from '../utils/statusHistory';
+import { incidentDays } from '../utils/statusDays.mjs';
 
 interface Props {
   lang: Locale;
@@ -89,7 +90,10 @@ const barTip = (mark: { d: string; s: string; c?: number; dm?: number; um?: numb
 };
 const incidentText = (inc: { kind: string; minutes: number; unconfirmed: number }) =>
   inc.kind === 'down' ? fill(s.incDown, { n: inc.minutes }) : inc.kind === 'nodata' ? s.incNone : inc.minutes && !inc.unconfirmed ? fill(s.incGap, { n: inc.minutes }) : s.incWarn;
-const clientText = { up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown, tipPre: s.tipPre, startingNote: s.startingNote, tipNone: s.tipNone, tipUp: s.tipUp, tipDown: s.tipDown, tipUnconfirmed: s.tipUnconfirmed, tipGap: s.tipGap, tipChecks: s.tipChecks, daysAgo: s.daysAgo, today: s.today, headingOk: s.heading, headingDegraded: s.headingDegraded, headingDown: s.headingDown, headingUnknown: s.headingUnknown, startedNote: s.startedNote, incDown: s.incDown, incWarn: s.incWarn, incGap: s.incGap, incNone: s.incNone, incidentsNone: s.incidentsNone, unavailable: s.histUnavailable, svcBot: s.svcBot, svcSite: s.svcSite, svcDatabase: s.svcDatabase };
+const clientText = { incidentNoneDay: s.incidentNoneDay, incidentNoneToday: s.incidentNoneToday, up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown, tipPre: s.tipPre, startingNote: s.startingNote, tipNone: s.tipNone, tipUp: s.tipUp, tipDown: s.tipDown, tipUnconfirmed: s.tipUnconfirmed, tipGap: s.tipGap, tipChecks: s.tipChecks, daysAgo: s.daysAgo, today: s.today, headingOk: s.heading, headingDegraded: s.headingDegraded, headingDown: s.headingDown, headingUnknown: s.headingUnknown, startedNote: s.startedNote, incDown: s.incDown, incWarn: s.incWarn, incGap: s.incGap, incNone: s.incNone, incidentsNone: s.incidentsNone, unavailable: s.histUnavailable, svcBot: s.svcBot, svcSite: s.svcSite, svcDatabase: s.svcDatabase };
+// Like "Past incidents" of Discord Status: the last 14 days, each with what happened or a line that says nothing did.
+const incidentList = incidentDays(history.days, history.incidents, started, 14);
+const noteOf = (inc: { note?: Record<string, string> }) => inc.note?.[lang] ?? inc.note?.en ?? '';
 const now = Date.now();
 const shardRows = await botApiGet('bot_status');
 const shards = shardRows
@@ -219,10 +223,16 @@ const stateLabel: Record<string, string> = {
           <p class="hist-note">{s.histNote}</p>
           <p class="hist-meta"><span>{s.everyTwo}</span>{history.available && <span id="histStarted"> · {started ? fill(s.startedNote, { date: dayLabel(started) }) : s.startingNote}</span>}</p>
           <h2 class="hist-title hist-incidents-title">{s.incidentsTitle}</h2>
-          <ul class="hist-incidents" id="histIncidents">
-            {history.available && history.incidents.length === 0 && <li class="none">{s.incidentsNone}</li>}
-            {history.incidents.map((inc) => <li class={inc.kind}><i class={`b ${barClass(inc.kind)}`}></i><div><b>{dayLabel(inc.day)}</b><span>{serviceNames[inc.service]}</span></div><em>{incidentText(inc)}</em></li>)}
-          </ul>
+          <div class="hist-incidents" id="histIncidents">
+            {history.available && incidentList.map((entry) => (
+              <div class="inc-day">
+                <h3>{dayLabel(entry.day)}</h3>
+                {entry.incidents.length === 0
+                  ? <p class="inc-none">{entry.today ? s.incidentNoneToday : s.incidentNoneDay}</p>
+                  : <ul>{entry.incidents.map((inc) => <li class={inc.kind}><i class={`b ${barClass(inc.kind)}`}></i><div><b>{serviceNames[inc.service]}</b><em>{incidentText(inc)}</em>{noteOf(inc) && <p>{noteOf(inc)}</p>}</div></li>)}</ul>}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -230,6 +240,7 @@ const stateLabel: Record<string, string> = {
 </Base>
 
 <script>
+  import { incidentDays } from '../utils/statusDays.mjs';
   // The history follows the real state: it asks again every minute (the answer is kept a minute on the server), changes the cards, the bars,
   // the heading and the incidents, and the period selector shows the last 30, 60 or 90 days. Everything is written as text, never as HTML.
   const hist = document.getElementById('statusHistory');
@@ -299,21 +310,36 @@ const stateLabel: Record<string, string> = {
       const list = document.getElementById('histIncidents');
       if (list) {
         const names: Record<string, string> = { bot: text.svcBot, site: text.svcSite, database: text.svcDatabase };
-        const items: HTMLElement[] = [];
-        if (data.available && !data.incidents.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = text.incidentsNone; items.push(li); }
-        for (const inc of data.incidents ?? []) {
-          const li = document.createElement('li');
-          li.className = inc.kind;
-          const dotEl = document.createElement('i'); dotEl.className = `b ${barClass(inc.kind)}`;
-          const day = document.createElement('b'); day.textContent = dayLabel(inc.day);
-          const name = document.createElement('span'); name.textContent = names[inc.service] ?? '';
-          const what = document.createElement('em');
-          what.textContent = inc.kind === 'down' ? fill(text.incDown, { n: inc.minutes }) : inc.kind === 'nodata' ? text.incNone : inc.minutes && !inc.unconfirmed ? fill(text.incGap, { n: inc.minutes }) : text.incWarn;
-          const main = document.createElement('div'); main.append(day, name);
-          li.append(dotEl, main, what);
-          items.push(li);
+        const sections: HTMLElement[] = [];
+        if (data.available) {
+          for (const entry of incidentDays(data.days ?? [], data.incidents ?? [], started, 14)) {
+            const section = document.createElement('div'); section.className = 'inc-day';
+            const heading = document.createElement('h3'); heading.textContent = dayLabel(entry.day);
+            section.append(heading);
+            if (!entry.incidents.length) {
+              const none = document.createElement('p'); none.className = 'inc-none'; none.textContent = entry.today ? text.incidentNoneToday : text.incidentNoneDay;
+              section.append(none);
+            } else {
+              const ul = document.createElement('ul');
+              for (const inc of entry.incidents) {
+                const li = document.createElement('li');
+                li.className = inc.kind;
+                const dotEl = document.createElement('i'); dotEl.className = `b ${barClass(inc.kind)}`;
+                const name = document.createElement('b'); name.textContent = names[inc.service] ?? '';
+                const what = document.createElement('em');
+                what.textContent = inc.kind === 'down' ? fill(text.incDown, { n: inc.minutes }) : inc.kind === 'nodata' ? text.incNone : inc.minutes && !inc.unconfirmed ? fill(text.incGap, { n: inc.minutes }) : text.incWarn;
+                const main = document.createElement('div'); main.append(name, what);
+                const note = inc.note?.[locale] ?? inc.note?.en;
+                if (note) { const paragraph = document.createElement('p'); paragraph.textContent = note; main.append(paragraph); }
+                li.append(dotEl, main);
+                ul.append(li);
+              }
+              section.append(ul);
+            }
+            sections.push(section);
+          }
         }
-        list.replaceChildren(...items);
+        list.replaceChildren(...sections);
       }
       applyPeriod();
     }
@@ -541,14 +567,17 @@ const stateLabel: Record<string, string> = {
   .hist-note { margin: 12px 2px 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
   .hist-meta { margin: 6px 2px 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
   .hist-incidents-title { margin-top: 28px; }
-  .hist-incidents { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
-  .hist-incidents :global(li) { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--card); font-size: 13.5px; }
-  .hist-incidents :global(li.none) { display: block; border-style: dashed; color: var(--text-dim); }
-  .hist-incidents :global(.b) { flex: none; width: 5px; height: 100%; min-height: 34px; grid-row: 1 / span 2; }
-  .hist-incidents :global(div) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-  .hist-incidents :global(b) { font-weight: 650; }
-  .hist-incidents :global(span) { color: var(--text-muted); }
-  .hist-incidents :global(em) { grid-column: 2; font-style: normal; color: var(--text-dim); font-size: 12.5px; }
+  .hist-incidents { margin: 12px 0 0; display: grid; gap: 22px; }
+  .hist-incidents :global(.inc-day) { display: grid; gap: 10px; }
+  .hist-incidents :global(.inc-day h3) { margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 650; }
+  .hist-incidents :global(.inc-none) { margin: 0; font-size: 13.5px; color: var(--text-dim); }
+  .hist-incidents :global(ul) { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .hist-incidents :global(li) { display: grid; grid-template-columns: auto 1fr; align-items: stretch; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--card); font-size: 13.5px; }
+  .hist-incidents :global(.b) { flex: none; width: 5px; min-height: 34px; align-self: stretch; }
+  .hist-incidents :global(li > div) { display: grid; gap: 2px; align-content: center; }
+  .hist-incidents :global(li b) { font-weight: 650; }
+  .hist-incidents :global(li em) { font-style: normal; color: var(--text-muted); font-size: 13px; }
+  .hist-incidents :global(li p) { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
   @media (min-width: 560px) { .bars { gap: 3px; height: 40px; } }
 
   .status-sec { padding: 90px 0 120px; }
