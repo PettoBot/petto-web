@@ -727,7 +727,6 @@ export const ui = {
         {
           key: 'testing', label: 'In testing', items: [
             { title: 'A YouTube channel', desc: 'Feature walkthroughs and updates on video. The channel is being set up and the first tutorials are not uploaded yet.', href: '' },
-            { title: 'Music', desc: 'Songs in your voice channel from a name or a link of Spotify, YouTube or SoundCloud, with a card and buttons. Being tested with the team, not open to every server yet.', href: '' },
           ],
         },
         {
@@ -738,6 +737,8 @@ export const ui = {
         },
         {
           key: 'considering', label: 'Under consideration', items: [
+            { title: 'An economy system', desc: 'Coins that members earn and spend in a server: a currency, ways to earn it and a shop. Only an idea for now: nothing is built yet and nothing is promised.', href: '' },
+            { title: 'BMO', desc: 'A bot with an Adventure Time theme. Only an idea for now: what it would do is not decided yet.', href: '' },
           ],
         },
       ],
@@ -2378,7 +2379,6 @@ export const ui = {
         {
           key: 'testing', label: 'En pruebas', items: [
             { title: 'Un canal de YouTube', desc: 'Recorridos de funciones y novedades en video. El canal se está preparando y los primeros tutoriales todavía no están subidos.', href: '' },
-            { title: 'Música', desc: 'Canciones en tu canal de voz desde un nombre o un enlace de Spotify, YouTube o SoundCloud, con tarjeta y botones. En pruebas con el equipo, todavía no está abierta a todos los servidores.', href: '' },
           ],
         },
         {
@@ -2389,6 +2389,8 @@ export const ui = {
         },
         {
           key: 'considering', label: 'En evaluación', items: [
+            { title: 'Un sistema de economía', desc: 'Monedas que los miembros ganan y gastan en un servidor: una moneda, formas de ganarla y una tienda. Por ahora es solo una idea: todavía no hay nada construido ni prometido.', href: '' },
+            { title: 'BMO', desc: 'Un bot con la temática de Hora de Aventura. Por ahora es solo una idea: todavía no está decidido qué haría.', href: '' },
           ],
         },
       ],
@@ -4029,7 +4031,6 @@ export const ui = {
         {
           key: 'testing', label: 'Em teste', items: [
             { title: 'Um canal do YouTube', desc: 'Demonstrações de recursos e novidades em vídeo. O canal está sendo preparado e os primeiros tutoriais ainda não foram enviados.', href: '' },
-            { title: 'Música', desc: 'Músicas no seu canal de voz a partir de um nome ou de um link do Spotify, YouTube ou SoundCloud, com cartão e botões. Em teste com a equipe, ainda não está aberta a todos os servidores.', href: '' },
           ],
         },
         {
@@ -4040,6 +4041,8 @@ export const ui = {
         },
         {
           key: 'considering', label: 'Em avaliação', items: [
+            { title: 'Um sistema de economia', desc: 'Moedas que os membros ganham e gastam em um servidor: uma moeda, formas de ganhá-la e uma loja. Por enquanto é só uma ideia: ainda não há nada construído nem prometido.', href: '' },
+            { title: 'BMO', desc: 'Um bot com o tema de Hora de Aventura. Por enquanto é só uma ideia: ainda não está decidido o que ele faria.', href: '' },
           ],
         },
       ],
