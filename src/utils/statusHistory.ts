@@ -1,7 +1,8 @@
 // The history the status page shows: the 90 UTC days of each service and what each one is doing now, from status_days (one small row per
 // day and service) and the last few windows of status_checks. Kept 60 seconds in memory and shared by everyone who asks at once, so a
 // visitor never makes the database work. The rules are in statusDays.mjs.
-import { DAYS_SHOWN, SLOT_MS, currentState, dayKey, dayMarkers, dayTime, lastDays, type Check } from './statusDays.mjs';
+import { DAYS_SHOWN, SLOT_MS, applyNotes, currentState, dayKey, dayMarkers, dayTime, lastDays, type Check } from './statusDays.mjs';
+import notes from '../data/statusIncidents.json';
 import { SERVICES, STARTED_KEY, rest, type ServiceId } from './statusMonitor';
 
 export type ServiceNow = 'up' | 'degraded' | 'down' | 'unknown';
@@ -49,7 +50,7 @@ async function load(context: Context): Promise<StatusHistory> {
     const services: ServiceHistory[] = SERVICES.map((id) => {
       const rows = new Map<string, { state: any; checks: number; downMinutes: number; unconfirmed: number; gapMinutes: number }>();
       for (const row of dayRows) if (row.service === id) rows.set(String(row.day).slice(0, 10), { state: row.state, checks: row.checks, downMinutes: row.down_minutes, unconfirmed: row.unconfirmed, gapMinutes: row.gap_minutes });
-      const marks = dayMarkers(days, rows, startedAt, now);
+      const marks = applyNotes(dayMarkers(days, rows, startedAt, now), id, notes) as Marker[];
       for (const mark of marks) {
         if (mark.s === 'down') incidents.push({ day: mark.d, service: id, kind: 'down', minutes: mark.dm ?? 0, unconfirmed: mark.um ?? 0 });
         else if (mark.s === 'warn') incidents.push({ day: mark.d, service: id, kind: 'warn', minutes: mark.gm ?? 0, unconfirmed: mark.um ?? 0 });

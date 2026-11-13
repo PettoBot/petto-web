@@ -9,7 +9,8 @@
 //  - every row was ok                -> ok
 // A day (UTC) is judged on the windows that could have been checked (from the first check ever, until the last window that is over):
 //  - red   ('down')   at least one confirmed failure (so 2 failed checks in a row, 4 minutes or more, or two places seeing it fail)
-//  - amber ('warn')   a failed or mixed check that nobody confirmed, or 6 minutes or more in a row with no check at all
+//  - amber ('warn')   failed or mixed checks that nobody confirmed, when there are 3 or more of them in the day (6 minutes; one or two are a blip, such as a deploy,
+//                     and leave the day green), or 6 minutes or more in a row with no check at all
 //  - grey  ('nodata') fewer than a quarter of the windows have any check (nothing was watching)
 //  - green ('up')     otherwise
 // Days before the first check ever are not judged at all ('pre'); the page shows them as green and says they were not measured.
@@ -21,6 +22,8 @@ export const DAY_MS = 86_400_000;
 export const DAYS_SHOWN = 90;
 /** A run of this many windows with no check at all (6 minutes) is a gap worth showing. */
 export const GAP_SLOTS = 3;
+/** Failed or mixed checks that nobody confirmed turn a day amber from this many windows (6 minutes) on: fewer are a blip (a deploy, a network hiccup), not news. */
+export const UNCONFIRMED_WARN_SLOTS = 3;
 /** A website that was down for this long or less before it started again was restarted (a deploy), not broken: those windows are not judged. */
 export const RESTART_FORGIVE_MS = 10 * 60_000;
 /** Under this share (a quarter) of the windows with a check, the day has no data. */
@@ -122,7 +125,7 @@ export function summarizeDay(checks, dayStart, monitoringStart, now, excused = n
   let state = 'up';
   if (observed / expected < MIN_COVERAGE) state = 'nodata';
   else if (confirmedSlots > 0) state = 'down';
-  else if (unconfirmed > 0 || gapSlots > 0) state = 'warn';
+  else if (unconfirmed >= UNCONFIRMED_WARN_SLOTS || gapSlots > 0) state = 'warn';
   const avgMs = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
   return { state, checks: observed, failed, unconfirmed, downMinutes, gapMinutes, avgMs, maxMs: latencies.length ? Math.max(...latencies) : null };
 }
@@ -149,6 +152,21 @@ export function currentState(recent, now) {
   if (someFailedAt(newest)) return { state: 'degraded', lastSlot: newest, ms };
   // The newest window is fine; if the one before it failed, that was a blip that is over.
   return { state: 'up', lastSlot: newest, ms };
+}
+
+/**
+ * Outages that nothing could write down (the hosting was in maintenance, so the bot, its database and the places the checks are saved were all away) and that the team
+ * wrote by hand in src/data/statusIncidents.json: { day: 'YYYY-MM-DD' (UTC), services: ['bot', ...], minutes: N }. They turn the day of each listed service red ('down') with at
+ * least those minutes, never the other way (a day that is already red keeps its own minutes if they are more). Pure: returns new markers.
+ * @param {{ d: string, s: string, c?: number, dm?: number, um?: number, gm?: number }[]} marks the markers of ONE service
+ * @param {string} service @param {{ day: string, services: string[], minutes: number }[]} notes
+ */
+export function applyNotes(marks, service, notes) {
+  return marks.map((mark) => {
+    const note = notes.find((entry) => entry.day === mark.d && Array.isArray(entry.services) && entry.services.includes(service) && Number.isFinite(entry.minutes) && entry.minutes > 0);
+    if (!note || mark.s === 'pre') return mark;
+    return { ...mark, s: 'down', dm: Math.max(mark.dm ?? 0, Math.round(note.minutes)) };
+  });
 }
 
 /** The 90 day keys, oldest first, ending today (UTC). */
