@@ -168,7 +168,7 @@ export interface FeedRow {
   message: string;
   pingRoles: string[];
   pingEveryone: boolean;
-  options: { image?: boolean; button?: boolean; player?: boolean };
+  options: { image?: boolean; button?: boolean; player?: boolean; reactions?: string[] };
   filters: { include: string[]; exclude: string[] };
   enabled: boolean;
   ready: boolean;
@@ -188,7 +188,7 @@ export function feedFromRow(row: any): FeedRow {
     id: Number(row.id), platform: String(row.platform), accountId: String(row.account_id), accountName: String(row.account_name ?? ''),
     accountAvatar: row.account_avatar ?? null, accountUrl: row.account_url ?? null, channelId: String(row.channel_id), types: list(row.types),
     message: String(row.message ?? ''), pingRoles: list(row.ping_roles), pingEveryone: row.ping_everyone === true,
-    options: row.options && typeof row.options === 'object' ? { image: typeof row.options.image === 'boolean' ? row.options.image : undefined, button: typeof row.options.button === 'boolean' ? row.options.button : undefined } : {},
+    options: row.options && typeof row.options === 'object' ? { image: typeof row.options.image === 'boolean' ? row.options.image : undefined, button: typeof row.options.button === 'boolean' ? row.options.button : undefined, player: typeof row.options.player === 'boolean' ? row.options.player : undefined, reactions: Array.isArray(row.options.reactions) ? row.options.reactions.filter((entry: unknown): entry is string => typeof entry === 'string').slice(0, 5) : undefined } : {},
     filters: { include: list(row.filters?.include), exclude: list(row.filters?.exclude) },
     enabled: row.enabled !== false, ready: row.ready !== false, failures: Number(row.failures) || 0, lastSentAt: row.last_sent_at ?? null,
     lastError: row.last_error ?? null, lastErrorAt: row.last_error_at ?? null, lastErrorDetail: row.last_error_detail ? String(row.last_error_detail).slice(0, 500) : null, createdAt: String(row.created_at ?? ''),

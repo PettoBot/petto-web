@@ -1,7 +1,8 @@
 // Checks the rules that turn status checks into the daily state (src/utils/statusDays.mjs): green, amber, red and grey, the days before
 // the first check, the failure of a single window against two in a row, two sources, gaps, and the current state.
 import assert from 'node:assert/strict';
-import { DAY_MS, RESTART_FORGIVE_MS, SLOT_MS, currentState, dayMarkers, dayStartOf, lastDays, restartSlots, summarizeDay } from '../src/utils/statusDays.mjs';
+import { readFileSync } from 'node:fs';
+import { DAY_MS, RESTART_FORGIVE_MS, SLOT_MS, UNCONFIRMED_WARN_SLOTS, applyNotes, currentState, dayMarkers, incidentDays, dayStartOf, lastDays, restartSlots, summarizeDay } from '../src/utils/statusDays.mjs';
 
 const day = Date.UTC(2026, 10, 1);
 const nextDay = day + DAY_MS;
@@ -17,17 +18,23 @@ assert.equal(summarizeDay(full(), day, day, after).state, 'up');
 assert.equal(summarizeDay(full(['web']), day, day, after).state, 'up');
 assert.equal(summarizeDay(full(), day, day, after).checks, 720);
 
-// Amber: one failed window seen by one place, or a mixed one (the places disagree).
-assert.equal(summarizeDay(fail(full(['web']), 100, 1), day, day, after).state, 'warn');
-assert.equal(summarizeDay(fail(full(), 100, 1, ['bot']), day, day, after).state, 'warn');
-assert.equal(summarizeDay(fail(full(), 100, 1, ['bot']), day, day, after).unconfirmed, 1);
+// Amber: failed or mixed windows that nobody confirmed, from 3 of them in the day on. One or two (a deploy, a network hiccup) are counted but leave the day green.
+assert.equal(UNCONFIRMED_WARN_SLOTS, 3);
+assert.equal(summarizeDay(fail(full(['web']), 100, 1), day, day, after).state, 'up', 'a single failed window is a blip');
+assert.equal(summarizeDay(fail(full(), 100, 1, ['bot']), day, day, after).state, 'up', 'a single mixed window is a blip');
+assert.equal(summarizeDay(fail(full(), 100, 1, ['bot']), day, day, after).unconfirmed, 1, 'but it is still counted');
+const blips = (count) => Array.from({ length: count }).reduce((rows, _, index) => fail(rows, 100 + index * 10, 1, ['bot']), full());
+assert.equal(summarizeDay(blips(2), day, day, after).state, 'up', 'two blips leave the day green');
+assert.equal(summarizeDay(blips(3), day, day, after).state, 'warn', 'three blips in a day are worth an amber day');
+assert.equal(summarizeDay(blips(3), day, day, after).unconfirmed, 3);
 
 // Red: two failed windows in a row, or one window that two places saw fail.
 const two = summarizeDay(fail(full(['web']), 100, 2), day, day, after);
 assert.equal(two.state, 'down'); assert.equal(two.downMinutes, 4);
 assert.equal(summarizeDay(fail(full(), 100, 1), day, day, after).state, 'down');
 // Two failures that are not next to each other do not confirm each other.
-assert.equal(summarizeDay(fail(fail(full(['web']), 100, 1), 300, 1), day, day, after).state, 'warn');
+assert.equal(summarizeDay(fail(fail(full(['web']), 100, 1), 300, 1), day, day, after).downMinutes, 0);
+assert.equal(summarizeDay(fail(fail(full(['web']), 100, 1), 300, 1), day, day, after).unconfirmed, 2);
 assert.equal(summarizeDay(fail(full(['web']), 100, 30), day, day, after).downMinutes, 60);
 
 // A short silence is fine; a long one (6 minutes or more with no check at all) is amber; almost nothing is grey.
@@ -37,7 +44,8 @@ assert.equal(gap.state, 'warn'); assert.equal(gap.gapMinutes, 10);
 assert.equal(summarizeDay(full(['web']).filter((entry) => entry.slot < day + 30 * SLOT_MS), day, day, after).state, 'nodata');
 assert.equal(summarizeDay([], day, day, after).state, 'nodata', 'watching but nothing recorded is grey, never green');
 // The silence is judged on a failed window next to it too: a failure, then silence, is not a run of failures.
-assert.equal(summarizeDay(without(fail(full(['web']), 100, 2), 101, 1), day, day, after).state, 'warn');
+const lone = summarizeDay(without(fail(full(['web']), 100, 2), 101, 1), day, day, after);
+assert.equal(lone.downMinutes, 0); assert.equal(lone.unconfirmed, 1);
 
 // The first day only counts from the first check; the day before the first check is not judged; the future is not judged.
 const started = day + 600 * SLOT_MS;
@@ -110,3 +118,47 @@ assert.equal(restartSlots(farFailure, [Number.NaN]).size, 0, 'a restart that can
 assert.deepEqual([...restartSlots([row(day, 'bot', false)], [day + 1000])], [day]);
 
 console.log('Checked the status days: green, amber, red, grey, the days before the first check, and the current state.');
+
+// Outages written by hand (src/data/statusIncidents.json): the day of each listed service turns red with those minutes, nothing else changes.
+{
+  const base = [{ d: '2026-11-12', s: 'up', c: 700 }, { d: '2026-11-13', s: 'warn', c: 600, gm: 20, dm: 0 }, { d: '2026-11-14', s: 'pre' }];
+  const notes = [{ day: '2026-11-13', services: ['bot', 'site'], minutes: 35 }];
+  const bot = applyNotes(base, 'bot', notes);
+  assert.equal(bot[1].s, 'down'); assert.equal(bot[1].dm, 35); assert.equal(bot[1].gm, 20, 'the rest of the day is kept');
+  assert.equal(bot[0].s, 'up', 'other days are not touched');
+  assert.equal(applyNotes(base, 'database', notes)[1].s, 'warn', 'a service that is not listed is not touched');
+  assert.equal(applyNotes([{ d: '2026-11-13', s: 'down', dm: 50 }], 'bot', notes)[0].dm, 50, 'a day that is already red keeps its longer outage');
+  assert.equal(applyNotes([{ d: '2026-11-13', s: 'pre' }], 'bot', notes)[0].s, 'pre', 'a day before the first check is not judged');
+  assert.equal(applyNotes(base, 'bot', [{ day: '2026-11-13', services: ['bot'], minutes: 0 }])[1].s, 'warn', 'no minutes, no outage');
+  assert.deepEqual(base[1], { d: '2026-11-13', s: 'warn', c: 600, gm: 20, dm: 0 }, 'the input is not changed');
+  // The real file: every note has a UTC day, known services and minutes.
+  const real = JSON.parse(readFileSync(new URL('../src/data/statusIncidents.json', import.meta.url), 'utf8'));
+  assert.ok(Array.isArray(real));
+  for (const note of real) {
+    assert.match(note.day, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(Array.isArray(note.services) && note.services.length && note.services.every((id) => ['bot', 'site', 'database'].includes(id)), 'known services');
+    assert.ok(Number.isFinite(note.minutes) && note.minutes > 0 && note.minutes <= 1440);
+    assert.ok(note.note && typeof note.note.en === 'string' && typeof note.note.es === 'string' && typeof note.note['pt-BR'] === 'string', 'the note is written in English, Spanish and Portuguese');
+  }
+}
+
+// The list of past incidents: every recent day is there, and a day with nothing says so (like Discord Status). Days nobody measured are not listed.
+{
+  const days = lastDays(Date.UTC(2026, 10, 13, 12), 90); // ends 2026-11-13
+  const incidents = [
+    { day: '2026-11-13', service: 'bot', kind: 'down', minutes: 35, unconfirmed: 0 },
+    { day: '2026-11-13', service: 'site', kind: 'down', minutes: 35, unconfirmed: 0 },
+    { day: '2026-11-09', service: 'site', kind: 'warn', minutes: 0, unconfirmed: 3 },
+  ];
+  const list = incidentDays(days, incidents, '2026-11-04');
+  assert.equal(list.length, 10, 'from today back to the first measured day (4 November): 10 days');
+  assert.equal(list[0].day, '2026-11-13'); assert.equal(list[0].today, true, 'newest first, and today is marked');
+  assert.equal(list[0].incidents.length, 2); assert.equal(list[1].today, false);
+  assert.deepEqual(list.map((entry) => entry.incidents.length), [2, 0, 0, 0, 1, 0, 0, 0, 0, 0], 'a day with nothing is listed with no incidents');
+  assert.equal(list.at(-1).day, '2026-11-04', 'it stops at the first measured day');
+  assert.equal(incidentDays(days, incidents, '2026-10-01').length, 14, 'at most 14 days by default');
+  assert.equal(incidentDays(days, incidents, '2026-10-01', 5).length, 5);
+  assert.deepEqual(incidentDays(days, incidents, null), [], 'nothing measured yet: nothing to say');
+  assert.deepEqual(incidentDays([], incidents, '2026-11-04'), []);
+  assert.deepEqual(incidentDays(days, [], '2026-11-12').map((entry) => entry.incidents.length), [0, 0], 'two measured days with nothing');
+}

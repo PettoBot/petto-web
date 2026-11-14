@@ -1,13 +1,14 @@
 // The history the status page shows: the 90 UTC days of each service and what each one is doing now, from status_days (one small row per
 // day and service) and the last few windows of status_checks. Kept 60 seconds in memory and shared by everyone who asks at once, so a
 // visitor never makes the database work. The rules are in statusDays.mjs.
-import { DAYS_SHOWN, SLOT_MS, currentState, dayKey, dayMarkers, dayTime, lastDays, type Check } from './statusDays.mjs';
+import { DAYS_SHOWN, SLOT_MS, applyNotes, currentState, dayKey, dayMarkers, dayTime, lastDays, type Check } from './statusDays.mjs';
+import notes from '../data/statusIncidents.json';
 import { SERVICES, STARTED_KEY, rest, type ServiceId } from './statusMonitor';
 
 export type ServiceNow = 'up' | 'degraded' | 'down' | 'unknown';
 export interface Marker { d: string; s: 'pre' | 'up' | 'warn' | 'down' | 'nodata'; c?: number; dm?: number; um?: number; gm?: number }
 export interface ServiceHistory { id: ServiceId; now: ServiceNow; ms: number | null; lastAt: string | null; marks: Marker[] }
-export interface Incident { day: string; service: ServiceId; kind: 'down' | 'warn' | 'nodata'; minutes: number; unconfirmed: number }
+export interface Incident { day: string; service: ServiceId; kind: 'down' | 'warn' | 'nodata'; minutes: number; unconfirmed: number; /** What the team wrote about an outage that was noted by hand, in each language. */ note?: Record<string, string> }
 export interface StatusHistory {
   /** false when the history could not be read: the page then says so and shows nothing as green. */
   available: boolean;
@@ -49,9 +50,12 @@ async function load(context: Context): Promise<StatusHistory> {
     const services: ServiceHistory[] = SERVICES.map((id) => {
       const rows = new Map<string, { state: any; checks: number; downMinutes: number; unconfirmed: number; gapMinutes: number }>();
       for (const row of dayRows) if (row.service === id) rows.set(String(row.day).slice(0, 10), { state: row.state, checks: row.checks, downMinutes: row.down_minutes, unconfirmed: row.unconfirmed, gapMinutes: row.gap_minutes });
-      const marks = dayMarkers(days, rows, startedAt, now);
+      const marks = applyNotes(dayMarkers(days, rows, startedAt, now), id, notes) as Marker[];
       for (const mark of marks) {
-        if (mark.s === 'down') incidents.push({ day: mark.d, service: id, kind: 'down', minutes: mark.dm ?? 0, unconfirmed: mark.um ?? 0 });
+        if (mark.s === 'down') {
+          const note = (notes as { day: string; services: string[]; note?: Record<string, string> }[]).find((entry) => entry.day === mark.d && entry.services.includes(id))?.note;
+          incidents.push({ day: mark.d, service: id, kind: 'down', minutes: mark.dm ?? 0, unconfirmed: mark.um ?? 0, ...(note ? { note } : {}) });
+        }
         else if (mark.s === 'warn') incidents.push({ day: mark.d, service: id, kind: 'warn', minutes: mark.gm ?? 0, unconfirmed: mark.um ?? 0 });
         else if (mark.s === 'nodata') incidents.push({ day: mark.d, service: id, kind: 'nodata', minutes: 0, unconfirmed: 0 });
       }
@@ -60,7 +64,7 @@ async function load(context: Context): Promise<StatusHistory> {
       return { id, now: current.state, ms: current.ms, lastAt: current.lastSlot === null ? null : new Date(current.lastSlot).toISOString(), marks };
     });
     incidents.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
-    return { available: true, generatedAt: new Date(now).toISOString(), startedAt: startedAt === null ? null : new Date(startedAt).toISOString(), days, services, incidents: incidents.slice(0, 40) };
+    return { available: true, generatedAt: new Date(now).toISOString(), startedAt: startedAt === null ? null : new Date(startedAt).toISOString(), days, services, incidents: incidents.slice(0, 120) };
   } catch {
     return empty(now, false);
   }
