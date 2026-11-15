@@ -1,0 +1,106 @@
+---
+// Every text area of the site (the dashboard and the public pages) has the height of its text: no handle to drag it, it grows downwards as lines
+// are added and shrinks when they are taken away, and an empty one is four lines high (a one-line field, `rows="1"` or `data-one-line`, stays one line).
+// A text area that has to keep its own size says so with `data-fixed-size` (a chat box); the ones of the embed builder (`ebr-grow`) size themselves.
+---
+<style is:global>
+  textarea { resize: none !important; }
+  html.tf-on textarea:not([data-fixed-size], .ebr-grow, .ebr-grow-1) { overflow-y: hidden; }
+</style>
+<script is:inline>
+  (function () {
+    if (window.__textFit) return;
+    window.__textFit = true;
+    document.documentElement.classList.add('tf-on');
+    var MIN_LINES = 4;
+    var skip = function (el) {
+      return !el || el.tagName !== 'TEXTAREA' || el.hasAttribute('data-fixed-size') || el.classList.contains('ebr-grow') || el.classList.contains('ebr-grow-1');
+    };
+    var oneLine = function (el) { return el.hasAttribute('data-one-line') || el.getAttribute('rows') === '1'; };
+    // Shrinking a field for a moment can move the page if it is scrolled to the bottom: every scrolled parent gets its place back.
+    var scrolled = function (el) {
+      var list = [];
+      for (var node = el.parentElement; node; node = node.parentElement) {
+        if (node.scrollTop > 0) list.push([node, node.scrollTop]);
+      }
+      var page = document.scrollingElement;
+      if (page && page.scrollTop > 0) list.push([page, page.scrollTop]);
+      return list;
+    };
+    var widths = new WeakMap();
+    var fit = function (el) {
+      if (skip(el) || !el.isConnected) return;
+      var cs = getComputedStyle(el);
+      if (cs.display === 'none' || (!el.offsetParent && cs.position !== 'fixed')) return;
+      var fontSize = parseFloat(cs.fontSize) || 14;
+      var line = parseFloat(cs.lineHeight);
+      if (!line || isNaN(line)) line = fontSize * 1.4;
+      var pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      var border = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      var borderBox = cs.boxSizing === 'border-box';
+      var rows = parseInt(el.getAttribute('rows'), 10) || 0;
+      var lines = oneLine(el) ? 1 : Math.max(MIN_LINES, rows);
+      var keep = scrolled(el);
+      el.style.height = 'auto';
+      // scrollHeight is the text and the padding, never the border.
+      var box = Math.max(el.scrollHeight + border, lines * line + pad + border);
+      el.style.height = (borderBox ? box : box - pad - border) + 'px';
+      keep.forEach(function (entry) { entry[0].scrollTop = entry[1]; });
+      widths.set(el, el.clientWidth);
+    };
+    var queue = new Set();
+    var queued = false;
+    var schedule = function (el) {
+      if (skip(el)) return;
+      queue.add(el);
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(function () {
+        queued = false;
+        var list = Array.from(queue);
+        queue.clear();
+        list.forEach(fit);
+      });
+    };
+    var watcher = typeof ResizeObserver === 'function' ? new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var el = entry.target;
+        // A new width wraps the lines differently, and a field that was hidden (a tab, an open section) has its first size.
+        if (widths.get(el) !== el.clientWidth) schedule(el);
+      });
+    }) : null;
+    var adopt = function (root) {
+      var list = root.tagName === 'TEXTAREA' ? [root] : (root.querySelectorAll ? Array.from(root.querySelectorAll('textarea')) : []);
+      list.forEach(function (el) {
+        if (skip(el)) return;
+        if (watcher && !el.__tfWatched) { el.__tfWatched = true; watcher.observe(el); }
+        schedule(el);
+      });
+    };
+    document.addEventListener('input', function (event) { if (event.target && event.target.tagName === 'TEXTAREA') schedule(event.target); }, true);
+    document.addEventListener('reset', function (event) {
+      var form = event.target;
+      if (form && form.querySelectorAll) setTimeout(function () { form.querySelectorAll('textarea').forEach(schedule); }, 0);
+    }, true);
+    // A value set by a script (a form filled from a saved item, a template inserted) fires no event: the setter says so.
+    try {
+      var descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      if (descriptor && descriptor.set) {
+        Object.defineProperty(HTMLTextAreaElement.prototype, 'value', {
+          configurable: true,
+          enumerable: descriptor.enumerable,
+          get: descriptor.get,
+          set: function (value) { descriptor.set.call(this, value); schedule(this); },
+        });
+      }
+    } catch (e) { /* an old browser keeps the sizes of the first measure and the typing */ }
+    new MutationObserver(function (records) {
+      records.forEach(function (record) {
+        record.addedNodes.forEach(function (node) { if (node.nodeType === 1) adopt(node); });
+      });
+    }).observe(document.documentElement, { childList: true, subtree: true });
+    var start = function () { adopt(document.documentElement); if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { document.querySelectorAll('textarea').forEach(schedule); }); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+    window.addEventListener('load', function () { document.querySelectorAll('textarea').forEach(schedule); });
+  })();
+</script>
