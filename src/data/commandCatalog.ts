@@ -38,7 +38,7 @@ interface GeneratedCommand {
 }
 
 const categoryOf: Record<string, string[]> = {
-  moderation: ['banlist', 'mutelist', 'jaillist', 'jailsetup', 'warnescalation', 'imagemute', 'imageunmute', 'reactionmute', 'reactionunmute', 'protect', 'mod', 'modtools', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
+  moderation: ['banlist', 'mutelist', 'jaillist', 'jailsetup', 'warnescalation', 'imagemute', 'imageunmute', 'reactionmute', 'reactionunmute', 'protect', 'mod', 'modtools', 'staff', 'sanctionmessage', 'ban', 'case', 'channel', 'hardban', 'kick', 'massban', 'masskick', 'massmute', 'massunban', 'massunmute', 'masswarn', 'mute', 'note', 'nuke', 'pauseinvites', 'role', 'softban', 'tempban', 'tempmute', 'timeout', 'unban', 'unmute', 'voice', 'warn', 'snipe', 'history', 'jail', 'unjail', 'purge', 'mhistory', 'lockdown', 'appeals', 'antinuke', 'antiscam', 'clearinvites', 'imute', 'rmute', 'nickname', 'raid', 'stripstaff', 'thread'],
   tickets: ['ticket', 'quickreply', 'forum', 'forumconfig'],
   leveling: ['levels', 'level', 'rank', 'leaderboard', 'rep'],
   giveaways: ['giveaway', 'giveawaypreset', 'giveawaytemplate'],
