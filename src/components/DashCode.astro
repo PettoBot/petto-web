@@ -48,6 +48,7 @@ const ui = {
   unavailable: dt('The bot did not answer. Try again in a moment.'),
   closed: dt('Commands in code are turned off for now.'),
   triggerSaved: dt('The trigger was saved.'),
+  scheduleSaved: dt('The schedule was saved. The command now runs by itself.'),
   saveFirst: dt('Save the command first.'),
   imported: dt('The command was imported. It is not saved until you press Save.'),
   importedExists: dt('The command was imported. A command with this name already exists: saving replaces it.'),
@@ -98,6 +99,9 @@ const triggerTypes = [
   ['startswith', dt('A message that starts with...')],
   ['exact', dt('A whole message')],
   ['contains', dt('A message that has...')],
+  ['@interval', dt('By itself, every some time')],
+  ['@daily', dt('By itself, every day')],
+  ['@weekly', dt('By itself, every week')],
 ];
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="code" pageTitle="Commands in code">
@@ -119,15 +123,6 @@ const triggerTypes = [
     ]} />
   </div>
 
-  <nav class="cc-tabs" role="tablist" aria-label={dt('Commands in code')}>
-    <button type="button" class="cc-tab cc-tab-on" role="tab" aria-selected="true" data-tab="commands"><Icon name="ph:terminal-window-fill" width="15" height="15" />{dt('Commands')}</button>
-    <button type="button" class="cc-tab" role="tab" aria-selected="false" data-tab="reminders"><Icon name="ph:alarm-fill" width="15" height="15" />{dt('Reminders')}</button>
-    <button type="button" class="cc-tab" role="tab" aria-selected="false" data-tab="connections"><Icon name="ph:plugs-connected-fill" width="15" height="15" />{dt('Connections')}</button>
-    <button type="button" class="cc-tab" role="tab" aria-selected="false" data-tab="settings"><Icon name="ph:globe-hemisphere-west-fill" width="15" height="15" />{dt('Server settings')}</button>
-  </nav>
-  <DashCodeTools endpoint={`/dash/guild/${guildId}/code-api`} channels={channels} commands={commands.map((command) => command.name)} />
-
-  <div data-panel="commands">
   <div
     id="cc"
     class="cc-grid"
@@ -213,14 +208,16 @@ const triggerTypes = [
       <div class="cc-box cc-b-trigger" id="cc-trigger-box">
         <div class="sx-panel-head">
           <span class="sx-panel-icon" style="--c:#f5c26b"><Icon name="ph:lightning-fill" width="17" height="17" /></span>
-          <h2>{dt('What starts it')}</h2>
+          <h2>{dt('Settings of this command')}</h2>
         </div>
+        <div class="cc-field"><span>{dt('What starts it')}</span></div>
         <div class="cc-row">
           <select id="cc-trigger-type" class="cc-input">{triggerTypes.map(([value, label]) => <option value={value}>{label}</option>)}</select>
           <input type="text" id="cc-trigger-text" class="cc-input cc-grow" maxlength="50" placeholder={dt('The prefix or the words')} autocomplete="off" hidden />
           <button type="button" class="cc-btn" id="cc-trigger-save">{dt('Save trigger')}</button>
         </div>
         <p class="cc-note" id="cc-trigger-note"></p>
+        <DashCodeTools endpoint={`/dash/guild/${guildId}/code-api`} channels={channels} />
       </div>
 
       <div class="cc-box cc-b-test">
@@ -241,7 +238,6 @@ const triggerTypes = [
         <div class="cc-result" id="cc-result" hidden></div>
       </div>
     </div>
-  </div>
   </div>
   </div>
 </DashGuildLayout>
@@ -333,7 +329,8 @@ const triggerTypes = [
 
     // ── The editor: colors under a clear textarea, line numbers that follow the scroll, and a mark on the line with a mistake ──
     // The lines never wrap, so a line of the colors, of the textarea and of the numbers always has the same height.
-    const LINE = 20;
+    // The size of a line follows the CSS (bigger on a phone), so the caret and the mark of a mistake stay on the text.
+    const lineHeight = () => parseFloat(getComputedStyle(code).lineHeight) || 20;
     const PAD_TOP = 10;
     const LIMIT = () => Number(meta?.limits?.source ?? 10000);
     function follow() {
@@ -343,7 +340,7 @@ const triggerTypes = [
     function paintCode() {
       pre.innerHTML = `${highlight(code.value, functionNames)}\n`;
       errBand.hidden = !errorLine;
-      if (errorLine) errBand.style.top = `${PAD_TOP + (errorLine - 1) * LINE}px`;
+      if (errorLine) errBand.style.top = `${PAD_TOP + (errorLine - 1) * lineHeight()}px`;
       follow();
     }
     function drawGutter() {
@@ -456,7 +453,7 @@ const triggerTypes = [
       const row = value.slice(0, at).split('\n').length - 1;
       measure.textContent = value.slice(lineStart, at);
       const x = 12 + measure.getBoundingClientRect().width - code.scrollLeft;
-      const y = PAD_TOP + row * LINE - code.scrollTop;
+      const y = PAD_TOP + row * lineHeight() - code.scrollTop;
       const areaBox = area.getBoundingClientRect();
       const wrapBox = wrap.getBoundingClientRect();
       return { x: areaBox.left - wrapBox.left + x, y: areaBox.top - wrapBox.top + y, bottom: areaBox.bottom - wrapBox.top };
@@ -486,7 +483,7 @@ const triggerTypes = [
       const width = Math.min(360, wrap.clientWidth - 8);
       acList.style.width = `${width}px`;
       acList.style.left = `${Math.max(4, Math.min(point.x, wrap.clientWidth - width - 4))}px`;
-      const below = point.y + LINE + 4;
+      const below = point.y + lineHeight() + 4;
       const height = acList.offsetHeight;
       const room = point.bottom - below;
       acList.style.top = `${room < Math.min(height, 120) && point.y - height - 4 > 0 ? point.y - height - 4 : below}px`;
@@ -614,12 +611,15 @@ const triggerTypes = [
     function showTrigger(type: string, text: string) {
       triggerType.value = type || 'command';
       triggerText.value = text || '';
-      triggerText.hidden = triggerType.value === 'command';
+      triggerText.hidden = triggerType.value === 'command' || triggerType.value.startsWith('@');
       $('cc-trigger-note').textContent = '';
     }
 
+    // The settings under the trigger (connections, schedule) follow the command that is shown.
+    const announce = () => { (window as unknown as { __ccCurrent: string | null }).__ccCurrent = current; window.dispatchEvent(new CustomEvent('cc:select', { detail: { name: current } })); };
     function load(name: string | null, source: string, type = 'command', text = '') {
       current = name;
+      announce();
       savedName = name ?? '';
       savedCode = source;
       nameInput.value = name ?? '';
@@ -663,6 +663,7 @@ const triggerTypes = [
       if (existing) existing.code = code.value; else commands.push({ name, code: code.value, triggerType: 'command', triggerText: '' });
       commands.sort((a, b) => a.name.localeCompare(b.name));
       current = name; savedName = name; savedCode = code.value; nameInput.readOnly = true; deleteButton.hidden = false;
+      announce();
       drawList();
       syncBar();
       done(ui.saved);
@@ -681,15 +682,23 @@ const triggerTypes = [
     });
 
     // ── The trigger ──
-    triggerType.addEventListener('change', () => { triggerText.hidden = triggerType.value === 'command'; });
+    triggerType.addEventListener('change', () => { triggerText.hidden = triggerType.value === 'command' || triggerType.value.startsWith('@'); });
+    const schedule = () => (window as unknown as { ccSchedule?: { save(): Promise<string>; cancelMain(name: string): Promise<void>; isSchedule(value: string): boolean } }).ccSchedule;
     $('cc-trigger-save').addEventListener('click', async () => {
       if (!current) { $('cc-trigger-note').textContent = ui.saveFirst; return; }
+      // A schedule ("by itself, every day") is saved as a reminder of this command; any other trigger stops it.
+      if (triggerType.value.startsWith('@')) {
+        const problem = (await schedule()?.save()) ?? ui.unavailable;
+        $('cc-trigger-note').textContent = problem || (toast(ui.scheduleSaved) ? '' : ui.scheduleSaved);
+        return;
+      }
       const { payload } = await api({ action: 'trigger', name: current, type: triggerType.value, text: triggerText.value });
       if (!payload) { $('cc-trigger-note').textContent = ui.unavailable; return; }
       if (!payload.ok) { $('cc-trigger-note').textContent = payload.message || ui.unavailable; return; }
       const command = commands.find((entry) => entry.name === current);
       if (command) { command.triggerType = triggerType.value; command.triggerText = payload.text ?? ''; }
       drawList();
+      await schedule()?.cancelMain(current);
       $('cc-trigger-note').textContent = toast(ui.triggerSaved) ? '' : ui.triggerSaved;
     });
 
@@ -711,7 +720,7 @@ const triggerTypes = [
       const name = nameInput.value.trim().toLowerCase() || 'command';
       const args = $<HTMLInputElement>('cc-test-args').value.trim();
       const type = triggerType.value;
-      const start = type === 'prefix' ? `${triggerText.value.trim()}${name}` : type === 'command' ? `${prefix}${name}` : triggerText.value.trim();
+      const start = type === 'prefix' ? `${triggerText.value.trim()}${name}` : type === 'command' || type.startsWith('@') ? `${prefix}${name}` : triggerText.value.trim();
       return [start, args].filter(Boolean).join(' ');
     }
     async function runTest() {
@@ -837,7 +846,7 @@ const triggerTypes = [
       $('cc-template-note').textContent = template?.description ?? '';
       if (!template) return;
       if ((code.value.trim() && dirty()) && !(await ask(ui.confirmTemplate, { tone: 'neutral', confirm: ui.yesReplace }))) { templates.value = ''; return; }
-      current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false;
+      current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false; announce();
       if (!nameInput.value.trim() || !commands.some((entry) => entry.name === nameInput.value.trim())) nameInput.value = template.suggestedName;
       code.value = template.code;
       savedCode = '';
@@ -893,7 +902,7 @@ const triggerTypes = [
       try { text = decodeURIComponent(text); } catch { /* keep it as it came */ }
       const imported = fromShareCode(text);
       if (imported) {
-        current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false;
+        current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false; announce();
         nameInput.value = imported.name;
         code.value = imported.code;
         savedCode = '';
@@ -1005,15 +1014,17 @@ const triggerTypes = [
   @media (max-width: 640px) { .cc-keys { display: none; } }
 
   /* The editor: a clear textarea over the code with colors. Both use the same font, size, line height and padding. */
-  .cc-editor-wrap { position: relative; }
+  .cc-editor-wrap { position: relative; --cc-line: 20px; --cc-font: 13px; }
+  /* On a phone the code is bigger and taller, so it can be read and touched. */
+  @media (max-width: 720px) { .cc-editor-wrap { --cc-line: 25px; --cc-font: 16px; } .cc-editor, .cc-editor textarea { min-height: max(420px, 62vh); } .cc-gutter { min-width: 48px; } }
   .cc-editor { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-raise, var(--card)); min-height: 340px; }
   .cc-editor:focus-within { border-color: var(--accent); }
-  .cc-gutter { flex: 0 0 auto; min-width: 42px; padding: 10px 8px 10px 10px; text-align: right; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--text-dim); background: var(--border-soft); overflow: hidden; user-select: none; font-variant-numeric: tabular-nums; }
+  .cc-gutter { flex: 0 0 auto; min-width: 42px; padding: 10px 8px 10px 10px; text-align: right; font-family: var(--mono); font-size: var(--cc-font); line-height: var(--cc-line); color: var(--text-dim); background: var(--border-soft); overflow: hidden; user-select: none; font-variant-numeric: tabular-nums; }
   .cc-gutter :global(.cc-err) { color: #fff; background: var(--red); border-radius: 4px; padding: 0 4px; margin-right: -4px; }
   .cc-area { position: relative; flex: 1; min-width: 0; overflow: hidden; display: flex; }
   .cc-layer { position: absolute; top: 0; left: 0; min-width: 100%; pointer-events: none; will-change: transform; }
-  .cc-errband { position: absolute; left: 0; right: 0; height: 20px; background: var(--red-soft); border-left: 2px solid var(--red); }
-  .cc-pre, .cc-editor textarea, .cc-measure { font-family: var(--mono); font-size: 13px; line-height: 20px; tab-size: 2; white-space: pre; letter-spacing: 0; font-variant-ligatures: none; font-weight: 400; }
+  .cc-errband { position: absolute; left: 0; right: 0; height: var(--cc-line); background: var(--red-soft); border-left: 2px solid var(--red); }
+  .cc-pre, .cc-editor textarea, .cc-measure { font-family: var(--mono); font-size: var(--cc-font); line-height: var(--cc-line); tab-size: 2; white-space: pre; letter-spacing: 0; font-variant-ligatures: none; font-weight: 400; }
   .cc-pre { position: relative; margin: 0; padding: 10px 12px; border: 0; border-radius: 0; background: transparent; color: var(--c-text); overflow: visible; min-height: 100%; }
   .cc-measure { position: absolute; top: 0; left: 0; visibility: hidden; pointer-events: none; }
   .cc-editor textarea { position: relative; z-index: 1; display: block; flex: 1; width: 100%; min-width: 0; border: 0; outline: 0; resize: vertical; padding: 10px 12px; min-height: 340px; background: transparent; color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text); overflow: auto; }

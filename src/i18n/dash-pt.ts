@@ -6461,4 +6461,13 @@ export const dashPt: Record<string, string> = {
   "hour": "hora",
   "minute": "minuto",
   "minutes": "minutos",
+  "Settings of this command": "Configurações deste comando",
+  "By itself, every some time": "Sozinho, a cada certo tempo",
+  "By itself, every day": "Sozinho, todo dia",
+  "By itself, every week": "Sozinho, toda semana",
+  "The command runs by itself, as you, in the channel you pick, and keeps working if Petto restarts. To send the same message to several channels with one code, put a list of channels in sendMessage inside the command.": "O comando roda sozinho, como você, no canal que escolher, e continua funcionando se o Petto reiniciar. Para enviar a mesma mensagem a vários canais com um só código, coloque uma lista de canais no sendMessage dentro do comando.",
+  "Then it also runs": "Depois também roda",
+  "Connect commands without writing code: the commands you add here run right after this one, as the same member, in the same channel. Up to 3. In code you can also use callCC and execCC.": "Conecte comandos sem escrever código: os comandos que você adicionar aqui rodam logo depois deste, como o mesmo membro, no mesmo canal. Até 3. No código você também pode usar callCC e execCC.",
+  "The schedule was saved. The command now runs by itself.": "O agendamento foi salvo. O comando agora roda sozinho.",
+  "The schedule was removed.": "O agendamento foi removido.",
 };

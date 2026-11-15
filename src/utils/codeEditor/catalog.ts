@@ -347,6 +347,7 @@ DATA.push(
   ['.Modal.ID', { en: 'Id of the form sent', es: 'Id del formulario enviado', pt: 'Id do formulário enviado' }],
   ['.Modal.Data', { en: 'Data of the form', es: 'Data del formulario', pt: 'Data do formulário' }],
   ['.ExecData', { en: 'The data that execCC passed, or nothing', es: 'Los datos que pasó execCC, o nada', pt: 'Os dados que o execCC passou, ou nada' }],
+  ['.CalledBy', { en: 'The command that used this one with callCC', es: 'El comando que usó este con callCC', pt: 'O comando que usou este com callCC' }],
   ['.TimeZone', { en: 'The time zone of the server (UTC until it is set on the code page)', es: 'La zona horaria del servidor (UTC hasta que la elijas en la página del código)', pt: 'O fuso horário do servidor (UTC até você escolher na página do código)' }],
   ['.ExecBy', { en: 'The command that ran this one with execCC', es: 'El comando que ejecutó este con execCC', pt: 'O comando que executou este com execCC' }],
 );

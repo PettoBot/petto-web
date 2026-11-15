@@ -6461,4 +6461,13 @@ export const dashEs: Record<string, string> = {
   "hour": "hora",
   "minute": "minuto",
   "minutes": "minutos",
+  "Settings of this command": "Ajustes de este comando",
+  "By itself, every some time": "Solo, cada cierto tiempo",
+  "By itself, every day": "Solo, cada día",
+  "By itself, every week": "Solo, cada semana",
+  "The command runs by itself, as you, in the channel you pick, and keeps working if Petto restarts. To send the same message to several channels with one code, put a list of channels in sendMessage inside the command.": "El comando se ejecuta solo, como tú, en el canal que elijas, y sigue funcionando si Petto se reinicia. Para enviar el mismo mensaje a varios canales con un solo código, pon una lista de canales en sendMessage dentro del comando.",
+  "Then it also runs": "Después también ejecuta",
+  "Connect commands without writing code: the commands you add here run right after this one, as the same member, in the same channel. Up to 3. In code you can also use callCC and execCC.": "Conecta comandos sin escribir código: los comandos que añadas aquí se ejecutan justo después de este, como el mismo miembro, en el mismo canal. Hasta 3. En el código también puedes usar callCC y execCC.",
+  "The schedule was saved. The command now runs by itself.": "El horario se guardó. El comando ahora se ejecuta solo.",
+  "The schedule was removed.": "El horario se quitó.",
 };
