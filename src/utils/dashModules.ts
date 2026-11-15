@@ -9,7 +9,8 @@ export interface ModuleDef {
   color: string;
   category: 'join' | 'moderation' | 'community' | 'automation' | 'messages' | 'server';
   href: (guildId: string) => string;
-  isNew?: boolean;
+  /** The day (YYYY-MM-DD) it came out: it carries the New badge for a while (utils/newBadge.ts), then it goes by itself. */
+  since?: string;
 }
 
 export const CATEGORIES: { id: ModuleDef['category']; label: string }[] = [
@@ -27,16 +28,16 @@ export const MODULES: ModuleDef[] = [
   { id: 'joinroles', title: 'Join roles and ping', desc: 'Roles for whoever joins, a DM and a ping that cleans itself up.', icon: 'ph:user-plus-fill', color: '#7ac45a', category: 'join', href: (g) => `/dash/guild/${g}/onboarding#arrival` },
   { id: 'security', title: 'Security', desc: 'Anti-nuke, who can use what and a record of every change.', icon: 'ph:shield-warning-fill', color: '#fe6465', category: 'join', href: (g) => `/dash/guild/${g}/security` },
   { id: 'automod', title: 'Automod', desc: 'Word filter, anti-spam, anti-raid and anti-alt, with warns that escalate.', icon: 'ph:shield-check-fill', color: '#ffb86c', category: 'moderation', href: (g) => `/dash/guild/${g}/moderation` },
-  { id: 'honeypot', title: 'Honeypot', desc: 'A bait channel nobody should write in: spam bots that post there are caught at once.', icon: 'ph:jar-label-fill', color: '#d99a3d', category: 'moderation', href: (g) => `/dash/guild/${g}/honeypot`, isNew: true },
-  { id: 'role-triggers', title: 'Role triggers', desc: 'Do something automatically to a member who is given a role or finishes onboarding with it.', icon: 'ph:lightning-fill', color: '#ffd863', category: 'moderation', href: (g) => `/dash/guild/${g}/role-triggers`, isNew: true },
-  { id: 'role-quotas', title: 'Role quotas', desc: 'Ask a role for a number of messages in each period, and take it away from who misses it too many times.', icon: 'ph:chart-bar-fill', color: '#7bd0a8', category: 'moderation', href: (g) => `/dash/guild/${g}/role-quotas`, isNew: true },
+  { id: 'honeypot', title: 'Honeypot', desc: 'A bait channel nobody should write in: spam bots that post there are caught at once.', icon: 'ph:jar-label-fill', color: '#d99a3d', category: 'moderation', href: (g) => `/dash/guild/${g}/honeypot` },
+  { id: 'role-triggers', title: 'Role triggers', desc: 'Do something automatically to a member who is given a role or finishes onboarding with it.', icon: 'ph:lightning-fill', color: '#ffd863', category: 'moderation', href: (g) => `/dash/guild/${g}/role-triggers`, since: '2026-11-05' },
+  { id: 'role-quotas', title: 'Role quotas', desc: 'Ask a role for a number of messages in each period, and take it away from who misses it too many times.', icon: 'ph:chart-bar-fill', color: '#7bd0a8', category: 'moderation', href: (g) => `/dash/guild/${g}/role-quotas`, since: '2026-11-10' },
   { id: 'logging', title: 'Logging', desc: 'Each kind of event in its own channel, with the webhook made for you.', icon: 'ph:clipboard-text-fill', color: '#b4bcd0', category: 'moderation', href: (g) => `/dash/guild/${g}/logging` },
   { id: 'tickets', title: 'Tickets', desc: 'Panels, support types, forms and staff tools for private help channels.', icon: 'ph:ticket', color: '#ffb86c', category: 'community', href: (g) => `/dash/guild/${g}/tickets` },
   { id: 'leveling', title: 'Leveling', desc: 'XP for messages and voice, rewards, multipliers and a rank card.', icon: 'ph:chart-line-up-fill', color: '#5eead4', category: 'community', href: (g) => `/dash/guild/${g}/leveling?section=settings` },
   { id: 'giveaways', title: 'Giveaways', desc: 'Start and manage giveaways, with bonus entries and level requirements.', icon: 'ph:gift-fill', color: '#f78fb3', category: 'community', href: (g) => `/dash/guild/${g}/giveaways` },
-  { id: 'activity-boards', title: 'Activity leaderboards', desc: 'Post the most active members of the chat and of the voice channels in a channel, for the month, the week and the day.', icon: 'ph:trophy-fill', color: '#f78fb3', category: 'community', href: (g) => `/dash/guild/${g}/activity-boards`, isNew: true },
+  { id: 'activity-boards', title: 'Activity leaderboards', desc: 'Post the most active members of the chat and of the voice channels in a channel, for the month, the week and the day.', icon: 'ph:trophy-fill', color: '#f78fb3', category: 'community', href: (g) => `/dash/guild/${g}/activity-boards`, since: '2026-11-12' },
   { id: 'birthdays', title: 'Birthdays', desc: 'Celebrate birthdays with a message and a role for the day.', icon: 'ph:cake-fill', color: '#f78fb3', category: 'community', href: (g) => `/dash/guild/${g}/birthdays` },
-  { id: 'forms', title: 'Forms', desc: 'Applications and sign-ups answered in Discord, with rules, a review card, roles and a DM with the result.', icon: 'ph:clipboard-text-fill', color: '#8399ff', category: 'community', href: (g) => `/dash/guild/${g}/forms`, isNew: true },
+  { id: 'forms', title: 'Forms', desc: 'Applications and sign-ups answered in Discord, with rules, a review card, roles and a DM with the result.', icon: 'ph:clipboard-text-fill', color: '#8399ff', category: 'community', href: (g) => `/dash/guild/${g}/forms` },
   { id: 'suggestions', title: 'Suggestions', desc: 'Members suggest, everyone votes once and the staff answers with a reason.', icon: 'ph:lightbulb-fill', color: '#ffd863', category: 'community', href: (g) => `/dash/guild/${g}/suggestions` },
   { id: 'confessions', title: 'Confessions', desc: 'Members confess without a name, with a look you choose, a check by the staff and anonymous replies.', icon: 'ph:chat-circle-text-fill', color: '#a5ea7a', category: 'community', href: (g) => `/dash/guild/${g}/confessions` },
   { id: 'counting', title: 'Counting', desc: 'A channel where members count one number after the other, with records, saves and a leaderboard.', icon: 'ph:hash-fill', color: '#5eead4', category: 'community', href: (g) => `/dash/guild/${g}/counting` },
@@ -45,7 +46,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'reactionroles', title: 'Reaction roles', desc: 'Roles from a reaction or a button, on a message you pick or a saved design.', icon: 'ph:smiley-fill', color: '#c792ea', category: 'automation', href: (g) => `/dash/guild/${g}/automation?section=reaction-roles` },
   { id: 'autoresponders', title: 'Autoresponders', desc: 'Answer a word or phrase with a message, an embed or a button.', icon: 'ph:robot-fill', color: '#c792ea', category: 'automation', href: (g) => `/dash/guild/${g}/automation?section=autoresponders` },
   { id: 'commands', title: 'Custom commands', desc: 'Your own commands, with a form or in code. This is how Petto becomes your own bot.', icon: 'ph:terminal-window-fill', color: '#8399ff', category: 'automation', href: (g) => `/dash/guild/${g}/automation?section=custom-commands` },
-  { id: 'counters', title: 'Counters', desc: 'Channels whose names show live numbers: members, online, boosts, a goal or the time, updated safely.', icon: 'ph:chart-line-up-fill', color: '#38bdf8', category: 'automation', href: (g) => `/dash/guild/${g}/counters`, isNew: true },
+  { id: 'counters', title: 'Counters', desc: 'Channels whose names show live numbers: members, online, boosts, a goal or the time, updated safely.', icon: 'ph:chart-line-up-fill', color: '#38bdf8', category: 'automation', href: (g) => `/dash/guild/${g}/counters` },
   { id: 'webhooks', title: 'Webhooks', desc: 'Send text, embeds or saved designs as any name, edit them later and post in threads.', icon: 'ph:webhooks-logo-fill', color: '#a78bfa', category: 'automation', href: (g) => `/dash/guild/${g}/automation?section=webhooks` },
   { id: 'embeds', title: 'Embeds and designs', desc: 'Build messages, embeds and Components V2 designs and use them everywhere.', icon: 'ph:chat-circle-dots-fill', color: '#7dd3fc', category: 'messages', href: (g) => `/dash/guild/${g}/embeds` },
   { id: 'cards', title: 'Image cards', desc: 'Pictures for welcomes, level-ups and more, with your own layers.', icon: 'ph:image-fill', color: '#7dd3fc', category: 'messages', href: (g) => `/dash/guild/${g}/cards` },

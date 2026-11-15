@@ -8,13 +8,14 @@
 //   - plans: ['premium', 'custom'] for a paid feature (a Custom Bot has everything Premium has), ['free', 'premium', 'custom']
 //     for something everyone has, ['custom'] for the Custom Bot only
 //   - name and desc in en / es / pt (pt is Brazilian Portuguese); keep desc to one short sentence
-//   - isNew: true while it is new (the pages show a "New" badge); remove it after a release or two
+//   - isNew: isStillNew('YYYY-MM-DD') for a feature that is new (the pages show a "New" badge for a few days, utils/newBadge.ts)
 //   - compare (optional): what Free and Premium get, for the Free → Premium table. When it is a number of something per
 //     server, add the key to FREE_LIMITS / PREMIUM_LIMITS in src/utils/planLimits.ts (and the bot) and add a row to
 //     LIMIT_ROWS below instead, so the numbers are never typed twice.
 //
 // Prices: PREMIUM_TIERS and CUSTOM_MONTHLY are what the pages show; the amounts charged live in Polar and in the checkout code.
 // Change them together, never only here.
+import { isStillNew } from '../utils/newBadge';
 import { FREE_LIMITS, PREMIUM_LIMITS, FREE_STAT_DAYS, PREMIUM_STAT_DAYS, type PlanLimits } from '../utils/planLimits';
 import type { Locale } from '../i18n/ui';
 import { FEEDS_ON_PREMIUM_PAGE } from '../utils/feeds';
@@ -81,7 +82,7 @@ const ALL_FEATURES: readonly PremiumFeature[] = [
     desc: { en: 'About twice the room for commands, autoresponders, tickets, cards and more', es: 'Cerca del doble de espacio para comandos, autorespuestas, tickets, tarjetas y más', pt: 'Cerca do dobro de espaço para comandos, autorespostas, tickets, cartões e mais' },
   },
   {
-    id: 'feeds', icon: 'ph:bell-ringing-fill', plans: PAID, isNew: true,
+    id: 'feeds', icon: 'ph:bell-ringing-fill', plans: PAID,
     name: { en: 'More feeds', es: 'Más feeds', pt: 'Mais feeds' },
     desc: { en: 'Follow up to 10 accounts of each platform (YouTube, Twitch, Kick, Reddit, GitHub, RSS and more) and get their news in a channel', es: 'Sigue hasta 10 cuentas de cada plataforma (YouTube, Twitch, Kick, Reddit, GitHub, RSS y más) y recibe sus novedades en un canal', pt: 'Siga até 10 contas de cada plataforma (YouTube, Twitch, Kick, Reddit, GitHub, RSS e mais) e receba as novidades em um canal' },
   },
