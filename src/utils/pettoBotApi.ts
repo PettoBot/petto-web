@@ -132,7 +132,7 @@ export async function syncPettoLanguage(context: AstroContext, guildId: string, 
 }
 
 /** The routes of commands written in code: the pieces of the editor, check, test, save and trigger. */
-export async function callPettoCode(context: AstroContext, guildId: string, userId: string, route: 'meta' | 'check' | 'test' | 'save' | 'trigger', body?: Record<string, unknown>) {
+export async function callPettoCode(context: AstroContext, guildId: string, userId: string, route: 'meta' | 'check' | 'test' | 'save' | 'trigger' | 'overview' | 'timezone' | 'links' | 'reminder' | 'reminder/cancel', body?: Record<string, unknown>) {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, status: 503, payload: { ok: false, error: 'not_configured' } as any };
   const url = `${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/code/${route}${body ? '' : `?user_id=${encodeURIComponent(userId)}`}`;

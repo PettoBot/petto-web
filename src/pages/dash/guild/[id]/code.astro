@@ -3,7 +3,7 @@ export const prerender = false;
 import DashCode from '../../../../components/DashCode.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { getGuildInfo } from '../../../../utils/discord';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { canUseCodeCommands } from '../../../../utils/codeAccess';
 
 const { id } = Astro.params as { id: string };
@@ -45,7 +45,20 @@ async function loadCommands(): Promise<{ commands: Row[]; state: 'ok' | 'missing
   }
   return { commands: [], state: 'failed' };
 }
-const loaded = await loadCommands();
+// The text channels for the reminders (where each one runs), under their categories like Discord shows them.
+async function loadChannels(): Promise<{ id: string; name: string; category?: string }[]> {
+  try {
+    const res = await getGuildList(Astro, id, botToken!, 'channels');
+    if (!res.ok) return [];
+    const all = (await res.json()) as any[];
+    const categories = new Map(all.filter((channel) => channel.type === 4).map((channel) => [String(channel.id), String(channel.name)]));
+    return all
+      .filter((channel) => channel.type === 0 || channel.type === 5)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((channel) => ({ id: String(channel.id), name: String(channel.name), category: channel.parent_id ? categories.get(String(channel.parent_id)) : undefined }));
+  } catch { return []; }
+}
+const [loaded, channels] = await Promise.all([loadCommands(), loadChannels()]);
 const commands = loaded.commands;
 const ready = loaded.state !== 'missing';
 const loadFailed = loaded.state === 'failed';
@@ -55,4 +68,4 @@ try {
   if (res.ok) prefix = String((await res.json())?.[0]?.prefix || '!');
 } catch {}
 ---
-<DashCode user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} commands={commands} prefix={prefix} ready={ready} loadFailed={loadFailed} />
+<DashCode user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} commands={commands} prefix={prefix} ready={ready} loadFailed={loadFailed} channels={channels} />

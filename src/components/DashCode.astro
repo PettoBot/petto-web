@@ -3,6 +3,7 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashSettingsKit from './DashSettingsKit.astro';
 import DashStatTiles from './DashStatTiles.astro';
+import DashCodeTools from './DashCodeTools.astro';
 import { CODE_GENERATOR_URL } from '../data/codeGenerator';
 
 import { getDashLang, makeT } from '../i18n/dash';
@@ -17,8 +18,9 @@ interface Props {
   prefix: string;
   ready: boolean;
   loadFailed?: boolean;
+  channels?: { id: string; name: string; category?: string }[];
 }
-const { user, guildId, guildName, guildIcon, commands, prefix, ready, loadFailed = false } = Astro.props;
+const { user, guildId, guildName, guildIcon, commands, prefix, ready, loadFailed = false, channels = [] } = Astro.props;
 
 // Everything the script shows, translated here so the script has no text of its own.
 const ui = {
@@ -42,6 +44,7 @@ const ui = {
   stopped: dt('The code stopped'),
   stepsTime: dt('{steps} steps, {ms} ms'),
   noMatch: dt('No function matches.'),
+  otherGroup: dt('Other'),
   unavailable: dt('The bot did not answer. Try again in a moment.'),
   closed: dt('Commands in code are turned off for now.'),
   triggerSaved: dt('The trigger was saved.'),
@@ -116,6 +119,15 @@ const triggerTypes = [
     ]} />
   </div>
 
+  <nav class="cc-tabs" role="tablist" aria-label={dt('Commands in code')}>
+    <button type="button" class="cc-tab cc-tab-on" role="tab" aria-selected="true" data-tab="commands"><Icon name="ph:terminal-window-fill" width="15" height="15" />{dt('Commands')}</button>
+    <button type="button" class="cc-tab" role="tab" aria-selected="false" data-tab="reminders"><Icon name="ph:alarm-fill" width="15" height="15" />{dt('Reminders')}</button>
+    <button type="button" class="cc-tab" role="tab" aria-selected="false" data-tab="connections"><Icon name="ph:plugs-connected-fill" width="15" height="15" />{dt('Connections')}</button>
+    <button type="button" class="cc-tab" role="tab" aria-selected="false" data-tab="settings"><Icon name="ph:globe-hemisphere-west-fill" width="15" height="15" />{dt('Server settings')}</button>
+  </nav>
+  <DashCodeTools endpoint={`/dash/guild/${guildId}/code-api`} channels={channels} commands={commands.map((command) => command.name)} />
+
+  <div data-panel="commands">
   <div
     id="cc"
     class="cc-grid"
@@ -231,12 +243,13 @@ const triggerTypes = [
     </div>
   </div>
   </div>
+  </div>
 </DashGuildLayout>
 
 <script>
   import { highlight, caretContext, esc } from '../utils/codeEditor/highlight';
   import { renderPreview } from '../utils/codeEditor/discord';
-  import { FUNCTIONS, KEYWORDS, dataChildren, catalogLang } from '../utils/codeEditor/catalog';
+  import { FUNCTIONS, FUNCTION_GROUPS, KEYWORDS, dataChildren, catalogLang } from '../utils/codeEditor/catalog';
   import { snippets } from '../utils/codeEditor/snippets';
 
   const root = document.getElementById('cc') as HTMLElement | null;
@@ -761,25 +774,48 @@ const triggerTypes = [
       code.focus();
       code.dispatchEvent(new Event('input'));
     }
+    // The functions under the group they belong to, each with what it does; a click puts a ready example where the caret is.
+    const catalogByName = new Map(FUNCTIONS.map((fn) => [fn.name, fn]));
+    const groupOrder = [...Object.keys(FUNCTION_GROUPS), 'other'];
     function drawFunctions(filter = '') {
       const box = $('cc-fns');
       box.textContent = '';
-      const shown = (meta?.functions ?? []).filter((fn: any) => fn.name.toLowerCase().includes(filter.toLowerCase()));
+      const wanted = filter.toLowerCase().trim();
+      const shown = (meta?.functions ?? []).filter((fn: any) => !wanted || fn.name.toLowerCase().includes(wanted) || (catalogText.get(fn.name) ?? '').toLowerCase().includes(wanted));
       if (!shown.length) { const none = document.createElement('li'); none.className = 'cc-note'; none.textContent = ui.noMatch; box.appendChild(none); return; }
+      const byGroup = new Map<string, any[]>();
       for (const fn of shown) {
-        const item = document.createElement('li');
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'cc-fn';
-        const arity = fn.max === null ? `${fn.min}+` : fn.min === fn.max ? `${fn.min}` : `${fn.min}-${fn.max}`;
-        const name = document.createElement('code');
-        name.textContent = fn.name;
-        const hint = document.createElement('span');
-        hint.textContent = arity;
-        button.append(name, hint);
-        button.addEventListener('click', () => insert(`{{ ${fn.name} }}`));
-        item.appendChild(button);
-        box.appendChild(item);
+        const group = catalogByName.get(fn.name)?.group ?? 'other';
+        byGroup.set(group, [...(byGroup.get(group) ?? []), fn]);
+      }
+      for (const group of groupOrder) {
+        const items = byGroup.get(group);
+        if (!items?.length) continue;
+        const heading = document.createElement('li');
+        heading.className = 'cc-fn-group';
+        heading.textContent = `${group === 'other' ? ui.otherGroup : (FUNCTION_GROUPS[group]?.[lang] ?? FUNCTION_GROUPS[group]?.en ?? group)} · ${items.length}`;
+        box.appendChild(heading);
+        for (const fn of items) {
+          const item = document.createElement('li');
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'cc-fn';
+          const arity = fn.max === null ? `${fn.min}+` : fn.min === fn.max ? `${fn.min}` : `${fn.min}-${fn.max}`;
+          const top = document.createElement('span');
+          top.className = 'cc-fn-top';
+          const name = document.createElement('code');
+          name.textContent = fn.name;
+          const hint = document.createElement('span');
+          hint.textContent = arity;
+          top.append(name, hint);
+          button.appendChild(top);
+          const what = catalogText.get(fn.name);
+          if (what) { const description = document.createElement('small'); description.className = 'cc-fn-desc'; description.textContent = what; button.appendChild(description); }
+          const example = catalogByName.get(fn.name)?.insert;
+          button.addEventListener('click', () => insert(example ? (example.startsWith('{{') || example.startsWith('(') ? example : `{{ ${example} }}`) : `{{ ${fn.name} }}`));
+          item.appendChild(button);
+          box.appendChild(item);
+        }
       }
     }
     $<HTMLInputElement>('cc-fn-search').addEventListener('input', (event) => drawFunctions((event.target as HTMLInputElement).value));
@@ -935,14 +971,14 @@ const triggerTypes = [
 
   .cc-list, .cc-fns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .cc-list { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
-  .cc-fns { max-height: 220px; overflow: auto; overscroll-behavior: contain; gap: 2px; }
+  .cc-fns { max-height: 360px; overflow: auto; overscroll-behavior: contain; gap: 2px; }
   .cc-fns-wait { display: grid; align-content: start; gap: 8px; list-style: none; padding: 4px 0; min-height: 212px; }
   .cc-fns-wait .sk { height: 24px; border-radius: 8px; }
   @media (max-width: 1100px) { .cc-list { max-height: 300px; } .cc-fns { max-height: 240px; } }
   /* The items of the lists are made by the script, so their rules are :global(). A command is a small panel: its trigger, then its name and size. */
   :global(.cc-item) { width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 2px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 3%, var(--card)); color: var(--text); border-radius: 11px; padding: 9px 12px; font: inherit; cursor: pointer; text-align: left; min-width: 0; transition: background-color .25s ease, border-color .25s ease; }
   :global(.cc-item-head) { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
-  :global(.cc-fn) { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; min-width: 0; }
+  :global(.cc-fn) { width: 100%; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; min-width: 0; }
   :global(.cc-item:hover) { border-color: var(--border); background: var(--card-hover); }
   :global(.cc-fn:hover) { background: var(--border-soft); }
   :global(.cc-item.on) { background: var(--accent-soft); border-color: var(--accent); }
@@ -951,7 +987,10 @@ const triggerTypes = [
   :global(.cc-item .cc-item-name) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   :global(.cc-item code) { flex: 0 1 auto; }
   :global(.cc-fn code) { font-family: var(--mono); font-size: 12.5px; background: transparent; border: 0; padding: 0; color: inherit; overflow: hidden; text-overflow: ellipsis; }
+  :global(.cc-fn .cc-fn-top) { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
   :global(.cc-fn span) { font-family: var(--mono); font-size: 11px; color: var(--text-dim); flex: none; }
+  :global(.cc-fn .cc-fn-desc) { font-family: var(--sans); font-size: 11.5px; line-height: 1.35; color: var(--text-dim); white-space: normal; }
+  :global(.cc-fn-group) { position: sticky; top: 0; z-index: 1; background: var(--card); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); padding: 8px 9px 4px; }
   .cc-empty { margin: 0; }
   .cc-hint { margin: -6px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
   .cc-note, :global(li.cc-note) { font-size: 12px; color: var(--text-dim); margin: 0; line-height: 1.45; }

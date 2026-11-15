@@ -1,0 +1,440 @@
+---
+// The tabs of the page of the code that are not the editor: reminders that repeat, connections between commands (set from the settings of a
+// command, without writing code) and the time zone of the server. The bot does the real checks; this only draws what it says and sends the changes.
+import { Icon } from 'astro-icon/components';
+import ChannelOptions from './ChannelOptions.astro';
+import { getDashLang, makeT, dashLocale } from '../i18n/dash';
+
+interface Props {
+  endpoint: string;
+  channels: { id: string; name: string; category?: string }[];
+  commands: string[];
+}
+const { endpoint, channels, commands } = Astro.props;
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+// Zones that most servers need (any name of the IANA list is accepted; these are only suggestions).
+const ZONES = [
+  'UTC', 'America/Bogota', 'America/Lima', 'America/Mexico_City', 'America/Caracas', 'America/Santiago', 'America/Argentina/Buenos_Aires', 'America/Sao_Paulo',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto', 'America/Panama', 'America/Guatemala', 'America/Havana',
+  'America/La_Paz', 'America/Montevideo', 'America/Asuncion', 'America/Santo_Domingo', 'Atlantic/Canary', 'Europe/Madrid', 'Europe/Lisbon', 'Europe/London',
+  'Europe/Paris', 'Europe/Berlin', 'Europe/Rome', 'Europe/Moscow', 'Europe/Istanbul', 'Africa/Cairo', 'Africa/Lagos', 'Asia/Dubai', 'Asia/Kolkata',
+  'Asia/Bangkok', 'Asia/Manila', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
+const ui = {
+  loading: dt('Loading...'),
+  unavailable: dt('The bot did not answer. Try again in a moment.'),
+  closed: dt('Commands in code are turned off for now.'),
+  // Reminders
+  pickCommand: dt('Pick a command first.'),
+  chooseCommand: dt('Choose a command...'),
+  pickChannel: dt('Pick the channel where it runs.'),
+  badEvery: dt('Every 5 minutes at the least, and every 7 days at the most.'),
+  badTime: dt('Write the time, like 20:00.'),
+  reminderSaved: dt('The reminder was saved.'),
+  reminderCancelled: dt('The reminder was cancelled.'),
+  confirmCancel: dt('Cancel this reminder? It stops running.'),
+  yesCancel: dt('Cancel reminder'),
+  noReminders: dt('No reminders yet. Make the first one above.'),
+  everyTime: dt('Every {n} {unit}'),
+  everyDay: dt('Every day at {time} ({zone})'),
+  everyWeek: dt('Every {day} at {time} ({zone})'),
+  nextRun: dt('Next: {when}'),
+  inChannel: dt('In #{channel}'),
+  minute: dt('minute'), minutes: dt('minutes'), hour: dt('hour'), hours: dt('hours'), day: dt('day'), days: dt('days'),
+  serverZone: dt('The one of the server ({zone})'),
+  // Connections
+  linksSaved: dt('Connections saved.'),
+  noLinks: dt('Nothing connected yet.'),
+  addCommand: dt('Add a command...'),
+  remove: dt('Remove'),
+  full: dt('The most it can have.'),
+  noCommands: dt('No commands in code yet. Write one in the Commands tab first.'),
+  // Settings
+  zoneSaved: dt('The time zone was saved.'),
+  zoneNow: dt('It is {time} there now.'),
+  zoneBad: dt('That is not a time zone. Use a name like America/Bogota or hours like UTC-5.'),
+  failed: dt('It could not be saved.'),
+};
+---
+<section class="ct-panel" data-panel="reminders" hidden>
+  <div class="ct-box">
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon" style="--c:#f5c26b"><Icon name="ph:alarm-fill" width="17" height="17" /></span>
+      <h2>{dt('Reminders')}</h2>
+    </div>
+    <p class="ct-hint">{dt('A reminder runs one of your commands again and again, as you, in the channel you pick. To send the same message to several channels with one code, put a list of channels in sendMessage inside the command.')}</p>
+    <form class="ct-form" id="ct-reminder-form" autocomplete="off">
+      <label class="ct-field"><span>{dt('Command')}</span>
+        <select id="ct-r-command" class="ct-input" required><option value="">{dt('Choose a command...')}</option>{commands.map((name) => <option value={name}>{name}</option>)}</select>
+      </label>
+      <label class="ct-field"><span>{dt('Name of the reminder')}</span>
+        <input type="text" id="ct-r-id" class="ct-input" maxlength="50" pattern="[A-Za-z0-9_\-]+" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="ct-field"><span>{dt('Repeats')}</span>
+        <select id="ct-r-kind" class="ct-input">
+          <option value="interval">{dt('Every some time')}</option>
+          <option value="daily">{dt('Every day')}</option>
+          <option value="weekly">{dt('Every week')}</option>
+        </select>
+      </label>
+      <div class="ct-field" id="ct-r-every-box"><span>{dt('Every')}</span>
+        <span class="ct-pair">
+          <input type="number" id="ct-r-every" class="ct-input" min="1" max="10080" value="1" />
+          <select id="ct-r-unit" class="ct-input"><option value="minutes">{dt('minutes')}</option><option value="hours" selected>{dt('hours')}</option><option value="days">{dt('days')}</option></select>
+        </span>
+      </div>
+      <label class="ct-field" id="ct-r-day-box" hidden><span>{dt('Day')}</span>
+        <select id="ct-r-day" class="ct-input"></select>
+      </label>
+      <label class="ct-field" id="ct-r-time-box" hidden><span>{dt('At')}</span>
+        <input type="time" id="ct-r-time" class="ct-input" value="20:00" />
+      </label>
+      <label class="ct-field" id="ct-r-zone-box" hidden><span>{dt('Time zone')}</span>
+        <input type="text" id="ct-r-zone" class="ct-input" list="ct-zones" maxlength="40" spellcheck="false" />
+      </label>
+      <label class="ct-field"><span>{dt('Channel where it runs')}</span>
+        <select id="ct-r-channel" class="ct-input" required><option value="">{dt('Choose a channel...')}</option><ChannelOptions channels={channels} /></select>
+      </label>
+      <div class="ct-actions"><button type="submit" class="ct-btn ct-btn-primary" id="ct-r-save"><Icon name="ph:plus-bold" width="13" height="13" />{dt('Save reminder')}</button></div>
+    </form>
+    <p class="ct-message" id="ct-r-message" role="status" hidden></p>
+  </div>
+  <div class="ct-box">
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon" style="--c:#86b894"><Icon name="ph:list-checks-fill" width="17" height="17" /></span>
+      <h2>{dt('Waiting reminders')}</h2>
+    </div>
+    <ul class="ct-list" id="ct-r-list"></ul>
+    <p class="ct-empty" id="ct-r-empty" hidden>{dt('No reminders yet. Make the first one above.')}</p>
+  </div>
+</section>
+
+<section class="ct-panel" data-panel="connections" hidden>
+  <div class="ct-box">
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon" style="--c:#9bd0f5"><Icon name="ph:plugs-connected-fill" width="17" height="17" /></span>
+      <h2>{dt('Connections')}</h2>
+    </div>
+    <p class="ct-hint">{dt('Connect commands without writing code: the commands you add here run right after this one, as the same member, in the same channel. Up to 3 for each command. In code you can also use callCC and execCC.')}</p>
+    <ul class="ct-list" id="ct-c-list"></ul>
+    <p class="ct-empty" id="ct-c-empty" hidden>{dt('No commands in code yet. Write one in the Commands tab first.')}</p>
+    <p class="ct-message" id="ct-c-message" role="status" hidden></p>
+  </div>
+</section>
+
+<section class="ct-panel" data-panel="settings" hidden>
+  <div class="ct-box">
+    <div class="sx-panel-head">
+      <span class="sx-panel-icon" style="--c:#c6a8f5"><Icon name="ph:globe-hemisphere-west-fill" width="17" height="17" /></span>
+      <h2>{dt('Time zone of the server')}</h2>
+    </div>
+    <p class="ct-hint">{dt('The zone that .TimeZone, the date functions and the reminders use when they do not say one. Names like America/Bogota or hours like UTC-5.')}</p>
+    <div class="ct-form">
+      <label class="ct-field ct-wide"><span>{dt('Time zone')}</span>
+        <input type="text" id="ct-z-input" class="ct-input" list="ct-zones" maxlength="40" spellcheck="false" autocomplete="off" />
+      </label>
+      <div class="ct-actions">
+        <button type="button" class="ct-btn" id="ct-z-browser"><Icon name="ph:browser-fill" width="13" height="13" />{dt('Use the zone of my browser')}</button>
+        <button type="button" class="ct-btn ct-btn-primary" id="ct-z-save"><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save time zone')}</button>
+      </div>
+    </div>
+    <p class="ct-hint" id="ct-z-now"></p>
+    <p class="ct-message" id="ct-z-message" role="status" hidden></p>
+  </div>
+</section>
+
+<datalist id="ct-zones">{ZONES.map((zone) => <option value={zone}></option>)}</datalist>
+
+<div id="ct" hidden data-endpoint={endpoint} data-ui={JSON.stringify(ui)} data-lang={dashLang} data-locale={dashLocale(dashLang)} data-channels={JSON.stringify(channels)}></div>
+
+<script>
+  const root = document.getElementById('ct') as HTMLElement | null;
+  if (root) {
+    const ui = JSON.parse(root.dataset.ui || '{}');
+    const endpoint = root.dataset.endpoint || '';
+    const locale = root.dataset.locale || 'en-US';
+    const channels: { id: string; name: string }[] = JSON.parse(root.dataset.channels || '[]');
+    const channelName = new Map(channels.map((channel) => [channel.id, channel.name]));
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const ask = (text: string, opts?: object): Promise<boolean> => { const w = window as unknown as { dglConfirm?: (t: string, o?: object) => Promise<boolean> }; return w.dglConfirm ? w.dglConfirm(text, opts) : Promise.resolve(false); };
+    const toast = (message: string) => { const w = window as unknown as { dglToast?: (text: string, opts: { kind: string }) => void }; if (typeof w.dglToast === 'function') { w.dglToast(message, { kind: 'ok' }); return true; } return false; };
+
+    type Reminder = { name: string; id: string; channelId: string; runAt: number; repeat: null | { kind: string; everyMs: number | null; atTime: string | null; timezone: string | null; weekday: number | null } };
+    type Command = { number: number | null; name: string; links: string[] };
+    let overview: { timezone: string; commands: Command[]; reminders: Reminder[] } | null = null;
+
+    const say = (id: string, message: string, kind: 'ok' | 'bad' = 'bad') => { const box = $(id); box.textContent = message; box.hidden = !message; box.dataset.kind = kind; };
+    const done = (id: string, message: string) => { if (toast(message)) say(id, ''); else say(id, message, 'ok'); };
+    async function call(body: Record<string, unknown>): Promise<{ status: number; payload: any }> {
+      try {
+        const response = await fetch(endpoint, { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+        return { status: response.status, payload: await response.json().catch(() => null) };
+      } catch { return { status: 0, payload: null }; }
+    }
+    // What to tell when the bot did not accept something: its own sentence, or why it did not answer.
+    const problem = (answer: { status: number; payload: any }) => answer.payload?.message || (answer.payload?.error === 'turned_off' ? ui.closed : answer.status ? ui.failed : ui.unavailable);
+
+    // ── The clock of a zone: names of the IANA list, or hours like UTC-5 ──
+    function clockIn(zone: string): string | null {
+      const fixed = /^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/i.exec(zone.trim());
+      const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', weekday: 'short' };
+      try {
+        if (fixed) {
+          const minutes = (Number(fixed[2]) * 60 + Number(fixed[3] ?? 0)) * (fixed[1] === '-' ? -1 : 1);
+          return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(Date.now() + minutes * 60_000));
+        }
+        return new Intl.DateTimeFormat(locale, { ...options, timeZone: zone.trim() }).format(new Date());
+      } catch { return null; }
+    }
+
+    // ── The tabs ──
+    const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.cc-tab'));
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('[data-panel]'));
+    function show(tab: string) {
+      const known = tabs.some((button) => button.dataset.tab === tab) ? tab : 'commands';
+      for (const button of tabs) { const on = button.dataset.tab === known; button.setAttribute('aria-selected', String(on)); button.classList.toggle('cc-tab-on', on); }
+      for (const panel of panels) panel.hidden = panel.dataset.panel !== known;
+      try { history.replaceState(null, '', known === 'commands' ? location.pathname + location.search : `#${known}`); } catch { /* the address stays */ }
+      if (known !== 'commands') refresh();
+    }
+    for (const button of tabs) button.addEventListener('click', () => show(button.dataset.tab || 'commands'));
+
+    // ── What the bot has ──
+    async function refresh() {
+      try {
+        const response = await fetch(`${endpoint}?view=overview`, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(() => null);
+        if (!payload?.ok) { say('ct-r-message', payload?.error === 'turned_off' ? ui.closed : ui.unavailable); return; }
+        overview = payload;
+      } catch { say('ct-r-message', ui.unavailable); return; }
+      drawAll();
+    }
+    function drawAll() { if (!overview) return; drawReminders(); drawConnections(); drawSettings(); }
+
+    // ── Reminders ──
+    const weekdayNames = Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + index))));
+    const daySelect = $<HTMLSelectElement>('ct-r-day');
+    daySelect.innerHTML = weekdayNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    daySelect.value = '1';
+    const kind = $<HTMLSelectElement>('ct-r-kind');
+    function syncKind() {
+      $('ct-r-every-box').hidden = kind.value !== 'interval';
+      $('ct-r-day-box').hidden = kind.value !== 'weekly';
+      $('ct-r-time-box').hidden = kind.value === 'interval';
+      $('ct-r-zone-box').hidden = kind.value === 'interval';
+    }
+    kind.addEventListener('change', syncKind);
+    syncKind();
+    const newId = () => `r${Date.now().toString(36).slice(-6)}`;
+    $<HTMLInputElement>('ct-r-id').value = newId();
+    const unitWord = (n: number, base: 'minute' | 'hour' | 'day') => ui[n === 1 ? base : `${base}s`];
+    function describe(repeat: NonNullable<Reminder['repeat']>) {
+      if (repeat.kind === 'interval') {
+        const minutes = Math.round((repeat.everyMs ?? 0) / 60000);
+        const [n, base] = minutes % 1440 === 0 ? [minutes / 1440, 'day' as const] : minutes % 60 === 0 ? [minutes / 60, 'hour' as const] : [minutes, 'minute' as const];
+        return String(ui.everyTime).replace('{n}', String(n)).replace('{unit}', unitWord(n, base));
+      }
+      if (repeat.kind === 'daily') return String(ui.everyDay).replace('{time}', repeat.atTime ?? '').replace('{zone}', repeat.timezone ?? '');
+      return String(ui.everyWeek).replace('{day}', weekdayNames[repeat.weekday ?? 0] ?? '').replace('{time}', repeat.atTime ?? '').replace('{zone}', repeat.timezone ?? '');
+    }
+    function drawReminders() {
+      if (!overview) return;
+      // The commands may have changed in the editor since the page loaded.
+      const picker = $<HTMLSelectElement>('ct-r-command');
+      const chosen = picker.value;
+      picker.innerHTML = `<option value="">${ui.chooseCommand}</option>`;
+      for (const command of overview.commands) { const option = document.createElement('option'); option.value = command.name; option.textContent = command.name; picker.appendChild(option); }
+      picker.value = overview.commands.some((command) => command.name === chosen) ? chosen : '';
+      const zoneInput = $<HTMLInputElement>('ct-r-zone');
+      zoneInput.placeholder = String(ui.serverZone).replace('{zone}', overview.timezone);
+      const list = $('ct-r-list');
+      list.textContent = '';
+      $('ct-r-empty').hidden = overview.reminders.length > 0;
+      for (const reminder of overview.reminders) {
+        const item = document.createElement('li');
+        item.className = 'ct-item';
+        const main = document.createElement('div');
+        main.className = 'ct-item-main';
+        const title = document.createElement('strong');
+        title.textContent = `${reminder.name} · ${reminder.id}`;
+        const repeat = document.createElement('span');
+        repeat.textContent = reminder.repeat ? describe(reminder.repeat) : '';
+        const meta = document.createElement('span');
+        meta.className = 'ct-dim';
+        const where = channelName.get(reminder.channelId);
+        meta.textContent = [String(ui.nextRun).replace('{when}', new Date(reminder.runAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })), where ? String(ui.inChannel).replace('{channel}', where) : ''].filter(Boolean).join(' · ');
+        main.append(title, repeat, meta);
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'ct-btn ct-btn-danger ct-small';
+        cancel.textContent = ui.yesCancel;
+        cancel.addEventListener('click', async () => {
+          if (!(await ask(ui.confirmCancel, { confirm: ui.yesCancel }))) return;
+          const answer = await call({ action: 'reminder-cancel', name: reminder.name, id: reminder.id });
+          if (!answer.payload?.ok) { say('ct-r-message', problem(answer)); return; }
+          done('ct-r-message', ui.reminderCancelled);
+          refresh();
+        });
+        item.append(main, cancel);
+        list.appendChild(item);
+      }
+    }
+    $('ct-reminder-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      say('ct-r-message', '');
+      const name = $<HTMLSelectElement>('ct-r-command').value;
+      const channelId = $<HTMLSelectElement>('ct-r-channel').value;
+      if (!name) { say('ct-r-message', ui.pickCommand); return; }
+      if (!channelId) { say('ct-r-message', ui.pickChannel); return; }
+      const body: Record<string, unknown> = { action: 'reminder', name, id: $<HTMLInputElement>('ct-r-id').value.trim(), channelId, kind: kind.value };
+      if (kind.value === 'interval') {
+        const unit = $<HTMLSelectElement>('ct-r-unit').value;
+        const seconds = Math.round(Number($<HTMLInputElement>('ct-r-every').value) * (unit === 'minutes' ? 60 : unit === 'hours' ? 3600 : 86400));
+        if (!(seconds >= 300 && seconds <= 604800)) { say('ct-r-message', ui.badEvery); return; }
+        body.everySeconds = seconds;
+      } else {
+        const time = $<HTMLInputElement>('ct-r-time').value;
+        if (!time) { say('ct-r-message', ui.badTime); return; }
+        body.time = time;
+        body.timezone = $<HTMLInputElement>('ct-r-zone').value.trim();
+        if (kind.value === 'weekly') body.weekday = Number(daySelect.value);
+      }
+      const button = $<HTMLButtonElement>('ct-r-save');
+      button.disabled = true;
+      const answer = await call(body);
+      button.disabled = false;
+      if (!answer.payload?.ok) { say('ct-r-message', problem(answer)); return; }
+      done('ct-r-message', ui.reminderSaved);
+      $<HTMLInputElement>('ct-r-id').value = newId();
+      refresh();
+    });
+
+    // ── Connections ──
+    const MAX_LINKS = 3;
+    function drawConnections() {
+      if (!overview) return;
+      const list = $('ct-c-list');
+      list.textContent = '';
+      $('ct-c-empty').hidden = overview.commands.length > 0;
+      for (const command of overview.commands) {
+        const item = document.createElement('li');
+        item.className = 'ct-item ct-item-col';
+        const head = document.createElement('div');
+        head.className = 'ct-item-head';
+        const title = document.createElement('strong');
+        title.textContent = command.name;
+        head.appendChild(title);
+        if (command.number !== null) { const number = document.createElement('span'); number.className = 'ct-dim'; number.textContent = `#${command.number}`; head.appendChild(number); }
+        const chips = document.createElement('div');
+        chips.className = 'ct-chips';
+        const save = async (links: string[]) => {
+          const answer = await call({ action: 'links', name: command.name, links });
+          if (!answer.payload?.ok) { say('ct-c-message', problem(answer)); return; }
+          say('ct-c-message', '');
+          command.links = answer.payload.links ?? links;
+          done('ct-c-message', ui.linksSaved);
+          drawConnections();
+        };
+        if (!command.links.length) { const none = document.createElement('span'); none.className = 'ct-dim'; none.textContent = ui.noLinks; chips.appendChild(none); }
+        for (const link of command.links) {
+          const chip = document.createElement('span');
+          chip.className = 'ct-chip';
+          chip.textContent = link;
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.setAttribute('aria-label', `${ui.remove} ${link}`);
+          remove.textContent = '×';
+          remove.addEventListener('click', () => save(command.links.filter((entry) => entry !== link)));
+          chip.appendChild(remove);
+          chips.appendChild(chip);
+        }
+        const add = document.createElement('select');
+        add.className = 'ct-input ct-small-input';
+        add.innerHTML = `<option value="">${ui.addCommand}</option>`;
+        for (const other of overview.commands) {
+          if (other.name === command.name || command.links.includes(other.name)) continue;
+          const option = document.createElement('option');
+          option.value = other.name;
+          option.textContent = other.name;
+          add.appendChild(option);
+        }
+        add.disabled = command.links.length >= MAX_LINKS;
+        if (add.disabled) add.title = ui.full;
+        add.addEventListener('change', () => { if (add.value) save([...command.links, add.value]); });
+        item.append(head, chips, add);
+        list.appendChild(item);
+      }
+    }
+
+    // ── The time zone of the server ──
+    const zoneInput = $<HTMLInputElement>('ct-z-input');
+    function showNow() {
+      const clock = clockIn(zoneInput.value);
+      $('ct-z-now').textContent = clock ? String(ui.zoneNow).replace('{time}', clock) : '';
+    }
+    function drawSettings() { if (overview && document.activeElement !== zoneInput) zoneInput.value = overview.timezone; showNow(); }
+    zoneInput.addEventListener('input', showNow);
+    $('ct-z-browser').addEventListener('click', () => { try { zoneInput.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { zoneInput.value = 'UTC'; } showNow(); });
+    $('ct-z-save').addEventListener('click', async () => {
+      say('ct-z-message', '');
+      if (!clockIn(zoneInput.value)) { say('ct-z-message', ui.zoneBad); return; }
+      const answer = await call({ action: 'timezone', timezone: zoneInput.value.trim() });
+      if (!answer.payload?.ok) { say('ct-z-message', problem(answer)); return; }
+      zoneInput.value = answer.payload.timezone;
+      done('ct-z-message', ui.zoneSaved);
+      refresh();
+    });
+
+    show(location.hash.replace('#', '') || 'commands');
+  }
+</script>
+
+<style is:global>
+  .ct-panel { display: flex; flex-direction: column; gap: 14px; }
+  .ct-panel[hidden], [data-panel][hidden], .ct-field[hidden] { display: none !important; }
+  .ct-box { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; animation: m-rise-in var(--m-slow) var(--m-out) backwards; }
+  @media (max-width: 720px) { .ct-box { padding: 15px; } }
+  @media (prefers-reduced-motion: reduce) { .ct-box { animation: none; } }
+  .ct-hint { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+  .ct-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; align-items: start; }
+  .ct-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ct-field > span:first-child { font-size: 13px; font-weight: 600; color: var(--text); }
+  .ct-wide { grid-column: 1 / -1; }
+  .ct-pair { display: flex; gap: 8px; }
+  .ct-pair .ct-input:first-child { width: 90px; flex: none; }
+  .ct-pair .ct-input:last-child { flex: 1; }
+  .ct-input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; width: 100%; box-sizing: border-box; }
+  .ct-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .ct-actions { display: flex; gap: 8px; flex-wrap: wrap; grid-column: 1 / -1; }
+  .ct-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .ct-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .ct-btn:disabled { opacity: 0.6; cursor: default; }
+  .ct-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ct-btn-danger { color: var(--red); }
+  .ct-btn-danger:hover:not(:disabled) { border-color: var(--red); }
+  .ct-small { padding: 5px 10px; font-size: 12px; flex: none; }
+  .ct-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .ct-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .ct-item-col { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ct-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13.5px; }
+  .ct-item-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+  .ct-dim { color: var(--text-dim); font-size: 12.5px; }
+  .ct-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .ct-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--accent-soft); font-size: 12.5px; font-family: var(--mono); }
+  .ct-chip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 5px; border-radius: 50%; }
+  .ct-chip button:hover { background: rgba(0, 0, 0, 0.12); }
+  .ct-small-input { max-width: 260px; }
+  .ct-empty { margin: 0; font-size: 13px; color: var(--text-dim); }
+  .ct-message { margin: 0; font-size: 13px; color: var(--red); }
+  .ct-message[data-kind="ok"] { color: var(--green, #86b894); }
+
+  /* The tabs of the page */
+  .cc-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin: 4px 0 16px; }
+  .cc-tab { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--text-dim); font: inherit; font-size: 14px; font-weight: 600; padding: 10px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; border-radius: 8px 8px 0 0; }
+  .cc-tab:hover { color: var(--text); background: var(--accent-soft); }
+  .cc-tab-on { color: var(--accent); border-bottom-color: var(--accent); }
+  @media (max-width: 520px) { .cc-tab { padding: 9px 10px; font-size: 13px; } }
+</style>

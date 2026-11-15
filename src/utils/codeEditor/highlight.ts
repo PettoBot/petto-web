@@ -2,7 +2,7 @@
 // and inside an action there are strings, numbers, keywords, functions, fields and variables. Ported from the Petto Code
 // Generator. Everything is escaped, so the code can never add HTML to the page.
 
-const KEYWORDS = new Set(['if', 'else', 'end', 'range', 'with', 'break', 'continue', 'return', 'true', 'false', 'nil']);
+const KEYWORDS = new Set(['if', 'else', 'end', 'range', 'with', 'define', 'template', 'break', 'continue', 'return', 'true', 'false', 'nil']);
 export const esc = (text: unknown) => String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const span = (cls: string, text: string) => `<span class="tk-${cls}">${esc(text)}</span>`;
 

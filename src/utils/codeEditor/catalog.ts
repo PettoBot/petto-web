@@ -27,6 +27,7 @@ export const FUNCTION_GROUPS: Record<string, Texts> = {
   moderation: { en: 'Moderation', es: 'Moderación', pt: 'Moderação' },
   later: { en: 'Run later', es: 'Ejecutar más tarde', pt: 'Rodar mais tarde' },
   web: { en: 'Web requests', es: 'Peticiones web', pt: 'Requisições web' },
+  connect: { en: 'Connect commands', es: 'Conectar comandos', pt: 'Conectar comandos' },
   more: { en: 'More tools for values', es: 'Más herramientas para valores', pt: 'Mais ferramentas para valores' },
 };
 
@@ -34,7 +35,9 @@ export const FUNCTIONS: CatalogFunction[] = [
   F('blocks', 'if', '{{ if CONDITION }}\n  \n{{ else }}\n  \n{{ end }}', 'Runs a block only when the condition is true', 'Ejecuta un bloque solo si la condición es verdadera', 'Executa um bloco só quando a condição é verdadeira'),
   F('blocks', 'range', '{{ range $i, $item := LIST }}\n  {{ $item }}\n{{ end }}', 'Repeats a block for every item of a list', 'Repite un bloque por cada elemento de una lista', 'Repete um bloco para cada item de uma lista'),
   F('blocks', 'with', '{{ with VALUE }}{{ . }}{{ else }}…{{ end }}', 'Runs a block if the value exists, with . as the value', 'Ejecuta un bloque si el valor existe, con . como el valor', 'Executa um bloco se o valor existe, com . como o valor'),
-  F('blocks', 'return', '{{ return }}', 'Stops the code here', 'Para el código aquí', 'Para o código aqui'),
+  F('blocks', 'return', '{{ return }}', 'Stops the code here, or {{ return VALUE }} gives a value to the command that called it with callCC', 'Para el código aquí, o {{ return VALOR }} da un valor al comando que lo llamó con callCC', 'Para o código aqui, ou {{ return VALOR }} dá um valor ao comando que o chamou com callCC'),
+  F('blocks', 'define', '{{ define "name" }}…{{ end }}', 'Saves a piece of the command to use again with template', 'Guarda un trozo del comando para usarlo otra vez con template', 'Guarda um pedaço do comando para usar de novo com template'),
+  F('blocks', 'template', '{{ template "name" VALUE }}', 'Prints a piece saved with define (the value is its dot)', 'Imprime un trozo guardado con define (el valor es su punto)', 'Imprime um pedaço guardado com define (o valor é o seu ponto)'),
   F('blocks', 'var', '{{ $name := VALUE }}', 'Creates a variable', 'Crea una variable', 'Cria uma variável'),
   F('blocks', 'comment', '{{/* comment */}}', 'A note that is not printed', 'Una nota que no se imprime', 'Uma nota que não é impressa'),
   F('logic', 'eq', 'eq A B', 'True if A equals B (or any of the others)', 'Verdadero si A es igual a B (o a otro)', 'Verdadeiro se A é igual a B (ou a outro)'),
@@ -214,7 +217,14 @@ export const FUNCTIONS: CatalogFunction[] = [
   F('moderation', 'mute', 'mute "USER_ID" (toDuration "10m") "reason"', 'Timeout, from 1 second to 28 days (only from a button, menu, form or reaction)', 'Aislamiento, de 1 segundo a 28 días (solo desde un botón, menú, formulario o reacción)', 'Castigo, de 1 segundo a 28 dias (só a partir de um botão, menu, formulário ou reação)'),
   F('moderation', 'unmute', 'unmute "USER_ID"', 'Lifts the timeout (only from a button, menu, form or reaction)', 'Quita el aislamiento (solo desde un botón, menú, formulario o reacción)', 'Tira o castigo (só a partir de um botão, menu, formulário ou reação)'),
   F('moderation', 'warn', 'warn "USER_ID" "reason"', 'A warning, with the escalation rules (only from a button, menu, form or reaction)', 'Una advertencia, con las reglas de escalada (solo desde un botón, menú, formulario o reacción)', 'Um aviso, com as regras de escalada (só a partir de um botão, menu, formulário ou reação)'),
+  F('connect', 'callCC', 'callCC "name" ARGUMENT', 'Runs another command of the server right here and gives what it returns (or prints); by name or by number', 'Ejecuta aquí otro comando del servidor y da lo que devuelve (o imprime); por nombre o por número', 'Roda aqui outro comando do servidor e dá o que ele retorna (ou imprime); por nome ou por número'),
+  F('connect', 'getCC', 'getCC "name"', 'The data of a command (Number, Name, HasCode, Trigger) by name or by number', 'Los datos de un comando (Number, Name, HasCode, Trigger) por nombre o por número', 'Os dados de um comando (Number, Name, HasCode, Trigger) por nome ou por número'),
+  F('connect', 'listCC', '(listCC)', 'The list of the commands of the server, with their numbers', 'La lista de los comandos del servidor, con sus números', 'A lista dos comandos do servidor, com seus números'),
+  F('connect', 'execTemplate', 'execTemplate "name" VALUE', 'Runs a piece saved with define and gives what it prints', 'Ejecuta un trozo guardado con define y da lo que imprime', 'Roda um pedaço guardado com define e dá o que ele imprime'),
   F('later', 'scheduleUniqueCC', 'scheduleUniqueCC "name" "id" (toDuration "10m") (sdict "key" "value")', 'Runs a command later (5 seconds to 7 days); the same id replaces it', 'Ejecuta un comando más tarde (5 segundos a 7 días); el mismo id lo sustituye', 'Roda um comando mais tarde (5 segundos a 7 dias); o mesmo id o substitui'),
+  F('later', 'scheduleRepeatCC', 'scheduleRepeatCC "name" "id" (toDuration "1h") (sdict "key" "value")', 'Runs a command again and again, every 5 minutes to 7 days; the same id replaces it', 'Ejecuta un comando una y otra vez, cada 5 minutos a 7 días; el mismo id lo sustituye', 'Roda um comando de novo e de novo, a cada 5 minutos a 7 dias; o mesmo id o substitui'),
+  F('later', 'scheduleDailyCC', 'scheduleDailyCC "name" "id" "20:00" "America/Bogota" (sdict "key" "value")', 'Runs a command every day at a time of a time zone (the one of the server if none)', 'Ejecuta un comando cada día a una hora de una zona horaria (la del servidor si no dices ninguna)', 'Roda um comando todo dia em um horário de um fuso (o do servidor se não disser nenhum)'),
+  F('later', 'scheduleWeeklyCC', 'scheduleWeeklyCC "name" "id" "monday" "20:00" "America/Bogota"', 'Runs a command every week on a day and a time of a time zone', 'Ejecuta un comando cada semana un día y una hora de una zona horaria', 'Roda um comando toda semana em um dia e horário de um fuso'),
   F('later', 'cancelScheduledCC', 'cancelScheduledCC "name" "id"', 'Cancels a scheduled command', 'Cancela un comando programado', 'Cancela um comando agendado'),
   F('web', 'httpGet', 'httpGet "https://example.com/data"', 'Asks a web page: Status, OK, Body, JSON (https only)', 'Pide una página web: Status, OK, Body, JSON (solo https)', 'Pede uma página web: Status, OK, Body, JSON (só https)'),
   F('web', 'httpPost', 'httpPost "https://example.com/data" (dict "a" 1)', 'Sends data to a web page (a map goes as JSON)', 'Envía datos a una página web (un mapa va como JSON)', 'Envia dados a uma página web (um mapa vai como JSON)'),
@@ -337,6 +347,7 @@ DATA.push(
   ['.Modal.ID', { en: 'Id of the form sent', es: 'Id del formulario enviado', pt: 'Id do formulário enviado' }],
   ['.Modal.Data', { en: 'Data of the form', es: 'Data del formulario', pt: 'Data do formulário' }],
   ['.ExecData', { en: 'The data that execCC passed, or nothing', es: 'Los datos que pasó execCC, o nada', pt: 'Os dados que o execCC passou, ou nada' }],
+  ['.TimeZone', { en: 'The time zone of the server (UTC until it is set on the code page)', es: 'La zona horaria del servidor (UTC hasta que la elijas en la página del código)', pt: 'O fuso horário do servidor (UTC até você escolher na página do código)' }],
   ['.ExecBy', { en: 'The command that ran this one with execCC', es: 'El comando que ejecutó este con execCC', pt: 'O comando que executou este com execCC' }],
 );
 
@@ -353,7 +364,7 @@ export const DATA_GROUPS: Record<string, Texts> = {
 };
 
 /** The words of the language itself, offered with the functions. */
-export const KEYWORDS = ['if', 'else', 'end', 'range', 'with', 'break', 'continue', 'return', 'true', 'false', 'nil'];
+export const KEYWORDS = ['if', 'else', 'end', 'range', 'with', 'define', 'template', 'break', 'continue', 'return', 'true', 'false', 'nil'];
 
 export interface DataEntry { name: string; path: string; text: Texts | null; children: boolean }
 
