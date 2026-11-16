@@ -823,11 +823,32 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       outsideClosers.forEach(function (c) { if (!c.wrap.contains(e.target) && !(c.extra && c.extra.contains(e.target))) c.close(); });
     });
     // Going to another field (a tap, a click, Tab) closes an open list right away, so what is typed next goes to the field that was chosen, never into the list.
+    function isTextField(el) {
+      if (!el || el.nodeType !== 1) return false;
+      if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+      return el.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)?$/.test((el.getAttribute('type') || '').toLowerCase());
+    }
+    function inPicker(el) { return !!(el && el.closest && el.closest('[data-multiselect], .dgl-selmenu')); }
+    // The field of a list that is still focused when the list goes away keeps the phone's keyboard: it is let go first, so the keyboard follows
+    // the field that was chosen.
+    function leavePicker() {
+      var active = document.activeElement;
+      if (active && active !== document.body && inPicker(active)) active.blur();
+    }
     function closePickersExcept(target) {
+      if (isTextField(target) && !inPicker(target)) leavePicker();
       outsideClosers.forEach(function (c) { if (c.wrap.isConnected && !c.wrap.contains(target) && !(c.extra && c.extra.contains(target))) c.close(); });
     }
-    document.addEventListener('pointerdown', function (e) { closePickersExcept(e.target); }, true);
+    // A finger does not close the list when it touches down (the page can move under it before it lifts, and the tap would land on another field):
+    // the field that is tapped takes the focus and that closes the list; a tap on anything else closes it with its click.
+    document.addEventListener('pointerdown', function (e) { if (e.pointerType !== 'touch') closePickersExcept(e.target); }, true);
     document.addEventListener('focusin', function (e) { closePickersExcept(e.target); }, true);
+    // A tap on a text field always ends with the focus (and the keyboard) in that field, never in a list that was open next to it.
+    document.addEventListener('click', function (e) {
+      var field = e.target;
+      if (!isTextField(field) || inPicker(field) || field.disabled || field.readOnly) return;
+      if (document.activeElement !== field) { leavePicker(); field.focus(); }
+    }, true);
     function reposition() {
       repositioners = repositioners.filter(function (r) { return r.wrap.isConnected; });
       repositioners.forEach(function (r) { if (!r.isOpen || r.isOpen()) r.place(); });
@@ -992,10 +1013,28 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
     var barTimer = null;
     // "Saving" never stays for ever: a save that has not answered in 25 s turns into the error state, and the bar can be used again.
     var stuckTimer = 0;
+    // The switches the person turned since the last save (and what each one held before). While the bar saves, a ring turns inside the knob
+    // of each one that still differs, the same on every page and for every kind of switch; the page is not reloaded.
+    var turnedSwitches = new Map();
+    var SWITCH_INPUT = '.sx-switch > input, .sx-toggle-only > input, input.dfx-t, .fd-switch > input, .lv-switch > input';
+    document.addEventListener('change', function (e) {
+      var input = e.target && e.target.matches && e.target.matches(SWITCH_INPUT) ? e.target : null;
+      if (!input || input.type !== 'checkbox' || input.closest('[data-qa], .anx-sw') || input.hasAttribute('data-no-dirty') || input.hasAttribute('data-an-auto')) return;
+      if (!turnedSwitches.has(input)) turnedSwitches.set(input, !input.checked);
+    });
+    function paintSwitches(saving) {
+      turnedSwitches.forEach(function (before, input) {
+        if (!input.isConnected) { turnedSwitches.delete(input); return; }
+        if (saving && input.checked !== before) input.setAttribute('data-sw-busy', '1'); else input.removeAttribute('data-sw-busy');
+        if (!saving && input.checked === before) turnedSwitches.delete(input);
+      });
+    }
     function setBarState(state, text) {
       if (!saveBar) return;
       clearTimeout(barTimer);
       clearTimeout(stuckTimer);
+      paintSwitches(state === 'saving');
+      if (state === 'saved') turnedSwitches.clear();
       saveBar.classList.remove('saving', 'saved', 'error');
       if (state) saveBar.classList.add(state, 'show');
       if (text && saveBarText) saveBarText.textContent = text;
@@ -2561,6 +2600,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         lockField();
         function closeDropdown() {
           if (dropdown.hidden) return;
+          if (document.activeElement === input) input.blur();
           lockField();
           wrap.classList.remove('open');
           // The list fades out where it is, and only then goes back into the page.
@@ -2581,6 +2621,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               option.classList.add('dgl-ms-selected');
               var chip = document.createElement('span');
               chip.className = 'dgl-ms-chip';
+              var roleColor = option.getAttribute('data-color');
+              if (roleColor) { chip.classList.add('dgl-ms-role'); chip.style.setProperty('--role-c', roleColor); }
               var chipLabel = document.createElement('span');
               chipLabel.textContent = label;
               var remove = document.createElement('button');
@@ -2976,12 +3018,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         var locked = decorateOption(label, input.value, info, give, input.checked);
         var text = label.querySelector('span');
         var color = label.getAttribute('data-color');
-        if (color && text && !label.querySelector('.dgl-ms-dot')) {
-          var dot = document.createElement('i');
-          dot.className = 'dgl-ms-dot';
-          dot.style.background = color;
-          label.insertBefore(dot, text);
-        }
+        // A role is written in its own color, as Discord shows it (no dot).
+        if (color && text) { label.classList.add('dgl-ms-role'); label.style.setProperty('--role-c', color); }
         if (label.getAttribute('data-above') && text && !locked) {
           var tag = document.createElement('em');
           tag.className = 'dgl-ms-tag';
@@ -3000,6 +3038,20 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       });
       groupDropdowns(scope);
     }
+    // The title of a category: when its name starts with an emoji, the emoji is shown first and bigger, then the name without the marks around it.
+    window.dglCategoryHead = function (head, text) {
+      var found = null;
+      try { found = /^\s*(\p{Regional_Indicator}{2}|\p{Extended_Pictographic}(?:\uFE0F|\u20E3|\u200D\p{Extended_Pictographic}|\p{Emoji_Modifier})*)/u.exec(text); } catch (e) { found = null; }
+      head.textContent = '';
+      if (!found) { head.textContent = text; return; }
+      var emoji = document.createElement('span');
+      emoji.className = 'dgl-cat-emoji';
+      emoji.textContent = found[1];
+      head.appendChild(emoji);
+      var rest = text.slice(found[0].length).replace(/^[\s\-\u2013\u2014|:\u30FB\u00B7\u2022\u2503\u2502\u258F]+/, '');
+      if (rest) { var name = document.createElement('span'); name.textContent = rest; head.appendChild(name); }
+      head.classList.add('has-emoji');
+    };
     // The options of a list of channels go under their category, in the order of Discord (a list of roles keeps its order).
     function groupDropdowns(scope) {
       scope.querySelectorAll('[data-ms-dropdown]').forEach(function (dropdown) {
@@ -3014,7 +3066,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
           if (cat !== last && cat) {
             var head = document.createElement('div');
             head.className = 'dgl-ms-group';
-            head.textContent = cat;
+            window.dglCategoryHead(head, cat);
             if (anchor) anchor.after(head); else dropdown.insertBefore(head, dropdown.firstChild);
             anchor = head;
           }

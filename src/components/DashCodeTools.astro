@@ -169,6 +169,31 @@ const ui = {
     }
     const problem = (answer: { status: number; payload: any }) => answer.payload?.message || (answer.payload?.error === 'turned_off' ? ui.closed : answer.status ? ui.failed : ui.unavailable);
 
+    // ── The bar of unsaved changes of the dashboard (DashGuildLayout) ──
+    // Each part of these settings tells the bar when it differs from what is saved (window.dglDirty), and gives it how to save it and how to put it
+    // back, so one press of "Save changes" or "Discard" does it all, together with the code of the editor. Each part still has its own button.
+    type Part = { read(): string; save(): Promise<boolean>; discard(): void; base: string; needsCommand?: boolean };
+    const bar = window as unknown as { dglDirty?: (key: string, opts: object) => void; dglClean?: (key: string) => void };
+    const parts: Record<string, Part> = {};
+    let settling = 0; // above 0 while the page itself fills the fields, which is not a change of the person
+    const isDirty = (key: string) => Boolean(parts[key]) && parts[key].read() !== parts[key].base;
+    function check(key: string) {
+      const part = parts[key];
+      if (!part || settling) return;
+      if ((part.needsCommand !== false && !current) || !part.read() || part.read() === part.base) { bar.dglClean?.(key); return; }
+      bar.dglDirty?.(key, {
+        save: async () => { const ok = await part.save(); if (ok) { part.base = part.read(); bar.dglClean?.(key); } return ok; },
+        discard: () => { settling += 1; try { part.discard(); } finally { settling -= 1; } part.base = part.read(); bar.dglClean?.(key); },
+      });
+    }
+    const checkAll = () => Object.keys(parts).forEach(check);
+    // What the fields hold now is what is saved: the bar forgets the part.
+    function rebase(key?: string) {
+      for (const name of key ? [key] : Object.keys(parts)) { parts[name].base = parts[name].read(); bar.dglClean?.(name); }
+    }
+    // Runs `fill` (which sets fields from what the bot has) without it counting as a change.
+    async function quietly(fill: () => unknown) { settling += 1; try { await fill(); } finally { settling -= 1; } }
+
     // ── The clock of a zone: names of the IANA list, or hours like UTC-5 ──
     function clockIn(zone: string): string | null {
       const fixed = /^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/i.exec(zone.trim());
@@ -254,27 +279,41 @@ const ui = {
     (window as unknown as { ccSchedule: object }).ccSchedule = { save: saveSchedule, cancelMain, isSchedule: (value: string) => value.startsWith('@') };
 
     // ── Commands that also run after this one ──
-    function drawLinks() {
+    // The list is a draft until it is saved (with the bar of unsaved changes, or at once when the page has no bar).
+    let draftLinks: string[] = [];
+    const savedLinks = () => overview?.commands.find((entry) => entry.name === current)?.links ?? [];
+    async function saveLinks(): Promise<boolean> {
+      const command = overview?.commands.find((entry) => entry.name === current);
+      if (!command) return false;
+      const answer = await call({ action: 'links', name: command.name, links: draftLinks });
+      if (!answer.payload?.ok) { say(problem(answer)); return false; }
+      say('');
+      command.links = answer.payload.links ?? draftLinks;
+      draftLinks = [...command.links];
+      done(ui.linksSaved);
+      drawLinks(false);
+      return true;
+    }
+    async function changeLinks(links: string[]) {
+      draftLinks = links;
+      drawLinks(false);
+      if (bar.dglDirty) check('links'); else await saveLinks();
+    }
+    function drawLinks(reset = true) {
       const chips = $('ct-links');
       const add = $<HTMLSelectElement>('ct-link-add');
       chips.textContent = '';
       const command = overview?.commands.find((entry) => entry.name === current);
       if (!current || !command) {
+        draftLinks = [];
         const note = document.createElement('span'); note.className = 'ct-dim'; note.textContent = ui.saveFirstSettings; chips.appendChild(note);
         add.innerHTML = ''; add.disabled = true; add.hidden = true;
         return;
       }
+      if (reset) draftLinks = [...command.links];
       add.hidden = false;
-      const save = async (links: string[]) => {
-        const answer = await call({ action: 'links', name: command.name, links });
-        if (!answer.payload?.ok) { say(problem(answer)); return; }
-        say('');
-        command.links = answer.payload.links ?? links;
-        done(ui.linksSaved);
-        drawLinks();
-      };
-      if (!command.links.length) { const none = document.createElement('span'); none.className = 'ct-dim'; none.textContent = ui.noLinks; chips.appendChild(none); }
-      for (const link of command.links) {
+      if (!draftLinks.length) { const none = document.createElement('span'); none.className = 'ct-dim'; none.textContent = ui.noLinks; chips.appendChild(none); }
+      for (const link of draftLinks) {
         const chip = document.createElement('span');
         chip.className = 'ct-chip';
         chip.textContent = link;
@@ -282,22 +321,23 @@ const ui = {
         remove.type = 'button';
         remove.setAttribute('aria-label', `${ui.remove} ${link}`);
         remove.innerHTML = X_ICON;
-        remove.addEventListener('click', () => save(command.links.filter((entry) => entry !== link)));
+        remove.addEventListener('click', () => { void changeLinks(draftLinks.filter((entry) => entry !== link)); });
         chip.appendChild(remove);
         chips.appendChild(chip);
       }
       add.innerHTML = `<option value="">${ui.addCommand}</option>`;
       for (const other of overview!.commands) {
-        if (other.name === command.name || command.links.includes(other.name)) continue;
+        if (other.name === command.name || draftLinks.includes(other.name)) continue;
         const option = document.createElement('option');
         option.value = other.name;
         option.textContent = other.name;
         add.appendChild(option);
       }
-      add.disabled = command.links.length >= MAX_LINKS;
+      add.disabled = draftLinks.length >= MAX_LINKS;
       add.title = add.disabled ? ui.full : '';
-      add.onchange = () => { if (add.value) save([...command.links, add.value]); };
+      add.onchange = () => { if (add.value) { const value = add.value; add.value = ''; void changeLinks([...draftLinks, value]); } };
     }
+    parts.links = { read: () => JSON.stringify(draftLinks), save: saveLinks, discard: () => drawLinks(true), base: '[]' };
 
     // ── Who can use the command, where, and where its mistakes go ──
     function setPicked(name: string, ids: string[]) {
@@ -319,21 +359,24 @@ const ui = {
       $<HTMLSelectElement>('ct-o-errchannel').value = options.errorChannel ?? '';
       $<HTMLButtonElement>('ct-o-save').disabled = !command;
     }
-    $('ct-o-save').addEventListener('click', async () => {
+    const readOptions = (): Options => ({
+      errorsAsResponse: $<HTMLInputElement>('ct-o-errors').checked,
+      errorChannel: $<HTMLSelectElement>('ct-o-errchannel').value || null,
+      roles: { mode: radio('ct-o-rmode') || 'require', ids: picked('ct-o-roles') },
+      channels: { mode: radio('ct-o-cmode') || 'only', ids: picked('ct-o-channels') },
+    });
+    async function saveOptions(): Promise<boolean> {
       say('');
-      if (!current) { say(ui.saveFirstSettings); return; }
-      const options: Options = {
-        errorsAsResponse: $<HTMLInputElement>('ct-o-errors').checked,
-        errorChannel: $<HTMLSelectElement>('ct-o-errchannel').value || null,
-        roles: { mode: radio('ct-o-rmode') || 'require', ids: picked('ct-o-roles') },
-        channels: { mode: radio('ct-o-cmode') || 'only', ids: picked('ct-o-channels') },
-      };
-      const answer = await call({ action: 'options', name: current, options });
-      if (!answer.payload?.ok) { say(problem(answer)); return; }
+      if (!current) { say(ui.saveFirstSettings); return false; }
+      const answer = await call({ action: 'options', name: current, options: readOptions() });
+      if (!answer.payload?.ok) { say(problem(answer)); return false; }
       const command = overview?.commands.find((entry) => entry.name === current);
       if (command) command.options = answer.payload.options;
       done(ui.optionsSaved);
-    });
+      return true;
+    }
+    $('ct-o-save').addEventListener('click', async () => { if (await saveOptions()) rebase('options'); });
+    parts.options = { read: () => JSON.stringify(readOptions()), save: saveOptions, discard: () => drawOptions(), base: '' };
 
     // ── The time zone of the server ──
     const zoneInput = $<HTMLInputElement>('ct-z-input');
@@ -343,17 +386,39 @@ const ui = {
     }
     zoneInput.addEventListener('input', showNow);
     $('ct-z-browser').addEventListener('click', () => { try { zoneInput.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { zoneInput.value = 'UTC'; } showNow(); });
-    $('ct-z-save').addEventListener('click', async () => {
+    async function saveZone(): Promise<boolean> {
       say('');
-      if (!clockIn(zoneInput.value)) { say(ui.zoneBad); return; }
+      if (!clockIn(zoneInput.value)) { say(ui.zoneBad); return false; }
       const answer = await call({ action: 'timezone', timezone: zoneInput.value.trim() });
-      if (!answer.payload?.ok) { say(problem(answer)); return; }
+      if (!answer.payload?.ok) { say(problem(answer)); return false; }
       zoneInput.value = answer.payload.timezone;
+      if (overview) overview.timezone = answer.payload.timezone;
       done(ui.zoneSaved);
-      refresh();
-    });
+      showNow();
+      return true;
+    }
+    $('ct-z-save').addEventListener('click', async () => { if (await saveZone()) rebase('zone'); });
+    parts.zone = {
+      read: () => zoneInput.value.trim(),
+      save: saveZone,
+      discard: () => { zoneInput.value = overview?.timezone ?? 'UTC'; showNow(); },
+      base: '',
+      needsCommand: false, // the zone is for the whole server, so it does not wait for a saved command
+    };
+
+    // ── The trigger, with its schedule: the select and the text of the editor, and the fields of the schedule ──
+    const triggerText = $<HTMLInputElement>('cc-trigger-text');
+    const SCHEDULE_FIELDS = ['ct-r-every', 'ct-r-unit', 'ct-r-day', 'ct-r-time', 'ct-r-zone', 'ct-r-channel'];
+    const trigger = () => (window as unknown as { ccTrigger?: { save(): Promise<boolean>; restore(): void } }).ccTrigger;
+    parts.trigger = {
+      read: () => JSON.stringify([triggerSelect.value, triggerText.value, ...(kindOf() ? SCHEDULE_FIELDS.map((id) => $<HTMLInputElement>(id).value) : [])]),
+      save: async () => (await trigger()?.save()) ?? false,
+      discard: () => { trigger()?.restore(); showMain(); },
+      base: '',
+    };
 
     // ── What the bot has ──
+    // A part the person is editing keeps what they wrote: only the parts that are as saved are drawn again.
     async function refresh() {
       try {
         const response = await fetch(`${endpoint}?view=overview`, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json' } });
@@ -362,22 +427,43 @@ const ui = {
         overview = payload;
       } catch { say(ui.unavailable); return; }
       $<HTMLInputElement>('ct-r-zone').placeholder = String(ui.serverZone).replace('{zone}', overview!.timezone);
-      if (document.activeElement !== zoneInput) zoneInput.value = overview!.timezone;
-      showNow();
-      drawLinks();
-      drawOptions();
+      await quietly(() => {
+        if (document.activeElement !== zoneInput && !isDirty('zone')) { zoneInput.value = overview!.timezone; parts.zone.base = parts.zone.read(); }
+        showNow();
+        if (!isDirty('links')) { drawLinks(); parts.links.base = parts.links.read(); }
+        if (!isDirty('options')) { drawOptions(); parts.options.base = parts.options.read(); }
+      });
     }
-    // The editor says which command it shows (a saved one, or none for a new one).
+    // The editor says which command it shows (a saved one, or none for a new one). Showing another command drops what was being changed in its
+    // settings. The same command said again (the editor does it after saving the code) only reads what the bot has and keeps what is being edited.
+    const COMMAND_PARTS = ['links', 'options', 'trigger'];
     window.addEventListener('cc:select', (event) => {
-      current = (event as CustomEvent<{ name: string | null }>).detail?.name ?? null;
-      drawLinks();
-      drawOptions();
-      refresh().then(showMain);
+      const name = (event as CustomEvent<{ name: string | null }>).detail?.name ?? null;
+      const same = name === current;
+      current = name;
+      void (async () => {
+        await quietly(async () => {
+          if (!same) { drawLinks(); drawOptions(); }
+          await refresh();
+          if (!same || !isDirty('trigger')) showMain();
+        });
+        if (!same) COMMAND_PARTS.forEach((key) => rebase(key));
+        else if (!isDirty('trigger')) rebase('trigger');
+      })();
     });
+    // The trigger was saved by its own button.
+    window.addEventListener('cc:trigger-saved', () => rebase('trigger'));
     // The editor may have shown a command before this script was ready.
     current = (window as unknown as { __ccCurrent?: string | null }).__ccCurrent ?? null;
     syncKind();
-    refresh().then(showMain);
+    void (async () => { await quietly(async () => { await refresh(); showMain(); }); rebase(); })();
+
+    // Any change in the settings: the bar of unsaved changes looks at every part again.
+    for (const id of ['ct-wrap', 'cc-trigger-type', 'cc-trigger-text']) {
+      const element = document.getElementById(id);
+      element?.addEventListener('input', checkAll);
+      element?.addEventListener('change', checkAll);
+    }
   }
 </script>
 
@@ -412,7 +498,7 @@ const ui = {
   .ct-opt { display: flex; flex-direction: column; gap: 8px; }
   .ct-opt-title { font-size: 13px; font-weight: 600; color: var(--text); }
   .ct-radio, .ct-check { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text); cursor: pointer; }
-  .ct-radio input, .ct-check input { flex: none; width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
+  .ct-radio input, .ct-check input { flex: none; width: 17px; height: 17px; accent-color: var(--green); margin: 0; }
   .ct-narrow { max-width: 360px; }
   .ct-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .ct-message { margin: 0; font-size: 13px; color: var(--red); }

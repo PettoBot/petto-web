@@ -795,23 +795,39 @@ const triggerTypes = [
     // ── The trigger ──
     triggerType.addEventListener('change', () => { triggerText.hidden = triggerType.value === 'command' || triggerType.value.startsWith('@'); });
     const schedule = () => (window as unknown as { ccSchedule?: { save(): Promise<string>; cancelMain(name: string): Promise<void>; isSchedule(value: string): boolean } }).ccSchedule;
-    $('cc-trigger-save').addEventListener('click', async () => {
-      if (!current) { $('cc-trigger-note').textContent = ui.saveFirst; return; }
+    // Saves the trigger (or the schedule). Gives back whether it was saved, so the bar of unsaved changes knows.
+    async function saveTrigger(): Promise<boolean> {
+      if (!current) { $('cc-trigger-note').textContent = ui.saveFirst; return false; }
       // A schedule ("by itself, every day") is saved as a reminder of this command; any other trigger stops it.
       if (triggerType.value.startsWith('@')) {
         const problem = (await schedule()?.save()) ?? ui.unavailable;
         $('cc-trigger-note').textContent = problem || (toast(ui.scheduleSaved) ? '' : ui.scheduleSaved);
-        return;
+        if (!problem) window.dispatchEvent(new CustomEvent('cc:trigger-saved'));
+        return !problem;
       }
       const { payload } = await api({ action: 'trigger', name: current, type: triggerType.value, text: triggerText.value });
-      if (!payload) { $('cc-trigger-note').textContent = ui.unavailable; return; }
-      if (!payload.ok) { $('cc-trigger-note').textContent = payload.message || ui.unavailable; return; }
+      if (!payload) { $('cc-trigger-note').textContent = ui.unavailable; return false; }
+      if (!payload.ok) { $('cc-trigger-note').textContent = payload.message || ui.unavailable; return false; }
       const command = commands.find((entry) => entry.name === current);
       if (command) { command.triggerType = triggerType.value; command.triggerText = payload.text ?? ''; }
       drawList();
       await schedule()?.cancelMain(current);
       $('cc-trigger-note').textContent = toast(ui.triggerSaved) ? '' : ui.triggerSaved;
-    });
+      window.dispatchEvent(new CustomEvent('cc:trigger-saved'));
+      return true;
+    }
+    $('cc-trigger-save').addEventListener('click', () => { void saveTrigger(); });
+    // The settings panel (DashCodeTools) keeps the bar of unsaved changes for the trigger too: it saves it and puts it back through these.
+    (window as unknown as { ccTrigger: object }).ccTrigger = {
+      save: saveTrigger,
+      restore() {
+        const command = current ? commands.find((entry) => entry.name === current) : null;
+        triggerType.value = command?.triggerType || 'command';
+        triggerText.value = command?.triggerText ?? '';
+        triggerText.hidden = triggerType.value === 'command' || triggerType.value.startsWith('@');
+        triggerType.dispatchEvent(new Event('change'));
+      },
+    };
 
     // ── The test ──
     const mode = $<HTMLSelectElement>('cc-test-mode');
@@ -1132,8 +1148,10 @@ const triggerTypes = [
   /* The files of a command: tabs over the editor, and the + that adds another one. */
   /* The tabs sit right on the box of the code (no gap under them) and closer to the row above. */
   :global(.cc-files) { display: flex; gap: 4px; flex-wrap: wrap; align-items: flex-end; margin: -6px 0 -15px; position: relative; z-index: 1; }
-  :global(.cc-file) { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-bottom: 0; border-radius: 9px 9px 0 0; background: var(--border-soft); color: var(--text-dim); min-height: 34px; position: relative; }
-  :global(.cc-file[aria-selected="true"]) { background: var(--bg-raise, var(--card)); color: var(--text); border-color: var(--accent); }
+  /* Classic tabs: each one has its own gray border, and the bottom border of the open one is the color of the code box, so it covers the line of the box
+     under it and the tab opens into the code. No other color: nothing melon on the tabs or around the box. */
+  :global(.cc-file) { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 9px 9px 0 0; background: var(--border-soft); color: var(--text-dim); min-height: 34px; position: relative; }
+  :global(.cc-file[aria-selected="true"]) { background: var(--bg-raise, var(--card)); color: var(--text); border-bottom-color: var(--bg-raise, var(--card)); z-index: 2; }
   :global(.cc-file[data-error="true"])::after { content: ''; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
   :global(.cc-file-label) { border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; font-weight: 600; padding: 0 14px; min-height: 34px; cursor: pointer; }
   :global(.cc-file-name) { border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; font-weight: 600; padding: 0 0 0 12px; min-width: 40px; outline: none; }
@@ -1145,10 +1163,13 @@ const triggerTypes = [
   :global(.cc-file-add:disabled) { opacity: 0.45; cursor: default; }
   @media (max-width: 720px) { :global(.cc-file), :global(.cc-file-label), :global(.cc-file-add) { min-height: 42px; } :global(.cc-file-label), :global(.cc-file-name) { font-size: 14.5px; } }
   .cc-editor-wrap { position: relative; --cc-line: 20px; --cc-font: 13px; }
+  /* With the tabs on top, the first corner of the box is square so the first tab meets it with no notch between them. */
+  :global(.cc-files:not(:empty)) + .cc-editor-wrap .cc-editor { border-top-left-radius: 0; }
   /* On a phone the code is bigger and taller, so it can be read and touched. */
   @media (max-width: 720px) { .cc-editor-wrap { --cc-line: 25px; --cc-font: 16px; } .cc-editor, .cc-editor textarea { min-height: max(420px, 62vh); } .cc-gutter { min-width: 48px; } }
   .cc-editor { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-raise, var(--card)); min-height: 340px; }
-  .cc-editor:focus-within { border-color: var(--accent); }
+  .cc-b-editor { --cc-ring: color-mix(in srgb, var(--border) 55%, var(--text-dim)); }
+  .cc-editor:focus-within { border-color: var(--cc-ring); }
   .cc-gutter { flex: 0 0 auto; min-width: 42px; padding: 10px 8px 10px 10px; text-align: right; font-family: var(--mono); font-size: var(--cc-font); line-height: var(--cc-line); color: var(--text-dim); background: var(--border-soft); overflow: hidden; user-select: none; font-variant-numeric: tabular-nums; }
   .cc-gutter :global(.cc-err) { color: #fff; background: var(--red); border-radius: 4px; padding: 0 4px; margin-right: -4px; }
   .cc-area { position: relative; flex: 1; min-width: 0; overflow: hidden; display: flex; }
