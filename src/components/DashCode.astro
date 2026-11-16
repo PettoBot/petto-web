@@ -795,23 +795,39 @@ const triggerTypes = [
     // ── The trigger ──
     triggerType.addEventListener('change', () => { triggerText.hidden = triggerType.value === 'command' || triggerType.value.startsWith('@'); });
     const schedule = () => (window as unknown as { ccSchedule?: { save(): Promise<string>; cancelMain(name: string): Promise<void>; isSchedule(value: string): boolean } }).ccSchedule;
-    $('cc-trigger-save').addEventListener('click', async () => {
-      if (!current) { $('cc-trigger-note').textContent = ui.saveFirst; return; }
+    // Saves the trigger (or the schedule). Gives back whether it was saved, so the bar of unsaved changes knows.
+    async function saveTrigger(): Promise<boolean> {
+      if (!current) { $('cc-trigger-note').textContent = ui.saveFirst; return false; }
       // A schedule ("by itself, every day") is saved as a reminder of this command; any other trigger stops it.
       if (triggerType.value.startsWith('@')) {
         const problem = (await schedule()?.save()) ?? ui.unavailable;
         $('cc-trigger-note').textContent = problem || (toast(ui.scheduleSaved) ? '' : ui.scheduleSaved);
-        return;
+        if (!problem) window.dispatchEvent(new CustomEvent('cc:trigger-saved'));
+        return !problem;
       }
       const { payload } = await api({ action: 'trigger', name: current, type: triggerType.value, text: triggerText.value });
-      if (!payload) { $('cc-trigger-note').textContent = ui.unavailable; return; }
-      if (!payload.ok) { $('cc-trigger-note').textContent = payload.message || ui.unavailable; return; }
+      if (!payload) { $('cc-trigger-note').textContent = ui.unavailable; return false; }
+      if (!payload.ok) { $('cc-trigger-note').textContent = payload.message || ui.unavailable; return false; }
       const command = commands.find((entry) => entry.name === current);
       if (command) { command.triggerType = triggerType.value; command.triggerText = payload.text ?? ''; }
       drawList();
       await schedule()?.cancelMain(current);
       $('cc-trigger-note').textContent = toast(ui.triggerSaved) ? '' : ui.triggerSaved;
-    });
+      window.dispatchEvent(new CustomEvent('cc:trigger-saved'));
+      return true;
+    }
+    $('cc-trigger-save').addEventListener('click', () => { void saveTrigger(); });
+    // The settings panel (DashCodeTools) keeps the bar of unsaved changes for the trigger too: it saves it and puts it back through these.
+    (window as unknown as { ccTrigger: object }).ccTrigger = {
+      save: saveTrigger,
+      restore() {
+        const command = current ? commands.find((entry) => entry.name === current) : null;
+        triggerType.value = command?.triggerType || 'command';
+        triggerText.value = command?.triggerText ?? '';
+        triggerText.hidden = triggerType.value === 'command' || triggerType.value.startsWith('@');
+        triggerType.dispatchEvent(new Event('change'));
+      },
+    };
 
     // ── The test ──
     const mode = $<HTMLSelectElement>('cc-test-mode');
