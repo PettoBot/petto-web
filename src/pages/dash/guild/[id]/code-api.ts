@@ -40,7 +40,7 @@ export const POST: APIRoute = async (astro) => {
     return json({ ok: res.ok }, res.ok ? 200 : 502);
   }
 
-  const routes: Record<string, string> = { check: 'check', test: 'test', save: 'save', trigger: 'trigger', timezone: 'timezone', links: 'links', reminder: 'reminder', 'reminder-cancel': 'reminder/cancel' };
+  const routes: Record<string, string> = { check: 'check', test: 'test', save: 'save', trigger: 'trigger', timezone: 'timezone', links: 'links', options: 'options', reminder: 'reminder', 'reminder-cancel': 'reminder/cancel' };
   if (!routes[action]) return json({ ok: false, error: 'unknown_action' }, 400);
   const { action: _ignored, user_id: _user, ...rest } = body;
   const answer = await callPettoCode(astro, id, session.userId, routes[action] as any, rest);

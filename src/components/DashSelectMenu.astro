@@ -52,8 +52,18 @@
       menu.appendChild(list);
       var items = [];
       var lastGroup = null;
-      Array.prototype.forEach.call(select.options, function (option) {
-        var group = option.parentNode && option.parentNode.tagName === 'OPTGROUP' ? option.parentNode.label : '';
+      var options = Array.prototype.slice.call(select.options);
+      // A list of channels (their order and category come from the dashboard script) is listed under its categories, in the order of Discord;
+      // the first options that are not channels ("None", "Choose...") stay where they are.
+      var ordered = options.filter(function (option) { return option.hasAttribute('data-order'); });
+      var byCategory = ordered.length >= 2 && !select.querySelector('optgroup');
+      if (byCategory) {
+        var firstChannel = options.indexOf(ordered[0]);
+        ordered.sort(function (a, b) { return Number(a.getAttribute('data-order')) - Number(b.getAttribute('data-order')); });
+        options = options.slice(0, firstChannel).concat(ordered, options.slice(firstChannel).filter(function (option) { return !option.hasAttribute('data-order'); }));
+      }
+      options.forEach(function (option) {
+        var group = option.parentNode && option.parentNode.tagName === 'OPTGROUP' ? option.parentNode.label : (byCategory && option.hasAttribute('data-order') ? option.getAttribute('data-cat') || '' : '');
         if (group && group !== lastGroup) {
           var head = document.createElement('div');
           head.className = 'dgl-selmenu-group';
@@ -66,23 +76,32 @@
         row.type = 'button';
         row.className = 'dgl-selmenu-opt';
         row.setAttribute('role', 'option');
-        // An option with a note (a channel Petto cannot post in) shows its name as it is and the note under it, in red.
-        var note = option.getAttribute('data-note');
-        if (note) {
-          var name = document.createElement('span');
-          name.className = 'dgl-selmenu-name';
-          name.textContent = option.textContent;
-          var why = document.createElement('span');
-          why.className = 'dgl-selmenu-note';
-          why.textContent = note;
-          row.appendChild(name);
-          row.appendChild(why);
+        // The color of a role as a dot; a role that Petto cannot give is dark and locked with its reason; one above Petto (where it is only a filter) has a small mark.
+        var color = option.getAttribute('data-color');
+        var plain = option.getAttribute('data-plain');
+        var lock = option.getAttribute('data-lock');
+        var above = option.getAttribute('data-above');
+        var note = option.getAttribute('data-note') || lock;
+        var label = plain || option.textContent;
+        if (color || note || above) {
+          var line = document.createElement('span');
+          line.className = 'dgl-selmenu-name';
+          if (color) { var dot = document.createElement('i'); dot.className = 'dgl-selmenu-dot'; dot.style.background = color; line.appendChild(dot); }
+          line.appendChild(document.createTextNode(label));
+          if (above) { var tag = document.createElement('em'); tag.className = 'dgl-selmenu-tag'; tag.textContent = above; line.appendChild(tag); }
+          row.appendChild(line);
+          if (note) {
+            var why = document.createElement('span');
+            why.className = lock ? 'dgl-selmenu-lock' : 'dgl-selmenu-note';
+            why.textContent = note;
+            row.appendChild(why);
+          }
         } else row.textContent = option.textContent;
         if (option.disabled) row.disabled = true;
         if (option.selected) { row.classList.add('on'); row.setAttribute('aria-selected', 'true'); }
         row.addEventListener('click', function () { choose(select, option); close(); select.focus({ preventScroll: true }); });
         list.appendChild(row);
-        items.push({ el: row, text: option.textContent.toLowerCase(), group: false });
+        items.push({ el: row, text: label.toLowerCase(), group: false });
       });
       if (search) {
         search.addEventListener('input', function () {
@@ -160,6 +179,11 @@
       if (current === select) { close(); return; }
       open(select);
     }, true);
+    // Focus that goes to another field (Tab, a script, a tap on a text box) closes the menu: what is typed next must go to that field, not to the menu.
+    document.addEventListener('focusin', function (event) {
+      var target = event.target;
+      if (menu && target && !(target.closest && target.closest('.dgl-selmenu')) && target !== current) close();
+    }, true);
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape' && menu) { close(); return; }
       var select = event.target && event.target.tagName === 'SELECT' ? event.target : null;
@@ -186,7 +210,11 @@
   .dgl-selmenu-opt.on { color: var(--accent); font-weight: 600; }
   @media (pointer: coarse) { .dgl-selmenu-search { font-size: 16px; } .dgl-selmenu-opt { padding: 11px 12px; font-size: 15px; } }
   .dgl-selmenu [hidden] { display: none; }
-  .dgl-selmenu-opt:disabled { opacity: .45; cursor: not-allowed; }
+  .dgl-selmenu-opt:disabled { opacity: .5; cursor: not-allowed; background: rgba(0, 0, 0, .22); }
+  .dgl-selmenu-opt:disabled:hover { background: rgba(0, 0, 0, .22); }
+  .dgl-selmenu-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: baseline; box-shadow: 0 0 0 1px rgba(127, 127, 127, .3); }
+  .dgl-selmenu-tag { margin-left: 8px; font-style: normal; font-size: .68rem; padding: 1px 8px; border-radius: 999px; background: var(--border-soft, rgba(127, 127, 127, .15)); color: var(--text-dim); vertical-align: 1px; }
+  .dgl-selmenu-lock { display: block; margin-top: 2px; color: var(--red, #f87171); font-size: .74rem; font-weight: 600; }
   .dgl-selmenu-opt { overflow-wrap: anywhere; }
   .dgl-selmenu-name { display: block; }
   .dgl-selmenu-note, .dgl-sel-note { display: block; margin-top: 2px; color: var(--red, #f87171); font-size: .76rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }

@@ -14,11 +14,22 @@ export const GET: APIRoute = async (context) => {
   if ('redirect' in auth) return new Response(JSON.stringify({ blocks: {} }), { status: 401, headers: { 'content-type': 'application/json' } });
   const token = getEnv(context, 'DISCORD_TOKEN');
   const blocks: Record<string, string> = {};
+  // What the pickers show of each role (its color) and of each channel (its category and its place in the list).
+  const colors: Record<string, number> = {};
+  const channels: Record<string, { cat: string; o: number }> = {};
   if (token) {
     try {
-      const res = await getGuildList(context, id, token, 'roles');
+      const [res, channelsRes] = await Promise.all([getGuildList(context, id, token, 'roles'), getGuildList(context, id, token, 'channels')]);
+      if (channelsRes.ok) {
+        const all: any[] = await channelsRes.json();
+        const categories = new Map(all.filter((channel) => channel.type === 4).map((channel) => [String(channel.id), { name: String(channel.name), position: Number(channel.position) || 0 }]));
+        const rank = (channel: any) => (channel.parent_id && categories.has(String(channel.parent_id)) ? categories.get(String(channel.parent_id))!.position + 1 : 0);
+        const ordered = all.filter((channel) => channel.type !== 4).sort((a, b) => rank(a) - rank(b) || (Number(a.position) || 0) - (Number(b.position) || 0));
+        ordered.forEach((channel, index) => { channels[String(channel.id)] = { cat: channel.parent_id ? categories.get(String(channel.parent_id))?.name ?? '' : '', o: index }; });
+      }
       if (res.ok) {
         const roles: any[] = await res.json();
+        for (const role of roles) if (Number(role.color)) colors[String(role.id)] = Number(role.color);
         const botTop = Math.max(-1, ...roles.filter((role) => role.mine === true).map((role) => Number(role.position)));
         for (const role of roles) {
           const roleId = String(role.id);
@@ -29,5 +40,5 @@ export const GET: APIRoute = async (context) => {
       }
     } catch { /* nothing is greyed out */ }
   }
-  return new Response(JSON.stringify({ blocks }), { headers: { 'content-type': 'application/json', 'cache-control': 'private, max-age=20' } });
+  return new Response(JSON.stringify({ blocks, colors, channels }), { headers: { 'content-type': 'application/json', 'cache-control': 'private, max-age=20' } });
 };

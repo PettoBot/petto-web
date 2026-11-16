@@ -3,13 +3,16 @@
 // command, without writing code) and the time zone of the server. The bot does the real checks; this only draws what it says and sends the changes.
 import { Icon } from 'astro-icon/components';
 import ChannelOptions from './ChannelOptions.astro';
+import MultiSelect from './MultiSelect.astro';
 import { getDashLang, makeT, dashLocale } from '../i18n/dash';
 
 interface Props {
   endpoint: string;
   channels: { id: string; name: string; category?: string }[];
+  roles?: { id: string; name: string }[];
 }
-const { endpoint, channels } = Astro.props;
+const { endpoint, channels, roles = [] } = Astro.props;
+const channelChoices = channels.map((channel) => ({ id: channel.id, name: `#${channel.name}` }));
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 
@@ -56,6 +59,7 @@ const ui = {
   zoneNow: dt('It is {time} there now.'),
   zoneBad: dt('That is not a time zone. Use a name like America/Bogota or hours like UTC-5.'),
   failed: dt('It could not be saved.'),
+  optionsSaved: dt('The options were saved.'),
   saveFirstSettings: dt('Save the command first.'),
   scheduleSaved: dt('The schedule was saved. The command now runs by itself.'),
   scheduleOff: dt('The schedule was removed.'),
@@ -94,6 +98,33 @@ const ui = {
   </section>
 
   <section class="ct-section">
+    <h3>{dt('Who can use it, and where')}</h3>
+    <p class="ct-hint">{dt('A member or a channel that is not allowed gets no answer (a button says it cannot be used here). Leave a list empty to allow everybody and every channel.')}</p>
+    <div class="ct-opt">
+      <span class="ct-opt-title">{dt('Roles')}</span>
+      <label class="ct-radio"><input type="radio" name="ct-o-rmode" value="require" checked /><span>{dt('Only members with one of these roles')}</span></label>
+      <label class="ct-radio"><input type="radio" name="ct-o-rmode" value="ignore" /><span>{dt('Everyone except members with one of these roles')}</span></label>
+      <MultiSelect name="ct-o-roles" options={roles} selected={[]} placeholder={dt('Search roles...')} />
+    </div>
+    <div class="ct-opt">
+      <span class="ct-opt-title">{dt('Channels')}</span>
+      <label class="ct-radio"><input type="radio" name="ct-o-cmode" value="only" checked /><span>{dt('Only in these channels')}</span></label>
+      <label class="ct-radio"><input type="radio" name="ct-o-cmode" value="ignore" /><span>{dt('Everywhere except these channels')}</span></label>
+      <MultiSelect name="ct-o-channels" options={channelChoices} selected={[]} placeholder={dt('Search channels...')} />
+      <p class="ct-hint">{dt('A thread counts as its channel.')}</p>
+    </div>
+  </section>
+
+  <section class="ct-section">
+    <h3>{dt('Mistakes of this command')}</h3>
+    <label class="ct-check"><input type="checkbox" id="ct-o-errors" checked /><span>{dt('Show a mistake as the answer of the command')}</span></label>
+    <label class="ct-field ct-narrow"><span>{dt('Also send the mistakes to a channel')}</span>
+      <select id="ct-o-errchannel" class="ct-input"><option value="">{dt('No channel')}</option><ChannelOptions channels={channels} /></select>
+    </label>
+    <div class="ct-actions"><button type="button" class="ct-btn ct-btn-primary" id="ct-o-save"><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save these options')}</button></div>
+  </section>
+
+  <section class="ct-section">
     <h3>{dt('Time zone of the server')}</h3>
     <p class="ct-hint">{dt('The zone that .TimeZone, the date functions and the reminders use when they do not say one. Names like America/Bogota or hours like UTC-5.')}</p>
     <div class="ct-zone-row">
@@ -119,7 +150,8 @@ const ui = {
     const toast = (message: string) => { const w = window as unknown as { dglToast?: (text: string, opts: { kind: string }) => void }; if (typeof w.dglToast === 'function') { w.dglToast(message, { kind: 'ok' }); return true; } return false; };
 
     type Reminder = { name: string; id: string; channelId: string; repeat: null | { kind: string; everyMs: number | null; atTime: string | null; timezone: string | null; weekday: number | null } };
-    type Command = { name: string; links: string[] };
+    type Options = { errorsAsResponse: boolean; errorChannel: string | null; roles: { mode: string; ids: string[] }; channels: { mode: string; ids: string[] } };
+    type Command = { name: string; links: string[]; options?: Options };
     let overview: { timezone: string; commands: Command[]; reminders: Reminder[] } | null = null;
     let current: string | null = null; // the saved command being edited
     const MAIN = 'main'; // the id of the schedule that starts a command by itself
@@ -267,6 +299,42 @@ const ui = {
       add.onchange = () => { if (add.value) save([...command.links, add.value]); };
     }
 
+    // ── Who can use the command, where, and where its mistakes go ──
+    function setPicked(name: string, ids: string[]) {
+      document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((box) => {
+        const want = ids.includes(box.value);
+        if (box.checked !== want) { box.checked = want; box.dispatchEvent(new Event('change', { bubbles: true })); }
+      });
+    }
+    const picked = (name: string) => Array.from(document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)).map((box) => box.value);
+    const radio = (name: string) => (document.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '');
+    function drawOptions() {
+      const command = overview?.commands.find((entry) => entry.name === current);
+      const options: Options = command?.options ?? { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [] }, channels: { mode: 'only', ids: [] } };
+      document.querySelectorAll<HTMLInputElement>('input[name="ct-o-rmode"]').forEach((input) => { input.checked = input.value === options.roles.mode; });
+      document.querySelectorAll<HTMLInputElement>('input[name="ct-o-cmode"]').forEach((input) => { input.checked = input.value === options.channels.mode; });
+      setPicked('ct-o-roles', options.roles.ids);
+      setPicked('ct-o-channels', options.channels.ids);
+      $<HTMLInputElement>('ct-o-errors').checked = options.errorsAsResponse;
+      $<HTMLSelectElement>('ct-o-errchannel').value = options.errorChannel ?? '';
+      $<HTMLButtonElement>('ct-o-save').disabled = !command;
+    }
+    $('ct-o-save').addEventListener('click', async () => {
+      say('');
+      if (!current) { say(ui.saveFirstSettings); return; }
+      const options: Options = {
+        errorsAsResponse: $<HTMLInputElement>('ct-o-errors').checked,
+        errorChannel: $<HTMLSelectElement>('ct-o-errchannel').value || null,
+        roles: { mode: radio('ct-o-rmode') || 'require', ids: picked('ct-o-roles') },
+        channels: { mode: radio('ct-o-cmode') || 'only', ids: picked('ct-o-channels') },
+      };
+      const answer = await call({ action: 'options', name: current, options });
+      if (!answer.payload?.ok) { say(problem(answer)); return; }
+      const command = overview?.commands.find((entry) => entry.name === current);
+      if (command) command.options = answer.payload.options;
+      done(ui.optionsSaved);
+    });
+
     // ── The time zone of the server ──
     const zoneInput = $<HTMLInputElement>('ct-z-input');
     function showNow() {
@@ -297,11 +365,13 @@ const ui = {
       if (document.activeElement !== zoneInput) zoneInput.value = overview!.timezone;
       showNow();
       drawLinks();
+      drawOptions();
     }
     // The editor says which command it shows (a saved one, or none for a new one).
     window.addEventListener('cc:select', (event) => {
       current = (event as CustomEvent<{ name: string | null }>).detail?.name ?? null;
       drawLinks();
+      drawOptions();
       refresh().then(showMain);
     });
     // The editor may have shown a command before this script was ready.
@@ -336,6 +406,12 @@ const ui = {
   .ct-chip button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font-family: var(--sans); font-size: 16px; line-height: 1; border-radius: 50%; }
   .ct-chip button:hover { background: rgba(127, 127, 127, 0.22); }
   .ct-small-input { max-width: 260px; }
+  .ct-opt { display: flex; flex-direction: column; gap: 8px; }
+  .ct-opt-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .ct-radio, .ct-check { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+  .ct-radio input, .ct-check input { flex: none; width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
+  .ct-narrow { max-width: 360px; }
+  .ct-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .ct-message { margin: 0; font-size: 13px; color: var(--red); }
   .ct-message[data-kind="ok"] { color: var(--green, #86b894); }
   .ct-field[hidden], .ct-sched[hidden], .ct-small-input[hidden] { display: none !important; }
