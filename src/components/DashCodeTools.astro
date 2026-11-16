@@ -1,0 +1,421 @@
+---
+// The tabs of the page of the code that are not the editor: reminders that repeat, connections between commands (set from the settings of a
+// command, without writing code) and the time zone of the server. The bot does the real checks; this only draws what it says and sends the changes.
+import { Icon } from 'astro-icon/components';
+import ChannelOptions from './ChannelOptions.astro';
+import MultiSelect from './MultiSelect.astro';
+import { getDashLang, makeT, dashLocale } from '../i18n/dash';
+
+interface Props {
+  endpoint: string;
+  channels: { id: string; name: string; category?: string }[];
+  roles?: { id: string; name: string }[];
+}
+const { endpoint, channels, roles = [] } = Astro.props;
+const channelChoices = channels.map((channel) => ({ id: channel.id, name: `#${channel.name}` }));
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+
+// Zones that most servers need (any name of the IANA list is accepted; these are only suggestions).
+const ZONES = [
+  'UTC', 'America/Bogota', 'America/Lima', 'America/Mexico_City', 'America/Caracas', 'America/Santiago', 'America/Argentina/Buenos_Aires', 'America/Sao_Paulo',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto', 'America/Panama', 'America/Guatemala', 'America/Havana',
+  'America/La_Paz', 'America/Montevideo', 'America/Asuncion', 'America/Santo_Domingo', 'Atlantic/Canary', 'Europe/Madrid', 'Europe/Lisbon', 'Europe/London',
+  'Europe/Paris', 'Europe/Berlin', 'Europe/Rome', 'Europe/Moscow', 'Europe/Istanbul', 'Africa/Cairo', 'Africa/Lagos', 'Asia/Dubai', 'Asia/Kolkata',
+  'Asia/Bangkok', 'Asia/Manila', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
+const ui = {
+  loading: dt('Loading...'),
+  unavailable: dt('The bot did not answer. Try again in a moment.'),
+  closed: dt('Commands in code are turned off for now.'),
+  // Reminders
+  pickCommand: dt('Pick a command first.'),
+  chooseCommand: dt('Choose a command...'),
+  pickChannel: dt('Pick the channel where it runs.'),
+  badEvery: dt('Every 5 minutes at the least, and every 7 days at the most.'),
+  badTime: dt('Write the time, like 20:00.'),
+  reminderSaved: dt('The reminder was saved.'),
+  reminderCancelled: dt('The reminder was cancelled.'),
+  confirmCancel: dt('Cancel this reminder? It stops running.'),
+  yesCancel: dt('Cancel reminder'),
+  noReminders: dt('No reminders yet. Make the first one above.'),
+  everyTime: dt('Every {n} {unit}'),
+  everyDay: dt('Every day at {time} ({zone})'),
+  everyWeek: dt('Every {day} at {time} ({zone})'),
+  nextRun: dt('Next: {when}'),
+  inChannel: dt('In #{channel}'),
+  minute: dt('minute'), minutes: dt('minutes'), hour: dt('hour'), hours: dt('hours'), day: dt('day'), days: dt('days'),
+  serverZone: dt('The one of the server ({zone})'),
+  // Connections
+  linksSaved: dt('Connections saved.'),
+  noLinks: dt('Nothing connected yet.'),
+  addCommand: dt('Add a command...'),
+  remove: dt('Remove'),
+  full: dt('The most it can have.'),
+  noCommands: dt('No commands in code yet. Write one in the Commands tab first.'),
+  // Settings
+  zoneSaved: dt('The time zone was saved.'),
+  zoneNow: dt('It is {time} there now.'),
+  zoneBad: dt('That is not a time zone. Use a name like America/Bogota or hours like UTC-5.'),
+  failed: dt('It could not be saved.'),
+  optionsSaved: dt('The options were saved.'),
+  saveFirstSettings: dt('Save the command first.'),
+  scheduleSaved: dt('The schedule was saved. The command now runs by itself.'),
+  scheduleOff: dt('The schedule was removed.'),
+};
+---
+<div class="ct-wrap" id="ct-wrap">
+  <div class="ct-sched" id="ct-sched" hidden>
+    <p class="ct-hint">{dt('The command runs by itself, as you, in the channel you pick, and keeps working if Petto restarts. To send the same message to several channels with one code, put a list of channels in sendMessage inside the command.')}</p>
+    <div class="ct-form">
+      <div class="ct-field" id="ct-r-every-box"><span>{dt('Every')}</span>
+        <span class="ct-pair">
+          <input type="number" id="ct-r-every" class="ct-input" min="1" max="10080" value="1" />
+          <select id="ct-r-unit" class="ct-input"><option value="minutes">{dt('minutes')}</option><option value="hours" selected>{dt('hours')}</option><option value="days">{dt('days')}</option></select>
+        </span>
+      </div>
+      <label class="ct-field" id="ct-r-day-box" hidden><span>{dt('Day')}</span>
+        <select id="ct-r-day" class="ct-input"></select>
+      </label>
+      <label class="ct-field" id="ct-r-time-box" hidden><span>{dt('At')}</span>
+        <input type="time" id="ct-r-time" class="ct-input" value="20:00" />
+      </label>
+      <label class="ct-field" id="ct-r-zone-box" hidden><span>{dt('Time zone')}</span>
+        <input type="text" id="ct-r-zone" class="ct-input" list="ct-zones" maxlength="40" spellcheck="false" autocomplete="off" />
+      </label>
+      <label class="ct-field"><span>{dt('Channel where it runs')}</span>
+        <select id="ct-r-channel" class="ct-input"><option value="">{dt('Choose a channel...')}</option><ChannelOptions channels={channels} /></select>
+      </label>
+    </div>
+  </div>
+
+  <section class="ct-section">
+    <h3>{dt('Then it also runs')}</h3>
+    <p class="ct-hint">{dt('Connect commands without writing code: the commands you add here run right after this one, as the same member, in the same channel. Up to 3. In code you can also use callCC and execCC.')}</p>
+    <div class="ct-chips" id="ct-links"></div>
+    <select id="ct-link-add" class="ct-input ct-small-input"></select>
+  </section>
+
+  <section class="ct-section">
+    <h3>{dt('Who can use it, and where')}</h3>
+    <p class="ct-hint">{dt('A member or a channel that is not allowed gets no answer (a button says it cannot be used here). Leave a list empty to allow everybody and every channel.')}</p>
+    <div class="ct-opt">
+      <span class="ct-opt-title">{dt('Roles')}</span>
+      <label class="ct-radio"><input type="radio" name="ct-o-rmode" value="require" checked /><span>{dt('Only members with one of these roles')}</span></label>
+      <label class="ct-radio"><input type="radio" name="ct-o-rmode" value="ignore" /><span>{dt('Everyone except members with one of these roles')}</span></label>
+      <MultiSelect name="ct-o-roles" options={roles} selected={[]} placeholder={dt('Search roles...')} />
+    </div>
+    <div class="ct-opt">
+      <span class="ct-opt-title">{dt('Channels')}</span>
+      <label class="ct-radio"><input type="radio" name="ct-o-cmode" value="only" checked /><span>{dt('Only in these channels')}</span></label>
+      <label class="ct-radio"><input type="radio" name="ct-o-cmode" value="ignore" /><span>{dt('Everywhere except these channels')}</span></label>
+      <MultiSelect name="ct-o-channels" options={channelChoices} selected={[]} placeholder={dt('Search channels...')} />
+      <p class="ct-hint">{dt('A thread counts as its channel.')}</p>
+    </div>
+  </section>
+
+  <section class="ct-section">
+    <h3>{dt('Mistakes of this command')}</h3>
+    <label class="ct-check"><input type="checkbox" id="ct-o-errors" checked /><span>{dt('Show a mistake as the answer of the command')}</span></label>
+    <label class="ct-field ct-narrow"><span>{dt('Also send the mistakes to a channel')}</span>
+      <select id="ct-o-errchannel" class="ct-input"><option value="">{dt('No channel')}</option><ChannelOptions channels={channels} /></select>
+    </label>
+    <div class="ct-actions"><button type="button" class="ct-btn ct-btn-primary" id="ct-o-save"><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save these options')}</button></div>
+  </section>
+
+  <section class="ct-section">
+    <h3>{dt('Time zone of the server')}</h3>
+    <p class="ct-hint">{dt('The zone that .TimeZone, the date functions and the reminders use when they do not say one. Names like America/Bogota or hours like UTC-5.')}</p>
+    <div class="ct-zone-row">
+      <input type="text" id="ct-z-input" class="ct-input" list="ct-zones" maxlength="40" spellcheck="false" autocomplete="off" aria-label={dt('Time zone')} />
+      <button type="button" class="ct-btn" id="ct-z-browser"><Icon name="ph:browser-fill" width="13" height="13" />{dt('Use the zone of my browser')}</button>
+      <button type="button" class="ct-btn ct-btn-primary" id="ct-z-save"><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save time zone')}</button>
+    </div>
+    <p class="ct-hint" id="ct-z-now"></p>
+  </section>
+  <p class="ct-message" id="ct-message" role="status" hidden></p>
+</div>
+
+<datalist id="ct-zones">{ZONES.map((zone) => <option value={zone}></option>)}</datalist>
+<div id="ct" hidden data-endpoint={endpoint} data-ui={JSON.stringify(ui)} data-lang={dashLang} data-locale={dashLocale(dashLang)} data-channels={JSON.stringify(channels)}></div>
+
+<script>
+  const root = document.getElementById('ct') as HTMLElement | null;
+  if (root) {
+    const ui = JSON.parse(root.dataset.ui || '{}');
+    const endpoint = root.dataset.endpoint || '';
+    const locale = root.dataset.locale || 'en-US';
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const toast = (message: string) => { const w = window as unknown as { dglToast?: (text: string, opts: { kind: string }) => void }; if (typeof w.dglToast === 'function') { w.dglToast(message, { kind: 'ok' }); return true; } return false; };
+
+    type Reminder = { name: string; id: string; channelId: string; repeat: null | { kind: string; everyMs: number | null; atTime: string | null; timezone: string | null; weekday: number | null } };
+    type Options = { errorsAsResponse: boolean; errorChannel: string | null; roles: { mode: string; ids: string[] }; channels: { mode: string; ids: string[] } };
+    type Command = { name: string; links: string[]; options?: Options };
+    let overview: { timezone: string; commands: Command[]; reminders: Reminder[] } | null = null;
+    let current: string | null = null; // the saved command being edited
+    const MAIN = 'main'; // the id of the schedule that starts a command by itself
+    const MAX_LINKS = 3;
+    // A cross drawn as a picture, so it sits in the middle of its circle in any font.
+    const X_ICON = '<svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M1.2 1.2l7.6 7.6M8.8 1.2L1.2 8.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/></svg>';
+
+    const say = (message: string, kind: 'ok' | 'bad' = 'bad') => { const box = $('ct-message'); box.textContent = message; box.hidden = !message; box.dataset.kind = kind; };
+    const done = (message: string) => { if (toast(message)) say(''); else say(message, 'ok'); };
+    async function call(body: Record<string, unknown>): Promise<{ status: number; payload: any }> {
+      try {
+        const response = await fetch(endpoint, { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+        return { status: response.status, payload: await response.json().catch(() => null) };
+      } catch { return { status: 0, payload: null }; }
+    }
+    const problem = (answer: { status: number; payload: any }) => answer.payload?.message || (answer.payload?.error === 'turned_off' ? ui.closed : answer.status ? ui.failed : ui.unavailable);
+
+    // ── The clock of a zone: names of the IANA list, or hours like UTC-5 ──
+    function clockIn(zone: string): string | null {
+      const fixed = /^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/i.exec(zone.trim());
+      const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', weekday: 'short' };
+      try {
+        if (fixed) {
+          const minutes = (Number(fixed[2]) * 60 + Number(fixed[3] ?? 0)) * (fixed[1] === '-' ? -1 : 1);
+          return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(Date.now() + minutes * 60_000));
+        }
+        return new Intl.DateTimeFormat(locale, { ...options, timeZone: zone.trim() }).format(new Date());
+      } catch { return null; }
+    }
+
+    // ── The trigger of the schedule: the same select as the other triggers, with values that start with @ ──
+    const triggerSelect = $<HTMLSelectElement>('cc-trigger-type');
+    const kindOf = () => (triggerSelect.value.startsWith('@') ? triggerSelect.value.slice(1) : null);
+    const weekdayNames = Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + index))));
+    const daySelect = $<HTMLSelectElement>('ct-r-day');
+    daySelect.innerHTML = weekdayNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    daySelect.value = '1';
+    function syncKind() {
+      const kind = kindOf();
+      $('ct-sched').hidden = !kind;
+      $('ct-r-every-box').hidden = kind !== 'interval';
+      $('ct-r-day-box').hidden = kind !== 'weekly';
+      $('ct-r-time-box').hidden = kind !== 'daily' && kind !== 'weekly';
+      $('ct-r-zone-box').hidden = kind !== 'daily' && kind !== 'weekly';
+    }
+    triggerSelect.addEventListener('change', syncKind);
+
+    // The schedule that already starts the command, shown in the fields and in the select.
+    function showMain() {
+      const main = overview?.reminders.find((entry) => entry.name === current && entry.id === MAIN);
+      if (main?.repeat) {
+        triggerSelect.value = `@${main.repeat.kind}`;
+        triggerSelect.dispatchEvent(new Event('change'));
+        const repeat = main.repeat;
+        if (repeat.kind === 'interval') {
+          const minutes = Math.round((repeat.everyMs ?? 0) / 60000);
+          const [n, unit] = minutes % 1440 === 0 ? [minutes / 1440, 'days'] : minutes % 60 === 0 ? [minutes / 60, 'hours'] : [minutes, 'minutes'];
+          $<HTMLInputElement>('ct-r-every').value = String(n);
+          $<HTMLSelectElement>('ct-r-unit').value = String(unit);
+        } else {
+          $<HTMLInputElement>('ct-r-time').value = repeat.atTime ?? '20:00';
+          $<HTMLInputElement>('ct-r-zone').value = repeat.timezone ?? '';
+          if (repeat.kind === 'weekly') daySelect.value = String(repeat.weekday ?? 1);
+        }
+        $<HTMLSelectElement>('ct-r-channel').value = main.channelId;
+      }
+      syncKind();
+    }
+
+    // Makes the schedule from the fields, or says why not. Returns an error sentence, or '' when it is saved.
+    async function saveSchedule(): Promise<string> {
+      const kind = kindOf();
+      if (!current) return ui.saveFirstSettings;
+      const channelId = $<HTMLSelectElement>('ct-r-channel').value;
+      if (!channelId) return ui.pickChannel;
+      const body: Record<string, unknown> = { action: 'reminder', name: current, id: MAIN, channelId, kind };
+      if (kind === 'interval') {
+        const unit = $<HTMLSelectElement>('ct-r-unit').value;
+        const seconds = Math.round(Number($<HTMLInputElement>('ct-r-every').value) * (unit === 'minutes' ? 60 : unit === 'hours' ? 3600 : 86400));
+        if (!(seconds >= 300 && seconds <= 604800)) return ui.badEvery;
+        body.everySeconds = seconds;
+      } else {
+        const time = $<HTMLInputElement>('ct-r-time').value;
+        if (!time) return ui.badTime;
+        body.time = time;
+        body.timezone = $<HTMLInputElement>('ct-r-zone').value.trim();
+        if (kind === 'weekly') body.weekday = Number(daySelect.value);
+      }
+      const answer = await call(body);
+      if (!answer.payload?.ok) return problem(answer);
+      await refresh();
+      return '';
+    }
+    // Stops the schedule of a command when it is started another way.
+    async function cancelMain(name: string) {
+      if (!overview?.reminders.some((entry) => entry.name === name && entry.id === MAIN)) return;
+      await call({ action: 'reminder-cancel', name, id: MAIN });
+      await refresh();
+    }
+    (window as unknown as { ccSchedule: object }).ccSchedule = { save: saveSchedule, cancelMain, isSchedule: (value: string) => value.startsWith('@') };
+
+    // ── Commands that also run after this one ──
+    function drawLinks() {
+      const chips = $('ct-links');
+      const add = $<HTMLSelectElement>('ct-link-add');
+      chips.textContent = '';
+      const command = overview?.commands.find((entry) => entry.name === current);
+      if (!current || !command) {
+        const note = document.createElement('span'); note.className = 'ct-dim'; note.textContent = ui.saveFirstSettings; chips.appendChild(note);
+        add.innerHTML = ''; add.disabled = true; add.hidden = true;
+        return;
+      }
+      add.hidden = false;
+      const save = async (links: string[]) => {
+        const answer = await call({ action: 'links', name: command.name, links });
+        if (!answer.payload?.ok) { say(problem(answer)); return; }
+        say('');
+        command.links = answer.payload.links ?? links;
+        done(ui.linksSaved);
+        drawLinks();
+      };
+      if (!command.links.length) { const none = document.createElement('span'); none.className = 'ct-dim'; none.textContent = ui.noLinks; chips.appendChild(none); }
+      for (const link of command.links) {
+        const chip = document.createElement('span');
+        chip.className = 'ct-chip';
+        chip.textContent = link;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `${ui.remove} ${link}`);
+        remove.innerHTML = X_ICON;
+        remove.addEventListener('click', () => save(command.links.filter((entry) => entry !== link)));
+        chip.appendChild(remove);
+        chips.appendChild(chip);
+      }
+      add.innerHTML = `<option value="">${ui.addCommand}</option>`;
+      for (const other of overview!.commands) {
+        if (other.name === command.name || command.links.includes(other.name)) continue;
+        const option = document.createElement('option');
+        option.value = other.name;
+        option.textContent = other.name;
+        add.appendChild(option);
+      }
+      add.disabled = command.links.length >= MAX_LINKS;
+      add.title = add.disabled ? ui.full : '';
+      add.onchange = () => { if (add.value) save([...command.links, add.value]); };
+    }
+
+    // ── Who can use the command, where, and where its mistakes go ──
+    function setPicked(name: string, ids: string[]) {
+      document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((box) => {
+        const want = ids.includes(box.value);
+        if (box.checked !== want) { box.checked = want; box.dispatchEvent(new Event('change', { bubbles: true })); }
+      });
+    }
+    const picked = (name: string) => Array.from(document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)).map((box) => box.value);
+    const radio = (name: string) => (document.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '');
+    function drawOptions() {
+      const command = overview?.commands.find((entry) => entry.name === current);
+      const options: Options = command?.options ?? { errorsAsResponse: true, errorChannel: null, roles: { mode: 'require', ids: [] }, channels: { mode: 'only', ids: [] } };
+      document.querySelectorAll<HTMLInputElement>('input[name="ct-o-rmode"]').forEach((input) => { input.checked = input.value === options.roles.mode; });
+      document.querySelectorAll<HTMLInputElement>('input[name="ct-o-cmode"]').forEach((input) => { input.checked = input.value === options.channels.mode; });
+      setPicked('ct-o-roles', options.roles.ids);
+      setPicked('ct-o-channels', options.channels.ids);
+      $<HTMLInputElement>('ct-o-errors').checked = options.errorsAsResponse;
+      $<HTMLSelectElement>('ct-o-errchannel').value = options.errorChannel ?? '';
+      $<HTMLButtonElement>('ct-o-save').disabled = !command;
+    }
+    $('ct-o-save').addEventListener('click', async () => {
+      say('');
+      if (!current) { say(ui.saveFirstSettings); return; }
+      const options: Options = {
+        errorsAsResponse: $<HTMLInputElement>('ct-o-errors').checked,
+        errorChannel: $<HTMLSelectElement>('ct-o-errchannel').value || null,
+        roles: { mode: radio('ct-o-rmode') || 'require', ids: picked('ct-o-roles') },
+        channels: { mode: radio('ct-o-cmode') || 'only', ids: picked('ct-o-channels') },
+      };
+      const answer = await call({ action: 'options', name: current, options });
+      if (!answer.payload?.ok) { say(problem(answer)); return; }
+      const command = overview?.commands.find((entry) => entry.name === current);
+      if (command) command.options = answer.payload.options;
+      done(ui.optionsSaved);
+    });
+
+    // ── The time zone of the server ──
+    const zoneInput = $<HTMLInputElement>('ct-z-input');
+    function showNow() {
+      const clock = clockIn(zoneInput.value);
+      $('ct-z-now').textContent = clock ? String(ui.zoneNow).replace('{time}', clock) : '';
+    }
+    zoneInput.addEventListener('input', showNow);
+    $('ct-z-browser').addEventListener('click', () => { try { zoneInput.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { zoneInput.value = 'UTC'; } showNow(); });
+    $('ct-z-save').addEventListener('click', async () => {
+      say('');
+      if (!clockIn(zoneInput.value)) { say(ui.zoneBad); return; }
+      const answer = await call({ action: 'timezone', timezone: zoneInput.value.trim() });
+      if (!answer.payload?.ok) { say(problem(answer)); return; }
+      zoneInput.value = answer.payload.timezone;
+      done(ui.zoneSaved);
+      refresh();
+    });
+
+    // ── What the bot has ──
+    async function refresh() {
+      try {
+        const response = await fetch(`${endpoint}?view=overview`, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json' } });
+        const payload = await response.json().catch(() => null);
+        if (!payload?.ok) { say(payload?.error === 'turned_off' ? ui.closed : ui.unavailable); return; }
+        overview = payload;
+      } catch { say(ui.unavailable); return; }
+      $<HTMLInputElement>('ct-r-zone').placeholder = String(ui.serverZone).replace('{zone}', overview!.timezone);
+      if (document.activeElement !== zoneInput) zoneInput.value = overview!.timezone;
+      showNow();
+      drawLinks();
+      drawOptions();
+    }
+    // The editor says which command it shows (a saved one, or none for a new one).
+    window.addEventListener('cc:select', (event) => {
+      current = (event as CustomEvent<{ name: string | null }>).detail?.name ?? null;
+      drawLinks();
+      drawOptions();
+      refresh().then(showMain);
+    });
+    // The editor may have shown a command before this script was ready.
+    current = (window as unknown as { __ccCurrent?: string | null }).__ccCurrent ?? null;
+    syncKind();
+    refresh().then(showMain);
+  }
+</script>
+
+<style is:global>
+  /* The parts of the settings flow in columns when there is room (no gap under a short one), and in one column on a narrow screen. */
+  .ct-wrap { column-width: 300px; column-gap: 28px; }
+  .ct-wrap > .ct-sched, .ct-wrap > .ct-message { column-span: all; }
+  .ct-wrap > .ct-section { break-inside: avoid; margin-bottom: 18px; }
+  .ct-hint { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+  .ct-section { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-soft, var(--border)); padding: 14px 0 0; margin: 0; }
+  .ct-section h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); }
+  .ct-sched { display: flex; flex-direction: column; gap: 10px; }
+  .ct-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: start; }
+  .ct-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .ct-field > span:first-child { font-size: 13px; font-weight: 600; color: var(--text); }
+  .ct-pair { display: flex; gap: 8px; }
+  .ct-pair .ct-input:first-child { width: 90px; flex: none; }
+  .ct-pair .ct-input:last-child { flex: 1; }
+  .ct-input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; width: 100%; box-sizing: border-box; }
+  .ct-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .ct-zone-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .ct-zone-row .ct-input { flex: 1 1 200px; width: auto; }
+  .ct-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .ct-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .ct-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ct-dim { color: var(--text-dim); font-size: 12.5px; }
+  .ct-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .ct-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 11px; border-radius: 999px; background: var(--accent-soft); font-size: 12.5px; font-family: var(--mono); line-height: 1; min-height: 26px; }
+  .ct-chip button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font-family: var(--sans); font-size: 16px; line-height: 1; border-radius: 50%; }
+  .ct-chip button:hover { background: rgba(127, 127, 127, 0.22); }
+  .ct-small-input { max-width: 260px; }
+  .ct-opt { display: flex; flex-direction: column; gap: 8px; }
+  .ct-opt-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .ct-radio, .ct-check { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+  .ct-radio input, .ct-check input { flex: none; width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
+  .ct-narrow { max-width: 360px; }
+  .ct-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ct-message { margin: 0; font-size: 13px; color: var(--red); }
+  .ct-message[data-kind="ok"] { color: var(--green, #86b894); }
+  .ct-field[hidden], .ct-sched[hidden], .ct-small-input[hidden] { display: none !important; }
+</style>

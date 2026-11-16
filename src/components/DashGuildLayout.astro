@@ -822,6 +822,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       outsideClosers = outsideClosers.filter(function (c) { if (!c.wrap.isConnected && c.extra) c.extra.remove(); return c.wrap.isConnected; });
       outsideClosers.forEach(function (c) { if (!c.wrap.contains(e.target) && !(c.extra && c.extra.contains(e.target))) c.close(); });
     });
+    // Going to another field (a tap, a click, Tab) closes an open list right away, so what is typed next goes to the field that was chosen, never into the list.
+    function closePickersExcept(target) {
+      outsideClosers.forEach(function (c) { if (c.wrap.isConnected && !c.wrap.contains(target) && !(c.extra && c.extra.contains(target))) c.close(); });
+    }
+    document.addEventListener('pointerdown', function (e) { closePickersExcept(e.target); }, true);
+    document.addEventListener('focusin', function (e) { closePickersExcept(e.target); }, true);
     function reposition() {
       repositioners = repositioners.filter(function (r) { return r.wrap.isConnected; });
       repositioners.forEach(function (r) { if (!r.isOpen || r.isOpen()) r.place(); });
@@ -2598,6 +2604,14 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
             }
           });
 
+          // A category with nothing left to show (the search, or all its channels chosen) hides its title.
+          dropdown.querySelectorAll('.dgl-ms-group').forEach(function (head) {
+            var shown = false;
+            for (var next = head.nextElementSibling; next && !next.classList.contains('dgl-ms-group'); next = next.nextElementSibling) {
+              if (next.hasAttribute('data-ms-option') && !next.classList.contains('dgl-ms-nomatch')) { shown = true; break; }
+            }
+            head.hidden = !shown;
+          });
           var empty = dropdown.querySelector('.dgl-ms-empty');
           if (!anyVisible) {
             if (!empty) {
@@ -2916,37 +2930,113 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       });
     }
 
-    // Roles that Petto hands out (a select or a multi-select marked data-give-role) cannot offer the ones it is unable to give: they stay in the
-    // list, greyed out and with the reason, and one that is already chosen is left alone so a saved setting does not break.
+    // What the pickers of roles and channels show. One small request per page that has pickers (the server's roles with their colors, the ones Petto
+    // cannot give, and the channels with their category): the lists keep their own options and are decorated afterwards.
+    //  - Roles that Petto hands out (a select or a multi-select marked data-give-role) cannot offer the ones it is unable to give: they stay in the
+    //    list, dark and locked, with the reason; one that is already chosen is left alone so a saved setting does not break.
+    //  - The other role pickers (who may use something, which roles are ignored) can pick any role, and the ones above Petto carry a small mark.
+    //  - Every role shows its color, and the channels are listed under their category, in the order of Discord.
     var roleBlockInfo = null;
     var roleBlockAsked = false;
-    function applyRoleBlocks(root, info) {
-      var blocks = info.blocks || {};
+    var SNOWFLAKE = /^\d{16,20}$/;
+    function hex(int) { return '#' + ('000000' + Number(int).toString(16)).slice(-6); }
+    function decorateOption(el, value, info, give, chosen) {
       var labels = info.labels || {};
-      if (!Object.keys(blocks).length) return;
-      (root || document).querySelectorAll('select[data-give-role] option').forEach(function (option) {
-        var why = blocks[option.value];
-        if (!why || option.selected || option.dataset.blocked) return;
+      var why = (info.blocks || {})[value];
+      var color = (info.colors || {})[value];
+      var channel = (info.channels || {})[value];
+      if (color) el.setAttribute('data-color', hex(color));
+      if (channel) { el.setAttribute('data-cat', channel.cat || ''); el.setAttribute('data-order', String(channel.o)); }
+      if (!why) return false;
+      if (give) { return !chosen; }
+      if (why === 'above_bot') el.setAttribute('data-above', labels.above_bot || why);
+      return false;
+    }
+    function applyRoleBlocks(root, info) {
+      var labels = info.labels || {};
+      var scope = root || document;
+      scope.querySelectorAll('select option').forEach(function (option) {
+        if (!SNOWFLAKE.test(option.value) || option.dataset.decorated) return;
+        var select = option.parentNode && option.parentNode.tagName === 'OPTGROUP' ? option.parentNode.parentNode : option.parentNode;
+        var give = !!(select && select.hasAttribute && select.hasAttribute('data-give-role'));
+        option.dataset.decorated = '1';
+        if (!decorateOption(option, option.value, info, give, option.selected)) return;
+        var why = info.blocks[option.value];
         option.dataset.blocked = '1';
         option.disabled = true;
+        option.setAttribute('data-plain', option.textContent);
+        option.setAttribute('data-lock', labels[why] || why);
         option.textContent = option.textContent + ' (' + (labels[why] || why) + ')';
       });
-      (root || document).querySelectorAll('[data-multiselect][data-give-role] [data-ms-option]').forEach(function (label) {
+      scope.querySelectorAll('[data-multiselect] [data-ms-option]').forEach(function (label) {
         var input = label.querySelector('input[type="checkbox"]');
-        var why = input && blocks[input.value];
-        if (!why || input.checked || label.dataset.blocked) return;
-        label.dataset.blocked = '1';
+        if (!input || !SNOWFLAKE.test(input.value) || label.dataset.decorated) return;
+        var give = !!label.closest('[data-multiselect][data-give-role]');
+        label.dataset.decorated = '1';
+        var locked = decorateOption(label, input.value, info, give, input.checked);
+        var text = label.querySelector('span');
+        var color = label.getAttribute('data-color');
+        if (color && text && !label.querySelector('.dgl-ms-dot')) {
+          var dot = document.createElement('i');
+          dot.className = 'dgl-ms-dot';
+          dot.style.background = color;
+          label.insertBefore(dot, text);
+        }
+        if (label.getAttribute('data-above') && text && !locked) {
+          var tag = document.createElement('em');
+          tag.className = 'dgl-ms-tag';
+          tag.textContent = label.getAttribute('data-above');
+          label.appendChild(tag);
+        }
+        if (!locked) return;
+        var why = info.blocks[input.value];
         label.classList.add('blocked');
         input.disabled = true;
-        var text = label.querySelector('span');
-        if (text) text.textContent = text.textContent + ' (' + (labels[why] || why) + ')';
+        label.setAttribute('data-lock', labels[why] || why);
+        var note = document.createElement('em');
+        note.className = 'dgl-ms-tag dgl-ms-lock';
+        note.textContent = labels[why] || why;
+        label.appendChild(note);
+      });
+      groupDropdowns(scope);
+    }
+    // The options of a list of channels go under their category, in the order of Discord (a list of roles keeps its order).
+    function groupDropdowns(scope) {
+      scope.querySelectorAll('[data-ms-dropdown]').forEach(function (dropdown) {
+        dropdown.querySelectorAll('.dgl-ms-group').forEach(function (head) { head.remove(); });
+        var options = Array.prototype.slice.call(dropdown.querySelectorAll('[data-ms-option][data-order]'));
+        if (options.length < 2) return;
+        options.sort(function (a, b) { return Number(a.getAttribute('data-order')) - Number(b.getAttribute('data-order')); });
+        var last = null;
+        var anchor = null;
+        options.forEach(function (label) {
+          var cat = label.getAttribute('data-cat') || '';
+          if (cat !== last && cat) {
+            var head = document.createElement('div');
+            head.className = 'dgl-ms-group';
+            head.textContent = cat;
+            if (anchor) anchor.after(head); else dropdown.insertBefore(head, dropdown.firstChild);
+            anchor = head;
+          }
+          last = cat;
+          if (anchor) anchor.after(label); else dropdown.insertBefore(label, dropdown.firstChild);
+          anchor = label;
+        });
       });
     }
-    // Which roles Petto cannot give is only asked (one small request) by a page that has such a picker; the other pages never pay for it.
+    function pageHasPickers(scope) {
+      if (scope.querySelector('[data-give-role], [data-multiselect]')) return true;
+      var found = false;
+      scope.querySelectorAll('select').forEach(function (select) {
+        if (found || select.options.length < 4) return;
+        for (var i = 0; i < Math.min(select.options.length, 8); i += 1) if (SNOWFLAKE.test(select.options[i].value)) { found = true; return; }
+      });
+      return found;
+    }
     window.dglApplyRoleBlocks = function (root) {
       var scope = root || document;
       if (roleBlockInfo) { applyRoleBlocks(scope, roleBlockInfo); return; }
-      if (roleBlockAsked || !scope.querySelector('[data-give-role]')) return;
+      if (roleBlockAsked || !pageHasPickers(scope)) return;
       roleBlockAsked = true;
       var match = window.location.pathname.match(/^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//);
       if (!match) return;
@@ -2954,7 +3044,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
       try { labels = JSON.parse((document.getElementById('dgl-role-labels') || {}).textContent || '{}'); } catch (e) { labels = {}; }
       fetch('/dash/guild/' + match[1] + '/role-blocks', { headers: { accept: 'application/json' } })
         .then(function (res) { return res.ok ? res.json() : { blocks: {} }; })
-        .then(function (data) { roleBlockInfo = { blocks: data.blocks || {}, labels: labels }; roleBlockAsked = false; applyRoleBlocks(document, roleBlockInfo); })
+        .then(function (data) { roleBlockInfo = { blocks: data.blocks || {}, colors: data.colors || {}, channels: data.channels || {}, labels: labels }; roleBlockAsked = false; applyRoleBlocks(document, roleBlockInfo); })
         .catch(function () { roleBlockAsked = false; });
     };
 
@@ -3161,7 +3251,6 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-nav { padding: 2px 8px 14px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 14%, transparent) transparent; }
   .dgl-nav::-webkit-scrollbar { width: 4px; }
   .dgl-nav::-webkit-scrollbar-thumb { border-radius: 4px; background: color-mix(in srgb, var(--text) 14%, transparent); }
-  :global(.dgl-ms-option.blocked) { opacity: .45; cursor: not-allowed; }
   /* The menu reads as a few sections (a small title each), and each section as parts that fold, with their links indented under them. */
   .dgl-section-title { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); padding: 11px 8px 4px; }
   .dgl-section-title:first-child { padding-top: 8px; }

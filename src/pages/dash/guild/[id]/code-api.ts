@@ -18,7 +18,9 @@ export const GET: APIRoute = async (astro) => {
   const { id } = astro.params as { id: string };
   const session = await who(astro, id);
   if (!session) return json({ ok: false, error: 'unauthorized' }, 401);
-  const answer = await callPettoCode(astro, id, session.userId, 'meta');
+  // `?view=overview`: the time zone of the server, every command with the ones that also run after it, and the reminders waiting.
+  const view = new URL(astro.request.url).searchParams.get('view') === 'overview' ? 'overview' : 'meta';
+  const answer = await callPettoCode(astro, id, session.userId, view);
   return json(answer.payload ?? { ok: false, error: 'bot_unavailable' }, answer.ok ? 200 : answer.status);
 };
 
@@ -38,8 +40,9 @@ export const POST: APIRoute = async (astro) => {
     return json({ ok: res.ok }, res.ok ? 200 : 502);
   }
 
-  if (!['check', 'test', 'save', 'trigger'].includes(action)) return json({ ok: false, error: 'unknown_action' }, 400);
+  const routes: Record<string, string> = { check: 'check', test: 'test', save: 'save', trigger: 'trigger', timezone: 'timezone', links: 'links', options: 'options', reminder: 'reminder', 'reminder-cancel': 'reminder/cancel' };
+  if (!routes[action]) return json({ ok: false, error: 'unknown_action' }, 400);
   const { action: _ignored, user_id: _user, ...rest } = body;
-  const answer = await callPettoCode(astro, id, session.userId, action as any, rest);
+  const answer = await callPettoCode(astro, id, session.userId, routes[action] as any, rest);
   return json(answer.payload ?? { ok: false, error: 'bot_unavailable' }, answer.status || 502);
 };
