@@ -6470,4 +6470,12 @@ export const dashPt: Record<string, string> = {
   "Connect commands without writing code: the commands you add here run right after this one, as the same member, in the same channel. Up to 3. In code you can also use callCC and execCC.": "Conecte comandos sem escrever código: os comandos que você adicionar aqui rodam logo depois deste, como o mesmo membro, no mesmo canal. Até 3. No código você também pode usar callCC e execCC.",
   "The schedule was saved. The command now runs by itself.": "O agendamento foi salvo. O comando agora roda sozinho.",
   "The schedule was removed.": "O agendamento foi removido.",
+  "main": "principal",
+  "Add a file": "Adicionar um arquivo",
+  "A command can have at most 5 files.": "Um comando pode ter no máximo 5 arquivos.",
+  "Delete this file and its code? This cannot be undone.": "Apagar este arquivo e o seu código? Não dá para desfazer.",
+  "Delete file": "Apagar arquivo",
+  "{file}, line {n}": "{file}, linha {n}",
+  "Name of the file": "Nome do arquivo",
+  "Files of the command": "Arquivos do comando",
 };

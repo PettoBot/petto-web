@@ -23,14 +23,16 @@ if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 
 // The commands written in code. The list is asked up to three times and, if the filtered question fails, once more without the
 // filter (the commands with code are picked here), so a slow or busy moment does not leave the page with an empty list.
-type Row = { name: string; code: string; triggerType: string; triggerText: string };
-const toRow = (row: any): Row => ({ name: row.name, code: row.code ?? '', triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? '' });
+type Row = { name: string; code: string; triggerType: string; triggerText: string; files: { name: string; size: number }[] };
+const toRow = (row: any): Row => ({ name: row.name, code: row.code ?? '', triggerType: row.trigger_type ?? 'command', triggerText: row.trigger_text ?? '', files: Array.isArray(row.files) ? row.files.filter((file: any) => file && typeof file.name === 'string' && Number.isInteger(file.size)).map((file: any) => ({ name: String(file.name), size: Number(file.size) })) : [] });
 async function loadCommands(): Promise<{ commands: Row[]; state: 'ok' | 'missing' | 'failed' }> {
   const base = `${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}`;
-  const columns = 'select=name,code,trigger_type,trigger_text&order=name.asc';
+  // The column of the files comes with the bot update too: a database without it is asked again without it (the commands then show as one file).
+  let withFiles = true;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     for (const [filter, pick] of [['&code=not.is.null', false], ['', true]] as const) {
       try {
+        const columns = `select=name,code,trigger_type,trigger_text${withFiles ? ',files' : ''}&order=name.asc`;
         const res = await fetch(`${base}${filter}&${columns}`, { headers: apiHeaders, signal: AbortSignal.timeout(6000) });
         if (res.ok) {
           const rows = (await res.json()) as any[];
@@ -38,6 +40,7 @@ async function loadCommands(): Promise<{ commands: Row[]; state: 'ok' | 'missing
         }
         // The columns come with a bot update: a database without them says so, and that is not a failure to retry.
         const body = await res.text().catch(() => '');
+        if (res.status === 400 && withFiles && /files/i.test(body)) { withFiles = false; continue; }
         if (res.status === 400 && /code|trigger_/i.test(body) && pick) return { commands: [], state: 'missing' };
       } catch { /* try again */ }
     }

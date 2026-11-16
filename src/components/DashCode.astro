@@ -14,7 +14,7 @@ interface Props {
   guildId: string;
   guildName: string;
   guildIcon: string;
-  commands: { name: string; code: string; triggerType: string; triggerText: string }[];
+  commands: { name: string; code: string; triggerType: string; triggerText: string; files?: { name: string; size: number }[] }[];
   prefix: string;
   ready: boolean;
   loadFailed?: boolean;
@@ -45,6 +45,13 @@ const ui = {
   stepsTime: dt('{steps} steps, {ms} ms'),
   noMatch: dt('No function matches.'),
   otherGroup: dt('Other'),
+  mainFile: dt('main'),
+  fileName: dt('Name of the file'),
+  addFile: dt('Add a file'),
+  fileLimit: dt('A command can have at most 5 files.'),
+  confirmDeleteFile: dt('Delete this file and its code? This cannot be undone.'),
+  yesDeleteFile: dt('Delete file'),
+  inFile: dt('{file}, line {n}'),
   unavailable: dt('The bot did not answer. Try again in a moment.'),
   closed: dt('Commands in code are turned off for now.'),
   triggerSaved: dt('The trigger was saved.'),
@@ -189,6 +196,7 @@ const triggerTypes = [
           <button type="button" class="cc-btn cc-btn-small" id="cc-generator"><Icon name="ph:magic-wand-fill" width="13" height="13" />{dt('Open in the generator')}</button>
           <span class="cc-note cc-keys" id="cc-keys">{dt('Tab and Shift+Tab indent, Ctrl+Space suggests, Ctrl+S saves, Ctrl+Enter runs the test.')}</span>
         </div>
+        <div class="cc-files" id="cc-files" role="tablist" aria-label={dt('Files of the command')}></div>
         <div class="cc-editor-wrap" id="cc-editor-wrap">
           <div class="cc-editor">
             <div class="cc-gutter" id="cc-gutter" aria-hidden="true"></div>
@@ -255,10 +263,17 @@ const triggerTypes = [
     const ask = (text: string, opts?: object): Promise<boolean> => { const w = window as unknown as { dglConfirm?: (t: string, o?: object) => Promise<boolean> }; return w.dglConfirm ? w.dglConfirm(text, opts) : Promise.resolve(false); };
     const endpoint = root.dataset.endpoint || '';
     const prefix = root.dataset.prefix || '!';
-    let commands: { name: string; code: string; triggerType: string; triggerText: string }[] = JSON.parse(root.dataset.commands || '[]');
+    type FileMeta = { name: string; size: number };
+    type CodeFile = { name: string; code: string };
+    let commands: { name: string; code: string; triggerType: string; triggerText: string; files?: FileMeta[] }[] = JSON.parse(root.dataset.commands || '[]');
     let meta: any = null;
     let current: string | null = null; // the name of the saved command being edited
-    let savedCode = '';
+    // A command is one code cut into files (the "+"): the editor shows one at a time, and the bot joins them with a line break.
+    const MAX_FILES = 5;
+    let files: CodeFile[] = [{ name: 'main', code: '' }];
+    let activeFile = 0;
+    let savedKey = '';
+    let errorAt: { file: number; line: number } | null = null;
     let savedName = '';
 
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -301,18 +316,42 @@ const triggerTypes = [
       return true;
     };
     const done = (message: string) => { if (toast(message)) say(''); else say(message, 'ok'); };
-    const dirty = () => code.value !== savedCode || nameInput.value.trim().toLowerCase() !== savedName;
+    const syncActive = () => { files[activeFile].code = code.value; };
+    const programText = () => { syncActive(); return files.map((file) => file.code).join('\n'); };
+    const filesKey = () => { syncActive(); return JSON.stringify(files.map((file) => [file.name, file.code])); };
+    // The files of a saved command: its code cut with the sizes the bot kept (one file when they do not add up).
+    function splitFiles(source: string, meta?: FileMeta[]): CodeFile[] {
+      if (!meta || meta.length < 2 || meta.reduce((sum, entry) => sum + entry.size, 0) + meta.length - 1 !== source.length) return [{ name: 'main', code: source }];
+      const out: CodeFile[] = [];
+      let at = 0;
+      for (const [index, entry] of meta.entries()) { out.push({ name: index === 0 ? 'main' : entry.name, code: source.slice(at, at + entry.size) }); at += entry.size + 1; }
+      return out;
+    }
+    const filesMeta = (): FileMeta[] => (files.length > 1 ? files.map((file) => ({ name: file.name, size: file.code.length })) : []);
+    // A line of the joined code, as the file and the line of that file.
+    function locate(line: number): { file: number; line: number } {
+      syncActive();
+      let rest = line;
+      for (const [index, file] of files.entries()) { const count = file.code.split('\n').length; if (rest <= count) return { file: index, line: rest }; rest -= count; }
+      return { file: files.length - 1, line: Math.max(1, rest) };
+    }
+    const lineText = (joined: number) => {
+      const where = locate(joined);
+      return files.length > 1 ? String(ui.inFile).replace('{file}', files[where.file].name === 'main' ? ui.mainFile : files[where.file].name).replace('{n}', String(where.line)) : String(ui.line).replace('{n}', String(where.line));
+    };
+    function setError(joined: number) { errorAt = joined ? locate(joined) : null; errorLine = errorAt && errorAt.file === activeFile ? errorAt.line : 0; }
+    const dirty = () => filesKey() !== savedKey || nameInput.value.trim().toLowerCase() !== savedName;
     // The dashboard's bar of unsaved changes (DashGuildLayout) follows the editor: it saves with the same save() as the Save button,
     // and "discard" puts back the saved command (or an empty new one).
     function syncBar() {
       const w = window as unknown as { dglDirty?: (key: string, opts: object) => void; dglClean?: (key: string) => void };
       if (!w.dglDirty || !w.dglClean) return;
-      if (!dirty() || !(code.value.trim() || nameInput.value.trim())) { w.dglClean('code-editor'); return; }
+      if (!dirty() || !(programText().trim() || nameInput.value.trim())) { w.dglClean('code-editor'); return; }
       w.dglDirty('code-editor', {
         save: async () => { await save(); return !dirty(); },
         discard: () => {
           const command = current ? commands.find((entry) => entry.name === current) : null;
-          if (command) load(command.name, command.code, command.triggerType, command.triggerText); else load(null, '');
+          if (command) load(command.name, command.code, command.triggerType, command.triggerText, command.files); else load(null, '');
         },
       });
     }
@@ -349,7 +388,7 @@ const triggerTypes = [
       for (let n = 1; n <= lines; n += 1) html += `<div class="${n === errorLine ? 'cc-err' : ''}">${n}</div>`;
       gutter.innerHTML = html;
       gutter.scrollTop = code.scrollTop;
-      const length = code.value.length;
+      const length = files.reduce((sum, file, index) => sum + (index === activeFile ? code.value.length : file.code.length), 0) + files.length - 1;
       countBox.textContent = `${length.toLocaleString()} / ${LIMIT().toLocaleString()}`;
       countBox.dataset.level = length > LIMIT() ? 'over' : length > LIMIT() * 0.9 ? 'near' : '';
       countBox.title = length > LIMIT() ? ui.limitOver : length > LIMIT() * 0.9 ? ui.limitNear : '';
@@ -526,24 +565,92 @@ const triggerTypes = [
       for (const hint of hints) { const item = document.createElement('li'); item.textContent = String(hint); hintsBox.appendChild(item); }
     }
 
+    // ── The files of the command (the "+") ──
+    const filesBar = $('cc-files');
+    function showFile(index: number) {
+      syncActive();
+      activeFile = Math.max(0, Math.min(files.length - 1, index));
+      code.value = files[activeFile].code;
+      code.scrollTop = 0; code.scrollLeft = 0;
+      errorLine = errorAt && errorAt.file === activeFile ? errorAt.line : 0;
+      suggestClose();
+      drawFiles();
+      drawGutter();
+      syncBar();
+    }
+    const cleanFileName = (value: string) => value.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 20);
+    function drawFiles() {
+      filesBar.textContent = '';
+      for (const [index, file] of files.entries()) {
+        const tab = document.createElement('div');
+        tab.className = 'cc-file';
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-selected', String(index === activeFile));
+        if (errorAt && errorAt.file === index) tab.dataset.error = 'true';
+        if (index === activeFile && index > 0) {
+          // The file that is open can be renamed, or deleted.
+          const input = document.createElement('input');
+          input.type = 'text'; input.className = 'cc-file-name'; input.value = file.name; input.maxLength = 20; input.spellcheck = false;
+          input.size = Math.max(4, file.name.length);
+          input.setAttribute('aria-label', ui.fileName);
+          input.addEventListener('input', () => { input.value = cleanFileName(input.value); input.size = Math.max(4, input.value.length); });
+          input.addEventListener('change', () => {
+            let next = cleanFileName(input.value).trim() || file.name;
+            if (files.some((other, at) => at !== index && other.name.toLowerCase() === next.toLowerCase()) || next.toLowerCase() === 'main') next = file.name;
+            file.name = next; input.value = next; syncBar();
+          });
+          const remove = document.createElement('button');
+          remove.type = 'button'; remove.className = 'cc-file-x'; remove.textContent = '×'; remove.setAttribute('aria-label', ui.yesDeleteFile); remove.title = ui.yesDeleteFile;
+          remove.addEventListener('click', async () => {
+            if (files[index].code.trim() && !(await ask(ui.confirmDeleteFile, { confirm: ui.yesDeleteFile }))) return;
+            syncActive();
+            files.splice(index, 1);
+            if (errorAt) errorAt = errorAt.file === index ? null : errorAt.file > index ? { file: errorAt.file - 1, line: errorAt.line } : errorAt;
+            showFile(Math.max(0, index - 1));
+            clearTimeout(checkTimer); checkTimer = setTimeout(checkNow, 200);
+          });
+          tab.append(input, remove);
+        } else {
+          const label = document.createElement('button');
+          label.type = 'button'; label.className = 'cc-file-label'; label.textContent = index === 0 ? ui.mainFile : file.name;
+          label.addEventListener('click', () => showFile(index));
+          tab.appendChild(label);
+        }
+        filesBar.appendChild(tab);
+      }
+      const add = document.createElement('button');
+      add.type = 'button'; add.className = 'cc-file-add'; add.textContent = '+'; add.setAttribute('aria-label', ui.addFile); add.title = files.length >= MAX_FILES ? ui.fileLimit : ui.addFile;
+      add.disabled = files.length >= MAX_FILES;
+      add.addEventListener('click', () => {
+        syncActive();
+        let n = files.length + 1;
+        while (files.some((file) => file.name.toLowerCase() === `file${n}`)) n += 1;
+        files.push({ name: `file${n}`, code: '' });
+        showFile(files.length - 1);
+        code.focus();
+      });
+      filesBar.appendChild(add);
+    }
+
     // ── Checking while writing ──
     let checkTimer: ReturnType<typeof setTimeout> | undefined;
     let checkId = 0;
     function setStatus(kind: 'ok' | 'bad' | 'wait', text: string) { statusBox.dataset.kind = kind; statusText.textContent = text; }
     async function checkNow() {
       const ticket = ++checkId;
-      if (!code.value.trim()) { errorLine = 0; drawGutter(); showHints(null); setStatus('wait', ''); return; }
+      if (!programText().trim()) { setError(0); drawGutter(); showHints(null); setStatus('wait', ''); drawFiles(); return; }
       setStatus('wait', ui.checking);
-      const answer = await api({ action: 'check', code: code.value });
+      const answer = await api({ action: 'check', code: programText() });
       const payload = answer.payload;
       if (ticket !== checkId) return;
       if (!payload?.ok) { setStatus('wait', `${ui.unavailable} ${why(answer)}`); return; }
       const problem = payload.problem;
-      errorLine = problem?.line ?? 0;
+      setError(problem?.line ?? 0);
       drawGutter();
+      drawFiles();
       showHints(payload.hints);
       if (!problem) setStatus('ok', ui.ok);
-      else setStatus('bad', `${problem.line ? `${String(ui.line).replace('{n}', problem.line)}: ` : ''}${problem.message}`);
+      else setStatus('bad', `${problem.line ? `${lineText(problem.line)}: ` : ''}${problem.message}`);
     }
     code.addEventListener('input', (event) => {
       drawGutter();
@@ -617,21 +724,24 @@ const triggerTypes = [
 
     // The settings under the trigger (connections, schedule) follow the command that is shown.
     const announce = () => { (window as unknown as { __ccCurrent: string | null }).__ccCurrent = current; window.dispatchEvent(new CustomEvent('cc:select', { detail: { name: current } })); };
-    function load(name: string | null, source: string, type = 'command', text = '') {
+    function load(name: string | null, source: string, type = 'command', text = '', meta?: FileMeta[]) {
       current = name;
       announce();
       savedName = name ?? '';
-      savedCode = source;
+      files = splitFiles(source, meta);
+      activeFile = 0;
       nameInput.value = name ?? '';
       nameInput.readOnly = Boolean(name);
-      code.value = source;
+      code.value = files[0].code;
+      savedKey = filesKey();
       deleteButton.hidden = !name;
       showTrigger(type, text);
       result.hidden = true;
       say('');
       showHints(null);
       suggestClose();
-      errorLine = 0;
+      setError(0);
+      drawFiles();
       drawGutter();
       drawList();
       syncBar();
@@ -640,7 +750,7 @@ const triggerTypes = [
     async function open(name: string) {
       if (dirty() && !(await ask(ui.confirmLeave, { tone: 'neutral', confirm: ui.yesLeave }))) return;
       const command = commands.find((entry) => entry.name === name);
-      if (command) load(command.name, command.code, command.triggerType, command.triggerText);
+      if (command) load(command.name, command.code, command.triggerType, command.triggerText, command.files);
     }
     $('cc-new').addEventListener('click', async () => {
       if (dirty() && !(await ask(ui.confirmNew, { tone: 'neutral', confirm: ui.yesContinue }))) return;
@@ -655,14 +765,14 @@ const triggerTypes = [
       say(ui.saving);
       // One save at a time: a second press while the first is on its way would send it twice.
       saveButton.disabled = true;
-      const { status, payload } = await api({ action: 'save', name, code: code.value }).finally(() => { saveButton.disabled = false; });
+      const { status, payload } = await api({ action: 'save', name, code: programText(), files: files.length > 1 ? files.map((file) => ({ name: file.name, code: file.code })) : undefined }).finally(() => { saveButton.disabled = false; });
       if (status === 403 && payload?.error === 'turned_off') { say(ui.closed, 'bad'); return; }
       if (!payload) { say(`${ui.unavailable} ${why({ status, payload })}`, 'bad'); return; }
       if (!payload.ok) { say(payload.message || `${ui.unavailable} ${why({ status, payload })}`, 'bad'); return; }
       const existing = commands.find((entry) => entry.name === name);
-      if (existing) existing.code = code.value; else commands.push({ name, code: code.value, triggerType: 'command', triggerText: '' });
+      if (existing) { existing.code = programText(); existing.files = filesMeta(); } else commands.push({ name, code: programText(), triggerType: 'command', triggerText: '', files: filesMeta() });
       commands.sort((a, b) => a.name.localeCompare(b.name));
-      current = name; savedName = name; savedCode = code.value; nameInput.readOnly = true; deleteButton.hidden = false;
+      current = name; savedName = name; savedKey = filesKey(); nameInput.readOnly = true; deleteButton.hidden = false;
       announce();
       drawList();
       syncBar();
@@ -727,16 +837,16 @@ const triggerTypes = [
       result.hidden = false;
       result.textContent = ui.running;
       const { status, payload } = await api({
-        action: 'test', code: code.value, args: $<HTMLInputElement>('cc-test-args').value, trigger: mode.value,
+        action: 'test', code: programText(), args: $<HTMLInputElement>('cc-test-args').value, trigger: mode.value,
         handler: $<HTMLInputElement>('cc-test-handler').value, value: $<HTMLInputElement>('cc-test-value').value,
       });
       result.textContent = '';
       if (status === 403 && payload?.error === 'turned_off') { result.appendChild(line(ui.stopped, ui.closed, true)); return; }
       if (!payload?.ok) { result.appendChild(line(ui.stopped, `${ui.unavailable} ${why({ status, payload })}`, true)); return; }
       if (payload.error) {
-        const where = payload.error.line ? ` (${String(ui.line).replace('{n}', payload.error.line)})` : '';
+        const where = payload.error.line ? ` (${lineText(payload.error.line)})` : '';
         result.appendChild(line(ui.stopped, `${payload.error.message}${where}`, true));
-        if (payload.error.line) { errorLine = payload.error.line; drawGutter(); }
+        if (payload.error.line) { setError(payload.error.line); drawGutter(); drawFiles(); }
         return;
       }
       showHints(payload.hints);
@@ -845,17 +955,18 @@ const triggerTypes = [
       const template = (meta?.templates ?? []).find((entry: any) => entry.id === templates.value);
       $('cc-template-note').textContent = template?.description ?? '';
       if (!template) return;
-      if ((code.value.trim() && dirty()) && !(await ask(ui.confirmTemplate, { tone: 'neutral', confirm: ui.yesReplace }))) { templates.value = ''; return; }
+      if ((programText().trim() && dirty()) && !(await ask(ui.confirmTemplate, { tone: 'neutral', confirm: ui.yesReplace }))) { templates.value = ''; return; }
       current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false; announce();
       if (!nameInput.value.trim() || !commands.some((entry) => entry.name === nameInput.value.trim())) nameInput.value = template.suggestedName;
+      files = [{ name: 'main', code: template.code }]; activeFile = 0;
       code.value = template.code;
-      savedCode = '';
+      savedKey = '';
       showTrigger('command', '');
-      errorLine = 0;
-      drawGutter(); drawList(); syncBar(); checkNow();
+      setError(0);
+      drawFiles(); drawGutter(); drawList(); syncBar(); checkNow();
     });
 
-    window.addEventListener('beforeunload', (event) => { if (dirty() && code.value.trim()) { event.preventDefault(); } });
+    window.addEventListener('beforeunload', (event) => { if (dirty() && programText().trim()) { event.preventDefault(); } });
 
     // ── The Code Generator: share codes in and out ──
     // A share code is pc1. + the base64url of {"v":1,"n":name,"d":description,"c":code}, the same as !customcommand export.
@@ -883,8 +994,8 @@ const triggerTypes = [
     // Opens what is in the editor in the generator, in a new tab. With nothing written it just opens the generator.
     document.getElementById('cc-generator')?.addEventListener('click', () => {
       if (!generatorUrl) return;
-      const url = code.value.trim()
-        ? `${generatorUrl}/#/import?share=${encodeURIComponent(toShareCode(nameInput.value.trim().toLowerCase() || 'command', code.value))}`
+      const url = programText().trim()
+        ? `${generatorUrl}/#/import?share=${encodeURIComponent(toShareCode(nameInput.value.trim().toLowerCase() || 'command', programText()))}`
         : `${generatorUrl}/`;
       window.open(url, '_blank', 'noopener');
     });
@@ -892,7 +1003,7 @@ const triggerTypes = [
     // ── Start ──
     drawList();
     drawGutter();
-    if (commands[0]) load(commands[0].name, commands[0].code, commands[0].triggerType, commands[0].triggerText);
+    if (commands[0]) load(commands[0].name, commands[0].code, commands[0].triggerType, commands[0].triggerText, commands[0].files);
 
     // A command sent from the Code Generator arrives in the URL fragment (#import=pc1...). It opens like a template:
     // a new command in the editor, not saved until Save is pressed.
@@ -904,12 +1015,13 @@ const triggerTypes = [
       if (imported) {
         current = null; savedName = ''; deleteButton.hidden = true; nameInput.readOnly = false; announce();
         nameInput.value = imported.name;
+        files = [{ name: 'main', code: imported.code }]; activeFile = 0;
         code.value = imported.code;
-        savedCode = '';
+        savedKey = '';
         showTrigger('command', '');
         result.hidden = true;
-        errorLine = 0;
-        drawGutter(); drawList(); syncBar(); checkNow();
+        setError(0);
+        drawFiles(); drawGutter(); drawList(); syncBar(); checkNow();
         say(commands.some((entry) => entry.name === imported.name) ? ui.importedExists : ui.imported, 'ok');
       } else {
         say(ui.importBad, 'bad');
@@ -1014,6 +1126,20 @@ const triggerTypes = [
   @media (max-width: 640px) { .cc-keys { display: none; } }
 
   /* The editor: a clear textarea over the code with colors. Both use the same font, size, line height and padding. */
+  /* The files of a command: tabs over the editor, and the + that adds another one. */
+  :global(.cc-files) { display: flex; gap: 4px; flex-wrap: wrap; align-items: flex-end; margin-bottom: -4px; }
+  :global(.cc-file) { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-bottom: 0; border-radius: 9px 9px 0 0; background: var(--border-soft); color: var(--text-dim); min-height: 34px; position: relative; }
+  :global(.cc-file[aria-selected="true"]) { background: var(--bg-raise, var(--card)); color: var(--text); border-color: var(--accent); }
+  :global(.cc-file[data-error="true"])::after { content: ''; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  :global(.cc-file-label) { border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; font-weight: 600; padding: 0 14px; min-height: 34px; cursor: pointer; }
+  :global(.cc-file-name) { border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; font-weight: 600; padding: 0 0 0 12px; min-width: 40px; outline: none; }
+  :global(.cc-file-name:focus) { text-decoration: underline; }
+  :global(.cc-file-x) { border: 0; background: transparent; color: var(--text-dim); font-size: 17px; line-height: 1; cursor: pointer; padding: 0 9px 0 3px; border-radius: 50%; }
+  :global(.cc-file-x:hover) { color: var(--red); }
+  :global(.cc-file-add) { border: 1px dashed var(--border); border-bottom: 0; border-radius: 9px 9px 0 0; background: transparent; color: var(--text-dim); font: inherit; font-size: 18px; font-weight: 700; min-width: 40px; min-height: 34px; cursor: pointer; }
+  :global(.cc-file-add:hover:not(:disabled)) { color: var(--accent); border-color: var(--accent); }
+  :global(.cc-file-add:disabled) { opacity: 0.45; cursor: default; }
+  @media (max-width: 720px) { :global(.cc-file), :global(.cc-file-label), :global(.cc-file-add) { min-height: 42px; } :global(.cc-file-label), :global(.cc-file-name) { font-size: 14.5px; } }
   .cc-editor-wrap { position: relative; --cc-line: 20px; --cc-font: 13px; }
   /* On a phone the code is bigger and taller, so it can be read and touched. */
   @media (max-width: 720px) { .cc-editor-wrap { --cc-line: 25px; --cc-font: 16px; } .cc-editor, .cc-editor textarea { min-height: max(420px, 62vh); } .cc-gutter { min-width: 48px; } }
