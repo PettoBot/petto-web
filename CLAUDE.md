@@ -46,6 +46,15 @@ No line that names the assistant or signs the work, in any commit or pull reques
 - Before pushing, read the messages of the commits of the branch (`git log origin/main..HEAD --format=%B`) and check there is no such line.
 - Commits that are already in `main` are not rewritten.
 
+## How the maintainer wants the work
+
+- **Global, not page by page.** A behavior or a look (a switch, a list, a bar, a color) is made once in the shared piece and every page gets it; never fixed one page at a time.
+- **Colors of the dashboard.** Green to save, add, confirm and for what is chosen; red to delete. The peach is for the brand, links and focus, not for buttons or selected things. Where a color clashes with another, change it.
+- **Pictures and screenshots** in dark mode, cut to what is shown: no empty space around it, no half-hidden parts. Look at them on a phone width too.
+- **No empty space** in the layouts, on a wide window or on a phone.
+- **Say the truth about what was checked.** Say what was tried (and how) and what was not (a real phone, the live site, a real server). A fix that could not be reproduced is said so.
+- **Answers to the maintainer** are in short, warm Spanish, with the links and the state of each pull request, and what he has to do (merge order, restart the bot).
+
 ## Commits and pull requests
 
 No signatures or attribution lines in commit messages or pull request bodies. A pull request follows the template of the repository and its text has to stay true to what the pull request holds now.
