@@ -4,7 +4,7 @@
 
 **Any change, in any repository of Petto (the bot, the web, the wikis, the Code Generator), must also be written in the Currently log.** It does not matter how small it is, or whether it is a fix, an addition, an improvement, a change of the web or the docs, or a removal: if somebody could notice it, or it is worth knowing, it gets an entry. The only things left out are changes nobody can notice and that change nothing (a typo in a comment, a rename inside the code).
 
-How: add an entry at the end of `entries` in `src/data/currentlyLog.json` of this repository (the bot reads it from the web every ten minutes and posts it in Discord), in the same pull request as the change. Rules of the file are in `scripts/check-currently-log-file.mjs` (it runs with `npm run check`):
+How: add an entry at the end of `entries` in `src/data/currentlyLog.json` of this repository (the bot reads it from the web every two minutes and posts it in Discord), in the same pull request as the change. Rules of the file are in `scripts/check-currently-log-file.mjs` (it runs with `npm run check`):
 
 - A new `id` that was never used (lowercase letters, numbers and dashes), a `category` (`security`, `feature`, `addition`, `improvement`, `fix`, `web`, `removal` or `removed-feature`), a `title` (100 characters at most), an `area` (80), and a `summary` (700) in plain words for the community: what changed and what it means for them, no code stats.
 - Pictures are optional but wanted for everything that can be seen: up to 3, files of `public/assets/log/` named by their https address (`https://petto.sbs/assets/log/<name>.png`). Make them in dark mode, with nothing empty around the thing shown.
