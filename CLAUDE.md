@@ -11,6 +11,25 @@ How: add an entry at the end of `entries` in `src/data/currentlyLog.json` of thi
 - Do not raise `revision` (that posts the whole log again and deletes the old cards); only add entries.
 - A change made in another repository (the bot, a wiki, the Code Generator) is written here, in the pull request of that change or in a pull request of this repository right after it. Say it in the pull request ("Currently log: <id>").
 
+## Before opening or giving a pull request: look at its state
+
+Every time a pull request is going to be opened, or its link given to the maintainer, first look at its state on GitHub (open, merged or closed), at that moment and not from memory:
+
+- If the last pull request of this work is **already merged**, the next change goes in a **new** pull request (and its branch starts again from the latest `main`).
+- If it is **not merged**, keep going in **that** one: push to its branch and keep its title and text true to what it holds now.
+- A commit pushed to a branch whose pull request was merged in the meantime is not in `main`. After pushing, check that what was pushed is really in an open pull request, and say so when giving the link (open, or merged).
+- Say the state next to every link ("open" or "merged").
+
+## Branches
+
+Besides `main`, every repository has three branches, and the work goes in the one of its kind:
+
+- `fix-security-and-more` ("Fix, Security and More"): every correction, of security and the ordinary ones.
+- `new-features-and-more` ("New Features and More"): everything that is new: new features, additions to a feature, new variables, new functions.
+- `remove-features-and-more` ("Remove Features and More"): whenever anything is removed.
+
+A piece of work of mixed kinds goes in the branch of its main kind. A pull request opens from one of these branches to `main`. When the pull request of a branch is merged, the branch starts again from the latest `main` (a force push with lease is fine: only merged history is dropped) before new work is put in it. The maintainer deletes the other branches and keeps these three; pull requests that were open before this rule continue on the branch they have until they are merged.
+
 ## One pull request per repository
 
 Everything of one piece of work goes in one pull request for each repository, not one per step. If a pull request of the same work is already open, push to its branch instead of opening another.

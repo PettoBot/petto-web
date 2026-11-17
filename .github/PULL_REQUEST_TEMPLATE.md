@@ -12,6 +12,7 @@
 - [ ] I ran `npm run check` and `npm run build`.
 - [ ] I checked permissions, error handling, and backward compatibility.
 - [ ] The change is in the Currently log (`src/data/currentlyLog.json` of `petto-web`), with its id in this description.
+- [ ] The pull request comes from the branch of its kind (`fix-security-and-more`, `new-features-and-more` or `remove-features-and-more`).
 - [ ] I documented configuration or migration impact without secret values.
 
 ## Policy and provenance
