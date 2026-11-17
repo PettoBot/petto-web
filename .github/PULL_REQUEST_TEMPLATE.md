@@ -11,6 +11,7 @@
 
 - [ ] I ran `npm run check` and `npm run build`.
 - [ ] I checked permissions, error handling, and backward compatibility.
+- [ ] The change is in the Currently log (`src/data/currentlyLog.json` of `petto-web`), with its id in this description.
 - [ ] I documented configuration or migration impact without secret values.
 
 ## Policy and provenance
