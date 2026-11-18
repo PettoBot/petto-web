@@ -837,7 +837,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Credits',
-      copy: '© 2017–2026 Petto. All rights reserved. Not in active development. Not affiliated with Discord.',
+      copy: '© 2017–2026 Petto. All rights reserved. Not affiliated with Discord.',
     },
     toolsPage: {
       timestamp: {
@@ -2520,7 +2520,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Créditos',
-      copy: '© 2017–2026 Petto. Todos los derechos reservados. Sin desarrollo activo. No afiliado con Discord.',
+      copy: '© 2017–2026 Petto. Todos los derechos reservados. No afiliado con Discord.',
     },
     toolsPage: {
       timestamp: {
@@ -4203,7 +4203,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Créditos',
-      copy: '© 2017–2026 Petto. Todos os direitos reservados. Sem desenvolvimento ativo. Não afiliado ao Discord.',
+      copy: '© 2017–2026 Petto. Todos os direitos reservados. Não afiliado ao Discord.',
     },
     toolsPage: {
       timestamp: {
