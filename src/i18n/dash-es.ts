@@ -2219,6 +2219,7 @@ export const dashEs: Record<string, string> = {
   "Data from discordquest.com": "Datos de discordquest.com",
   "A rough preview. Discord draws the real message.": "Una vista previa aproximada. Discord dibuja el mensaje real.",
   "Quests": "Misiones",
+  "Quests and Rollouts": "Misiones y Rollouts",
   "+ Buttons": "+ Botones",
   "+ Container": "+ Contenedor",
   "+ Divider": "+ Divisor",

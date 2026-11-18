@@ -2219,6 +2219,7 @@ export const dashPt: Record<string, string> = {
   "Data from discordquest.com": "Dados de discordquest.com",
   "A rough preview. Discord draws the real message.": "Uma prévia aproximada. O Discord desenha a mensagem real.",
   "Quests": "Missões",
+  "Quests and Rollouts": "Missões e Rollouts",
   "+ Buttons": "+ Botões",
   "+ Container": "+ Contêiner",
   "+ Divider": "+ Divisor",
