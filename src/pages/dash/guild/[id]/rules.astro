@@ -5,6 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { pageDecision } from '../../../../utils/dashAccess';
+import { cleanJoinGate } from '../../../../utils/modRules';
 
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
@@ -21,11 +22,11 @@ const read = async (path: string): Promise<{ ok: boolean; rows: any[] }> => {
   return Array.isArray(body) ? { ok: true, rows: body } : { ok: false, rows: [] };
 };
 
-const [guildInfo, rolesRes, channelsRes, settings, lists, rulesets, rules, logs] = await Promise.all([
+const [guildInfo, rolesRes, channelsRes, settings, lists, rulesets, rules, logs, gateRes] = await Promise.all([
   getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'roles'), getGuildList(Astro, id, botToken, 'channels'),
   read(`mod_rule_settings?guild_id=eq.${id}&select=*`), read(`mod_lists?guild_id=eq.${id}&select=*&order=name.asc`),
   read(`mod_rulesets?guild_id=eq.${id}&select=*&order=position.asc,id.asc`), read(`mod_rules?guild_id=eq.${id}&select=*&order=position.asc,id.asc`),
-  read(`mod_rule_logs?guild_id=eq.${id}&select=*&order=id.desc&limit=100`),
+  read(`mod_rule_logs?guild_id=eq.${id}&select=*&order=id.desc&limit=100`), read(`mod_join_gate?guild_id=eq.${id}&select=*`),
 ]);
 if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const allRoles: any[] = rolesRes.ok ? ((await rolesRes.json().catch(() => [])) as any[]) : [];
@@ -34,13 +35,16 @@ const roles = allRoles.filter((r: any) => String(r.id) !== id).sort((a: any, b: 
 const channels = allChannels.filter((c: any) => c.type === 0 || c.type === 5 || c.type === 15).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0)).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
 const categories = allChannels.filter((c: any) => c.type === 4).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0)).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
 const ready = settings.ok && lists.ok && rulesets.ok && rules.ok;
+const gateRow = gateRes.rows[0];
+const gate = cleanJoinGate(gateRow ?? {});
 const data = {
-  settings: settings.rows[0] ? { enabled: settings.rows[0].enabled !== false, ignore_staff: settings.rows[0].ignore_staff !== false, log_channel_id: settings.rows[0].log_channel_id ?? null } : { enabled: true, ignore_staff: true, log_channel_id: null },
+  settings: settings.rows[0] ? { enabled: settings.rows[0].enabled !== false, ignore_staff: settings.rows[0].ignore_staff !== false, ignore_bots: settings.rows[0].ignore_bots !== false, heat_decay: Number(settings.rows[0].heat_decay ?? 10), quarantine_role_id: settings.rows[0].quarantine_role_id ?? null, log_channel_id: settings.rows[0].log_channel_id ?? null } : { enabled: true, ignore_staff: true, ignore_bots: true, heat_decay: 10, quarantine_role_id: null, log_channel_id: null },
+  gate,
   lists: lists.rows.map((l: any) => ({ id: String(l.id), name: String(l.name), kind: l.kind === 'domains' ? 'domains' : 'words', items: Array.isArray(l.items) ? l.items.map(String) : [] })),
   rulesets: rulesets.rows.map((s: any) => ({
     id: String(s.id), name: String(s.name), enabled: s.enabled !== false, conditions: Array.isArray(s.conditions) ? s.conditions : [],
     rules: rules.rows.filter((r: any) => String(r.ruleset_id) === String(s.id)).map((r: any) => ({
-      id: String(r.id), name: String(r.name), enabled: r.enabled !== false, trigger_mode: r.trigger_mode === 'all' ? 'all' : 'any',
+      id: String(r.id), name: String(r.name), enabled: r.enabled !== false, dry_run: r.dry_run === true, trigger_mode: r.trigger_mode === 'all' ? 'all' : 'any',
       triggers: Array.isArray(r.triggers) ? r.triggers : [], conditions: Array.isArray(r.conditions) ? r.conditions : [], effects: Array.isArray(r.effects) ? r.effects : [],
       threshold_count: Number(r.threshold_count) || 1, threshold_minutes: Number(r.threshold_minutes) || 10, stop: r.stop !== false, hits: Number(r.hits) || 0,
     })),

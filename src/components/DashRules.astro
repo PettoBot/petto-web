@@ -8,7 +8,8 @@ import DashGuildLayout from './DashGuildLayout.astro';
 import DashSettingsKit from './DashSettingsKit.astro';
 import DashFormKit from './DashFormKit.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { LIMITS } from '../utils/modRules';
+import { LIMITS, GATE_ACTIONS, RAID_ACTIONS } from '../utils/modRules';
+import { RULE_TEMPLATES } from '../utils/modRuleTemplates';
 
 interface Props {
   user: { username: string; avatar: string | null; userId?: string };
@@ -25,7 +26,7 @@ const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang === 'pt-BR' ? '/pt-br' : ''}/moderation/rules`;
 
-type Field = { k: string; t: 'number' | 'select' | 'text' | 'lines' | 'list' | 'role' | 'textarea'; label: string; options?: [string, string][]; min?: number; max?: number; d?: string | number; kind?: string; hint?: string };
+type Field = { k: string; t: 'number' | 'select' | 'text' | 'lines' | 'list' | 'role' | 'channel' | 'textarea'; label: string; options?: [string, string][]; min?: number; max?: number; d?: string | number; kind?: string; hint?: string };
 const num = (k: string, label: string, min: number, max: number, d: number, hint?: string): Field => ({ k, t: 'number', label, min, max, d, hint });
 const pick = (k: string, label: string, options: [string, string][], d: string): Field => ({ k, t: 'select', label, options, d });
 
@@ -52,15 +53,29 @@ const TRIGGERS: Record<string, { label: string; hint: string; fields: Field[] }>
   length: { label: dt('Long messages'), hint: dt('Too many characters or too many lines. Leave 0 to not look at one of them.'), fields: [num('max_chars', dt('More characters than'), 0, 4000, 0), num('max_lines', dt('More lines than'), 0, 200, 0)] },
   zalgo: { label: dt('Zalgo text'), hint: dt('Letters piled with strange marks.'), fields: [num('max', dt('Marks'), 3, 100, 8)] },
   repeated_chars: { label: dt('Repeated characters'), hint: dt('The same character again and again, like aaaaaaaaa.'), fields: [num('max', dt('Repeats'), 3, 100, 10)] },
+  channel_rate: { label: dt('Channel too busy'), hint: dt('More messages than the limit in a channel, from everybody together (a raid on a channel).'), fields: [num('messages', dt('Messages'), 3, 200, 20), num('seconds', dt('In this many seconds'), 2, 300, 10)] },
+  mention_rate: { label: dt('Mentions too fast'), hint: dt('A member who mentions more than the limit across several messages.'), fields: [num('mentions', dt('Mentions'), 2, 200, 10), num('seconds', dt('In this many seconds'), 2, 300, 10)] },
+  attachment_rate: { label: dt('Attachments too fast'), hint: dt('A member who sends more files or images than the limit across several messages.'), fields: [num('attachments', dt('Attachments'), 2, 100, 6), num('seconds', dt('In this many seconds'), 2, 300, 30)] },
+  link_rate: { label: dt('Links too fast'), hint: dt('A member who sends more links than the limit across several messages.'), fields: [num('links', dt('Links'), 2, 100, 5), num('seconds', dt('In this many seconds'), 2, 300, 30)] },
+  name: { label: dt('Name of the member'), hint: dt('The username or the nickname has a word, or matches a pattern.'), fields: [
+    pick('where', dt('Where'), [['either', dt('Username or nickname')], ['username', dt('Username')], ['nickname', dt('Nickname')]], 'either'),
+    pick('match', dt('How it is found'), [['contains', dt('Inside other words too')], ['word', dt('Whole words')], ['exact', dt('The whole message is exactly it')], ['regex', dt('Pattern (regex)')]], 'contains'),
+    { k: 'list_id', t: 'list', kind: 'words', label: dt('List of words') }, { k: 'words', t: 'lines', label: dt('More words, one per line') }, { k: 'pattern', t: 'text', label: dt('Expression (only for a pattern)') }] },
+  violations: { label: dt('Strikes'), hint: dt('A member who has this many strikes of a counter in a time. Other rules add strikes with the effect "Count a strike".'), fields: [
+    { k: 'name', t: 'text', label: dt('Name of the counter'), d: 'strikes' }, num('count', dt('Strikes'), 1, 100, 4), num('minutes', dt('In this many minutes'), 1, 1440, 60)] },
+  heat: { label: dt('Heat'), hint: dt('The heat of the member is at least this. Heat rises with the effect "Add heat" and falls by itself.'), fields: [num('at_least', dt('Heat at least'), 1, 10000, 100)] },
 };
 // Who and where.
 const CONDITIONS: Record<string, { label: string; fields: Field[] }> = {
   channel: { label: dt('Channel'), fields: [pick('mode', dt('The message is'), [['not_in', dt('NOT in these channels')], ['in', dt('Only in these channels')]], 'not_in'), { k: 'ids', t: 'select', label: dt('Channels'), kind: 'channels' }] },
   category: { label: dt('Category'), fields: [pick('mode', dt('The message is'), [['not_in', dt('NOT in these categories')], ['in', dt('Only in these categories')]], 'not_in'), { k: 'ids', t: 'select', label: dt('Categories'), kind: 'categories' }] },
-  role: { label: dt('Roles of the member'), fields: [pick('mode', dt('The member'), [['has_none', dt('has none of these roles')], ['has_any', dt('has one of these roles')]], 'has_none'), { k: 'ids', t: 'select', label: dt('Roles'), kind: 'roles' }] },
+  role: { label: dt('Roles of the member'), fields: [pick('mode', dt('The member'), [['has_none', dt('has none of these roles')], ['has_any', dt('has one of these roles')], ['has_all', dt('has all of these roles')]], 'has_none'), { k: 'ids', t: 'select', label: dt('Roles'), kind: 'roles' }] },
   account_age: { label: dt('New account'), fields: [num('max_days', dt('The account is at most this many days old'), 1, 3650, 7)] },
   member_age: { label: dt('New member'), fields: [num('max_days', dt('The member joined at most this many days ago'), 1, 3650, 7)] },
   no_roles: { label: dt('Member with no roles'), fields: [] },
+  author_kind: { label: dt('Who writes'), fields: [pick('kind', dt('The author is'), [['humans', dt('A person')], ['bots', dt('A bot or a webhook')]], 'humans')] },
+  message_kind: { label: dt('New or edited message'), fields: [pick('kind', dt('The message is'), [['new', dt('New')], ['edited', dt('Edited')]], 'new')] },
+  thread: { label: dt('Threads'), fields: [pick('mode', dt('The message is'), [['ignore', dt('NOT in a thread')], ['only', dt('Only in a thread')]], 'ignore')] },
 };
 // What Petto does.
 const EFFECTS: Record<string, { label: string; later: boolean; fields: Field[] }> = {
@@ -68,28 +83,64 @@ const EFFECTS: Record<string, { label: string; later: boolean; fields: Field[] }
   reply: { label: dt('Reply in the channel'), later: false, fields: [{ k: 'text', t: 'textarea', label: dt('Message'), hint: dt('You can use {user}, {username}, {server}, {channel} and {rule}.') }, num('delete_after', dt('Delete the reply after (seconds, 0 to keep it)'), 0, 600, 10)] },
   dm: { label: dt('Send a DM'), later: true, fields: [{ k: 'text', t: 'textarea', label: dt('Message'), hint: dt('You can use {user}, {username}, {server}, {channel} and {rule}.') }] },
   warn: { label: dt('Warn the member'), later: true, fields: [{ k: 'reason', t: 'text', label: dt('Reason (optional)') }] },
-  timeout: { label: dt('Timeout (mute)'), later: true, fields: [num('minutes', dt('Minutes'), 1, 40320, 10)] },
+  timeout: { label: dt('Timeout (mute)'), later: true, fields: [num('minutes', dt('Minutes'), 1, 40320, 10), num('multiplier', dt('Grows each time by (1: it does not grow)'), 1, 10, 1), num('max_minutes', dt('Never more than (minutes)'), 1, 40320, 40320), num('window_hours', dt('Counting the times of the last (hours)'), 1, 720, 168)] },
   kick: { label: dt('Kick'), later: true, fields: [] },
   ban: { label: dt('Ban'), later: true, fields: [{ k: 'reason', t: 'text', label: dt('Reason (optional)') }, num('delete_days', dt('Delete their messages of the last days'), 0, 7, 0)] },
   add_role: { label: dt('Give a role'), later: true, fields: [{ k: 'role_id', t: 'role', label: dt('Role') }] },
   remove_role: { label: dt('Take a role away'), later: true, fields: [{ k: 'role_id', t: 'role', label: dt('Role') }] },
+  temp_role: { label: dt('Give a role for a while'), later: true, fields: [{ k: 'role_id', t: 'role', label: dt('Role') }, num('minutes', dt('Minutes'), 1, 43200, 60)] },
+  purge: { label: dt('Delete their last messages'), later: true, fields: [num('count', dt('How many messages (at most)'), 2, 100, 10), num('minutes', dt('Only those of the last (minutes)'), 1, 1440, 10)] },
+  slowmode: { label: dt('Slowmode in the channel'), later: true, fields: [num('seconds', dt('Seconds between messages'), 1, 21600, 10), num('minutes', dt('For how long (minutes)'), 1, 1440, 10)] },
+  alert: { label: dt('Alert in a channel'), later: true, fields: [{ k: 'channel_id', t: 'channel', label: dt('Channel (empty: the channel of the hits)') }, { k: 'text', t: 'textarea', label: dt('Message (optional)'), hint: dt('You can use {user}, {username}, {server}, {channel} and {rule}.') }] },
+  set_nickname: { label: dt('Set a nickname'), later: true, fields: [{ k: 'nickname', t: 'text', label: dt('Nickname (empty: remove it)') }] },
+  quarantine: { label: dt('Quarantine'), later: true, fields: [] },
+  lockdown: { label: dt('Lock the server'), later: true, fields: [num('minutes', dt('Minutes'), 1, 720, 10)] },
+  violation: { label: dt('Count a strike'), later: false, fields: [{ k: 'name', t: 'text', label: dt('Name of the counter'), d: 'strikes' }] },
+  reset_violations: { label: dt('Clear the strikes'), later: false, fields: [{ k: 'name', t: 'text', label: dt('Name of the counter'), d: 'strikes' }] },
+  add_heat: { label: dt('Add heat'), later: false, fields: [num('amount', dt('Heat'), 1, 1000, 20)] },
+  reset_heat: { label: dt('Cool down (heat to 0)'), later: false, fields: [] },
 };
 
+const TEMPLATE_TEXT: Record<string, [string, string]> = {
+  flood: [dt('Message flood'), dt('Deletes the messages of someone who writes too fast and mutes them, longer each time.')],
+  repeat: [dt('The same message again'), dt('Deletes the same text sent again and again, and warns on the second time.')],
+  'invites-new': [dt('No invites from new accounts'), dt('Accounts of less than 7 days cannot share Discord invites.')],
+  'scam-links': [dt('Scam links'), dt('Fake gifts and Nitro: deletes, mutes for a day and alerts.')],
+  'mass-mentions': [dt('Mass mentions'), dt('More than 5 mentions in a message.')],
+  'mention-rate': [dt('Mentions too fast'), dt('More than 10 mentions in 10 seconds: deletes their last messages and mutes.')],
+  caps: [dt('Shouting'), dt('Messages that are mostly capitals.')],
+  'emoji-wall': [dt('Emoji spam'), dt('More than 12 emojis in a message.')],
+  'wall-of-text': [dt('Walls of text'), dt('More than 1500 characters or 15 lines.')],
+  zalgo: [dt('Zalgo and repeated characters'), dt('Strange marks and aaaaaaaaaaaa.')],
+  'link-flood': [dt('Link flood from new members'), dt('5 links in 30 seconds from someone who joined 3 days ago or less.')],
+  strikes: [dt('Three strikes: timeout'), dt('Acts when a member has 3 strikes of the counter "strikes" in an hour. Other rules add strikes with "Count a strike".')],
+  heat: [dt('Heat from fast messages'), dt('Writing fast adds heat (it falls by itself).')],
+  'heat-act': [dt('Too hot: timeout'), dt('Mutes whoever reaches 100 of heat, longer each time, and cools them down.')],
+};
+const templates = RULE_TEMPLATES.map((tpl) => ({ id: tpl.id, name: TEMPLATE_TEXT[tpl.id]?.[0] ?? tpl.rule.name, text: TEMPLATE_TEXT[tpl.id]?.[1] ?? '', rule: tpl.rule }));
+const GATE_LABEL: Record<string, string> = { none: dt('Do nothing'), alert: dt('Only alert'), timeout: dt('Timeout'), kick: dt('Kick'), ban: dt('Ban'), quarantine: dt('Quarantine') };
+const RAID_LABEL: Record<string, string> = { alert: dt('Only alert'), lockdown: dt('Lock the server'), kick_new: dt('Kick whoever joins while it lasts'), ban_new: dt('Ban whoever joins while it lasts') };
+const gateActions = GATE_ACTIONS.map((id) => [id, GATE_LABEL[id]]);
+const raidActions = RAID_ACTIONS.map((id) => [id, RAID_LABEL[id]]);
+
 const i18n = {
-  tabs: { global: dt('Global settings'), lists: dt('Lists'), logs: dt('Logs'), newSet: dt('New ruleset') },
+  tabs: { global: dt('Global settings'), lists: dt('Lists'), logs: dt('Logs'), gate: dt('Join gate'), tools: dt('Tools'), newSet: dt('New ruleset') },
   blank: dt('Nothing chosen'), save: dt('Save'), cancel: dt('Cancel'), delete: dt('Delete'), edit: dt('Edit'), add: dt('Add'), yes: dt('Yes'), no: dt('No'),
   saved: dt('Saved.'), failed: dt('Something went wrong, try again.'), working: dt('Saving…'),
   confirmDeleteSet: dt('Delete this ruleset and all its rules?'), confirmDeleteRule: dt('Delete this rule?'), confirmDeleteList: dt('Delete this list? Rules that use it stop finding anything with it.'),
   global: {
     title: dt('Global settings'), lead: dt('These apply to every rule of the server.'), enabled: dt('Rules are on'), enabledHint: dt('Turn it off to stop every rule at once without deleting them.'),
     staff: dt('Leave out moderators'), staffHint: dt('Members who can manage messages are never touched by the rules.'), logChannel: dt('Send each hit to a channel'), logNone: dt('No channel (hits are only kept in the Logs tab)'),
+    bots: dt('Leave out bots'), botsHint: dt('Bots and webhooks are never touched by the rules, unless you turn this off and use the condition "Who writes".'),
+    heat: dt('Heat that falls every minute'), heatHint: dt('How much heat a member loses each minute (see the trigger and the effect "Heat"). 0: it never falls.'),
+    quarantine: dt('Quarantine role'), quarantineNone: dt('No role'), quarantineHint: dt('The role that the effect "Quarantine" and the join gate give. Make it so that it only sees one channel.'),
   },
   lists: {
     title: dt('Lists'), lead: dt('Lists of words and of domains that any rule can use. Change a list here and every rule that uses it follows.'), none: dt('No lists yet.'),
     name: dt('Name'), kind: dt('Kind'), words: dt('Words'), domains: dt('Domains'), items: dt('One per line'), count: dt('{n} items'), newList: dt('New list'),
     domainsHint: dt('Domains like example.com. A domain also covers its subdomains.'),
   },
-  logs: { title: dt('Logs'), lead: dt('What the rules did lately: the rule, the member, the channel and what matched. Petto never keeps the text of the message. The last 100 are shown.'), none: dt('No rule has caught anything yet.'), when: dt('When'), rule: dt('Rule'), member: dt('Member'), channel: dt('Channel'), what: dt('Matched'), did: dt('Petto did'), clear: dt('Clear the logs'), confirmClear: dt('Clear the logs of the rules?'), nothingDone: dt('nothing yet') },
+  logs: { title: dt('Logs'), lead: dt('What the rules did lately: the rule, the member, the channel and what matched. Petto never keeps the text of the message. The last 100 are shown.'), none: dt('No rule has caught anything yet.'), gate: dt('Join gate'), when: dt('When'), rule: dt('Rule'), member: dt('Member'), channel: dt('Channel'), what: dt('Matched'), did: dt('Petto did'), clear: dt('Clear the logs'), confirmClear: dt('Clear the logs of the rules?'), nothingDone: dt('nothing yet') },
   set: {
     name: dt('Name of the ruleset'), enabled: dt('Ruleset is on'), conditions: dt('General conditions'), conditionsLead: dt('Rules of this ruleset only apply to messages that pass all of these.'), addCondition: dt('Add a condition'),
     rules: dt('Rules'), none: dt('This ruleset has no rules yet.'), newRule: dt('New rule'), delete: dt('Delete ruleset'), hits: dt('{n} hits'), saveSet: dt('Save ruleset'),
@@ -100,8 +151,26 @@ const i18n = {
     threshold: dt('Wait until the member does it'), times: dt('time(s) in'), minutes: dt('minutes'), thresholdHint: dt('Delete and reply happen every time. The rest (warn, timeout, kick, ban, DM and roles) wait for this count.'),
     stop: dt('Stop here: do not check the rules after this one'), up: dt('Move up'), down: dt('Move down'), later: dt('waits for the count'), needTrigger: dt('Add at least one trigger.'), needEffect: dt('Add at least one effect.'),
     pickType: dt('Choose…'), newTitle: dt('New rule'),
+    dryRun: dt('Test mode: only write in the log what it would do'), duplicate: dt('Duplicate'), copy: dt('(copy)'),
+    tryTitle: dt('Try this rule'), tryLead: dt('Write a message and see what the rule would do with it. Nothing is done and nothing is saved.'),
+    tryText: dt('A sample message'), tryAge: dt('Age of the account (days)'), tryTimes: dt('Send it this many times (for the rules about speed)'), tryMentions: dt('Members mentioned'), tryAttach: dt('Attachments'), tryButton: dt('Try it'),
+    tryApplies: dt('The rule applies.'), tryNo: dt('The rule does not apply.'), tryCond: dt('Conditions'), tryTrig: dt('Triggers'), tryEff: dt('Effects'), tryPass: dt('passes'), tryFail: dt('does not pass'), tryHit: dt('finds'), tryNothing: dt('finds nothing'),
+    tryNow: dt('at once'), tryCount: dt('waits for the count'), tryState: dt('Strikes and heat are not known here: they count as 0 unless you write them.'), tryFailed: dt('Petto could not try the rule.'),
   },
-  triggers: TRIGGERS, conditions: CONDITIONS, effects: EFFECTS,
+  templates: { add: dt('Add from a template'), choose: dt('Choose a template…'), added: dt('Rule added.') },
+  gate: {
+    title: dt('Join gate'), lead: dt('What Petto looks at in whoever joins, and what it does when many join at once. Bots are not looked at.'), enabled: dt('The join gate is on'),
+    noAvatar: dt('A member with no avatar'), age: dt('An account younger than (days)'), ageAction: dt('Then'), username: dt('A name with a word of a list'), usernameList: dt('List of words'), usernameWords: dt('More words, one per line'),
+    timeout: dt('A timeout lasts (minutes)'), raid: dt('Raid detector'), raidLead: dt('A raid is many joins in a short time. Leave the number at 0 to turn it off.'), raidJoins: dt('This many joins'), raidSeconds: dt('In this many seconds'),
+    raidAction: dt('Then'), raidMinutes: dt('The raid lasts (minutes)'), raidChannel: dt('Say it in this channel'), raidNone: dt('The channel of the hits'), action: dt('Action'),
+  },
+  gateActions, raidActions,
+  tools: {
+    title: dt('Tools'), exportTitle: dt('Export'), exportLead: dt('Download your lists, rulesets and rules as a file, to keep a copy or to use them in another server.'), exportButton: dt('Download the file'),
+    importTitle: dt('Import'), importLead: dt('Paste the content of a file made by Export. What you add is added to what you have: nothing is replaced.'), importPlaceholder: dt('Paste the file here'), importButton: dt('Import'),
+    importDone: dt('Imported: {lists} lists, {rulesets} rulesets and {rules} rules. {skipped} left out.'), importBad: dt('That is not a file made by Export.'),
+  },
+  triggers: TRIGGERS, conditions: CONDITIONS, effects: EFFECTS, templateList: templates,
   limits: { rulesets: LIMITS.rulesets, rules: LIMITS.rulesPerSet, lists: LIMITS.lists },
 };
 ---
@@ -140,7 +209,7 @@ const i18n = {
     const KEY = `petto-rules-tab-${root.dataset.guild}`;
     let tab: string = 'global';
     try { tab = sessionStorage.getItem(KEY) || 'global'; } catch { /* the tab is only a convenience */ }
-    if (!['global', 'lists', 'logs'].includes(tab) && !data.rulesets.some((s: any) => `set-${s.id}` === tab)) tab = 'global';
+    if (!['global', 'lists', 'logs', 'gate', 'tools'].includes(tab) && !data.rulesets.some((s: any) => `set-${s.id}` === tab)) tab = 'global';
 
     type Attrs = Record<string, any>;
     function h(tag: string, attrs: Attrs = {}, ...children: any[]): HTMLElement {
@@ -196,6 +265,10 @@ const i18n = {
         const lists = data.lists.filter((l: any) => l.kind === spec.kind);
         const select = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), lists.map((l: any) => h('option', { value: l.id, selected: String(value) === l.id }, l.name))) as HTMLSelectElement;
         return { el: label(select), get: () => (select.value ? Number(select.value) : null) };
+      }
+      if (spec.t === 'channel') {
+        const select = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), places.channels.map((c: any) => h('option', { value: c.id, selected: String(value) === c.id }, `#${c.name}`))) as HTMLSelectElement;
+        return { el: label(select), get: () => select.value };
       }
       if (spec.t === 'role') {
         const select = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), places.roles.map((r: any) => h('option', { value: r.id, selected: String(value) === r.id }, `@${r.name}`))) as HTMLSelectElement;
@@ -253,7 +326,7 @@ const i18n = {
     function drawTabs() {
       tabsEl.innerHTML = '';
       const add = (id: string, label: string, extra = '') => tabsEl.append(h('button', { type: 'button', class: `mr-tab${tab === id ? ' is-active' : ''}${extra}`, onclick: () => { tab = id; try { sessionStorage.setItem(KEY, id); } catch { /* optional */ } draw(); } }, label));
-      add('global', T.tabs.global); add('lists', T.tabs.lists); add('logs', T.tabs.logs);
+      add('global', T.tabs.global); add('gate', T.tabs.gate); add('lists', T.tabs.lists); add('logs', T.tabs.logs); add('tools', T.tabs.tools);
       for (const set of data.rulesets) add(`set-${set.id}`, set.name, set.enabled ? '' : ' is-off');
       if (canEdit && data.rulesets.length < T.limits.rulesets) tabsEl.append(h('button', { type: 'button', class: 'mr-tab mr-tab-new', onclick: newRuleset }, `+ ${T.tabs.newSet}`));
     }
@@ -267,10 +340,15 @@ const i18n = {
       const s = data.settings;
       const on = toggle(s.enabled, T.global.enabled, T.global.enabledHint);
       const staff = toggle(s.ignore_staff, T.global.staff, T.global.staffHint);
+      const bots = toggle(s.ignore_bots, T.global.bots, T.global.botsHint);
+      const decay = h('input', { type: 'number', min: 0, max: 1000, value: s.heat_decay, ...lockedAttrs }) as HTMLInputElement;
+      const quarantine = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.global.quarantineNone), places.roles.filter((r: any) => !r.managed).map((r: any) => h('option', { value: r.id, selected: s.quarantine_role_id === r.id }, `@${r.name}`))) as HTMLSelectElement;
       const channel = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.global.logNone), places.channels.map((c: any) => h('option', { value: c.id, selected: s.log_channel_id === c.id }, `#${c.name}`))) as HTMLSelectElement;
-      return h('section', { class: 'mr-card' }, h('h2', {}, T.global.title), h('p', { class: 'mr-hint' }, T.global.lead), on.el, staff.el,
+      return h('section', { class: 'mr-card' }, h('h2', {}, T.global.title), h('p', { class: 'mr-hint' }, T.global.lead), on.el, staff.el, bots.el,
         h('label', { class: 'mr-field' }, h('span', {}, T.global.logChannel), channel),
-        saveButton(async () => { if (await send({ op: 'settings', enabled: on.get(), ignore_staff: staff.get(), log_channel_id: channel.value || null })) reload(); }));
+        h('label', { class: 'mr-field' }, h('span', {}, T.global.heat), decay, h('em', {}, T.global.heatHint)),
+        h('label', { class: 'mr-field' }, h('span', {}, T.global.quarantine), quarantine, h('em', {}, T.global.quarantineHint)),
+        saveButton(async () => { if (await send({ op: 'settings', enabled: on.get(), ignore_staff: staff.get(), ignore_bots: bots.get(), heat_decay: Number(decay.value), quarantine_role_id: quarantine.value || null, log_channel_id: channel.value || null })) reload(); }));
     }
 
     // ---- Lists ----
@@ -299,13 +377,40 @@ const i18n = {
       if (!data.logs.length) { section.append(h('p', { class: 'mr-empty' }, T.logs.none)); return section; }
       const channelName = (id: string | null) => (id ? (places.channels.find((c: any) => c.id === id)?.name ? `#${places.channels.find((c: any) => c.id === id).name}` : id) : '—');
       const table = h('table', { class: 'mr-table' }, h('thead', {}, h('tr', {}, [T.logs.when, T.logs.rule, T.logs.member, T.logs.channel, T.logs.what, T.logs.did].map((t: string) => h('th', {}, t)))),
-        h('tbody', {}, data.logs.map((l: any) => h('tr', {}, h('td', {}, new Date(l.at).toLocaleString()), h('td', {}, l.rule), h('td', {}, h('code', {}, l.user)), h('td', {}, channelName(l.channel)), h('td', {}, l.trigger), h('td', {}, l.effects.join(', ') || T.logs.nothingDone)))));
+        h('tbody', {}, data.logs.map((l: any) => h('tr', {}, h('td', {}, new Date(l.at).toLocaleString()), h('td', {}, l.rule === 'join-gate' ? T.logs.gate : l.rule), h('td', {}, h('code', {}, l.user)), h('td', {}, channelName(l.channel)), h('td', {}, l.trigger), h('td', {}, l.effects.join(', ') || T.logs.nothingDone)))));
       section.append(h('div', { class: 'mr-scroll' }, table));
       if (canEdit) section.append(h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: async () => { if ((await confirmed(T.logs.confirmClear)) && await send({ op: 'clear_logs' })) reload('logs'); } }, T.logs.clear));
       return section;
     }
 
     // ---- A ruleset and its rules ----
+    // ---- "Try this rule": what the rule would do with a sample message (the bot says; nothing is done) ----
+    function tryPanel(collect: () => any) {
+      const text = h('textarea', { rows: 3, maxlength: 500 }) as HTMLTextAreaElement;
+      const age = h('input', { type: 'number', min: 0, max: 99999, value: 400 }) as HTMLInputElement;
+      const times = h('input', { type: 'number', min: 1, max: 50, value: 1 }) as HTMLInputElement;
+      const mentions = h('input', { type: 'number', min: 0, max: 200, value: 0 }) as HTMLInputElement;
+      const files = h('input', { type: 'number', min: 0, max: 20, value: 0 }) as HTMLInputElement;
+      const out = h('div', { class: 'mr-try-out', hidden: true });
+      const run = async () => {
+        out.hidden = false; out.textContent = T.working;
+        const body = await send({ op: 'test', rule: collect(), sample: { content: text.value, account_age_days: Number(age.value), times: Number(times.value), users: Number(mentions.value), attachments: Number(files.value) } });
+        out.textContent = '';
+        if (!body || body.ok === false) { out.append(h('p', { class: 'mr-try-bad' }, body?.error === 'triggers' ? T.rule.needTrigger : body?.error === 'effects' ? T.rule.needEffect : T.rule.tryFailed)); return; }
+        out.append(h('p', { class: body.applies ? 'mr-try-ok' : 'mr-try-bad' }, body.applies ? T.rule.tryApplies : T.rule.tryNo));
+        const line = (ok: boolean, label: string, note: string) => h('li', { class: ok ? 'mr-try-ok' : 'mr-try-bad' }, `${ok ? '✓' : '✗'} ${label} ${note}`);
+        if (body.conditions.length) out.append(h('b', {}, T.rule.tryCond), h('ul', {}, body.conditions.map((c: any) => line(c.pass, T.conditions[c.type]?.label ?? c.type, c.pass ? T.rule.tryPass : T.rule.tryFail))));
+        out.append(h('b', {}, T.rule.tryTrig), h('ul', {}, body.triggers.map((x: any) => line(x.hit !== null, T.triggers[x.type]?.label ?? x.type, x.hit !== null ? `${T.rule.tryHit} ${String(x.hit).split(':').slice(1).join(':')}`.trim() : T.rule.tryNothing))));
+        out.append(h('b', {}, T.rule.tryEff), h('ul', {}, body.effects.map((x: any) => h('li', {}, `${T.effects[x.type]?.label ?? x.type} · ${x.when === 'now' ? T.rule.tryNow : T.rule.tryCount}`))));
+        if (body.notes?.includes('state')) out.append(h('p', { class: 'mr-hint' }, T.rule.tryState));
+      };
+      return h('details', { class: 'mr-details mr-try' }, h('summary', {}, h('b', {}, T.rule.tryTitle)),
+        h('p', { class: 'mr-hint' }, T.rule.tryLead),
+        h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryText), text),
+        h('div', { class: 'mr-item-fields' }, h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryAge), age), h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryTimes), times), h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryMentions), mentions), h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryAttach), files)),
+        h('div', { class: 'mr-actions' }, h('button', { type: 'button', class: 'btn btn-accent btn-sm', onclick: run }, T.rule.tryButton)), out);
+    }
+
     function ruleEditor(set: any, rule: any) {
       const isNew = !rule.id;
       const name = h('input', { type: 'text', maxlength: 60, value: rule.name, ...lockedAttrs }) as HTMLInputElement;
@@ -317,18 +422,21 @@ const i18n = {
       const count = h('input', { type: 'number', min: 1, max: 50, value: rule.threshold_count, ...lockedAttrs }) as HTMLInputElement;
       const minutes = h('input', { type: 'number', min: 1, max: 1440, value: rule.threshold_minutes, ...lockedAttrs }) as HTMLInputElement;
       const stop = toggle(rule.stop, T.rule.stop);
+      const dry = toggle(rule.dry_run === true, T.rule.dryRun);
+      const collect = () => ({ id: rule.id || undefined, name: name.value, enabled: on.get(), dry_run: dry.get(), trigger_mode: mode.value, triggers: triggers.get(), conditions: conditions.get(), effects: effects.get(), threshold_count: Number(count.value), threshold_minutes: Number(minutes.value), stop: stop.get() });
+      const tryBox = tryPanel(collect);
       return h('div', { class: 'mr-rule' },
         h('div', { class: 'mr-row' }, h('label', { class: 'mr-field' }, h('span', {}, T.rule.name), name), on.el),
         h('h3', {}, T.rule.triggers), h('label', { class: 'mr-field mr-inline' }, h('span', {}, T.rule.mode), mode), triggers.el,
         h('h3', {}, T.rule.conditions), conditions.el,
         h('h3', {}, T.rule.effects), effects.el,
         h('div', { class: 'mr-threshold' }, h('span', {}, T.rule.threshold), count, h('span', {}, T.rule.times), minutes, h('span', {}, T.rule.minutes)),
-        h('p', { class: 'mr-hint' }, T.rule.thresholdHint), stop.el,
+        h('p', { class: 'mr-hint' }, T.rule.thresholdHint), stop.el, dry.el, tryBox,
         canEdit ? h('div', { class: 'mr-actions' }, h('button', { type: 'button', class: 'btn btn-accent', onclick: async () => {
           const t = triggers.get(); const e = effects.get();
           if (!t.length) return flash(T.rule.needTrigger, false);
           if (!e.length) return flash(T.rule.needEffect, false);
-          const ok = await send({ op: 'rule_save', ruleset_id: set.id, rule: { id: rule.id || undefined, name: name.value, enabled: on.get(), trigger_mode: mode.value, triggers: t, conditions: conditions.get(), effects: e, threshold_count: Number(count.value), threshold_minutes: Number(minutes.value), stop: stop.get() } });
+          const ok = await send({ op: 'rule_save', ruleset_id: set.id, rule: collect() });
           if (ok) reload(`set-${set.id}`);
         } }, isNew ? T.add : T.save)) : null);
     }
@@ -349,10 +457,20 @@ const i18n = {
         rulesBox.append(h('details', { class: 'mr-details' },
           h('summary', {}, h('b', {}, rule.name), rule.enabled ? null : h('span', { class: 'mr-tag mr-tag-off' }, T.no), h('span', { class: 'mr-dim' }, fill(T.set.hits, { n: rule.hits })),
             canEdit ? h('span', { class: 'mr-summary-actions' },
+              h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: async (ev: Event) => { ev.preventDefault(); const { id: _id, hits: _hits, ...copy } = rule; if (await send({ op: 'rule_save', ruleset_id: set.id, rule: { ...copy, name: `${rule.name} ${T.rule.copy}`.slice(0, 60) } })) reload(`set-${set.id}`); } }, T.rule.duplicate),
               h('button', { type: 'button', class: 'btn btn-ghost btn-sm', title: T.rule.up, onclick: async (ev: Event) => { ev.preventDefault(); if (await send({ op: 'move', kind: 'rule', id: rule.id, dir: -1 })) reload(`set-${set.id}`); } }, '↑'),
               h('button', { type: 'button', class: 'btn btn-ghost btn-sm', title: T.rule.down, onclick: async (ev: Event) => { ev.preventDefault(); if (await send({ op: 'move', kind: 'rule', id: rule.id, dir: 1 })) reload(`set-${set.id}`); } }, '↓'),
               h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: async (ev: Event) => { ev.preventDefault(); if ((await confirmed(T.confirmDeleteRule)) && await send({ op: 'rule_delete', id: rule.id })) reload(`set-${set.id}`); } }, T.delete)) : null),
           ruleEditor(set, rule)));
+      }
+      if (canEdit && set.rules.length < T.limits.rules) {
+        const picker = h('select', { class: 'mr-add-select' }, h('option', { value: '' }, `+ ${T.templates.add}`), T.templateList.map((tpl: any) => h('option', { value: tpl.id, title: tpl.text }, tpl.name))) as HTMLSelectElement;
+        picker.addEventListener('change', async () => {
+          const tpl = T.templateList.find((x: any) => x.id === picker.value);
+          if (!tpl) return;
+          if (await send({ op: 'rule_save', ruleset_id: set.id, rule: { ...tpl.rule, name: tpl.name } })) reload(`set-${set.id}`);
+        });
+        rulesBox.append(picker);
       }
       if (canEdit && set.rules.length < T.limits.rules) {
         const blank = { id: '', name: T.rule.newTitle, enabled: true, trigger_mode: 'any', triggers: [], conditions: [], effects: [{ type: 'delete' }], threshold_count: 1, threshold_minutes: 10, stop: true };
@@ -361,12 +479,76 @@ const i18n = {
       return h('div', {}, head, rulesBox);
     }
 
+    // ---- Join gate and raid detector ----
+    function drawGate() {
+      const g = data.gate;
+      const on = toggle(g.enabled, T.gate.enabled);
+      const actionSelect = (value: string, options: [string, string][]) => h('select', { ...lockedAttrs }, options.map(([id, label]) => h('option', { value: id, selected: id === value }, label))) as HTMLSelectElement;
+      const number = (value: number, min: number, max: number) => h('input', { type: 'number', min, max, value, ...lockedAttrs }) as HTMLInputElement;
+      const field = (label: string, control: HTMLElement, hint?: string) => h('label', { class: 'mr-field' }, h('span', {}, label), control, hint ? h('em', {}, hint) : null);
+      const noAvatar = actionSelect(g.no_avatar_action, T.gateActions);
+      const age = number(g.account_age_days, 0, 365); const ageAction = actionSelect(g.account_age_action, T.gateActions);
+      const listSelect = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), data.lists.filter((l: any) => l.kind === 'words').map((l: any) => h('option', { value: l.id, selected: String(g.username_list_id) === l.id }, l.name))) as HTMLSelectElement;
+      const words = h('textarea', { rows: 3, ...lockedAttrs }, (g.username_words || []).join('\n')) as HTMLTextAreaElement;
+      const nameAction = actionSelect(g.username_action, T.gateActions);
+      const minutes = number(g.timeout_minutes, 1, 40320);
+      const joins = number(g.raid_joins, 0, 500); const seconds = number(g.raid_seconds, 5, 600);
+      const raidAction = actionSelect(g.raid_action, T.raidActions); const raidMinutes = number(g.raid_lockdown_minutes, 1, 720);
+      const raidChannel = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.gate.raidNone), places.channels.map((c: any) => h('option', { value: c.id, selected: g.raid_alert_channel_id === c.id }, `#${c.name}`))) as HTMLSelectElement;
+      return h('section', { class: 'mr-card' }, h('h2', {}, T.gate.title), h('p', { class: 'mr-hint' }, T.gate.lead), on.el,
+        h('div', { class: 'mr-item' }, field(T.gate.noAvatar, noAvatar)),
+        h('div', { class: 'mr-item' }, h('div', { class: 'mr-item-fields' }, field(T.gate.age, age), field(T.gate.ageAction, ageAction))),
+        h('div', { class: 'mr-item' }, h('b', {}, T.gate.username), h('div', { class: 'mr-item-fields' }, field(T.gate.usernameList, listSelect), field(T.gate.usernameWords, words), field(T.gate.action, nameAction))),
+        field(T.gate.timeout, minutes),
+        h('h3', {}, T.gate.raid), h('p', { class: 'mr-hint' }, T.gate.raidLead),
+        h('div', { class: 'mr-item' }, h('div', { class: 'mr-item-fields' }, field(T.gate.raidJoins, joins), field(T.gate.raidSeconds, seconds), field(T.gate.raidAction, raidAction), field(T.gate.raidMinutes, raidMinutes), field(T.gate.raidChannel, raidChannel))),
+        saveButton(async () => {
+          const gate = { enabled: on.get(), no_avatar_action: noAvatar.value, account_age_days: Number(age.value), account_age_action: ageAction.value, username_list_id: listSelect.value ? Number(listSelect.value) : null, username_words: words.value.split('\n').map((w) => w.trim()).filter(Boolean), username_action: nameAction.value, timeout_minutes: Number(minutes.value), raid_joins: Number(joins.value), raid_seconds: Number(seconds.value), raid_action: raidAction.value, raid_lockdown_minutes: Number(raidMinutes.value), raid_alert_channel_id: raidChannel.value };
+          if (await send({ op: 'join_gate_save', gate })) reload('gate');
+        }));
+    }
+
+    // ---- Tools: export and import ----
+    function exportFile() {
+      const listName = (id: any, kind: string) => data.lists.find((l: any) => l.id === String(id) && l.kind === kind)?.name;
+      const out = {
+        format: 'petto-mod-rules', version: 2,
+        lists: data.lists.map((l: any) => ({ name: l.name, kind: l.kind, items: l.items })),
+        rulesets: data.rulesets.map((set: any) => ({
+          name: set.name, enabled: set.enabled, conditions: set.conditions,
+          rules: set.rules.map((r: any) => ({
+            name: r.name, enabled: r.enabled, dry_run: r.dry_run === true, trigger_mode: r.trigger_mode, conditions: r.conditions, effects: r.effects, threshold_count: r.threshold_count, threshold_minutes: r.threshold_minutes, stop: r.stop,
+            triggers: r.triggers.map((tr: any) => { const name = tr.list_id ? listName(tr.list_id, tr.type === 'links' ? 'domains' : 'words') : null; const { list_id: _drop, ...rest } = tr; return name ? { ...rest, list_name: name } : rest; }),
+          })),
+        })),
+      };
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' }));
+      link.download = 'petto-moderation-rules.json';
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+    function drawTools() {
+      const area = h('textarea', { rows: 8, placeholder: T.tools.importPlaceholder, ...lockedAttrs }) as HTMLTextAreaElement;
+      return h('div', {},
+        h('section', { class: 'mr-card' }, h('h2', {}, T.tools.exportTitle), h('p', { class: 'mr-hint' }, T.tools.exportLead), h('button', { type: 'button', class: 'btn btn-accent', onclick: exportFile }, T.tools.exportButton)),
+        h('section', { class: 'mr-card' }, h('h2', {}, T.tools.importTitle), h('p', { class: 'mr-hint' }, T.tools.importLead), area,
+          canEdit ? h('button', { type: 'button', class: 'btn btn-accent', onclick: async () => {
+            let parsed: any = null;
+            try { parsed = JSON.parse(area.value); } catch { return flash(T.tools.importBad, false); }
+            const body = await send({ op: 'import', data: parsed });
+            if (body) { flash(fill(T.tools.importDone, body), true); window.setTimeout(() => reload('global'), 1500); }
+          } }, T.tools.importButton) : null));
+    }
+
     function draw() {
       drawTabs();
       bodyEl.innerHTML = '';
       if (tab === 'global') bodyEl.append(drawGlobal());
       else if (tab === 'lists') bodyEl.append(drawLists());
       else if (tab === 'logs') bodyEl.append(drawLogs());
+      else if (tab === 'gate') bodyEl.append(drawGate());
+      else if (tab === 'tools') bodyEl.append(drawTools());
       else { const set = data.rulesets.find((s: any) => `set-${s.id}` === tab); if (set) bodyEl.append(drawSet(set)); }
     }
     draw();
@@ -423,6 +605,10 @@ const i18n = {
   .mr-threshold { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; }
   .mr-threshold input { width: 78px; }
   .mr-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .mr-try-out { display: grid; gap: 6px; font-size: 13.5px; margin-top: 10px; }
+  .mr-try-out ul { margin: 0 0 6px; padding-left: 18px; display: grid; gap: 3px; }
+  .mr-try-ok { color: var(--green); }
+  .mr-try-bad { color: var(--red, #ff6b6b); }
   .mr-scroll { overflow-x: auto; }
   .mr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .mr-table th, .mr-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }

@@ -811,3 +811,21 @@ export async function callPettoQuickSetup(context: AstroContext, guildId: string
     return { ok: false, message: '', results: [] };
   }
 }
+
+/** "Try this rule" of the Moderation rules page: what the rule (as it is in the form) would do with a sample message. The bot does nothing and writes nothing. */
+export async function callPettoRuleTest(context: AstroContext, guildId: string, userId: string, rule: unknown, sample: unknown, lang = 'en'): Promise<Record<string, any> | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  try {
+    const grant = await roleGrant(context, guildId, 'rules', false);
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/rules/test`, {
+      method: 'POST', signal: AbortSignal.timeout(10_000),
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rule, sample, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch {
+    return null;
+  }
+}

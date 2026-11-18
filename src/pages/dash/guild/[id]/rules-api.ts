@@ -3,7 +3,8 @@ import type { APIRoute } from 'astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { ensureGuildRow } from '../../../../utils/ensureGuild';
-import { LIMITS, cleanConditions, cleanDomains, cleanRule, cleanWords } from '../../../../utils/modRules';
+import { LIMITS, cleanConditions, cleanDomains, cleanJoinGate, cleanRule, cleanWords } from '../../../../utils/modRules';
+import { callPettoRuleTest } from '../../../../utils/pettoBotApi';
 import { makeT, getDashLang } from '../../../../i18n/dash';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -34,8 +35,67 @@ export const POST: APIRoute = async (astro) => {
   if (op === 'settings') {
     const channel = SNOWFLAKE.test(String(body.log_channel_id ?? '')) ? String(body.log_channel_id) : null;
     await ensureGuildRow(apiUrl, headers, id);
-    const res = await rest('mod_rule_settings?on_conflict=guild_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, enabled: body.enabled !== false, ignore_staff: body.ignore_staff !== false, log_channel_id: channel, updated_at: new Date().toISOString() }) });
+    const quarantine = SNOWFLAKE.test(String(body.quarantine_role_id ?? '')) ? String(body.quarantine_role_id) : null;
+    const decay = Math.max(0, Math.min(1000, Math.floor(Number(body.heat_decay)) || 0));
+    const res = await rest('mod_rule_settings?on_conflict=guild_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, enabled: body.enabled !== false, ignore_staff: body.ignore_staff !== false, ignore_bots: body.ignore_bots !== false, heat_decay: Number.isFinite(decay) ? decay : 10, quarantine_role_id: quarantine, log_channel_id: channel, updated_at: new Date().toISOString() }) });
     return res?.ok ? json({ ok: true }) : failed();
+  }
+
+  if (op === 'join_gate_save') {
+    const gate = cleanJoinGate(body.gate);
+    const res = await (async () => { await ensureGuildRow(apiUrl, headers, id); return rest('mod_join_gate?on_conflict=guild_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, ...gate, raid_alert_channel_id: gate.raid_alert_channel_id || null, updated_at: new Date().toISOString() }) }); })();
+    return res?.ok ? json({ ok: true }) : failed();
+  }
+
+  if (op === 'test') {
+    // Nothing is saved: the bot says what the rule (as it is in the form) would do with a sample message.
+    const result = await callPettoRuleTest(astro, id, String(auth.session.userId), body.rule, body.sample, getDashLang(astro));
+    return result ? json(result, result.ok === false && result.error === 'failed' ? 502 : 200) : fail(dt('Petto did not answer. Try again in a moment.'), 502);
+  }
+
+  if (op === 'import') {
+    // A file made by "Export": lists first (by name), then the rulesets and their rules. What does not fit the limits or is not valid is left out, and the answer says how many were made.
+    const data: any = body.data;
+    if (!data || typeof data !== 'object' || data.format !== 'petto-mod-rules') return fail(dt('That is not a file made by Export.'));
+    await ensureGuildRow(apiUrl, headers, id);
+    const existingLists = (await rows(`mod_lists?guild_id=eq.${id}&select=id,name,kind`)) ?? [];
+    const listIds = new Map<string, number>(existingLists.map((l: any) => [`${l.kind}:${l.name}`, Number(l.id)]));
+    let listsMade = 0; let setsMade = 0; let rulesMade = 0; let skipped = 0;
+    for (const list of (Array.isArray(data.lists) ? data.lists : []).slice(0, LIMITS.lists)) {
+      const name = String(list?.name ?? '').trim().slice(0, LIMITS.listName);
+      const kind = list?.kind === 'domains' ? 'domains' : 'words';
+      if (!name || listIds.has(`${kind}:${name}`) || listIds.size >= LIMITS.lists) { if (name) skipped += 1; continue; }
+      const items = kind === 'domains' ? cleanDomains(list.items) : cleanWords(list.items);
+      const res = await rest('mod_lists', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, name, kind, items }) });
+      const made: any = res?.ok ? ((await res.json().catch(() => null)) as any[] | null)?.[0] : null;
+      if (made) { listIds.set(`${kind}:${name}`, Number(made.id)); listsMade += 1; } else skipped += 1;
+    }
+    const currentSets = (await rows(`mod_rulesets?guild_id=eq.${id}&select=id,position&order=position.desc`)) ?? [];
+    let position = Number(currentSets[0]?.position) || 0;
+    let setCount = currentSets.length;
+    for (const set of (Array.isArray(data.rulesets) ? data.rulesets : []).slice(0, LIMITS.rulesets)) {
+      const name = String(set?.name ?? '').trim().slice(0, LIMITS.listName);
+      if (!name || setCount >= LIMITS.rulesets) { skipped += 1; continue; }
+      position += 1;
+      const res = await rest('mod_rulesets', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ guild_id: id, name, enabled: set.enabled !== false, conditions: cleanConditions(set.conditions), position }) });
+      const made: any = res?.ok ? ((await res.json().catch(() => null)) as any[] | null)?.[0] : null;
+      if (!made) { skipped += 1; continue; }
+      setCount += 1; setsMade += 1;
+      let rulePosition = 0;
+      for (const raw of (Array.isArray(set.rules) ? set.rules : []).slice(0, LIMITS.rulesPerSet)) {
+        // A trigger that pointed at a list by name points at the list of this server with that name.
+        const triggers = (Array.isArray(raw?.triggers) ? raw.triggers : []).map((tr: any) => {
+          if (tr && typeof tr === 'object' && typeof tr.list_name === 'string') return { ...tr, list_id: listIds.get(`${tr.type === 'links' ? 'domains' : 'words'}:${tr.list_name}`) ?? null };
+          return tr;
+        });
+        const checked = cleanRule({ ...raw, triggers });
+        if (!checked.ok) { skipped += 1; continue; }
+        rulePosition += 1;
+        const saved = await rest('mod_rules', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, ruleset_id: made.id, ...checked.rule, position: rulePosition }) });
+        if (saved?.ok) rulesMade += 1; else skipped += 1;
+      }
+    }
+    return json({ ok: true, lists: listsMade, rulesets: setsMade, rules: rulesMade, skipped });
   }
 
   if (op === 'list_save') {
