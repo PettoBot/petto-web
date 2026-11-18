@@ -1,0 +1,83 @@
+---
+export const prerender = false;
+import DashAgedRoles from '../../../../components/DashAgedRoles.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+// Aged roles: "after N days in the server, give this role (and take another away)". The rules are rows of `aged_roles`; the bot looks at the members every 30 minutes.
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const MAX_RULES = 25;
+const SNOWFLAKE = /^\d{15,25}$/;
+let saved = false;
+let problem: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  try {
+    if (action === 'add') {
+      const roleId = String(form.get('role_id') ?? '').trim();
+      const removeRaw = String(form.get('remove_role_id') ?? '').trim();
+      const days = Math.floor(Number(form.get('days')));
+      const target = ['humans', 'all', 'bots'].includes(String(form.get('target'))) ? String(form.get('target')) : 'humans';
+      if (!SNOWFLAKE.test(roleId)) problem = dt('Pick the role to give.');
+      else if (!Number.isFinite(days) || days < 1 || days > 3650) problem = dt('The days must be a number from 1 to 3650.');
+      else if (removeRaw && (!SNOWFLAKE.test(removeRaw) || removeRaw === roleId)) problem = dt('The role to take away has to be a different role.');
+      else {
+        const count = await fetch(`${apiUrl}/rest/v1/aged_roles?guild_id=eq.${id}&select=id`, { headers });
+        const have = count.ok ? (await count.json()).length : 0;
+        if (have >= MAX_RULES) problem = dt('There is no room: a server can have {n} rules.', { n: MAX_RULES });
+        else {
+          const res = await fetch(`${apiUrl}/rest/v1/aged_roles?on_conflict=guild_id,role_id,days`, {
+            method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify({ guild_id: id, role_id: roleId, days, remove_role_id: removeRaw || null, target, enabled: true }),
+          });
+          if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+        }
+      }
+    } else if (action === 'remove' || action === 'toggle') {
+      const ruleId = Math.floor(Number(form.get('rule_id')));
+      if (Number.isFinite(ruleId) && ruleId > 0) {
+        const res = action === 'remove'
+          ? await fetch(`${apiUrl}/rest/v1/aged_roles?guild_id=eq.${id}&id=eq.${ruleId}`, { method: 'DELETE', headers })
+          : await fetch(`${apiUrl}/rest/v1/aged_roles?guild_id=eq.${id}&id=eq.${ruleId}`, { method: 'PATCH', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify({ enabled: form.get('enabled') === 'on' }) });
+        if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+      }
+    }
+  } catch (error) {
+    console.error(`[aged-roles] saving for ${id}:`, (error as Error)?.message);
+    problem = dt('It could not be saved. Try again in a moment.');
+  }
+}
+
+const [guildInfo, rulesRes, rolesRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/aged_roles?guild_id=eq.${id}&select=id,role_id,days,remove_role_id,target,enabled&order=days.asc,id.asc`, { headers }),
+  () => getGuildList(Astro, id, botToken, 'roles'),
+], 3);
+const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
+if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const serverInfo = (guildInfo ?? fallbackInfo)!;
+
+// The table exists once the bot that added it runs; before that the page says so and offers nothing to save.
+const ready = rulesRes.ok;
+const rules = ready ? (await rulesRes.json()).map((row: any) => ({ id: Number(row.id), roleId: String(row.role_id), days: Number(row.days), removeRoleId: row.remove_role_id ? String(row.remove_role_id) : null, target: String(row.target), enabled: row.enabled !== false })) : [];
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles.filter((role: any) => role.name !== '@everyone' && !role.managed).sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: role.id, name: role.name, color: role.color ?? 0 }));
+const everyRole = allRoles.map((role: any) => ({ id: role.id, name: role.name }));
+---
+<DashAgedRoles user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} rules={rules} roles={roles} everyRole={everyRole} ready={ready} saved={saved} problem={problem} max={MAX_RULES} />

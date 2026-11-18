@@ -4,6 +4,7 @@ import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import VariableHelp from './VariableHelp.astro';
 import SelectSource from './SelectSource.astro';
+import ObMoreMessages from './ObMoreMessages.astro';
 import SelectChosen from './SelectChosen.astro';
 import DashAcData from './DashAcData.astro';
 import DashSettingsKit from './DashSettingsKit.astro';
@@ -58,8 +59,24 @@ interface Props {
   embedTemplateNames: string[];
   saved: boolean;
   problem?: string | null;
+  /** The part of the onboarding that this page shows (each part has its own page and its own place in the menu). */
+  view?: 'messages' | 'dm' | 'ping' | 'verification' | 'join-roles' | 'bump';
+  /** The other messages of the welcome, the goodbye and the boost (the first of each is in `memberEvents`), and whether the bot has the table for them. */
+  variants?: Record<'welcome' | 'leave' | 'boost', { message: string; template: string }[]>;
+  variantsReady?: boolean;
 }
-const { user, guildId, guildName, guildIcon, memberEvents, verification, bump, dmJoin, pingOnJoin, joinRoles, roles, embedTemplateNames, saved, problem } = Astro.props;
+const { user, guildId, guildName, guildIcon, memberEvents, verification, bump, dmJoin, pingOnJoin, joinRoles, roles, embedTemplateNames, saved, problem, view = 'messages', variants = { welcome: [], leave: [], boost: [] }, variantsReady = false } = Astro.props;
+const MAX_MORE = 24;
+// Each part is a page of its own: its place in the menu (`active`), the title of the page and the name of the part.
+const VIEWS: Record<string, { active: string; title: string }> = {
+  messages: { active: 'welcome-messages', title: 'Welcome messages' },
+  dm: { active: 'welcome-dm', title: 'DM on join' },
+  ping: { active: 'welcome-ping', title: 'Ping on join' },
+  verification: { active: 'verification', title: 'Verification' },
+  'join-roles': { active: 'join-roles', title: 'Join roles' },
+  bump: { active: 'bump', title: 'Bump' },
+};
+const meta = VIEWS[view] ?? VIEWS.messages;
 // A channel where Petto cannot see or write says so in every list of this page (the welcome, the ping on join, the verification panel...), because nothing would arrive there.
 // The name stays as it is; the note (utils/channelPost.ts) goes under it, in red.
 const channels = withPostNotes(dt, Astro.props.channels);
@@ -102,34 +119,30 @@ const checkRows: [string, string, string, string, string][] = [
 ];
 const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Humans only')], ['bots', dt('Bots only')]];
 ---
-<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="onboarding" pageTitle="Onboarding">
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active={meta.active} pageTitle={meta.title}>
   <DashSettingsKit />
   <div class="sx-page ob">
-  <h1>{dt('Onboarding')}</h1>
+  <h1>{dt(meta.title)}</h1>
   <DashAcData roles={roles} channels={channels.map((c) => ({ id: c.id, name: c.name }))} />
 
   {saved && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
   {problem && <div class="sx-flash sx-flash-bad" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{problem}</div>}
 
-  <DashStatTiles tiles={[
+  {view === 'messages' && <DashStatTiles tiles={[
     { label: dt('Messages on'), value: messagesOn, tone: 'messages' },
+    { label: dt('More messages'), value: variants.welcome.length + variants.leave.length + variants.boost.length, tone: 'joins' },
+  ]} />}
+  {view === 'verification' && <DashStatTiles tiles={[
     { label: dt('Verification'), value: 0, text: verification.enabled ? dt('On') : dt('Off'), tone: 'joins' },
-    { label: dt('Join roles'), value: joinRoles.length, tone: 'voice' },
-    { label: dt('Ping channels'), value: pingOnJoin.channelIds.length, tone: 'reactions' },
-  ]} />
-
-  <div class="ob-tabs" role="tablist" aria-label={dt('Onboarding')}>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="messages"><Icon name="ph:hand-waving-fill" width="15" height="15" /><span>{dt('Messages')}</span><em>{messagesOn}/5</em><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="verification"><Icon name="ph:seal-check-fill" width="15" height="15" /><span>{dt('Verification')}</span><em>{verification.enabled ? dt('On') : dt('Off')}</em><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="arrival"><Icon name="ph:user-plus-fill" width="15" height="15" /><span>{dt('Roles and DM')}</span><em>{joinRoles.length}</em><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="ping"><Icon name="ph:bell-ringing-fill" width="15" height="15" /><span>{dt('Ping on join')}</span><em>{pingOnJoin.enabled ? pingOnJoin.channelIds.length : dt('Off')}</em><i class="ob-dot"></i></button>
-    <button type="button" class="ob-tab" role="tab" data-ob-tab="bump"><Icon name="ph:arrow-fat-lines-up-fill" width="15" height="15" /><span>{dt('Bump')}</span><em>{bumpOn ? dt('On') : dt('Off')}</em><i class="ob-dot"></i></button>
-  </div>
+    { label: dt('Set up'), value: checklistDone, text: `${checklistDone}/${checklist.length}`, tone: 'messages' },
+  ]} />}
 
   <div class="ob-panels" id="ob-panels">
+    {view === 'messages' && (
     <section class="ob-panel" data-ob-panel="messages">
       <form method="POST" class="ob-form">
         <input type="hidden" name="action" value="events" />
+        {variantsReady && <input type="hidden" name="variants_ready" value="1" />}
         <div class="ob-cols">
           <div class="ob-col">
             <section class="sx-panel ob-box">
@@ -139,6 +152,7 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
               {hasTemplates && (
                 <div class="sx-field"><label for="ob-w-tpl">{dt('Or use an embed template')}</label><select id="ob-w-tpl" name="welcome_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.welcomeEmbedTemplate}>{n}</option>)}</select></div>
               )}
+              {variantsReady && <ObMoreMessages kind="welcome" rows={variants.welcome} templates={embedTemplateNames} max={MAX_MORE} />}
               {memberEvents.waitReady && (
                 <div class="sx-field">
                   <input type="hidden" name="wait_ready" value="1" />
@@ -179,6 +193,7 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
               {hasTemplates && (
                 <div class="sx-field"><label for="ob-l-tpl">{dt('Or use an embed template')}</label><select id="ob-l-tpl" name="leave_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.leaveEmbedTemplate}>{n}</option>)}</select></div>
               )}
+              {variantsReady && <ObMoreMessages kind="leave" rows={variants.leave} templates={embedTemplateNames} max={MAX_MORE} />}
             </section>
 
             <section class="sx-panel ob-box">
@@ -188,6 +203,7 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
               {hasTemplates && (
                 <div class="sx-field"><label for="ob-b-tpl">{dt('Or use an embed template')}</label><select id="ob-b-tpl" name="boost_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.boostEmbedTemplate}>{n}</option>)}</select></div>
               )}
+              {variantsReady && <ObMoreMessages kind="boost" rows={variants.boost} templates={embedTemplateNames} max={MAX_MORE} />}
               <div class="sx-field ob-row"><label for="ob-b-lvl">{dt('Boost tier reached message')}</label><textarea id="ob-b-lvl" class="dgl-autogrow" rows="2" name="boost_level_message" data-ac data-dp data-dp-template="boost_level_embed_template" data-count maxlength="300" placeholder={dt('{server_name} just reached a new boost tier!')}>{memberEvents.boostLevelMessage}</textarea><SilentMentionHint /></div>
               {hasTemplates && (
                 <div class="sx-field"><label for="ob-b-ltpl">{dt('Or use an embed template')}</label><select id="ob-b-ltpl" name="boost_level_embed_template"><option value="">{dt('No template, use message text above')}</option>{embedTemplateNames.map((n) => <option value={n} selected={n === memberEvents.boostLevelEmbedTemplate}>{n}</option>)}</select></div>
@@ -202,8 +218,10 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
         </div>
       </form>
     </section>
+    )}
 
-    <section class="ob-panel" data-ob-panel="verification" hidden>
+    {view === 'verification' && (
+    <section class="ob-panel" data-ob-panel="verification">
       <form method="POST" class="ob-form ob-vf">
         <input type="hidden" name="action" value="verification" />
         <section class="sx-panel ob-box">
@@ -329,9 +347,11 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
         <div class="ob-tools"><div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div></div>
       </form>
     </section>
+    )}
 
-    <section class="ob-panel" data-ob-panel="arrival" hidden>
-      <div class="ob-cols">
+    {view === 'join-roles' && (
+    <section class="ob-panel" data-ob-panel="join-roles">
+      <div class="ob-cols ob-cols-one">
         <div class="ob-col">
           <section class="sx-panel ob-box">
             <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#7ac45a"><Icon name="ph:user-plus-fill" width="17" height="17" /></span><h2>{dt('Join roles')}</h2>{joinRoles.length > 0 && <span class="sx-tag">{joinRoles.length}</span>}</div>
@@ -366,6 +386,13 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
           </section>
         </div>
 
+      </div>
+    </section>
+    )}
+
+    {view === 'dm' && (
+    <section class="ob-panel" data-ob-panel="dm">
+      <div class="ob-cols ob-cols-one">
         <div class="ob-col">
           <form method="POST" class="sx-panel ob-box">
             <input type="hidden" name="action" value="dm_join" />
@@ -381,8 +408,10 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
         </div>
       </div>
     </section>
+    )}
 
-    <section class="ob-panel" data-ob-panel="ping" hidden>
+    {view === 'ping' && (
+    <section class="ob-panel" data-ob-panel="ping">
       <form method="POST" class="ob-form">
         <input type="hidden" name="action" value="ping_on_join" />
         <section class="sx-panel ob-box">
@@ -452,8 +481,10 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
         <div class="ob-tools"><div class="sx-foot ob-save"><button type="submit" class="btn btn-accent btn-sm">{dt('Save')}</button></div></div>
       </form>
     </section>
+    )}
 
-    <section class="ob-panel" data-ob-panel="bump" hidden>
+    {view === 'bump' && (
+    <section class="ob-panel" data-ob-panel="bump">
       <form method="POST" class="ob-form">
         <input type="hidden" name="action" value="bump" />
         <div class="ob-cols">
@@ -486,6 +517,7 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
         </div>
       </form>
     </section>
+    )}
   </div>
   <SelectSource name="ob-ch" items={channels.map((c) => ({ id: c.id, name: c.name, note: c.note }))} prefix="#" />
   <SelectSource name="ob-roles" items={roles.map((r) => ({ id: r.id, name: r.name }))} />
@@ -685,52 +717,19 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
     })();
   </script>
   <script is:inline>
+    // Each part of the onboarding has a page of its own now (the welcome, the verification, the join roles, the bump). A link from before (`onboarding#messages`, `#arrival`, a
+    // bookmark) is sent to the page that has it, so nothing it pointed at is lost.
     (function () {
       var root = document.getElementById('ob-panels');
       if (!root) return;
-      var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-ob-tab]'));
-      var panels = Array.prototype.slice.call(root.querySelectorAll('[data-ob-panel]'));
-      function remembered() {
-        try { return sessionStorage.getItem('ob-tab'); } catch (e) { return null; }
-      }
-      function show(name, animate) {
-        if (!panels.some(function (p) { return p.getAttribute('data-ob-panel') === name; })) name = 'messages';
-        tabs.forEach(function (t) {
-          var on = t.getAttribute('data-ob-tab') === name;
-          t.classList.toggle('on', on);
-          t.setAttribute('aria-selected', on ? 'true' : 'false');
-          t.tabIndex = on ? 0 : -1;
-        });
-        panels.forEach(function (p) {
-          var on = p.getAttribute('data-ob-panel') === name;
-          p.hidden = !on;
-          if (on && animate) { p.classList.remove('ob-in'); void p.offsetWidth; p.classList.add('ob-in'); }
-        });
-        try { sessionStorage.setItem('ob-tab', name); } catch (e) { /* private window */ }
-        if (history.replaceState) history.replaceState(history.state, '', '#' + name);
-      }
-      tabs.forEach(function (t, i) {
-        t.addEventListener('click', function () { show(t.getAttribute('data-ob-tab'), true); });
-        t.addEventListener('keydown', function (e) {
-          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-          var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
-          next.focus(); show(next.getAttribute('data-ob-tab'), true);
-        });
-      });
-      // A dot on the tabs that have changes not saved yet.
-      function dots(forms) {
-        tabs.forEach(function (t) {
-          var panel = root.querySelector('[data-ob-panel="' + t.getAttribute('data-ob-tab') + '"]');
-          t.classList.toggle('dirty', !!panel && forms.some(function (f) { return panel.contains(f); }));
-        });
-      }
-      if (!window.__obDots) {
-        window.__obDots = true;
-        document.addEventListener('dgl:dirty', function (e) { if (window.__obDotsFn) window.__obDotsFn(e.detail.forms); });
-      }
-      window.__obDotsFn = dots;
       var hash = (location.hash || '').replace('#', '');
-      show(hash || remembered() || 'messages', false);
+      if (!hash) return;
+      var MOVED = { messages: 'welcome?section=messages', dm: 'welcome?section=dm', ping: 'welcome?section=ping', arrival: 'join-roles', bump: 'bump', verification: 'onboarding' };
+      if (!MOVED[hash] || root.querySelector('[data-ob-panel="' + hash + '"]')) return;
+      var match = /^(.*\/dash\/guild\/\d+\/)([^/?#]*)/.exec(location.pathname);
+      if (!match) return;
+      var target = match[1] + MOVED[hash];
+      if (target !== match[1] + match[2] + location.search) location.replace(target);
     })();
   </script>
   <DashFormKit />
@@ -739,26 +738,14 @@ const targets: [string, string][] = [['all', dt('Everyone')], ['humans', dt('Hum
 <style>
   h1 { font-size: 24px; margin: 0 0 16px; }
   .ob { max-width: 1040px; }
-  /* The tabs: the look of the other tabbed pages, with what is set on each. */
-  .ob-tabs { display: flex; gap: 6px; margin: 0 0 16px; padding: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow-x: auto; scrollbar-width: none; position: sticky; top: calc(var(--dgl-header-h, 60px) + 8px); z-index: 4; }
-  .ob-tabs::-webkit-scrollbar { display: none; }
-  .ob-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background .18s ease, color .18s ease; }
-  .ob-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
-  .ob-tab:active { background: color-mix(in srgb, var(--text) 10%, transparent); }
-  .ob-tab.on { color: var(--text); background: var(--green-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 40%, transparent); }
-  .ob-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .ob-tab :global(svg) { flex: none; }
-  .ob-tab em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
-  .ob-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); }
-  .ob-tab.dirty .ob-dot { display: inline-block; animation: ob-pop var(--m-base) var(--m-soft); }
-  @keyframes ob-pop { from { transform: scale(0); } to { transform: scale(1); } }
   .ob-panel { padding: 0; }
   .ob-panel[hidden] { display: none; }
   .ob-panel.ob-in { animation: m-rise-in var(--m-slow) var(--m-out); }
-  @media (prefers-reduced-motion: reduce) { .ob-panel.ob-in, .ob-tab.dirty .ob-dot { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .ob-panel.ob-in { animation: none; } }
 
   .ob-form { display: flex; flex-direction: column; gap: 14px; }
   .ob-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .ob-cols-one { grid-template-columns: minmax(0, 1fr); }
   .ob-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   .ob-box { gap: 14px; }
   .ob-body { display: flex; flex-direction: column; gap: 14px; }

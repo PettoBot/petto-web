@@ -1,0 +1,627 @@
+---
+// Moderation rules: the place where a server makes its own rules (they cannot be made with a command). A ruleset groups rules that share general
+// conditions; a rule says what to look for (triggers), who and where (conditions) and what Petto does (effects). The tabs are the global settings, the
+// lists of words and domains, the log of what the rules did, and one for each ruleset. The text of the page is drawn here by the server (so it is
+// translated); the script only builds the forms from the data and sends every change to rules-api.ts.
+import { Icon } from 'astro-icon/components';
+import DashGuildLayout from './DashGuildLayout.astro';
+import DashSettingsKit from './DashSettingsKit.astro';
+import DashFormKit from './DashFormKit.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { LIMITS, GATE_ACTIONS, RAID_ACTIONS } from '../utils/modRules';
+import { RULE_TEMPLATES } from '../utils/modRuleTemplates';
+
+interface Props {
+  user: { username: string; avatar: string | null; userId?: string };
+  guildId: string; guildName: string; guildIcon: string;
+  data: any;
+  roles: { id: string; name: string; managed: boolean }[];
+  channels: { id: string; name: string }[];
+  categories: { id: string; name: string }[];
+  ready: boolean;
+  canEdit: boolean;
+}
+const { user, guildId, guildName, guildIcon, data, roles, channels, categories, ready, canEdit } = Astro.props;
+const dashLang = getDashLang(Astro);
+const dt = makeT(dashLang);
+const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang === 'pt-BR' ? '/pt-br' : ''}/moderation/rules`;
+
+type Field = { k: string; t: 'number' | 'select' | 'text' | 'lines' | 'list' | 'role' | 'channel' | 'textarea'; label: string; options?: [string, string][]; min?: number; max?: number; d?: string | number; kind?: string; hint?: string };
+const num = (k: string, label: string, min: number, max: number, d: number, hint?: string): Field => ({ k, t: 'number', label, min, max, d, hint });
+const pick = (k: string, label: string, options: [string, string][], d: string): Field => ({ k, t: 'select', label, options, d });
+
+// What a rule can look for.
+const TRIGGERS: Record<string, { label: string; hint: string; fields: Field[] }> = {
+  words: { label: dt('Words'), hint: dt('A word or phrase from a list, or typed here. Accents and capitals do not matter.'), fields: [
+    pick('match', dt('How it is found'), [['word', dt('Whole words')], ['contains', dt('Inside other words too')], ['exact', dt('The whole message is exactly it')]], 'word'),
+    { k: 'list_id', t: 'list', kind: 'words', label: dt('List of words') },
+    { k: 'words', t: 'lines', label: dt('More words, one per line') }] },
+  regex: { label: dt('Pattern (regex)'), hint: dt('An expression for advanced users. Short ones only: patterns that could run for ever are refused.'), fields: [{ k: 'pattern', t: 'text', label: dt('Expression') }] },
+  links: { label: dt('Links'), hint: dt('Any link, links to some domains, or links that are not to the domains you allow.'), fields: [
+    pick('mode', dt('When it applies'), [['any', dt('Any link')], ['deny', dt('A link to a domain in the list')], ['allow', dt('A link to a domain that is NOT in the list')]], 'any'),
+    { k: 'list_id', t: 'list', kind: 'domains', label: dt('List of domains') },
+    { k: 'domains', t: 'lines', label: dt('More domains, one per line') }] },
+  invites: { label: dt('Discord invites'), hint: dt('Invitations to any Discord server.'), fields: [] },
+  mentions: { label: dt('Mentions'), hint: dt('More mentions than the limit in one message.'), fields: [
+    pick('kind', dt('What counts'), [['any', dt('Everything')], ['users', dt('Members')], ['roles', dt('Roles')], ['everyone', dt('@everyone and @here')]], 'any'), num('max', dt('More than'), 0, 100, 5)] },
+  caps: { label: dt('Shouting (capitals)'), hint: dt('A message that is mostly capital letters.'), fields: [num('percent', dt('Percent of capitals'), 30, 100, 70), num('min_length', dt('Only if it has at least this many letters'), 5, 500, 12)] },
+  emojis: { label: dt('Many emojis'), hint: dt('More emojis than the limit in one message.'), fields: [num('max', dt('More than'), 1, 200, 10)] },
+  repeated: { label: dt('The same message again'), hint: dt('The same text sent again and again by one member.'), fields: [num('times', dt('Times'), 2, 20, 3), num('seconds', dt('In this many seconds'), 3, 600, 30)] },
+  rate: { label: dt('Too many messages'), hint: dt('A member who writes faster than the limit.'), fields: [num('messages', dt('Messages'), 2, 50, 6), num('seconds', dt('In this many seconds'), 2, 120, 8)] },
+  attachments: { label: dt('Attachments'), hint: dt('Files or images in a message.'), fields: [
+    pick('kind', dt('What counts'), [['any', dt('Any file')], ['images', dt('Images')], ['files', dt('Files that are not images')]], 'any'), num('max', dt('More than'), 0, 20, 0)] },
+  length: { label: dt('Long messages'), hint: dt('Too many characters or too many lines. Leave 0 to not look at one of them.'), fields: [num('max_chars', dt('More characters than'), 0, 4000, 0), num('max_lines', dt('More lines than'), 0, 200, 0)] },
+  zalgo: { label: dt('Zalgo text'), hint: dt('Letters piled with strange marks.'), fields: [num('max', dt('Marks'), 3, 100, 8)] },
+  repeated_chars: { label: dt('Repeated characters'), hint: dt('The same character again and again, like aaaaaaaaa.'), fields: [num('max', dt('Repeats'), 3, 100, 10)] },
+  channel_rate: { label: dt('Channel too busy'), hint: dt('More messages than the limit in a channel, from everybody together (a raid on a channel).'), fields: [num('messages', dt('Messages'), 3, 200, 20), num('seconds', dt('In this many seconds'), 2, 300, 10)] },
+  mention_rate: { label: dt('Mentions too fast'), hint: dt('A member who mentions more than the limit across several messages.'), fields: [num('mentions', dt('Mentions'), 2, 200, 10), num('seconds', dt('In this many seconds'), 2, 300, 10)] },
+  attachment_rate: { label: dt('Attachments too fast'), hint: dt('A member who sends more files or images than the limit across several messages.'), fields: [num('attachments', dt('Attachments'), 2, 100, 6), num('seconds', dt('In this many seconds'), 2, 300, 30)] },
+  link_rate: { label: dt('Links too fast'), hint: dt('A member who sends more links than the limit across several messages.'), fields: [num('links', dt('Links'), 2, 100, 5), num('seconds', dt('In this many seconds'), 2, 300, 30)] },
+  name: { label: dt('Name of the member'), hint: dt('The username or the nickname has a word, or matches a pattern.'), fields: [
+    pick('where', dt('Where'), [['either', dt('Username or nickname')], ['username', dt('Username')], ['nickname', dt('Nickname')]], 'either'),
+    pick('match', dt('How it is found'), [['contains', dt('Inside other words too')], ['word', dt('Whole words')], ['exact', dt('The whole message is exactly it')], ['regex', dt('Pattern (regex)')]], 'contains'),
+    { k: 'list_id', t: 'list', kind: 'words', label: dt('List of words') }, { k: 'words', t: 'lines', label: dt('More words, one per line') }, { k: 'pattern', t: 'text', label: dt('Expression (only for a pattern)') }] },
+  violations: { label: dt('Strikes'), hint: dt('A member who has this many strikes of a counter in a time. Other rules add strikes with the effect "Count a strike".'), fields: [
+    { k: 'name', t: 'text', label: dt('Name of the counter'), d: 'strikes' }, num('count', dt('Strikes'), 1, 100, 4), num('minutes', dt('In this many minutes'), 1, 1440, 60)] },
+  heat: { label: dt('Heat'), hint: dt('The heat of the member is at least this. Heat rises with the effect "Add heat" and falls by itself.'), fields: [num('at_least', dt('Heat at least'), 1, 10000, 100)] },
+};
+// Who and where.
+const CONDITIONS: Record<string, { label: string; fields: Field[] }> = {
+  channel: { label: dt('Channel'), fields: [pick('mode', dt('The message is'), [['not_in', dt('NOT in these channels')], ['in', dt('Only in these channels')]], 'not_in'), { k: 'ids', t: 'select', label: dt('Channels'), kind: 'channels' }] },
+  category: { label: dt('Category'), fields: [pick('mode', dt('The message is'), [['not_in', dt('NOT in these categories')], ['in', dt('Only in these categories')]], 'not_in'), { k: 'ids', t: 'select', label: dt('Categories'), kind: 'categories' }] },
+  role: { label: dt('Roles of the member'), fields: [pick('mode', dt('The member'), [['has_none', dt('has none of these roles')], ['has_any', dt('has one of these roles')], ['has_all', dt('has all of these roles')]], 'has_none'), { k: 'ids', t: 'select', label: dt('Roles'), kind: 'roles' }] },
+  account_age: { label: dt('New account'), fields: [num('max_days', dt('The account is at most this many days old'), 1, 3650, 7)] },
+  member_age: { label: dt('New member'), fields: [num('max_days', dt('The member joined at most this many days ago'), 1, 3650, 7)] },
+  no_roles: { label: dt('Member with no roles'), fields: [] },
+  author_kind: { label: dt('Who writes'), fields: [pick('kind', dt('The author is'), [['humans', dt('A person')], ['bots', dt('A bot or a webhook')]], 'humans')] },
+  message_kind: { label: dt('New or edited message'), fields: [pick('kind', dt('The message is'), [['new', dt('New')], ['edited', dt('Edited')]], 'new')] },
+  thread: { label: dt('Threads'), fields: [pick('mode', dt('The message is'), [['ignore', dt('NOT in a thread')], ['only', dt('Only in a thread')]], 'ignore')] },
+};
+// What Petto does.
+const EFFECTS: Record<string, { label: string; later: boolean; fields: Field[] }> = {
+  delete: { label: dt('Delete the message'), later: false, fields: [] },
+  reply: { label: dt('Reply in the channel'), later: false, fields: [{ k: 'text', t: 'textarea', label: dt('Message'), hint: dt('You can use {user}, {username}, {server}, {channel} and {rule}.') }, num('delete_after', dt('Delete the reply after (seconds, 0 to keep it)'), 0, 600, 10)] },
+  dm: { label: dt('Send a DM'), later: true, fields: [{ k: 'text', t: 'textarea', label: dt('Message'), hint: dt('You can use {user}, {username}, {server}, {channel} and {rule}.') }] },
+  warn: { label: dt('Warn the member'), later: true, fields: [{ k: 'reason', t: 'text', label: dt('Reason (optional)') }] },
+  timeout: { label: dt('Timeout (mute)'), later: true, fields: [num('minutes', dt('Minutes'), 1, 40320, 10), num('multiplier', dt('Grows each time by (1: it does not grow)'), 1, 10, 1), num('max_minutes', dt('Never more than (minutes)'), 1, 40320, 40320), num('window_hours', dt('Counting the times of the last (hours)'), 1, 720, 168)] },
+  kick: { label: dt('Kick'), later: true, fields: [] },
+  ban: { label: dt('Ban'), later: true, fields: [{ k: 'reason', t: 'text', label: dt('Reason (optional)') }, num('delete_days', dt('Delete their messages of the last days'), 0, 7, 0)] },
+  add_role: { label: dt('Give a role'), later: true, fields: [{ k: 'role_id', t: 'role', label: dt('Role') }] },
+  remove_role: { label: dt('Take a role away'), later: true, fields: [{ k: 'role_id', t: 'role', label: dt('Role') }] },
+  temp_role: { label: dt('Give a role for a while'), later: true, fields: [{ k: 'role_id', t: 'role', label: dt('Role') }, num('minutes', dt('Minutes'), 1, 43200, 60)] },
+  purge: { label: dt('Delete their last messages'), later: true, fields: [num('count', dt('How many messages (at most)'), 2, 100, 10), num('minutes', dt('Only those of the last (minutes)'), 1, 1440, 10)] },
+  slowmode: { label: dt('Slowmode in the channel'), later: true, fields: [num('seconds', dt('Seconds between messages'), 1, 21600, 10), num('minutes', dt('For how long (minutes)'), 1, 1440, 10)] },
+  alert: { label: dt('Alert in a channel'), later: true, fields: [{ k: 'channel_id', t: 'channel', label: dt('Channel (empty: the channel of the hits)') }, { k: 'text', t: 'textarea', label: dt('Message (optional)'), hint: dt('You can use {user}, {username}, {server}, {channel} and {rule}.') }] },
+  set_nickname: { label: dt('Set a nickname'), later: true, fields: [{ k: 'nickname', t: 'text', label: dt('Nickname (empty: remove it)') }] },
+  quarantine: { label: dt('Quarantine'), later: true, fields: [] },
+  lockdown: { label: dt('Lock the server'), later: true, fields: [num('minutes', dt('Minutes'), 1, 720, 10)] },
+  violation: { label: dt('Count a strike'), later: false, fields: [{ k: 'name', t: 'text', label: dt('Name of the counter'), d: 'strikes' }] },
+  reset_violations: { label: dt('Clear the strikes'), later: false, fields: [{ k: 'name', t: 'text', label: dt('Name of the counter'), d: 'strikes' }] },
+  add_heat: { label: dt('Add heat'), later: false, fields: [num('amount', dt('Heat'), 1, 1000, 20)] },
+  reset_heat: { label: dt('Cool down (heat to 0)'), later: false, fields: [] },
+};
+
+const TEMPLATE_TEXT: Record<string, [string, string]> = {
+  flood: [dt('Message flood'), dt('Deletes the messages of someone who writes too fast and mutes them, longer each time.')],
+  repeat: [dt('The same message again'), dt('Deletes the same text sent again and again, and warns on the second time.')],
+  'invites-new': [dt('No invites from new accounts'), dt('Accounts of less than 7 days cannot share Discord invites.')],
+  'scam-links': [dt('Scam links'), dt('Fake gifts and Nitro: deletes, mutes for a day and alerts.')],
+  'mass-mentions': [dt('Mass mentions'), dt('More than 5 mentions in a message.')],
+  'mention-rate': [dt('Mentions too fast'), dt('More than 10 mentions in 10 seconds: deletes their last messages and mutes.')],
+  caps: [dt('Shouting'), dt('Messages that are mostly capitals.')],
+  'emoji-wall': [dt('Emoji spam'), dt('More than 12 emojis in a message.')],
+  'wall-of-text': [dt('Walls of text'), dt('More than 1500 characters or 15 lines.')],
+  zalgo: [dt('Zalgo and repeated characters'), dt('Strange marks and aaaaaaaaaaaa.')],
+  'link-flood': [dt('Link flood from new members'), dt('5 links in 30 seconds from someone who joined 3 days ago or less.')],
+  strikes: [dt('Three strikes: timeout'), dt('Acts when a member has 3 strikes of the counter "strikes" in an hour. Other rules add strikes with "Count a strike".')],
+  heat: [dt('Heat from fast messages'), dt('Writing fast adds heat (it falls by itself).')],
+  'heat-act': [dt('Too hot: timeout'), dt('Mutes whoever reaches 100 of heat, longer each time, and cools them down.')],
+};
+const templates = RULE_TEMPLATES.map((tpl) => ({ id: tpl.id, name: TEMPLATE_TEXT[tpl.id]?.[0] ?? tpl.rule.name, text: TEMPLATE_TEXT[tpl.id]?.[1] ?? '', rule: tpl.rule }));
+const GATE_LABEL: Record<string, string> = { none: dt('Do nothing'), alert: dt('Only alert'), timeout: dt('Timeout'), kick: dt('Kick'), ban: dt('Ban'), quarantine: dt('Quarantine') };
+const RAID_LABEL: Record<string, string> = { alert: dt('Only alert'), lockdown: dt('Lock the server'), kick_new: dt('Kick whoever joins while it lasts'), ban_new: dt('Ban whoever joins while it lasts') };
+const gateActions = GATE_ACTIONS.map((id) => [id, GATE_LABEL[id]]);
+const raidActions = RAID_ACTIONS.map((id) => [id, RAID_LABEL[id]]);
+
+const i18n = {
+  tabs: { global: dt('Global settings'), lists: dt('Lists'), logs: dt('Logs'), gate: dt('Join gate'), tools: dt('Tools'), newSet: dt('New ruleset') },
+  blank: dt('Nothing chosen'), save: dt('Save'), cancel: dt('Cancel'), delete: dt('Delete'), edit: dt('Edit'), add: dt('Add'), yes: dt('Yes'), no: dt('No'),
+  saved: dt('Saved.'), failed: dt('Something went wrong, try again.'), working: dt('Saving…'),
+  confirmDeleteSet: dt('Delete this ruleset and all its rules?'), confirmDeleteRule: dt('Delete this rule?'), confirmDeleteList: dt('Delete this list? Rules that use it stop finding anything with it.'),
+  global: {
+    title: dt('Global settings'), lead: dt('These apply to every rule of the server.'), enabled: dt('Rules are on'), enabledHint: dt('Turn it off to stop every rule at once without deleting them.'),
+    staff: dt('Leave out moderators'), staffHint: dt('Members who can manage messages are never touched by the rules.'), logChannel: dt('Send each hit to a channel'), logNone: dt('No channel (hits are only kept in the Logs tab)'),
+    bots: dt('Leave out bots'), botsHint: dt('Bots and webhooks are never touched by the rules, unless you turn this off and use the condition "Who writes".'),
+    heat: dt('Heat that falls every minute'), heatHint: dt('How much heat a member loses each minute (see the trigger and the effect "Heat"). 0: it never falls.'),
+    quarantine: dt('Quarantine role'), quarantineNone: dt('No role'), quarantineHint: dt('The role that the effect "Quarantine" and the join gate give. Make it so that it only sees one channel.'),
+  },
+  lists: {
+    title: dt('Lists'), lead: dt('Lists of words and of domains that any rule can use. Change a list here and every rule that uses it follows.'), none: dt('No lists yet.'),
+    name: dt('Name'), kind: dt('Kind'), words: dt('Words'), domains: dt('Domains'), items: dt('One per line'), count: dt('{n} items'), newList: dt('New list'),
+    domainsHint: dt('Domains like example.com. A domain also covers its subdomains.'),
+  },
+  logs: { title: dt('Logs'), lead: dt('What the rules did lately: the rule, the member, the channel and what matched. Petto never keeps the text of the message. The last 100 are shown.'), none: dt('No rule has caught anything yet.'), gate: dt('Join gate'), when: dt('When'), rule: dt('Rule'), member: dt('Member'), channel: dt('Channel'), what: dt('Matched'), did: dt('Petto did'), clear: dt('Clear the logs'), confirmClear: dt('Clear the logs of the rules?'), nothingDone: dt('nothing yet') },
+  set: {
+    name: dt('Name of the ruleset'), enabled: dt('Ruleset is on'), conditions: dt('General conditions'), conditionsLead: dt('Rules of this ruleset only apply to messages that pass all of these.'), addCondition: dt('Add a condition'),
+    rules: dt('Rules'), none: dt('This ruleset has no rules yet.'), newRule: dt('New rule'), delete: dt('Delete ruleset'), hits: dt('{n} hits'), saveSet: dt('Save ruleset'),
+  },
+  rule: {
+    name: dt('Name of the rule'), enabled: dt('Rule is on'), triggers: dt('Triggers: what it looks for'), addTrigger: dt('Add a trigger'), any: dt('Any of them'), all: dt('All of them'), mode: dt('The rule applies when it finds'),
+    conditions: dt('Conditions: who and where'), addCondition: dt('Add a condition'), effects: dt('Effects: what Petto does'), addEffect: dt('Add an effect'),
+    threshold: dt('Wait until the member does it'), times: dt('time(s) in'), minutes: dt('minutes'), thresholdHint: dt('Delete and reply happen every time. The rest (warn, timeout, kick, ban, DM and roles) wait for this count.'),
+    stop: dt('Stop here: do not check the rules after this one'), up: dt('Move up'), down: dt('Move down'), later: dt('waits for the count'), needTrigger: dt('Add at least one trigger.'), needEffect: dt('Add at least one effect.'),
+    pickType: dt('Choose…'), newTitle: dt('New rule'),
+    dryRun: dt('Test mode: only write in the log what it would do'), duplicate: dt('Duplicate'), copy: dt('(copy)'),
+    tryTitle: dt('Try this rule'), tryLead: dt('Write a message and see what the rule would do with it. Nothing is done and nothing is saved.'),
+    tryText: dt('A sample message'), tryAge: dt('Age of the account (days)'), tryTimes: dt('Send it this many times (for the rules about speed)'), tryMentions: dt('Members mentioned'), tryAttach: dt('Attachments'), tryButton: dt('Try it'),
+    tryApplies: dt('The rule applies.'), tryNo: dt('The rule does not apply.'), tryCond: dt('Conditions'), tryTrig: dt('Triggers'), tryEff: dt('Effects'), tryPass: dt('passes'), tryFail: dt('does not pass'), tryHit: dt('finds'), tryNothing: dt('finds nothing'),
+    tryNow: dt('at once'), tryCount: dt('waits for the count'), tryState: dt('Strikes and heat are not known here: they count as 0 unless you write them.'), tryFailed: dt('Petto could not try the rule.'),
+  },
+  templates: { add: dt('Add from a template'), choose: dt('Choose a template…'), added: dt('Rule added.') },
+  gate: {
+    title: dt('Join gate'), lead: dt('What Petto looks at in whoever joins, and what it does when many join at once. Bots are not looked at.'), enabled: dt('The join gate is on'),
+    noAvatar: dt('A member with no avatar'), age: dt('An account younger than (days)'), ageAction: dt('Then'), username: dt('A name with a word of a list'), usernameList: dt('List of words'), usernameWords: dt('More words, one per line'),
+    timeout: dt('A timeout lasts (minutes)'), raid: dt('Raid detector'), raidLead: dt('A raid is many joins in a short time. Leave the number at 0 to turn it off.'), raidJoins: dt('This many joins'), raidSeconds: dt('In this many seconds'),
+    raidAction: dt('Then'), raidMinutes: dt('The raid lasts (minutes)'), raidChannel: dt('Say it in this channel'), raidNone: dt('The channel of the hits'), action: dt('Action'),
+  },
+  gateActions, raidActions,
+  tools: {
+    title: dt('Tools'), exportTitle: dt('Export'), exportLead: dt('Download your lists, rulesets and rules as a file, to keep a copy or to use them in another server.'), exportButton: dt('Download the file'),
+    importTitle: dt('Import'), importLead: dt('Paste the content of a file made by Export. What you add is added to what you have: nothing is replaced.'), importPlaceholder: dt('Paste the file here'), importButton: dt('Import'),
+    importDone: dt('Imported: {lists} lists, {rulesets} rulesets and {rules} rules. {skipped} left out.'), importBad: dt('That is not a file made by Export.'),
+  },
+  triggers: TRIGGERS, conditions: CONDITIONS, effects: EFFECTS, templateList: templates,
+  limits: { rulesets: LIMITS.rulesets, rules: LIMITS.rulesPerSet, lists: LIMITS.lists },
+};
+---
+<DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="mod-rules" pageTitle={dt('Moderation rules')}>
+  <DashSettingsKit />
+  <DashFormKit />
+  <div class="mr" data-mr data-guild={guildId} data-can-edit={canEdit ? '1' : '0'} data-ready={ready ? '1' : '0'}>
+    <header class="mr-head">
+      <h1>{dt('Moderation rules')}</h1>
+      <a class="btn btn-sm" href={docsUrl} target="_blank" rel="noopener"><Icon name="ph:book-open-fill" width="13" height="13" />{dt('Read the docs')}</a>
+    </header>
+    <p class="mr-lead">{dt('Make your own rules: what to look for, who and where it applies, and what Petto does. Rules are made here in the dashboard; the bot only follows them.')}</p>
+    {!ready && <div class="mr-flash mr-flash-warn"><Icon name="ph:plug-fill" width="15" height="15" />{dt('The rules could not be read. Petto may be updating: try again in a few minutes.')}</div>}
+    {ready && !canEdit && <div class="mr-flash mr-flash-warn"><Icon name="ph:eye-fill" width="15" height="15" />{dt('You can look at the rules but not change them.')}</div>}
+    <div class="mr-flash" data-mr-flash role="status" hidden></div>
+    <nav class="mr-tabs" data-mr-tabs aria-label={dt('Moderation rules')}></nav>
+    <div class="mr-body" data-mr-body></div>
+    <script type="application/json" data-mr-data set:html={JSON.stringify(data)}></script>
+    <script type="application/json" data-mr-i18n set:html={JSON.stringify(i18n)}></script>
+    <script type="application/json" data-mr-places set:html={JSON.stringify({ roles, channels, categories })}></script>
+  </div>
+</DashGuildLayout>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-mr]');
+  if (root) {
+    const read = (selector: string) => JSON.parse(root.querySelector(selector)!.textContent || '{}');
+    const data = read('[data-mr-data]');
+    const T = read('[data-mr-i18n]');
+    const places = read('[data-mr-places]');
+    const canEdit = root.dataset.canEdit === '1' && root.dataset.ready === '1';
+    const tabsEl = root.querySelector<HTMLElement>('[data-mr-tabs]')!;
+    const bodyEl = root.querySelector<HTMLElement>('[data-mr-body]')!;
+    const flashEl = root.querySelector<HTMLElement>('[data-mr-flash]')!;
+    const api = `/dash/guild/${root.dataset.guild}/rules-api`;
+    const KEY = `petto-rules-tab-${root.dataset.guild}`;
+    let tab: string = 'global';
+    try { tab = sessionStorage.getItem(KEY) || 'global'; } catch { /* the tab is only a convenience */ }
+    if (!['global', 'lists', 'logs', 'gate', 'tools'].includes(tab) && !data.rulesets.some((s: any) => `set-${s.id}` === tab)) tab = 'global';
+
+    type Attrs = Record<string, any>;
+    function h(tag: string, attrs: Attrs = {}, ...children: any[]): HTMLElement {
+      const el = document.createElement(tag);
+      for (const [key, value] of Object.entries(attrs)) {
+        if (value === false || value === null || value === undefined) continue;
+        if (key === 'class') el.className = value;
+        else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
+        else if (key === 'value') (el as HTMLInputElement).value = value;
+        else if (key === 'checked' || key === 'disabled' || key === 'selected' || key === 'multiple') (el as any)[key] = Boolean(value);
+        else el.setAttribute(key, value === true ? '' : String(value));
+      }
+      for (const child of children.flat()) if (child !== null && child !== undefined && child !== false) el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+      return el;
+    }
+    const fill = (text: string, values: Record<string, any>) => text.replace(/\{(\w+)\}/g, (_all, key) => String(values[key] ?? ''));
+    const lockedAttrs: Attrs = { disabled: !canEdit };
+
+    function flash(text: string, ok: boolean) {
+      flashEl.hidden = false; flashEl.textContent = text; flashEl.className = `mr-flash ${ok ? 'mr-flash-ok' : 'mr-flash-err'}`;
+      window.setTimeout(() => { flashEl.hidden = true; }, 5000);
+    }
+    async function send(payload: Record<string, any>): Promise<any> {
+      try {
+        const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.ok) { flash(body?.message || T.failed, false); return null; }
+        return body;
+      } catch { flash(T.failed, false); return null; }
+    }
+    const reload = (nextTab?: string) => { try { sessionStorage.setItem(KEY, nextTab || tab); } catch { /* optional */ } location.reload(); };
+    const confirmed = (text: string): Promise<boolean> => (window as any).dglConfirm(text, { confirm: T.delete, tone: 'danger' });
+
+    // ---- A form field from its description ----
+    function optionsFor(kind: string): [string, string][] {
+      if (kind === 'channels') return places.channels.map((c: any) => [c.id, `#${c.name}`]);
+      if (kind === 'categories') return places.categories.map((c: any) => [c.id, c.name]);
+      return places.roles.map((r: any) => [r.id, `@${r.name}`]);
+    }
+    function fieldEl(spec: any, value: any): { el: HTMLElement; get: () => any } {
+      const label = (control: HTMLElement) => h('label', { class: 'mr-field' }, h('span', {}, spec.label), control, spec.hint ? h('em', {}, spec.hint) : null);
+      if (spec.t === 'number') {
+        const input = h('input', { type: 'number', min: spec.min, max: spec.max, value: value ?? spec.d, ...lockedAttrs }) as HTMLInputElement;
+        return { el: label(input), get: () => Number(input.value) };
+      }
+      if (spec.t === 'text') { const input = h('input', { type: 'text', maxlength: 200, value: value ?? '', ...lockedAttrs }) as HTMLInputElement; return { el: label(input), get: () => input.value }; }
+      if (spec.t === 'textarea') { const area = h('textarea', { rows: 3, maxlength: 500, ...lockedAttrs }, value ?? '') as HTMLTextAreaElement; return { el: label(area), get: () => area.value }; }
+      if (spec.t === 'lines') {
+        const area = h('textarea', { rows: 4, ...lockedAttrs }, (Array.isArray(value) ? value : []).join('\n')) as HTMLTextAreaElement;
+        return { el: label(area), get: () => area.value.split('\n').map((line) => line.trim()).filter(Boolean) };
+      }
+      if (spec.t === 'list') {
+        const lists = data.lists.filter((l: any) => l.kind === spec.kind);
+        const select = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), lists.map((l: any) => h('option', { value: l.id, selected: String(value) === l.id }, l.name))) as HTMLSelectElement;
+        return { el: label(select), get: () => (select.value ? Number(select.value) : null) };
+      }
+      if (spec.t === 'channel') {
+        const select = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), places.channels.map((c: any) => h('option', { value: c.id, selected: String(value) === c.id }, `#${c.name}`))) as HTMLSelectElement;
+        return { el: label(select), get: () => select.value };
+      }
+      if (spec.t === 'role') {
+        const select = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), places.roles.map((r: any) => h('option', { value: r.id, selected: String(value) === r.id }, `@${r.name}`))) as HTMLSelectElement;
+        return { el: label(select), get: () => select.value };
+      }
+      if (spec.kind) {
+        const chosen = new Set((Array.isArray(value) ? value : []).map(String));
+        const select = h('select', { multiple: true, size: 6, ...lockedAttrs }, optionsFor(spec.kind).map(([id, name]) => h('option', { value: id, selected: chosen.has(id) }, name))) as HTMLSelectElement;
+        return { el: label(select), get: () => [...select.selectedOptions].map((o) => o.value) };
+      }
+      const select = h('select', { ...lockedAttrs }, (spec.options || []).map(([id, name]: [string, string]) => h('option', { value: id, selected: String(value ?? spec.d) === id }, name))) as HTMLSelectElement;
+      return { el: label(select), get: () => select.value };
+    }
+
+    // ---- A list of typed items (triggers, conditions, effects): a row for each, with its fields ----
+    function itemsEditor(kindMap: Record<string, any>, items: any[], addLabel: string, extra?: (type: string) => string | null) {
+      const wrap = h('div', { class: 'mr-items' });
+      const rows: { type: string; getters: Record<string, () => any>; el: HTMLElement }[] = [];
+      function addRow(item: any) {
+        const type = item.type;
+        const def = kindMap[type];
+        if (!def) return;
+        const getters: Record<string, () => any> = {};
+        const body = h('div', { class: 'mr-item-fields' });
+        for (const spec of def.fields) {
+          const built = fieldEl(spec, item[spec.k]);
+          getters[spec.k] = built.get; body.append(built.el);
+        }
+        const note = extra?.(type);
+        const el = h('div', { class: 'mr-item' },
+          h('div', { class: 'mr-item-head' }, h('b', {}, def.label), note ? h('span', { class: 'mr-tag' }, note) : null,
+            canEdit ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm mr-x', title: T.delete, onclick: () => { el.remove(); rows.splice(rows.findIndex((r) => r.el === el), 1); } }, '×') : null),
+          def.hint ? h('p', { class: 'mr-hint' }, def.hint) : null, body);
+        rows.push({ type, getters, el }); wrap.append(el);
+      }
+      items.forEach(addRow);
+      const select = h('select', { class: 'mr-add-select' }, h('option', { value: '' }, `+ ${addLabel}`), Object.entries(kindMap).map(([type, def]: [string, any]) => h('option', { value: type }, def.label))) as HTMLSelectElement;
+      select.addEventListener('change', () => {
+        if (!select.value) return;
+        const defaults: any = { type: select.value };
+        for (const spec of kindMap[select.value].fields) if (spec.d !== undefined) defaults[spec.k] = spec.d;
+        addRow(defaults); select.value = '';
+      });
+      const root = h('div', {}, wrap, canEdit ? select : null);
+      return { el: root, get: () => rows.map((row) => ({ type: row.type, ...Object.fromEntries(Object.entries(row.getters).map(([k, g]) => [k, g()])) })) };
+    }
+
+    const toggle = (checked: boolean, title: string, hint?: string) => {
+      const input = h('input', { type: 'checkbox', checked, ...lockedAttrs }) as HTMLInputElement;
+      return { el: h('label', { class: 'sx-switch' }, input, h('span', { class: 'sx-switch-text' }, h('b', {}, title), hint ? h('em', {}, hint) : null), h('span', { class: 'sx-toggle', 'aria-hidden': 'true' })), get: () => input.checked };
+    };
+    const saveButton = (onclick: () => void) => (canEdit ? h('button', { type: 'button', class: 'btn btn-accent', onclick }, T.save) : null);
+
+    // ---- Tabs ----
+    function drawTabs() {
+      tabsEl.innerHTML = '';
+      const add = (id: string, label: string, extra = '') => tabsEl.append(h('button', { type: 'button', class: `mr-tab${tab === id ? ' is-active' : ''}${extra}`, onclick: () => { tab = id; try { sessionStorage.setItem(KEY, id); } catch { /* optional */ } draw(); } }, label));
+      add('global', T.tabs.global); add('gate', T.tabs.gate); add('lists', T.tabs.lists); add('logs', T.tabs.logs); add('tools', T.tabs.tools);
+      for (const set of data.rulesets) add(`set-${set.id}`, set.name, set.enabled ? '' : ' is-off');
+      if (canEdit && data.rulesets.length < T.limits.rulesets) tabsEl.append(h('button', { type: 'button', class: 'mr-tab mr-tab-new', onclick: newRuleset }, `+ ${T.tabs.newSet}`));
+    }
+    async function newRuleset() {
+      const body = await send({ op: 'ruleset_save', name: T.tabs.newSet, enabled: true, conditions: [] });
+      if (body) reload(`set-${body.id}`);
+    }
+
+    // ---- Global settings ----
+    function drawGlobal() {
+      const s = data.settings;
+      const on = toggle(s.enabled, T.global.enabled, T.global.enabledHint);
+      const staff = toggle(s.ignore_staff, T.global.staff, T.global.staffHint);
+      const bots = toggle(s.ignore_bots, T.global.bots, T.global.botsHint);
+      const decay = h('input', { type: 'number', min: 0, max: 1000, value: s.heat_decay, ...lockedAttrs }) as HTMLInputElement;
+      const quarantine = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.global.quarantineNone), places.roles.filter((r: any) => !r.managed).map((r: any) => h('option', { value: r.id, selected: s.quarantine_role_id === r.id }, `@${r.name}`))) as HTMLSelectElement;
+      const channel = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.global.logNone), places.channels.map((c: any) => h('option', { value: c.id, selected: s.log_channel_id === c.id }, `#${c.name}`))) as HTMLSelectElement;
+      return h('section', { class: 'mr-card' }, h('h2', {}, T.global.title), h('p', { class: 'mr-hint' }, T.global.lead), on.el, staff.el, bots.el,
+        h('label', { class: 'mr-field' }, h('span', {}, T.global.logChannel), channel),
+        h('label', { class: 'mr-field' }, h('span', {}, T.global.heat), decay, h('em', {}, T.global.heatHint)),
+        h('label', { class: 'mr-field' }, h('span', {}, T.global.quarantine), quarantine, h('em', {}, T.global.quarantineHint)),
+        saveButton(async () => { if (await send({ op: 'settings', enabled: on.get(), ignore_staff: staff.get(), ignore_bots: bots.get(), heat_decay: Number(decay.value), quarantine_role_id: quarantine.value || null, log_channel_id: channel.value || null })) reload(); }));
+    }
+
+    // ---- Lists ----
+    function drawLists() {
+      const section = h('section', { class: 'mr-card' }, h('h2', {}, T.lists.title), h('p', { class: 'mr-hint' }, T.lists.lead));
+      if (!data.lists.length) section.append(h('p', { class: 'mr-empty' }, T.lists.none));
+      const editor = (list: any) => {
+        const name = h('input', { type: 'text', maxlength: 60, value: list.name, ...lockedAttrs }) as HTMLInputElement;
+        const kind = h('select', { ...(list.id ? { disabled: true } : lockedAttrs) }, h('option', { value: 'words', selected: list.kind === 'words' }, T.lists.words), h('option', { value: 'domains', selected: list.kind === 'domains' }, T.lists.domains)) as HTMLSelectElement;
+        const items = h('textarea', { rows: 6, ...lockedAttrs }, list.items.join('\n')) as HTMLTextAreaElement;
+        return h('div', { class: 'mr-list' },
+          h('div', { class: 'mr-row' }, h('label', { class: 'mr-field' }, h('span', {}, T.lists.name), name), h('label', { class: 'mr-field' }, h('span', {}, T.lists.kind), kind)),
+          h('label', { class: 'mr-field' }, h('span', {}, T.lists.items), items, h('em', {}, T.lists.domainsHint)),
+          canEdit ? h('div', { class: 'mr-actions' },
+            h('button', { type: 'button', class: 'btn btn-accent btn-sm', onclick: async () => { if (await send({ op: 'list_save', id: list.id || undefined, name: name.value, kind: kind.value, items: items.value.split('\n') })) reload('lists'); } }, T.save),
+            list.id ? h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: async () => { if ((await confirmed(T.confirmDeleteList)) && await send({ op: 'list_delete', id: list.id })) reload('lists'); } }, T.delete) : null) : null);
+      };
+      for (const list of data.lists) section.append(h('details', { class: 'mr-details' }, h('summary', {}, h('b', {}, list.name), h('span', { class: 'mr-tag' }, list.kind === 'domains' ? T.lists.domains : T.lists.words), h('span', { class: 'mr-dim' }, fill(T.lists.count, { n: list.items.length }))), editor(list)));
+      if (canEdit && data.lists.length < T.limits.lists) section.append(h('details', { class: 'mr-details' }, h('summary', {}, h('b', {}, `+ ${T.lists.newList}`)), editor({ id: '', name: '', kind: 'words', items: [] })));
+      return section;
+    }
+
+    // ---- Logs ----
+    function drawLogs() {
+      const section = h('section', { class: 'mr-card' }, h('h2', {}, T.logs.title), h('p', { class: 'mr-hint' }, T.logs.lead));
+      if (!data.logs.length) { section.append(h('p', { class: 'mr-empty' }, T.logs.none)); return section; }
+      const channelName = (id: string | null) => (id ? (places.channels.find((c: any) => c.id === id)?.name ? `#${places.channels.find((c: any) => c.id === id).name}` : id) : '—');
+      const table = h('table', { class: 'mr-table' }, h('thead', {}, h('tr', {}, [T.logs.when, T.logs.rule, T.logs.member, T.logs.channel, T.logs.what, T.logs.did].map((t: string) => h('th', {}, t)))),
+        h('tbody', {}, data.logs.map((l: any) => h('tr', {}, h('td', {}, new Date(l.at).toLocaleString()), h('td', {}, l.rule === 'join-gate' ? T.logs.gate : l.rule), h('td', {}, h('code', {}, l.user)), h('td', {}, channelName(l.channel)), h('td', {}, l.trigger), h('td', {}, l.effects.join(', ') || T.logs.nothingDone)))));
+      section.append(h('div', { class: 'mr-scroll' }, table));
+      if (canEdit) section.append(h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: async () => { if ((await confirmed(T.logs.confirmClear)) && await send({ op: 'clear_logs' })) reload('logs'); } }, T.logs.clear));
+      return section;
+    }
+
+    // ---- A ruleset and its rules ----
+    // ---- "Try this rule": what the rule would do with a sample message (the bot says; nothing is done) ----
+    function tryPanel(collect: () => any) {
+      const text = h('textarea', { rows: 3, maxlength: 500 }) as HTMLTextAreaElement;
+      const age = h('input', { type: 'number', min: 0, max: 99999, value: 400 }) as HTMLInputElement;
+      const times = h('input', { type: 'number', min: 1, max: 50, value: 1 }) as HTMLInputElement;
+      const mentions = h('input', { type: 'number', min: 0, max: 200, value: 0 }) as HTMLInputElement;
+      const files = h('input', { type: 'number', min: 0, max: 20, value: 0 }) as HTMLInputElement;
+      const out = h('div', { class: 'mr-try-out', hidden: true });
+      const run = async () => {
+        out.hidden = false; out.textContent = T.working;
+        const body = await send({ op: 'test', rule: collect(), sample: { content: text.value, account_age_days: Number(age.value), times: Number(times.value), users: Number(mentions.value), attachments: Number(files.value) } });
+        out.textContent = '';
+        if (!body || body.ok === false) { out.append(h('p', { class: 'mr-try-bad' }, body?.error === 'triggers' ? T.rule.needTrigger : body?.error === 'effects' ? T.rule.needEffect : T.rule.tryFailed)); return; }
+        out.append(h('p', { class: body.applies ? 'mr-try-ok' : 'mr-try-bad' }, body.applies ? T.rule.tryApplies : T.rule.tryNo));
+        const line = (ok: boolean, label: string, note: string) => h('li', { class: ok ? 'mr-try-ok' : 'mr-try-bad' }, `${ok ? '✓' : '✗'} ${label} ${note}`);
+        if (body.conditions.length) out.append(h('b', {}, T.rule.tryCond), h('ul', {}, body.conditions.map((c: any) => line(c.pass, T.conditions[c.type]?.label ?? c.type, c.pass ? T.rule.tryPass : T.rule.tryFail))));
+        out.append(h('b', {}, T.rule.tryTrig), h('ul', {}, body.triggers.map((x: any) => line(x.hit !== null, T.triggers[x.type]?.label ?? x.type, x.hit !== null ? `${T.rule.tryHit} ${String(x.hit).split(':').slice(1).join(':')}`.trim() : T.rule.tryNothing))));
+        out.append(h('b', {}, T.rule.tryEff), h('ul', {}, body.effects.map((x: any) => h('li', {}, `${T.effects[x.type]?.label ?? x.type} · ${x.when === 'now' ? T.rule.tryNow : T.rule.tryCount}`))));
+        if (body.notes?.includes('state')) out.append(h('p', { class: 'mr-hint' }, T.rule.tryState));
+      };
+      return h('details', { class: 'mr-details mr-try' }, h('summary', {}, h('b', {}, T.rule.tryTitle)),
+        h('p', { class: 'mr-hint' }, T.rule.tryLead),
+        h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryText), text),
+        h('div', { class: 'mr-item-fields' }, h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryAge), age), h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryTimes), times), h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryMentions), mentions), h('label', { class: 'mr-field' }, h('span', {}, T.rule.tryAttach), files)),
+        h('div', { class: 'mr-actions' }, h('button', { type: 'button', class: 'btn btn-accent btn-sm', onclick: run }, T.rule.tryButton)), out);
+    }
+
+    function ruleEditor(set: any, rule: any) {
+      const isNew = !rule.id;
+      const name = h('input', { type: 'text', maxlength: 60, value: rule.name, ...lockedAttrs }) as HTMLInputElement;
+      const on = toggle(rule.enabled, T.rule.enabled);
+      const mode = h('select', { ...lockedAttrs }, h('option', { value: 'any', selected: rule.trigger_mode === 'any' }, T.rule.any), h('option', { value: 'all', selected: rule.trigger_mode === 'all' }, T.rule.all)) as HTMLSelectElement;
+      const triggers = itemsEditor(T.triggers, rule.triggers, T.rule.addTrigger);
+      const conditions = itemsEditor(T.conditions, rule.conditions, T.rule.addCondition);
+      const effects = itemsEditor(T.effects, rule.effects, T.rule.addEffect, (type) => (T.effects[type].later ? T.rule.later : null));
+      const count = h('input', { type: 'number', min: 1, max: 50, value: rule.threshold_count, ...lockedAttrs }) as HTMLInputElement;
+      const minutes = h('input', { type: 'number', min: 1, max: 1440, value: rule.threshold_minutes, ...lockedAttrs }) as HTMLInputElement;
+      const stop = toggle(rule.stop, T.rule.stop);
+      const dry = toggle(rule.dry_run === true, T.rule.dryRun);
+      const collect = () => ({ id: rule.id || undefined, name: name.value, enabled: on.get(), dry_run: dry.get(), trigger_mode: mode.value, triggers: triggers.get(), conditions: conditions.get(), effects: effects.get(), threshold_count: Number(count.value), threshold_minutes: Number(minutes.value), stop: stop.get() });
+      const tryBox = tryPanel(collect);
+      return h('div', { class: 'mr-rule' },
+        h('div', { class: 'mr-row' }, h('label', { class: 'mr-field' }, h('span', {}, T.rule.name), name), on.el),
+        h('h3', {}, T.rule.triggers), h('label', { class: 'mr-field mr-inline' }, h('span', {}, T.rule.mode), mode), triggers.el,
+        h('h3', {}, T.rule.conditions), conditions.el,
+        h('h3', {}, T.rule.effects), effects.el,
+        h('div', { class: 'mr-threshold' }, h('span', {}, T.rule.threshold), count, h('span', {}, T.rule.times), minutes, h('span', {}, T.rule.minutes)),
+        h('p', { class: 'mr-hint' }, T.rule.thresholdHint), stop.el, dry.el, tryBox,
+        canEdit ? h('div', { class: 'mr-actions' }, h('button', { type: 'button', class: 'btn btn-accent', onclick: async () => {
+          const t = triggers.get(); const e = effects.get();
+          if (!t.length) return flash(T.rule.needTrigger, false);
+          if (!e.length) return flash(T.rule.needEffect, false);
+          const ok = await send({ op: 'rule_save', ruleset_id: set.id, rule: collect() });
+          if (ok) reload(`set-${set.id}`);
+        } }, isNew ? T.add : T.save)) : null);
+    }
+    function drawSet(set: any) {
+      const name = h('input', { type: 'text', maxlength: 60, value: set.name, ...lockedAttrs }) as HTMLInputElement;
+      const on = toggle(set.enabled, T.set.enabled);
+      const conditions = itemsEditor(T.conditions, set.conditions, T.set.addCondition);
+      const head = h('section', { class: 'mr-card' },
+        h('div', { class: 'mr-row' }, h('label', { class: 'mr-field' }, h('span', {}, T.set.name), name), on.el),
+        h('h3', {}, T.set.conditions), h('p', { class: 'mr-hint' }, T.set.conditionsLead), conditions.el,
+        canEdit ? h('div', { class: 'mr-actions' },
+          h('button', { type: 'button', class: 'btn btn-accent', onclick: async () => { if (await send({ op: 'ruleset_save', id: set.id, name: name.value, enabled: on.get(), conditions: conditions.get() })) reload(`set-${set.id}`); } }, T.set.saveSet),
+          h('button', { type: 'button', class: 'btn btn-danger', onclick: async () => { if ((await confirmed(T.confirmDeleteSet)) && await send({ op: 'ruleset_delete', id: set.id })) reload('global'); } }, T.set.delete),
+          data.rulesets.length > 1 ? [h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: async () => { if (await send({ op: 'move', kind: 'ruleset', id: set.id, dir: -1 })) reload(`set-${set.id}`); } }, `← ${T.rule.up}`), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: async () => { if (await send({ op: 'move', kind: 'ruleset', id: set.id, dir: 1 })) reload(`set-${set.id}`); } }, `${T.rule.down} →`)] : null) : null);
+      const rulesBox = h('section', { class: 'mr-card' }, h('h2', {}, T.set.rules));
+      if (!set.rules.length) rulesBox.append(h('p', { class: 'mr-empty' }, T.set.none));
+      for (const rule of set.rules) {
+        rulesBox.append(h('details', { class: 'mr-details' },
+          h('summary', {}, h('b', {}, rule.name), rule.enabled ? null : h('span', { class: 'mr-tag mr-tag-off' }, T.no), h('span', { class: 'mr-dim' }, fill(T.set.hits, { n: rule.hits })),
+            canEdit ? h('span', { class: 'mr-summary-actions' },
+              h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: async (ev: Event) => { ev.preventDefault(); const { id: _id, hits: _hits, ...copy } = rule; if (await send({ op: 'rule_save', ruleset_id: set.id, rule: { ...copy, name: `${rule.name} ${T.rule.copy}`.slice(0, 60) } })) reload(`set-${set.id}`); } }, T.rule.duplicate),
+              h('button', { type: 'button', class: 'btn btn-ghost btn-sm', title: T.rule.up, onclick: async (ev: Event) => { ev.preventDefault(); if (await send({ op: 'move', kind: 'rule', id: rule.id, dir: -1 })) reload(`set-${set.id}`); } }, '↑'),
+              h('button', { type: 'button', class: 'btn btn-ghost btn-sm', title: T.rule.down, onclick: async (ev: Event) => { ev.preventDefault(); if (await send({ op: 'move', kind: 'rule', id: rule.id, dir: 1 })) reload(`set-${set.id}`); } }, '↓'),
+              h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: async (ev: Event) => { ev.preventDefault(); if ((await confirmed(T.confirmDeleteRule)) && await send({ op: 'rule_delete', id: rule.id })) reload(`set-${set.id}`); } }, T.delete)) : null),
+          ruleEditor(set, rule)));
+      }
+      if (canEdit && set.rules.length < T.limits.rules) {
+        const picker = h('select', { class: 'mr-add-select' }, h('option', { value: '' }, `+ ${T.templates.add}`), T.templateList.map((tpl: any) => h('option', { value: tpl.id, title: tpl.text }, tpl.name))) as HTMLSelectElement;
+        picker.addEventListener('change', async () => {
+          const tpl = T.templateList.find((x: any) => x.id === picker.value);
+          if (!tpl) return;
+          if (await send({ op: 'rule_save', ruleset_id: set.id, rule: { ...tpl.rule, name: tpl.name } })) reload(`set-${set.id}`);
+        });
+        rulesBox.append(picker);
+      }
+      if (canEdit && set.rules.length < T.limits.rules) {
+        const blank = { id: '', name: T.rule.newTitle, enabled: true, trigger_mode: 'any', triggers: [], conditions: [], effects: [{ type: 'delete' }], threshold_count: 1, threshold_minutes: 10, stop: true };
+        rulesBox.append(h('details', { class: 'mr-details' }, h('summary', {}, h('b', {}, `+ ${T.set.newRule}`)), ruleEditor(set, blank)));
+      }
+      return h('div', {}, head, rulesBox);
+    }
+
+    // ---- Join gate and raid detector ----
+    function drawGate() {
+      const g = data.gate;
+      const on = toggle(g.enabled, T.gate.enabled);
+      const actionSelect = (value: string, options: [string, string][]) => h('select', { ...lockedAttrs }, options.map(([id, label]) => h('option', { value: id, selected: id === value }, label))) as HTMLSelectElement;
+      const number = (value: number, min: number, max: number) => h('input', { type: 'number', min, max, value, ...lockedAttrs }) as HTMLInputElement;
+      const field = (label: string, control: HTMLElement, hint?: string) => h('label', { class: 'mr-field' }, h('span', {}, label), control, hint ? h('em', {}, hint) : null);
+      const noAvatar = actionSelect(g.no_avatar_action, T.gateActions);
+      const age = number(g.account_age_days, 0, 365); const ageAction = actionSelect(g.account_age_action, T.gateActions);
+      const listSelect = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.blank), data.lists.filter((l: any) => l.kind === 'words').map((l: any) => h('option', { value: l.id, selected: String(g.username_list_id) === l.id }, l.name))) as HTMLSelectElement;
+      const words = h('textarea', { rows: 3, ...lockedAttrs }, (g.username_words || []).join('\n')) as HTMLTextAreaElement;
+      const nameAction = actionSelect(g.username_action, T.gateActions);
+      const minutes = number(g.timeout_minutes, 1, 40320);
+      const joins = number(g.raid_joins, 0, 500); const seconds = number(g.raid_seconds, 5, 600);
+      const raidAction = actionSelect(g.raid_action, T.raidActions); const raidMinutes = number(g.raid_lockdown_minutes, 1, 720);
+      const raidChannel = h('select', { ...lockedAttrs }, h('option', { value: '' }, T.gate.raidNone), places.channels.map((c: any) => h('option', { value: c.id, selected: g.raid_alert_channel_id === c.id }, `#${c.name}`))) as HTMLSelectElement;
+      return h('section', { class: 'mr-card' }, h('h2', {}, T.gate.title), h('p', { class: 'mr-hint' }, T.gate.lead), on.el,
+        h('div', { class: 'mr-item' }, field(T.gate.noAvatar, noAvatar)),
+        h('div', { class: 'mr-item' }, h('div', { class: 'mr-item-fields' }, field(T.gate.age, age), field(T.gate.ageAction, ageAction))),
+        h('div', { class: 'mr-item' }, h('b', {}, T.gate.username), h('div', { class: 'mr-item-fields' }, field(T.gate.usernameList, listSelect), field(T.gate.usernameWords, words), field(T.gate.action, nameAction))),
+        field(T.gate.timeout, minutes),
+        h('h3', {}, T.gate.raid), h('p', { class: 'mr-hint' }, T.gate.raidLead),
+        h('div', { class: 'mr-item' }, h('div', { class: 'mr-item-fields' }, field(T.gate.raidJoins, joins), field(T.gate.raidSeconds, seconds), field(T.gate.raidAction, raidAction), field(T.gate.raidMinutes, raidMinutes), field(T.gate.raidChannel, raidChannel))),
+        saveButton(async () => {
+          const gate = { enabled: on.get(), no_avatar_action: noAvatar.value, account_age_days: Number(age.value), account_age_action: ageAction.value, username_list_id: listSelect.value ? Number(listSelect.value) : null, username_words: words.value.split('\n').map((w) => w.trim()).filter(Boolean), username_action: nameAction.value, timeout_minutes: Number(minutes.value), raid_joins: Number(joins.value), raid_seconds: Number(seconds.value), raid_action: raidAction.value, raid_lockdown_minutes: Number(raidMinutes.value), raid_alert_channel_id: raidChannel.value };
+          if (await send({ op: 'join_gate_save', gate })) reload('gate');
+        }));
+    }
+
+    // ---- Tools: export and import ----
+    function exportFile() {
+      const listName = (id: any, kind: string) => data.lists.find((l: any) => l.id === String(id) && l.kind === kind)?.name;
+      const out = {
+        format: 'petto-mod-rules', version: 2,
+        lists: data.lists.map((l: any) => ({ name: l.name, kind: l.kind, items: l.items })),
+        rulesets: data.rulesets.map((set: any) => ({
+          name: set.name, enabled: set.enabled, conditions: set.conditions,
+          rules: set.rules.map((r: any) => ({
+            name: r.name, enabled: r.enabled, dry_run: r.dry_run === true, trigger_mode: r.trigger_mode, conditions: r.conditions, effects: r.effects, threshold_count: r.threshold_count, threshold_minutes: r.threshold_minutes, stop: r.stop,
+            triggers: r.triggers.map((tr: any) => { const name = tr.list_id ? listName(tr.list_id, tr.type === 'links' ? 'domains' : 'words') : null; const { list_id: _drop, ...rest } = tr; return name ? { ...rest, list_name: name } : rest; }),
+          })),
+        })),
+      };
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' }));
+      link.download = 'petto-moderation-rules.json';
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+    function drawTools() {
+      const area = h('textarea', { rows: 8, placeholder: T.tools.importPlaceholder, ...lockedAttrs }) as HTMLTextAreaElement;
+      return h('div', {},
+        h('section', { class: 'mr-card' }, h('h2', {}, T.tools.exportTitle), h('p', { class: 'mr-hint' }, T.tools.exportLead), h('button', { type: 'button', class: 'btn btn-accent', onclick: exportFile }, T.tools.exportButton)),
+        h('section', { class: 'mr-card' }, h('h2', {}, T.tools.importTitle), h('p', { class: 'mr-hint' }, T.tools.importLead), area,
+          canEdit ? h('button', { type: 'button', class: 'btn btn-accent', onclick: async () => {
+            let parsed: any = null;
+            try { parsed = JSON.parse(area.value); } catch { return flash(T.tools.importBad, false); }
+            const body = await send({ op: 'import', data: parsed });
+            if (body) { flash(fill(T.tools.importDone, body), true); window.setTimeout(() => reload('global'), 1500); }
+          } }, T.tools.importButton) : null));
+    }
+
+    function draw() {
+      drawTabs();
+      bodyEl.innerHTML = '';
+      if (tab === 'global') bodyEl.append(drawGlobal());
+      else if (tab === 'lists') bodyEl.append(drawLists());
+      else if (tab === 'logs') bodyEl.append(drawLogs());
+      else if (tab === 'gate') bodyEl.append(drawGate());
+      else if (tab === 'tools') bodyEl.append(drawTools());
+      else { const set = data.rulesets.find((s: any) => `set-${s.id}` === tab); if (set) bodyEl.append(drawSet(set)); }
+    }
+    draw();
+  }
+</script>
+
+<style is:global>
+  .mr { max-width: 1100px; }
+  .mr [hidden] { display: none !important; }
+  .mr-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; margin: 0 0 8px; }
+  .mr-head h1 { font-size: 24px; margin: 0; }
+  .mr-lead { margin: 0 0 16px; font-size: 13.5px; color: var(--text-muted); line-height: 1.55; }
+  .mr-flash { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; border: 1px solid var(--border); }
+  .mr-flash[hidden] { display: none; }
+  /* The color is the background and the mark on the edge and the icon; the words stay light and easy to read. */
+  .mr-flash { border-left-width: 4px; }
+  .mr-flash :global(svg) { flex: none; }
+  .mr-flash-ok { color: var(--green-text); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 55%, transparent); border-left-color: var(--green); }
+  .mr-flash-ok :global(svg) { color: var(--green); }
+  .mr-flash-err { color: var(--red-text); background: color-mix(in srgb, var(--red, #ff6b6b) 12%, transparent); border-color: color-mix(in srgb, var(--red, #ff6b6b) 55%, transparent); border-left-color: var(--red); }
+  .mr-flash-err :global(svg) { color: var(--red); }
+  .mr-flash-warn { color: var(--yellow-text); background: color-mix(in srgb, var(--yellow) 12%, transparent); border-color: color-mix(in srgb, var(--yellow) 55%, transparent); border-left-color: var(--yellow); }
+  .mr-flash-warn :global(svg) { color: var(--yellow); }
+  .mr-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .mr-tab { border: 1px solid var(--border); background: var(--card); color: var(--text-muted); border-radius: 9px; padding: 7px 13px; font: inherit; font-size: 13.5px; cursor: pointer; }
+  .mr-tab.is-active { color: var(--text); border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--card)); }
+  .mr-tab.is-off { opacity: 0.6; }
+  .mr-tab-new { border-style: dashed; }
+  .mr-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 16px 18px; margin-bottom: 16px; display: grid; gap: 12px; }
+  .mr-card h2 { font-size: 17px; margin: 0; }
+  .mr-card h3, .mr-rule h3 { font-size: 14px; margin: 6px 0 0; }
+  .mr-card > .btn { justify-self: start; }
+  .mr-field select[multiple] { padding: 6px; }
+  .mr-field select[multiple] option { padding: 4px 8px; border-radius: 6px; }
+  .mr-field select[multiple] option:checked { background: color-mix(in srgb, var(--green) 35%, transparent); color: var(--text); }
+  .mr-hint { font-size: 12.5px; color: var(--text-dim); margin: 0; line-height: 1.5; }
+  .mr-empty { font-size: 13.5px; color: var(--text-dim); margin: 0; }
+  .mr-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 220px; }
+  .mr-field > span { font-size: 13px; font-weight: 600; }
+  .mr-field > em { font-size: 12px; color: var(--text-dim); font-style: normal; }
+  .mr-field input, .mr-field select, .mr-field textarea, .mr-add-select, .mr-threshold input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; min-width: 0; }
+  .mr-field textarea { resize: none; field-sizing: content; min-height: 4.5em; }
+  .mr-inline { flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .mr-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .mr-details { border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--card) 80%, transparent); }
+  .mr-details > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 11px 14px; cursor: pointer; list-style: none; }
+  .mr-details > summary::-webkit-details-marker { display: none; }
+  .mr-details[open] > summary { border-bottom: 1px solid var(--border); }
+  .mr-details > :not(summary) { margin: 14px; }
+  .mr-summary-actions { margin-left: auto; display: flex; gap: 6px; }
+  .mr-tag { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--text-dim); }
+  .mr-tag-off { color: var(--yellow-text); border-color: color-mix(in srgb, var(--yellow) 55%, transparent); }
+  .mr-dim { font-size: 12.5px; color: var(--text-dim); }
+  .mr-rule { display: grid; gap: 12px; }
+  .mr-items { display: grid; gap: 10px; margin-bottom: 8px; }
+  .mr-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+  .mr-item-head { display: flex; align-items: center; gap: 10px; }
+  .mr-item-head .mr-x { margin-left: auto; }
+  .mr-item-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+  .mr-threshold { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; }
+  .mr-threshold input { width: 78px; }
+  .mr-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .mr-try-out { display: grid; gap: 6px; font-size: 13.5px; margin-top: 10px; }
+  .mr-try-out ul { margin: 0 0 6px; padding-left: 18px; display: grid; gap: 3px; }
+  .mr-try-ok { color: var(--green-text); font-weight: 600; }
+  .mr-try-bad { color: var(--red-text); font-weight: 600; }
+  .mr-try-ok::marker, .mr-try-out li:has(.mr-try-ok)::marker { color: var(--green); }
+  .mr-try-bad::marker { color: var(--red); }
+  .mr-scroll { overflow-x: auto; }
+  .mr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .mr-table th, .mr-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .mr-table td:first-child { white-space: nowrap; }
+  .mr-table td code { font-size: 12px; }
+  .mr-table th { color: var(--text-dim); font-weight: 600; }
+  @media (max-width: 640px) { .mr-card { padding: 14px; } .mr-details > :not(summary) { margin: 10px; } }
+</style>

@@ -11,20 +11,23 @@ export interface AccessRule { role_id: string; sections: string[]; can_edit: boo
 export const ACCESS_SECTIONS: { id: string; label: string; pages: string[] }[] = [
   { id: 'dashboard', label: 'Dashboard', pages: ['modules', 'stats', 'general', 'customize', 'backups'] },
   { id: 'design', label: 'Design', pages: ['embeds', 'cards'] },
-  { id: 'moderation', label: 'Moderation', pages: ['moderation', 'antinuke', 'antiscam', 'honeypot', 'role-triggers', 'role-quotas', 'automod', 'lockdown'] },
+  { id: 'moderation', label: 'Moderation', pages: ['moderation', 'antinuke', 'antiscam', 'honeypot', 'role-triggers', 'role-quotas', 'automod', 'rules', 'lockdown'] },
   { id: 'appeals', label: 'Appeals', pages: ['appeals'] },
   { id: 'security', label: 'Security', pages: ['onboarding', 'verification', 'security', 'permissions', 'audit', 'logging'] },
+  { id: 'welcome', label: 'Welcome', pages: ['welcome'] },
+  { id: 'roles', label: 'Roles', pages: ['join-roles', 'aged-roles'] },
   { id: 'leveling', label: 'Leveling', pages: ['leveling'] },
   { id: 'automation', label: 'Automation', pages: ['automation', 'code', 'bulk-role', 'reaction-role', 'counters', 'boards'] },
   { id: 'tickets', label: 'Tickets', pages: ['tickets', 'forums'] },
-  { id: 'community', label: 'Community', pages: ['giveaways', 'community', 'birthdays', 'confessions', 'counting', 'media', 'partners', 'responders', 'senders', 'suggestions', 'tools', 'forms', 'feeds', 'activity-boards'] },
+  { id: 'community', label: 'Community', pages: ['giveaways', 'community', 'birthdays', 'confessions', 'counting', 'media', 'partners', 'responders', 'senders', 'suggestions', 'tools', 'forms', 'feeds', 'activity-boards', 'bump'] },
   { id: 'quests', label: 'Quests', pages: ['quests'] },
   { id: 'rollouts', label: 'Rollouts', pages: ['rollouts'] },
   { id: 'vanity', label: 'Vanity roles', pages: ['vanity'] },
 ];
 const SECTION_IDS = new Set(ACCESS_SECTIONS.map((section) => section.id));
-// Tickets were part of Community before they had a section of their own: a rule saved then with Community still opens them.
-const ALSO_OPENED_BY: Record<string, string> = { community: 'tickets' };
+// Tickets were part of Community before they had a section of their own: a rule saved then with Community still opens them. The same for the welcome and the join roles, which
+// were part of the page of Security (the onboarding) before they had a section each.
+const ALSO_OPENED_BY: Record<string, string[]> = { community: ['tickets'], security: ['welcome', 'roles'] };
 /** Open for anyone who has any rule: the overview and the live updates the pages ask for. */
 const OPEN_PAGES = new Set(['overview', 'live', 'role-blocks']);
 
@@ -56,8 +59,7 @@ export function accessFromRules(rules: AccessRule[], roleIds: string[]): RoleAcc
     for (const id of rule.sections) {
       if (!SECTION_IDS.has(id)) continue;
       access.sections[id] = access.sections[id] || rule.can_edit;
-      const also = ALSO_OPENED_BY[id];
-      if (also) access.sections[also] = access.sections[also] || rule.can_edit;
+      for (const also of ALSO_OPENED_BY[id] ?? []) access.sections[also] = access.sections[also] || rule.can_edit;
     }
   }
   return access;
@@ -65,7 +67,8 @@ export function accessFromRules(rules: AccessRule[], roleIds: string[]): RoleAcc
 
 /** Whether a page can be opened with this access, and whether it can be changed there. The page that sets the access up is never open. */
 export function pageDecision(access: RoleAccess, page: string): { allowed: boolean; canEdit: boolean } {
-  if (page === 'access') return { allowed: false, canEdit: false };
+  // Who sets up the access, and who lets a role use a moderation action without the permission of Discord, are the people who manage the server, nobody else.
+  if (page === 'access' || page === 'staff-roles') return { allowed: false, canEdit: false };
   if (OPEN_PAGES.has(page)) return { allowed: true, canEdit: false };
   const section = sectionOfPage(page);
   if (!section) return { allowed: access.all, canEdit: access.all && access.canEditAll };

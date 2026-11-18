@@ -5,6 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo } from '../../../../utils/discord';
 import { cached } from '../../../../utils/sharedCache';
+import { userAvatar } from '../../../../utils/premiumAdmin';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
 
@@ -58,14 +59,14 @@ function snowflakeDate(id: string): string {
 // the answer is kept in the shared cache, trimmed to what the page shows, and shared by every visitor of the server. It is not part of
 // the server's change stamp, so nothing is raised here; the page's own copy follows the minute (see the ETag in middleware.ts).
 const AUDIT_FRESH_MS = 45_000;
-type AuditAnswer = { status: number; users: { id: string; name: string }[]; entries: { id: string; user_id: string | null; target_id: string | null; action_type: number; reason: string | null; name: { new_value?: unknown; old_value?: unknown } | null }[] };
+type AuditAnswer = { status: number; users: { id: string; name: string; avatar: string | null }[]; entries: { id: string; user_id: string | null; target_id: string | null; action_type: number; reason: string | null; name: { new_value?: unknown; old_value?: unknown } | null }[] };
 const audit = await cached<AuditAnswer>(`audit:${id}`, async () => {
   const res = await fetch(`https://discord.com/api/v10/guilds/${id}/audit-logs?limit=100`, { headers: { Authorization: `Bot ${botToken}` } });
   if (!res.ok) return { status: res.status, users: [], entries: [] };
   const payload = await res.json();
   return {
     status: res.status,
-    users: (payload.users ?? []).map((u: any) => ({ id: u.id, name: u.global_name ?? u.username ?? u.id })),
+    users: (payload.users ?? []).map((u: any) => ({ id: u.id, name: u.global_name ?? u.username ?? u.id, avatar: u.avatar ?? null })),
     entries: (payload.audit_log_entries ?? []).map((e: any) => {
       const nameChange = (Array.isArray(e.changes) ? e.changes : []).find((c: any) => c.key === 'name');
       return { id: e.id, user_id: e.user_id ?? null, target_id: e.target_id ?? null, action_type: e.action_type, reason: e.reason ?? null, name: nameChange ? { new_value: nameChange.new_value, old_value: nameChange.old_value } : null };
@@ -77,6 +78,8 @@ let auditError: string | null = null;
 let entries: any[] = [];
 if (auditRes.ok) {
   const users = new Map(audit.users.map((u) => [u.id, u.name]));
+  // The picture of whoever did it: the one Discord sends with the log (or the default one of their number when they have none).
+  const avatars = new Map(audit.users.map((u) => [u.id, userAvatar(u.id, u.avatar)]));
   entries = audit.entries.map((e) => {
     const nameChange = e.name;
     const targetUser = e.target_id ? users.get(e.target_id) : null;
@@ -85,6 +88,7 @@ if (auditRes.ok) {
       id: e.id,
       actorId: e.user_id ?? null,
       actorName: users.get(e.user_id ?? '') ?? (e.user_id ? `User ${e.user_id}` : 'Discord'),
+      actorAvatar: e.user_id ? avatars.get(e.user_id) ?? userAvatar(e.user_id, null) : null,
       actionKey: ACTION_KEYS[e.action_type] ?? '',
       action: ACTION_LABELS[e.action_type] ?? `Administrative action (${e.action_type})`,
       target: target ? String(target) : '',

@@ -41,8 +41,9 @@ export interface SupportGroup {
 
 export const SUPPORT_GROUPS: SupportGroup[] = [
   // ---- Onboarding: welcome, leave and boost messages and channels, the join DM, ping on join and the bump reminder.
-  // NOT here: `verification`, `add_join_role` and `remove_join_role` (who gets in and which roles they get).
-  { label: 'Onboarding', page: 'onboarding', edit: ['events', 'dm_join', 'ping_on_join', 'bump'] },
+  // NOT here: the verification (page `onboarding`) and the join roles (page `join-roles`): who gets in and which roles they get.
+  { label: 'Welcome', page: 'welcome', edit: ['events', 'dm_join', 'ping_on_join'] },
+  { label: 'Bump', page: 'bump', edit: ['bump'] },
 
   // ---- Logging: which channel each kind of log goes to (the "ignored" list hides things from the logs, so it stays closed).
   { label: 'Logging', page: 'logging', edit: ['', 'routing'] },

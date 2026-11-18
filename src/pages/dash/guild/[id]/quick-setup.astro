@@ -1,0 +1,25 @@
+---
+export const prerender = false;
+import DashQuickSetup from '../../../../components/DashQuickSetup.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const [guildInfo, rolesRes, channelsRes] = await Promise.all([getGuildInfo(id, botToken), getGuildList(Astro, id, botToken, 'roles'), getGuildList(Astro, id, botToken, 'channels')]);
+if (!guildInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const allRoles: any[] = rolesRes.ok ? ((await rolesRes.json().catch(() => [])) as any[]) : [];
+const allChannels: any[] = channelsRes.ok ? ((await channelsRes.json().catch(() => [])) as any[]) : [];
+// Text and announcement channels, and the roles a bot can give (not @everyone, not an integration's), the highest first.
+const channels = allChannels.filter((c: any) => c.type === 0 || c.type === 5).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0)).map((c: any) => ({ id: String(c.id), name: String(c.name) }));
+const roles = allRoles.filter((r: any) => String(r.id) !== id && !r.managed).sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0)).map((r: any) => ({ id: String(r.id), name: String(r.name) }));
+// Only people with Manage Server run it (the bot checks it too): someone let in by a role of the dashboard, or the Petto owner in Support mode, only look.
+const canRun = !auth.devView && !auth.access;
+---
+<DashQuickSetup user={session} guildId={id} guildName={guildInfo.name} guildIcon={guildInfo.icon ?? '/assets/mascot-icon.webp'} channels={channels} roles={roles} canRun={canRun} />

@@ -790,3 +790,42 @@ export async function callPettoTicketLive(context: AstroContext, guildId: string
     return { ok: false, status: 504, data: { ok: false, code: 'bot_unavailable' } };
   }
 }
+
+/**
+ * Quick Setup of the dashboard: the answers of the seven steps, sent once at the end. The bot makes the channels and roles that were asked for and saves
+ * each module (see utils/quickSetup.ts in the bot); `results` says, for each module, what was done or why not, already in the dashboard's language.
+ */
+export async function callPettoQuickSetup(context: AstroContext, guildId: string, userId: string, setup: Record<string, unknown>, lang = 'en'): Promise<{ ok: boolean; message: string; results: { module: string; ok: boolean; message: string }[] }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, message: '', results: [] };
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/quick-setup`, {
+      method: 'POST', signal: AbortSignal.timeout(60_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setup, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    const results = Array.isArray(payload?.results) ? payload.results.map((row: any) => ({ module: String(row?.module ?? ''), ok: Boolean(row?.ok), message: String(row?.message ?? '') })) : [];
+    return { ok: Boolean(response.ok && payload?.ok), message: typeof payload?.message === 'string' ? payload.message : '', results };
+  } catch {
+    return { ok: false, message: '', results: [] };
+  }
+}
+
+/** "Try this rule" of the Moderation rules page: what the rule (as it is in the form) would do with a sample message. The bot does nothing and writes nothing. */
+export async function callPettoRuleTest(context: AstroContext, guildId: string, userId: string, rule: unknown, sample: unknown, lang = 'en'): Promise<Record<string, any> | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  try {
+    const grant = await roleGrant(context, guildId, 'rules', false);
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/rules/test`, {
+      method: 'POST', signal: AbortSignal.timeout(10_000),
+      headers: { ...grant, 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rule, sample, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch {
+    return null;
+  }
+}
