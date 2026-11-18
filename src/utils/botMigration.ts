@@ -1,10 +1,11 @@
-// Moving from another bot: turns the variables of a welcome, goodbye or custom message written for MEE6, Carl-bot or Dyno into Petto's.
+// Moving from another bot: turns the variables of a welcome, goodbye or custom message written for MEE6, Carl-bot, Dyno, ProBot or Nekotina into Petto's.
 // Only text is converted here. A bot can not read the settings of another bot, so the member brings the message and Petto rewrites it.
-// The lists of variables are the ones in the official docs of each bot (read on 2026-11-18). ProBot and Welcomer sit behind a protection that
-// does not let their docs be read, so their lists are not here yet: for them nothing is guessed and the text is left as it is.
+// The lists of variables are the ones in the official docs of each bot (read on 2026-11-18). ProBot writes them with square brackets ([user]) and Nekotina
+// with double braces ({{user}}). The website of Welcomer (welcomer.gg) does not let its docs be read, so its list is not here yet: for it nothing is
+// guessed and the text is left as it is.
 import variables from '../data/variables.generated.json';
 
-export type BotId = 'mee6' | 'carl' | 'dyno' | 'probot' | 'welcomer';
+export type BotId = 'mee6' | 'carl' | 'dyno' | 'probot' | 'nekotina' | 'welcomer';
 
 export interface BotInfo {
   id: BotId;
@@ -21,14 +22,15 @@ export const BOTS: BotInfo[] = [
   { id: 'mee6', name: 'MEE6', verified: true, source: 'https://wiki.mee6.xyz/en/plugins/welcome_and_goodbye', checkedOn: '2026-11-18' },
   { id: 'carl', name: 'Carl-bot', verified: true, source: 'https://docs.carl.gg/greetings', checkedOn: '2026-11-18' },
   { id: 'dyno', name: 'Dyno', verified: true, source: 'https://docs.dyno.gg/en/modules/welcome', checkedOn: '2026-11-18' },
-  { id: 'probot', name: 'ProBot', verified: false, source: 'https://probot.io/docs', checkedOn: '2026-11-18' },
-  { id: 'welcomer', name: 'Welcomer', verified: false, source: 'https://welcomer.gg/docs', checkedOn: '2026-11-18' },
+  { id: 'probot', name: 'ProBot', verified: true, source: 'https://docs.probot.io/docs/getting-started/variables', checkedOn: '2026-11-18' },
+  { id: 'nekotina', name: 'Nekotina', verified: true, source: 'https://nekotina.com/guides/welcome-message', checkedOn: '2026-11-18' },
+  { id: 'welcomer', name: 'Welcomer', verified: false, source: 'https://welcomer.gg', checkedOn: '2026-11-18' },
 ];
 
 export const isBotId = (value: unknown): value is BotId => BOTS.some((bot) => bot.id === value);
 
 /** Why a variable could not be turned into one of Petto's. The page writes the sentence of each one. */
-export type UnsupportedHint = 'hash' | 'math' | 'bot-joined' | 'mention-name' | 'role-name' | 'channel-name' | 'unknown';
+export type UnsupportedHint = 'hash' | 'math' | 'bot-joined' | 'mention-name' | 'role-name' | 'channel-name' | 'no-equivalent' | 'command-argument' | 'unknown';
 
 export interface Change { from: string; to: string; count: number }
 export interface Unsupported { token: string; hint: UnsupportedHint; count: number }
@@ -63,7 +65,27 @@ const DYNO: Record<string, Rule> = {
   'server': { to: '{server_name}' }, 'channel': { to: '{channel.name}' }, 'date': { to: '{date}' }, 'everyone': { to: '@everyone' }, 'here': { to: '@here' },
 };
 
-const TABLES: Partial<Record<BotId, Record<string, Rule>>> = { mee6: MEE6, carl: CARL, dyno: DYNO };
+// ProBot writes [user] with square brackets: its welcome (docs.probot.io, Variables), its leveling messages and its autoresponders.
+const PROBOT: Record<string, Rule> = {
+  'user': { to: '{user.mention}' }, 'inviter': { to: '{inviter}' }, 'server': { to: '{server_name}' }, 'username': { to: '{user.name}' },
+  'invitername': { to: '{inviter.name}' }, 'membercount': { to: '{server_membercount}' }, 'invites': { unsupported: 'no-equivalent' },
+  'level': { to: '{level}' }, 'oldlevel': { to: '{level_previous}' }, 'user.username': { to: '{user.name}' }, 'user.tag': { to: '{user.name}' },
+};
+
+// Nekotina writes {{user}} with double braces: its welcome guide and its custom commands (nekotina.com/guides).
+const NEKOTINA: Record<string, Rule> = {
+  'user': { to: '{user.mention}' }, 'username': { to: '{user.name}' }, 'server': { to: '{server_name}' }, 'members': { to: '{server_membercount}' }, 'date': { to: '{date}' },
+  'user.mention': { to: '{user.mention}' }, 'user.name': { to: '{user.name}' },
+};
+
+const TABLES: Partial<Record<BotId, Record<string, Rule>>> = { mee6: MEE6, carl: CARL, dyno: DYNO, probot: PROBOT, nekotina: NEKOTINA };
+
+/** What a variable looks like in each bot: the part between the marks is what the table above is asked for. */
+const PATTERNS: Partial<Record<BotId, string>> = {
+  probot: String.raw`\[([A-Za-z][\w.]*)\](?!\()`, // [text](link) is a link, not a variable
+  nekotina: String.raw`\{\{\s*([^{}]*?)\s*\}\}`,
+};
+const CURLY = String.raw`\{([^{}]*)\}`;
 
 /** The names Petto already has (`user.name`, `server_name`, `choose`...), so a message that is already Petto's is left alone. */
 const petto = new Set<string>();
@@ -100,9 +122,17 @@ export function convertMessage(bot: BotId, text: string): Conversion {
     out = out.replace(/\{ord:\{server\(members\)\}\}/gi, (whole) => { done(whole, '{server_membercount_ordinal}'); return '{server_membercount_ordinal}'; });
   }
 
-  out = out.replace(/\{([^{}]*)\}/g, (whole, inner: string) => {
+  out = out.replace(new RegExp(PATTERNS[bot] ?? CURLY, 'g'), (whole, inner: string) => {
     const key = inner.trim().toLowerCase();
     if (!key) return whole;
+    // [Staff] or [x] in a ProBot text can be plain words: only the variables ProBot has are touched, and nothing else is reported.
+    if (bot === 'probot') {
+      const rule = table[key];
+      if (!rule) return whole;
+      if ('to' in rule) { done(whole, rule.to); return rule.to; }
+      failed(whole, rule.unsupported); return whole;
+    }
+    if (bot === 'nekotina' && /^arg\./.test(key)) { failed(whole, 'command-argument'); return whole; }
     if (bot === 'dyno') {
       if (key.startsWith('@') && key.length > 1) { failed(whole, 'mention-name'); return whole; }
       if (key.startsWith('&') && key.length > 1) { failed(whole, 'role-name'); return whole; }
@@ -141,7 +171,7 @@ export function previewText(text: string, values: Record<string, { text: string 
 /** The things another bot does that Petto has a page for. The page of the dashboard of each one is in FEATURE_PAGES. */
 export type FeatureId =
   | 'welcome' | 'reaction-roles' | 'levels' | 'custom-commands' | 'autoresponders' | 'polls' | 'giveaways' | 'feeds' | 'birthdays' | 'boards' | 'timers'
-  | 'voicemaster' | 'moderation' | 'sticky-roles' | 'automod' | 'logging' | 'suggestions' | 'permissions' | 'sticky-messages' | 'tickets' | 'forms' | 'join-roles' | 'prefix';
+  | 'voicemaster' | 'moderation' | 'sticky-roles' | 'automod' | 'logging' | 'suggestions' | 'permissions' | 'sticky-messages' | 'tickets' | 'forms' | 'join-roles' | 'prefix' | 'embeds';
 
 /** Where each one lives in the dashboard of a server (after `/dash/guild/<id>/`). */
 export const FEATURE_PAGES: Record<FeatureId, string> = {
@@ -150,6 +180,7 @@ export const FEATURE_PAGES: Record<FeatureId, string> = {
   'birthdays': 'birthdays', 'boards': 'boards', 'timers': 'automation?section=timers', 'voicemaster': 'automation?section=voicemaster', 'moderation': 'moderation?section=cases',
   'sticky-roles': 'automation?section=sticky-roles', 'automod': 'automod', 'logging': 'logging', 'suggestions': 'suggestions', 'permissions': 'permissions',
   'sticky-messages': 'automation?section=sticky-messages', 'tickets': 'tickets?section=panels', 'forms': 'forms', 'join-roles': 'join-roles', 'prefix': 'general?section=settings',
+  'embeds': 'embeds',
 };
 
 /** What each bot does, from its own docs and pages (the same rows of the guides of the blog), in the order of the guide. ProBot and Welcomer are empty until their docs can be read. */
@@ -157,7 +188,10 @@ export const CHECKLISTS: Record<BotId, FeatureId[]> = {
   mee6: ['welcome', 'reaction-roles', 'levels', 'custom-commands', 'autoresponders', 'polls', 'giveaways', 'feeds', 'birthdays', 'boards', 'timers', 'voicemaster', 'prefix'],
   carl: ['reaction-roles', 'moderation', 'sticky-roles', 'automod', 'logging', 'custom-commands', 'suggestions', 'welcome', 'permissions', 'boards', 'sticky-messages', 'feeds', 'levels'],
   dyno: ['automod', 'tickets', 'custom-commands', 'autoresponders', 'giveaways', 'forms', 'reaction-roles', 'join-roles', 'boards', 'levels', 'timers', 'feeds'],
-  probot: [],
+  // The modules of docs.probot.io that have a page in Petto. Colors, Temp Links, Anti-Raid and VIP Protection are left out: they have no page that does the same.
+  probot: ['welcome', 'autoresponders', 'embeds', 'levels', 'join-roles', 'logging', 'reaction-roles', 'voicemaster', 'automod', 'boards', 'tickets'],
+  // What nekotina.com/guides explains: the welcome message, the custom commands and the autoroles. The rest of the bot is not read yet.
+  nekotina: ['welcome', 'custom-commands', 'join-roles'],
   welcomer: [],
 };
 
@@ -170,6 +204,7 @@ export const SAMPLE_TEXT: Record<BotId, string> = {
   mee6: '{user.mention} {server.name} {server.member_count}',
   carl: '{mention} {server} {ord:{server(members)}}',
   dyno: '{user} {server} {channel}',
-  probot: '',
+  probot: '[user] [server] [memberCount]',
+  nekotina: '{{user}} {{server}} {{members}}',
   welcomer: '',
 };

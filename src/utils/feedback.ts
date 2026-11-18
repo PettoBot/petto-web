@@ -192,6 +192,12 @@ export async function setStatus(astro: any, postId: number, status: Status, note
 export async function saveDiscordMessage(astro: any, postId: number, channelId: string, messageId: string): Promise<void> {
   await write(astro, 'PATCH', `feedback_posts?id=eq.${postId}`, { discord_channel_id: channelId, discord_message_id: messageId }, 'return=minimal');
 }
+/** Deletes one comment of a post (the database counts the comments again by itself). It is only deleted if it belongs to that post. */
+export async function deleteComment(astro: any, postId: number, commentId: number): Promise<boolean> {
+  if (!Number.isSafeInteger(postId) || postId < 1 || !Number.isSafeInteger(commentId) || commentId < 1) return false;
+  const rows = await write(astro, 'DELETE', `feedback_comments?id=eq.${commentId}&post_id=eq.${postId}`);
+  return Array.isArray(rows) && rows.length > 0;
+}
 export async function deletePost(astro: any, postId: number): Promise<boolean> {
   return (await write(astro, 'DELETE', `feedback_posts?id=eq.${postId}`, undefined, 'return=minimal')) !== null;
 }
