@@ -29,7 +29,7 @@ assert.equal(checksFromForm(form({ chk_tor: 'hack' })).tor, 'off');
 const card = readFileSync(`${root}src/components/DashOnboarding.astro`, 'utf8');
 assert.ok(card.includes('name={`chk_${key}`}') && card.includes("['tor', ") && card.includes("['alt', "), 'the card has the Tor and alt rows (chk_tor, chk_alt)');
 for (const name of ['chk_account', 'chk_account_age', 'chk_account_avatar', 'chk_account_flagged', 'chk_email', 'chk_email_common', 'chk_email_disposable', 'chk_email_allow', 'chk_email_deny', 'checks_ready']) assert.ok(card.includes(name), `the card has ${name}`);
-const page = readFileSync(`${root}src/pages/dash/guild/[id]/onboarding.astro`, 'utf8');
+const page = readFileSync(`${root}src/utils/onboardingPage.ts`, 'utf8'); // the data and the saves of the onboarding pages (the four pages share it)
 assert.ok(page.includes("form.get('checks_ready') ? { checks: checksFromForm(form) }"), 'the checks are saved only when the bot has them');
 // A save that fails says so (the page and the log), "post the panel again" asks the bot at once, and a name of the server that cannot be read after a save does not send the person away.
 assert.ok(page.includes('saveResponse.ok') && page.includes('console.error(`[onboarding] saving the verification'), 'a refused save is logged and shown');

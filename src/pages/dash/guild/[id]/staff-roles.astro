@@ -1,0 +1,59 @@
+---
+export const prerender = false;
+import DashStaffRoles from '../../../../components/DashStaffRoles.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { allowRole, denyRole, loadStaffRoles, STAFF_ACTIONS } from '../../../../utils/staffRoles';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+// Staff roles: which roles may use each moderation action without the permission of Discord (the bot's `/moderation allow`). Only for who manages the server.
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const context = { apiUrl, headers, guildId: id };
+let saved = false;
+let problem: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const actionId = String(form.get('staff_action') ?? '');
+  const roleId = String(form.get('role_id') ?? '').trim();
+  try {
+    if (!/^\d{15,25}$/.test(roleId)) problem = dt('Pick a role.');
+    else if (!STAFF_ACTIONS.some((entry) => entry.id === actionId)) problem = dt('That action is not known.');
+    else if (action === 'allow' || action === 'deny') {
+      const ok = action === 'allow' ? await allowRole(context, actionId, roleId) : await denyRole(context, actionId, roleId);
+      if (ok) {
+        saved = true;
+        // A record of who gave or took the power, in the same place the Permissions page writes its changes.
+        await fetch(`${apiUrl}/rest/v1/permission_audit_log`, { method: 'POST', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify({ guild_id: id, actor_id: session.userId, actor_name: session.username, action: action === 'allow' ? 'add_member' : 'remove_member', summary: `${action === 'allow' ? 'Allowed' : 'Removed'} role ${roleId} ${action === 'allow' ? 'to use' : 'from'} the moderation action "${actionId}"` }) }).catch(() => null);
+      } else problem = dt('It could not be saved. Try again in a moment.');
+    }
+  } catch (error) {
+    console.error(`[staff-roles] saving for ${id}:`, (error as Error)?.message);
+    problem = dt('It could not be saved. Try again in a moment.');
+  }
+}
+
+const [guildInfo, rolesRes] = await runBatched([() => getGuildInfo(id, botToken), () => getGuildList(Astro, id, botToken, 'roles')], 2);
+const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
+if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const serverInfo = (guildInfo ?? fallbackInfo)!;
+const staff = await loadStaffRoles(context).catch(() => ({} as Record<string, string[]>));
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles.filter((role: any) => role.name !== '@everyone' && !role.managed).sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: role.id, name: role.name, color: role.color ?? 0 }));
+const everyRole = allRoles.map((role: any) => ({ id: role.id, name: role.name, color: role.color ?? 0 }));
+---
+<DashStaffRoles user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} staff={staff} roles={roles} everyRole={everyRole} saved={saved} problem={problem} />

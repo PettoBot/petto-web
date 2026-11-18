@@ -7,7 +7,7 @@ const BY_ID: Record<string, string[]> = {
   moderation: ['automod'], 'automod-templates': ['automod'], antinuke: ['security'], honeypot: ['honeypot'],
   'role-triggers': ['role-triggers'], 'role-quotas': ['role-quotas'], 'mod-rules': ['mod-rules'],
   // Security and join
-  onboarding: ['welcome', 'verification', 'joinroles'], security: ['security'], logging: ['logging'],
+  'welcome-messages': ['welcome'], verification: ['verification'], 'join-roles': ['joinroles'], 'aged-roles': ['aged-roles'], security: ['security'], logging: ['logging'],
   // Design
   embeds: ['embeds'], cards: ['cards'],
   // Automation
