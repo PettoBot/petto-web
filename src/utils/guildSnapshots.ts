@@ -177,6 +177,35 @@ export async function readSnapshotEmojis(guildId: string): Promise<Array<{ id: s
   }
 }
 
+// The ids of the channels the bot cannot view, kept by the bot next to the copy of the server (`hidden_channels`). Like the emojis, they come from Redis when
+// it has them and otherwise from a read of their own: a bot that does not save them yet has no such column, and asking for it is refused (it is asked again later).
+const HIDDEN_COLUMN_RETRY_MS = 10 * 60_000;
+let hiddenColumnMissingUntil = 0;
+
+export async function readHiddenChannelIds(guildId: string): Promise<string[]> {
+  if (!source || !/^\d{5,25}$/.test(guildId)) return [];
+  const clean = (raw: unknown) => (Array.isArray(raw) ? raw.map((id) => String(id)).filter((id) => /^\d{5,25}$/.test(id)) : []);
+  const raw = await sharedGetRaw(`petto:snap:${guildId}`).catch(() => null);
+  if (raw) {
+    try {
+      const row = JSON.parse(raw);
+      if (row && Array.isArray(row.hidden_channels)) return clean(row.hidden_channels);
+    } catch { /* read it from the database */ }
+  }
+  if (Date.now() < hiddenColumnMissingUntil) return [];
+  try {
+    const res = await fetch(`${source.url}/rest/v1/discord_guild_snapshots?guild_id=eq.${guildId}&select=hidden_channels`, { headers: headers(source.key) });
+    if (!res.ok) {
+      hiddenColumnMissingUntil = Date.now() + (res.status >= 500 ? 60_000 : HIDDEN_COLUMN_RETRY_MS);
+      return [];
+    }
+    const rows = await res.json();
+    return clean(Array.isArray(rows) ? rows[0]?.hidden_channels : null);
+  } catch {
+    return [];
+  }
+}
+
 /** Every server the bot is in, or null when the table is empty or unreadable (a bot that does not save them yet). */
 export async function readBotGuildSnapshots(): Promise<Array<{ id: string; name: string; icon: string | null; memberCount: number | null }> | null> {
   if (!source) return null;

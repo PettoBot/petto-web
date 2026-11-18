@@ -2761,6 +2761,7 @@ export const dashPt: Record<string, string> = {
   "Latest suggestions": "Últimas sugestões",
   "There are no suggestions yet.": "Ainda não há sugestões.",
   "Loading your data": "Carregando seus dados",
+  "No access (hidden channel)": "Sem acesso (canal oculto)",
   "Getting your server ready…": "Preparando seu servidor…",
   "Loading your servers": "Carregando seus servidores",
   "Signing you in…": "Iniciando sua sessão…",

@@ -2761,6 +2761,7 @@ export const dashEs: Record<string, string> = {
   "Latest suggestions": "Últimas sugerencias",
   "There are no suggestions yet.": "Todavía no hay sugerencias.",
   "Loading your data": "Cargando tus datos",
+  "No access (hidden channel)": "Sin acceso (canal oculto)",
   "Getting your server ready…": "Preparando tu servidor…",
   "Loading your servers": "Cargando tus servidores",
   "Signing you in…": "Iniciando tu sesión…",
