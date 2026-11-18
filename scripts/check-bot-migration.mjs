@@ -92,5 +92,22 @@ check('ai page: the answer is shown as text, never as markup', !/innerHTML\s*=\s
 check('ai page: only people with Manage Server can send', /canRun/.test(page) && /data-ai-send disabled=\{!canRun\}/.test(page));
 check('ai page: says it only proposes and that the text goes to Groq', /never changes your server/.test(page) && /Groq/.test(page));
 
+
+// --- the answer of the AI is read as markdown, safely (nothing becomes markup) ---
+const { parseMarkdown, parseInline } = await loadTs('src/utils/miniMarkdown.ts');
+same('md: bold, italic and code', parseInline('a **b** and *c* and `{user.name}` z'), [{ t: 'text', v: 'a ' }, { t: 'bold', v: 'b' }, { t: 'text', v: ' and ' }, { t: 'italic', v: 'c' }, { t: 'text', v: ' and ' }, { t: 'code', v: '{user.name}' }, { t: 'text', v: ' z' }]);
+same('md: stars inside code are not read', parseInline('`**x**`'), [{ t: 'code', v: '**x**' }]);
+same('md: a lone star is text', parseInline('2 * 3 * 4'), [{ t: 'text', v: '2 * 3 * 4' }]);
+same('md: underscores are never formatting', parseInline('{server_name} and __x__ and _y_'), [{ t: 'text', v: '{server_name} and __x__ and _y_' }]);
+same('md: html stays text', parseInline('<b>x</b> **<i>y</i>**'), [{ t: 'text', v: '<b>x</b> ' }, { t: 'bold', v: '<i>y</i>' }]);
+const answer = 'Para migrar:\n\n1. **Desactiva MEE6**\n  - Ve a la página y `!welcome`.\n  - Anota los roles.\n\n2. **Crea** todo\n\n## Título\n```\nHola {user.mention}\n```\nFin';
+same('md: blocks', parseMarkdown(answer).map((b) => b.t === 'list' ? `list${b.ordered ? 'o' : 'u'}${b.level}:${b.start}:${b.items.length}` : b.t), ['p', 'listo0:1:1', 'listu1:1:2', 'listo0:2:1', 'h', 'code', 'p']);
+same('md: a code block keeps its text exactly', parseMarkdown('```\nHola {user.mention}\n  ok\n```').map((b) => b.t === 'code' ? b.v : ''), ['Hola {user.mention}\n  ok']);
+same('md: an unclosed fence runs to the end', parseMarkdown('a\n```\nx {y}').map((b) => b.t === 'code' ? b.v : b.t), ['p', 'x {y}']);
+same('md: star bullets', parseMarkdown('* a\n* b').map((b) => b.t === 'list' ? b.items.length : 0), [2]);
+same('md: empty', parseMarkdown('  \n '), []);
+const pageSource = read('src/components/DashMigrate.astro');
+check('ai page: draws the answer from the blocks, with no innerHTML of it', /parseMarkdown\(answer\)/.test(pageSource) && !/\.innerHTML\s*=\s*(?!idle)[^;]*(answer|block)/.test(pageSource));
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('bot-migration: ok');

@@ -171,6 +171,7 @@ const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
 <script>
   import { BOTS, SAMPLE_TEXT, convertMessage, isBotId, previewText } from '../utils/botMigration';
   import { sampleContext, tokenValues } from '../utils/variableSamples';
+  import { parseMarkdown, type Inline } from '../utils/miniMarkdown';
 
   const root = document.querySelector<HTMLElement>('[data-migrate]');
   if (root) {
@@ -271,30 +272,39 @@ const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
       ai.querySelectorAll<HTMLElement>('[data-ai-mode]').forEach((other) => other.setAttribute('aria-selected', String(other === tab)));
       q('[data-ai-hint]').textContent = tab.dataset.hint ?? '';
     }));
+    const inlineNodes = (parts: Inline[]): Node[] => parts.map((part) => {
+      if (part.t === 'text') return document.createTextNode(part.v);
+      const el = document.createElement(part.t === 'bold' ? 'strong' : part.t === 'italic' ? 'em' : 'code');
+      el.textContent = part.v;
+      return el;
+    });
     const showAnswer = (answer: string) => {
-      const nodes: HTMLElement[] = [];
-      answer.split(/```[^\n]*\n?/).forEach((part, i) => {
-        const text = part.replace(/^\n+|\n+$/g, '');
-        if (!text) return;
-        if (i % 2 === 1) {
+      const nodes: HTMLElement[] = parseMarkdown(answer).map((block) => {
+        if (block.t === 'code') {
           const box = document.createElement('div');
           box.className = 'mg-code';
           const pre = document.createElement('pre');
-          pre.textContent = text;
+          pre.textContent = block.v;
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'btn btn-sm';
           const label = document.createElement('span');
           label.textContent = lab('lCopy');
           btn.append(label);
-          btn.addEventListener('click', () => copyText(text, btn, label));
+          btn.addEventListener('click', () => copyText(block.v, btn, label));
           box.append(pre, btn);
-          nodes.push(box);
-        } else {
-          const p = document.createElement('p');
-          p.textContent = text;
-          nodes.push(p);
+          return box;
         }
+        if (block.t === 'list') {
+          const list = document.createElement(block.ordered ? 'ol' : 'ul');
+          if (block.ordered) (list as HTMLOListElement).start = block.start;
+          if (block.level === 1) list.dataset.l = '1';
+          for (const item of block.items) { const li = document.createElement('li'); li.append(...inlineNodes(item)); list.append(li); }
+          return list;
+        }
+        const el = document.createElement(block.t === 'h' ? 'h4' : 'p');
+        el.append(...inlineNodes(block.inline));
+        return el;
       });
       aiAnswer.replaceChildren(...nodes);
       aiAnswer.hidden = nodes.length === 0;
@@ -379,6 +389,12 @@ const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
   .mg-ai-error[hidden], .mg-answer[hidden] { display: none; }
   .mg-answer { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--bg-raise); }
   .mg-answer :global(p) { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; color: var(--text); }
+  .mg-answer :global(h4) { margin: 4px 0 0; font-size: 14.5px; color: var(--text); }
+  .mg-answer :global(ul), .mg-answer :global(ol) { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.6; color: var(--text); }
+  .mg-answer :global([data-l="1"]) { margin-left: 18px; }
+  .mg-answer :global(li::marker) { color: var(--text-dim); }
+  .mg-answer :global(strong) { font-weight: 700; }
+  .mg-answer :global(code) { font-size: 12.5px; }
   .mg-answer :global(.mg-code) { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--card); }
   .mg-answer :global(.mg-code pre) { flex: 1; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--text); }
   .mg-answer :global(.mg-code .btn) { flex: none; }
