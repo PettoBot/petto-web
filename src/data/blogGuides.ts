@@ -5,7 +5,8 @@
 import type { Locale } from '../i18n/ui';
 
 export type GuideKey = 'vsBots' | 'fromMee6' | 'fromCarl' | 'fromDyno';
-export interface GuideSection { h2: string; p?: string[]; list?: [string, string][]; table?: { head: string[]; rows: string[][] }; after?: string[] }
+export type FigKey = 'quickSetup' | 'welcomePage' | 'welcomeDiscord' | 'rankDiscord' | 'reactionDiscord' | 'automodDash' | 'ticketsDiscord' | 'giveawaysDash';
+export interface GuideSection { h2: string; p?: string[]; list?: [string, string][]; table?: { head: string[]; rows: string[][] }; after?: string[]; figs?: FigKey[] }
 export interface GuideContent { title: string; pill: string; h1: string; bannerAlt: string; lede: string; desc: string; sections: GuideSection[]; foot: string }
 
 export const CHECKED_ON = '2026-11-18';
@@ -226,6 +227,25 @@ const STR = {
   },
 };
 
+
+// The pictures of the posts (src/data/blogFigures.json, made from the pictures of the wiki: the dashboard and Discord with the main server, in dark mode). A language without its own picture shows the English one.
+export const FIG_CAPTION: Record<FigKey, Record<'en' | 'es' | 'pt', string>> = {
+  quickSetup: { en: 'Dashboard → Quick Setup: choose what to set up. Nothing changes until the last step.', es: 'Dashboard → Quick Setup: eliges qué configurar. No cambia nada hasta el último paso.', pt: 'Dashboard → Quick Setup: escolha o que configurar. Nada muda até o último passo.' },
+  welcomePage: { en: 'Dashboard → Welcome → Welcome messages: the welcome message, its preview and the extra messages that Petto picks at random.', es: 'Dashboard → Bienvenida → Mensajes de bienvenida: el mensaje de bienvenida, su vista previa y los mensajes extra que Petto elige al azar.', pt: 'Dashboard → Boas-vindas → Mensagens de boas-vindas: a mensagem de boas-vindas, a prévia e as mensagens extras que o Petto escolhe ao acaso.' },
+  welcomeDiscord: { en: 'In Discord: the welcome Petto sends when a member joins.', es: 'En Discord: la bienvenida que manda Petto cuando entra un miembro.', pt: 'No Discord: a boas-vindas que o Petto envia quando um membro entra.' },
+  rankDiscord: { en: 'In Discord: the level card of a member.', es: 'En Discord: la tarjeta de nivel de un miembro.', pt: 'No Discord: o cartão de nível de um membro.' },
+  reactionDiscord: { en: 'In Discord: the list of a reaction roles message, with its buttons and roles.', es: 'En Discord: la lista de un mensaje de roles por reacción, con sus botones y roles.', pt: 'No Discord: a lista de uma mensagem de cargos por reação, com seus botões e cargos.' },
+  automodDash: { en: 'Dashboard → Moderation → AutoMod: what is active in Discord and what is active in Petto.', es: 'Dashboard → Moderación → AutoMod: lo que está activo en Discord y lo que está activo en Petto.', pt: 'Dashboard → Moderação → AutoMod: o que está ativo no Discord e o que está ativo no Petto.' },
+  ticketsDiscord: { en: 'In Discord: a member opens a ticket.', es: 'En Discord: un miembro abre un ticket.', pt: 'No Discord: um membro abre um ticket.' },
+  giveawaysDash: { en: 'Dashboard → Community → Giveaways: start a giveaway with its prize, winners and duration.', es: 'Dashboard → Comunidad → Sorteos: empieza un sorteo con su premio, ganadores y duración.', pt: 'Dashboard → Comunidade → Sorteios: comece um sorteio com prêmio, ganhadores e duração.' },
+};
+const BOT_FIGS: Record<'fromMee6' | 'fromCarl' | 'fromDyno', FigKey[]> = {
+  fromMee6: ['welcomePage', 'welcomeDiscord', 'rankDiscord'],
+  fromCarl: ['reactionDiscord', 'automodDash'],
+  fromDyno: ['automodDash', 'ticketsDiscord', 'giveawaysDash'],
+};
+const LOOK_H = { en: 'How it looks in Petto', es: 'Cómo se ve en Petto', pt: 'Como fica no Petto' };
+
 const DATE_WORD = { en: 'November 18, 2026', es: '18 de noviembre de 2026', pt: '18 de novembro de 2026' };
 
 function migration(key: 'fromMee6' | 'fromCarl' | 'fromDyno', lang: Locale): GuideContent {
@@ -233,8 +253,9 @@ function migration(key: 'fromMee6' | 'fromCarl' | 'fromDyno', lang: Locale): Gui
   const rows = ROWS[key].map(([label, place]) => [label[l], PLACE[place][l]]);
   const sections: GuideSection[] = [
     { h2: s.whatH(bot.name), p: [], list: bot.facts[l] },
-    { h2: s.stepsH, list: s.steps(bot.name), after: [s.guide(WIKI[l])] },
+    { h2: s.stepsH, list: s.steps(bot.name), after: [s.guide(WIKI[l])], figs: ['quickSetup'] },
     { h2: s.mapH(bot.name), table: { head: s.head(bot.name), rows } },
+    { h2: LOOK_H[l], figs: BOT_FIGS[key] },
     { h2: s.doesntH, p: bot.notes[l] },
   ];
   return { title: bot.title[l], pill: s.pill, h1: bot.title[l], bannerAlt: bot.alt[l], lede: bot.intro[l], desc: bot.desc[l], sections, foot: s.foot(DATE_WORD[l]) };
@@ -267,7 +288,7 @@ const VS: Record<'en' | 'es' | 'pt', GuideContent> = {
         after: ['A dash (—) means the page we read does not say it.'],
       },
       { h2: 'Where Petto is behind', list: [['It is younger and much smaller. ', 'Carl-bot says on its site that it is trusted by more than 15 million servers and Dyno says it is used on over 11.6 million. They have years of use that Petto does not.'], ['It has no economy. ', 'If your server runs on coins and a shop, Petto is not the bot for that part.'], ['Its own limits exist too. ', 'Premium exists because custom commands, autoresponders and ticket categories have a number per server, as in the other bots; the free numbers are just higher than most.']] },
-      { h2: 'Where Petto is different', list: [['One dashboard for everything. ', 'Moderation, tickets, levels, giveaways, forms, feeds and the rest live in one place, with one log of what was changed and who changed it.'], ['Protection is not behind a plan. ', 'Moderation, automod, anti-nuke, verification and logging have no Premium limit.'], ['Rules you build yourself. ', 'Moderation rules, with strikes and heat, are made in the dashboard: triggers, conditions and effects, with a test mode.']] },
+      { figs: ['quickSetup'], h2: 'Where Petto is different', list: [['One dashboard for everything. ', 'Moderation, tickets, levels, giveaways, forms, feeds and the rest live in one place, with one log of what was changed and who changed it.'], ['Protection is not behind a plan. ', 'Moderation, automod, anti-nuke, verification and logging have no Premium limit.'], ['Rules you build yourself. ', 'Moderation rules, with strikes and heat, are made in the dashboard: triggers, conditions and effects, with a test mode.']] },
       { h2: 'Which one fits you?', p: ['If you need an economy or you want a bot with a very long track record, MEE6, Carl-bot or Dyno may be the better choice. If you want moderation and community tools in one dashboard without a paywall in front of the basics, Petto is built for that.', 'Moving is not all or nothing: you can run two bots at the same time while you decide. If you decide to move, we wrote a guide for each one: switching from MEE6, from Carl-bot and from Dyno.'] },
     ],
     foot: 'Facts about other bots were read on their own pages on November 18, 2026. Prices and limits change: check their pages before you decide. Petto is made by the people who wrote this post.',
@@ -297,7 +318,7 @@ const VS: Record<'en' | 'es' | 'pt', GuideContent> = {
         after: ['Un guion (—) significa que la página que leímos no lo dice.'],
       },
       { h2: 'En qué va detrás Petto', list: [['Es más joven y mucho más pequeño. ', 'Carl-bot dice en su sitio que lo usan más de 15 millones de servidores y Dyno dice que se usa en más de 11,6 millones. Tienen años de uso que Petto no tiene.'], ['No tiene economía. ', 'Si tu servidor funciona con monedas y tienda, Petto no es el bot para esa parte.'], ['También tiene límites. ', 'Premium existe porque los comandos personalizados, las autorrespuestas y las categorías de tickets tienen un número por servidor, como en los otros bots; los números gratis son más altos que los de la mayoría.']] },
-      { h2: 'En qué es distinto Petto', list: [['Un solo panel para todo. ', 'Moderación, tickets, niveles, sorteos, formularios, feeds y lo demás viven en un lugar, con un registro de qué se cambió y quién lo cambió.'], ['La protección no está detrás de un plan. ', 'Moderación, automod, anti-nuke, verificación y registros no tienen límite de Premium.'], ['Reglas que armas tú. ', 'Las reglas de moderación, con strikes y heat, se hacen en el panel: disparadores, condiciones y efectos, con modo de prueba.']] },
+      { figs: ['quickSetup'], h2: 'En qué es distinto Petto', list: [['Un solo panel para todo. ', 'Moderación, tickets, niveles, sorteos, formularios, feeds y lo demás viven en un lugar, con un registro de qué se cambió y quién lo cambió.'], ['La protección no está detrás de un plan. ', 'Moderación, automod, anti-nuke, verificación y registros no tienen límite de Premium.'], ['Reglas que armas tú. ', 'Las reglas de moderación, con strikes y heat, se hacen en el panel: disparadores, condiciones y efectos, con modo de prueba.']] },
       { h2: '¿Cuál te conviene?', p: ['Si necesitas economía o quieres un bot con un historial larguísimo, MEE6, Carl-bot o Dyno pueden ser mejor opción. Si quieres moderación y herramientas de comunidad en un solo panel sin un muro de pago delante de lo básico, Petto está hecho para eso.', 'Mudarse no es todo o nada: puedes tener dos bots a la vez mientras decides. Si decides mudarte, escribimos una guía para cada uno: cambiar desde MEE6, desde Carl-bot y desde Dyno.'] },
     ],
     foot: 'Los datos de otros bots se leyeron en sus propias páginas el 18 de noviembre de 2026. Los precios y límites cambian: mira sus páginas antes de decidir. Petto lo hacen quienes escribieron este post.',
@@ -327,7 +348,7 @@ const VS: Record<'en' | 'es' | 'pt', GuideContent> = {
         after: ['Um traço (—) significa que a página que lemos não diz isso.'],
       },
       { h2: 'Onde o Petto fica atrás', list: [['É mais novo e muito menor. ', 'O Carl-bot diz no site dele que mais de 15 milhões de servidores confiam nele e o Dyno diz que é usado em mais de 11,6 milhões. Eles têm anos de uso que o Petto não tem.'], ['Não tem economia. ', 'Se o seu servidor funciona com moedas e loja, o Petto não é o bot para essa parte.'], ['Também tem limites. ', 'O Premium existe porque os comandos personalizados, as respostas automáticas e as categorias de tickets têm um número por servidor, como nos outros bots; os números grátis são mais altos que os da maioria.']] },
-      { h2: 'Onde o Petto é diferente', list: [['Um painel só para tudo. ', 'Moderação, tickets, níveis, sorteios, formulários, feeds e o resto ficam em um lugar, com um registro do que foi mudado e de quem mudou.'], ['A proteção não fica atrás de um plano. ', 'Moderação, automod, anti-nuke, verificação e logs não têm limite de Premium.'], ['Regras que você monta. ', 'As regras de moderação, com strikes e heat, são feitas no painel: gatilhos, condições e efeitos, com modo de teste.']] },
+      { figs: ['quickSetup'], h2: 'Onde o Petto é diferente', list: [['Um painel só para tudo. ', 'Moderação, tickets, níveis, sorteios, formulários, feeds e o resto ficam em um lugar, com um registro do que foi mudado e de quem mudou.'], ['A proteção não fica atrás de um plano. ', 'Moderação, automod, anti-nuke, verificação e logs não têm limite de Premium.'], ['Regras que você monta. ', 'As regras de moderação, com strikes e heat, são feitas no painel: gatilhos, condições e efeitos, com modo de teste.']] },
       { h2: 'Qual combina com você?', p: ['Se você precisa de economia ou quer um bot com um histórico bem longo, MEE6, Carl-bot ou Dyno podem ser a melhor escolha. Se quer moderação e ferramentas de comunidade em um painel só, sem um paywall na frente do básico, o Petto foi feito para isso.', 'Trocar não é tudo ou nada: você pode ter dois bots ao mesmo tempo enquanto decide. Se decidir trocar, escrevemos um guia para cada um: trocar do MEE6, do Carl-bot e do Dyno.'] },
     ],
     foot: 'Os dados de outros bots foram lidos nas páginas deles em 18 de novembro de 2026. Preços e limites mudam: veja as páginas deles antes de decidir. O Petto é feito por quem escreveu este post.',
