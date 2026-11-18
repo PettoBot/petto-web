@@ -62,7 +62,7 @@ export default defineConfig({
           'map-trifold-fill', 'medal-fill', 'megaphone-fill', 'moon-stars-fill', 'newspaper-fill', 'notebook-fill',
           'mask-happy-fill', 'list-bullets-fill', 'minus-circle-fill', 'ticket-fill', 'users-fill', 'scroll-fill', 'archive-fill', 'paint-brush-fill', 'paper-plane-tilt-fill', 'pencil-fill', 'pencil-simple-fill', 'play-fill', 'plus',
           'plus-bold', 'plus-circle-fill', 'prohibit-fill', 'pulse-fill', 'push-pin-fill', 'question-fill',
-          'ranking-fill', 'robot', 'robot-fill', 'rocket-launch-fill', 'scales-fill', 'seal-check-fill',
+          'ranking-fill', 'robot', 'robot-fill', 'rocket-launch-fill', 'arrows-left-right-fill', 'scales-fill', 'seal-check-fill',
           'share-network-fill', 'shield-check-fill', 'shield-fill', 'shield-warning-fill', 'sign-out-fill',
           'siren-fill', 'sliders-horizontal-fill', 'smiley-fill', 'sparkle-fill', 'speaker-high-fill',
           'speaker-slash-fill', 'spinner-gap', 'squares-four-fill', 'star-fill', 'stop-circle-fill', 'sun-fill',

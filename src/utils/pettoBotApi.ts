@@ -812,6 +812,33 @@ export async function callPettoQuickSetup(context: AstroContext, guildId: string
   }
 }
 
+/**
+ * The AI helper of the Migrate page: the bot asks the AI to rewrite a message of another bot, to propose what to set up or to answer a question (see utils/migrationAi.ts
+ * in the bot). It only proposes, nothing is saved. `message` is already in the dashboard's language when the bot refused (a wait, a limit, the helper off).
+ */
+export async function callPettoMigrateAi(context: AstroContext, guildId: string, userId: string, input: { mode: string; bot: string; text: string }, lang = 'en'): Promise<{ ok: boolean; status: number; answer: string; unknown: string[]; message: string; retryAfter: number | null }> {
+  const { baseUrl, secret } = apiConfig(context);
+  const none = { ok: false, status: 504, answer: '', unknown: [] as string[], message: '', retryAfter: null };
+  if (!baseUrl || !secret) return none;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/migrate-ai`, {
+      method: 'POST', signal: AbortSignal.timeout(30_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, user_id: userId }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return {
+      ok: Boolean(response.ok && payload?.ok), status: response.status,
+      answer: typeof payload?.answer === 'string' ? payload.answer : '',
+      unknown: Array.isArray(payload?.unknown) ? payload.unknown.map(String).slice(0, 20) : [],
+      message: typeof payload?.message === 'string' ? payload.message : '',
+      retryAfter: Number.isFinite(payload?.retryAfter) ? Number(payload.retryAfter) : null,
+    };
+  } catch {
+    return none;
+  }
+}
+
 /** "Try this rule" of the Moderation rules page: what the rule (as it is in the form) would do with a sample message. The bot does nothing and writes nothing. */
 export async function callPettoRuleTest(context: AstroContext, guildId: string, userId: string, rule: unknown, sample: unknown, lang = 'en'): Promise<Record<string, any> | null> {
   const { baseUrl, secret } = apiConfig(context);
