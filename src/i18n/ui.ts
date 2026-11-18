@@ -63,7 +63,7 @@ export const ui = {
       },
     },
     hero: {
-      eyebrow: 'Discord bot · actively developed',
+      eyebrow: 'Discord bot · since 2017',
       headline: 'One bot, not eight admin tabs open.',
       lede: 'Moderation, tickets, leveling, giveaways, and custom commands all live in one bot. Set it up once, then get back to running your community.',
       cta1: 'Add to Discord',
@@ -837,7 +837,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Credits',
-      copy: '© 2026 Petto. Actively in development.',
+      copy: '© 2017–2026 Petto. All rights reserved. Not in active development. Not affiliated with Discord.',
     },
     toolsPage: {
       timestamp: {
@@ -1746,7 +1746,7 @@ export const ui = {
       },
     },
     hero: {
-      eyebrow: 'Bot de Discord · en desarrollo activo',
+      eyebrow: 'Bot de Discord · desde 2017',
       headline: 'Un bot, no ocho pestañas de panel abiertas.',
       lede: 'Moderación, tickets, niveles, sorteos y comandos propios viven en un solo bot. Lo configuras una vez y vuelves a ocuparte de tu comunidad.',
       cta1: 'Agregar a Discord',
@@ -2520,7 +2520,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Créditos',
-      copy: '© 2026 Petto. En desarrollo activo.',
+      copy: '© 2017–2026 Petto. Todos los derechos reservados. Sin desarrollo activo. No afiliado con Discord.',
     },
     toolsPage: {
       timestamp: {
@@ -3429,7 +3429,7 @@ export const ui = {
       },
     },
     hero: {
-      eyebrow: 'Bot de Discord · em desenvolvimento ativo',
+      eyebrow: 'Bot de Discord · desde 2017',
       headline: 'Um bot só, não oito abas de painel abertas.',
       lede: 'Moderação, tickets, níveis, sorteios e comandos personalizados ficam em um só bot. Você configura uma vez e volta a cuidar da sua comunidade.',
       cta1: 'Adicionar ao Discord',
@@ -4203,7 +4203,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Créditos',
-      copy: '© 2026 Petto. Em desenvolvimento ativo.',
+      copy: '© 2017–2026 Petto. Todos os direitos reservados. Sem desenvolvimento ativo. Não afiliado ao Discord.',
     },
     toolsPage: {
       timestamp: {
