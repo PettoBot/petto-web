@@ -134,7 +134,6 @@ export const SECTIONS: SectionDef[] = [
     many('forms', 'ticket_forms', 'Ticket forms'),
     many('quick_replies', 'ticket_replies', 'Quick replies', { order: 'name.asc' }),
     many('blocklist', 'ticket_blacklist', 'Members and roles that cannot open tickets'),
-    one('ai', 'ticket_ai_settings', 'AI assistant for tickets'),
   ] },
   { key: 'giveaways', about: 'Giveaways', modules: [
     one('settings', 'giveaway_config', 'Giveaway settings', { flat: true }),

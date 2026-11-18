@@ -7,6 +7,7 @@ import { getEnv } from '../../utils/env';
 import { getDashLang, makeT } from '../../i18n/dash';
 import { withDashPrefix } from '../../utils/dashPrefix.mjs';
 import { LANDING_PATH } from '../../utils/dashLogin.mjs';
+import { callPettoSupportJoin } from '../../utils/pettoBotApi';
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
@@ -88,6 +89,14 @@ export const GET: APIRoute = async ({ url, redirect: plainRedirect, cookies, loc
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
     });
+
+    // Only when this very login asked to join the support server, and Discord gave the permission for it: the bot adds the person. The login
+    // never waits for it or fails because of it.
+    const wantsJoin = cookies.get('petto_join_support')?.value === '1';
+    cookies.delete('petto_join_support', { path: '/' });
+    if (wantsJoin && String(token.scope ?? '').split(' ').includes('guilds.join')) {
+      await callPettoSupportJoin({ locals } as any, user.id, token.access_token).catch(() => null);
+    }
 
     // A form filled on the web says which form in the OAuth state (form.<public id>.<lang>), so the visitor comes back to it even
     // without the cookie.
