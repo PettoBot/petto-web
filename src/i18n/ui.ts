@@ -63,18 +63,18 @@ export const ui = {
       },
     },
     hero: {
-      eyebrow: 'Discord bot · actively developed',
+      eyebrow: 'Discord bot · since 2017',
       headline: 'One bot, not eight admin tabs open.',
       lede: 'Moderation, tickets, leveling, giveaways, and custom commands all live in one bot. Set it up once, then get back to running your community.',
       cta1: 'Add to Discord',
       cta2: 'Browse commands',
     },
     announce: {
-      pill: 'Announcements',
-      title: 'Kobot is moving to Petto',
-      desc: 'Moderation, tickets, levels and verification in one bot with one dashboard. Read the announcement',
-      href: '/blog/kobot-moves-to-petto',
-      image: '/assets/kobot-banner.svg',
+      pill: 'Guides',
+      title: 'Petto and other Discord bots: an honest comparison',
+      desc: 'MEE6, Carl-bot, Dyno and Petto side by side, and a guide to switch from each one. Read the guide',
+      href: '/blog/petto-vs-other-bots',
+      image: '/assets/vs-bots-banner.svg',
     },
     stats: {
       chan: 'petto · status',
@@ -119,6 +119,10 @@ export const ui = {
       notPublished: 'Not published yet',
       seeAll: 'See every announcement',
       items: [
+        { title: 'Petto and other Discord bots: an honest comparison', desc: 'Petto, MEE6, Carl-bot and Dyno side by side, from what their own pages say: what is free, what is paid and where Petto is behind.', date: 'November 18, 2026', iso: '2026-11-18', category: 'Guides', href: '/blog/petto-vs-other-bots', banner: '/assets/vs-bots-banner.svg' },
+        { title: 'How to switch from MEE6 to Petto', desc: 'A step-by-step guide to leave MEE6 without a gap, and where each thing lives in Petto.', date: 'November 18, 2026', iso: '2026-11-18', category: 'Guides', href: '/blog/switch-from-mee6', banner: '/assets/switch-mee6-banner.svg' },
+        { title: 'How to switch from Carl-bot to Petto', desc: 'A step-by-step guide to leave Carl-bot without a gap: reaction roles, modlogs, automod, tags and the rest.', date: 'November 18, 2026', iso: '2026-11-18', category: 'Guides', href: '/blog/switch-from-carl-bot', banner: '/assets/switch-carl-banner.svg' },
+        { title: 'How to switch from Dyno to Petto', desc: 'A step-by-step guide to leave Dyno without a gap: automod, tickets, custom commands, autoroles and the rest.', date: 'November 18, 2026', iso: '2026-11-18', category: 'Guides', href: '/blog/switch-from-dyno', banner: '/assets/switch-dyno-banner.svg' },
         { title: 'Introducing the Currently log: every change of Petto, in color', desc: 'One channel with every change of Petto in colors by kind, with a short explanation and a picture of each.', date: 'November 15, 2026', iso: '2026-11-15', category: 'Product', href: '/blog/currently-log', banner: '/assets/currently-log-banner-2.svg' },
         { title: 'How to show a bot as online without the green dot', desc: 'What we tried, what failed, and the order of steps that worked for our feedback bot.', date: 'October 24, 2026', iso: '2026-10-24', category: 'Behind the scenes', href: '/blog/online-without-the-dot', banner: '/assets/online-banner.svg' },
         { title: 'Kobot is moving to Petto', desc: 'Moderation, tickets, levels and verification in one bot with one dashboard.', date: 'October 14, 2026', iso: '2026-10-14', category: 'Announcements', href: '/blog/kobot-moves-to-petto', banner: '/assets/kobot-banner.svg' },
@@ -833,7 +837,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Credits',
-      copy: '© 2026 Petto. Actively in development.',
+      copy: '© 2017–2026 Petto. All rights reserved. Not affiliated with Discord.',
     },
     toolsPage: {
       timestamp: {
@@ -1742,18 +1746,18 @@ export const ui = {
       },
     },
     hero: {
-      eyebrow: 'Bot de Discord · en desarrollo activo',
+      eyebrow: 'Bot de Discord · desde 2017',
       headline: 'Un bot, no ocho pestañas de panel abiertas.',
       lede: 'Moderación, tickets, niveles, sorteos y comandos propios viven en un solo bot. Lo configuras una vez y vuelves a ocuparte de tu comunidad.',
       cta1: 'Agregar a Discord',
       cta2: 'Ver comandos',
     },
     announce: {
-      pill: 'Anuncios',
-      title: 'Kobot se muda a Petto',
-      desc: 'Moderación, tickets, niveles y verificación en un solo bot con un solo panel. Leer el anuncio',
-      href: '/blog/kobot-moves-to-petto',
-      image: '/assets/kobot-banner.svg',
+      pill: 'Guías',
+      title: 'Petto y otros bots de Discord: una comparación honesta',
+      desc: 'MEE6, Carl-bot, Dyno y Petto lado a lado, y una guía para cambiar desde cada uno. Leer la guía',
+      href: '/blog/petto-vs-other-bots',
+      image: '/assets/vs-bots-banner.svg',
     },
     stats: {
       chan: 'petto · estado',
@@ -1798,6 +1802,10 @@ export const ui = {
       notPublished: 'Todavía no publicado',
       seeAll: 'Ver todas las novedades',
       items: [
+        { title: 'Petto y otros bots de Discord: una comparación honesta', desc: 'Petto, MEE6, Carl-bot y Dyno lado a lado, con lo que dicen sus propias páginas: qué es gratis, qué es de pago y en qué va detrás Petto.', date: '18 de noviembre de 2026', iso: '2026-11-18', category: 'Guías', href: '/blog/petto-vs-other-bots', banner: '/assets/vs-bots-banner.svg' },
+        { title: 'Cómo cambiar de MEE6 a Petto', desc: 'Una guía paso a paso para dejar MEE6 sin huecos, y dónde vive cada cosa en Petto.', date: '18 de noviembre de 2026', iso: '2026-11-18', category: 'Guías', href: '/blog/switch-from-mee6', banner: '/assets/switch-mee6-banner.svg' },
+        { title: 'Cómo cambiar de Carl-bot a Petto', desc: 'Una guía paso a paso para dejar Carl-bot sin huecos: roles por reacción, registros, automod, tags y lo demás.', date: '18 de noviembre de 2026', iso: '2026-11-18', category: 'Guías', href: '/blog/switch-from-carl-bot', banner: '/assets/switch-carl-banner.svg' },
+        { title: 'Cómo cambiar de Dyno a Petto', desc: 'Una guía paso a paso para dejar Dyno sin huecos: automod, tickets, comandos personalizados, autoroles y lo demás.', date: '18 de noviembre de 2026', iso: '2026-11-18', category: 'Guías', href: '/blog/switch-from-dyno', banner: '/assets/switch-dyno-banner.svg' },
         { title: 'Presentamos el Currently log: cada cambio de Petto, en color', desc: 'Un canal con cada cambio de Petto en colores según el tipo, con una explicación corta y una imagen de cada uno.', date: '15 de noviembre de 2026', iso: '2026-11-15', category: 'Producto', href: '/blog/currently-log', banner: '/assets/currently-log-banner-2.svg' },
         { title: 'Cómo mostrar un bot en línea sin la bolita verde', desc: 'Lo que probamos, lo que falló y el orden de pasos que funcionó con nuestro bot de feedback.', date: '24 de octubre de 2026', iso: '2026-10-24', category: 'Detrás de cámaras', href: '/blog/online-without-the-dot', banner: '/assets/online-banner.svg' },
         { title: 'Kobot se muda a Petto', desc: 'Moderación, tickets, niveles y verificación en un solo bot con un solo panel.', date: '14 de octubre de 2026', iso: '2026-10-14', category: 'Anuncios', href: '/blog/kobot-moves-to-petto', banner: '/assets/kobot-banner.svg' },
@@ -2512,7 +2520,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Créditos',
-      copy: '© 2026 Petto. En desarrollo activo.',
+      copy: '© 2017–2026 Petto. Todos los derechos reservados. No afiliado con Discord.',
     },
     toolsPage: {
       timestamp: {
@@ -3421,18 +3429,18 @@ export const ui = {
       },
     },
     hero: {
-      eyebrow: 'Bot de Discord · em desenvolvimento ativo',
+      eyebrow: 'Bot de Discord · desde 2017',
       headline: 'Um bot só, não oito abas de painel abertas.',
       lede: 'Moderação, tickets, níveis, sorteios e comandos personalizados ficam em um só bot. Você configura uma vez e volta a cuidar da sua comunidade.',
       cta1: 'Adicionar ao Discord',
       cta2: 'Ver comandos',
     },
     announce: {
-      pill: 'Anúncios',
-      title: 'O Kobot está indo para o Petto',
-      desc: 'Moderação, tickets, níveis e verificação em um só bot com um só painel. Leia o anúncio',
-      href: '/blog/kobot-moves-to-petto',
-      image: '/assets/kobot-banner.svg',
+      pill: 'Guias',
+      title: 'O Petto e outros bots do Discord: uma comparação honesta',
+      desc: 'MEE6, Carl-bot, Dyno e Petto lado a lado, e um guia para trocar de cada um. Leia o guia',
+      href: '/blog/petto-vs-other-bots',
+      image: '/assets/vs-bots-banner.svg',
     },
     stats: {
       chan: 'petto · status',
@@ -3477,6 +3485,10 @@ export const ui = {
       notPublished: 'Ainda não publicado',
       seeAll: 'Ver todas as novidades',
       items: [
+        { title: 'O Petto e outros bots do Discord: uma comparação honesta', desc: 'Petto, MEE6, Carl-bot e Dyno lado a lado, com o que as próprias páginas dizem: o que é grátis, o que é pago e onde o Petto fica atrás.', date: '18 de novembro de 2026', iso: '2026-11-18', category: 'Guias', href: '/blog/petto-vs-other-bots', banner: '/assets/vs-bots-banner.svg' },
+        { title: 'Como trocar o MEE6 pelo Petto', desc: 'Um guia passo a passo para deixar o MEE6 sem buracos, e onde cada coisa fica no Petto.', date: '18 de novembro de 2026', iso: '2026-11-18', category: 'Guias', href: '/blog/switch-from-mee6', banner: '/assets/switch-mee6-banner.svg' },
+        { title: 'Como trocar o Carl-bot pelo Petto', desc: 'Um guia passo a passo para deixar o Carl-bot sem buracos: cargos por reação, registros, automod, tags e o resto.', date: '18 de novembro de 2026', iso: '2026-11-18', category: 'Guias', href: '/blog/switch-from-carl-bot', banner: '/assets/switch-carl-banner.svg' },
+        { title: 'Como trocar o Dyno pelo Petto', desc: 'Um guia passo a passo para deixar o Dyno sem buracos: automod, tickets, comandos personalizados, autocargos e o resto.', date: '18 de novembro de 2026', iso: '2026-11-18', category: 'Guias', href: '/blog/switch-from-dyno', banner: '/assets/switch-dyno-banner.svg' },
         { title: 'Apresentamos o Currently log: cada mudança do Petto, em cores', desc: 'Um canal com cada mudança do Petto em cores por tipo, com uma explicação curta e uma imagem de cada uma.', date: '15 de novembro de 2026', iso: '2026-11-15', category: 'Produto', href: '/blog/currently-log', banner: '/assets/currently-log-banner-2.svg' },
         { title: 'Como mostrar um bot online sem a bolinha verde', desc: 'O que tentamos, o que falhou e a ordem de passos que funcionou com o nosso bot de feedback.', date: '24 de outubro de 2026', iso: '2026-10-24', category: 'Bastidores', href: '/blog/online-without-the-dot', banner: '/assets/online-banner.svg' },
         { title: 'O Kobot está indo para o Petto', desc: 'Moderação, tickets, níveis e verificação em um só bot com um só painel.', date: '14 de outubro de 2026', iso: '2026-10-14', category: 'Anúncios', href: '/blog/kobot-moves-to-petto', banner: '/assets/kobot-banner.svg' },
@@ -4191,7 +4203,7 @@ export const ui = {
       ],
       partners: 'Partners',
       credits: 'Créditos',
-      copy: '© 2026 Petto. Em desenvolvimento ativo.',
+      copy: '© 2017–2026 Petto. Todos os direitos reservados. Não afiliado ao Discord.',
     },
     toolsPage: {
       timestamp: {
