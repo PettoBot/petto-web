@@ -384,6 +384,24 @@ export async function callPettoTicketTranscript(context: AstroContext, guildId: 
   }
 }
 
+/** Asks the bot to add somebody to the support server with the permission they just gave at the login (`guilds.join`). Never throws: false when it could not. */
+export async function callPettoSupportJoin(context: AstroContext, userId: string, accessToken: string): Promise<boolean> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return false;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/support/join`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(8_000),
+      headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, access_token: accessToken }),
+    });
+    const payload: any = await response.json().catch(() => null);
+    return response.ok && Boolean(payload?.ok);
+  } catch {
+    return false;
+  }
+}
+
 /** Puts back what an anti-nuke protection stopped (the owner and the administrators only; the bot checks it). */
 export async function callPettoAntinukeRestore(context: AstroContext, guildId: string, userId: string, id: number): Promise<{ ok: boolean; message?: string; done?: string[]; failed?: string[] }> {
   const { baseUrl, secret } = apiConfig(context);

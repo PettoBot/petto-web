@@ -59,3 +59,24 @@ export function landingPath(_raw) {
 export function homeHref(lang) {
   return lang === 'es' ? '/es/' : lang === 'pt-BR' ? '/pt-br/' : '/';
 }
+
+// ---- The question "do you want Petto to add you to the support server?" before the dashboard login.
+// Discord only lets Petto add somebody to a server when they allow it on its own screen (the scope `guilds.join`), so the login asks first and
+// asks Discord for that scope only when the answer is yes. The question is asked once per browser (a cookie remembers that it was asked, not the
+// answer: a person who left the server is never added again without being asked).
+
+/** The scopes of the login: who you are and your servers, and, only when the visitor said yes, joining the support server. @param {boolean} joinSupport */
+export function loginScope(joinSupport) {
+  return joinSupport ? 'identify guilds guilds.join' : 'identify guilds';
+}
+
+/**
+ * What /dash/login does with the answer of the address (`?support=yes|no`) and the cookie that says the question was already asked.
+ * @param {{ answer?: unknown, asked?: unknown }} input
+ * @returns {{ ask: boolean, join: boolean, remember: boolean }} `ask`: show the question first; `join`: ask Discord to add the visitor; `remember`: set the cookie
+ */
+export function supportChoice({ answer = null, asked = null } = {}) {
+  if (answer === 'yes') return { ask: false, join: true, remember: true };
+  if (answer === 'no') return { ask: false, join: false, remember: true };
+  return { ask: asked !== '1', join: false, remember: false };
+}
