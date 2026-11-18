@@ -77,5 +77,20 @@ const values = tokenValues(sampleContext);
 same('preview', previewText('Hi {user.name} in {server_name}: {server_membercount}{newline}{choose:a|b}', values), 'Hi Liam in Petto Support: 1,204\na');
 same('preview leaves what it does not know', previewText('{no_such_thing}', values), '{no_such_thing}');
 
+
+// --- the AI helper: the page, its endpoint and the call to the bot ---
+import { readFileSync } from 'node:fs';
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const endpoint = read('src/pages/dash/guild/[id]/migrate-ai.ts');
+check('ai endpoint: Manage Server only (no role access, no support mode)', /auth\.devView \|\| auth\.access/.test(endpoint) && /canManageGuild/.test(endpoint));
+check('ai endpoint: the three modes only', /MODES = \['rewrite', 'plan', 'ask'\]/.test(endpoint) && /MODES\.includes\(mode\)/.test(endpoint));
+check('ai endpoint: the text is limited to 1500', /MAX_TEXT = 1500/.test(endpoint) && /text\.length > MAX_TEXT/.test(endpoint));
+check('ai endpoint: an unknown bot is "other"', /isBotId\(body\?\.bot\) \? body\.bot : 'other'/.test(endpoint));
+check('ai call: goes to the migrate-ai route of the bot, with the language and the key', /\/migrate-ai`/.test(read('src/utils/pettoBotApi.ts')) && /callPettoMigrateAi/.test(endpoint));
+const page = read('src/components/DashMigrate.astro');
+check('ai page: the answer is shown as text, never as markup', !/innerHTML\s*=\s*[^;]*answer/i.test(page) && /textContent = text/.test(page));
+check('ai page: only people with Manage Server can send', /canRun/.test(page) && /data-ai-send disabled=\{!canRun\}/.test(page));
+check('ai page: says it only proposes and that the text goes to Groq', /never changes your server/.test(page) && /Groq/.test(page));
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('bot-migration: ok');

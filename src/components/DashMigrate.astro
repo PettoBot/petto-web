@@ -11,8 +11,9 @@ import { BOTS, CHECKLISTS, FEATURE_PAGES, MOVE_STEPS, type BotId, type FeatureId
 interface Props {
   user: { username: string; avatar: string | null; userId?: string };
   guildId: string; guildName: string; guildIcon: string;
+  canRun: boolean;
 }
-const { user, guildId, guildName, guildIcon } = Astro.props;
+const { user, guildId, guildName, guildIcon, canRun } = Astro.props;
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
 const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang === 'pt-BR' ? '/pt-br' : ''}/guides/migrating-from-another-bot`;
@@ -49,6 +50,11 @@ const HINTS: Record<string, string> = {
   'channel-name': dt('Petto links a channel by ID: write <# and the ID of the channel, then >, or use the variable of the current channel.'),
   'unknown': dt('Petto does not know this variable. Look it up with !variables or leave it out.'),
 };
+const AI_MODES = [
+  { id: 'rewrite', label: dt('Rewrite for Petto'), hint: dt('Paste a command, tag or autoresponder of the old bot and the AI rewrites it for Petto.') },
+  { id: 'plan', label: dt('What to set up'), hint: dt('Say what you had in the old bot (its modules, commands, roles) and the AI proposes what to set up in Petto.') },
+  { id: 'ask', label: dt('Ask a question'), hint: dt('Ask anything about moving to Petto.') },
+] as const;
 const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="migrate" pageTitle={dt('Migrate from another bot')}>
@@ -102,6 +108,28 @@ const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
         </div>
       </div>
       <div hidden>{Object.entries(HINTS).map(([code, text]) => <span data-hint={code}>{text}</span>)}</div>
+    </section>
+
+    <section class="sx-panel mg-box" data-ai data-can-run={canRun ? '1' : '0'}
+      data-l-busy={dt('Thinking…')} data-l-copy={dt('Copy')} data-l-copied={dt('Copied')} data-l-failed={dt('Could not reach Petto. Try again in a moment.')} data-l-unknown={dt('The AI used variables Petto does not have. Check them before you paste:')}>
+      <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:#b4a5f5"><Icon name="ph:sparkle-fill" width="17" height="17" /></span><h2>{dt('AI helper')}</h2></div>
+      {!canRun && <div class="mg-unverified"><Icon name="ph:info-fill" width="15" height="15" /><span>{dt('Only people with Manage Server can use the AI helper.')}</span></div>}
+      <div class="mg-bots" role="tablist" aria-label={dt('What should the AI do?')}>
+        {AI_MODES.map((mode, i) => (
+          <button type="button" class="mg-bot" role="tab" data-ai-mode={mode.id} data-hint={mode.hint} aria-selected={i === 0 ? 'true' : 'false'}>{mode.label}</button>
+        ))}
+      </div>
+      <div class="sx-field">
+        <label for="mg-ai-in" data-ai-hint>{AI_MODES[0].hint}</label>
+        <textarea id="mg-ai-in" class="dgl-autogrow" rows="4" maxlength="1500" spellcheck="false" data-ai-in disabled={!canRun}></textarea>
+      </div>
+      <div class="mg-ai-row">
+        <button type="button" class="btn btn-accent" data-ai-send disabled={!canRun}><Icon name="ph:sparkle-fill" width="13" height="13" />{dt('Ask the AI')}</button>
+        <span class="mg-ai-note">{dt('The AI only proposes: it never changes your server. It can be wrong, so read it before you use it. Your text is sent to an AI service (Groq) to get the answer and Petto does not store it.')}</span>
+      </div>
+      <p class="mg-ai-error" data-ai-error role="alert" hidden></p>
+      <div class="mg-block mg-bad" data-ai-unknown hidden><h3><Icon name="ph:warning-fill" width="14" height="14" /><span data-ai-unknown-title></span></h3><ul class="mg-unsupported" data-ai-unknown-list></ul></div>
+      <div class="mg-answer" data-ai-answer hidden></div>
     </section>
 
     <section class="sx-panel mg-box">
@@ -224,6 +252,79 @@ const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
       timer = window.setTimeout(() => { label.textContent = root.dataset.lCopy ?? ''; }, 1600);
     });
 
+    // The AI helper: it only proposes. The answer is shown as text (never as markup); what is inside ``` is a block that can be copied.
+    const ai = q<HTMLElement>('[data-ai]');
+    const aiIn = q<HTMLTextAreaElement>('[data-ai-in]');
+    const aiSend = q<HTMLButtonElement>('[data-ai-send]');
+    const aiError = q<HTMLElement>('[data-ai-error]');
+    const aiAnswer = q<HTMLElement>('[data-ai-answer]');
+    let aiMode = 'rewrite';
+    const lab = (key: string) => ai.dataset[key] ?? '';
+    const copyText = async (text: string, button: HTMLElement, label: HTMLElement) => {
+      try { await navigator.clipboard.writeText(text); } catch { /* the text can still be selected by hand */ }
+      label.textContent = lab('lCopied');
+      window.setTimeout(() => { label.textContent = lab('lCopy'); }, 1600);
+      button.blur();
+    };
+    ai.querySelectorAll<HTMLElement>('[data-ai-mode]').forEach((tab) => tab.addEventListener('click', () => {
+      aiMode = tab.dataset.aiMode ?? 'rewrite';
+      ai.querySelectorAll<HTMLElement>('[data-ai-mode]').forEach((other) => other.setAttribute('aria-selected', String(other === tab)));
+      q('[data-ai-hint]').textContent = tab.dataset.hint ?? '';
+    }));
+    const showAnswer = (answer: string) => {
+      const nodes: HTMLElement[] = [];
+      answer.split(/```[^\n]*\n?/).forEach((part, i) => {
+        const text = part.replace(/^\n+|\n+$/g, '');
+        if (!text) return;
+        if (i % 2 === 1) {
+          const box = document.createElement('div');
+          box.className = 'mg-code';
+          const pre = document.createElement('pre');
+          pre.textContent = text;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-sm';
+          const label = document.createElement('span');
+          label.textContent = lab('lCopy');
+          btn.append(label);
+          btn.addEventListener('click', () => copyText(text, btn, label));
+          box.append(pre, btn);
+          nodes.push(box);
+        } else {
+          const p = document.createElement('p');
+          p.textContent = text;
+          nodes.push(p);
+        }
+      });
+      aiAnswer.replaceChildren(...nodes);
+      aiAnswer.hidden = nodes.length === 0;
+    };
+    aiSend.addEventListener('click', async () => {
+      const text = aiIn.value.trim();
+      aiError.hidden = true;
+      if (!text || aiSend.disabled) { if (!text) aiIn.focus(); return; }
+      aiSend.disabled = true;
+      const idle = aiSend.innerHTML;
+      aiSend.textContent = lab('lBusy');
+      try {
+        const res = await fetch(`/dash/guild/${guild}/migrate-ai`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: aiMode, bot, text }) });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) throw new Error(data?.message || lab('lFailed'));
+        showAnswer(String(data.answer ?? ''));
+        const unknown: string[] = Array.isArray(data.unknown) ? data.unknown : [];
+        q('[data-ai-unknown-title]').textContent = lab('lUnknown');
+        fill(q('[data-ai-unknown]'), q('[data-ai-unknown-list]'), unknown.map((token) => { const li = document.createElement('li'); li.append(code(token)); return li; }));
+      } catch (error) {
+        aiAnswer.hidden = true;
+        q('[data-ai-unknown]').hidden = true;
+        aiError.textContent = error instanceof Error && error.message ? error.message : lab('lFailed');
+        aiError.hidden = false;
+      } finally {
+        aiSend.innerHTML = idle;
+        aiSend.disabled = ai.dataset.canRun !== '1';
+      }
+    });
+
     show(bot);
   }
 </script>
@@ -272,6 +373,16 @@ const bots = BOTS.map((bot) => ({ ...bot, checklist: CHECKLISTS[bot.id] }));
   .mg-check input:checked ~ .mg-text b { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--text-dim); }
   .mg-go { flex: none; font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; }
   .mg-go:hover { border-color: var(--accent); }
+  .mg-ai-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .mg-ai-note { flex: 1; min-width: 220px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+  .mg-ai-error { margin: 0; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, #ff6b6b 50%, transparent); background: color-mix(in srgb, #ff6b6b 10%, transparent); color: var(--text); font-size: 13.5px; }
+  .mg-ai-error[hidden], .mg-answer[hidden] { display: none; }
+  .mg-answer { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--bg-raise); }
+  .mg-answer :global(p) { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; color: var(--text); }
+  .mg-answer :global(.mg-code) { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--card); }
+  .mg-answer :global(.mg-code pre) { flex: 1; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--text); }
+  .mg-answer :global(.mg-code .btn) { flex: none; }
+  @media (max-width: 520px) { .mg-answer :global(.mg-code) { flex-direction: column; } }
   @media (max-width: 760px) { .mg-cols { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 520px) { .mg-item { gap: 8px; padding: 10px; } .mg-sub { margin-left: 10px; } }
 </style>
