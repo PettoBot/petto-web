@@ -34,6 +34,7 @@ import { canUseRollouts } from '../utils/rolloutAccess';
 import { canUseCodeCommands } from '../utils/codeAccess';
 import { forumsReady } from '../utils/forumsReady';
 import { pageDecision, pageOf } from '../utils/dashAccess';
+import { navModulesOf } from '../utils/navModules';
 import { supportLabels, supportPageOf, supportPolicyFor } from '../utils/supportEdit';
 import { backupsUnderMaintenance } from '../utils/maintenance';
 
@@ -419,7 +420,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
               <Icon name="ph:caret-down" width="14" height="14" class="dgl-mobile-toggle-caret" />
             </button>
 
-            <nav class="dgl-nav" id="dgl-sidenav">
+            <nav class="dgl-nav" id="dgl-sidenav" data-states-url={`/dash/guild/${guildId}/module-states`} data-on-label={dt('On')} data-off-label={dt('Off')}>
               {groups.map((group, index) => (
                 <Fragment>
                 {(index === 0 || sectionOf(groups[index - 1].label) !== sectionOf(group.label)) && <div class="dgl-section-title">{sectionOf(group.label)}</div>}
@@ -427,11 +428,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                   <button type="button" class="dgl-label" aria-expanded="true">
                     <span class="dgl-label-tile"><Icon name={group.icon} width="14" height="14" class="dgl-label-icon" /></span>
                     <span>{group.label}</span>
+                    <i class="dgl-state dgl-group-state" aria-hidden="true"></i>
                     <Icon name="ph:caret-down" width="12" height="12" class="dgl-label-caret" />
                   </button>
                   <div class="dgl-items"><div class="dgl-items-inner">
                   {group.items.map((item) => (
-                    <a href={item.href} style={item.color ? `--nav-c:${item.color}` : undefined} data-full={item.full ? '' : undefined} data-label={item.label} data-sk={skeletonOf[item.id] ?? 'form'} class:list={['dgl-link', { active: active === item.id }]} aria-current={active === item.id ? 'page' : undefined} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
+                    <a href={item.href} style={item.color ? `--nav-c:${item.color}` : undefined} data-full={item.full ? '' : undefined} data-label={item.label} data-modules={navModulesOf(item.id).join(' ') || undefined} data-sk={skeletonOf[item.id] ?? 'form'} class:list={['dgl-link', { active: active === item.id }]} aria-current={active === item.id ? 'page' : undefined} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined}>
                       {stableInlineItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
                       <span class="dgl-link-text">{item.label}</span>
                       {item.isNew && <em class="dgl-new" title={dt('New')}>{dt('New')}</em>}
@@ -439,6 +441,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                       {item.soon && <em class="dgl-new dgl-soon" title={dt('Soon')}>{dt('Soon')}</em>}
                       {item.maintenance && <em class="dgl-new dgl-soon dgl-badge-icon" title={dt('Maintenance')} aria-label={dt('Maintenance')} role="img"><Icon name="ph:wrench-fill" width="11" height="11" /></em>}
                 {item.premium && <InlineIcon name="ph:crown-fill" width="12" height="12" class="dgl-premium-crown" />}
+                      {navModulesOf(item.id).length > 0 && <i class="dgl-state" aria-hidden="true"></i>}
                     </a>
                   ))}
                   </div></div>
@@ -446,6 +449,55 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                 </Fragment>
               ))}
             </nav>
+            <script is:inline>
+              // Which modules are on: a page of the menu whose module is off is drawn grey, one whose module is on has a green dot, and a section is grey when none of
+              // its modules is on. The answer comes after the page is drawn (it takes a few small reads) and is kept for this tab, so the next page is drawn with the
+              // last known state at once. A page with no on or off (Audit log, Permissions...) is not touched. A save asks again (the module may have changed).
+              (function () {
+                var nav = document.getElementById('dgl-sidenav');
+                if (!nav) return;
+                var url = nav.getAttribute('data-states-url');
+                var KEY = 'dgl-module-states:' + url;
+                var apply = function (states) {
+                  var links = nav.querySelectorAll('a.dgl-link[data-modules]');
+                  Array.prototype.forEach.call(nav.querySelectorAll('.dgl-group'), function (group) {
+                    // The first page of a module in its section carries the dot; its other pages (voice leveling, ticket types...) only turn grey or not.
+                    var seen = {};
+                    Array.prototype.forEach.call(group.querySelectorAll('a.dgl-link[data-modules]'), function (link) {
+                      var mods = link.getAttribute('data-modules').split(' ');
+                      var fresh = mods.some(function (m) { return !seen[m]; });
+                      mods.forEach(function (m) { seen[m] = true; });
+                      if (fresh) link.setAttribute('data-main', ''); else link.removeAttribute('data-main');
+                    });
+                  });
+                  Array.prototype.forEach.call(links, function (link) {
+                    var known = link.getAttribute('data-modules').split(' ').filter(function (m) { return states[m]; });
+                    if (!known.length) { link.removeAttribute('data-state'); return; }
+                    link.setAttribute('data-state', known.some(function (m) { return states[m] === 'on'; }) ? 'on' : 'off');
+                  });
+                  Array.prototype.forEach.call(nav.querySelectorAll('.dgl-group'), function (group) {
+                    var mine = group.querySelectorAll('a.dgl-link[data-state]');
+                    if (!mine.length) { group.removeAttribute('data-state'); return; }
+                    group.setAttribute('data-state', group.querySelector('a.dgl-link[data-state="on"]') ? 'on' : 'off');
+                  });
+                  nav.setAttribute('data-states', '1');
+                };
+                try { var saved = sessionStorage.getItem(KEY); if (saved) apply(JSON.parse(saved)); } catch (e) {}
+                var load = function (fresh) {
+                  fetch(url + (fresh ? '?fresh=1' : ''), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                    .then(function (res) { return res.ok ? res.json() : null; })
+                    .then(function (data) {
+                      if (!data || !data.states || !Object.keys(data.states).length) return;
+                      apply(data.states);
+                      try { sessionStorage.setItem(KEY, JSON.stringify(data.states)); } catch (e) {}
+                    })
+                    .catch(function () {});
+                };
+                load(false);
+                var timer = 0;
+                document.addEventListener('dgl:module-state', function () { clearTimeout(timer); timer = setTimeout(function () { load(true); }, 500); });
+              })();
+            </script>
             <script is:inline>
               // Every part of the menu folds: all of it open is a very long list. What the person opens or folds is kept per server while they
               // stay in it (moving between its pages, a reload, the back button). Coming into a server (from the list of servers, another
@@ -2355,6 +2407,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
             .then(function (answer) {
               if (waiting) waiting.stop();
               if (answer.ok && answer.version) setShownVersion(answer.version);
+              if (answer.ok) document.dispatchEvent(new CustomEvent('dgl:module-state'));
               if (fromBar && answer.ok && !answerHasProblem(answer.html)) {
                 commitDefaults(form);
                 form.classList.remove('is-dirty');
@@ -3348,7 +3401,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-new { flex: none; }
   .dgl-soon { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
   .dgl-new { font-family: var(--mono); font-style: normal; font-size: 8.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 1px 4px; border-radius: 5px; margin-left: auto; }
-  .dgl-new.dgl-updated { color: var(--green, #3ba55d); background: color-mix(in srgb, var(--green, #3ba55d) 14%, transparent); }
+  /* "Updated" is blue: green in the menu means only that a module is on. */
+  .dgl-new.dgl-updated { color: #7dc4f5; background: color-mix(in srgb, #7dc4f5 14%, transparent); }
   .dgl-new.dgl-soon { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
   .dgl-link:hover { color: var(--text); background: var(--card-hover); }
   /* The open page: a soft pill, and a small bar that sits on the guide line of its part. */
@@ -3359,6 +3413,20 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   .dgl-link:hover :global(svg) { transform: translateX(1px); }
   .dgl-link.active :global(svg) { color: var(--accent); }
   .dgl-link .dgl-premium-crown { margin-left: auto; color: var(--yellow); opacity: .9; }
+  /* The state of a module in the menu: a dot (green: on, grey: off) and, when it is off, the whole page drawn grey. Pages with no on or off have neither. */
+  .dgl-state { display: none; flex: none; width: 7px; height: 7px; border-radius: 50%; margin-left: auto; background: color-mix(in srgb, var(--text) 24%, transparent); transition: background-color var(--m-base) ease, box-shadow var(--m-base) ease, opacity var(--m-base) ease; }
+  .dgl-new ~ .dgl-state, .dgl-premium-crown ~ .dgl-state { margin-left: 2px; }
+  .dgl-link[data-state][data-main] .dgl-state, .dgl-group[data-state] > .dgl-label .dgl-group-state { display: block; animation: dgl-state-in var(--m-slow) var(--m-out) both; }
+  .dgl-group-state { margin-left: 0; margin-right: 2px; }
+  .dgl-link[data-state='on'][data-main] .dgl-state, .dgl-group[data-state='on'] > .dgl-label .dgl-group-state { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 20%, transparent); }
+  .dgl-link[data-state='off']:not(.active) { color: color-mix(in srgb, var(--text-dim) 78%, transparent); }
+  .dgl-link[data-state='off']:not(.active) :global(svg) { opacity: .55; }
+  .dgl-link[data-state='off']:not(.active):hover { color: var(--text-muted); }
+  .dgl-group[data-state='off']:not(.has-active) > .dgl-label { color: var(--text-dim); }
+  .dgl-group[data-state='off']:not(.has-active) > .dgl-label .dgl-label-tile { opacity: .6; }
+  .dgl-group[data-state='off']:not(.has-active) > .dgl-label:hover { color: var(--text-muted); }
+  @keyframes dgl-state-in { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .dgl-link[data-state][data-main] .dgl-state, .dgl-group[data-state] > .dgl-label .dgl-group-state { animation: none; } }
   @media (prefers-reduced-motion: reduce) { .dgl-group.unfolding .dgl-link, .dgl-group.folding .dgl-items-inner { animation: none; } }
 
   .dgl-side-version { flex: none; padding: 0 14px 8px; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); opacity: 0.8; }
