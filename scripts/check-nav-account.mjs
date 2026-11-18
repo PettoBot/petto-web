@@ -122,7 +122,7 @@ check('no flag is loaded from another site', !/https?:\/\/[^'"]*flag/i.test(layo
 
 // One login: the dashboard page and the Login of the bar build the same address.
 check('Login and the dashboard card share the route', /dashAuthorizeUrl/.test(read('src/pages/dash/login.ts')) && LOGIN_HREF === loginHref('en') && /href=\{LOGIN_HREF\}/.test(read('src/components/DashLogin.astro')));
-check('Login goes to the callback of the dashboard', /\/dash\/callback/.test(read('src/utils/discordLogin.ts')) && /identify guilds/.test(read('src/utils/discordLogin.ts')));
+check('Login goes to the callback of the dashboard', /\/dash\/callback/.test(read('src/utils/discordLogin.ts')) && /loginScope/.test(read('src/utils/discordLogin.ts')) && /identify guilds/.test(read('src/utils/dashLogin.mjs')));
 
 // The icons of the menu are drawn by InlineIcon.
 const icons = read('src/components/InlineIcon.astro');
