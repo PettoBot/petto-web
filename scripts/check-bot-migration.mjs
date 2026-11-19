@@ -3,7 +3,7 @@
 // Run: node scripts/check-bot-migration.mjs
 import { loadTs } from './og/load-copy.mjs';
 
-const { BOTS, convertMessage, previewText, isBotId } = await loadTs('src/utils/botMigration.ts');
+const { BOTS, CHECKLISTS, FEATURE_PAGES, convertMessage, previewText, isBotId } = await loadTs('src/utils/botMigration.ts');
 const { tokenValues, sampleContext } = await loadTs('src/utils/variableSamples.ts');
 const variables = (await import('../src/data/variables.generated.json', { with: { type: 'json' } })).default;
 
@@ -15,7 +15,7 @@ const same = (name, got, expected) => check(name, JSON.stringify(got) === JSON.s
 const text = (bot, input) => convertMessage(bot, input).text;
 
 // --- the bots ---
-same('bots', BOTS.map((bot) => [bot.id, bot.verified]), [['mee6', true], ['carl', true], ['dyno', true], ['probot', false], ['welcomer', false]]);
+same('bots', BOTS.map((bot) => [bot.id, bot.verified]), [['mee6', true], ['carl', true], ['dyno', true], ['probot', true], ['nekotina', true], ['welcomer', false]]);
 check('isBotId', isBotId('mee6') && !isBotId('mee7') && !isBotId(undefined));
 
 // --- every token that comes out is a variable Petto has ---
@@ -25,6 +25,8 @@ const samples = {
   mee6: ['{user}', '{user.mention}', '{user.id}', '{user.name}', '{user.discriminator}', '{user.idname}', '{user.avatar_url}', '{user.bot}', '{server}', '{server.name}', '{server.id}', '{server.icon_url}', '{server.owner_id}', '{server.owner}', '{server.region}', '{server.member_count}', '{server.verification_level}'],
   carl: ['{mention}', '{user}', '{server}', '{user(id)}', '{user(proper)}', '{server(members)}', '{ord:{server(members)}}', '{random: a ~ b}'],
   dyno: ['{user}', '{avatar}', '{username}', '{server}', '{channel}', '{everyone}', '{here}', '{name}', '{date}'],
+  probot: ['[user]', '[inviter]', '[server]', '[userName]', '[inviterName]', '[memberCount]', '[level]', '[user.username]', '[user.tag]', '[oldLevel]'],
+  nekotina: ['{{user}}', '{{username}}', '{{server}}', '{{members}}', '{{date}}', '{{user.mention}}', '{{user.name}}'],
 };
 for (const [bot, list] of Object.entries(samples)) {
   for (const token of list) {
@@ -67,10 +69,28 @@ same('an unknown variable is reported', convertMessage('carl', '{nothing_like_th
 same('empty text', convertMessage('mee6', ''), { text: '', changes: [], unsupported: [], verified: true });
 same('a second run changes nothing', text('mee6', text('mee6', '{server.name} {user}')), '{server_name} {user}');
 
-// --- ProBot and Welcomer: nothing is guessed ---
-for (const bot of ['probot', 'welcomer']) {
-  same(`${bot} comes back as it went`, convertMessage(bot, '{user} [user] %user% {server.name}'), { text: '{user} [user] %user% {server.name}', changes: [], unsupported: [], verified: false });
-}
+// --- ProBot: square brackets ---
+same('probot welcome', text('probot', 'Welcome [user] to [server]! You are member [memberCount], invited by [inviterName] ([inviter]).'), 'Welcome {user.mention} to {server_name}! You are member {server_membercount}, invited by {inviter.name} ({inviter}).');
+same('probot leveling', text('probot', '[user] reached level [level] (it was [oldLevel]), [user.username] [user.tag]'), '{user.mention} reached level {level} (it was {level_previous}), {user.name} {user.name}');
+same('probot is case blind', text('probot', '[USERNAME] [Server]'), '{user.name} {server_name}');
+same('probot links are not variables', text('probot', '[Read the rules](https://example.com) [user]'), '[Read the rules](https://example.com) {user.mention}');
+same('probot plain words in brackets are left, and not reported', convertMessage('probot', '[Staff] [Welcome] <@123456789012345678> <#123456789012345678>'), { text: '[Staff] [Welcome] <@123456789012345678> <#123456789012345678>', changes: [], unsupported: [], verified: true });
+same('probot invites of a member has no equivalent', convertMessage('probot', '[invites]').unsupported.map((item) => [item.token, item.hint]), [['[invites]', 'no-equivalent']]);
+same('probot does not read curly braces', text('probot', '{user} [user]'), '{user} {user.mention}');
+same('probot counts', convertMessage('probot', '[user] [user]').changes, [{ from: '[user]', to: '{user.mention}', count: 2 }]);
+
+// --- Nekotina: double braces ---
+same('nekotina welcome', text('nekotina', "Welcome {{user}} to **{{server}}**! You're member #{{members}}. {{date}}"), "Welcome {user.mention} to **{server_name}**! You're member #{server_membercount}. {date}");
+same('nekotina username', text('nekotina', '{{ username }}'), '{user.name}');
+same('nekotina command text', text('nekotina', '{{user.mention}} wishes {{user.name}} a happy day'), '{user.mention} wishes {user.name} a happy day');
+same('nekotina arguments have no equivalent', convertMessage('nekotina', '{{arg.target}} {{arg.target.avatar}}').unsupported.map((item) => [item.token, item.hint]), [['{{arg.target}}', 'command-argument'], ['{{arg.target.avatar}}', 'command-argument']]);
+same('nekotina unknown is reported', convertMessage('nekotina', '{{nothing}}').unsupported.map((item) => [item.token, item.hint]), [['{{nothing}}', 'unknown']]);
+same('nekotina leaves single braces', text('nekotina', '{user.name} {{user}}'), '{user.name} {user.mention}');
+
+// --- Welcomer: its docs can not be read, so nothing is guessed ---
+same('welcomer comes back as it went', convertMessage('welcomer', '{user} [user] %user% {server.name} {{user}}'), { text: '{user} [user] %user% {server.name} {{user}}', changes: [], unsupported: [], verified: false });
+same('checklists: every feature has a page', Object.entries(CHECKLISTS).flatMap(([bot, list]) => list.filter((feature) => !FEATURE_PAGES[feature]).map((feature) => `${bot}:${feature}`)), []);
+same('checklists: the bots that are read have one, Welcomer none', Object.entries(CHECKLISTS).map(([bot, list]) => [bot, list.length > 0]), [['mee6', true], ['carl', true], ['dyno', true], ['probot', true], ['nekotina', true], ['welcomer', false]]);
 
 // --- the preview ---
 const values = tokenValues(sampleContext);

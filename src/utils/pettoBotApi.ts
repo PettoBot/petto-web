@@ -839,6 +839,35 @@ export async function callPettoMigrateAi(context: AstroContext, guildId: string,
   }
 }
 
+export interface PermissionAlert { key: string; feature: string; kind: 'missing' | 'hierarchy'; lines: string[]; occurrences: number; firstSeen: string; lastSeen: string; notifiedAt: string | null }
+
+/**
+ * The permission problems of a server (what Petto could not do because a permission is missing, what is missing and where), for the Overview. The bot checks each one again every time, so
+ * what the staff fixed is gone from the list; `dismiss` takes one off (it comes back if it happens again). Only Manage Server (the same as the notice in the log channel). The text of each
+ * problem comes already written, in the language of the dashboard.
+ */
+export async function callPettoPermissionAlerts(context: AstroContext, guildId: string, userId: string, action: 'list' | 'dismiss', key = '', lang = 'en'): Promise<{ ok: boolean; alerts: PermissionAlert[]; message: string; down?: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  const none = { ok: false, alerts: [] as PermissionAlert[], message: '', down: true };
+  if (!baseUrl || !secret) return none;
+  try {
+    const base = `${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/permission-alerts`;
+    const headers = { 'X-Petto-Dashboard-Key': secret, 'X-Petto-Language': lang, Accept: 'application/json' };
+    const response = action === 'list'
+      ? await fetch(`${base}?user_id=${encodeURIComponent(userId)}`, { method: 'GET', headers, signal: AbortSignal.timeout(10_000) })
+      : await fetch(`${base}/dismiss`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ key, user_id: userId }), signal: AbortSignal.timeout(10_000) });
+    const payload: any = await response.json().catch(() => null);
+    const alerts: PermissionAlert[] = Array.isArray(payload?.alerts) ? payload.alerts.slice(0, 40).map((row: any) => ({
+      key: String(row?.key ?? ''), feature: String(row?.feature ?? ''), kind: row?.kind === 'hierarchy' ? 'hierarchy' : 'missing',
+      lines: Array.isArray(row?.lines) ? row.lines.map(String).slice(0, 8) : [], occurrences: Number(row?.occurrences) || 1,
+      firstSeen: String(row?.firstSeen ?? ''), lastSeen: String(row?.lastSeen ?? ''), notifiedAt: row?.notifiedAt ? String(row.notifiedAt) : null,
+    })).filter((row: PermissionAlert) => row.key) : [];
+    return { ok: Boolean(response.ok && payload?.ok), alerts, message: typeof payload?.message === 'string' ? payload.message : '', down: payload === null && response.status >= 500 };
+  } catch {
+    return none;
+  }
+}
+
 /** "Try this rule" of the Moderation rules page: what the rule (as it is in the form) would do with a sample message. The bot does nothing and writes nothing. */
 export async function callPettoRuleTest(context: AstroContext, guildId: string, userId: string, rule: unknown, sample: unknown, lang = 'en'): Promise<Record<string, any> | null> {
   const { baseUrl, secret } = apiConfig(context);
