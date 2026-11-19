@@ -6846,4 +6846,6 @@ export const dashPt: Record<string, string> = {
   "Happened {n} times.": "Aconteceu {n} vezes.",
   "Last time: {when}": "Última vez: {when}",
   "Only people with Manage Server can see this.": "Só quem tem Gerenciar servidor pode ver isto.",
+  "Beta": "Beta",
+  "This page is a beta: it is not finished. More variables and more help from the AI are coming.": "Esta página está em beta: não está terminada. Vêm mais variáveis e mais ajuda da IA.",
 };

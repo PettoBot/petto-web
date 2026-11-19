@@ -6846,4 +6846,6 @@ export const dashEs: Record<string, string> = {
   "Happened {n} times.": "Pasó {n} veces.",
   "Last time: {when}": "Última vez: {when}",
   "Only people with Manage Server can see this.": "Solo quien tenga Gestionar servidor puede ver esto.",
+  "Beta": "Beta",
+  "This page is a beta: it is not finished. More variables and more help from the AI are coming.": "Esta página está en beta: no está terminada. Vienen más variables y más ayuda de la IA.",
 };
