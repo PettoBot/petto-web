@@ -403,7 +403,10 @@ export async function planManualPremium(astro: any, actorId: string, input: Plan
     end: end ? end.toISOString() : null,
     prevEnd: existing?.current_period_end ?? null, prevStatus: existing?.status ?? null, prevSlots: existing?.slot_limit ?? null,
     prevLive: isLiveEntitlement(existing, now.getTime()),
-    note, internalUserId: existing?.user_id ?? ownerId(astro), needsAck, exp: now.getTime() + PLAN_TTL_MS,
+    note,
+    // A Premium for a person belongs to that person (the bot finds it by `user_id`: their role, their slots, `!premium`). Only a Premium for a server is held by the owner.
+    internalUserId: targetType === 'user' ? targetId : (existing?.user_id ?? ownerId(astro)),
+    needsAck, exp: now.getTime() + PLAN_TTL_MS,
   };
   return { ok: true, plan, target };
 }
@@ -528,6 +531,8 @@ async function applyPlan(astro: any, actorId: string, plan: Plan, now: Date): Pr
     ...(existing ? { edited_by: actorId, edited_at: stamp } : {}),
   };
   const fields = {
+    // Also when an older grant is edited: the ones saved with the owner as holder (before this) are fixed with the first change.
+    ...(targetType === 'user' ? { user_id: plan.internalUserId } : {}),
     plan_key: `premium-manual-${plan.slots}`,
     status: 'active',
     slot_limit: plan.slots,
