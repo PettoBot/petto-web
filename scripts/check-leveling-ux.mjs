@@ -31,7 +31,7 @@ const base = () => ({
   voice_notify_every: 1, voice_role_mode: 'highest', voice_ignored_channel_ids: [], voice_ignored_category_ids: [], voice_notify_ping: true, voice_notify_delete_after: 0, voice_notify_milestones: [],
   rank_style: 'card', rank_card: null, notify_card: null, voice_notify_card: null,
   min_message_chars: 3, anti_repeat: true, daily_xp_cap: 0, voice_alone_percent: 100, voice_min_members: 1, voice_ignore_muted: false, daily_bonus_xp: 0, streak_bonus_xp: 0, streak_max_days: 7,
-  xp_multiplier: 1, multiplier_mode: 'highest', multiplier_cap: 20, vote_boost_enabled: true, keep_xp: false, restore_roles: true, no_xp_role_ids: [], only_xp_role_ids: [],
+  xp_multiplier: 1, multiplier_mode: 'highest', multiplier_cap: 20, vote_boost_enabled: true, keep_xp: false, restore_roles: true, no_xp_role_ids: [], no_xp_user_ids: [], only_xp_role_ids: [],
   leaderboard_public: false, leaderboard_slug: null, leaderboard_join_url: null,
 });
 const ch = ['111111111111111111', '222222222222222222', '333333333333333333'];
@@ -67,6 +67,7 @@ const scenarios = {
     min_message_chars: 200, anti_repeat: false, daily_xp_cap: 1000000, voice_min_members: 20, voice_alone_percent: 0, voice_ignore_muted: true, daily_bonus_xp: 100000, streak_bonus_xp: 0, streak_max_days: 365,
     xp_multiplier: 0.05, multiplier_mode: 'sum', multiplier_cap: 1.5, keep_xp: true, restore_roles: false, no_xp_role_ids: [ch[0]], only_xp_role_ids: [ch[0], ch[1]],
   },
+  'rules: members blocked from XP': { no_xp_user_ids: ['123456789012345678', '987654321098765432'] },
   'rules: a streak limit with no streak bonus, alone percent with company needed': { streak_bonus_xp: 0, streak_max_days: 30, voice_min_members: 3, voice_alone_percent: 25 },
   'rank: an embed answer with a card still chosen, and cards that were deleted': { rank_style: 'embed', rank_card: 'old-rank', notify_card: 'gone', voice_notify_card: 'gone_too' },
   'rank: card and embed': { rank_style: 'both', rank_card: 'fancy' },
@@ -296,6 +297,18 @@ check('the Leveling page reads its forms through levelingForm.ts', () => {
 check('a saved choice that is gone stays as an option (channel, template, card, role)', () => {
   assert.deepEqual(F.keepChosen([{ id: '1', name: '#a' }], ['1', '9'], (id) => `Missing: ${id}`), [{ id: '1', name: '#a' }, { id: '9', name: 'Missing: 9' }]);
   for (const needle of ['missingLabel(config.notifyChannelId)', 'missingLabel(rank.notifyCard)', 'missingLabel(rank.voiceNotifyCard)', 'missingLabel(config.notifyEmbedTemplate)', 'withMissing(roles.map']) assert.ok(component.includes(needle), `${needle} is missing`);
+});
+
+check('the members blocked from XP are read from a box of ids, one per line, with commas or as mentions', () => {
+  const form = new FormData();
+  form.append('no_xp_user_ids', '123456789012345678, <@987654321098765432>\n123456789012345678\nnot an id\n12345');
+  assert.deepEqual(F.readRulesForm(form).newest.no_xp_user_ids, ['123456789012345678', '987654321098765432'], 'ids and mentions are kept, twice and short numbers are not');
+  const many = new FormData();
+  for (let i = 0; i < 130; i += 1) many.append('no_xp_user_ids', String(100000000000000000n + BigInt(i)));
+  assert.equal(F.readRulesForm(many).newest.no_xp_user_ids.length, 100, '100 members at most');
+  assert.deepEqual(F.readRulesForm(new FormData()).newest.no_xp_user_ids, [], 'an empty box lets everybody out');
+  assert.ok(!('no_xp_user_ids' in F.readRulesForm(new FormData()).row), 'the list goes with the newest columns, so a database without the column still saves the rest');
+  assert.ok(F.storedRules({ no_xp_user_ids: ['1'] }).noXpUserIds.length === 1 && F.storedRules({}).noXpUserIds.length === 0);
 });
 
 if (failed) { console.error(`\n${failed} check(s) failed.`); process.exit(1); }

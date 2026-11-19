@@ -281,6 +281,7 @@ export const CONFIG_SCHEMA: Record<string, readonly ColumnSpec[]> = {
     ["multiplier_cap", "num", 20],
     ["vote_boost_enabled", "bool", true],
     ["no_xp_role_ids", "list", []],
+    ["no_xp_user_ids", "list", []],
     ["only_xp_role_ids", "list", []],
     ["ignored_category_ids", "list", []],
     ["voice_ignored_category_ids", "list", []],

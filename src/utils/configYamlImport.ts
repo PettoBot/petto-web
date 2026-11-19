@@ -127,7 +127,9 @@ const clamped = (clamp: (n: number) => number): Rule => (value) => {
 /** A number the page refuses when it is out of range (a birthday hour, a time zone). */
 const strictInt = (min: number, max: number): Rule => (value) => (isNumber(value) && Number.isInteger(value) && value >= min && value <= max ? good(value) : bad('Use a whole number from {a} to {b}.', { a: min, b: max }));
 const pageWhole = (min: number, max: number, fallback: number) => clamped((n) => { const w = Math.floor(n); return Number.isFinite(w) ? Math.min(max, Math.max(min, w)) : fallback; });
-const idKnown = (id: string, kind: 'role' | 'channel', known: Known): boolean => {
+const idKnown = (id: string, kind: 'role' | 'channel' | 'user', known: Known): boolean => {
+  // The members of a server are not listed here: a member id is taken as it is.
+  if (kind === 'user') return true;
   const set = kind === 'role' ? known.roles : known.channels;
   return !set || set.has(id);
 };
@@ -138,7 +140,7 @@ const id = (kind: 'role' | 'channel'): Rule => (value, ctx) => {
   if (idKnown(value, kind, ctx.known)) return good(value);
   return kind === 'role' ? bad('That role is not in this server.') : bad('That channel is not in this server.');
 };
-const ids = (kind: 'role' | 'channel', max: number): Rule => (value, ctx) => {
+const ids = (kind: 'role' | 'channel' | 'user', max: number): Rule => (value, ctx) => {
   if (value === null) return good([]);
   if (!Array.isArray(value)) return bad('Use a list of ids between quotes.');
   const out: string[] = [];
@@ -259,7 +261,7 @@ const LEVELING_FORMS: LevelingForm[] = [
     read: (form) => readRankForm(form),
   },
   {
-    columns: { ...identity('min_message_chars', 'anti_repeat', 'voice_min_members', 'voice_ignore_muted', 'daily_bonus_xp', 'streak_bonus_xp', 'streak_max_days', 'xp_multiplier', 'multiplier_mode', 'multiplier_cap', 'keep_xp', 'restore_roles', 'no_xp_role_ids', 'only_xp_role_ids', 'daily_xp_cap', 'voice_alone_percent'), vote_boost_enabled: 'vote_boost' },
+    columns: { ...identity('min_message_chars', 'anti_repeat', 'voice_min_members', 'voice_ignore_muted', 'daily_bonus_xp', 'streak_bonus_xp', 'streak_max_days', 'xp_multiplier', 'multiplier_mode', 'multiplier_cap', 'keep_xp', 'restore_roles', 'no_xp_role_ids', 'only_xp_role_ids', 'no_xp_user_ids', 'daily_xp_cap', 'voice_alone_percent'), vote_boost_enabled: 'vote_boost' },
     entries: (row) => rulesFormEntries(storedRules(row)),
     read: (form) => { const { row, newest } = readRulesForm(form); return { ...row, ...newest, vote_boost_enabled: newest.vote_boost_enabled }; },
   },
@@ -270,10 +272,10 @@ const LEVELING_ENUMS: Record<string, readonly string[]> = {
   notify_mode: ['off', 'reply', 'channel', 'dm'], voice_notify_mode: ['off', 'reply', 'channel', 'dm'],
   rank_style: ['card', 'embed', 'both'], multiplier_mode: ['highest', 'stack', 'sum'],
 };
-const LEVELING_IDS: Record<string, ['role' | 'channel', number | null]> = {
+const LEVELING_IDS: Record<string, ['role' | 'channel' | 'user', number | null]> = {
   notify_channel_id: ['channel', null], voice_notify_channel_id: ['channel', null],
   ignored_channel_ids: ['channel', 100], ignored_category_ids: ['channel', 100], voice_ignored_channel_ids: ['channel', 100], voice_ignored_category_ids: ['channel', 100],
-  no_xp_role_ids: ['role', 100], only_xp_role_ids: ['role', 100],
+  no_xp_role_ids: ['role', 100], only_xp_role_ids: ['role', 100], no_xp_user_ids: ['user', 100],
 };
 const LEVELING_COLUMNS = new Set(LEVELING_FORMS.flatMap((form) => Object.keys(form.columns)));
 
@@ -367,7 +369,7 @@ function checkLeveling(input: Row, row: Row | null | undefined, ctx: RuleContext
       if (LEVELING_ENUMS[column]) checked = oneOf(LEVELING_ENUMS[column])(value, ctx);
       else if (LEVELING_IDS[column]) {
         const [type, max] = LEVELING_IDS[column];
-        checked = max === null ? id(type)(value, ctx) : ids(type, max)(value, ctx);
+        checked = max === null ? id(type as 'role' | 'channel')(value, ctx) : ids(type, max)(value, ctx);
       } else if (kind === 'bool') checked = bool(value, ctx);
       else if (kind === 'num') checked = !isNumber(value) ? bad('Use a number.') : LEVELING_FLOATS.has(column) || Number.isInteger(value) ? good(value) : bad('Use a whole number.');
       else checked = value === null || typeof value === 'string' ? good(value) : bad('Use text.');
