@@ -181,6 +181,15 @@ await check('permanent: current_period_end null in the stored row', async () => 
   assert.equal(stored.current_period_end, null); assert.equal(stored.metadata.permanent, true); assert.equal(stored.metadata.duration, 'permanent');
   assert.equal(stored.slot_limit, 3); assert.equal(stored.plan_key, 'premium-manual-3'); assert.equal(stored.provider, 'manual');
 });
+await check('a Premium for a person is saved with that person as its holder, not the owner', async () => {
+  assert.equal((await give()).ok, true);
+  assert.equal(byKey(`manual:user:${USER}`).user_id, USER, 'the person is the holder (the bot finds their Premium and gives them the role)');
+});
+await check('a grant for a person saved with the owner before is fixed when it is edited', async () => {
+  db.premium_entitlements.push({ id: 60, user_id: OWNER, provider: 'manual', provider_subscription_id: `manual:user:${USER}`, plan_key: 'premium-manual-3', status: 'active', slot_limit: 3, current_period_end: null, metadata: { target_type: 'user', target_user_id: USER, permanent: true } });
+  assert.equal((await give({ slotLimit: 4 })).ok, true);
+  assert.equal(byKey(`manual:user:${USER}`).user_id, USER);
+});
 await check('timed: current_period_end is the end of the calendar day, permanent false, duration saved', async () => {
   for (const [duration, end] of [['1m', '2027-02-28'], ['3m', '2027-04-30'], ['6m', '2027-07-31'], ['1y', '2028-01-31']]) {
     reset();
