@@ -258,6 +258,7 @@ const NOTE: Record<string, string> = {
   multiplier_cap: 'Highest total multiplier',
   vote_boost_enabled: 'true so voters get extra XP',
   no_xp_role_ids: 'Roles that give no XP (ids)',
+  no_xp_user_ids: 'Members blocked from XP: they earn none and none can be given by hand (ids)',
   only_xp_role_ids: 'Only these roles give XP (ids, empty for everyone)',
   keep_xp: 'true to keep the XP of a member who leaves (off: it is erased)',
   restore_roles: 'true to give reward roles back to a returning member',

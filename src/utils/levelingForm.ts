@@ -41,6 +41,8 @@ export const parseMilestones = (value: FormDataEntryValue | null) => {
   return list.sort((a, b) => a.level - b.level);
 };
 export const milestonesText = (value: unknown) => (Array.isArray(value) ? value : []).map((entry: any) => `${Number(entry.level)}: ${String(entry.message ?? '')}`).join('\n');
+/** The members blocked from XP: ids written in a box (separated by commas, spaces or lines, or pasted as mentions) or sent one by one; 100 at most, none twice. */
+export const memberIds = (values: FormDataEntryValue[]) => [...new Set(values.flatMap((value) => String(value).split(/[^0-9]+/)).filter((value) => /^\d{15,25}$/.test(value)))].slice(0, 100);
 export const ids = (values: FormDataEntryValue[]) => values.map(String).filter((value) => /^\d{15,25}$/.test(value)).slice(0, 100);
 const cardName = (value: FormDataEntryValue | null) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 40) || null;
 const templateName = (value: FormDataEntryValue | null) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_') || null;
@@ -135,6 +137,7 @@ export const storedRules = (c: Record<string, any>) => ({
   keepXp: c.keep_xp ?? false,
   restoreRoles: c.restore_roles ?? true,
   noXpRoleIds: (c.no_xp_role_ids ?? []) as string[],
+  noXpUserIds: (c.no_xp_user_ids ?? []) as string[],
   onlyXpRoleIds: (c.only_xp_role_ids ?? []) as string[],
 });
 export type StoredRules = ReturnType<typeof storedRules>;
@@ -227,11 +230,12 @@ export function readRulesForm(form: FormData) {
     no_xp_role_ids: ids(form.getAll('no_xp_role_ids')),
     only_xp_role_ids: ids(form.getAll('only_xp_role_ids')),
   };
-  // The two newest columns come with the bot's database update: if the database does not have them yet, the rest is still saved.
+  // The newest columns come with the bot's database update: if the database does not have them yet, the rest is still saved.
   const newest = {
     daily_xp_cap: clamp(whole(formNumber(form, 'daily_xp_cap', 0)), 0, 1000000),
     voice_alone_percent: clamp(whole(formNumber(form, 'voice_alone_percent', 100)), 0, 100),
     vote_boost_enabled: form.get('vote_boost') === 'on',
+    no_xp_user_ids: memberIds(form.getAll('no_xp_user_ids')),
   };
   return { row, newest };
 }
@@ -294,7 +298,7 @@ export function rulesFormEntries(rules: StoredRules): Entries {
   text(e, 'voice_min_members', rules.voiceMinMembers); text(e, 'voice_alone_percent', rules.voiceAlonePercent); on(e, 'voice_ignore_muted', rules.voiceIgnoreMuted);
   text(e, 'daily_bonus_xp', rules.dailyBonusXp); text(e, 'streak_bonus_xp', rules.streakBonusXp); text(e, 'streak_max_days', rules.streakMaxDays);
   text(e, 'xp_multiplier', rules.xpMultiplier); text(e, 'multiplier_mode', rules.multiplierMode); text(e, 'multiplier_cap', rules.multiplierCap);
-  many(e, 'no_xp_role_ids', rules.noXpRoleIds); many(e, 'only_xp_role_ids', rules.onlyXpRoleIds);
+  many(e, 'no_xp_role_ids', rules.noXpRoleIds); many(e, 'only_xp_role_ids', rules.onlyXpRoleIds); text(e, 'no_xp_user_ids', rules.noXpUserIds.join('\n'));
   on(e, 'vote_boost', rules.voteBoost); on(e, 'restore_roles', rules.restoreRoles); on(e, 'keep_xp', rules.keepXp);
   return e;
 }
