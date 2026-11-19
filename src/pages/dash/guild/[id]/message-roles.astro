@@ -1,0 +1,82 @@
+---
+export const prerender = false;
+import DashMessageRoles from '../../../../components/DashMessageRoles.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { checkMessageRule, MAX_MESSAGE_RULES } from '../../../../utils/messageRoles';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+// Message roles: "at N messages, give this role". The rules are rows of `message_roles`; the bot counts the messages (only in servers that have rules) and gives the role right after the message
+// that reaches the number. `total` counts every message since the first rule; `period` counts the last days and can take the role away again.
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+let saved = false;
+let problem: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  try {
+    if (action === 'add') {
+      const checked = checkMessageRule({ roleId: form.get('role_id'), messages: form.get('messages'), mode: form.get('mode'), periodDays: form.get('period_days'), removeBelow: form.get('remove_below') === 'on' });
+      if (!checked.ok) {
+        problem = checked.reason === 'role' ? dt('Pick the role to give.')
+          : checked.reason === 'messages' ? dt('The number of messages must be from 1 to {n}.', { n: checked.max })
+          : dt('The days of the period must be from 1 to {n}.', { n: checked.max });
+      } else {
+        const count = await fetch(`${apiUrl}/rest/v1/message_roles?guild_id=eq.${id}&select=id`, { headers });
+        const have = count.ok ? (await count.json()).length : 0;
+        if (have >= MAX_MESSAGE_RULES) problem = dt('There is no room: a server can have {n} rules.', { n: MAX_MESSAGE_RULES });
+        else {
+          const rule = checked.rule!;
+          const res = await fetch(`${apiUrl}/rest/v1/message_roles?on_conflict=guild_id,role_id,messages,mode,period_days`, {
+            method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+            body: JSON.stringify({ guild_id: id, role_id: rule.roleId, messages: rule.messages, mode: rule.mode, period_days: rule.periodDays, remove_below: rule.removeBelow, enabled: true }),
+          });
+          if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+        }
+      }
+    } else if (action === 'remove' || action === 'toggle') {
+      const ruleId = Math.floor(Number(form.get('rule_id')));
+      if (Number.isFinite(ruleId) && ruleId > 0) {
+        const res = action === 'remove'
+          ? await fetch(`${apiUrl}/rest/v1/message_roles?guild_id=eq.${id}&id=eq.${ruleId}`, { method: 'DELETE', headers })
+          : await fetch(`${apiUrl}/rest/v1/message_roles?guild_id=eq.${id}&id=eq.${ruleId}`, { method: 'PATCH', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify({ enabled: form.get('enabled') === 'on' }) });
+        if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+      }
+    }
+  } catch (error) {
+    console.error(`[message-roles] saving for ${id}:`, (error as Error)?.message);
+    problem = dt('It could not be saved. Try again in a moment.');
+  }
+}
+
+const [guildInfo, rulesRes, rolesRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/message_roles?guild_id=eq.${id}&select=id,role_id,messages,mode,period_days,remove_below,enabled&order=messages.asc,id.asc`, { headers }),
+  () => getGuildList(Astro, id, botToken, 'roles'),
+], 3);
+const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
+if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const serverInfo = (guildInfo ?? fallbackInfo)!;
+
+// The table exists once the bot that added it runs; before that the page says so and offers nothing to save.
+const ready = rulesRes.ok;
+const rules = ready ? (await rulesRes.json()).map((row: any) => ({ id: Number(row.id), roleId: String(row.role_id), messages: Number(row.messages), mode: row.mode === 'period' ? 'period' : 'total', periodDays: Number(row.period_days) || 0, removeBelow: row.remove_below === true, enabled: row.enabled !== false })) : [];
+const allRoles = rolesRes.ok ? await rolesRes.json() : [];
+const roles = allRoles.filter((role: any) => role.name !== '@everyone' && !role.managed).sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: role.id, name: role.name, color: role.color ?? 0 }));
+const everyRole = allRoles.map((role: any) => ({ id: role.id, name: role.name }));
+---
+<DashMessageRoles user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} rules={rules} roles={roles} everyRole={everyRole} ready={ready} saved={saved} problem={problem} max={MAX_MESSAGE_RULES} />
