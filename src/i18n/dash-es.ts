@@ -6838,4 +6838,12 @@ export const dashEs: Record<string, string> = {
   "Delete this comment? This cannot be undone.": "¿Borrar este comentario? No se puede deshacer.",
   "Delete this comment": "Borrar este comentario",
   "Comment deleted.": "Comentario borrado.",
+  "Petto is missing permissions": "A Petto le faltan permisos",
+  "Something Petto tried to do here failed because of a permission. Fix what is named below and it goes away by itself. The log channel gets this notice once a day while it lasts.": "Algo que Petto intentó hacer aquí falló por un permiso. Arregla lo que se nombra abajo y se quita solo. El canal de registros recibe este aviso una vez al día mientras dure.",
+  "Check again": "Comprobar otra vez",
+  "Checking…": "Comprobando…",
+  "Happened once.": "Pasó una vez.",
+  "Happened {n} times.": "Pasó {n} veces.",
+  "Last time: {when}": "Última vez: {when}",
+  "Only people with Manage Server can see this.": "Solo quien tenga Gestionar servidor puede ver esto.",
 };

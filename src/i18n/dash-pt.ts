@@ -6838,4 +6838,12 @@ export const dashPt: Record<string, string> = {
   "Delete this comment? This cannot be undone.": "Excluir este comentário? Não é possível desfazer.",
   "Delete this comment": "Excluir este comentário",
   "Comment deleted.": "Comentário excluído.",
+  "Petto is missing permissions": "Faltam permissões ao Petto",
+  "Something Petto tried to do here failed because of a permission. Fix what is named below and it goes away by itself. The log channel gets this notice once a day while it lasts.": "Algo que o Petto tentou fazer aqui falhou por causa de uma permissão. Corrija o que está citado abaixo e some sozinho. O canal de logs recebe este aviso uma vez por dia enquanto durar.",
+  "Check again": "Conferir de novo",
+  "Checking…": "Conferindo…",
+  "Happened once.": "Aconteceu uma vez.",
+  "Happened {n} times.": "Aconteceu {n} vezes.",
+  "Last time: {when}": "Última vez: {when}",
+  "Only people with Manage Server can see this.": "Só quem tem Gerenciar servidor pode ver isto.",
 };
