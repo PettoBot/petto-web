@@ -19,7 +19,7 @@ assert.deepEqual(cleanShowcase([{ ...good, members: -1 }, { ...good, members: 'm
 assert.equal(cleanShowcase([{ ...good, icon: 'https://evil.example/x.png' }])[0].icon, null, 'a picture only from the Discord CDN');
 assert.equal(cleanShowcase([{ ...good, icon: 'https://evil.example/x.png' }])[0].animated, false, 'no picture, nothing animated');
 assert.equal(cleanShowcase([{ ...good, online: 'x' }])[0].online, null, 'online that is not a number is unknown');
-assert.deepEqual(cleanShowcase([{ ...good, badges: ['community', 'verified', 'admin', 3] }])[0].badges, ['verified', 'community'], 'only the marks that exist');
+assert.deepEqual(cleanShowcase([{ ...good, badges: ['community', 'verified', 'admin', 3] }])[0].badges, ['verified'], 'only the marks that exist (community alone has no mark)');
 assert.equal(cleanShowcase([{ ...good, name: 'x'.repeat(300) }])[0].name.length, 100, 'a long name is cut');
 assert.equal(cleanShowcase([{ ...good, members: 1234.9 }])[0].members, 1234, 'whole numbers');
 assert.deepEqual(Object.keys(cleanShowcase([{ ...good, owner: 'secret', invite: 'x' }])[0]).sort(), ['animated', 'badges', 'boost', 'icon', 'id', 'members', 'name', 'online'], 'nothing else goes through');
