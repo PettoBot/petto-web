@@ -17,13 +17,15 @@
   .cr-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
   .cr-cell { min-width: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--c) 7%, transparent); }
   .cr-cell dt { margin: 0 0 3px; font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cr-cell dd { margin: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; font-size: 18px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; min-width: 0; }
-  .cr-cell dd small { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  /* The number is always on one line and the share of a change always on the line under it: it never jumps from beside the number to under it while the window moves. */
+  .cr-cell dd { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 18px; font-weight: 650; line-height: 1.25; color: var(--text); font-variant-numeric: tabular-nums; min-width: 0; max-width: 100%; }
+  .cr-cell dd > span { max-width: 100%; white-space: nowrap; }
+  .cr-cell dd small { font-size: 12px; line-height: 1.2; font-weight: 600; color: var(--text-dim); white-space: nowrap; min-height: 1.2em; }
   .cr-cell .cr-up { color: var(--green); }
   .cr-cell .cr-down { color: var(--red); }
   @media (max-width: 520px) { .cr-cells { gap: 6px; } .cr-cell { padding: 8px 9px; } .cr-cell dd { font-size: 15px; } .cr-cell dt { font-size: 11px; } }
   /* The shade over the days outside the window. */
-  .cr-dim { position: absolute; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); opacity: 0; transition: left .12s ease-out, width .12s ease-out, opacity .25s ease-out; border-radius: 4px; }
+  .cr-dim { position: absolute; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); opacity: 0; transition: opacity .25s ease-out; }
   .cr[data-cr-on] .cr-dim { opacity: 1; }
   .cr[data-cr-full] .cr-dim { opacity: 0; }
   /* The strip: a small copy of the chart and the window over it. */
@@ -32,11 +34,10 @@
   .cr-spark-area { fill: color-mix(in srgb, var(--c) 18%, transparent); stroke: none; }
   .cr-spark-line { fill: none; stroke: var(--c); stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
   .cr-spark-bar { fill: color-mix(in srgb, var(--c) 70%, transparent); }
-  .cr-shade { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); pointer-events: none; transition: width .12s ease-out; }
+  .cr-shade { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); pointer-events: none; }
   .cr-shade-l { left: 0; width: 0; } .cr-shade-r { right: 0; width: 0; }
-  .cr-win { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; box-sizing: border-box; border: 2px solid var(--c); border-radius: 10px; background: color-mix(in srgb, var(--c) 10%, transparent); cursor: grab; transition: left .12s ease-out, width .12s ease-out, box-shadow .15s; }
+  .cr-win { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; box-sizing: border-box; border: 2px solid var(--c); border-radius: 10px; background: color-mix(in srgb, var(--c) 10%, transparent); cursor: grab; transition: box-shadow .15s; }
   .cr-nav[data-cr-drag] .cr-win { cursor: grabbing; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent); }
-  .cr-nav[data-cr-drag] .cr-win, .cr-nav[data-cr-drag] .cr-shade, .cr-nav[data-cr-drag] ~ .cr-dim { transition: none; }
   .cr-win:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .cr-h { position: absolute; top: 0; bottom: 0; width: 18px; cursor: ew-resize; }
   .cr-h::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 18px; margin: -9px 0 0 -2px; border-radius: 3px; background: var(--c); }
@@ -44,41 +45,64 @@
   @media (max-width: 520px) { .cr-h { width: 26px; } .cr-h-l { left: -13px; } .cr-h-r { right: -13px; } }
   /* A chart that has not been seen yet waits: its line is drawn and its bars grow when it comes on the screen. */
   .sc-wait, .sc-wait * { animation-play-state: paused !important; }
-  @media (prefers-reduced-motion: reduce) { .cr-dim, .cr-win, .cr-shade { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .cr-dim, .cr-win { transition: none; } }
 </style>
 
 <script>
-  import { clampWin, dragWin, edgeAt, indexAt, makeFormat, percentText, rangeStats, signedText, startWin, tween } from '../utils/chartRange';
+  import { clampWin, dragWin, edgeAt, indexAt, makeFormat, percentText, rangeStats, signedText, startWin } from '../utils/chartRange';
   import type { FormatSpec, Kind, Layout, Win } from '../utils/chartRange';
 
   interface BrushData { kind: Kind; layout: Layout; fmt: FormatSpec; locale: string; v: number[]; p: number[]; d: string[]; e: [number, number][]; box: [number, number, number, number] }
+  /** A number of the readout: where it is written, how, the value it shows now and the one it goes to. `tol` is how close is close enough to stop. */
+  interface Slot { el: HTMLElement; text: (value: number) => string; cur: number | null; to: number | null; tol: number }
 
   const MIN_DAYS = 3;
+  // How fast things settle (milliseconds for the movement to cover about two thirds of what is left): the window glides, the numbers follow a little behind it.
+  const WINDOW_TAU = 55;
+  const NUMBER_TAU = 95;
+  // The shade goes a few pixels past the plot, so the round end of a line and its dots, which stick out of it, are under the shade too.
+  const SHADE_BLEED = 6;
   const reduced = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 
   class Brush {
     root: HTMLElement;
     nav: HTMLElement;
     win: HTMLElement;
-    plot: HTMLElement | null;
+    shadeL: HTMLElement | null;
+    shadeR: HTMLElement | null;
+    dimL: HTMLElement | null;
+    dimR: HTMLElement | null;
     data: BrushData;
     format: (value: number) => string;
     dayFormat: Intl.DateTimeFormat;
     points: { value: number; partial: boolean }[];
     current: Win;
-    shown = new Map<string, { value: number; frame: number }>();
+    /** Where the window is drawn (a fraction of the strip, 0-1) and where it is going: the first glides to the second. */
+    vis = { l: 0, r: 1 };
+    tgt = { l: 0, r: 1 };
+    slots = new Map<string, Slot>();
+    /** The edges of the plot where each day starts, and the end of the last one: the shade follows the window between them. */
+    bounds: number[];
+    frame = 0;
+    last = 0;
 
     constructor(root: HTMLElement, data: BrushData) {
       this.root = root;
       this.data = data;
       this.nav = root.querySelector<HTMLElement>('[data-cr-nav]')!;
       this.win = root.querySelector<HTMLElement>('[data-cr-win]')!;
-      this.plot = root.querySelector<HTMLElement>('[data-ct]');
+      this.shadeL = root.querySelector<HTMLElement>('.cr-shade-l');
+      this.shadeR = root.querySelector<HTMLElement>('.cr-shade-r');
+      this.dimL = root.querySelector<HTMLElement>('[data-cr-dim="l"]');
+      this.dimR = root.querySelector<HTMLElement>('[data-cr-dim="r"]');
       this.format = makeFormat(data.fmt, data.locale);
       this.dayFormat = new Intl.DateTimeFormat(data.locale, { month: 'short', day: 'numeric', timeZone: 'UTC' });
       this.points = data.v.map((value, i) => ({ value, partial: data.p[i] === 1 }));
+      this.bounds = data.e.map((edge) => edge[0]);
+      this.bounds.push(data.e[data.e.length - 1][1]);
       const first = clampWin(startWin(this.points.length, MIN_DAYS), this.points.length, MIN_DAYS);
       this.current = first;
+      this.makeSlots();
       this.bind();
       // First it shows the whole period, then the window closes onto its first stretch: the strip is seen to be alive.
       root.dataset.crOn = '';
@@ -91,18 +115,33 @@
 
     get count() { return this.points.length; }
 
+    makeSlots() {
+      const add = (role: string, text: (value: number) => string, tol: number) => {
+        const el = this.root.querySelector<HTMLElement>(`[data-cr-n="${role}"]`);
+        if (el) this.slots.set(role, { el, text, cur: null, to: null, tol });
+      };
+      const locale = this.data.locale;
+      if (this.data.kind === 'level') {
+        add('end', this.format, 0.4);
+        add('change', (v) => signedText(this.format, v), 0.4);
+        add('high', this.format, 0.4);
+        add('share', (v) => percentText(v, locale), 0.0004);
+      } else {
+        add('total', this.format, 0.4);
+        add('avg', this.format, 0.4);
+        add('versus', (v) => percentText(v, locale), 0.0004);
+      }
+    }
+
     bind() {
       let drag: { mode: 'move' | 'left' | 'right'; x: number; start: Win; width: number } | null = null;
-      const fractionOf = (event: PointerEvent) => {
-        const box = this.nav.getBoundingClientRect();
-        return { f: (event.clientX - box.left) / Math.max(1, box.width), width: box.width };
-      };
       this.nav.addEventListener('pointerdown', (event) => {
         if (event.button > 0) return;
-        const { f, width } = fractionOf(event);
+        const box = this.nav.getBoundingClientRect();
+        const f = (event.clientX - box.left) / Math.max(1, box.width);
         const target = event.target as HTMLElement;
         const handle = target.closest<HTMLElement>('[data-cr-h]')?.dataset.crH as 'left' | 'right' | undefined;
-        let mode: 'move' | 'left' | 'right' = handle ?? (target.closest('[data-cr-win]') ? 'move' : 'move');
+        let mode: 'move' | 'left' | 'right' = handle ?? 'move';
         let start = this.current;
         // A press outside the window jumps it there (centered on the finger) and keeps dragging it.
         if (!handle && !target.closest('[data-cr-win]')) {
@@ -112,7 +151,7 @@
           this.set(start, true);
           mode = 'move';
         }
-        drag = { mode, x: event.clientX, start, width };
+        drag = { mode, x: event.clientX, start, width: box.width };
         this.nav.dataset.crDrag = '';
         // A page that redraws its chart by itself (the public statistics every half minute) leaves it alone while it is held.
         this.root.dataset.dashHold = '';
@@ -150,103 +189,100 @@
       this.root.querySelector('[data-cr-all]')?.addEventListener('click', () => this.set({ a: 0, b: this.count - 1 }, true));
     }
 
-    /** Puts the window on days `win.a` to `win.b`: moves it, shades the rest of the chart and counts the numbers to the new ones. */
+    /** Puts the window on days `win.a` to `win.b`. It glides there (the numbers count to the new ones a moment behind it), or jumps when `animate` is false. */
     set(win: Win, animate: boolean) {
       this.current = win;
       const { layout } = this.data;
-      const left = edgeAt(win.a, 'left', this.count, layout);
-      const right = edgeAt(win.b, 'right', this.count, layout);
-      this.win.style.left = `${left * 100}%`;
-      this.win.style.width = `${Math.max(0, right - left) * 100}%`;
-      const shadeL = this.root.querySelector<HTMLElement>('.cr-shade-l');
-      const shadeR = this.root.querySelector<HTMLElement>('.cr-shade-r');
-      if (shadeL) shadeL.style.width = `${left * 100}%`;
-      if (shadeR) shadeR.style.width = `${(1 - right) * 100}%`;
-      this.shadeChart(win);
+      this.tgt = { l: edgeAt(win.a, 'left', this.count, layout), r: edgeAt(win.b, 'right', this.count, layout) };
       const full = win.a === 0 && win.b === this.count - 1;
       if (full) this.root.dataset.crFull = ''; else delete this.root.dataset.crFull;
       this.win.setAttribute('aria-valuenow', String(win.a));
-      this.write(win, animate && !reduced());
+      this.targets(win);
+      const glide = animate && !reduced();
+      if (!glide) {
+        this.vis = { ...this.tgt };
+        for (const slot of this.slots.values()) slot.cur = slot.to;
+        this.paint();
+        return;
+      }
+      if (!this.frame) { this.last = performance.now(); this.frame = requestAnimationFrame((now) => this.step(now)); }
     }
 
-    shadeChart(win: Win) {
-      const dimL = this.root.querySelector<HTMLElement>('[data-cr-dim="l"]');
-      const dimR = this.root.querySelector<HTMLElement>('[data-cr-dim="r"]');
-      if (!dimL || !dimR) return;
-      const [x0, x1, y0, y1] = this.data.box;
-      const edgeL = this.data.e[win.a][0];
-      const edgeR = this.data.e[win.b][1];
-      for (const dim of [dimL, dimR]) { dim.style.top = `${y0 * 100}%`; dim.style.height = `${(y1 - y0) * 100}%`; }
-      dimL.style.left = `${x0 * 100}%`;
-      dimL.style.width = `${Math.max(0, edgeL - x0) * 100}%`;
-      dimR.style.left = `${edgeR * 100}%`;
-      dimR.style.width = `${Math.max(0, x1 - edgeR) * 100}%`;
-    }
-
-    /** The text of the range and the numbers of the readout. */
-    write(win: Win, animate: boolean) {
+    /** The text of the range and the values the numbers go to. */
+    targets(win: Win) {
       const when = this.root.querySelector<HTMLElement>('[data-cr-when]');
       const first = this.dayFormat.format(new Date(`${this.data.d[win.a]}T00:00:00Z`));
       const last = this.dayFormat.format(new Date(`${this.data.d[win.b]}T00:00:00Z`));
-      const days = win.b - win.a + 1;
-      if (when) when.textContent = days > 1 ? `${first} – ${last}` : first;
-      this.win.setAttribute('aria-valuetext', days > 1 ? `${first} – ${last}` : first);
+      const text = win.b > win.a ? `${first} – ${last}` : first;
+      if (when) when.textContent = text;
+      this.win.setAttribute('aria-valuetext', text);
       const s = rangeStats(this.points, win, this.data.kind);
-      const locale = this.data.locale;
-      const tone = (el: HTMLElement | null, value: number | null) => {
-        if (!el) return;
-        el.classList.toggle('cr-up', value !== null && value > 0);
-        el.classList.toggle('cr-down', value !== null && value < 0);
-      };
-      const put = (role: string, value: number | null, text: (v: number) => string) => {
-        const el = this.root.querySelector<HTMLElement>(`[data-cr-n="${role}"]`);
-        if (!el) return;
-        if (value === null) { this.stop(role); el.textContent = '–'; this.shown.delete(role); return; }
-        this.count_(role, el, value, text, animate);
-      };
-      if (this.data.kind === 'level') {
-        put('end', s.end, this.format);
-        put('change', s.change, (v) => signedText(this.format, v));
-        put('high', s.high, this.format);
-        const share = this.root.querySelector<HTMLElement>('[data-cr-n="share"]');
-        const sharePart = s.versus === null ? null : s.versus;
-        if (share) share.textContent = percentText(sharePart, locale);
-        tone(this.root.querySelector<HTMLElement>('[data-cr-n="change"]'), s.change);
-      } else {
-        put('total', s.total, this.format);
-        put('avg', s.average, this.format);
-        // The percentage counts as a number too (in tenths of a percent, so it ticks smoothly); `versus` is a fraction.
-        const el = this.root.querySelector<HTMLElement>('[data-cr-n="versus"]');
-        if (el) {
-          if (s.versus === null) { this.stop('versus'); el.textContent = '–'; this.shown.delete('versus'); } else this.count_('versus', el, s.versus, (v) => percentText(v, locale), animate);
-          tone(el, s.versus);
-        }
+      const values: Record<string, number | null> = this.data.kind === 'level'
+        ? { end: s.end, change: s.change, high: s.high, share: s.versus }
+        : { total: s.total, avg: s.average, versus: s.versus };
+      for (const [role, slot] of this.slots) {
+        const to = values[role] ?? null;
+        slot.to = to;
+        if (to === null) slot.cur = null;
+        else if (slot.cur === null) slot.cur = to;
+      }
+      // A rise is green and a fall red (the change of a level, the share against the period before).
+      for (const role of ['change', 'versus']) {
+        const slot = this.slots.get(role);
+        if (!slot) continue;
+        slot.el.classList.toggle('cr-up', slot.to !== null && slot.to > 0);
+        slot.el.classList.toggle('cr-down', slot.to !== null && slot.to < 0);
       }
     }
 
-    stop(role: string) {
-      const old = this.shown.get(role);
-      if (old) cancelAnimationFrame(old.frame);
+    /** One step of the glide: everything moves a share of what is left, by the time that passed, so it looks the same at 60 and at 120 frames a second. */
+    step(now: number) {
+      const dt = Math.min(64, Math.max(1, now - this.last));
+      this.last = now;
+      const kw = 1 - Math.exp(-dt / WINDOW_TAU);
+      const kn = 1 - Math.exp(-dt / NUMBER_TAU);
+      let moving = false;
+      for (const edge of ['l', 'r'] as const) {
+        const diff = this.tgt[edge] - this.vis[edge];
+        if (Math.abs(diff) < 0.0003) this.vis[edge] = this.tgt[edge]; else { this.vis[edge] += diff * kw; moving = true; }
+      }
+      for (const slot of this.slots.values()) {
+        if (slot.to === null || slot.cur === null) continue;
+        const diff = slot.to - slot.cur;
+        if (Math.abs(diff) <= slot.tol) slot.cur = slot.to; else { slot.cur += diff * kn; moving = true; }
+      }
+      this.paint();
+      this.frame = moving ? requestAnimationFrame((time) => this.step(time)) : 0;
     }
 
-    /** Counts the number of `el` from what it shows to `value` (a short ease-out, started again from where it is whenever the window moves). */
-    count_(role: string, el: HTMLElement, value: number, text: (v: number) => string, animate: boolean) {
-      const old = this.shown.get(role);
-      if (old) cancelAnimationFrame(old.frame);
-      const from = old ? old.value : value;
-      if (!animate || from === value) { el.textContent = text(value); this.shown.set(role, { value, frame: 0 }); return; }
-      const began = performance.now();
-      const DURATION = 380;
-      const state = { value: from, frame: 0 };
-      const tick = (now: number) => {
-        const t = Math.min(1, (now - began) / DURATION);
-        state.value = tween(from, value, t);
-        el.textContent = text(state.value);
-        if (t < 1) state.frame = requestAnimationFrame(tick);
-        else { state.value = value; el.textContent = text(value); }
-      };
-      state.frame = requestAnimationFrame(tick);
-      this.shown.set(role, state);
+    /** Draws the window, the shade over the strip and over the chart, and the numbers, as they are now. */
+    paint() {
+      const { l, r } = this.vis;
+      this.win.style.left = `${l * 100}%`;
+      this.win.style.width = `${Math.max(0, r - l) * 100}%`;
+      if (this.shadeL) this.shadeL.style.width = `${l * 100}%`;
+      if (this.shadeR) this.shadeR.style.width = `${(1 - r) * 100}%`;
+      if (this.dimL && this.dimR) {
+        const [x0, x1, y0, y1] = this.data.box;
+        const left = this.plotX(l);
+        const right = this.plotX(r);
+        for (const dim of [this.dimL, this.dimR]) { dim.style.top = `calc(${y0 * 100}% - ${SHADE_BLEED}px)`; dim.style.height = `calc(${(y1 - y0) * 100}% + ${SHADE_BLEED * 2}px)`; }
+        this.dimL.style.left = `calc(${x0 * 100}% - ${SHADE_BLEED}px)`;
+        this.dimL.style.width = `calc(${Math.max(0, left - x0) * 100}% + ${SHADE_BLEED}px)`;
+        this.dimR.style.left = `${right * 100}%`;
+        this.dimR.style.width = `calc(${Math.max(0, x1 - right) * 100}% + ${SHADE_BLEED}px)`;
+      }
+      for (const slot of this.slots.values()) slot.el.textContent = slot.cur === null ? (slot.el.dataset.crN === 'share' ? '' : '–') : slot.text(slot.cur);
+    }
+
+    /** Where on the plot (0-1 of its box) the place `f` of the strip lies: between the limits of the days, so the shade glides smoothly, not day by day. */
+    plotX(f: number): number {
+      const days = this.count;
+      const position = Math.max(0, Math.min(1, f)) * (this.data.layout === 'points' ? days - 1 : days);
+      const k = Math.min(this.bounds.length - 2, Math.floor(position));
+      const from = this.bounds[k];
+      const to = this.bounds[k + 1];
+      return from + (to - from) * (position - k);
     }
   }
 
