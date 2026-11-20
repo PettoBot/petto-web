@@ -13,9 +13,9 @@ function questionPage(lang: ReturnType<typeof getDashLang>, dt: (key: string) =>
   const yes = escapeHtml(withDashPrefix('/dash/login?support=yes', lang));
   const no = escapeHtml(withDashPrefix('/dash/login?support=no', lang));
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(dt('Join the support server?'))}</title><style>
-:root{color-scheme:dark light}html,body{height:100%;margin:0}body{display:grid;place-items:center;padding:16px;box-sizing:border-box;background:#18191d;color:#f2f1ed;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+:root{color-scheme:dark light}html,body{height:100%;margin:0}body{display:grid;place-items:center;padding:16px;box-sizing:border-box;background:#0a0a0a;color:#f2f1ed;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
 @media (prefers-color-scheme:light){body{background:#fff;color:#1b1c20}.b{background:#f7f8fa!important;border-color:#dfe1e6!important}.n{background:transparent!important;color:inherit!important;border-color:#c9ccd3!important}}
-.b{display:flex;flex-direction:column;gap:10px;max-width:420px;width:100%;padding:28px;border:1px solid #34373e;border-radius:18px;background:#212328;box-sizing:border-box}
+.b{display:flex;flex-direction:column;gap:10px;max-width:420px;width:100%;padding:28px;border:1px solid #34373e;border-radius:18px;background:#151517;box-sizing:border-box}
 h1{font-size:18px;margin:0}p{font-size:14px;line-height:1.5;margin:0;opacity:.8}.r{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
 a{flex:1 1 140px;text-align:center;text-decoration:none;font-weight:600;font-size:14px;padding:11px 16px;border-radius:12px;border:1px solid transparent}
 .y{background:#4fbf7f;color:#08210f}.n{background:transparent;color:#f2f1ed;border-color:#4a4d55}
