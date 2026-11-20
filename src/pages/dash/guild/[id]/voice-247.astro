@@ -1,0 +1,66 @@
+---
+export const prerender = false;
+import DashVoice247 from '../../../../components/DashVoice247.astro';
+import { getGuildSession } from '../../../../utils/dashAuth';
+import { getEnv } from '../../../../utils/env';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { getDashLang, makeT } from '../../../../i18n/dash';
+const dt = makeT(getDashLang(Astro));
+
+// Stay in voice (`/247`): Petto stays in one voice channel for good, with a status on the channel. It is one row of `stay_voice`; the bot looks at it every minute, so a change
+// made here is done within about a minute (and after every restart Petto comes back by itself).
+const { id } = Astro.params as { id: string };
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
+const apiKey = getEnv(Astro, 'PETTO_BOT_API_SECRET');
+
+const auth = await getGuildSession(Astro, id);
+if ('redirect' in auth) return Astro.redirect(auth.redirect);
+const { session } = auth;
+if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
+
+const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+const SNOWFLAKE = /^\d{15,25}$/;
+const MAX_STATUS = 120;
+let saved = false;
+let problem: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  try {
+    const channelId = String(form.get('channel_id') ?? '').trim();
+    const status = String(form.get('status') ?? '').replace(/\s+/g, ' ').trim();
+    if (!SNOWFLAKE.test(channelId)) problem = dt('Pick the voice channel.');
+    else if (status.length > MAX_STATUS) problem = dt('The status can have {n} characters at most.', { n: MAX_STATUS });
+    else {
+      const res = await fetch(`${apiUrl}/rest/v1/stay_voice?on_conflict=guild_id`, {
+        method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ guild_id: id, channel_id: channelId, status: status && status.toLowerCase() !== 'default' ? status : null, deaf: form.get('deaf') === 'on', enabled: form.get('enabled') === 'on', updated_by: session.userId ?? null, updated_at: new Date().toISOString() }),
+      });
+      if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+    }
+  } catch (error) {
+    console.error(`[voice-247] saving for ${id}:`, (error as Error)?.message);
+    problem = dt('It could not be saved. Try again in a moment.');
+  }
+}
+
+const [guildInfo, rowRes, channelsRes] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/stay_voice?guild_id=eq.${id}&select=channel_id,status,deaf,enabled`, { headers }),
+  () => getGuildList(Astro, id, botToken, 'channels'),
+], 3);
+const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
+if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
+const serverInfo = (guildInfo ?? fallbackInfo)!;
+
+// The table exists once the bot that added it runs; before that the page says so and offers nothing to save.
+const ready = rowRes.ok;
+const rows: any[] = ready ? await rowRes.json().catch(() => []) : [];
+const row = rows[0] ? { channelId: String(rows[0].channel_id), status: rows[0].status ? String(rows[0].status) : '', deaf: rows[0].deaf !== false, enabled: rows[0].enabled !== false } : null;
+const all: any[] = channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
+const categories = new Map(all.filter((c: any) => c.type === 4).map((c: any) => [String(c.id), String(c.name)]));
+const channels = all.filter((c: any) => c.type === 2).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0)).map((c: any) => ({ id: String(c.id), name: String(c.name), category: c.parent_id ? categories.get(String(c.parent_id)) : undefined }));
+---
+<DashVoice247 user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} row={row} channels={channels} ready={ready} saved={saved} problem={problem} maxStatus={MAX_STATUS} />

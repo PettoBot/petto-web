@@ -3,6 +3,8 @@
 import type { Locale } from '../i18n/ui';
 
 export interface HomeCopy {
+  chartDemo: { title: string; desc: string; sample: string; aria: string };
+  numbers: { title: string; em: string; desc: string; subs: Record<'servers' | 'commands' | 'logEvents' | 'postgres', string> };
   hero: { eyebrow: string; before: string; em: string; after: string; lede: string };
   devices: { laptopAlt: string; phoneAlt: Record<'leveling' | 'welcome' | 'modules', string> };
   phones: { eyebrow: string; title: string; em: string; desc: string; points: string[] };
@@ -18,6 +20,8 @@ interface LayerCopy { chip: string; title: string; desc: string }
 
 export const HOME_COPY: Record<Locale, HomeCopy> = {
   en: {
+    chartDemo: { title: 'Statistics', desc: 'Every server gets charts like this one. Drag the window over the days or pull its edges: the numbers follow.', sample: 'Sample numbers', aria: 'Messages per day, sample numbers' },
+    numbers: { title: 'Petto in numbers,', em: 'from the real bot', desc: 'What the bot and the site hold right now: nothing here is written by hand.', subs: { servers: 'Servers with Petto added right now', commands: 'Commands you can type, with the prefix or as slash', logEvents: 'Things a server can send to its log channels', postgres: 'Of what Petto keeps is saved in a real database' } },
     hero: { eyebrow: 'Discord bot · since 2017', before: 'The bot you set up', em: 'in a few taps', after: 'and forget.', lede: 'Moderation, tickets, levels, giveaways and more in one place. You choose how you want it in a clear panel, and Petto applies it in seconds.' },
     devices: { laptopAlt: 'The Petto dashboard on a laptop', phoneAlt: { leveling: 'Leveling settings on a phone', welcome: 'Welcome messages on a phone', modules: 'The list of modules on a phone' } },
     phones: {
@@ -44,6 +48,8 @@ export const HOME_COPY: Record<Locale, HomeCopy> = {
     discord: { eyebrow: 'In Discord', title: 'This is what your members', em: 'see in the server', desc: 'Cards with the look of Discord, in your language, with the buttons right there.' },
   },
   es: {
+    chartDemo: { title: 'Estadísticas', desc: 'Cada servidor tiene gráficas como esta. Arrastra la ventana sobre los días o estira sus bordes: los números te siguen.', sample: 'Números de ejemplo', aria: 'Mensajes por día, números de ejemplo' },
+    numbers: { title: 'Petto en números,', em: 'del bot de verdad', desc: 'Lo que tienen el bot y la web ahora mismo: nada de esto está escrito a mano.', subs: { servers: 'Servidores que tienen a Petto ahora mismo', commands: 'Comandos que puedes escribir, con prefijo o como slash', logEvents: 'Cosas que un servidor puede mandar a sus canales de registro', postgres: 'De lo que Petto guarda está en una base de datos de verdad' } },
     hero: { eyebrow: 'Bot de Discord · desde 2017', before: 'El bot que se configura', em: 'con unos toques', after: 'y te olvidas.', lede: 'Moderación, tickets, niveles, sorteos y más en un solo lugar. Tú eliges cómo lo quieres en un panel claro, y Petto lo aplica en segundos.' },
     devices: { laptopAlt: 'El dashboard de Petto en una laptop', phoneAlt: { leveling: 'Ajustes de niveles en un celular', welcome: 'Mensajes de bienvenida en un celular', modules: 'La lista de módulos en un celular' } },
     phones: {
@@ -70,6 +76,8 @@ export const HOME_COPY: Record<Locale, HomeCopy> = {
     discord: { eyebrow: 'En Discord', title: 'Esto es lo que ven', em: 'tus miembros en el servidor', desc: 'Tarjetas con el aspecto de Discord, en tu idioma, con los botones ahí mismo.' },
   },
   'pt-BR': {
+    chartDemo: { title: 'Estatísticas', desc: 'Cada servidor tem gráficos como este. Arraste a janela sobre os dias ou estique as bordas: os números acompanham.', sample: 'Números de exemplo', aria: 'Mensagens por dia, números de exemplo' },
+    numbers: { title: 'Petto em números,', em: 'do bot de verdade', desc: 'O que o bot e o site têm agora: nada disso é escrito à mão.', subs: { servers: 'Servidores com o Petto adicionado agora', commands: 'Comandos que você pode digitar, com prefixo ou como slash', logEvents: 'Coisas que um servidor pode mandar para seus canais de registro', postgres: 'Do que o Petto guarda fica em um banco de dados de verdade' } },
     hero: { eyebrow: 'Bot do Discord · desde 2017', before: 'O bot que você configura', em: 'em poucos toques', after: 'e esquece.', lede: 'Moderação, tickets, níveis, sorteios e mais em um só lugar. Você escolhe como quer em um painel claro, e o Petto aplica em segundos.' },
     devices: { laptopAlt: 'O dashboard do Petto em um notebook', phoneAlt: { leveling: 'Ajustes de níveis em um celular', welcome: 'Mensagens de boas-vindas em um celular', modules: 'A lista de módulos em um celular' } },
     phones: {

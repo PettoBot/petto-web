@@ -12,7 +12,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
   const row = (table: string, columns: string) => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}&select=${columns}`, { headers }).catch(() => null);
   const total = (table: string, extra = '') => () => fetch(`${apiUrl}/rest/v1/${table}?guild_id=eq.${id}${extra}&select=guild_id&limit=1`, { headers: { ...headers, Prefer: 'count=exact' } }).catch(() => null);
   
-  const [events, verification, automod, antinuke, logs, level, tickets, giveaways, starboard, monkeyboard, birthdays, reactionRoles, responders, commands, webhooks, embeds, cards, suggestions, counting, confessions, formsOpen, counters, honeypots, roleTriggers, roleQuotas, activityBoards, modRules, agedRoles, messageRoles, joinRolesCount] = await runBatched([
+  const [events, verification, automod, antinuke, logs, level, tickets, giveaways, starboard, monkeyboard, birthdays, reactionRoles, responders, commands, webhooks, embeds, cards, suggestions, counting, confessions, formsOpen, counters, honeypots, roleTriggers, roleQuotas, activityBoards, modRules, agedRoles, messageRoles, joinRolesCount, stayVoice] = await runBatched([
     row('member_events_config', 'welcome_channel_id,leave_channel_id,boost_channel_id'),
     row('verification_config', 'enabled'),
     row('automod_config', 'word_filter_enabled,anti_spam_enabled,anti_raid_enabled,anti_alt_enabled'),
@@ -43,6 +43,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
     total('aged_roles', '&enabled=eq.true'),
     total('message_roles', '&enabled=eq.true'),
     total('join_roles'),
+    total('stay_voice', '&enabled=eq.true'),
   ], 6);
   
   async function first(res: Response | null): Promise<Record<string, any> | null | undefined> {
@@ -69,6 +70,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
   const agedRoleCount = count(agedRoles);
   const messageRoleCount = count(messageRoles);
   const joinRoleCount = count(joinRolesCount);
+  const stayVoiceCount = count(stayVoice);
   const responderCount = count(responders); const commandCount = count(commands); const webhookCount = count(webhooks); const embedCount = count(embeds); const cardCount = count(cards);
   
   const statuses: Record<string, { state: ModuleState; note: string }> = {};
@@ -83,6 +85,7 @@ export async function loadModuleStatuses(apiUrl: string, apiKey: string, id: str
   set('activity-boards', activityBoardCount !== undefined, (activityBoardCount ?? 0) > 0, activityBoardCount ? String(activityBoardCount) : '');
   set('aged-roles', agedRoleCount !== undefined, (agedRoleCount ?? 0) > 0, agedRoleCount ? String(agedRoleCount) : '');
   set('message-roles', messageRoleCount !== undefined, (messageRoleCount ?? 0) > 0, messageRoleCount ? String(messageRoleCount) : '');
+  set('stay-voice', stayVoiceCount !== undefined, (stayVoiceCount ?? 0) > 0);
   set('joinroles', joinRoleCount !== undefined, (joinRoleCount ?? 0) > 0, joinRoleCount ? String(joinRoleCount) : '');
   set('mod-rules', modRuleCount !== undefined, (modRuleCount ?? 0) > 0, modRuleCount ? String(modRuleCount) : '');
   set('logging', logCount !== undefined, (logCount ?? 0) > 0, logCount ? String(logCount) : '');

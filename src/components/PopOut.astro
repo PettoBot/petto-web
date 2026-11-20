@@ -1,0 +1,124 @@
+---
+// "Touch a picture and it comes out": any element with `data-pop` (the Discord windows, the pictures of the dashboard in the devices) opens in the middle of the
+// screen, bigger, over a dark layer. It closes with a tap outside, the close button or Escape, and gives the focus back. With "reduce motion" it just appears.
+// The phones of the home fan ask for it with the event `petto-pop`.
+---
+<script>
+  const FOCUSABLE = 'button, [href], [tabindex]:not([tabindex="-1"])';
+  let opener: HTMLElement | null = null;
+  let layer: HTMLElement | null = null;
+
+  function close() {
+    if (!layer) return;
+    const gone = layer; layer = null;
+    gone.classList.add('out');
+    document.documentElement.classList.remove('pop-open');
+    window.setTimeout(() => gone.remove(), 220);
+    document.removeEventListener('keydown', onKey, true);
+    opener?.focus?.({ preventScroll: true });
+  }
+  function onKey(event: KeyboardEvent) {
+    if (!layer) return;
+    if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+    if (event.key === 'Tab') {
+      const items = [...layer.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (!items.length) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  }
+  function open(content: HTMLElement, from?: HTMLElement | null, label?: string) {
+    if (layer) close();
+    opener = from ?? (document.activeElement as HTMLElement | null);
+    const back = document.createElement('div');
+    back.className = 'pop-back';
+    back.setAttribute('role', 'dialog');
+    back.setAttribute('aria-modal', 'true');
+    if (label) back.setAttribute('aria-label', label);
+    const card = document.createElement('div');
+    card.className = 'pop-card';
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'pop-x'; x.setAttribute('aria-label', document.documentElement.lang.startsWith('es') ? 'Cerrar' : document.documentElement.lang.startsWith('pt') ? 'Fechar' : 'Close');
+    x.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    x.addEventListener('click', close);
+    card.append(content);
+    back.append(card, x);
+    back.addEventListener('click', (event) => { if (event.target === back) close(); });
+    document.body.append(back);
+    document.documentElement.classList.add('pop-open');
+    layer = back;
+    document.addEventListener('keydown', onKey, true);
+    x.focus({ preventScroll: true });
+  }
+
+  function openElement(el: HTMLElement) {
+    if (el instanceof HTMLImageElement) {
+      const big = new Image();
+      big.src = el.currentSrc || el.src; big.alt = el.alt; big.className = 'pop-img';
+      open(big, el, el.alt);
+      return;
+    }
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.removeAttribute('data-pop'); copy.removeAttribute('tabindex'); copy.removeAttribute('role');
+    copy.classList.add('pop-clone');
+    open(copy, el, el.getAttribute('aria-label') ?? undefined);
+  }
+
+  function arm(root: ParentNode = document) {
+    root.querySelectorAll<HTMLElement>('[data-pop]').forEach((el) => {
+      if (el.dataset.popReady) return;
+      el.dataset.popReady = '1';
+      if (!el.hasAttribute('tabindex')) el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+    });
+  }
+  arm();
+
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const el = target?.closest<HTMLElement>('[data-pop]');
+    if (!el || el.closest('.pop-back')) return;
+    event.preventDefault();
+    openElement(el);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (layer || (event.key !== 'Enter' && event.key !== ' ')) return;
+    const el = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-pop]');
+    if (!el || el !== event.target) return;
+    event.preventDefault();
+    openElement(el);
+  });
+  window.addEventListener('petto-pop', (event) => {
+    const { src, alt, from } = (event as CustomEvent<{ src: string; alt?: string; from?: HTMLElement }>).detail;
+    const big = new Image();
+    big.src = src; big.alt = alt ?? ''; big.className = 'pop-img';
+    open(big, from ?? null, alt);
+  });
+</script>
+<style is:global>
+  [data-pop] { cursor: zoom-in; }
+  [data-pop]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+  @media (hover: hover) {
+    [data-pop] { transition: transform .35s cubic-bezier(.2, .9, .3, 1.2), box-shadow .35s ease; }
+    [data-pop]:hover { transform: translateY(-4px) scale(1.012); box-shadow: 0 24px 50px -24px rgba(0, 0, 0, .7); }
+  }
+  html.pop-open { overflow: hidden; }
+  .pop-back { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px 16px; background: rgba(6, 7, 9, .74); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: popFade .22s ease both; }
+  .pop-back.out { animation: popFadeOut .2s ease both; }
+  .pop-card { max-width: min(94vw, 760px); max-height: 88vh; overflow: auto; border-radius: 16px; animation: popUp .38s cubic-bezier(.2, .9, .3, 1.15) both; box-shadow: 0 40px 90px -20px rgba(0, 0, 0, .8); }
+  .pop-back.out .pop-card { animation: popDown .2s ease both; }
+  .pop-card .pop-img { display: block; max-width: 100%; max-height: 88vh; width: auto; height: auto; border-radius: 12px; }
+  .pop-card .pop-clone { margin: 0; transform: none; box-shadow: none; width: min(94vw, 680px); }
+  .pop-x { position: fixed; top: 14px; right: 14px; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; background: rgba(20, 21, 24, .8); color: #fff; cursor: pointer; }
+  .pop-x:hover { background: rgba(40, 42, 48, .95); }
+  .pop-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  @keyframes popFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes popFadeOut { to { opacity: 0; } }
+  @keyframes popUp { from { opacity: 0; transform: translateY(34px) scale(.9); } to { opacity: 1; transform: none; } }
+  @keyframes popDown { to { opacity: 0; transform: translateY(16px) scale(.96); } }
+  @media (prefers-reduced-motion: reduce) {
+    [data-pop], [data-pop]:hover { transition: none; transform: none; }
+    .pop-back, .pop-back.out, .pop-card, .pop-back.out .pop-card { animation: none; }
+  }
+</style>
