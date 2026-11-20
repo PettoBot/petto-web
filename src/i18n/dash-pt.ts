@@ -6881,4 +6881,9 @@ export const dashPt: Record<string, string> = {
   "Petto needs View Channel and Connect in the channel, and Set Voice Channel Status to write the status. Without that last one it stays in and leaves the status empty.": "O Petto precisa de Ver canal e Conectar no canal, e de Definir status do canal de voz para escrever o status. Sem este último ele fica dentro e deixa o status vazio.",
   "Loading your profile": "Carregando seu perfil",
   "Getting your account ready…": "Preparando sua conta…",
+  "Period shown: drag to move, pull the edges to stretch": "Período mostrado: arraste para mover, estique as bordas",
+  "At the end": "No final",
+  "Whole range": "Todo o intervalo",
+  "Per day": "Por dia",
+  "Vs. before": "Vs. antes",
 };

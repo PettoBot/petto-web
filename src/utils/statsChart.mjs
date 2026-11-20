@@ -37,11 +37,12 @@ export function dayTickIndexes(count, plotW, wide) {
 }
 
 /** The markup around the SVG of every chart: the plot box the tooltip script binds to, the guide, the dot(s), the box and its data. */
-function plotHtml({ svg, tipPoints, color, dots = 1, aria, fluid, height, extraClass = '' }) {
+function plotHtml({ svg, tipPoints, color, dots = 1, aria, fluid, height, extraClass = '', extra = '' }) {
   const tipJson = JSON.stringify({ points: tipPoints }).replace(/</g, '\\u003c');
   const dotMarks = Array.from({ length: dots }, () => `<i class="ct-dot" data-ct-dot style="--ct-c:${color}"></i>`).join('');
   return `<div class="sc-plot${fluid ? ' sc-fluid' : ''}${extraClass ? ` ${extraClass}` : ''}" data-ct data-ct-place="side" tabindex="0" role="group" aria-label="${esc(aria)}" style="--c:${color}${fluid ? '' : `;height:${height}px`}">`
     + svg
+    + extra
     + `<i class="ct-guide" data-ct-guide></i>${dotMarks}`
     + '<div class="ct-tip ct-rich" data-ct-box><b data-ct-f="label"></b><small data-ct-f="tag"></small><span data-ct-f="value"></span><em data-ct-f="delta"></em></div>'
     + `<script type="application/json" data-ct-data>${tipJson}<\/script>`
@@ -53,13 +54,61 @@ function svgOpen({ W, H, fluid, animate, label }) {
 }
 
 /**
+ * The movable window under a chart of days (`brush`: { kind: 'flow' | 'level', fmt, locale, text }), for DashChartRange.astro to run: a strip with
+ * a small copy of the chart and a window that is dragged or stretched, the numbers of the days inside it (they count up and down as it moves) and a
+ * shade over the rest of the chart. `edges` are the left and right limit of each day over the plot (0-1 of its width), `box` the plot area in the SVG.
+ * Returns what plotHtml needs (`extra`, the shade) and a function that wraps the finished plot with the readout and the strip.
+ */
+function brushParts({ brush, points, edges, box, layout, color }) {
+  const values = points.map((p) => p.value);
+  const lo = Math.min(0, ...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  const n = points.length;
+  const yOf = (value) => r4(30 - ((value - lo) / span) * 26 - 1);
+  let spark;
+  if (layout === 'slots') {
+    const w = 100 / n;
+    spark = values.map((value, i) => `<rect x="${r4(i * w + w * 0.16)}" y="${yOf(Math.max(value, 0))}" width="${r4(w * 0.68)}" height="${r4(Math.max(0.6, Math.abs(yOf(value) - yOf(0))))}" class="cr-spark-bar"/>`).join('');
+  } else {
+    const xs = values.map((_, i) => r4(n > 1 ? (i / (n - 1)) * 100 : 50));
+    const path = values.map((value, i) => `${i ? 'L' : 'M'}${xs[i]},${yOf(value)}`).join(' ');
+    spark = `<path d="${path} L100,31 L0,31 Z" class="cr-spark-area"/><path d="${path}" class="cr-spark-line"/>`;
+  }
+  const data = {
+    kind: brush.kind, layout, fmt: brush.fmt, locale: brush.locale,
+    v: values.map(r4), p: points.map((p) => (p.partial ? 1 : 0)), d: points.map((p) => p.day),
+    e: edges.map(([l, r]) => [r4(l), r4(r)]), box: box.map(r4),
+  };
+  const b = brush.text;
+  const cells = brush.kind === 'level'
+    ? [['end', b.end], ['change', b.change], ['high', b.high]]
+    : [['total', b.total], ['avg', b.avg], ['versus', b.versus]];
+  const readout = '<div class="cr-read" data-cr-read>'
+    + `<div class="cr-head"><span class="cr-when" data-cr-when></span><button type="button" class="cr-all" data-cr-all>${esc(b.all)}</button></div>`
+    + '<dl class="cr-cells">'
+    + cells.map(([role, label]) => `<div class="cr-cell"><dt>${esc(label)}</dt><dd><span data-cr-n="${role}">–</span>${role === 'change' ? '<small data-cr-n="share"></small>' : ''}</dd></div>`).join('')
+    + '</dl></div>';
+  const strip = `<div class="cr-nav" data-cr-nav><svg viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true" class="cr-spark">${spark}</svg>`
+    + '<i class="cr-shade cr-shade-l"></i><i class="cr-shade cr-shade-r"></i>'
+    + `<div class="cr-win" data-cr-win tabindex="0" role="slider" aria-label="${esc(b.label)}" aria-valuemin="0" aria-valuemax="${n - 1}"><i class="cr-h cr-h-l" data-cr-h="left"></i><i class="cr-h cr-h-r" data-cr-h="right"></i></div></div>`;
+  return {
+    extra: '<i class="cr-dim cr-dim-l" data-cr-dim="l"></i><i class="cr-dim cr-dim-r" data-cr-dim="r"></i>',
+    wrap: (plot) => `<div class="cr" data-cr style="--c:${color}">${readout}${plot}${strip}<script type="application/json" data-cr-data>${JSON.stringify(data).replace(/</g, '\\u003c')}<\/script></div>`,
+  };
+}
+
+/** A window is only worth drawing for a stretch of days with room to move in. */
+const BRUSH_MIN_POINTS = 8;
+
+/**
  * A line chart of `points` (`{ day, value, partial?, estimated? }`, oldest first; a day missing between two points is a gap, never a joined line).
  * The vertical axis is zoomed to the data with round ticks; a stretch that is not a plain measurement (today so far, or days rebuilt afterwards)
  * is dashed, and today so far ends in an open dot and is named "Today, so far" on the axis and in the tooltip.
  *
  * Options: `points`, `W`, `H`, `color` (a CSS color), `format(value)` (the tooltip's number), `tickLabels(ticks)` (the axis text),
  * `dayText(day, Intl options)`, `signed(change)` (a change as text), `text: { todaySoFar, estimatedTag, changeVsPrev }`, `aria` (the plot's name),
- * `svgLabel`, `single` (one point only: a shorter chart and a two-tick axis), `floorZero` (default true), `fluid` (no fixed pixel size:
+ * `svgLabel`, `brush` (the movable window under the chart, see brushParts), `single` (one point only: a shorter chart and a two-tick axis), `floorZero` (default true), `fluid` (no fixed pixel size:
  * the SVG fills its box, which is how the dashboard scales it), `animate`.
  */
 export function lineChart(o) {
@@ -143,7 +192,11 @@ export function lineChart(o) {
     };
   });
   const svg = `${svgOpen({ W, H, fluid, animate, label: o.svgLabel })}${grid}${xticks}${areas}${lines}${dots}${endMark}</svg>`;
-  return { html: plotHtml({ svg, tipPoints: tip, color, aria: o.aria, fluid, height: H }), scale, coords };
+  const part = o.brush && !single && points.length >= BRUSH_MIN_POINTS
+    ? brushParts({ brush: o.brush, points, layout: 'points', color, edges: coords.map((c) => [c.x / W, c.x / W]), box: [left / W, (left + plotW) / W, top / H, (top + plotH) / H] })
+    : null;
+  const plot = plotHtml({ svg, tipPoints: tip, color, aria: o.aria, fluid, height: H, extra: part?.extra });
+  return { html: part ? part.wrap(plot) : plot, scale, coords };
 }
 
 /**
@@ -216,5 +269,9 @@ export function barChart(o) {
     };
   });
   const svg = `${svgOpen({ W, H, fluid, animate, label: o.svgLabel })}${grid}${bars}${xticks}</svg>`;
-  return { html: plotHtml({ svg, tipPoints: tip, color, aria: o.aria, fluid, height: H }), scale };
+  const part = o.brush && byDay && items.length >= BRUSH_MIN_POINTS
+    ? brushParts({ brush: o.brush, points: items, layout: 'slots', color, edges: items.map((_, i) => [(left + slot * i) / W, (left + slot * (i + 1)) / W]), box: [left / W, (left + plotW) / W, top / H, (top + plotH) / H] })
+    : null;
+  const plot = plotHtml({ svg, tipPoints: tip, color, aria: o.aria, fluid, height: H, extra: part?.extra });
+  return { html: part ? part.wrap(plot) : plot, scale };
 }

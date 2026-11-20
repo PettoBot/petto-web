@@ -1,0 +1,299 @@
+---
+// The movable window of the statistics charts, once for every page that draws them (the public /stats, the dashboard's statistics, the home).
+// src/utils/statsChart.mjs writes the markup (`brush` option): a readout of numbers, the chart, and under it a strip with a small copy of the chart
+// and a window. The window is dragged to move it, pulled by its edges to stretch it, clicked on the strip to jump, or moved with the arrow keys;
+// the numbers of the days inside count up and down as it goes and the rest of the chart is shaded. The rules are in src/utils/chartRange.ts.
+// It also holds the entrance animations of the charts (a line draws and the bars grow) until the chart is on the screen, so they are seen.
+---
+<style is:global>
+  .cr { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .cr:not([data-cr-on]) .cr-read, .cr:not([data-cr-on]) .cr-nav { display: none; }
+  .cr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; }
+  .cr-when { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .cr-all { appearance: none; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; padding: 3px 11px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s, opacity .15s; }
+  .cr-all:hover { background: var(--accent-soft); color: var(--accent); }
+  .cr-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cr[data-cr-full] .cr-all { opacity: .45; pointer-events: none; }
+  .cr-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+  .cr-cell { min-width: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--c) 7%, transparent); }
+  .cr-cell dt { margin: 0 0 3px; font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cr-cell dd { margin: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; font-size: 18px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; min-width: 0; }
+  .cr-cell dd small { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .cr-cell .cr-up { color: var(--green); }
+  .cr-cell .cr-down { color: var(--red); }
+  @media (max-width: 520px) { .cr-cells { gap: 6px; } .cr-cell { padding: 8px 9px; } .cr-cell dd { font-size: 15px; } .cr-cell dt { font-size: 11px; } }
+  /* The shade over the days outside the window. */
+  .cr-dim { position: absolute; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); opacity: 0; transition: left .12s ease-out, width .12s ease-out, opacity .25s ease-out; border-radius: 4px; }
+  .cr[data-cr-on] .cr-dim { opacity: 1; }
+  .cr[data-cr-full] .cr-dim { opacity: 0; }
+  /* The strip: a small copy of the chart and the window over it. */
+  .cr-nav { position: relative; height: 46px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; background: color-mix(in srgb, var(--c) 4%, transparent); }
+  .cr-spark { position: absolute; inset: 4px 0 0; width: 100%; height: calc(100% - 4px); display: block; overflow: visible; }
+  .cr-spark-area { fill: color-mix(in srgb, var(--c) 18%, transparent); stroke: none; }
+  .cr-spark-line { fill: none; stroke: var(--c); stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .cr-spark-bar { fill: color-mix(in srgb, var(--c) 70%, transparent); }
+  .cr-shade { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); pointer-events: none; transition: width .12s ease-out; }
+  .cr-shade-l { left: 0; width: 0; } .cr-shade-r { right: 0; width: 0; }
+  .cr-win { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; box-sizing: border-box; border: 2px solid var(--c); border-radius: 10px; background: color-mix(in srgb, var(--c) 10%, transparent); cursor: grab; transition: left .12s ease-out, width .12s ease-out, box-shadow .15s; }
+  .cr-nav[data-cr-drag] .cr-win { cursor: grabbing; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent); }
+  .cr-nav[data-cr-drag] .cr-win, .cr-nav[data-cr-drag] .cr-shade, .cr-nav[data-cr-drag] ~ .cr-dim { transition: none; }
+  .cr-win:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .cr-h { position: absolute; top: 0; bottom: 0; width: 18px; cursor: ew-resize; }
+  .cr-h::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 18px; margin: -9px 0 0 -2px; border-radius: 3px; background: var(--c); }
+  .cr-h-l { left: -9px; } .cr-h-r { right: -9px; }
+  @media (max-width: 520px) { .cr-h { width: 26px; } .cr-h-l { left: -13px; } .cr-h-r { right: -13px; } }
+  /* A chart that has not been seen yet waits: its line is drawn and its bars grow when it comes on the screen. */
+  .sc-wait, .sc-wait * { animation-play-state: paused !important; }
+  @media (prefers-reduced-motion: reduce) { .cr-dim, .cr-win, .cr-shade { transition: none; } }
+</style>
+
+<script>
+  import { clampWin, dragWin, edgeAt, indexAt, makeFormat, percentText, rangeStats, signedText, startWin, tween } from '../utils/chartRange';
+  import type { FormatSpec, Kind, Layout, Win } from '../utils/chartRange';
+
+  interface BrushData { kind: Kind; layout: Layout; fmt: FormatSpec; locale: string; v: number[]; p: number[]; d: string[]; e: [number, number][]; box: [number, number, number, number] }
+
+  const MIN_DAYS = 3;
+  const reduced = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+
+  class Brush {
+    root: HTMLElement;
+    nav: HTMLElement;
+    win: HTMLElement;
+    plot: HTMLElement | null;
+    data: BrushData;
+    format: (value: number) => string;
+    dayFormat: Intl.DateTimeFormat;
+    points: { value: number; partial: boolean }[];
+    current: Win;
+    shown = new Map<string, { value: number; frame: number }>();
+
+    constructor(root: HTMLElement, data: BrushData) {
+      this.root = root;
+      this.data = data;
+      this.nav = root.querySelector<HTMLElement>('[data-cr-nav]')!;
+      this.win = root.querySelector<HTMLElement>('[data-cr-win]')!;
+      this.plot = root.querySelector<HTMLElement>('[data-ct]');
+      this.format = makeFormat(data.fmt, data.locale);
+      this.dayFormat = new Intl.DateTimeFormat(data.locale, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      this.points = data.v.map((value, i) => ({ value, partial: data.p[i] === 1 }));
+      const first = clampWin(startWin(this.points.length, MIN_DAYS), this.points.length, MIN_DAYS);
+      this.current = first;
+      this.bind();
+      // First it shows the whole period, then the window closes onto its first stretch: the strip is seen to be alive.
+      root.dataset.crOn = '';
+      if (reduced()) this.set(first, false);
+      else {
+        this.set({ a: 0, b: this.points.length - 1 }, false);
+        window.setTimeout(() => this.set(first, true), 450);
+      }
+    }
+
+    get count() { return this.points.length; }
+
+    bind() {
+      let drag: { mode: 'move' | 'left' | 'right'; x: number; start: Win; width: number } | null = null;
+      const fractionOf = (event: PointerEvent) => {
+        const box = this.nav.getBoundingClientRect();
+        return { f: (event.clientX - box.left) / Math.max(1, box.width), width: box.width };
+      };
+      this.nav.addEventListener('pointerdown', (event) => {
+        if (event.button > 0) return;
+        const { f, width } = fractionOf(event);
+        const target = event.target as HTMLElement;
+        const handle = target.closest<HTMLElement>('[data-cr-h]')?.dataset.crH as 'left' | 'right' | undefined;
+        let mode: 'move' | 'left' | 'right' = handle ?? (target.closest('[data-cr-win]') ? 'move' : 'move');
+        let start = this.current;
+        // A press outside the window jumps it there (centered on the finger) and keeps dragging it.
+        if (!handle && !target.closest('[data-cr-win]')) {
+          const middle = indexAt(f, this.count, this.data.layout);
+          const half = Math.floor((start.b - start.a) / 2);
+          start = clampWin({ a: middle - half, b: middle - half + (start.b - start.a) }, this.count, MIN_DAYS);
+          this.set(start, true);
+          mode = 'move';
+        }
+        drag = { mode, x: event.clientX, start, width };
+        this.nav.dataset.crDrag = '';
+        // A page that redraws its chart by itself (the public statistics every half minute) leaves it alone while it is held.
+        this.root.dataset.dashHold = '';
+        this.nav.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+      this.nav.addEventListener('pointermove', (event) => {
+        if (!drag) return;
+        const perDay = drag.width / (this.data.layout === 'points' ? Math.max(1, this.count - 1) : this.count);
+        const delta = Math.round((event.clientX - drag.x) / Math.max(1, perDay));
+        this.set(dragWin(drag.start, drag.mode, delta, this.count, MIN_DAYS), true);
+      });
+      const end = (event: PointerEvent) => {
+        if (!drag) return;
+        drag = null;
+        delete this.nav.dataset.crDrag;
+        delete this.root.dataset.dashHold;
+        if (this.nav.hasPointerCapture(event.pointerId)) this.nav.releasePointerCapture(event.pointerId);
+      };
+      this.nav.addEventListener('pointerup', end);
+      this.nav.addEventListener('pointercancel', end);
+      this.win.addEventListener('keydown', (event) => {
+        const step = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+        if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault();
+          const size = this.current.b - this.current.a;
+          this.set(event.key === 'Home' ? { a: 0, b: size } : { a: this.count - 1 - size, b: this.count - 1 }, true);
+          return;
+        }
+        if (!step) return;
+        event.preventDefault();
+        // Arrows move the window; with Shift they stretch (or shrink) its right edge.
+        this.set(dragWin(this.current, event.shiftKey ? 'right' : 'move', step, this.count, MIN_DAYS), true);
+      });
+      this.root.querySelector('[data-cr-all]')?.addEventListener('click', () => this.set({ a: 0, b: this.count - 1 }, true));
+    }
+
+    /** Puts the window on days `win.a` to `win.b`: moves it, shades the rest of the chart and counts the numbers to the new ones. */
+    set(win: Win, animate: boolean) {
+      this.current = win;
+      const { layout } = this.data;
+      const left = edgeAt(win.a, 'left', this.count, layout);
+      const right = edgeAt(win.b, 'right', this.count, layout);
+      this.win.style.left = `${left * 100}%`;
+      this.win.style.width = `${Math.max(0, right - left) * 100}%`;
+      const shadeL = this.root.querySelector<HTMLElement>('.cr-shade-l');
+      const shadeR = this.root.querySelector<HTMLElement>('.cr-shade-r');
+      if (shadeL) shadeL.style.width = `${left * 100}%`;
+      if (shadeR) shadeR.style.width = `${(1 - right) * 100}%`;
+      this.shadeChart(win);
+      const full = win.a === 0 && win.b === this.count - 1;
+      if (full) this.root.dataset.crFull = ''; else delete this.root.dataset.crFull;
+      this.win.setAttribute('aria-valuenow', String(win.a));
+      this.write(win, animate && !reduced());
+    }
+
+    shadeChart(win: Win) {
+      const dimL = this.root.querySelector<HTMLElement>('[data-cr-dim="l"]');
+      const dimR = this.root.querySelector<HTMLElement>('[data-cr-dim="r"]');
+      if (!dimL || !dimR) return;
+      const [x0, x1, y0, y1] = this.data.box;
+      const edgeL = this.data.e[win.a][0];
+      const edgeR = this.data.e[win.b][1];
+      for (const dim of [dimL, dimR]) { dim.style.top = `${y0 * 100}%`; dim.style.height = `${(y1 - y0) * 100}%`; }
+      dimL.style.left = `${x0 * 100}%`;
+      dimL.style.width = `${Math.max(0, edgeL - x0) * 100}%`;
+      dimR.style.left = `${edgeR * 100}%`;
+      dimR.style.width = `${Math.max(0, x1 - edgeR) * 100}%`;
+    }
+
+    /** The text of the range and the numbers of the readout. */
+    write(win: Win, animate: boolean) {
+      const when = this.root.querySelector<HTMLElement>('[data-cr-when]');
+      const first = this.dayFormat.format(new Date(`${this.data.d[win.a]}T00:00:00Z`));
+      const last = this.dayFormat.format(new Date(`${this.data.d[win.b]}T00:00:00Z`));
+      const days = win.b - win.a + 1;
+      if (when) when.textContent = days > 1 ? `${first} – ${last}` : first;
+      this.win.setAttribute('aria-valuetext', days > 1 ? `${first} – ${last}` : first);
+      const s = rangeStats(this.points, win, this.data.kind);
+      const locale = this.data.locale;
+      const tone = (el: HTMLElement | null, value: number | null) => {
+        if (!el) return;
+        el.classList.toggle('cr-up', value !== null && value > 0);
+        el.classList.toggle('cr-down', value !== null && value < 0);
+      };
+      const put = (role: string, value: number | null, text: (v: number) => string) => {
+        const el = this.root.querySelector<HTMLElement>(`[data-cr-n="${role}"]`);
+        if (!el) return;
+        if (value === null) { this.stop(role); el.textContent = '–'; this.shown.delete(role); return; }
+        this.count_(role, el, value, text, animate);
+      };
+      if (this.data.kind === 'level') {
+        put('end', s.end, this.format);
+        put('change', s.change, (v) => signedText(this.format, v));
+        put('high', s.high, this.format);
+        const share = this.root.querySelector<HTMLElement>('[data-cr-n="share"]');
+        const sharePart = s.versus === null ? null : s.versus;
+        if (share) share.textContent = percentText(sharePart, locale);
+        tone(this.root.querySelector<HTMLElement>('[data-cr-n="change"]'), s.change);
+      } else {
+        put('total', s.total, this.format);
+        put('avg', s.average, this.format);
+        // The percentage counts as a number too (in tenths of a percent, so it ticks smoothly); `versus` is a fraction.
+        const el = this.root.querySelector<HTMLElement>('[data-cr-n="versus"]');
+        if (el) {
+          if (s.versus === null) { this.stop('versus'); el.textContent = '–'; this.shown.delete('versus'); } else this.count_('versus', el, s.versus, (v) => percentText(v, locale), animate);
+          tone(el, s.versus);
+        }
+      }
+    }
+
+    stop(role: string) {
+      const old = this.shown.get(role);
+      if (old) cancelAnimationFrame(old.frame);
+    }
+
+    /** Counts the number of `el` from what it shows to `value` (a short ease-out, started again from where it is whenever the window moves). */
+    count_(role: string, el: HTMLElement, value: number, text: (v: number) => string, animate: boolean) {
+      const old = this.shown.get(role);
+      if (old) cancelAnimationFrame(old.frame);
+      const from = old ? old.value : value;
+      if (!animate || from === value) { el.textContent = text(value); this.shown.set(role, { value, frame: 0 }); return; }
+      const began = performance.now();
+      const DURATION = 380;
+      const state = { value: from, frame: 0 };
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - began) / DURATION);
+        state.value = tween(from, value, t);
+        el.textContent = text(state.value);
+        if (t < 1) state.frame = requestAnimationFrame(tick);
+        else { state.value = value; el.textContent = text(value); }
+      };
+      state.frame = requestAnimationFrame(tick);
+      this.shown.set(role, state);
+    }
+  }
+
+  const made = new WeakSet<Element>();
+  function init(root: HTMLElement) {
+    if (made.has(root)) return;
+    made.add(root);
+    const node = root.querySelector('script[data-cr-data]');
+    let data: BrushData | null = null;
+    try { data = JSON.parse(node?.textContent ?? ''); } catch { data = null; }
+    if (!data || !data.v || data.v.length < 3) return;
+    new Brush(root, data);
+  }
+
+  // The charts wait to be seen: a chart below the fold draws its line and grows its bars when it comes into view.
+  const seen = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.remove('sc-wait');
+        seen?.unobserve(entry.target);
+      }
+    }, { threshold: 0.15 })
+    : null;
+  function wait(svg: Element) {
+    if (!seen || svg.classList.contains('sc-waited')) return;
+    svg.classList.add('sc-waited');
+    const box = svg.getBoundingClientRect();
+    if (box.top < window.innerHeight * 0.9 && box.bottom > 0 && box.width > 0) return;
+    svg.classList.add('sc-wait');
+    seen.observe(svg);
+  }
+
+  function scan(scope: ParentNode) {
+    scope.querySelectorAll<HTMLElement>('[data-cr]').forEach(init);
+    scope.querySelectorAll('svg.sc-draw').forEach(wait);
+  }
+  scan(document);
+  // A chart that the page draws later (the public page redraws its chart when the range or the number changes) is picked up when it appears.
+  new MutationObserver((records) => {
+    for (const record of records) {
+      record.addedNodes.forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        if (node.matches('[data-cr]')) init(node);
+        if (node.matches('svg.sc-draw')) wait(node);
+        scan(node);
+      });
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+</script>
