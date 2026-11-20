@@ -180,7 +180,7 @@ ${mine.length
   return `<!doctype html><html lang="${escape(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${t('Dashboard health')} · Petto</title>
 <style>
 :root{color-scheme:light dark;--bg:#f6f6f8;--fg:#20242b;--muted:#66707d;--card:#fff;--line:#e3e6eb;--accent:#bd5136}
-@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--fg:#d6d3cc;--muted:#9b978f;--card:#151517;--line:#34373e;--accent:#f0a88f}}
+@media (prefers-color-scheme:dark){:root{--bg:#111113;--fg:#d6d3cc;--muted:#9b978f;--card:#1c1c20;--line:#34373e;--accent:#f0a88f}}
 body{margin:0 auto;max-width:1120px;padding:20px 16px 48px;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 h1{font-family:Georgia,'Times New Roman',serif;font-size:26px;margin:0 0 4px}h2{display:flex;align-items:center;gap:8px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:28px 0 8px}h3{font-size:15px;margin:18px 0 6px}
 .muted{color:var(--muted)}.small{font-size:12.5px}
