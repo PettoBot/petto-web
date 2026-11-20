@@ -3,11 +3,14 @@
 // Run: node scripts/check-chart-range.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { clampWin, dragWin, edgeAt, indexAt, makeFormat, percentText, rangeStats, shareOf, signedText, startWin, tween, easeOut } from '../src/utils/chartRange.ts';
+import ts from 'typescript';
 import { lineChart, barChart, tickLabels } from '../src/utils/statsChart.mjs';
 import { COPY } from '../src/data/globalStatsCopy.mjs';
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+// The rules are TypeScript (src/utils/chartRange.ts, which has no imports): they are compiled here, so this check runs on any Node, the one of CI included.
+const compiled = ts.transpileModule(read('src/utils/chartRange.ts'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+const { clampWin, dragWin, edgeAt, indexAt, makeFormat, percentText, rangeStats, shareOf, signedText, startWin, tween, easeOut } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const pts = (list) => list.map((value) => (typeof value === 'object' ? value : { value }));
 
 // ── The numbers of a window ──
