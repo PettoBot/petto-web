@@ -6879,4 +6879,6 @@ export const dashPt: Record<string, string> = {
   "Shown under the name of the channel. Leave it empty for \"{text}\".": "Aparece embaixo do nome do canal. Deixe vazio para \"{text}\".",
   "Join with the sound off": "Entrar com o som desligado",
   "Petto needs View Channel and Connect in the channel, and Set Voice Channel Status to write the status. Without that last one it stays in and leaves the status empty.": "O Petto precisa de Ver canal e Conectar no canal, e de Definir status do canal de voz para escrever o status. Sem este último ele fica dentro e deixa o status vazio.",
+  "Loading your profile": "Carregando seu perfil",
+  "Getting your account ready…": "Preparando sua conta…",
 };

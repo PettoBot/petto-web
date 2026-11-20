@@ -6879,4 +6879,6 @@ export const dashEs: Record<string, string> = {
   "Shown under the name of the channel. Leave it empty for \"{text}\".": "Se muestra bajo el nombre del canal. Déjalo vacío para \"{text}\".",
   "Join with the sound off": "Entrar con el sonido apagado",
   "Petto needs View Channel and Connect in the channel, and Set Voice Channel Status to write the status. Without that last one it stays in and leaves the status empty.": "Petto necesita Ver canal y Conectar en el canal, y Establecer estado del canal de voz para escribir el estado. Sin este último se queda dentro y deja el estado vacío.",
+  "Loading your profile": "Cargando tu perfil",
+  "Getting your account ready…": "Preparando tu cuenta…",
 };
