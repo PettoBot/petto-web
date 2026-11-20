@@ -550,7 +550,7 @@ export const dashEs: Record<string, string> = {
   "Server language": "Idioma del servidor",
   "The language Petto uses in this server: its messages, buttons and the private messages it sends. It applies right away. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "El idioma que Petto usa en este servidor: sus mensajes, botones y los mensajes privados que envía. Se aplica enseguida. También se puede usar <code>{a}language</code>. Ayúdanos a traducir: <a href=\"/apply?role=translator\">postúlate como traductor</a>.",
   "The language of Petto's messages in this server. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "El idioma de los mensajes de Petto en este servidor. También se puede usar <code>{a}language</code>. Ayúdanos a traducir: <a href=\"/apply?role=translator\">postúlate como traductor</a>.",
-  "Turned off, this server is only counted in the global totals, without its name.": "Si lo apagas, este servidor solo cuenta en los totales globales, sin su nombre.",
+  "Turned off, this server is only counted in the global totals, without its name, and it is not in the carousel of the home page.": "Si lo apagas, este servidor solo cuenta en los totales globales, sin su nombre, y no sale en el carrusel de la página principal.",
   "Updates live": "En vivo",
   "Dropdown list": "Lista desplegable",
   "Rating scale": "Escala de valoración",
