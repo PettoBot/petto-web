@@ -550,7 +550,7 @@ export const dashPt: Record<string, string> = {
   "Server language": "Idioma do servidor",
   "The language Petto uses in this server: its messages, buttons and the private messages it sends. It applies right away. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "O idioma que o Petto usa neste servidor: suas mensagens, botões e as mensagens privadas que envia. Vale na hora. Também dá para usar <code>{a}language</code>. Ajude a traduzir: <a href=\"/apply?role=translator\">candidate-se como tradutor</a>.",
   "The language of Petto's messages in this server. Members can also use <code>{a}language</code>. Help us translate: <a href=\"/apply?role=translator\">apply as a translator</a>.": "O idioma das mensagens do Petto neste servidor. Também dá para usar <code>{a}language</code>. Ajude a traduzir: <a href=\"/apply?role=translator\">candidate-se como tradutor</a>.",
-  "Turned off, this server is only counted in the global totals, without its name.": "Desativado, este servidor só conta nos totais globais, sem o nome.",
+  "Turned off, this server is only counted in the global totals, without its name, and it is not in the carousel of the home page.": "Desativado, este servidor só conta nos totais globais, sem o nome, e não aparece no carrossel da página inicial.",
   "Updates live": "Ao vivo",
   "Dropdown list": "Lista suspensa",
   "Rating scale": "Escala de avaliação",
