@@ -25,6 +25,8 @@ for (const lang of langs) {
   assert.deepEqual(c.numbers.map((n) => n.value.replace(/[.,]/g, '')), en.numbers.map((n) => n.value.replace(/[.,]/g, '')), `${lang}: the same numbers`);
   for (const [key, value] of Object.entries(c)) if (typeof value === 'string') assert.ok(value.trim(), `${lang}: ${key} is not empty`);
   assert.ok(c.name.includes('Petto'), `${lang}: the name says Petto`);
+  assert.ok(c.prologue.length >= 150, `${lang}: the page opens with a paragraph that sets the tone`);
+  assert.ok(c.steps.every((step) => step.text.length >= 100), `${lang}: every year is told in a few sentences, not in a line`);
   assert.ok(c.description.length <= 200 && c.description.length >= 60, `${lang}: the description is a sentence or two`);
 }
 
@@ -45,5 +47,6 @@ assert.equal((ui.match(/href: '\/history'/g) ?? []).length, 3, 'the menu of the 
 assert.match(read('src/layouts/Base.astro'), /FOOTER_COMMUNITY = \[[^\]]*'\/history'/, 'the footer links to it');
 const page = read('src/components/History.astro');
 assert.match(page, /skin="ash"/, 'it has the look of the public pages');
+assert.match(page, /\{c\.prologue\}/, 'the page shows its opening paragraph');
 assert.match(page, /title=\{c\.name\}/, 'the tab says the name of the page, without the brand twice');
 console.log('history page: ok');
