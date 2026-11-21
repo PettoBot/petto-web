@@ -46,6 +46,7 @@ export const ui = {
           items: [
             { icon: 'ph:headset-fill', title: 'Support server', desc: 'Ask questions, report bugs, talk to us directly.', href: 'https://petto.sbs/support', badge: '' },
             { icon: 'ph:users-three-fill', title: 'Team', desc: 'Everyone who builds and moderates Petto.', href: '/team', badge: '' },
+            { icon: 'ph:book-open-text-fill', title: 'Petto History', desc: 'Where Petto comes from: 2017, 2026 and everything in between.', href: '/history', badge: '' },
             { icon: 'ph:paper-plane-tilt-fill', title: 'Apply', desc: 'Join the team, or propose a partnership.', href: '/apply', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Status', desc: 'Live uptime for the bot and its systems.', href: '/status', badge: '' },
             { icon: 'ph:chart-line-up-fill', title: 'Stats', desc: 'Live numbers: messages, voice hours, reactions and rankings.', href: '/stats', badge: '' },
@@ -1729,6 +1730,7 @@ export const ui = {
           items: [
             { icon: 'ph:headset-fill', title: 'Servidor de soporte', desc: 'Preguntas, reportes de bugs, contacto directo con nosotros.', href: 'https://petto.sbs/support', badge: '' },
             { icon: 'ph:users-three-fill', title: 'Equipo', desc: 'Todos los que construyen y moderan Petto.', href: '/team', badge: '' },
+            { icon: 'ph:book-open-text-fill', title: 'Historia de Petto', desc: 'De dónde viene Petto: 2017, 2026 y todo lo que pasó en medio.', href: '/history', badge: '' },
             { icon: 'ph:paper-plane-tilt-fill', title: 'Postular', desc: 'Únete al equipo o propón una alianza.', href: '/apply', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Estado', desc: 'Uptime en vivo del bot y sus sistemas.', href: '/status', badge: '' },
             { icon: 'ph:chart-line-up-fill', title: 'Estadísticas', desc: 'Números en vivo: mensajes, horas en voz, reacciones y rankings.', href: '/stats', badge: '' },
@@ -3412,6 +3414,7 @@ export const ui = {
           items: [
             { icon: 'ph:headset-fill', title: 'Servidor de suporte', desc: 'Tire dúvidas, reporte bugs, fale direto com a gente.', href: 'https://petto.sbs/support', badge: '' },
             { icon: 'ph:users-three-fill', title: 'Equipe', desc: 'Todo mundo que constrói e modera o Petto.', href: '/team', badge: '' },
+            { icon: 'ph:book-open-text-fill', title: 'História do Petto', desc: 'De onde vem o Petto: 2017, 2026 e tudo o que aconteceu no meio.', href: '/history', badge: '' },
             { icon: 'ph:paper-plane-tilt-fill', title: 'Candidatar-se', desc: 'Entre para a equipe ou proponha uma parceria.', href: '/apply', badge: '' },
             { icon: 'ph:pulse-fill', title: 'Status', desc: 'Uptime ao vivo do bot e seus sistemas.', href: '/status', badge: '' },
             { icon: 'ph:chart-line-up-fill', title: 'Estatísticas', desc: 'Números ao vivo: mensagens, horas em voz, reações e rankings.', href: '/stats', badge: '' },
