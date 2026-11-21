@@ -32,7 +32,15 @@ const prefixes: Record<string, { lang: string; path: string }> = { es: { lang: '
 // The prefix is kept on the links, forms, and redirects of the page, so it stays in the address bar.
 const DASH_PATH = /^\/(?:(?:es|pt-br)\/)?dash(?:\/|$)/i;
 
-export const onRequest = defineMiddleware(async (context, next) => {
+/**
+ * A page that was not found is never kept. Cloudflare in front of the site gives every answer a browser lifetime of four hours, and a person who asked for a page
+ * while a new version was being published (the page was not there yet) kept the "404" on the phone for hours after the page existed. `no-store` says nobody keeps it.
+ */
+const notKept404 = (response: Response): Response => (response.status === 404 ? withHeaders(response, { 'Cache-Control': 'no-store' }) : response);
+
+export const onRequest = defineMiddleware(async (context, next) => notKept404(await route(context, next)));
+
+async function route(context: APIContext, next: MiddlewareNext): Promise<Response> {
   await directDatabase;
   configureSnapshots({ locals: context.locals });
   // Dashboard pages say where their time went (Server-Timing: auth, db, discord, bot, render).
@@ -45,7 +53,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return response;
   }
   return handle(context, next);
-});
+}
 
 // A page (or a route) of one server. The routes that only stream or report the stamp answer it themselves.
 const GUILD_ROUTE = /^\/dash\/guild\/(\d{5,25})\/([\w-]+)\/?$/;
