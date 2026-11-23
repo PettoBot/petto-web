@@ -7161,4 +7161,5 @@ export const dashEs: Record<string, string> = {
   "You have no banner on in your profile yet.": "Todavía no tienes un banner puesto en tu perfil.",
   "Your card is back to the default one.": "Tu tarjeta volvió a la original.",
   "you have": "tienes",
+  "Take the whole pack (free)": "Tomar el paquete completo (gratis)",
 };

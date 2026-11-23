@@ -7161,4 +7161,5 @@ export const dashPt: Record<string, string> = {
   "You have no banner on in your profile yet.": "Você ainda não tem um banner no seu perfil.",
   "Your card is back to the default one.": "Seu cartão voltou ao padrão.",
   "you have": "você tem",
+  "Take the whole pack (free)": "Pegar o pacote completo (grátis)",
 };
