@@ -7121,4 +7121,11 @@ export const dashEs: Record<string, string> = {
   "Streak freezes a month: {n}": "Congelaciones de racha al mes: {n}",
   "Places in the showcase of your profile: {n}": "Lugares en la vitrina de tu perfil: {n}",
   "Limits (embeds, replies, reminders): +{n}%": "Límites (embeds, respuestas, recordatorios): +{n}%",
+  "Choose {plan}": "Elegir {plan}",
+  "Payments are not refunded, except a charge that was duplicated, made by mistake or never activated. The Premium of a server is separate.": "Los pagos no se reembolsan, salvo un cobro duplicado, hecho por error o que no se activó. El Premium del servidor es aparte.",
+  "Payments and cancel": "Pagos y cancelar",
+  "Cancel whenever you want": "Cancela cuando quieras",
+  "It stays active until the end of the period you already paid and does not renew.": "Sigue activo hasta el final del periodo que ya pagaste y no se renueva.",
+  "Charges by mistake are returned": "Los cobros por error se devuelven",
+  "A duplicated charge, one made by mistake or never activated is refunded: open a ticket with the receipt.": "Un cobro duplicado, hecho por error o sin activar se reembolsa: abre un ticket con el recibo.",
 };

@@ -22,6 +22,16 @@ const PRODUCT_SLOT_LIMITS: Record<string, number> = {
   '5361b1ef-97e2-470d-8fe3-25da2b49aeeb': 5,
 };
 
+/** The plan of a person a subscription is for (`bronze`, `silver` or `gold`), or null when it is the Premium of a server. It comes from the metadata (`kind: user_plan`, `plan`) or from the product ids in the environment. */
+export function userPlanOf(astro: any, subscription: any, metadata: Record<string, any>): 'bronze' | 'silver' | 'gold' | null {
+  const productId = String(subscription.product_id ?? subscription.product?.id ?? '');
+  for (const plan of ['bronze', 'silver', 'gold'] as const) {
+    if (productId && productId === getEnv(astro, `POLAR_PRODUCT_PLAN_${plan.toUpperCase()}`)) return plan;
+  }
+  const named = String(metadata.plan ?? '').toLowerCase();
+  return metadata.kind === 'user_plan' && (named === 'bronze' || named === 'silver' || named === 'gold') ? named : null;
+}
+
 function settings(astro: any): { url: string; key: string } | null {
   const url = getEnv(astro, 'PETTO_BOT_API_URL');
   const key = getEnv(astro, 'PETTO_BOT_API_SECRET');
@@ -158,6 +168,26 @@ async function fulfillPending(astro: any, entitlementId: number, userId: string,
   }
 }
 
+/** Saves what a payment says about the plan of a person: active until the end of the paid period (it stays until then even when it was cancelled), and over when revoked or unpaid. */
+async function syncUserPlan(astro: any, config: { url: string; key: string }, input: { userId: string; plan: 'bronze' | 'silver' | 'gold'; type: string; status: string | undefined; periodEnd: string | null; cancelAtPeriodEnd: boolean }): Promise<boolean> {
+  const status = statusFor(input.type, input.status, input.periodEnd, input.cancelAtPeriodEnd);
+  const periodValid = !input.periodEnd || new Date(input.periodEnd).getTime() > Date.now();
+  const active = status === 'active' && periodValid;
+  const row = {
+    user_id: input.userId, plan: input.plan, source: 'payment', granted_by: null, note: null,
+    ends_at: active ? input.periodEnd : new Date().toISOString(),
+    renews: active && !input.cancelAtPeriodEnd,
+    updated_at: new Date().toISOString(),
+  };
+  const response = await fetch(`${config.url}/rest/v1/user_plans?on_conflict=user_id`, {
+    method: 'POST',
+    headers: apiHeaders(config.key, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify(row),
+  });
+  if (!response.ok) throw new Error(`Plan API upsert failed with HTTP ${response.status}.`);
+  return true;
+}
+
 export async function syncPolarSubscription(astro: any, event: any): Promise<boolean> {
   if (!event || !SUBSCRIPTION_EVENTS.has(event.type)) return false;
   const config = settings(astro);
@@ -168,6 +198,9 @@ export async function syncPolarSubscription(astro: any, event: any): Promise<boo
   const userId = userIdFrom(subscription, metadata);
   if (!userId || !subscription.id) return true;
   const productId = String(subscription.product_id ?? subscription.product?.id ?? '');
+  // The plan of a person (Bronze, Silver, Gold) is not the Premium of a server: it goes to its own table, which the bot reads.
+  const plan = userPlanOf(astro, subscription, metadata);
+  if (plan) return syncUserPlan(astro, config, { userId, plan, type: event.type, status: subscription.status, periodEnd: iso(subscription.current_period_end ?? subscription.ends_at), cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end ?? subscription.cancelAtPeriodEnd) });
   const slotValue = Number(metadata.slot_limit ?? metadata.slotLimit ?? PRODUCT_SLOT_LIMITS[productId] ?? 1);
   const slotLimit = Number.isInteger(slotValue) && slotValue > 0 ? slotValue : 1;
   const periodEnd = iso(subscription.current_period_end ?? subscription.ends_at);
@@ -241,19 +274,22 @@ export async function notifyPremiumEvent(astro: any, event: any): Promise<void> 
   const subscription = event.data ?? {};
   const metadata = { ...(subscription.product?.metadata ?? {}), ...(subscription.metadata ?? {}) };
   const userId = userIdFrom(subscription, metadata);
+  const plan = userPlanOf(astro, subscription, metadata);
   const slotValue = Number(metadata.slot_limit ?? metadata.slotLimit ?? PRODUCT_SLOT_LIMITS[String(subscription.product_id ?? '')] ?? 1);
   const periodEnd = iso(subscription.current_period_end ?? subscription.ends_at);
   const stamp = (value: string | null) => (value ? `<t:${Math.floor(Date.parse(value) / 1000)}:f>` : 'not set');
   const lines = [
     `**User:** ${userId ? `<@${userId}> (\`${userId}\`)` : 'unknown'}`,
-    `**Plan:** ${String(metadata.plan_key ?? metadata.planKey ?? subscription.product?.name ?? 'Premium').slice(0, 80)} · ${Number.isInteger(slotValue) && slotValue > 0 ? slotValue : 1} server slot(s)`,
+    plan
+      ? `**Plan of a person:** ${plan}`
+      : `**Plan:** ${String(metadata.plan_key ?? metadata.planKey ?? subscription.product?.name ?? 'Premium').slice(0, 80)} · ${Number.isInteger(slotValue) && slotValue > 0 ? slotValue : 1} server slot(s)`,
     `**${event.type === 'subscription.canceled' ? 'Access until' : 'Renews or ends'}:** ${stamp(periodEnd)}`,
     ...(subscription.id ? [`-# Subscription ${String(subscription.id).slice(0, 36)}`] : []),
   ];
   try {
     await fetch(hook, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(5000),
-      body: JSON.stringify({ username: 'Petto Premium', allowed_mentions: { parse: [] }, embeds: [{ title: notice.title, color: notice.color, description: lines.join('\n'), timestamp: new Date().toISOString() }] }),
+      body: JSON.stringify({ username: 'Petto Premium', allowed_mentions: { parse: [] }, embeds: [{ title: plan ? notice.title.replace('Premium', `Plan ${plan}`) : notice.title, color: notice.color, description: lines.join('\n'), timestamp: new Date().toISOString() }] }),
     });
   } catch { /* The subscription is already saved: the notice is a courtesy. */ }
 }

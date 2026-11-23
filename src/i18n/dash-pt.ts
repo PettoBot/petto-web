@@ -7121,4 +7121,11 @@ export const dashPt: Record<string, string> = {
   "Streak freezes a month: {n}": "Congelamentos de sequência por mês: {n}",
   "Places in the showcase of your profile: {n}": "Lugares na vitrine do seu perfil: {n}",
   "Limits (embeds, replies, reminders): +{n}%": "Limites (embeds, respostas, lembretes): +{n}%",
+  "Choose {plan}": "Escolher {plan}",
+  "Payments are not refunded, except a charge that was duplicated, made by mistake or never activated. The Premium of a server is separate.": "Os pagamentos não são reembolsados, exceto uma cobrança duplicada, feita por engano ou que não foi ativada. O Premium do servidor é à parte.",
+  "Payments and cancel": "Pagamentos e cancelar",
+  "Cancel whenever you want": "Cancele quando quiser",
+  "It stays active until the end of the period you already paid and does not renew.": "Continua ativo até o fim do período que você já pagou e não renova.",
+  "Charges by mistake are returned": "Cobranças por engano são devolvidas",
+  "A duplicated charge, one made by mistake or never activated is refunded: open a ticket with the receipt.": "Uma cobrança duplicada, feita por engano ou não ativada é reembolsada: abra um ticket com o recibo.",
 };

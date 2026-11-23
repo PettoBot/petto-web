@@ -7,6 +7,7 @@ import DashPanelHead from './DashPanelHead.astro';
 import DashShopShared from './DashShopShared.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 import type { Session } from '../utils/session';
+import { userHeaderArt } from '../utils/dashProfile.mjs';
 
 type Names = Record<string, string>;
 interface Item { kind: 'banner' | 'font'; id: string; names: Names; pack: string | null; rarity: string; price: number; saleFrom: string | null; saleUntil: string | null; planMin: string | null; onSale: boolean; retired: boolean; hasFile: boolean; version: string }
@@ -22,6 +23,9 @@ const nameOf = (names: Names): string => names[lang] ?? names[lang.split('-')[0]
 const title = kind === 'font' ? dt('Customize name') : dt('Customize profile');
 const items = (catalog?.items ?? []).filter((item) => item.kind === kind && item.hasFile);
 const packs = (catalog?.packs ?? []).filter((pack) => pack.kind === kind && !pack.free && pack.pieces.length > 0);
+// The banner of the person's own Discord account: the profile picture shows it when no banner of the shop is on, so the preview does too.
+const headerArt = userHeaderArt(user);
+const discordBanner = headerArt.kind === 'image' ? headerArt.still : null;
 const avatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.userId}/${user.avatar}.png?size=128` : null;
 const fontCss = kind === 'font' ? items.map((item) => `@font-face{font-family:"shop-${item.id}";src:url(/dash/item-file/font/${item.id}?v=${encodeURIComponent(item.version)});font-display:swap}`).join('') : '';
 const ui = {
@@ -33,7 +37,7 @@ const ui = {
   rarity: { common: dt('Common'), rare: dt('Rare'), epic: dt('Epic'), legendary: dt('Legendary') },
   noMatch: dt('Nothing matches.'), empty: dt('Nothing in this part of the shop yet.'),
 };
-const boot = ready ? JSON.stringify({ lang, kind, catalog: { items, packs }, state, ui, names: Object.fromEntries([...items, ...packs].map((entry) => [entry.id, nameOf(entry.names)])), me: user.username }).replace(/</g, '\\u003c') : '';
+const boot = ready ? JSON.stringify({ lang, kind, catalog: { items, packs }, state, ui, names: Object.fromEntries([...items, ...packs].map((entry) => [entry.id, nameOf(entry.names)])), me: user.username, discordBanner }).replace(/</g, '\\u003c') : '';
 ---
 <DashMeLayout user={user} active={kind === 'font' ? 'name' : 'banners'} pageTitle={kind === 'font' ? 'Customize name' : 'Customize profile'}>
   <DashShopShared />
@@ -121,7 +125,7 @@ const boot = ready ? JSON.stringify({ lang, kind, catalog: { items, packs }, sta
     interface Item { kind: string; id: string; pack: string | null; rarity: string; price: number; saleUntil: string | null; planMin: string | null; onSale: boolean; version: string }
     interface Pack { id: string; color: string; price: number | null; fullPrice: number; onSale: boolean; planMin: string | null; pieces: string[]; saleUntil: string | null }
     interface State { balance: number; plan: string | null; items: { kind: string; id: string }[]; active: { banner: string | null; font: string | null } }
-    const boot = JSON.parse(root.dataset.boot) as { lang: string; kind: 'banner' | 'font'; catalog: { items: Item[]; packs: Pack[] }; state: State; ui: Record<string, any>; names: Names; me: string };
+    const boot = JSON.parse(root.dataset.boot) as { lang: string; kind: 'banner' | 'font'; catalog: { items: Item[]; packs: Pack[] }; state: State; ui: Record<string, any>; names: Names; me: string; discordBanner: string | null };
     const { kind, catalog, ui } = boot;
     let state = boot.state;
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -142,8 +146,12 @@ const boot = ready ? JSON.stringify({ lang, kind, catalog: { items, packs }, sta
       const id = state.active[kind];
       const item = id ? catalog.items.find((each) => each.id === id) : null;
       const banner = $('si-banner'); const name = $('si-name');
-      if (kind === 'banner') { banner.style.backgroundImage = item ? `url('${fileUrl(item)}')` : ''; }
-      else { name.style.fontFamily = item ? `'shop-${item.id}', sans-serif` : ''; }
+      // The banner behind the person: the one of the shop they have on, else the one of their Discord account (the same order as the profile picture).
+      const worn = state.active.banner;
+      const bannerUrl = kind === 'banner' ? (item ? fileUrl(item) : null) : (worn && state.items.some((row) => row.kind === 'banner' && row.id === worn) ? `/dash/item-file/banner/${worn}` : null);
+      const behind = bannerUrl ?? boot.discordBanner;
+      banner.style.backgroundImage = behind ? `url('${behind}')` : '';
+      if (kind === 'font') name.style.fontFamily = item ? `'shop-${item.id}', sans-serif` : '';
       $('si-current').textContent = item ? `${ui.inUse}: ${boot.names[item.id]}` : '';
     }
 
