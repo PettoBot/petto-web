@@ -7162,4 +7162,6 @@ export const dashPt: Record<string, string> = {
   "Your card is back to the default one.": "Seu cartão voltou ao padrão.",
   "you have": "você tem",
   "Take the whole pack (free)": "Pegar o pacote completo (grátis)",
+  "We are working on new ways to get ceramos.": "Estamos trabalhando em novas formas de conseguir ceramos.",
+  "For now they are scarce and come mostly with a paid plan. A new way to earn them is on its way.": "Por enquanto eles são escassos e vêm principalmente com um plano pago. Uma nova forma de ganhá-los está a caminho.",
 };
