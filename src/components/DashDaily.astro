@@ -1,0 +1,66 @@
+---
+// The daily reward (/dash/daily): claim the ceramos of the day (the bot decides: once for each UTC day, the amount of the plan) and see when the next opens.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopShared from './DashShopShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface Props { user: Session; state: { balance: number; daily: { canClaim: boolean; nextAt: string; amount: number } } | null }
+const { user, state } = Astro.props;
+const dt = makeT(getDashLang(Astro));
+const boot = state ? JSON.stringify({ state, ui: { claim: dt('Claim {n} ceramos'), claimed: dt('You claimed {n} ceramos.'), next: dt('Next daily in {time}'), hours: dt('{h}h {m}m'), minutes: dt('{m}m'), down: dt('Petto did not answer. Try again in a moment.') } }).replace(/</g, '\\u003c') : '';
+---
+<DashMeLayout user={user} active="daily" pageTitle="Daily reward">
+  <DashShopShared />
+  <DashPanelHead title={dt('Daily reward')} eyebrow={dt('Main')} icon="ph:gift-fill" back={false} />
+  {!state && <p class="bd-down" role="alert">{dt('Petto did not answer. Try again in a moment.')}</p>}
+  {state && (
+    <div class="dd" id="dd" data-boot={boot}>
+      <section class="bd-card dd-card">
+        <span class="dd-label">{dt('Your ceramos')}</span>
+        <b class="dd-bal"><i class="bd-coin"></i> <span id="dd-balance">{state.balance}</span></b>
+        <button type="button" class="btn dd-claim" id="dd-claim" hidden={!state.daily.canClaim}></button>
+        <p class="dd-next" id="dd-next" hidden={state.daily.canClaim}></p>
+        <p class="dd-msg" id="dd-msg" role="status" hidden></p>
+        <p class="dd-hint">{dt('The day changes at 00:00 UTC, the same for everybody. A plan gives more ceramos a day.')} <a href="/dash/plans">{dt('See plans')}</a></p>
+      </section>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .dd-card { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; max-width: 460px; }
+  .dd-label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+  .dd-bal { display: inline-flex; align-items: center; gap: 10px; font-size: 40px; }
+  .dd-claim { background: var(--green); color: var(--green-ink); border-color: transparent; } .dd-claim[hidden], .dd-next[hidden], .dd-msg[hidden] { display: none; }
+  .dd-next, .dd-hint { margin: 0; color: var(--text-muted); font-size: 14px; } .dd-msg { margin: 0; color: var(--green-text); font-size: 14px; }
+</style>
+
+<script>
+  const root = document.getElementById('dd');
+  if (root?.dataset.boot) {
+    const boot = JSON.parse(root.dataset.boot) as { state: { balance: number; daily: { canClaim: boolean; nextAt: string; amount: number } }; ui: Record<string, string> };
+    let state = boot.state; const ui = boot.ui;
+    const fill = (text: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((out, [key, value]) => out.replaceAll(`{${key}}`, String(value)), text);
+    const claim = document.getElementById('dd-claim') as HTMLButtonElement; const next = document.getElementById('dd-next')!; const msg = document.getElementById('dd-msg')!;
+    const left = (iso: string) => { const m = Math.max(1, Math.ceil((new Date(iso).getTime() - Date.now()) / 60000)); return m >= 60 ? fill(ui.hours, { h: Math.floor(m / 60), m: m % 60 }) : fill(ui.minutes, { m }); };
+    const draw = () => {
+      document.getElementById('dd-balance')!.textContent = String(state.balance);
+      claim.hidden = !state.daily.canClaim; claim.textContent = fill(ui.claim, { n: state.daily.amount });
+      next.hidden = state.daily.canClaim; next.textContent = fill(ui.next, { time: left(state.daily.nextAt) });
+    };
+    claim.addEventListener('click', async () => {
+      claim.disabled = true;
+      try {
+        const response = await fetch('/dash/badges-act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'daily' }) });
+        const data = await response.json().catch(() => null);
+        if (data?.state) state = data.state;
+        if (response.ok && data?.result?.ok) { msg.hidden = false; msg.textContent = fill(ui.claimed, { n: data.result.amount }); }
+        else if (!response.ok) { msg.hidden = false; msg.textContent = ui.down; }
+      } catch { msg.hidden = false; msg.textContent = ui.down; }
+      claim.disabled = false; draw();
+    });
+    draw();
+  }
+</script>

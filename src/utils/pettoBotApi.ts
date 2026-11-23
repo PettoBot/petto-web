@@ -890,12 +890,12 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
  * One call to the badges and ceramos API of the bot (`/api/dashboard/ceramos/<route>`) for the person who is logged in: the catalog, their state, and the actions
  * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
  */
-export type CeramosRoute = 'catalog' | 'state' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
+export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
   | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
 export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, data: null, down: true };
-  const read = route === 'catalog' || route === 'state' || route === 'admin/badges' || route === 'admin/shop';
+  const read = route === 'catalog' || route === 'state' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans';
   const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
   const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
   const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
