@@ -891,15 +891,26 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
  * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
  */
 export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
-  | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
+  | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
 export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, data: null, down: true };
-  const read = route === 'catalog' || route === 'state' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans';
+  const read = route === 'catalog' || route === 'state' || route === 'rank-card' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans';
   const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
   const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
   const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
   return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** One of the designs that come with Petto (a background of the rank card), as the bot has it, or null. `size` is `thumb` or `full`. */
+export async function fetchPettoDesignFile(context: AstroContext, id: string, size: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^[a-z0-9-]{3,30}$/.test(id) || !/^(thumb|full)$/.test(size)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/design-file/${id}/${size}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/webp' };
+  } catch { return null; }
 }
 
 /** Sends the picture of a badge of the editor to the bot (the owner only: the bot checks it again). */
