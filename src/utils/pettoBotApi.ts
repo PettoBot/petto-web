@@ -885,3 +885,17 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
     return null;
   }
 }
+
+/**
+ * One call to the badges and ceramos API of the bot (`/api/dashboard/ceramos/<route>`) for the person who is logged in: the catalog, their state, and the actions
+ * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
+ */
+export async function callPettoCeramos(context: AstroContext, userId: string, route: 'catalog' | 'state' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase', body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const read = route === 'catalog' || route === 'state';
+  const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
+  const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
+  const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}

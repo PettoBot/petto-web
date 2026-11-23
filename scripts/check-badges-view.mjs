@@ -1,0 +1,79 @@
+// The page of badges of the account (/dash/badges): what the tiles, the showcase and the actions look like (src/utils/badgesView.ts), that the flags it points to are in
+// public/assets/country-flags, that the pictures of the other badges are in public/assets/badges, and that the page and its translations exist. The bot gives the catalog
+// at run time; here a small sample of it stands in.
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import ts from 'typescript';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const source = readFileSync(path.join(root, 'src/utils/badgesView.ts'), 'utf8');
+const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const view = { exports: {} };
+new Function('module', 'exports', 'require', js)(view, view.exports, createRequire(import.meta.url));
+const { artUrl, hexHtml, tilesFor, tileHtml, slotsHtml, actionsFor, codeOf } = view.exports;
+
+const badge = (id, category, extra = {}) => ({ id, category, unlock: 'shop', rarity: 'common', price: 250, color: '#e8794a', region: null, language: null, pack: null, ...extra });
+const catalog = {
+  badges: [
+    badge('country-co', 'country', { region: 'CO' }), badge('country-mx', 'country', { region: 'MX' }), badge('lang-es', 'language', { language: 'es' }),
+    badge('femboy', 'fablo', { unlock: 'self', rarity: null, price: 0, pack: 'fablo' }), badge('plan-gold', 'plan', { unlock: 'plan', rarity: null, price: 0 }),
+  ],
+  frames: [{ id: 'normal', cost: 0 }, { id: 'bright', cost: 150 }, { id: 'divine', cost: 400 }], rarityPrice: {}, daily: {}, slots: {},
+};
+const names = { 'country-co': 'Colombia', 'country-mx': 'México', 'lang-es': 'español', femboy: 'Femboy', 'plan-gold': 'Plan Oro' };
+const words = { name: (b) => names[b.id], rarity: { common: 'Común', rare: 'Rara', epic: 'Épica', legendary: 'Legendaria' }, owned: 'Tuya', free: 'Gratis' };
+const state = { balance: 300, plan: null, daily: { canClaim: true, nextAt: new Date().toISOString(), amount: 2 }, slots: 2, owned: [{ id: 'country-co', frame: 'divine' }, { id: 'femboy', frame: 'normal' }], showcase: ['country-co'] };
+
+// Pictures: a country has its flag, a language has none (its code is drawn), the others have a file of the site.
+assert.equal(artUrl(catalog.badges[0]), '/assets/country-flags/co.svg');
+assert.equal(artUrl(catalog.badges[2]), null);
+assert.equal(codeOf(catalog.badges[2]), 'ES');
+assert.equal(artUrl(catalog.badges[3]), '/assets/badges/femboy.png');
+assert.equal(artUrl({ ...catalog.badges[0], region: '../x' }), null, 'a region that is not two letters never makes a path');
+assert.match(hexHtml(catalog.badges[0], 'divine', 'lg'), /bd-f-divine/);
+assert.doesNotMatch(hexHtml({ ...catalog.badges[2], color: '"><script>' }, 'normal'), /<script>/, 'a colour cannot close the attribute');
+
+// Tabs: the stars of the plans are in the Status tab; search by name; the owned filter.
+assert.deepEqual(tilesFor(catalog, state, words, { tab: 'country', query: '', owned: false }).map((t) => t.name), ['Colombia', 'México']);
+assert.deepEqual(tilesFor(catalog, state, words, { tab: 'status', query: '', owned: false }).map((t) => t.name), ['Plan Oro']);
+assert.deepEqual(tilesFor(catalog, state, words, { tab: 'country', query: 'méx', owned: false }).map((t) => t.name), ['México']);
+assert.deepEqual(tilesFor(catalog, state, words, { tab: 'country', query: '', owned: true }).map((t) => t.name), ['Colombia']);
+const tiles = tilesFor(catalog, state, words, { tab: 'country', query: '', owned: false });
+assert.match(tileHtml(tiles[0], words), /is-owned is-shown[\s\S]*Tuya/);
+assert.match(tileHtml(tiles[1], words), /250[\s\S]*Común/);
+assert.doesNotMatch(tileHtml({ ...tiles[1], name: '<img onerror=x>' }, words), /<img onerror/, 'a name is escaped');
+
+// The showcase: a place for each slot of the plan and locks for the rest of the six.
+const html = slotsHtml(catalog, state, (id) => catalog.badges.find((b) => b.id === id), (id) => state.owned.find((r) => r.id === id)?.frame ?? 'normal');
+assert.equal((html.match(/data-slot=/g) ?? []).length, 6);
+assert.equal((html.match(/is-full/g) ?? []).length, 1); assert.equal((html.match(/is-empty/g) ?? []).length, 1); assert.equal((html.match(/is-locked/g) ?? []).length, 4);
+
+// The actions: buy what is for sale when there are enough ceramos, turn a free badge on or off, show or hide an owned one, upgrade the frame one step at a time.
+let acts = actionsFor(catalog.badges[1], false, state, catalog);
+assert.deepEqual([acts.primary.kind, acts.primary.price, acts.primary.canAfford, acts.show, acts.upgrade], ['buy', 250, true, null, null]);
+acts = actionsFor(catalog.badges[1], false, { ...state, balance: 10 }, catalog);
+assert.equal(acts.primary.canAfford, false);
+acts = actionsFor(catalog.badges[0], true, state, catalog);
+assert.deepEqual([acts.primary.kind, acts.show, acts.upgrade], ['none', 'remove', null], 'the best frame has no next step');
+acts = actionsFor(catalog.badges[3], true, state, catalog);
+assert.deepEqual([acts.primary.kind, acts.primary.on, acts.show, acts.upgrade.next, acts.upgrade.cost], ['identity', true, 'add', 'bright', 150]);
+acts = actionsFor(catalog.badges[3], true, { ...state, showcase: ['country-co', 'lang-es'] }, catalog);
+assert.equal(acts.show, 'full');
+acts = actionsFor(catalog.badges[4], true, state, catalog);
+assert.equal(acts.upgrade, null, 'the badge of a plan has no frames');
+
+// The files the page points to: every flag of the open package and the pictures of the other badges.
+const flags = readdirSync(path.join(root, 'public/assets/country-flags')).filter((f) => /^[a-z]{2}\.svg$/.test(f));
+assert.ok(flags.length >= 250, `${flags.length} flags in public/assets/country-flags`);
+for (const file of ['plan-bronze', 'plan-silver', 'plan-gold', 'furro', 'boykisser', 'hetero', 'femboy']) assert.ok(existsSync(path.join(root, 'public/assets/badges', `${file}.png`)), `${file}.png`);
+for (const file of ['src/pages/dash/badges.astro', 'src/pages/dash/badges-act.ts', 'src/components/DashBadges.astro']) assert.ok(existsSync(path.join(root, file)), file);
+const layout = readFileSync(path.join(root, 'src/components/DashMeLayout.astro'), 'utf8');
+assert.match(layout, /id: 'badges', href: '\/dash\/badges'/, 'the page is in the menu of the account');
+const act = readFileSync(path.join(root, 'src/pages/dash/badges-act.ts'), 'utf8');
+assert.match(act, /origin !== astro\.url\.origin/, 'a request from another site is refused');
+assert.match(act, /session\.userId/, 'the person is the one of the login');
+assert.doesNotMatch(act, /body\.(user_id|userId)/, 'the page never names the person');
+console.log('Checked the page of badges: tiles, tabs, showcase, actions, flags and pictures.');

@@ -1,0 +1,293 @@
+---
+// The page of badges of the account (/dash/badges): the showcase of the profile picture (6 places, as many open as the plan gives), the badges to buy with ceramos and the ones
+// the person has, with a frame each that can be upgraded. The bot decides everything (the same code as /ceramos and /profile); this page asks and draws. The first page
+// is drawn by the server and the browser redraws it after each action with the same functions (utils/badgesView.ts).
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import { slotsHtml, tileHtml, tilesFor, TABS, type Catalog, type State, type CatalogBadge, type Category } from '../utils/badgesView';
+import type { Session } from '../utils/session';
+
+interface Props { user: Session; catalog: Catalog | null; state: State | null; unavailable?: boolean }
+const { user, catalog, state } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+
+// The names: a country or a language by the name the language gives it, the rest from the dashboard catalog.
+const regions = (() => { try { return new Intl.DisplayNames([lang], { type: 'region' }); } catch { return null; } })();
+const languages = (() => { try { return new Intl.DisplayNames([lang], { type: 'language' }); } catch { return null; } })();
+const FIXED: Record<string, string> = {
+  'plan-bronze': dt('Bronze plan'), 'plan-silver': dt('Silver plan'), 'plan-gold': dt('Gold plan'),
+  furro: dt('Furry'), boykisser: dt('Boykisser'), hetero: dt('Straight'), femboy: dt('Femboy'),
+};
+const nameOf = (badge: CatalogBadge): string => (badge.region ? regions?.of(badge.region) : badge.language ? languages?.of(badge.language) : null) ?? FIXED[badge.id] ?? badge.id;
+const words = {
+  name: nameOf,
+  rarity: { common: dt('Common'), rare: dt('Rare'), epic: dt('Epic'), legendary: dt('Legendary') },
+  owned: dt('Yours'),
+  free: dt('Free'),
+};
+const tabLabel: Record<Category, string> = { country: dt('Countries'), language: dt('Languages'), fablo: dt('Fablo pack'), status: dt('Status'), plan: dt('Status') };
+const ui = {
+  places: dt('{n} of {m} places'), ownedCount: dt('{n} of {m} owned'),
+  buy: dt('Buy for {price}'), poor: dt('Not enough ceramos'), show: dt('Show in the showcase'), hide: dt('Take out of the showcase'), full: dt('The showcase is full'),
+  upgrade: dt('Frame {frame}: {cost}'), on: dt('Turn on'), off: dt('Turn off'), close: dt('Close'),
+  frame: { normal: dt('Normal'), bright: dt('Bright'), divine: dt('Divine') },
+  claim: dt('Claim {n} ceramos'), next: dt('Next daily in {time}'), claimed: dt('You claimed {n} ceramos.'),
+  down: dt('Petto did not answer. Try again in a moment.'), failed: dt('That did not work. Try again in a moment.'),
+  results: { poor: dt('You do not have enough ceramos.'), owned: dt('You already have that badge.'), unknown: dt('That badge is not for sale.'), max: dt('It already has the best frame.'), notYours: dt('That badge is not one you can turn on yourself.') },
+  statusEmpty: dt('The badges that follow what you are (partner, voter, booster, server boost) are coming soon.'),
+  noMatch: dt('No badge matches.'),
+  hours: dt('{h}h {m}m'), minutes: dt('{m}m'),
+};
+const ready = Boolean(catalog && state);
+const badgeOf = (id: string) => catalog?.badges.find((badge) => badge.id === id);
+const frameOf = (id: string) => state?.owned.find((row) => row.id === id)?.frame ?? 'normal';
+const total = (tab: Category) => catalog ? catalog.badges.filter((badge) => (badge.category === 'plan' ? 'status' : badge.category) === tab).length : 0;
+const ownedIn = (tab: Category) => (catalog && state) ? tilesFor(catalog, state, words, { tab, query: '', owned: true }).length : 0;
+const firstTiles = (catalog && state) ? tilesFor(catalog, state, words, { tab: 'country', query: '', owned: false }) : [];
+const name = user.username;
+const avatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.userId}/${user.avatar}.png?size=128` : null;
+const boot = ready ? JSON.stringify({ catalog, state, ui, tabs: Object.fromEntries(TABS.map((tab) => [tab, tabLabel[tab]])), words: { rarity: words.rarity, owned: words.owned, free: words.free }, names: Object.fromEntries(catalog!.badges.map((badge) => [badge.id, nameOf(badge)])) }).replace(/</g, '\\u003c') : '';
+---
+<DashMeLayout user={user} active="badges" pageTitle="Badges">
+  <DashPanelHead title={dt('Badges')} eyebrow={dt('Profile')} icon="ph:medal-fill" back={false}>
+    {ready && state && (
+      <div class="bd-wallet">
+        <span class="bd-bal"><i class="bd-coin"></i><b id="bd-balance">{state.balance}</b></span>
+        <button type="button" class="btn bd-daily" id="bd-daily" hidden={!state.daily.canClaim}>{ui.claim.replace('{n}', String(state.daily.amount))}</button>
+        <span class="bd-next" id="bd-next" hidden={state.daily.canClaim}>{ui.next.replace('{time}', ui.hours.replace('{h}', String(Math.max(0, Math.floor((new Date(state.daily.nextAt).getTime() - Date.now()) / 3600000)))).replace('{m}', String(Math.max(0, Math.ceil(((new Date(state.daily.nextAt).getTime() - Date.now()) % 3600000) / 60000)))))}</span>
+      </div>
+    )}
+  </DashPanelHead>
+
+  {!ready && <p class="bd-down" role="alert">{ui.down}</p>}
+  {ready && catalog && state && (
+    <div class="bd" id="bd" data-boot={boot}>
+      <aside class="bd-card bd-show">
+        <div class="bd-card-head"><h2>{dt('Showcase')}</h2><span id="bd-places">{ui.places.replace('{n}', String(state.showcase.length)).replace('{m}', String(state.slots))}</span></div>
+        <div class="bd-preview">
+          <div class="bd-me">
+            {avatar ? <img src={avatar} alt="" width="56" height="56" /> : <span class="bd-me-ph"></span>}
+            <b>{name}</b>
+          </div>
+          <div class="bd-slots" id="bd-slots" set:html={slotsHtml(catalog, state, badgeOf, frameOf)}></div>
+        </div>
+        <p class="bd-hint">{dt('Click a badge you own to show it, or click one in the showcase to take it out.')}</p>
+      </aside>
+
+      <div class="bd-main">
+        <div class="bd-banner" id="bd-banner" hidden={state.slots >= 6}>
+          <div><b>{dt('More places with a plan')}</b><span>{dt('Bronze gives 2 places, Silver 4 and Gold all six.')}</span></div>
+          <a class="btn" href="/dash/premium">{dt('See plans')}</a>
+        </div>
+        <div class="bd-tools">
+          <div class="bd-tabs" role="tablist">
+            {TABS.map((tab, index) => (
+              <button type="button" role="tab" class:list={['bd-tab', { active: index === 0 }]} data-tab={tab} aria-selected={index === 0}>{tabLabel[tab]}<i>{ownedIn(tab)}</i></button>
+            ))}
+          </div>
+        </div>
+        <div class="bd-find">
+          <label class="bd-search"><input type="search" id="bd-q" placeholder={dt('Search badges')} autocomplete="off" /></label>
+          <div class="bd-filter" role="group">
+            <button type="button" class="active" data-filter="all">{dt('All')}</button>
+            <button type="button" data-filter="owned">{dt('Owned')}</button>
+          </div>
+        </div>
+        <div class="bd-progress"><span id="bd-count">{ui.ownedCount.replace('{n}', String(ownedIn('country'))).replace('{m}', String(total('country')))}</span><div class="bd-bar"><i id="bd-fill" style={`width:${total('country') ? Math.round(ownedIn('country') / total('country') * 100) : 0}%`}></i></div></div>
+        <div class="bd-grid" id="bd-grid" set:html={firstTiles.map((tile) => tileHtml(tile, words)).join('')}></div>
+        <p class="bd-empty" id="bd-empty" hidden></p>
+      </div>
+
+      <dialog class="bd-dialog" id="bd-dialog">
+        <div class="bd-dialog-body">
+          <div id="bd-d-hex"></div>
+          <h3 id="bd-d-name"></h3>
+          <p id="bd-d-meta"></p>
+          <p class="bd-d-error" id="bd-d-error" role="alert" hidden></p>
+          <div class="bd-d-actions" id="bd-d-actions"></div>
+          <button type="button" class="btn bd-d-close" id="bd-d-close">{ui.close}</button>
+        </div>
+      </dialog>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .bd { display: grid; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .bd-card { border: 1px solid var(--border-soft); border-radius: 18px; background: color-mix(in srgb, var(--text) 3%, transparent); padding: 16px; }
+  .bd-show { position: sticky; top: 16px; }
+  .bd-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .bd-card-head h2 { margin: 0; font-size: 17px; }
+  .bd-card-head span { color: var(--text-muted); font-size: 13px; }
+  .bd-preview { border-radius: 14px; padding: 14px; background: linear-gradient(135deg, #17141f, #2a2140); border: 1px solid var(--border-soft); }
+  .bd-me { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; color: #fff; }
+  .bd-me img, .bd-me-ph { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #4e5058; }
+  .bd-me b { font-size: 18px; overflow-wrap: anywhere; }
+  .bd-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 6px; justify-items: center; }
+  .bd-slot { background: none; border: 0; padding: 0; cursor: pointer; line-height: 0; }
+  .bd-slot.is-empty, .bd-slot.is-locked { cursor: default; }
+  .bd-hint { margin: 12px 0 0; color: var(--text-muted); font-size: 13px; }
+
+  .bd-hex { --s: 58px; position: relative; display: inline-grid; place-items: center; width: var(--s); height: calc(var(--s) * 1.1547); flex: none; }
+  .bd-hex.bd-sm { --s: 52px; } .bd-hex.bd-lg { --s: 104px; }
+  .bd-hex-in { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; background: var(--c, #555); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+  .bd-hex-in img { width: 100%; height: 100%; object-fit: cover; }
+  .bd-hex-in b { color: #fff; font-size: calc(var(--s) * .3); letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .bd-hex-in.bd-plus { background: rgba(255,255,255,.07); color: rgba(255,255,255,.6); font-size: 24px; }
+  .bd-hex-in.bd-lock { background: rgba(255,255,255,.05); }
+  .bd-hex-in.bd-lock::after { content: ''; width: 30%; height: 22%; margin-top: 12%; border-radius: 3px; background: rgba(255,255,255,.3); }
+  .bd-hex-in.bd-lock::before { content: ''; position: absolute; width: 17%; height: 15%; margin-top: -6%; border: 3px solid rgba(255,255,255,.3); border-bottom: 0; border-radius: 99px 99px 0 0; box-sizing: border-box; }
+  .bd-hex.bd-f-bright { filter: drop-shadow(0 0 5px rgba(255,214,102,.9)) drop-shadow(0 0 1px #ffd666); }
+  .bd-hex.bd-f-divine { filter: drop-shadow(0 0 7px rgba(255,255,255,.85)) drop-shadow(0 0 2px #c79bff) drop-shadow(0 0 2px #7ad0ff); }
+  .bd-hex.bd-f-bright .bd-hex-in, .bd-hex.bd-f-divine .bd-hex-in { box-shadow: inset 0 0 0 3px #ffd666; }
+  .bd-hex.bd-f-divine .bd-hex-in { box-shadow: inset 0 0 0 3px #fff; }
+
+  .bd-main { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .bd-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--border-soft); border-radius: 16px; padding: 12px 16px; background: color-mix(in srgb, var(--text) 3%, transparent); }
+  .bd-banner div { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; } .bd-banner span { color: var(--text-muted); }
+  .bd-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bd-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+  .bd-tab, .bd-filter button { background: none; border: 0; color: var(--text-muted); font: inherit; font-size: 13.5px; padding: 7px 9px; border-radius: 10px; cursor: pointer; display: inline-flex; gap: 7px; align-items: center; }
+  .bd-tab i { font-style: normal; font-size: 12px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .bd-tab.active { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .bd-filter { display: inline-flex; padding: 3px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+  .bd-filter button.active { background: var(--green-soft); color: var(--green-text); }
+  .bd-find { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .bd-search { flex: 1 1 220px; min-width: 0; }
+  .bd-search input { width: 100%; box-sizing: border-box; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; }
+  .bd-search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .bd-progress { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: 13px; }
+  .bd-bar { flex: 1; height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
+  .bd-bar i { display: block; height: 100%; background: var(--green); border-radius: inherit; transition: width .3s; }
+  .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 8px; }
+  .bd-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 6px 10px; border-radius: 14px; border: 1px solid transparent; background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; cursor: pointer; text-align: center; }
+  .bd-tile:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .bd-tile:focus-visible { outline: 2px solid var(--accent); }
+  .bd-tile.is-shown { border-color: var(--green); background: var(--green-soft); }
+  .bd-name { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.2; }
+  .bd-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; font-size: 12.5px; color: var(--text-muted); }
+  .bd-price { display: inline-flex; align-items: center; gap: 5px; }
+  .bd-owned { color: var(--green-text); font-weight: 600; }
+  .bd-coin { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3b0, #e8a92c); box-shadow: inset 0 0 0 2px rgba(150,90,10,.45); }
+  .bd-rar { padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 700; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .bd-r-rare { color: #7ad0ff; } .bd-r-epic { color: #c79bff; } .bd-r-legendary { color: #ffd666; }
+  .bd-empty, .bd-down { color: var(--text-muted); margin: 8px 0; }
+  .bd-down { color: var(--red-text); }
+  .bd-wallet { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bd-bal { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 12px; background: color-mix(in srgb, var(--text) 6%, transparent); font-size: 15px; }
+  .bd-daily:not(:disabled) { background: var(--green); color: var(--green-ink); border-color: transparent; }
+  .bd-daily[hidden], .bd-next[hidden] { display: none; }
+  .bd-next { color: var(--text-muted); font-size: 13px; }
+
+  .bd-dialog { border: 1px solid var(--border-soft); border-radius: 20px; padding: 0; background: var(--card); color: var(--text); width: min(360px, calc(100vw - 32px)); }
+  .bd-dialog::backdrop { background: rgba(0,0,0,.6); }
+  .bd-dialog-body { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 20px 20px; text-align: center; }
+  .bd-dialog h3 { margin: 4px 0 0; font-size: 20px; } .bd-dialog p { margin: 0; color: var(--text-muted); font-size: 14px; }
+  .bd-d-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+  .bd-d-actions .btn, .bd-d-close { width: 100%; justify-content: center; }
+  .bd-d-go { background: var(--green); color: var(--green-ink); border-color: transparent; }
+  .bd-d-out { background: var(--red-soft); color: var(--red-text); }
+  .bd-d-error { color: var(--red-text) !important; }
+  @media (max-width: 860px) { .bd { grid-template-columns: minmax(0, 1fr); } .bd-show { position: static; } .bd-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); } }
+</style>
+
+<script>
+  import { hexHtml, slotsHtml, tileHtml, tilesFor, actionsFor, type Catalog, type State, type Category, type Words } from '../utils/badgesView';
+  const root = document.getElementById('bd');
+  if (root?.dataset.boot) {
+    const boot = JSON.parse(root.dataset.boot) as { catalog: Catalog; state: State; ui: Record<string, any>; tabs: Record<string, string>; words: { rarity: Words['rarity']; owned: string; free: string }; names: Record<string, string> };
+    const { catalog } = boot;
+    let state = boot.state;
+    const ui = boot.ui;
+    const words: Words = { ...boot.words, name: (badge) => boot.names[badge.id] ?? badge.id };
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const fill = (text: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((out, [key, value]) => out.replaceAll(`{${key}}`, String(value)), text);
+    let tab: Category = 'country'; let onlyOwned = false; let query = '';
+    const badgeOf = (id: string) => catalog.badges.find((badge) => badge.id === id);
+    const frameOf = (id: string) => state.owned.find((row) => row.id === id)?.frame ?? 'normal';
+    const timeLeft = (iso: string) => { const m = Math.max(1, Math.ceil((new Date(iso).getTime() - Date.now()) / 60000)); return m >= 60 ? fill(ui.hours, { h: Math.floor(m / 60), m: m % 60 }) : fill(ui.minutes, { m }); };
+
+    function draw() {
+      const tiles = tilesFor(catalog, state, words, { tab, query, owned: onlyOwned });
+      $('bd-grid').innerHTML = tiles.map((tile) => tileHtml(tile, words)).join('');
+      const empty = $('bd-empty');
+      empty.hidden = tiles.length > 0;
+      empty.textContent = tab === 'status' && !tiles.length && !query && !onlyOwned ? ui.statusEmpty : ui.noMatch;
+      const all = tilesFor(catalog, state, words, { tab, query: '', owned: false });
+      const own = all.filter((tile) => tile.owned).length;
+      $('bd-count').textContent = fill(ui.ownedCount, { n: own, m: all.length });
+      $('bd-fill').style.width = `${all.length ? Math.round((own / all.length) * 100) : 0}%`;
+      $('bd-slots').innerHTML = slotsHtml(catalog, state, badgeOf, frameOf);
+      $('bd-places').textContent = fill(ui.places, { n: state.showcase.length, m: state.slots });
+      $('bd-balance').textContent = String(state.balance);
+      ($('bd-banner') as HTMLElement).hidden = state.slots >= 6;
+      for (const button of document.querySelectorAll<HTMLElement>('.bd-tab')) {
+        const t = button.dataset.tab as Category;
+        button.querySelector('i')!.textContent = String(tilesFor(catalog, state, words, { tab: t, query: '', owned: true }).length);
+      }
+      const daily = $('bd-daily') as HTMLButtonElement;
+      daily.hidden = !state.daily.canClaim;
+      daily.textContent = fill(ui.claim, { n: state.daily.amount });
+      const next = $('bd-next');
+      next.hidden = state.daily.canClaim;
+      next.textContent = fill(ui.next, { time: timeLeft(state.daily.nextAt) });
+    }
+
+    async function act(body: Record<string, unknown>): Promise<{ ok: boolean; result?: any; error?: string }> {
+      try {
+        const response = await fetch('/dash/badges-act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await response.json().catch(() => null);
+        if (data?.state) { state = data.state; draw(); }
+        if (!response.ok || !data?.ok) return { ok: false, error: data?.error === 'down' ? ui.down : ui.failed };
+        return { ok: true, result: data.result };
+      } catch { return { ok: false, error: ui.down }; }
+    }
+
+    const dialog = $('bd-dialog') as HTMLDialogElement;
+    function openBadge(id: string, error = '') {
+      const badge = badgeOf(id); if (!badge) return;
+      const owned = state.owned.some((row) => row.id === id);
+      const act_ = actionsFor(badge, owned, state, catalog);
+      $('bd-d-hex').innerHTML = hexHtml(badge, frameOf(id), 'lg');
+      $('bd-d-name').textContent = words.name(badge);
+      $('bd-d-meta').textContent = [badge.rarity ? words.rarity[badge.rarity] : '', owned ? words.owned : badge.price ? String(badge.price) : words.free].filter(Boolean).join(' · ');
+      const err = $('bd-d-error'); err.hidden = !error; err.textContent = error;
+      const box = $('bd-d-actions'); box.innerHTML = '';
+      const add = (label: string, cls: string, run: () => Promise<void>, disabled = false) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = `btn ${cls}`; b.textContent = label; b.disabled = disabled; b.addEventListener('click', async () => { b.disabled = true; await run(); }); box.append(b);
+      };
+      const finish = async (promise: Promise<{ ok: boolean; result?: any; error?: string }>) => {
+        const out = await promise;
+        const reason = out.result && out.result.ok === false ? (ui.results[out.result.reason] ?? ui.failed) : '';
+        openBadge(id, out.ok ? reason : (out.error ?? ui.failed));
+      };
+      const primary = act_.primary;
+      if (primary.kind === 'buy') add(primary.canAfford ? fill(ui.buy, { price: primary.price }) : ui.poor, 'bd-d-go', () => finish(act({ action: 'buy', badge: id })), !primary.canAfford);
+      if (primary.kind === 'identity') { const on = primary.on; add(on ? ui.off : ui.on, on ? 'bd-d-out' : 'bd-d-go', () => finish(act({ action: 'identity', badge: id, enabled: !on }))); }
+      if (act_.show === 'add') add(ui.show, 'bd-d-go', () => finish(act({ action: 'showcase', badges: [...state.showcase, id] })));
+      if (act_.show === 'remove') add(ui.hide, 'bd-d-out', () => finish(act({ action: 'showcase', badges: state.showcase.filter((each) => each !== id) })));
+      if (act_.show === 'full') add(ui.full, '', async () => {}, true);
+      if (act_.upgrade) add(fill(ui.upgrade, { frame: ui.frame[act_.upgrade.next], cost: act_.upgrade.cost }), '', () => finish(act({ action: 'upgrade', badge: id })), !act_.upgrade.canAfford);
+      if (!dialog.open) dialog.showModal();
+    }
+
+    $('bd-grid').addEventListener('click', (event) => { const tile = (event.target as HTMLElement).closest<HTMLElement>('.bd-tile'); if (tile?.dataset.id) openBadge(tile.dataset.id); });
+    $('bd-slots').addEventListener('click', (event) => { const slot = (event.target as HTMLElement).closest<HTMLElement>('.bd-slot.is-full'); if (slot?.dataset.id) openBadge(slot.dataset.id); });
+    $('bd-d-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+    $('bd-q').addEventListener('input', (event) => { query = (event.target as HTMLInputElement).value; draw(); });
+    for (const button of document.querySelectorAll<HTMLElement>('.bd-tab')) button.addEventListener('click', () => {
+      tab = button.dataset.tab as Category;
+      for (const other of document.querySelectorAll<HTMLElement>('.bd-tab')) { other.classList.toggle('active', other === button); other.setAttribute('aria-selected', String(other === button)); }
+      draw();
+    });
+    for (const button of document.querySelectorAll<HTMLElement>('.bd-filter button')) button.addEventListener('click', () => {
+      onlyOwned = button.dataset.filter === 'owned';
+      for (const other of document.querySelectorAll<HTMLElement>('.bd-filter button')) other.classList.toggle('active', other === button);
+      draw();
+    });
+    $('bd-daily').addEventListener('click', async () => { (await act({ action: 'daily' })); });
+  }
+</script>
