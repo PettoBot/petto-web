@@ -102,4 +102,30 @@ assert.match(adminAct, /!isPettoOwner\(astro, session\.userId\)/, 'the endpoint 
 assert.match(adminAct, /origin !== astro\.url\.origin/); assert.doesNotMatch(adminAct, /body\.(user_id|userId)/);
 assert.match(adminAct, /MAX_BYTES/, 'the picture is cut at 256 KB before it is sent');
 assert.match(layout, /id: 'staff-badges', href: '\/dash\/badges-admin'/, 'the editor is in the Staff menu');
-console.log('Checked the page of badges and the editor: tiles, tabs, sales, showcase, actions, flags, pictures and who may edit.');
+// The shop round two: the pages of name fonts and banners, and the editor of packs, banners, fonts and the badges of the code. The editor is for the owner only, like the badge editor.
+for (const file of ['src/pages/dash/name.astro', 'src/pages/dash/banners.astro', 'src/pages/dash/shop-act.ts', 'src/components/DashShopItems.astro', 'src/pages/dash/shop-admin.astro', 'src/pages/dash/shop-admin-act.ts', 'src/components/DashShopAdmin.astro', 'src/components/DashShopTabs.astro', 'src/pages/dash/item-file/[kind]/[id].ts']) assert.ok(existsSync(path.join(root, file)), file);
+assert.match(layout, /id: 'name', href: '\/dash\/name'/, 'the name fonts are in the menu of the account');
+assert.match(layout, /id: 'banners', href: '\/dash\/banners'/, 'the banners are in the menu of the account');
+const shopAct = readFileSync(path.join(root, 'src/pages/dash/shop-act.ts'), 'utf8');
+assert.match(shopAct, /origin !== astro\.url\.origin/, 'a request from another site is refused'); assert.match(shopAct, /session\.userId/); assert.doesNotMatch(shopAct, /body\.(user_id|userId)/, 'the page never names the person');
+assert.match(shopAct, /new Set\(\['buy-item', 'buy-pack', 'wear'\]\)/, 'a person can only buy and wear');
+const shopAdminPage = readFileSync(path.join(root, 'src/pages/dash/shop-admin.astro'), 'utf8');
+assert.match(shopAdminPage, /isPettoOwner\(Astro, session\.userId\)[\s\S]*404/, 'the page of the shop editor is for the owner');
+const shopAdminAct = readFileSync(path.join(root, 'src/pages/dash/shop-admin-act.ts'), 'utf8');
+assert.match(shopAdminAct, /!isPettoOwner\(astro, session\.userId\)/, 'the endpoint of the shop editor is for the owner');
+assert.match(shopAdminAct, /origin !== astro\.url\.origin/); assert.doesNotMatch(shopAdminAct, /body\.(user_id|userId)/);
+assert.match(shopAdminAct, /MAX_BYTES = 768 \* 1024/, 'a file is cut at 768 KB before it is sent');
+const itemFile = readFileSync(path.join(root, 'src/pages/dash/item-file/[kind]/[id].ts'), 'utf8');
+assert.match(itemFile, /getDashboardSession/, 'only a logged-in person gets a file of the shop');
+// Every text of the new pages has its Spanish and Portuguese.
+const esText = readFileSync(path.join(root, 'src/i18n/dash-es.ts'), 'utf8'), ptText = readFileSync(path.join(root, 'src/i18n/dash-pt.ts'), 'utf8');
+for (const file of ['src/components/DashShopItems.astro', 'src/components/DashShopAdmin.astro', 'src/components/DashShopTabs.astro']) {
+  const text = readFileSync(path.join(root, file), 'utf8');
+  for (const match of text.matchAll(/dt\(\s*'((?:[^'\\]|\\.)*)'/g)) {
+    const english = match[1].replace(/\\'/g, "'");
+    const key = JSON.stringify(english);
+    assert.ok(esText.includes(`${key}:`), `Spanish for: ${english}`);
+    assert.ok(ptText.includes(`${key}:`), `Portuguese for: ${english}`);
+  }
+}
+console.log('Checked the page of badges and the editor: tiles, tabs, sales, showcase, actions, flags, pictures and who may edit; and the pages of name fonts, banners and the shop editor.');

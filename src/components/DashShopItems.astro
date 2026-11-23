@@ -1,0 +1,237 @@
+---
+// The pages where a person customizes their profile picture with what the shop sells besides badges: the name fonts (/dash/name) and the banners (/dash/banners). Each has
+// a preview of the person (their avatar and name, over the banner or with the font), the packs (a bundle that is cheaper than its pieces), and the pieces, each of which can be
+// bought once with ceramos, put on and taken off. The bot decides everything (the same code as /ceramos and /profile); this page asks and draws.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopShared from './DashShopShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+type Names = Record<string, string>;
+interface Item { kind: 'banner' | 'font'; id: string; names: Names; pack: string | null; rarity: string; price: number; saleFrom: string | null; saleUntil: string | null; planMin: string | null; onSale: boolean; retired: boolean; hasFile: boolean; version: string }
+interface Pack { id: string; kind: string; names: Names; color: string; free: boolean; price: number | null; fullPrice: number; saleFrom: string | null; saleUntil: string | null; planMin: string | null; onSale: boolean; retired: boolean; pieces: string[] }
+interface Catalog { items: Item[]; packs: Pack[] }
+interface State { balance: number; plan: string | null; items: { kind: string; id: string }[]; active: { banner: string | null; font: string | null } }
+interface Props { user: Session; kind: 'banner' | 'font'; catalog: Catalog | null; state: State | null }
+const { user, kind, catalog, state } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const ready = Boolean(catalog && state);
+const nameOf = (names: Names): string => names[lang] ?? names[lang.split('-')[0]] ?? names.en;
+const title = kind === 'font' ? dt('Customize name') : dt('Customize profile');
+const items = (catalog?.items ?? []).filter((item) => item.kind === kind && item.hasFile);
+const packs = (catalog?.packs ?? []).filter((pack) => pack.kind === kind && !pack.free && pack.pieces.length > 0);
+const avatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.userId}/${user.avatar}.png?size=128` : null;
+const fontCss = kind === 'font' ? items.map((item) => `@font-face{font-family:"shop-${item.id}";src:url(/dash/item-file/font/${item.id}?v=${encodeURIComponent(item.version)});font-display:swap}`).join('') : '';
+const ui = {
+  buy: dt('Buy for {price}'), poor: dt('Not enough ceramos'), free: dt('Free'), owned: dt('Yours'), inUse: dt('In use'), putOn: dt('Put it on'), takeOff: dt('Take it off'), close: dt('Close'),
+  buyPack: dt('Buy the pack for {price}'), packLeft: dt('{n} pieces you do not have'), packAll: dt('You have every piece'), packPieces: dt('{n} pieces'), untilT: dt('Until {date}'),
+  planNeeded: dt('Needs the {plan} plan or a better one'), closed: dt('Not on sale now'), down: dt('Petto did not answer. Try again in a moment.'), failed: dt('That did not work. Try again in a moment.'),
+  results: { closed: dt('That is not on sale now.'), plan: dt('That is for people with a better plan.'), poor: dt('You do not have enough ceramos.'), owned: dt('You already have that.'), unknown: dt('That is not for sale.'), nothing: dt('You already have every piece.'), notOwned: dt('You do not have that yet.') },
+  plans: { bronze: dt('Bronze'), silver: dt('Silver'), gold: dt('Gold') },
+  rarity: { common: dt('Common'), rare: dt('Rare'), epic: dt('Epic'), legendary: dt('Legendary') },
+  noMatch: dt('Nothing matches.'), empty: dt('Nothing in this part of the shop yet.'),
+};
+const boot = ready ? JSON.stringify({ lang, kind, catalog: { items, packs }, state, ui, names: Object.fromEntries([...items, ...packs].map((entry) => [entry.id, nameOf(entry.names)])), me: user.username }).replace(/</g, '\\u003c') : '';
+---
+<DashMeLayout user={user} active={kind === 'font' ? 'name' : 'banners'} pageTitle={kind === 'font' ? 'Customize name' : 'Customize profile'}>
+  <DashShopShared />
+  <DashPanelHead title={title} eyebrow={dt('Profile')} icon={kind === 'font' ? 'ph:text-aa-fill' : 'ph:image-fill'} back={false}>
+    {ready && state && <div class="bd-wallet"><span class="bd-bal"><i class="bd-coin"></i><b id="si-balance">{state.balance}</b></span><a class="btn" href="/dash/badges">{dt('Get ceramos')}</a></div>}
+  </DashPanelHead>
+  {!ready && <p class="bd-down" role="alert">{ui.down}</p>}
+  {ready && catalog && state && (
+    <div class="si" id="si" data-boot={boot}>
+      {fontCss && <style set:html={fontCss}></style>}
+      <aside class="bd-card si-preview">
+        <div class="bd-card-head"><h2>{dt('Preview')}</h2></div>
+        <div class="si-card" id="si-card">
+          <div class="si-banner" id="si-banner"></div>
+          <div class="si-me">
+            {avatar ? <img src={avatar} alt="" width="64" height="64" /> : <span class="si-ph"></span>}
+            <b id="si-name">{user.username}</b>
+          </div>
+        </div>
+        <p class="bd-hint" id="si-current"></p>
+      </aside>
+
+      <div class="si-main">
+        {packs.length > 0 && (
+          <div class="si-packs" id="si-packs" role="region" aria-label={dt('Packs')}>
+            <h3>{dt('Packs')}</h3>
+            <div class="si-packlist" id="si-packlist"></div>
+          </div>
+        )}
+        <div class="bd-find">
+          <label class="bd-search"><input type="search" id="si-q" placeholder={dt('Search')} autocomplete="off" /></label>
+          <div class="bd-filter" role="group"><button type="button" class="active" data-filter="all">{dt('All')}</button><button type="button" data-filter="owned">{dt('Owned')}</button></div>
+        </div>
+        <div class="si-grid" id="si-grid"></div>
+        <p class="bd-empty" id="si-empty" hidden></p>
+      </div>
+
+      <dialog class="bd-dialog" id="si-dialog">
+        <div class="bd-dialog-body">
+          <div class="si-d-preview" id="si-d-preview"></div>
+          <h3 id="si-d-name"></h3>
+          <p id="si-d-meta"></p>
+          <p class="bd-d-error" id="si-d-error" role="alert" hidden></p>
+          <div class="bd-d-actions" id="si-d-actions"></div>
+          <button type="button" class="btn bd-d-close" id="si-d-close">{ui.close}</button>
+        </div>
+      </dialog>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .si { display: grid; grid-template-columns: minmax(250px, 330px) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .si-preview { position: sticky; top: 16px; }
+  .si-card { position: relative; overflow: hidden; border-radius: 16px; min-height: 190px; display: flex; align-items: flex-end; background: linear-gradient(135deg, #17141f, #2a2140); border: 1px solid var(--border-soft); }
+  .si-banner { position: absolute; inset: 0 0 35% 0; background-size: cover; background-position: center; }
+  .si-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(23,20,31,.1), #17141f 95%); }
+  .si-me { position: relative; display: flex; align-items: center; gap: 12px; padding: 14px; color: #fff; width: 100%; box-sizing: border-box; }
+  .si-me img, .si-ph { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: #4e5058; flex: none; }
+  .si-me b { font-size: 28px; line-height: 1.1; overflow-wrap: anywhere; font-weight: 700; }
+  .si-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  .si-packs h3 { margin: 0 0 8px; font-size: 15px; }
+  .si-packlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .si-pack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border-soft); background: linear-gradient(135deg, color-mix(in srgb, var(--pc) 28%, transparent), color-mix(in srgb, var(--text) 3%, transparent)); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+  .si-pack:hover { border-color: color-mix(in srgb, var(--text) 25%, transparent); }
+  .si-pack b { font-size: 15px; } .si-pack span { font-size: 13px; color: var(--text-muted); }
+  .si-pack .si-price { color: var(--text); display: inline-flex; gap: 6px; align-items: center; } .si-pack s { color: var(--text-muted); }
+  .si-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .si-tile { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 14px; border: 1px solid transparent; background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; cursor: pointer; text-align: left; min-width: 0; }
+  .si-tile:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .si-tile.is-on { border-color: var(--green); background: var(--green-soft); }
+  .si-thumb { height: 74px; border-radius: 10px; background: #17141f center / cover; display: grid; place-items: center; color: #fff; font-size: 30px; line-height: 1; overflow: hidden; padding: 0 8px; }
+  .si-thumb > span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .si-tile .bd-name { padding: 0 4px; } .si-tile .bd-meta { justify-content: flex-start; padding: 0 4px 4px; }
+  .si-d-preview { width: 100%; height: 110px; border-radius: 12px; background: #17141f center / cover; display: grid; place-items: center; color: #fff; font-size: 44px; line-height: 1; overflow: hidden; }
+  @media (max-width: 860px) { .si { grid-template-columns: minmax(0, 1fr); } .si-preview { position: static; } .si-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+</style>
+
+<script>
+  const root = document.getElementById('si');
+  if (root?.dataset.boot) {
+    type Names = Record<string, string>;
+    interface Item { kind: string; id: string; pack: string | null; rarity: string; price: number; saleUntil: string | null; planMin: string | null; onSale: boolean; version: string }
+    interface Pack { id: string; color: string; price: number | null; fullPrice: number; onSale: boolean; planMin: string | null; pieces: string[]; saleUntil: string | null }
+    interface State { balance: number; plan: string | null; items: { kind: string; id: string }[]; active: { banner: string | null; font: string | null } }
+    const boot = JSON.parse(root.dataset.boot) as { lang: string; kind: 'banner' | 'font'; catalog: { items: Item[]; packs: Pack[] }; state: State; ui: Record<string, any>; names: Names; me: string };
+    const { kind, catalog, ui } = boot;
+    let state = boot.state;
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const fill = (text: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((out, [key, value]) => out.replaceAll(`{${key}}`, String(value)), text);
+    const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+    const dateText = new Intl.DateTimeFormat(boot.lang, { day: 'numeric', month: 'short' });
+    const PLAN = ['bronze', 'silver', 'gold'];
+    let onlyOwned = false; let query = '';
+    const has = (id: string) => state.items.some((row) => row.kind === kind && row.id === id);
+    const worn = (id: string) => state.active[kind] === id;
+    const planOk = (needed: string | null) => !needed || (state.plan !== null && PLAN.indexOf(state.plan) >= PLAN.indexOf(needed));
+    const fileUrl = (item: Item) => `/dash/item-file/${kind}/${item.id}?v=${encodeURIComponent(item.version)}`;
+    const thumbStyle = (item: Item) => (kind === 'banner' ? `background-image:url('${fileUrl(item)}')` : '');
+    const thumbText = (item: Item) => (kind === 'font' ? `<span style="font-family:'shop-${esc(item.id)}',sans-serif">${esc(boot.me.length > 9 ? boot.me.slice(0, 9) : boot.me)}</span>` : '');
+    const priceText = (price: number) => (price ? `<span class="bd-price"><i class="bd-coin"></i>${price}</span>` : `<span class="bd-price">${esc(ui.free)}</span>`);
+
+    function preview() {
+      const id = state.active[kind];
+      const item = id ? catalog.items.find((each) => each.id === id) : null;
+      const banner = $('si-banner'); const name = $('si-name');
+      if (kind === 'banner') { banner.style.backgroundImage = item ? `url('${fileUrl(item)}')` : ''; }
+      else { name.style.fontFamily = item ? `'shop-${item.id}', sans-serif` : ''; }
+      $('si-current').textContent = item ? `${ui.inUse}: ${boot.names[item.id]}` : '';
+    }
+
+    function draw() {
+      $('si-balance').textContent = String(state.balance);
+      const q = query.trim().toLowerCase();
+      const list = catalog.items.filter((item) => {
+        const owned = has(item.id);
+        if (!owned && (!item.onSale)) return false;
+        if (onlyOwned && !owned) return false;
+        return !q || (boot.names[item.id] ?? '').toLowerCase().includes(q);
+      }).sort((a, b) => Number(has(b.id)) - Number(has(a.id)) || b.price - a.price);
+      $('si-grid').innerHTML = list.map((item) => {
+        const owned = has(item.id);
+        const status = worn(item.id) ? `<span class="bd-owned">${esc(ui.inUse)}</span>` : owned ? `<span class="bd-owned">${esc(ui.owned)}</span>` : priceText(item.price);
+        const until = !owned && item.saleUntil ? `<span class="bd-until">${esc(fill(ui.untilT, { date: dateText.format(new Date(item.saleUntil)) }))}</span>` : '';
+        return `<button type="button" class="si-tile${worn(item.id) ? ' is-on' : ''}" data-id="${esc(item.id)}"><span class="si-thumb" style="${thumbStyle(item)}">${thumbText(item)}</span><span class="bd-name">${esc(boot.names[item.id] ?? item.id)}</span><span class="bd-meta">${status}<span class="bd-rar bd-r-${esc(item.rarity)}">${esc(ui.rarity[item.rarity])}</span></span>${until}</button>`;
+      }).join('');
+      const empty = $('si-empty'); empty.hidden = list.length > 0; empty.textContent = catalog.items.length ? ui.noMatch : ui.empty;
+      const packList = document.getElementById('si-packlist');
+      if (packList) {
+        const mine = new Set(state.items.filter((row) => row.kind === kind).map((row) => `${row.kind}:${row.id}`));
+        packList.innerHTML = catalog.packs.filter((pack) => pack.onSale).map((pack) => {
+          const missing = pack.pieces.filter((key) => !mine.has(key));
+          const price = pack.price === null ? pack.fullPrice : Math.min(pack.price, pack.fullPrice);
+          const left = missing.length;
+          return `<button type="button" class="si-pack" style="--pc:${esc(pack.color)}" data-pack="${esc(pack.id)}"><b>${esc(boot.names[pack.id] ?? pack.id)}</b><span>${esc(left ? fill(ui.packLeft, { n: left }) : ui.packAll)}</span><span class="si-price">${left ? `<i class="bd-coin"></i>${price}${pack.fullPrice > price ? ` <s>${pack.fullPrice}</s>` : ''}` : esc(ui.owned)}</span></button>`;
+        }).join('');
+      }
+      preview();
+    }
+
+    async function act(action: string, body: Record<string, unknown>): Promise<{ ok: boolean; result?: any; error?: string }> {
+      try {
+        const response = await fetch('/dash/shop-act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, ...body }) });
+        const data = await response.json().catch(() => null);
+        if (data?.state) { state = data.state; draw(); }
+        if (!response.ok || !data?.ok) return { ok: false, error: data?.error === 'down' ? ui.down : ui.failed };
+        return { ok: true, result: data.result };
+      } catch { return { ok: false, error: ui.down }; }
+    }
+
+    const dialog = $('si-dialog') as HTMLDialogElement;
+    function add(label: string, cls: string, run: () => Promise<void>, disabled = false) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = `btn ${cls}`; b.textContent = label; b.disabled = disabled;
+      b.addEventListener('click', async () => { b.disabled = true; await run(); }); $('si-d-actions').append(b);
+    }
+    function show(title: string, meta: string, previewHtml: string, previewStyle: string, error: string) {
+      $('si-d-name').textContent = title; $('si-d-meta').textContent = meta;
+      const p = $('si-d-preview'); p.innerHTML = previewHtml; p.setAttribute('style', previewStyle);
+      const err = $('si-d-error'); err.hidden = !error; err.textContent = error; $('si-d-actions').innerHTML = '';
+      if (!dialog.open) dialog.showModal();
+    }
+    const reasonOf = (out: { ok: boolean; result?: any; error?: string }) => (out.ok ? (out.result && out.result.ok === false ? (ui.results[out.result.reason] ?? ui.failed) : '') : (out.error ?? ui.failed));
+
+    function openItem(id: string, error = '') {
+      const item = catalog.items.find((each) => each.id === id); if (!item) return;
+      const owned = has(id);
+      show(boot.names[id] ?? id, [ui.rarity[item.rarity], owned ? ui.owned : item.price ? String(item.price) : ui.free].join(' · '), thumbText(item), thumbStyle(item), error);
+      const done = async (promise: Promise<{ ok: boolean; result?: any; error?: string }>) => openItem(id, reasonOf(await promise));
+      if (!owned) {
+        if (!item.onSale) add(ui.closed, '', async () => {}, true);
+        else if (!planOk(item.planMin)) add(fill(ui.planNeeded, { plan: ui.plans[item.planMin as string] ?? item.planMin }), '', async () => {}, true);
+        else add(state.balance >= item.price ? fill(ui.buy, { price: item.price }) : ui.poor, 'bd-d-go', () => done(act('buy-item', { kind, id })), state.balance < item.price);
+      } else if (worn(id)) add(ui.takeOff, 'bd-d-out', () => done(act('wear', { kind, id: null })));
+      else add(ui.putOn, 'bd-d-go', () => done(act('wear', { kind, id })));
+    }
+
+    function openPack(id: string, error = '') {
+      const pack = catalog.packs.find((each) => each.id === id); if (!pack) return;
+      const mine = new Set(state.items.filter((row) => row.kind === kind).map((row) => `${row.kind}:${row.id}`));
+      const missing = pack.pieces.filter((key) => !mine.has(key));
+      const price = pack.price === null ? pack.fullPrice : Math.min(pack.price, pack.fullPrice);
+      show(boot.names[id] ?? id, fill(ui.packPieces, { n: pack.pieces.length }), '', `background:linear-gradient(135deg, ${pack.color}, #17141f)`, error);
+      const done = async (promise: Promise<{ ok: boolean; result?: any; error?: string }>) => openPack(id, reasonOf(await promise));
+      if (!missing.length) add(ui.packAll, '', async () => {}, true);
+      else if (!planOk(pack.planMin)) add(fill(ui.planNeeded, { plan: ui.plans[pack.planMin as string] ?? pack.planMin }), '', async () => {}, true);
+      else add(state.balance >= price ? fill(ui.buyPack, { price }) : ui.poor, 'bd-d-go', () => done(act('buy-pack', { id })), state.balance < price);
+    }
+
+    $('si-grid').addEventListener('click', (event) => { const tile = (event.target as HTMLElement).closest<HTMLElement>('.si-tile'); if (tile?.dataset.id) openItem(tile.dataset.id); });
+    document.getElementById('si-packlist')?.addEventListener('click', (event) => { const pack = (event.target as HTMLElement).closest<HTMLElement>('.si-pack'); if (pack?.dataset.pack) openPack(pack.dataset.pack); });
+    $('si-d-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+    $('si-q').addEventListener('input', (event) => { query = (event.target as HTMLInputElement).value; draw(); });
+    for (const button of document.querySelectorAll<HTMLElement>('.bd-filter button')) button.addEventListener('click', () => {
+      onlyOwned = button.dataset.filter === 'owned';
+      for (const other of document.querySelectorAll<HTMLElement>('.bd-filter button')) other.classList.toggle('active', other === button);
+      draw();
+    });
+    draw();
+  }
+</script>

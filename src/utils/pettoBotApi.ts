@@ -890,10 +890,12 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
  * One call to the badges and ceramos API of the bot (`/api/dashboard/ceramos/<route>`) for the person who is logged in: the catalog, their state, and the actions
  * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
  */
-export async function callPettoCeramos(context: AstroContext, userId: string, route: 'catalog' | 'state' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'admin/badges' | 'admin/badge' | 'admin/badge-active', body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
+export type CeramosRoute = 'catalog' | 'state' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
+  | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
+export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, data: null, down: true };
-  const read = route === 'catalog' || route === 'state' || route === 'admin/badges';
+  const read = route === 'catalog' || route === 'state' || route === 'admin/badges' || route === 'admin/shop';
   const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
   const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
   const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
@@ -917,5 +919,25 @@ export async function fetchPettoBadgeArt(context: AstroContext, badgeId: string)
     const response = await fetch(`${baseUrl}/api/dashboard/ceramos/badge-art/${badgeId}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
     if (!response.ok) return null;
     return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/png' };
+  } catch { return null; }
+}
+
+/** Sends a file of the editor of the shop to the bot (a banner, a name font, or a picture for a badge of the code): the owner only, and the bot checks it again and checks the file by its first bytes. */
+export async function sendPettoShopFile(context: AstroContext, userId: string, route: 'admin/item-file' | 'admin/override-image', query: Record<string, string>, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const params = new URLSearchParams({ user_id: userId, ...query });
+  const call = await botFetch(`${baseUrl}/api/dashboard/ceramos/${route}?${params}`, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** The file of a banner or a name font of the shop, as the bot has it (null when there is none). */
+export async function fetchPettoItemFile(context: AstroContext, kind: string, id: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^(banner|font)$/.test(kind) || !/^[a-z0-9-]{1,40}$/.test(id)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/item-file/${kind}/${id}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'application/octet-stream' };
   } catch { return null; }
 }

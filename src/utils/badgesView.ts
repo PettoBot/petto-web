@@ -9,7 +9,7 @@ export interface CatalogBadge {
   region: string | null; language: string | null; pack: string | null;
   /** The badges of the editor of the team: their words in each language, their days of sale, the plan they ask for, the rule that gives them, and whether they are on sale now. */
   custom: boolean; names: Record<string, string> | null; saleFrom: string | null; saleUntil: string | null; planMin: string | null; grantRule: string | null;
-  onSale: boolean; retired: boolean; hasArt: boolean; version: string | null;
+  onSale: boolean; retired: boolean; hasArt: boolean; dbArt?: boolean; version: string | null;
 }
 export interface Catalog { badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }
 export interface State { balance: number; plan: string | null; daily: { canClaim: boolean; nextAt: string; amount: number }; slots: number; owned: { id: string; frame: string }[]; showcase: string[] }
@@ -33,7 +33,7 @@ const esc = (value: string): string => value.replace(/[&<>"']/g, (c) => ({ '&': 
 
 /** The picture of a badge: the flag of its country, or its art file, or null (then it is drawn with its code). */
 export function artUrl(badge: CatalogBadge): string | null {
-  if (badge.custom) return badge.hasArt && /^[a-z0-9-]{1,40}$/.test(badge.id) ? `/dash/badge-art/${badge.id}?v=${encodeURIComponent(badge.version ?? '')}` : null;
+  if (badge.custom || badge.dbArt) return badge.hasArt && /^[a-z0-9-]{1,40}$/.test(badge.id) ? `/dash/badge-art/${badge.id}?v=${encodeURIComponent(badge.version ?? '')}` : null;
   if (badge.region && /^[A-Z]{2}$/.test(badge.region)) return `/assets/country-flags/${badge.region.toLowerCase()}.svg`;
   return ART[badge.id] ? `/assets/badges/${ART[badge.id]}` : null;
 }
