@@ -7,9 +7,18 @@ import DashShopShared from './DashShopShared.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 import type { Session } from '../utils/session';
 
-interface Props { user: Session; state: { balance: number; daily: { canClaim: boolean; nextAt: string; amount: number } } | null }
-const { user, state } = Astro.props;
+interface Move { delta: number; reason: string; ref: string | null; at: string }
+interface Props { user: Session; state: { balance: number; plan: string | null; daily: { canClaim: boolean; nextAt: string; amount: number } } | null; plans?: Record<string, { ceramosPerDay: number }> | null; movements?: Move[] | null }
+const { user, state, plans = null, movements = null } = Astro.props;
 const dt = makeT(getDashLang(Astro));
+const when = new Intl.DateTimeFormat(getDashLang(Astro), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const reasons: Record<string, string> = {
+  daily: dt('Daily reward'), badge: dt('Badge bought'), frame: dt('Frame bought'), banner: dt('Banner bought'), font: dt('Name font bought'), pack: dt('Pack bought'),
+  grant: dt('Gift from the team'), take: dt('Adjusted by the team'), refund: dt('Refund'),
+};
+const names: Record<string, string> = { free: dt('No plan'), bronze: dt('Bronze'), silver: dt('Silver'), gold: dt('Gold') };
+const mine = state?.plan ?? 'free';
+const recent = (movements ?? []).slice(0, 5);
 const boot = state ? JSON.stringify({ state, ui: { claim: dt('Claim {n} ceramos'), claimed: dt('You claimed {n} ceramos.'), next: dt('Next daily in {time}'), hours: dt('{h}h {m}m'), minutes: dt('{m}m'), down: dt('Petto did not answer. Try again in a moment.') } }).replace(/</g, '\\u003c') : '';
 ---
 <DashMeLayout user={user} active="daily" pageTitle="Daily reward">
@@ -27,16 +36,55 @@ const boot = state ? JSON.stringify({ state, ui: { claim: dt('Claim {n} ceramos'
         <p class="dd-msg" id="dd-msg" role="status" hidden></p>
         <p class="dd-hint">{dt('The day changes at 00:00 UTC, the same for everybody. A plan gives more ceramos a day.')} <a href="/dash/plans">{dt('See plans')}</a></p>
       </section>
+      {plans && (
+        <section class="bd-card dd-plans">
+          <span class="dd-label">{dt('Ceramos a day by plan')}</span>
+          <ul>
+            {(['free', 'bronze', 'silver', 'gold'] as const).filter((key) => plans[key]).map((key) => (
+              <li class:list={{ 'is-mine': mine === key }}><span>{names[key]}{mine === key && <i>{dt('Your plan')}</i>}</span><b><i class="bd-coin"></i> {plans[key].ceramosPerDay}</b></li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {recent.length > 0 && (
+        <section class="bd-card dd-recent">
+          <div class="dd-recent-head"><span class="dd-label">{dt('Latest movements')}</span><a href="/dash/ceramos">{dt('See all')}</a></div>
+          <ul>
+            {recent.map((move) => (
+              <li>
+                <div><strong>{reasons[move.reason] ?? move.reason}</strong>{move.ref && <span>{move.ref.split(':')[0]}</span>}</div>
+                <time datetime={move.at}>{when.format(new Date(move.at))}</time>
+                <b class:list={['dd-amount', { 'is-in': move.delta > 0 }]}>{move.delta > 0 ? '+' : '−'}{Math.abs(move.delta)}</b>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )}
 </DashMeLayout>
 
 <style is:global>
-  .dd-card { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; max-width: 460px; }
+  .dd { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+  .dd-card { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
   .dd-label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
-  .dd-bal { display: inline-flex; align-items: center; gap: 10px; font-size: 40px; }
+  .dd-bal { display: inline-flex; align-items: center; gap: 10px; font-size: 44px; }
   .dd-claim { background: var(--green); color: var(--green-ink); border-color: transparent; } .dd-claim[hidden], .dd-next[hidden], .dd-msg[hidden] { display: none; }
   .dd-next, .dd-hint { margin: 0; color: var(--text-muted); font-size: 14px; } .dd-msg { margin: 0; color: var(--green-text); font-size: 14px; }
+  .dd-plans { display: flex; flex-direction: column; gap: 10px; }
+  .dd-plans ul, .dd-recent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .dd-plans ul { flex: 1; justify-content: space-between; }
+  .dd-plans li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); font-size: 15px; }
+  .dd-plans li.is-mine { background: var(--green-soft); outline: 1px solid var(--green); }
+  .dd-plans li span { display: inline-flex; align-items: center; gap: 8px; } .dd-plans li i:not(.bd-coin) { font-style: normal; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--green-text); }
+  .dd-plans b { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; }
+  .dd-recent { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; }
+  .dd-recent-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; } .dd-recent-head a { font-size: 13px; }
+  .dd-recent li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .dd-recent li div { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .dd-recent li span { color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+  .dd-recent time { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+  .dd-amount { min-width: 48px; text-align: right; color: var(--red-text); } .dd-amount.is-in { color: var(--green-text); }
+  @media (max-width: 760px) { .dd { grid-template-columns: minmax(0, 1fr); } }
 </style>
 
 <script>

@@ -7164,4 +7164,8 @@ export const dashEs: Record<string, string> = {
   "Take the whole pack (free)": "Tomar el paquete completo (gratis)",
   "We are working on new ways to get ceramos.": "Estamos trabajando en nuevas formas de conseguir ceramos.",
   "For now they are scarce and come mostly with a paid plan. A new way to earn them is on its way.": "Por ahora son escasos y se consiguen sobre todo con un plan de pago. Una nueva forma de ganarlos viene en camino.",
+  "Ceramos a day by plan": "Ceramos al día según el plan",
+  "No plan": "Sin plan",
+  "Latest movements": "Últimos movimientos",
+  "What your plan gives": "Lo que da tu plan",
 };
