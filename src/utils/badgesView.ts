@@ -1,12 +1,15 @@
 // The page of badges of the account (/dash/badges): what a tile and the showcase look like, written once so the server draws the first page and the browser redraws
 // it after each action with the same code. Pure: no network and no DOM, so scripts/check-badges-view.mjs tests it.
 
-export type Category = 'plan' | 'fablo' | 'country' | 'language' | 'status';
+export type Category = 'plan' | 'fablo' | 'country' | 'language' | 'status' | 'special';
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface CatalogBadge {
-  id: string; category: Category; unlock: 'plan' | 'self' | 'team' | 'shop'; rarity: Rarity | null; price: number; color: string;
+  id: string; category: Category; unlock: 'plan' | 'self' | 'team' | 'shop' | 'status'; rarity: Rarity | null; price: number; color: string;
   region: string | null; language: string | null; pack: string | null;
+  /** The badges of the editor of the team: their words in each language, their days of sale, the plan they ask for, the rule that gives them, and whether they are on sale now. */
+  custom: boolean; names: Record<string, string> | null; saleFrom: string | null; saleUntil: string | null; planMin: string | null; grantRule: string | null;
+  onSale: boolean; retired: boolean; hasArt: boolean; version: string | null;
 }
 export interface Catalog { badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }
 export interface State { balance: number; plan: string | null; daily: { canClaim: boolean; nextAt: string; amount: number }; slots: number; owned: { id: string; frame: string }[]; showcase: string[] }
@@ -17,9 +20,12 @@ export interface Words {
   rarity: Record<Rarity, string>;
   owned: string;
   free: string;
+  /** `Until Jan 1`, from the end date of a sale. */
+  until: (iso: string) => string;
+  auto: string;
 }
 
-export const TABS: readonly Category[] = ['country', 'language', 'fablo', 'status'];
+export const TABS: readonly Category[] = ['country', 'language', 'fablo', 'special', 'status'];
 /** The picture files of the badges that are not flags (copied to public/assets/badges). */
 const ART: Record<string, string> = { 'plan-bronze': 'plan-bronze.png', 'plan-silver': 'plan-silver.png', 'plan-gold': 'plan-gold.png', furro: 'furro.png', boykisser: 'boykisser.png', hetero: 'hetero.png', femboy: 'femboy.png' };
 
@@ -27,6 +33,7 @@ const esc = (value: string): string => value.replace(/[&<>"']/g, (c) => ({ '&': 
 
 /** The picture of a badge: the flag of its country, or its art file, or null (then it is drawn with its code). */
 export function artUrl(badge: CatalogBadge): string | null {
+  if (badge.custom) return badge.hasArt && /^[a-z0-9-]{1,40}$/.test(badge.id) ? `/dash/badge-art/${badge.id}?v=${encodeURIComponent(badge.version ?? '')}` : null;
   if (badge.region && /^[A-Z]{2}$/.test(badge.region)) return `/assets/country-flags/${badge.region.toLowerCase()}.svg`;
   return ART[badge.id] ? `/assets/badges/${ART[badge.id]}` : null;
 }
@@ -55,6 +62,9 @@ export function tilesFor(catalog: Catalog, state: State, words: Words, opts: { t
     const name = words.name(badge);
     if (q && !name.toLowerCase().includes(q) && !badge.id.includes(q)) continue;
     const owned = have.has(badge.id);
+    // A badge of the editor that is not for sale now (it has not started, it ended, or it was taken off sale) is seen only by the people who have it.
+    if (badge.custom && badge.unlock === 'shop' && !owned && !badge.onSale) continue;
+    if (badge.custom && badge.retired && !owned) continue;
     if (opts.owned && !owned) continue;
     list.push({ badge, name, owned, frame: have.get(badge.id) ?? 'normal', shown: shown.has(badge.id) });
   }
@@ -63,9 +73,13 @@ export function tilesFor(catalog: Catalog, state: State, words: Words, opts: { t
 
 export function tileHtml(tile: Tile, words: Words): string {
   const { badge } = tile;
-  const price = tile.owned ? `<span class="bd-owned">${esc(words.owned)}</span>` : badge.price ? `<span class="bd-price"><i class="bd-coin"></i>${badge.price}</span>` : `<span class="bd-price">${esc(words.free)}</span>`;
+  const price = tile.owned ? `<span class="bd-owned">${esc(words.owned)}</span>`
+    : badge.grantRule ? `<span class="bd-price">${esc(words.auto)}</span>`
+    : badge.unlock === 'plan' ? ''
+    : badge.price ? `<span class="bd-price"><i class="bd-coin"></i>${badge.price}</span>` : `<span class="bd-price">${esc(words.free)}</span>`;
+  const until = !tile.owned && badge.custom && badge.onSale && badge.saleUntil ? `<span class="bd-until">${esc(words.until(badge.saleUntil))}</span>` : '';
   const rarity = badge.rarity ? `<span class="bd-rar bd-r-${badge.rarity}">${esc(words.rarity[badge.rarity])}</span>` : '';
-  return `<button type="button" class="bd-tile${tile.owned ? ' is-owned' : ''}${tile.shown ? ' is-shown' : ''}" data-id="${esc(badge.id)}">${hexHtml(badge, tile.frame, 'md')}<span class="bd-name">${esc(tile.name)}</span><span class="bd-meta">${price}${rarity}</span></button>`;
+  return `<button type="button" class="bd-tile${tile.owned ? ' is-owned' : ''}${tile.shown ? ' is-shown' : ''}" data-id="${esc(badge.id)}">${hexHtml(badge, tile.frame, 'md')}<span class="bd-name">${esc(tile.name)}</span><span class="bd-meta">${price}${rarity}</span>${until}</button>`;
 }
 
 /** The showcase: one slot for each place of the plan with its badge or a plus, and the rest of the six locked. */
@@ -82,11 +96,16 @@ export function slotsHtml(catalog: Catalog, state: State, badgeOf: (id: string) 
 }
 
 /** What the person can do with a badge right now, for the detail dialog. */
-export type Action = { kind: 'buy'; price: number; canAfford: boolean } | { kind: 'identity'; on: boolean } | { kind: 'none' };
+export type Action = { kind: 'buy'; price: number; canAfford: boolean } | { kind: 'identity'; on: boolean } | { kind: 'closed' } | { kind: 'plan'; plan: string } | { kind: 'auto' } | { kind: 'none' };
+
+const PLAN_ORDER = ['bronze', 'silver', 'gold'];
 
 export function actionsFor(badge: CatalogBadge, owned: boolean, state: State, catalog: Catalog): { primary: Action; upgrade: { cost: number; next: string; canAfford: boolean } | null; show: 'add' | 'remove' | 'full' | null } {
-  const primary: Action = badge.unlock === 'shop' && !owned ? { kind: 'buy', price: badge.price, canAfford: state.balance >= badge.price }
-    : badge.unlock === 'self' ? { kind: 'identity', on: owned } : { kind: 'none' };
+  const planOk = !badge.planMin || (state.plan !== null && PLAN_ORDER.indexOf(state.plan) >= PLAN_ORDER.indexOf(badge.planMin));
+  const primary: Action = badge.unlock === 'shop' && !owned
+    ? (!badge.onSale && badge.custom ? { kind: 'closed' } : !planOk ? { kind: 'plan', plan: badge.planMin as string } : { kind: 'buy', price: badge.price, canAfford: state.balance >= badge.price })
+    : badge.unlock === 'self' ? { kind: 'identity', on: owned }
+    : badge.unlock === 'status' && !owned ? { kind: 'auto' } : { kind: 'none' };
   const frame = state.owned.find((row) => row.id === badge.id)?.frame ?? 'normal';
   const index = catalog.frames.findIndex((each) => each.id === frame);
   const next = owned && badge.unlock !== 'plan' ? catalog.frames[index + 1] : undefined;
