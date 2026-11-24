@@ -68,6 +68,18 @@ assert.equal(actionsFor(catalog.badges[6], false, state, catalog).primary.kind, 
 assert.deepEqual(actionsFor(catalog.badges[8], false, state, catalog).primary, { kind: 'plan', plan: 'gold' });
 assert.equal(actionsFor(catalog.badges[8], false, { ...state, plan: 'gold' }, catalog).primary.kind, 'buy');
 assert.equal(actionsFor(catalog.badges[7], false, state, catalog).primary.kind, 'auto');
+// The frame that shows can be one below the best the badge has: the choice is among the frames it has, and the next purchase builds on the best one.
+const framed = (shown, unlocked) => ({ ...state, owned: [{ id: 'country-co', frame: shown, unlocked }] });
+assert.deepEqual(actionsFor(catalog.badges[0], true, framed('divine', 'divine'), catalog).frames, ['normal', 'bright', 'divine'], 'every frame it has can be chosen');
+assert.deepEqual(actionsFor(catalog.badges[0], true, framed('normal', 'bright'), catalog).frames, ['normal', 'bright'], 'not the ones it does not have');
+assert.deepEqual(actionsFor(catalog.badges[0], true, framed('normal', 'normal'), catalog).frames, [], 'with one frame there is nothing to choose');
+assert.deepEqual(actionsFor(catalog.badges[0], false, framed('normal', 'divine'), catalog).frames, [], 'a badge that is not owned has no choice');
+assert.deepEqual(actionsFor(catalog.badges[4], true, { ...state, owned: [{ id: 'plan-gold', frame: 'normal', unlocked: 'divine' }] }, catalog).frames, [], 'the star of a plan has no frames');
+assert.equal(actionsFor(catalog.badges[0], true, framed('normal', 'bright'), catalog).upgrade?.next, 'divine', 'buying builds on the best frame, not on the one that shows');
+assert.equal(actionsFor(catalog.badges[0], true, { ...state, owned: [{ id: 'country-co', frame: 'bright' }] }, catalog).upgrade?.next, 'divine', 'an answer of the bot without `unlocked` still works');
+const page = readFileSync(path.join(root, 'src/pages/dash/badges-act.ts'), 'utf8');
+assert.match(page, /'frame'/, 'the page of actions passes the choice of frame to the bot');
+
 
 // The showcase: a place for each slot of the plan and locks for the rest of the six.
 const html = slotsHtml(catalog, state, (id) => catalog.badges.find((b) => b.id === id), (id) => state.owned.find((r) => r.id === id)?.frame ?? 'normal');

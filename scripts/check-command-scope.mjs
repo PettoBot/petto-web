@@ -42,6 +42,8 @@ assert.equal(existing.nsfw, true, 'the options given are not changed');
 const page = readFileSync(path.join(root, 'src/pages/dash/guild/[id]/automation.astro'), 'utf8');
 assert.match(page, /action === 'command_scope'/, 'the page saves the scope of a command');
 assert.match(page, /scopeFromForm\(form\)/, 'and a new command carries it');
+// The page loads the channels and the roles of the server for this section (without them the lists of the fields say "No matches").
+for (const list of ['WITH_CHANNELS', 'WITH_ROLES']) assert.match(page, new RegExp(`const ${list} = \\[[^\\]]*'custom-commands'`), `${list} has the custom commands section`);
 const dash = readFileSync(path.join(root, 'src/components/DashAutomation.astro'), 'utf8');
 assert.match(dash, /<CommandScopeFields[^>]*idPrefix="ax1-new-scope"/, 'the form of a new command has the fields');
 assert.match(dash, /name="action" value="command_scope"/, 'and each command of the list too');
