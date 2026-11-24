@@ -3808,6 +3808,8 @@ export const dashEs: Record<string, string> = {
   "Petto cannot rename this channel. Give it Manage Channels and View Channel there.": "Petto no puede renombrar este canal. Dale Gestionar canales y Ver canal ahí.",
   "Loading the live numbers from Petto...": "Cargando los números en vivo de Petto...",
   "Petto did not answer, so the previews use sample numbers. Creating counters needs Petto online.": "Petto no respondió, así que las vistas previas usan números de ejemplo. Crear contadores necesita a Petto en línea.",
+  "The bot does not know this account as the owner. Check that the owner ID saved in the bot is the one of the account you logged in with, and restart the bot.": "El bot no reconoce esta cuenta como el dueño. Revisa que el ID del dueño guardado en el bot sea el de la cuenta con la que entraste y reinicia el bot.",
+  "The bot answered, but it does not know this page yet. Restart the bot with the latest update.": "El bot respondió, pero todavía no conoce esta página. Reinicia el bot con la última actualización.",
   "Petto did not answer. Try again in a moment.": "Petto no respondió. Inténtalo de nuevo en un momento.",
   "Pick a role": "Elige un rol",
   "Pick the role to count.": "Elige el rol que se cuenta.",
