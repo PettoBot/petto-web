@@ -7388,4 +7388,7 @@ export const dashEs: Record<string, string> = {
   "Pick a channel from the list.": "Elige un canal de la lista.",
   "There is no room: a server can have {n} rewards.": "No hay espacio: un servidor puede tener {n} recompensas.",
   "Petto's role has to be above the role it gives. The members keep the role when a streak ends.": "El rol de Petto tiene que estar por encima del rol que da. Los miembros conservan el rol cuando una racha termina.",
+  "Backups are a Premium feature": "Los backups son una función Premium",
+  "Making and scheduling backups needs Premium on this server. The backups you already have can still be seen, exported, restored and deleted.": "Crear y programar backups necesita Premium en este servidor. Los backups que ya tienes se pueden seguir viendo, exportando, restaurando y borrando.",
+  "Making and scheduling backups needs Premium on this server.": "Crear y programar backups necesita Premium en este servidor.",
 };
