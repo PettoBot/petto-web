@@ -38,6 +38,24 @@ async function saveConfig(patch: Record<string, unknown>) {
   if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
 }
 
+const LIST_MODES = ['all', 'only', 'except'];
+const botDayNow = () => new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10); // the day of Colombia, as the bot counts it
+const idsOf = (values: FormDataEntryValue[]) => [...new Set(values.map(String).filter((v) => SNOWFLAKE.test(v)))].slice(0, 100);
+
+/** What counts as a message: the rules of the server. The day they start to count is kept (the days before still come from the activity the bot already counts). */
+async function saveCounting(form: FormData) {
+  const channelIds = idsOf(form.getAll('channel_ids')), roleIds = idsOf(form.getAll('role_ids'));
+  const channelMode = LIST_MODES.includes(String(form.get('channel_mode'))) && channelIds.length ? String(form.get('channel_mode')) : 'all';
+  const roleMode = LIST_MODES.includes(String(form.get('role_mode'))) && roleIds.length ? String(form.get('role_mode')) : 'all';
+  const minLength = whole(form.get('min_length'), 0, 500), cooldown = whole(form.get('cooldown_seconds'), 0, 3600), reactions = form.get('reactions_count') === 'on';
+  const active = minLength > 0 || cooldown > 0 || channelMode !== 'all' || roleMode !== 'all' || reactions;
+  const before = await fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=min_length,cooldown_seconds,channel_mode,role_mode,reactions_count,counting_since`, { headers }).then((res) => (res.ok ? res.json() : [])).catch(() => []);
+  const was = before[0] ?? {};
+  const wasActive = Number(was.min_length ?? 0) > 0 || Number(was.cooldown_seconds ?? 0) > 0 || (was.channel_mode ?? 'all') !== 'all' || (was.role_mode ?? 'all') !== 'all' || Boolean(was.reactions_count);
+  const since = !active ? { counting_since: null } : (!wasActive || !was.counting_since ? { counting_since: botDayNow() } : {});
+  await saveConfig({ min_length: minLength, cooldown_seconds: cooldown, channel_mode: channelMode, channel_ids: channelIds, role_mode: roleMode, role_ids: roleIds, reactions_count: reactions, ...since });
+}
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
@@ -45,6 +63,8 @@ if (Astro.request.method === 'POST') {
     if (action === 'activity') {
       const mode = MODES.includes(String(form.get('mode'))) ? String(form.get('mode')) : 'any';
       await saveConfig({ enabled: form.get('enabled') === 'on', mode, min_messages: whole(form.get('min_messages'), 1, 1000), min_voice_minutes: whole(form.get('min_voice_minutes'), 1, 1440) });
+    } else if (action === 'counting') {
+      await saveCounting(form);
     } else if (action === 'rewards') {
       const channel = String(form.get('announce_channel_id') ?? '').trim();
       const days = [...new Set(String(form.get('milestones') ?? '').split(/[\s,;]+/).map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n) && n >= 1 && n <= 3650))].sort((a, b) => a - b).slice(0, 12);
@@ -90,7 +110,7 @@ if (Astro.request.method === 'POST') {
 
 const [guildInfo, configRes, rolesRes, channelsRes, serverRolesRes, current, longest] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=enabled,mode,min_messages,min_voice_minutes,announce_channel_id,milestones,guild_freezes,reset_at,grace_minutes,dm_reminder,dm_lost,nickname_enabled,nickname_emoji`, { headers }),
+  () => fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=enabled,mode,min_messages,min_voice_minutes,announce_channel_id,milestones,guild_freezes,reset_at,grace_minutes,dm_reminder,dm_lost,nickname_enabled,nickname_emoji,min_length,cooldown_seconds,channel_mode,channel_ids,role_mode,role_ids,reactions_count`, { headers }),
   () => fetch(`${apiUrl}/rest/v1/streak_roles?guild_id=eq.${id}&select=days,role_id&order=days.asc`, { headers }),
   () => getGuildList(Astro, id, botToken, 'channels'),
   () => getGuildList(Astro, id, botToken, 'roles'),
@@ -111,6 +131,8 @@ const config = {
   announceChannelId: c.announce_channel_id ? String(c.announce_channel_id) : '', milestones: (Array.isArray(c.milestones) ? c.milestones.map(Number) : [3, 7, 14, 30, 60, 100, 365]) as number[],
   guildFreezes: Number(c.guild_freezes ?? 0), resetAt: c.reset_at ? String(c.reset_at).slice(0, 10) : null,
   graceMinutes: Number(c.grace_minutes ?? 0), dmReminder: Boolean(c.dm_reminder), dmLost: Boolean(c.dm_lost), nicknameEnabled: Boolean(c.nickname_enabled), nicknameEmoji: c.nickname_emoji ? String(c.nickname_emoji) : '🔥',
+  minLength: Number(c.min_length ?? 0), cooldownSeconds: Number(c.cooldown_seconds ?? 0), channelMode: LIST_MODES.includes(c.channel_mode) ? String(c.channel_mode) : 'all', channelIds: (Array.isArray(c.channel_ids) ? c.channel_ids.map(String) : []) as string[],
+  roleMode: LIST_MODES.includes(c.role_mode) ? String(c.role_mode) : 'all', roleIds: (Array.isArray(c.role_ids) ? c.role_ids.map(String) : []) as string[], reactionsCount: Boolean(c.reactions_count),
 };
 const rewardRoles: { days: number; roleId: string }[] = rolesRes.ok ? (await rolesRes.json().catch(() => [])).map((row: any) => ({ days: Number(row.days), roleId: String(row.role_id) })) : [];
 const allChannels: any[] = channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
