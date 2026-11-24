@@ -1,20 +1,40 @@
 ---
-// Streaks: what an active day is in this server. A member keeps a streak by being active every day; the bot works it out from the messages and the minutes in voice it already counts.
+// Streaks (/dash/guild/<id>/streaks): four tabs. Activity: what makes a day active (messages, voice, either or both). Rewards: the channel where Petto announces a milestone, the milestones
+// and the roles given at a number of days. Safety net: freezes the server gives to everyone (they add to the ones of the plan of each member). Leaderboard: the best streaks of the server
+// and a button to start every streak again. The bot works the streaks out from the activity it already counts and, every 10 minutes, gives the roles and says the milestones.
 import { Icon } from 'astro-icon/components';
 import DashGuildLayout from './DashGuildLayout.astro';
 import DashSettingsKit from './DashSettingsKit.astro';
 import DashFormKit from './DashFormKit.astro';
+import DashTabs from './DashTabs.astro';
+import SelectSource from './SelectSource.astro';
+import ChannelOptions from './ChannelOptions.astro';
 import { getDashLang, makeT } from '../i18n/dash';
 const dashLang = getDashLang(Astro);
 const dt = makeT(dashLang);
+const number = new Intl.NumberFormat(dashLang);
+interface Entry { id: string; name: string | null; avatar: string | null; current: number; best: number }
 interface Props {
   user: { username: string; avatar: string | null };
   guildId: string; guildName: string; guildIcon: string;
-  row: { enabled: boolean; minMessages: number; minVoice: number };
-  ready: boolean; saved: boolean; problem: string | null;
+  config: { enabled: boolean; mode: string; minMessages: number; minVoice: number; announceChannelId: string; milestones: number[]; guildFreezes: number; resetAt: string | null };
+  rewardRoles: { days: number; roleId: string }[];
+  channels: { id: string; name: string; category?: string }[];
+  roles: { id: string; name: string; color: number }[]; everyRole: { id: string; name: string }[];
+  board: { current: Entry[]; longest: Entry[]; down: boolean };
+  ready: boolean; saved: boolean; problem: string | null; maxRoles: number;
 }
-const { user, guildId, guildName, guildIcon, row, ready, saved, problem } = Astro.props;
+const { user, guildId, guildName, guildIcon, config, rewardRoles, channels, roles, everyRole, board, ready, saved, problem, maxRoles } = Astro.props;
 const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang === 'pt-BR' ? '/pt-br' : ''}/utility/streak`;
+const modes: [string, string][] = [['messages', dt('Messages')], ['voice', dt('Voice')], ['any', dt('Either')], ['both', dt('Both')]];
+const roleName = (roleId: string) => everyRole.find((role) => role.id === roleId)?.name ?? dt('a role that is gone');
+const sentence = (() => {
+  const m = dt('{n} messages', { n: String(config.minMessages) });
+  const v = dt('{n} minutes in voice', { n: String(config.minVoice) });
+  return config.mode === 'messages' ? dt('A day counts after {what}.', { what: m }) : config.mode === 'voice' ? dt('A day counts after {what}.', { what: v })
+    : config.mode === 'both' ? dt('A day counts after {a} and {b}.', { a: m, b: v }) : dt('A day counts after {a} or {b}.', { a: m, b: v });
+})();
+const today = new Date().toISOString().slice(0, 10);
 ---
 <DashGuildLayout guildId={guildId} guildName={guildName} guildIcon={guildIcon} user={user} active="streaks" pageTitle="Streaks">
   <DashSettingsKit />
@@ -23,41 +43,199 @@ const docsUrl = `https://wiki.petto.sbs${dashLang === 'es' ? '/es' : dashLang ==
       <h1>{dt('Streaks')}</h1>
       <a class="btn btn-sm" href={docsUrl} target="_blank" rel="noopener"><Icon name="ph:book-open-fill" width="13" height="13" />{dt('Read the docs')}</a>
     </div>
-    <p class="sx-lead">{dt('Members keep a streak by being active every day. Choose what an active day is in this server. A day is counted in UTC, and a plan gives a member freezes that save a missed day.')}</p>
+    <p class="sx-lead">{dt('Members keep a streak by being active every day. Choose what an active day is, what a streak earns, and how many freezes save a missed day. Days are counted in UTC.')}</p>
 
     {saved && <div class="sx-flash"><Icon name="ph:check-circle-fill" width="15" height="15" />{dt('Saved.')}</div>}
     {problem && <div class="sx-flash sx-flash-bad" role="alert"><Icon name="ph:warning-fill" width="15" height="15" />{problem}</div>}
     {!ready && <div class="sx-flash sx-flash-warn"><Icon name="ph:plug-fill" width="15" height="15" />{dt('Streaks are not available yet. Petto is being updated: try again in a few minutes.')}</div>}
 
-    <form method="POST" class="sx-panel stk-box">
-      <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--green)"><Icon name="ph:fire-fill" width="17" height="17" /></span><h2>{dt('Active day')}</h2></div>
-      <label class="sx-switch stk-switch"><input type="checkbox" name="enabled" role="switch" checked={row.enabled} disabled={!ready} /><span class="sx-toggle"></span><span>{dt('Count streaks in this server')}</span></label>
-      <div class="stk-two">
-        <div class="sx-field"><label for="st-msg">{dt('Messages in the day')}</label>
-          <input id="st-msg" type="number" name="min_messages" min="0" max="1000" value={row.minMessages} disabled={!ready} />
-          <p class="sx-hint">{dt('A member is active that day with this many messages.')}</p>
-        </div>
-        <div class="sx-field"><label for="st-voice">{dt('Minutes in voice in the day')}</label>
-          <input id="st-voice" type="number" name="min_voice_minutes" min="0" max="1440" value={row.minVoice} disabled={!ready} />
-          <p class="sx-hint">{dt('Or this many minutes in a voice channel. Use 0 to ignore voice.')}</p>
+    <div data-tabs="streaks">
+      <div class="dgl-tabs" role="tablist" aria-label={dt('Streaks')}>
+        <button type="button" class="dgl-tab" role="tab" data-tab="activity"><Icon name="ph:fire-fill" width="15" height="15" /><span>{dt('Activity')}</span></button>
+        <button type="button" class="dgl-tab" role="tab" data-tab="rewards"><Icon name="ph:trophy-fill" width="15" height="15" /><span>{dt('Rewards')}</span><em>{config.milestones.length + rewardRoles.length}</em></button>
+        <button type="button" class="dgl-tab" role="tab" data-tab="safety"><Icon name="ph:snowflake-fill" width="15" height="15" /><span>{dt('Safety net')}</span></button>
+        <button type="button" class="dgl-tab" role="tab" data-tab="board"><Icon name="ph:ranking-fill" width="15" height="15" /><span>{dt('Leaderboard')}</span></button>
+      </div>
+
+      <div data-panel="activity" class="stk-stack" hidden>
+        <form method="POST" class="sx-panel stk-box" data-no-dirty>
+          <input type="hidden" name="action" value="activity" />
+          <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--green)"><Icon name="ph:fire-fill" width="17" height="17" /></span><h2>{dt('Active day')}</h2></div>
+          <p class="stk-sentence">{sentence}</p>
+          <label class="sx-switch stk-switch"><input type="checkbox" name="enabled" role="switch" checked={config.enabled} disabled={!ready} /><span class="sx-toggle"></span><span>{dt('Count streaks in this server')}</span></label>
+          <div class="sx-field"><span class="sx-label" id="stk-mode-l">{dt('A day is earned with')}</span>
+            <div class="dfx-chips" role="radiogroup" aria-labelledby="stk-mode-l">{modes.map(([value, label]) => <label class="dfx-chip"><input type="radio" name="mode" value={value} checked={value === config.mode} disabled={!ready} />{label}</label>)}</div>
+            <p class="sx-hint">{dt('"Either" counts the day with the messages or with the voice time. "Both" asks for the two on the same day.')}</p>
+          </div>
+          <div class="stk-two">
+            <div class="sx-field"><label for="stk-msg">{dt('Messages in the day')}</label>
+              <input id="stk-msg" type="number" name="min_messages" min="1" max="1000" value={config.minMessages} disabled={!ready} />
+            </div>
+            <div class="sx-field"><label for="stk-voice">{dt('Minutes in voice in the day')}</label>
+              <input id="stk-voice" type="number" name="min_voice_minutes" min="1" max="1440" value={config.minVoice} disabled={!ready} />
+            </div>
+          </div>
+          <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save')}</button></div>
+        </form>
+      </div>
+
+      <div data-panel="rewards" class="stk-stack" hidden>
+        <form method="POST" class="sx-panel stk-box" data-no-dirty>
+          <input type="hidden" name="action" value="rewards" />
+          <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--yellow)"><Icon name="ph:megaphone-fill" width="17" height="17" /></span><h2>{dt('Milestones')}</h2></div>
+          {!config.announceChannelId && <p class="stk-note stk-note-info"><Icon name="ph:info-fill" width="14" height="14" />{dt('Milestones are not announced without a channel.')}</p>}
+          <div class="stk-two">
+            <div class="sx-field"><label for="stk-channel">{dt('Announce in')}</label>
+              <select id="stk-channel" name="announce_channel_id" disabled={!ready}>
+                <option value="" selected={!config.announceChannelId}>{dt('No announcement')}</option>
+                <ChannelOptions channels={channels} selected={config.announceChannelId} />
+              </select>
+            </div>
+            <div class="sx-field"><label for="stk-days">{dt('Milestone days')}</label>
+              <input id="stk-days" type="text" name="milestones" value={config.milestones.join(', ')} placeholder="3, 7, 14, 30" inputmode="numeric" disabled={!ready} />
+              <p class="sx-hint">{dt('Separate the days with commas. Up to 12 days, from 1 to 3650.')}</p>
+            </div>
+          </div>
+          <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save')}</button></div>
+        </form>
+
+        <div class="stk-cols">
+          <section class="sx-panel stk-box">
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--blue)"><Icon name="ph:medal-fill" width="17" height="17" /></span><h2>{dt('Reward roles')}</h2>{rewardRoles.length > 0 && <span class="sx-tag">{rewardRoles.length}/{maxRoles}</span>}</div>
+            {rewardRoles.length === 0
+              ? <p class="stk-empty"><Icon name="ph:medal-fill" width="22" height="22" />{dt('No rewards yet. Give a role when a streak reaches some days.')}</p>
+              : (
+                <div class="sx-list stk-list">
+                  {rewardRoles.map((reward) => (
+                    <div class="sx-row stk-row">
+                      <span class="stk-days"><b>{reward.days}</b><em>{dt('days')}</em></span>
+                      <span class="stk-what">{dt('Gives')} <b>{roleName(reward.roleId)}</b></span>
+                      <form method="POST" data-no-dirty class="stk-act"><input type="hidden" name="action" value="role_remove" /><input type="hidden" name="days" value={reward.days} />
+                        <button type="submit" class="sx-iconbtn" aria-label={dt('Remove')} title={dt('Remove')}><Icon name="ph:trash-fill" width="15" height="15" /></button></form>
+                    </div>
+                  ))}
+                </div>
+              )}
+          </section>
+          <form method="POST" class="sx-panel stk-box" data-no-dirty>
+            <input type="hidden" name="action" value="role_add" />
+            <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--green)"><Icon name="ph:plus-circle-fill" width="17" height="17" /></span><h2>{dt('Add a reward')}</h2></div>
+            <div class="sx-field"><label for="stk-role">{dt('Role to give')}</label>
+              <select id="stk-role" name="role_id" required data-give-role data-fill="stk-roles" disabled={!ready}><option value="" disabled selected>{dt('Role')}</option></select>
+            </div>
+            <div class="sx-field"><label for="stk-rdays">{dt('When the streak reaches (days)')}</label>
+              <input id="stk-rdays" type="number" name="days" min="1" max="3650" value="7" required disabled={!ready} />
+            </div>
+            <p class="sx-hint">{dt("Petto's role has to be above the role it gives. The members keep the role when a streak ends.")}</p>
+            <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready || rewardRoles.length >= maxRoles}><Icon name="ph:plus-bold" width="12" height="12" />{dt('Add')}</button></div>
+          </form>
         </div>
       </div>
-      <p class="sx-hint stk-note"><Icon name="ph:info-fill" width="14" height="14" />{dt('Members see their streak with /streak and on their Summary page. Nothing changes for the days that already passed: the streak is worked out again from the activity.')}</p>
-      <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save')}</button></div>
-    </form>
+
+      <div data-panel="safety" class="stk-stack" hidden>
+        <form method="POST" class="sx-panel stk-box" data-no-dirty>
+          <input type="hidden" name="action" value="safety" />
+          <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--blue)"><Icon name="ph:snowflake-fill" width="17" height="17" /></span><h2>{dt('Safety net')}</h2></div>
+          <div class="sx-field"><label for="stk-freezes">{dt('Freezes for everyone')}</label>
+            <input id="stk-freezes" type="number" name="guild_freezes" min="0" max="10" value={config.guildFreezes} disabled={!ready} />
+            <p class="sx-hint">{dt('Each freeze saves one missed day inside a streak. These ones are for every member of the server, and they add to the freezes of the plan of each member (Bronze 1, Silver 3, Gold 5).')}</p>
+          </div>
+          <p class="stk-note stk-note-info"><Icon name="ph:info-fill" width="14" height="14" />{dt('A streak never starts or ends with a freeze: it only bridges a gap between two active days.')}</p>
+          <div class="sx-foot"><button type="submit" class="btn btn-accent btn-sm" disabled={!ready}><Icon name="ph:floppy-disk-fill" width="13" height="13" />{dt('Save')}</button></div>
+        </form>
+      </div>
+
+      <div data-panel="board" class="stk-stack" hidden>
+        <section class="sx-panel stk-box" id="stk-board">
+          <div class="sx-panel-head"><span class="sx-panel-icon" style="--c:var(--yellow)"><Icon name="ph:ranking-fill" width="17" height="17" /></span><h2>{dt('Best streaks')}</h2>
+            <div class="stk-seg" role="group" aria-label={dt('Best streaks')}>
+              <button type="button" class="on" data-kind="current">{dt('Current')}</button>
+              <button type="button" data-kind="longest">{dt('Longest')}</button>
+            </div>
+          </div>
+          {board.down && <p class="stk-note stk-note-warn"><Icon name="ph:plug-fill" width="14" height="14" />{dt('Petto did not answer. Try again in a moment.')}</p>}
+          {(['current', 'longest'] as const).map((kind) => (
+            <div class="stk-board" data-board={kind} hidden={kind !== 'current'}>
+              {board[kind].length === 0
+                ? <p class="stk-empty"><Icon name="ph:fire-fill" width="22" height="22" />{dt('No streaks yet. Members appear here when they earn a day.')}</p>
+                : (
+                  <ol class="stk-rank">
+                    {board[kind].map((entry, index) => (
+                      <li class="stk-place">
+                        <span class="stk-n">{index + 1}</span>
+                        {entry.avatar ? <img src={entry.avatar} alt="" width="32" height="32" loading="lazy" /> : <span class="stk-ph" aria-hidden="true"></span>}
+                        <span class="stk-who">{entry.name ?? dt('Member')}</span>
+                        <span class="stk-score"><Icon name="ph:fire-fill" width="15" height="15" /><b>{dt('{n} days', { n: number.format(kind === 'current' ? entry.current : entry.best) })}</b></span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+            </div>
+          ))}
+        </section>
+
+        <form method="POST" class="stk-danger" data-no-dirty data-confirm={dt('Start every streak again from today? This cannot be undone.')}>
+          <input type="hidden" name="action" value="reset" />
+          <div><strong>{dt('Reset all streaks')}</strong><p>{config.resetAt ? dt('Streaks count from {date}.', { date: config.resetAt }) + ' ' : ''}{dt('Every streak starts again from today. Freezes and roles are kept.')}</p></div>
+          <button type="submit" class="btn btn-danger-solid btn-sm" disabled={!ready || config.resetAt === today}>{dt('Reset all')}</button>
+        </form>
+      </div>
+    </div>
   </div>
+  <SelectSource name="stk-roles" items={roles.map((role) => ({ id: role.id, name: role.name }))} />
+  <DashTabs />
   <DashFormKit />
+  <script is:inline>
+    // The two boards (current and longest) switch without a reload.
+    (function () {
+      var root = document.getElementById('stk-board'); if (!root) return;
+      root.querySelectorAll('.stk-seg button').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var kind = button.getAttribute('data-kind');
+          root.querySelectorAll('.stk-seg button').forEach(function (other) { other.classList.toggle('on', other === button); });
+          root.querySelectorAll('[data-board]').forEach(function (list) { list.hidden = list.getAttribute('data-board') !== kind; });
+        });
+      });
+    })();
+  </script>
 </DashGuildLayout>
 
 <style>
   h1 { font-size: 24px; margin: 0; }
-  .stk { max-width: 720px; }
+  .stk { max-width: 980px; }
   .stk-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
   .stk :global(.sx-lead) { margin-bottom: 16px; }
+  .stk-stack { display: flex; flex-direction: column; gap: 14px; }
+  .stk-stack[hidden] { display: none; }
   .stk-box { gap: 14px; }
+  .stk-sentence { margin: 0; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text-muted); font-size: 14px; }
   .stk-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  @media (max-width: 560px) { .stk-two { grid-template-columns: minmax(0, 1fr); } }
-  .stk :global(.sx-field input[type=number]) { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; min-width: 0; }
-  .stk-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; }
-  .stk-note :global(svg) { flex: none; margin-top: 2px; color: var(--text-dim); }
+  .stk-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 760px) { .stk-two, .stk-cols { grid-template-columns: minmax(0, 1fr); } }
+  .stk :global(.sx-field input[type=number]), .stk :global(.sx-field input[type=text]) { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; background: var(--card); color: var(--text); font-family: var(--sans); font-size: 13.5px; width: 100%; box-sizing: border-box; min-width: 0; }
+  .stk-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; }
+  .stk-note :global(svg) { flex: none; margin-top: 2px; }
+  .stk-note-info { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--text-muted); } .stk-note-info :global(svg) { color: var(--blue); }
+  .stk-note-warn { background: color-mix(in srgb, var(--yellow) 12%, transparent); color: var(--text-muted); } .stk-note-warn :global(svg) { color: var(--yellow); }
+  .stk-list { display: flex; flex-direction: column; gap: 8px; }
+  .stk-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+  .stk-days { display: grid; place-items: center; min-width: 56px; padding: 6px 8px; border-radius: 10px; background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .stk-days b { font-size: 18px; line-height: 1.1; font-variant-numeric: tabular-nums; } .stk-days em { font-style: normal; font-size: 10.5px; color: var(--text-dim); }
+  .stk-what { font-size: 13.5px; overflow-wrap: anywhere; } .stk-act { margin: 0; }
+  .stk-empty { display: flex; align-items: center; gap: 10px; margin: 0; padding: 18px 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-dim); font-size: 13.5px; }
+  .stk-empty :global(svg) { flex: none; color: var(--yellow); }
+  .stk-seg { margin-left: auto; display: inline-flex; padding: 3px; border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .stk-seg button { border: 0; background: none; color: var(--text-muted); font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: 8px; cursor: pointer; }
+  .stk-seg button.on { background: var(--card); color: var(--text); }
+  .stk-rank { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 760px) { .stk-rank { grid-template-columns: minmax(0, 1fr); } }
+  .stk-place { display: grid; grid-template-columns: 26px 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, transparent); }
+  .stk-n { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: center; }
+  .stk-place img, .stk-ph { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .stk-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stk-score { display: inline-flex; align-items: center; gap: 5px; color: var(--yellow); white-space: nowrap; }
+  .stk-danger { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 0; padding: 16px 18px; border-radius: 14px; background: color-mix(in srgb, var(--red) 12%, transparent); border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); }
+  .stk-danger strong { color: var(--red-text, var(--red)); } .stk-danger p { margin: 4px 0 0; color: var(--text-muted); font-size: 13.5px; }
+  .stk :global(.btn-danger-solid) { background: var(--red); color: #fff; border-color: transparent; }
+  .stk :global(.btn-danger-solid:disabled) { opacity: .5; cursor: default; }
 </style>

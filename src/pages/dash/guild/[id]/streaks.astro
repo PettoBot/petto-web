@@ -3,11 +3,14 @@ export const prerender = false;
 import DashStreaks from '../../../../components/DashStreaks.astro';
 import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
-import { getGuildInfo } from '../../../../utils/discord';
+import { getGuildInfo, getGuildList } from '../../../../utils/discord';
+import { runBatched } from '../../../../utils/concurrency';
+import { callPettoStreakBoard } from '../../../../utils/pettoBotApi';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
 
-// Streaks: what counts as an active day in this server (messages and minutes in voice that day). It is one row of `streak_config`; the streak itself is worked out by the bot from the activity it already counts.
+// Streaks: what an active day is in this server (`streak_config`), what a streak earns (announced milestones and `streak_roles`), the freezes the server gives to everyone, and the board.
+// The streak itself is worked out by the bot from the activity it already counts; the bot gives the roles and says the milestones every 10 minutes.
 const { id } = Astro.params as { id: string };
 const botToken = getEnv(Astro, 'DISCORD_TOKEN');
 const apiUrl = getEnv(Astro, 'PETTO_BOT_API_URL');
@@ -19,22 +22,60 @@ const { session } = auth;
 if (!botToken || !apiUrl || !apiKey) return Astro.redirect('/dash/manage?error=server_not_configured');
 
 const headers = { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-const whole = (value: FormDataEntryValue | null, max: number) => Math.max(0, Math.min(max, Math.floor(Number(value ?? 0)) || 0));
+const SNOWFLAKE = /^\d{15,25}$/;
+const MODES = ['messages', 'voice', 'any', 'both'];
+const MAX_ROLES = 15;
+const whole = (value: FormDataEntryValue | null, min: number, max: number) => Math.max(min, Math.min(max, Math.floor(Number(value ?? 0)) || 0));
 let saved = false;
 let problem: string | null = null;
 
+async function saveConfig(patch: Record<string, unknown>) {
+  const res = await fetch(`${apiUrl}/rest/v1/streak_config?on_conflict=guild_id`, {
+    method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ guild_id: id, ...patch, updated_at: new Date().toISOString() }),
+  });
+  if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+}
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
   try {
-    const minMessages = whole(form.get('min_messages'), 1000);
-    const minVoice = whole(form.get('min_voice_minutes'), 1440);
-    if (minMessages === 0 && minVoice === 0) problem = dt('Ask for at least one message or one minute in voice, or every day would count.');
-    else {
-      const res = await fetch(`${apiUrl}/rest/v1/streak_config?on_conflict=guild_id`, {
-        method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ guild_id: id, enabled: form.get('enabled') === 'on', min_messages: minMessages, min_voice_minutes: minVoice, updated_at: new Date().toISOString() }),
-      });
-      if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+    if (action === 'activity') {
+      const mode = MODES.includes(String(form.get('mode'))) ? String(form.get('mode')) : 'any';
+      await saveConfig({ enabled: form.get('enabled') === 'on', mode, min_messages: whole(form.get('min_messages'), 1, 1000), min_voice_minutes: whole(form.get('min_voice_minutes'), 1, 1440) });
+    } else if (action === 'rewards') {
+      const channel = String(form.get('announce_channel_id') ?? '').trim();
+      const days = [...new Set(String(form.get('milestones') ?? '').split(/[\s,;]+/).map((n) => Math.floor(Number(n))).filter((n) => Number.isFinite(n) && n >= 1 && n <= 3650))].sort((a, b) => a - b).slice(0, 12);
+      if (channel && !SNOWFLAKE.test(channel)) problem = dt('Pick a channel from the list.');
+      else await saveConfig({ announce_channel_id: channel || null, milestones: days });
+    } else if (action === 'role_add') {
+      const roleId = String(form.get('role_id') ?? '').trim();
+      const days = whole(form.get('days'), 0, 3650);
+      if (!SNOWFLAKE.test(roleId)) problem = dt('Pick the role to give.');
+      else if (days < 1) problem = dt('The days must be a number from 1 to 3650.');
+      else {
+        const count = await fetch(`${apiUrl}/rest/v1/streak_roles?guild_id=eq.${id}&select=days`, { headers });
+        if (count.ok && (await count.json()).length >= MAX_ROLES) problem = dt('There is no room: a server can have {n} rewards.', { n: MAX_ROLES });
+        else {
+          // A reward needs the server row (it is created with the first setting), so the config is made first if it did not exist.
+          await fetch(`${apiUrl}/rest/v1/streak_config?on_conflict=guild_id`, { method: 'POST', headers: { ...headers, Prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id }) });
+          const res = await fetch(`${apiUrl}/rest/v1/streak_roles?on_conflict=guild_id,days`, { method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ guild_id: id, days, role_id: roleId }) });
+          if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+        }
+      }
+    } else if (action === 'role_remove') {
+      const days = whole(form.get('days'), 0, 3650);
+      if (days >= 1) {
+        const res = await fetch(`${apiUrl}/rest/v1/streak_roles?guild_id=eq.${id}&days=eq.${days}`, { method: 'DELETE', headers });
+        if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
+      }
+    } else if (action === 'safety') {
+      await saveConfig({ guild_freezes: whole(form.get('guild_freezes'), 0, 10) });
+    } else if (action === 'reset') {
+      // Every streak starts again from today: the days before are not counted, and the milestones can be announced again.
+      await saveConfig({ reset_at: new Date().toISOString().slice(0, 10) });
+      if (saved) await fetch(`${apiUrl}/rest/v1/streak_awards?guild_id=eq.${id}`, { method: 'DELETE', headers });
     }
   } catch (error) {
     console.error(`[streaks] saving for ${id}:`, (error as Error)?.message);
@@ -42,13 +83,34 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [guildInfo, rowRes] = await Promise.all([getGuildInfo(id, botToken), fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=enabled,min_messages,min_voice_minutes`, { headers })]);
+const [guildInfo, configRes, rolesRes, channelsRes, serverRolesRes, current, longest] = await runBatched([
+  () => getGuildInfo(id, botToken),
+  () => fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=enabled,mode,min_messages,min_voice_minutes,announce_channel_id,milestones,guild_freezes,reset_at`, { headers }),
+  () => fetch(`${apiUrl}/rest/v1/streak_roles?guild_id=eq.${id}&select=days,role_id&order=days.asc`, { headers }),
+  () => getGuildList(Astro, id, botToken, 'channels'),
+  () => getGuildList(Astro, id, botToken, 'roles'),
+  () => callPettoStreakBoard(Astro, id, 'current'),
+  () => callPettoStreakBoard(Astro, id, 'longest'),
+], 4);
 const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
 if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const serverInfo = (guildInfo ?? fallbackInfo)!;
-// The table exists once the bot that added it runs; before that the page says so and offers nothing to save.
-const ready = rowRes.ok;
-const rows: any[] = ready ? await rowRes.json().catch(() => []) : [];
-const row = { enabled: rows[0] ? rows[0].enabled !== false : true, minMessages: rows[0] ? Number(rows[0].min_messages) : 1, minVoice: rows[0] ? Number(rows[0].min_voice_minutes) : 0 };
+
+// The tables exist once the bot that added them runs; before that the page says so and offers nothing to save.
+const ready = configRes.ok;
+const rows: any[] = ready ? await configRes.json().catch(() => []) : [];
+const c = rows[0] ?? {};
+const config = {
+  enabled: c.enabled !== false, mode: MODES.includes(c.mode) ? String(c.mode) : 'any', minMessages: Number(c.min_messages ?? 1), minVoice: Number(c.min_voice_minutes ?? 0) || 10,
+  announceChannelId: c.announce_channel_id ? String(c.announce_channel_id) : '', milestones: (Array.isArray(c.milestones) ? c.milestones.map(Number) : [3, 7, 14, 30, 60, 100, 365]) as number[],
+  guildFreezes: Number(c.guild_freezes ?? 0), resetAt: c.reset_at ? String(c.reset_at).slice(0, 10) : null,
+};
+const rewardRoles: { days: number; roleId: string }[] = rolesRes.ok ? (await rolesRes.json().catch(() => [])).map((row: any) => ({ days: Number(row.days), roleId: String(row.role_id) })) : [];
+const allChannels: any[] = channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
+const categories = new Map(allChannels.filter((ch: any) => ch.type === 4).map((ch: any) => [String(ch.id), String(ch.name)]));
+const channels = allChannels.filter((ch: any) => ch.type === 0 || ch.type === 5).sort((a: any, b: any) => Number(a.position ?? 0) - Number(b.position ?? 0)).map((ch: any) => ({ id: String(ch.id), name: String(ch.name), category: ch.parent_id ? categories.get(String(ch.parent_id)) : undefined }));
+const allRoles: any[] = serverRolesRes.ok ? await serverRolesRes.json().catch(() => []) : [];
+const roles = allRoles.filter((role: any) => role.name !== '@everyone' && !role.managed).sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color ?? 0) }));
+const everyRole = allRoles.map((role: any) => ({ id: String(role.id), name: String(role.name) }));
 ---
-<DashStreaks user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} row={row} ready={ready} saved={saved} problem={problem} />
+<DashStreaks user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} config={config} rewardRoles={rewardRoles} channels={channels} roles={roles} everyRole={everyRole} board={{ current: current ?? [], longest: longest ?? [], down: current === null }} ready={ready} saved={saved} problem={problem} maxRoles={MAX_ROLES} />

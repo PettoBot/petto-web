@@ -254,6 +254,18 @@ export async function callPettoGiveaway(context: AstroContext, guildId: string, 
   }
 }
 
+/** The best streaks of a server (the bot works them out and adds the names and pictures of the members). `kind` is the current streak or the longest ever. */
+export async function callPettoStreakBoard(context: AstroContext, guildId: string, kind: 'current' | 'longest'): Promise<{ id: string; name: string | null; avatar: string | null; current: number; best: number }[] | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/streak-board?kind=${kind}`, { headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    const payload: any = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok || !Array.isArray(payload.entries)) return null;
+    return payload.entries.map((entry: any) => ({ id: String(entry.userId), name: entry.name ?? null, avatar: entry.avatar ?? null, current: Number(entry.current), best: Number(entry.best) }));
+  } catch { return null; }
+}
+
 /** Sends the quest method of a server now (the newest active quest, or the one given), as the person who manages the server. */
 export async function callPettoQuestMethod(context: AstroContext, guildId: string, userId: string, questId?: string): Promise<{ ok: boolean; message: string }> {
   const { baseUrl, secret } = apiConfig(context);
