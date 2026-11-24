@@ -39,6 +39,8 @@ assert.equal(artUrl({ ...catalog.badges[2], flag: '../x' }), null);
 assert.equal(artUrl(catalog.badges[3]), '/assets/badges/femboy.png');
 assert.equal(artUrl({ ...catalog.badges[0], region: '../x' }), null, 'a region that is not two letters never makes a path');
 assert.match(hexHtml(catalog.badges[0], 'divine', 'lg'), /bd-f-divine/);
+assert.match(hexHtml({ ...catalog.badges[0], category: 'plan', unlock: 'plan' }, 'normal'), /bd-bare/, 'the star of a plan has no colored hexagon');
+assert.doesNotMatch(hexHtml({ ...catalog.badges[0], category: 'country', unlock: 'self' }, 'normal'), /bd-bare/, 'the other badges keep their hexagon');
 assert.doesNotMatch(hexHtml({ ...catalog.badges[2], color: '"><script>' }, 'normal'), /<script>/, 'a colour cannot close the attribute');
 
 // Tabs: the stars of the plans are in the Status tab; search by name; the owned filter.

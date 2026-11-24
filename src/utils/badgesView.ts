@@ -47,7 +47,9 @@ export const codeOf = (badge: CatalogBadge): string => (badge.region ?? badge.la
 export function hexHtml(badge: CatalogBadge, frame = 'normal', size: 'sm' | 'md' | 'lg' = 'md'): string {
   const url = artUrl(badge);
   const inner = url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" width="64" height="64">` : `<b>${esc(codeOf(badge))}</b>`;
-  return `<span class="bd-hex bd-${size} bd-f-${esc(frame)}" style="--c:${esc(badge.color)}"><span class="bd-hex-in">${inner}</span></span>`;
+  // The stars of the plans are drawn alone, with no colored hexagon behind them.
+  const bare = badge.category === 'plan' || badge.unlock === 'plan' ? ' bd-bare' : '';
+  return `<span class="bd-hex${bare} bd-${size} bd-f-${esc(frame)}" style="--c:${esc(badge.color)}"><span class="bd-hex-in">${inner}</span></span>`;
 }
 
 export interface Tile { badge: CatalogBadge; name: string; owned: boolean; frame: string; shown: boolean }
