@@ -5,6 +5,7 @@ import { getGuildSession } from '../../../../utils/dashAuth';
 import { getEnv } from '../../../../utils/env';
 import { getGuildInfo, getGuildList } from '../../../../utils/discord';
 import { runBatched } from '../../../../utils/concurrency';
+import { getPremiumGuildIds } from '../../../../utils/premium';
 import { callPettoStreakBoard } from '../../../../utils/pettoBotApi';
 import { getDashLang, makeT } from '../../../../i18n/dash';
 const dt = makeT(getDashLang(Astro));
@@ -71,7 +72,11 @@ if (Astro.request.method === 'POST') {
         if (res.ok) saved = true; else problem = dt('It could not be saved. Try again in a moment.');
       }
     } else if (action === 'safety') {
-      await saveConfig({ guild_freezes: whole(form.get('guild_freezes'), 0, 10) });
+      await saveConfig({ guild_freezes: whole(form.get('guild_freezes'), 0, 10), grace_minutes: whole(form.get('grace_minutes'), 0, 180), dm_reminder: form.get('dm_reminder') === 'on', dm_lost: form.get('dm_lost') === 'on' });
+    } else if (action === 'nickname') {
+      // The custom emoji is Premium: without Premium the fire is saved (the bot also uses the fire when the server has no Premium).
+      const emoji = [...String(form.get('nickname_emoji') ?? '').trim()].slice(0, 4).join('');
+      await saveConfig({ nickname_enabled: form.get('nickname_enabled') === 'on', nickname_emoji: emoji && !/\s/.test(emoji) ? emoji : '🔥' });
     } else if (action === 'reset') {
       // Every streak starts again from today: the days before are not counted, and the milestones can be announced again.
       await saveConfig({ reset_at: new Date().toISOString().slice(0, 10) });
@@ -85,13 +90,14 @@ if (Astro.request.method === 'POST') {
 
 const [guildInfo, configRes, rolesRes, channelsRes, serverRolesRes, current, longest] = await runBatched([
   () => getGuildInfo(id, botToken),
-  () => fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=enabled,mode,min_messages,min_voice_minutes,announce_channel_id,milestones,guild_freezes,reset_at`, { headers }),
+  () => fetch(`${apiUrl}/rest/v1/streak_config?guild_id=eq.${id}&select=enabled,mode,min_messages,min_voice_minutes,announce_channel_id,milestones,guild_freezes,reset_at,grace_minutes,dm_reminder,dm_lost,nickname_enabled,nickname_emoji`, { headers }),
   () => fetch(`${apiUrl}/rest/v1/streak_roles?guild_id=eq.${id}&select=days,role_id&order=days.asc`, { headers }),
   () => getGuildList(Astro, id, botToken, 'channels'),
   () => getGuildList(Astro, id, botToken, 'roles'),
   () => callPettoStreakBoard(Astro, id, 'current'),
   () => callPettoStreakBoard(Astro, id, 'longest'),
 ], 4);
+const premiumNow = await getPremiumGuildIds(Astro, session.userId, [id]).then((ids: Set<string>) => ids.has(id)).catch(() => false);
 const fallbackInfo = Astro.request.method === 'POST' && !guildInfo ? { id, name: dt('Server'), icon: null } : null;
 if (!guildInfo && !fallbackInfo) return Astro.redirect('/dash/manage?error=bot_not_in_guild');
 const serverInfo = (guildInfo ?? fallbackInfo)!;
@@ -104,6 +110,7 @@ const config = {
   enabled: c.enabled !== false, mode: MODES.includes(c.mode) ? String(c.mode) : 'any', minMessages: Number(c.min_messages ?? 1), minVoice: Number(c.min_voice_minutes ?? 0) || 10,
   announceChannelId: c.announce_channel_id ? String(c.announce_channel_id) : '', milestones: (Array.isArray(c.milestones) ? c.milestones.map(Number) : [3, 7, 14, 30, 60, 100, 365]) as number[],
   guildFreezes: Number(c.guild_freezes ?? 0), resetAt: c.reset_at ? String(c.reset_at).slice(0, 10) : null,
+  graceMinutes: Number(c.grace_minutes ?? 0), dmReminder: Boolean(c.dm_reminder), dmLost: Boolean(c.dm_lost), nicknameEnabled: Boolean(c.nickname_enabled), nicknameEmoji: c.nickname_emoji ? String(c.nickname_emoji) : '🔥',
 };
 const rewardRoles: { days: number; roleId: string }[] = rolesRes.ok ? (await rolesRes.json().catch(() => [])).map((row: any) => ({ days: Number(row.days), roleId: String(row.role_id) })) : [];
 const allChannels: any[] = channelsRes.ok ? await channelsRes.json().catch(() => []) : [];
@@ -113,4 +120,4 @@ const allRoles: any[] = serverRolesRes.ok ? await serverRolesRes.json().catch(()
 const roles = allRoles.filter((role: any) => role.name !== '@everyone' && !role.managed).sort((a: any, b: any) => b.position - a.position).map((role: any) => ({ id: String(role.id), name: String(role.name), color: Number(role.color ?? 0) }));
 const everyRole = allRoles.map((role: any) => ({ id: String(role.id), name: String(role.name) }));
 ---
-<DashStreaks user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} config={config} rewardRoles={rewardRoles} channels={channels} roles={roles} everyRole={everyRole} board={{ current: current ?? [], longest: longest ?? [], down: current === null }} ready={ready} saved={saved} problem={problem} maxRoles={MAX_ROLES} />
+<DashStreaks user={session} guildId={id} guildName={serverInfo.name} guildIcon={serverInfo.icon ?? '/assets/mascot-icon.webp'} config={config} rewardRoles={rewardRoles} channels={channels} roles={roles} everyRole={everyRole} board={{ current: current ?? [], longest: longest ?? [], down: current === null }} ready={ready} saved={saved} problem={problem} maxRoles={MAX_ROLES} premium={premiumNow} />
