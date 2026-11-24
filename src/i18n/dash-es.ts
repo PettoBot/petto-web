@@ -7240,4 +7240,13 @@ export const dashEs: Record<string, string> = {
   "You can have up to {max} keys.": "Puedes tener hasta {max} claves.",
   "How to use it": "Cómo usarla",
   "Endpoints: /api/v1/me (ceramos and plan), /api/v1/movements (the last 50 movements) and /api/v1/packs (the packs of ceramos, no key needed). 60 reads a minute for each key.": "Endpoints: /api/v1/me (ceramos y plan), /api/v1/movements (los últimos 50 movimientos) y /api/v1/packs (los paquetes de ceramos, sin clave). 60 lecturas por minuto por clave.",
+  "Missions": "Misiones",
+  "Resets {when}": "Se reinicia {when}",
+  "Chat and join voice channels to fill your missions and earn ceramos. The count is the activity of every server where Petto counts it.": "Chatea y entra a canales de voz para completar tus misiones y ganar ceramos. Se cuenta la actividad de todos los servidores donde Petto la cuenta.",
+  "Claim {n} ready": "Reclamar {n} listas",
+  "Nothing to claim yet": "Nada que reclamar todavía",
+  "Send {n} messages": "Envía {n} mensajes",
+  "Spend {n} minutes in voice": "Pasa {n} minutos en voz",
+  "Mission": "Misión",
+  "No mission is ready to claim yet.": "Todavía no hay ninguna misión lista para reclamar.",
 };

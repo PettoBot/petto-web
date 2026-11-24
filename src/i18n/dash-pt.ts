@@ -7240,4 +7240,13 @@ export const dashPt: Record<string, string> = {
   "You can have up to {max} keys.": "Você pode ter até {max} chaves.",
   "How to use it": "Como usar",
   "Endpoints: /api/v1/me (ceramos and plan), /api/v1/movements (the last 50 movements) and /api/v1/packs (the packs of ceramos, no key needed). 60 reads a minute for each key.": "Endpoints: /api/v1/me (ceramos e plano), /api/v1/movements (os últimos 50 movimentos) e /api/v1/packs (os pacotes de ceramos, sem chave). 60 leituras por minuto por chave.",
+  "Missions": "Missões",
+  "Resets {when}": "Reinicia {when}",
+  "Chat and join voice channels to fill your missions and earn ceramos. The count is the activity of every server where Petto counts it.": "Converse e entre em canais de voz para completar suas missões e ganhar ceramos. Conta a atividade de todos os servidores onde o Petto a conta.",
+  "Claim {n} ready": "Resgatar {n} prontas",
+  "Nothing to claim yet": "Nada para resgatar ainda",
+  "Send {n} messages": "Envie {n} mensagens",
+  "Spend {n} minutes in voice": "Passe {n} minutos em voz",
+  "Mission": "Missão",
+  "No mission is ready to claim yet.": "Ainda não há nenhuma missão pronta para resgatar.",
 };

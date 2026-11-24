@@ -70,7 +70,7 @@ export default defineConfig({
           'upload-simple-bold', 'user-fill', 'user-gear-fill', 'lock-key-fill', 'user-minus-fill', 'user-plus-fill', 'users-three-fill',
           'warning-fill', 'webhooks-logo-fill', 'wrench-fill', 'x', 'x-bold', 'x-circle-fill', 'x-fill',, 'plugs-connected-fill', 'music-notes-fill', 'game-controller-fill', 'cat-fill', 'paw-print-fill', 'camera-fill',
           'lock-simple-open-fill', 'sliders-fill',
-          'hourglass-fill', 'text-aa-fill', 'identification-card-fill', 'coins-fill',
+          'hourglass-fill', 'text-aa-fill', 'identification-card-fill', 'coins-fill', 'target-fill',
         ],
         'simple-icons': [
           'deezer', 'applemusic', 'mastodon', 'tumblr', 'letterboxd', 'epicgames', 'anthropic', 'astro', 'claude', 'cloudflare', 'discord', 'facebook', 'github',
