@@ -1,0 +1,120 @@
+---
+// Give ceramos (/dash/ceramos-admin): the owner and the people the owner lists give ceramos to a person, with a note, inside the limits the owner sets (the most in one gift and the
+// most a day for each person of the team). The owner sets those limits and the list here. The bot checks who asks and what is sent; this page asks.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopAdminShared from './DashShopAdminShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface Gift { userId: string; amount: number; byUser: string | null; note: string | null; createdAt: string }
+interface Data { allowed: boolean; isOwner: boolean; enabled: boolean; maxPerGrant: number; maxPerDay: number; leftToday: number | null; settings?: { enabled: boolean; maxPerGrant: number; maxPerDay: number; people: string[] }; recent: Gift[] }
+interface Props { user: Session; data: Data | null }
+const { user, data } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const number = new Intl.NumberFormat(lang);
+const date = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const ui = {
+  saved: dt('Saved.'), saving: dt('Saving…'), down: dt('Petto did not answer. Try again in a moment.'), given: dt('Done: the new balance is {balance}.'),
+  errors: {
+    forbidden: dt('You cannot give ceramos right now.'), bad_person: dt('The id of the person is 15 to 25 digits.'), bad_amount: dt('The amount is a whole number from 1.'),
+    too_much: dt('That is more than the most you can give in one gift ({max}).'), daily_limit: dt('That is more than what you can still give today ({left}).'), failed: dt('It could not be done. Try again in a moment.'),
+  },
+};
+const boot = JSON.stringify({ ui }).replace(/</g, '\\u003c');
+---
+<DashMeLayout user={user} active="staff-grant" pageTitle="Give ceramos">
+  <DashShopAdminShared />
+  <DashPanelHead title={dt('Give ceramos')} eyebrow={dt('Staff')} icon="ph:coins-fill" back={false} />
+  {!data && <p class="be-down" role="alert">{ui.down}</p>}
+  {data && (
+    <div class="be" id="be" data-boot={boot}>
+      <p class="be-intro">
+        {dt('Give ceramos to a person. They arrive at once and show in their movements as a gift from the team.')}
+        {data.leftToday !== null
+          ? ' ' + dt('In one gift you can give up to {max}, and you can still give {left} today.', { max: number.format(data.maxPerGrant), left: number.format(data.leftToday) })
+          : ' ' + dt('You are the owner: you only have the limit of one gift ({max}).', { max: number.format(data.maxPerGrant) })}
+      </p>
+      <form class="be-form" id="be-form" autocomplete="off">
+        <h2>{dt('Give ceramos')}</h2>
+        <div class="be-grid">
+          <label>{dt('Id of the person (Discord)')}<input name="person" required inputmode="numeric" pattern="[0-9]{15,25}" placeholder="293504726505357312" /></label>
+          <label>{dt('How many ceramos')}<input name="amount" type="number" required min="1" max={data.maxPerGrant} step="1" value="100" /></label>
+          <label class="be-wide">{dt('Why (written in the movements)')}<input name="note" maxlength="60" /></label>
+        </div>
+        <p class="be-msg" id="be-msg" role="status" hidden></p>
+        <div class="be-buttons"><button type="submit" class="btn be-save" id="be-save">{dt('Give ceramos')}</button></div>
+      </form>
+
+      <div class="be-list" role="group" aria-label={dt('Last gifts')}>
+        <h2>{dt('Last gifts')}</h2>
+        {data.recent.length === 0 && <p class="be-empty">{dt('Nobody has been given ceramos yet.')}</p>}
+        {data.recent.map((gift) => (
+          <article class="be-row">
+            <div class="be-info">
+              <strong>+{number.format(gift.amount)} → {gift.userId}</strong>
+              <span class="be-meta"><span>{date.format(new Date(gift.createdAt))}</span>{gift.byUser && <span>{dt('by {id}', { id: gift.byUser })}</span>}{gift.note && <span>{gift.note}</span>}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {data.isOwner && data.settings && (
+        <form class="be-form" id="be-settings" autocomplete="off">
+          <h2>{dt('Who can give, and how much')}</h2>
+          <p class="be-intro">{dt('You can always give. The people on this list can give inside these limits. Put one Discord id on each line.')}</p>
+          <div class="be-grid">
+            <label class="be-check"><input type="checkbox" name="enabled" checked={data.settings.enabled} /> {dt('Let the people on the list give ceramos')}</label>
+            <label>{dt('Most in one gift')}<input name="maxPerGrant" type="number" min="1" max="100000" step="1" value={data.settings.maxPerGrant} /></label>
+            <label>{dt('Most a day for each person')}<input name="maxPerDay" type="number" min="1" max="1000000" step="1" value={data.settings.maxPerDay} /></label>
+            <label class="be-wide">{dt('People who can give (Discord ids)')}<textarea name="people" rows="4" placeholder="293504726505357312">{data.settings.people.join('\n')}</textarea></label>
+          </div>
+          <p class="be-msg" id="be-smsg" role="status" hidden></p>
+          <div class="be-buttons"><button type="submit" class="btn be-save" id="be-ssave">{dt('Save')}</button></div>
+        </form>
+      )}
+    </div>
+  )}
+</DashMeLayout>
+
+<script>
+  const root = document.getElementById('be');
+  if (root?.dataset.boot) {
+    const { ui } = JSON.parse(root.dataset.boot) as { ui: any };
+    const send = async (action: string, body: unknown) => {
+      const response = await fetch(`/dash/ceramos-admin-act?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await response.json().catch(() => null);
+      return { ok: Boolean(response.ok && data?.ok), data };
+    };
+    const show = (id: string, text: string, level: 'ok' | 'error') => { const msg = document.getElementById(id) as HTMLElement; msg.hidden = false; msg.textContent = text; msg.className = `be-msg is-${level}`; };
+    const why = (data: any) => (ui.errors[data?.error ?? 'failed'] ?? ui.errors.failed).replace('{max}', String(data?.max ?? '')).replace('{left}', String(data?.left ?? ''));
+    const grantForm = document.getElementById('be-form') as HTMLFormElement | null;
+    grantForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const field = (name: string) => grantForm.elements.namedItem(name) as HTMLInputElement;
+      const button = document.getElementById('be-save') as HTMLButtonElement; button.disabled = true; show('be-msg', ui.saving, 'ok');
+      const out = await send('grant', { person: field('person').value.trim(), amount: Number(field('amount').value), note: field('note').value });
+      if (out.ok) { show('be-msg', ui.given.replace('{balance}', String(out.data.balance ?? '')), 'ok'); setTimeout(() => location.reload(), 1200); } else { button.disabled = false; show('be-msg', out.data?.error === 'down' ? ui.down : why(out.data), 'error'); }
+    });
+    const settingsForm = document.getElementById('be-settings') as HTMLFormElement | null;
+    settingsForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const field = (name: string) => settingsForm.elements.namedItem(name) as HTMLInputElement;
+      const button = document.getElementById('be-ssave') as HTMLButtonElement; button.disabled = true; show('be-smsg', ui.saving, 'ok');
+      const people = field('people').value.split(/[\s,]+/).map((id) => id.trim()).filter(Boolean);
+      const out = await send('settings', { enabled: field('enabled').checked, maxPerGrant: Number(field('maxPerGrant').value), maxPerDay: Number(field('maxPerDay').value), people });
+      button.disabled = false;
+      show('be-smsg', out.ok ? ui.saved : why(out.data), out.ok ? 'ok' : 'error');
+    });
+  }
+</script>
+
+<style is:global>
+  .be-list > h2 { margin: 6px 0 2px; font-size: 18px; }
+  .be-grid .be-wide { grid-column: 1 / -1; }
+  .be-grid label.be-check { flex-direction: row; align-items: center; gap: 10px; grid-column: 1 / -1; font-size: 14px; color: var(--text); }
+  .be-grid label.be-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--green); }
+  .be-grid textarea { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; min-width: 0; resize: none; }
+  .be-grid textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+</style>
