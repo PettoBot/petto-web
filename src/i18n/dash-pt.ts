@@ -7389,6 +7389,6 @@ export const dashPt: Record<string, string> = {
   "There is no room: a server can have {n} rewards.": "Não há espaço: um servidor pode ter {n} recompensas.",
   "Petto's role has to be above the role it gives. The members keep the role when a streak ends.": "O cargo do Petto precisa estar acima do cargo que ele dá. Os membros mantêm o cargo quando uma sequência termina.",
   "Backups are a Premium feature": "Os backups são um recurso Premium",
-  "Making and scheduling backups needs Premium on this server. The backups you already have can still be seen, exported, restored and deleted.": "Criar e agendar backups precisa de Premium neste servidor. Os backups que você já tem ainda podem ser vistos, exportados, restaurados e apagados.",
   "Making and scheduling backups needs Premium on this server.": "Criar e agendar backups precisa de Premium neste servidor.",
+  "Activate Premium for this server to create, schedule and manage its backups.": "Ative o Premium neste servidor para criar, agendar e gerenciar os backups dele.",
 };
