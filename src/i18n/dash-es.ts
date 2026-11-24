@@ -3823,6 +3823,7 @@ export const dashEs: Record<string, string> = {
   "Open the billing portal": "Abrir el portal de pagos",
   "You already have a plan": "Ya tienes un plan",
   "You can buy more than one: their servers add up.": "Puedes comprar más de uno: sus servidores se suman.",
+  "Your balance": "Tu saldo",
   "Petto did not answer. Try again in a moment.": "Petto no respondió. Inténtalo de nuevo en un momento.",
   "Pick a role": "Elige un rol",
   "Pick the role to count.": "Elige el rol que se cuenta.",

@@ -361,12 +361,14 @@ export async function creditCoinPack(astro: any, event: any): Promise<boolean> {
   const order = event.data ?? {};
   const metadata = { ...(order.product?.metadata ?? {}), ...(order.metadata ?? {}) };
   const pack = coinPackOf(astro, order, metadata);
-  if (!pack) return false;
+  // What the webhook decided is written in the log of the host (ids only), so a purchase whose ceramos did not arrive can be followed.
+  if (!pack) { console.info(`[polar] order.paid ${String(order.id ?? '')} is not a pack of ceramos: product ${String(order.product_id ?? order.product?.id ?? 'none')}, kind ${String(metadata.kind ?? 'none')}`); return false; }
   const userId = String(order.customer?.external_id ?? order.customer_external_id ?? metadata.discord_user_id ?? '');
   const orderId = String(order.id ?? '');
-  if (!/^\d{15,22}$/.test(userId) || !orderId) return true;
+  if (!/^\d{15,22}$/.test(userId) || !orderId) { console.warn(`[polar] order.paid ${orderId} for the pack ${pack} has no valid Discord id (${userId || 'none'})`); return true; }
   const done = await callPettoCeramos(astro, userId, 'credit-pack', { pack, order: orderId });
   if (!done.ok) throw new Error(`The ceramos of order ${orderId} could not be given.`);
+  console.info(`[polar] order.paid ${orderId}: pack ${pack} for ${userId}, ${done.data?.applied ? 'given' : 'already given'}, balance ${done.data?.balance ?? '?'}`);
   return true;
 }
 

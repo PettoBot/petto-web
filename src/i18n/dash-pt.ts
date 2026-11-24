@@ -3823,6 +3823,7 @@ export const dashPt: Record<string, string> = {
   "Open the billing portal": "Abrir o portal de pagamentos",
   "You already have a plan": "Você já tem um plano",
   "You can buy more than one: their servers add up.": "Você pode comprar mais de um: os servidores deles se somam.",
+  "Your balance": "Seu saldo",
   "Petto did not answer. Try again in a moment.": "O Petto não respondeu. Tente de novo daqui a pouco.",
   "Pick a role": "Escolha um cargo",
   "Pick the role to count.": "Escolha o cargo a contar.",
