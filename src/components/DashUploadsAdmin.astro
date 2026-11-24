@@ -1,0 +1,100 @@
+---
+// Review of the own pictures (/dash/uploads-admin, only the owner): the pictures waiting, to approve or reject (with a reason, and blocking the person if it is needed), taking down
+// what a person already has (a copyright claim, a report), and the people who are blocked. A picture with a minor is removed and blocks the person at once; reporting it as the
+// law asks is up to the team: nothing here sends it anywhere.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopAdminShared from './DashShopAdminShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface Data { pending: { userId: string; pendingAt: string }[]; blocked: { userId: string; reason: string; createdAt: string }[] }
+interface Props { user: Session; data: Data | null }
+const { user, data } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const date = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const reasons = [['sexual', dt('Sexual content')], ['minor', dt('Content with minors (blocks at once)')], ['violence', dt('Violent content')], ['hate', dt('Hate')], ['illegal', dt('Illegal content')], ['private', dt('Private data of someone')], ['copyright', dt('Copyright claim')], ['quality', dt('Quality of the picture')], ['other', dt('Other rule')]];
+const boot = JSON.stringify({ ui: { down: dt('Petto did not answer. Try again in a moment.'), failed: dt('It could not be done. Try again in a moment.') } }).replace(/</g, '\\u003c');
+---
+<DashMeLayout user={user} active="staff-uploads" pageTitle="Own pictures">
+  <DashShopAdminShared />
+  <DashPanelHead title={dt('Own pictures')} eyebrow={dt('Staff')} icon="ph:image-square-fill" back={false} />
+  {!data && <p class="be-down" role="alert">{dt('Petto did not answer. Try again in a moment.')}</p>}
+  {data && (
+    <div class="be" id="be" data-boot={boot}>
+      <p class="be-intro">{dt('Nobody sees a picture until you approve it. A picture with a minor is removed and blocks the person at once: you have to report it as the law asks.')}</p>
+      <div class="be-list">
+        <h2 class="un-h">{dt('Waiting for review')}</h2>
+        {data.pending.length === 0 && <p class="be-empty">{dt('Nothing is waiting.')}</p>}
+        {data.pending.map((row) => (
+          <article class="be-row un-row" data-person={row.userId}>
+            <img class="un-img" src={`/dash/uploads-admin-act?file=${row.userId}`} alt="" width="320" height="100" loading="lazy" />
+            <div class="be-info"><strong>{row.userId}</strong><span class="be-meta"><span>{date.format(new Date(row.pendingAt))}</span></span></div>
+            <div class="un-controls">
+              <select class="un-reason" aria-label={dt('Reason')}>{reasons.map(([id, label]) => <option value={id}>{label}</option>)}</select>
+              <label class="un-block"><input type="checkbox" class="un-blockbox" /> {dt('Block this person')}</label>
+              <div class="be-actions"><button type="button" class="btn be-save" data-act="approve">{dt('Approve')}</button><button type="button" class="btn be-off" data-act="reject">{dt('Reject')}</button></div>
+            </div>
+          </article>
+        ))}
+      </div>
+      <form class="be-form" id="un-takedown" autocomplete="off">
+        <h2>{dt('Take down a picture')}</h2>
+        <div class="be-grid">
+          <label>{dt('Id of the person (Discord)')}<input name="person" required inputmode="numeric" pattern="[0-9]{15,25}" /></label>
+          <label>{dt('Reason')}<select name="reason">{reasons.map(([id, label]) => <option value={id}>{label}</option>)}</select></label>
+          <label class="un-block"><input type="checkbox" name="block" /> {dt('Block this person')}</label>
+        </div>
+        <p class="be-msg" id="be-msg" role="status" hidden></p>
+        <div class="be-buttons"><button type="submit" class="btn be-off">{dt('Take down')}</button></div>
+      </form>
+      <div class="be-list">
+        <h2 class="un-h">{dt('Blocked people')}</h2>
+        {data.blocked.length === 0 && <p class="be-empty">{dt('Nobody is blocked.')}</p>}
+        {data.blocked.map((row) => (
+          <article class="be-row"><div class="be-info"><strong>{row.userId}</strong><span class="be-meta"><span>{row.reason || '—'}</span><span>{date.format(new Date(row.createdAt))}</span></span></div><div class="be-actions"><button type="button" class="btn be-save" data-unblock={row.userId}>{dt('Unblock')}</button></div></article>
+        ))}
+      </div>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .un-h { margin: 0 0 4px; font-size: 18px; }
+  .un-row { align-items: flex-start; } .un-img { width: min(320px, 100%); height: auto; aspect-ratio: 1024 / 320; object-fit: cover; border-radius: 10px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .un-controls { display: flex; flex-direction: column; gap: 8px; min-width: 220px; flex: 1 1 220px; }
+  .un-reason, .be-grid select { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; }
+  .be-grid label.un-block, .un-block { flex-direction: row; display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-muted); } .un-block input { accent-color: var(--green); width: 16px; height: 16px; }
+</style>
+
+<script>
+  const root = document.getElementById('be');
+  if (root?.dataset.boot) {
+    const { ui } = JSON.parse(root.dataset.boot) as { ui: any };
+    const msg = document.getElementById('be-msg') as HTMLElement;
+    const say = (text: string) => { msg.hidden = false; msg.textContent = text; msg.className = 'be-msg is-error'; };
+    const send = async (body: unknown) => {
+      const response = await fetch('/dash/uploads-admin-act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await response.json().catch(() => null);
+      return { ok: Boolean(response.ok && data?.ok), data };
+    };
+    const fail = (data: any) => say(data?.error === 'down' ? ui.down : `${ui.failed} (${data?.error ?? 'error'})`);
+    document.querySelectorAll<HTMLElement>('.un-row').forEach((row) => row.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((button) => button.addEventListener('click', async () => {
+      button.disabled = true;
+      const out = await send({ person: row.dataset.person, action: button.dataset.act, reason: (row.querySelector('.un-reason') as HTMLSelectElement).value, block: (row.querySelector('.un-blockbox') as HTMLInputElement).checked });
+      if (out.ok) location.reload(); else { button.disabled = false; fail(out.data); }
+    })));
+    document.querySelectorAll<HTMLButtonElement>('[data-unblock]').forEach((button) => button.addEventListener('click', async () => {
+      button.disabled = true; const out = await send({ person: button.dataset.unblock, action: 'unblock' });
+      if (out.ok) location.reload(); else { button.disabled = false; fail(out.data); }
+    }));
+    const form = document.getElementById('un-takedown') as HTMLFormElement | null;
+    form?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+      const out = await send({ person: field('person').value.trim(), action: 'takedown', reason: field('reason').value, block: field('block').checked });
+      if (out.ok) location.reload(); else fail(out.data);
+    });
+  }
+</script>

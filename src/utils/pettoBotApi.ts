@@ -890,16 +890,36 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
  * One call to the badges and ceramos API of the bot (`/api/dashboard/ceramos/<route>`) for the person who is logged in: the catalog, their state, and the actions
  * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
  */
-export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'missions' | 'missions-claim' | 'api-keys' | 'api-key-create' | 'api-key-remove' | 'admin/grant' | 'admin/grant-settings' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
+export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'upload-state' | 'upload-policy' | 'admin/uploads' | 'admin/upload-review' | 'missions' | 'missions-claim' | 'api-keys' | 'api-key-create' | 'api-key-remove' | 'admin/grant' | 'admin/grant-settings' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
   | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'credit-pack' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
 export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, data: null, down: true };
-  const read = route === 'catalog' || route === 'state' || route === 'rank-card' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans' || route === 'missions' || route === 'api-keys' || (route === 'admin/grant' && !body);
+  const read = route === 'catalog' || route === 'state' || route === 'rank-card' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans' || route === 'upload-state' || route === 'admin/uploads' || route === 'missions' || route === 'api-keys' || (route === 'admin/grant' && !body);
   const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
   const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
   const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
   return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** Sends an own picture to the bot (it waits for review). The bot checks the plan, the policy, the block and the picture itself. */
+export async function sendPettoUpload(context: AstroContext, userId: string, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const url = `${baseUrl}/api/dashboard/ceramos/upload-submit?user_id=${encodeURIComponent(userId)}`;
+  const call = await botFetch(url, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** The picture of a person waiting for review, as the bot has it (only the owner may ask; the bot checks it). */
+export async function fetchPettoPendingUpload(context: AstroContext, ownerId: string, person: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^\d{15,25}$/.test(person)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/admin/upload-file?user_id=${encodeURIComponent(ownerId)}&person=${encodeURIComponent(person)}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/webp' };
+  } catch { return null; }
 }
 
 /** The read-only API: what a key reads (`me`, `movements`) or what anyone reads (`info`). The key says who; the bot checks it, limits it to 60 reads a minute and never changes anything. */
