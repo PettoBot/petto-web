@@ -21,6 +21,7 @@ export const ACCESS_SECTIONS: { id: string; label: string; pages: string[] }[] =
   { id: 'tickets', label: 'Tickets', pages: ['tickets', 'forums'] },
   { id: 'community', label: 'Community', pages: ['giveaways', 'community', 'birthdays', 'confessions', 'counting', 'media', 'partners', 'responders', 'senders', 'suggestions', 'tools', 'forms', 'feeds', 'activity-boards', 'voice-247', 'bump'] },
   { id: 'quests', label: 'Quests', pages: ['quests'] },
+  { id: 'economy', label: 'Economy', pages: ['economy'] },
   { id: 'rollouts', label: 'Rollouts', pages: ['rollouts'] },
   { id: 'vanity', label: 'Vanity roles', pages: ['vanity'] },
 ];
