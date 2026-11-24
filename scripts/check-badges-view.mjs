@@ -29,13 +29,18 @@ const names = { 'country-co': 'Colombia', 'country-mx': 'México', 'lang-es': 'e
 const words = { name: (b) => names[b.id], rarity: { common: 'Común', rare: 'Rara', epic: 'Épica', legendary: 'Legendaria' }, owned: 'Tuya', free: 'Gratis', until: (iso) => `Hasta ${iso.slice(0, 10)}`, auto: 'Automática' };
 const state = { balance: 300, plan: null, daily: { canClaim: true, nextAt: new Date().toISOString(), amount: 2 }, slots: 2, owned: [{ id: 'country-co', frame: 'divine' }, { id: 'femboy', frame: 'normal' }], showcase: ['country-co'] };
 
-// Pictures: a country has its flag, a language has none (its code is drawn), the others have a file of the site.
+// Pictures: a country has its flag, a language has the flag of the country that stands for it (or its code when the bot gives none), the others have a file of the site.
 assert.equal(artUrl(catalog.badges[0]), '/assets/country-flags/co.svg');
 assert.equal(artUrl(catalog.badges[2]), null);
 assert.equal(codeOf(catalog.badges[2]), 'ES');
+// A language has no flag of its own: when the bot says which country stands for it, that flag is drawn (and a flag that is not two letters never makes a path).
+assert.equal(artUrl({ ...catalog.badges[2], flag: 'ES' }), '/assets/country-flags/es.svg');
+assert.equal(artUrl({ ...catalog.badges[2], flag: '../x' }), null);
 assert.equal(artUrl(catalog.badges[3]), '/assets/badges/femboy.png');
 assert.equal(artUrl({ ...catalog.badges[0], region: '../x' }), null, 'a region that is not two letters never makes a path');
 assert.match(hexHtml(catalog.badges[0], 'divine', 'lg'), /bd-f-divine/);
+assert.match(hexHtml({ ...catalog.badges[0], category: 'plan', unlock: 'plan' }, 'normal'), /bd-bare/, 'the star of a plan has no colored hexagon');
+assert.doesNotMatch(hexHtml({ ...catalog.badges[0], category: 'country', unlock: 'self' }, 'normal'), /bd-bare/, 'the other badges keep their hexagon');
 assert.doesNotMatch(hexHtml({ ...catalog.badges[2], color: '"><script>' }, 'normal'), /<script>/, 'a colour cannot close the attribute');
 
 // Tabs: the stars of the plans are in the Status tab; search by name; the owned filter.

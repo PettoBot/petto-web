@@ -6,7 +6,7 @@ export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface CatalogBadge {
   id: string; category: Category; unlock: 'plan' | 'self' | 'team' | 'shop' | 'status'; rarity: Rarity | null; price: number; color: string;
-  region: string | null; language: string | null; pack: string | null;
+  region: string | null; language: string | null; flag?: string | null; pack: string | null;
   /** The badges of the editor of the team: their words in each language, their days of sale, the plan they ask for, the rule that gives them, and whether they are on sale now. */
   custom: boolean; names: Record<string, string> | null; saleFrom: string | null; saleUntil: string | null; planMin: string | null; grantRule: string | null;
   onSale: boolean; retired: boolean; hasArt: boolean; dbArt?: boolean; version: string | null;
@@ -31,10 +31,12 @@ const ART: Record<string, string> = { 'bufi-normal': 'bufi-normal.png', 'bufi-si
 
 const esc = (value: string): string => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
-/** The picture of a badge: the flag of its country, or its art file, or null (then it is drawn with its code). */
+/** The picture of a badge: the flag of its country (or of the country that stands for its language), or its art file, or null (then it is drawn with its code). */
 export function artUrl(badge: CatalogBadge): string | null {
   if (badge.custom || badge.dbArt) return badge.hasArt && /^[a-z0-9-]{1,40}$/.test(badge.id) ? `/dash/badge-art/${badge.id}?v=${encodeURIComponent(badge.version ?? '')}` : null;
   if (badge.region && /^[A-Z]{2}$/.test(badge.region)) return `/assets/country-flags/${badge.region.toLowerCase()}.svg`;
+  // A language has no flag of its own: the bot says which country stands for it.
+  if (badge.flag && /^[A-Z]{2}$/.test(badge.flag)) return `/assets/country-flags/${badge.flag.toLowerCase()}.svg`;
   return ART[badge.id] ? `/assets/badges/${ART[badge.id]}` : null;
 }
 
@@ -45,7 +47,9 @@ export const codeOf = (badge: CatalogBadge): string => (badge.region ?? badge.la
 export function hexHtml(badge: CatalogBadge, frame = 'normal', size: 'sm' | 'md' | 'lg' = 'md'): string {
   const url = artUrl(badge);
   const inner = url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" width="64" height="64">` : `<b>${esc(codeOf(badge))}</b>`;
-  return `<span class="bd-hex bd-${size} bd-f-${esc(frame)}" style="--c:${esc(badge.color)}"><span class="bd-hex-in">${inner}</span></span>`;
+  // The stars of the plans are drawn alone, with no colored hexagon behind them.
+  const bare = badge.category === 'plan' || badge.unlock === 'plan' ? ' bd-bare' : '';
+  return `<span class="bd-hex${bare} bd-${size} bd-f-${esc(frame)}" style="--c:${esc(badge.color)}"><span class="bd-hex-in">${inner}</span></span>`;
 }
 
 export interface Tile { badge: CatalogBadge; name: string; owned: boolean; frame: string; shown: boolean }

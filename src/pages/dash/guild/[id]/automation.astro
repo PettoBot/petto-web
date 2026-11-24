@@ -21,6 +21,7 @@ import { callPettoTimerRun } from '../../../../utils/pettoBotApi';
 import { getMemberProfiles, memberAvatarUrl } from '../../../../utils/memberNames';
 import { withinBudget } from '../../../../utils/liveCall';
 import { FREE_LIMITS, PREMIUM_LIMITS, planLimits } from '../../../../utils/planLimits';
+import { scopeFromForm, scopeOf, isScoped, withScope } from '../../../../utils/commandScope';
 const dt = makeT(getDashLang(Astro));
 
 const { id } = Astro.params as { id: string };
@@ -154,13 +155,30 @@ if (Astro.request.method === 'POST') {
         const res = await fetch(`${apiUrl}/rest/v1/custom_commands?on_conflict=guild_id,name`, {
           method: 'POST',
           headers: { ...apiHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
-          body: JSON.stringify({ guild_id: id, name, response, embed_template: embedTemplate }),
+          // Where it works (channels and roles allowed or blocked, NSFW, restricted) is only written when the form asked for something.
+          body: JSON.stringify({ guild_id: id, name, response, embed_template: embedTemplate, ...(isScoped(scopeFromForm(form)) ? { options: withScope(null, scopeFromForm(form)) } : {}) }),
         });
         if (res.ok) saved = true;
         else error = dt("Couldn't save that custom command, try again.");
       }
     } else {
       error = dt('Write a name, and a response or choose a template.');
+    }
+  } else if (action === 'command_scope') {
+    // The lists and switches of one command (where it works): the other options of the command are kept.
+    const commandId = encodeURIComponent(String(form.get('id') ?? ''));
+    const currentRes = await fetch(`${apiUrl}/rest/v1/custom_commands?id=eq.${commandId}&guild_id=eq.${id}&select=options`, { headers: apiHeaders });
+    const current = currentRes.ok ? await currentRes.json() : null;
+    if (!Array.isArray(current) || current.length === 0) {
+      error = dt("Couldn't save that custom command, try again.");
+    } else {
+      const res = await fetch(`${apiUrl}/rest/v1/custom_commands?id=eq.${commandId}&guild_id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { ...apiHeaders, Prefer: 'return=minimal' },
+        body: JSON.stringify({ options: withScope(current[0].options, scopeFromForm(form)) }),
+      });
+      if (res.ok) saved = true;
+      else error = dt("Couldn't save that custom command, try again.");
     }
   } else if (action === 'delete_command') {
     await fetch(`${apiUrl}/rest/v1/custom_commands?id=eq.${encodeURIComponent(String(form.get('id') ?? ''))}&guild_id=eq.${id}`, { method: 'DELETE', headers: apiHeaders });
@@ -704,7 +722,7 @@ const WITH_ROLES = ['reaction-triggers', 'starboard', 'monkeyboard', 'autorespon
 const WITH_TEMPLATES = ['webhooks', 'starboard', 'monkeyboard', 'timers', 'custom-commands', 'autoresponders', 'sticky-messages', 'reaction-roles', 'auto-threads'];
 const [guildInfo, commandsRes, respondersRes, stickyRes, reactionRolesRes, reactionTriggersRes, reactionMessagesRes, disabledRes, autoThreadsRes, aliasesRes, timersRes, starboardRes, monkeyboardRes, voiceMasterRes, webhooksRes, countersRes, rolesRes, channelsRes, embedTemplatesRes, stickyRolesRes, stickySnapshotsRes, prefixRes, codeRes] = await runBatched([
   () => getGuildInfo(id, botToken),
-  when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template&order=name.asc`, { headers: apiHeaders })),
+  when(['custom-commands'], () => fetch(`${apiUrl}/rest/v1/custom_commands?guild_id=eq.${id}&select=id,name,response,embed_template,options&order=name.asc`, { headers: apiHeaders })),
   when(['autoresponders'], () => fetch(`${apiUrl}/rest/v1/auto_responders?guild_id=eq.${id}&select=*&order=trigger.asc`, { headers: apiHeaders })),
   when(['sticky-messages'], () => fetch(`${apiUrl}/rest/v1/sticky_messages?guild_id=eq.${id}&select=channel_id,content,embed_template`, { headers: apiHeaders })),
   when(['reaction-roles'], () => fetch(apiUrl + '/rest/v1/reaction_roles?guild_id=eq.' + id + '&select=id,channel_id,message_id,emoji,role_id,mode,interaction_type,button_label', { headers: apiHeaders })),
@@ -739,7 +757,7 @@ try {
   if (codeRes?.ok) for (const row of await codeRes.json()) codeCommandNames.add(row.name);
 } catch {}
 
-const customCommands = commandsRes?.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name) })) : [];
+const customCommands = commandsRes?.ok ? (await commandsRes.json()).map((c: any) => ({ id: c.id, name: c.name, response: c.response, embedTemplate: c.embed_template, isCode: codeCommandNames.has(c.name), scope: scopeOf(c.options) })) : [];
 const stickyRolesEnabled = stickyRolesRes?.ok ? Boolean((await stickyRolesRes.json())?.[0]?.enabled) : false;
 const stickyRows: any[] = stickySnapshotsRes?.ok ? await stickySnapshotsRes.json() : [];
 const stickyRolesSaved = stickyRows.length;
