@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getEnv } from '../../../../utils/env';
-import { creditCoinPack, notifyPremiumEvent, syncPolarSubscription, verifyPolarWebhook } from '../../../../utils/polarWebhook';
+import { creditCoinPack, refundCoinPack, notifyPremiumEvent, syncPolarSubscription, verifyPolarWebhook } from '../../../../utils/polarWebhook';
 import { forgetPremiumSnapshots } from '../../../../utils/premium';
 
 export const prerender = false;
@@ -17,6 +17,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
     await syncPolarSubscription({ locals }, event);
     // A pack of ceramos that was paid: the ceramos arrive now (once for each order).
     await creditCoinPack({ locals }, event);
+    // A pack that was refunded: the ceramos of that order are taken back (once).
+    await refundCoinPack({ locals }, event);
     await notifyPremiumEvent({ locals }, event);
     // A subscription changed: the Premium states kept by the dashboard are read again.
     forgetPremiumSnapshots();

@@ -903,7 +903,7 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
  * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
  */
 export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'upload-state' | 'upload-policy' | 'admin/uploads' | 'admin/upload-review' | 'missions' | 'summary' | 'missions-claim' | 'api-keys' | 'api-key-create' | 'api-key-remove' | 'admin/grant' | 'admin/grant-settings' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
-  | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'credit-pack' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
+  | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'credit-pack' | 'credit-refund' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
 export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, data: null, down: true };

@@ -363,3 +363,20 @@ export async function creditCoinPack(astro: any, event: any): Promise<boolean> {
   if (!done.ok) throw new Error(`The ceramos of order ${orderId} could not be given.`);
   return true;
 }
+
+/**
+ * A refunded order of a pack of ceramos: the bot takes the ceramos of that order back, once (what the person already spent cannot be taken: it takes what is left). A failure throws,
+ * so the webhook answers with an error and Polar tries again. Returns whether the event was one of these orders.
+ */
+export async function refundCoinPack(astro: any, event: any): Promise<boolean> {
+  if (!event || event.type !== 'order.refunded') return false;
+  const order = event.data ?? {};
+  const metadata = { ...(order.product?.metadata ?? {}), ...(order.metadata ?? {}) };
+  if (!coinPackOf(astro, order, metadata)) return false;
+  const userId = String(order.customer?.external_id ?? order.customer_external_id ?? metadata.discord_user_id ?? '');
+  const orderId = String(order.id ?? '');
+  if (!/^\d{15,22}$/.test(userId) || !orderId) return true;
+  const done = await callPettoCeramos(astro, userId, 'credit-refund', { order: orderId });
+  if (!done.ok) throw new Error(`The ceramos of the refunded order ${orderId} could not be taken back.`);
+  return true;
+}
