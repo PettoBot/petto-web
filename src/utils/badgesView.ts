@@ -27,7 +27,7 @@ export interface Words {
 
 export const TABS: readonly Category[] = ['country', 'language', 'fablo', 'special', 'status'];
 /** The picture files of the badges that are not flags (copied to public/assets/badges). */
-const ART: Record<string, string> = { 'plan-bronze': 'plan-bronze.png', 'plan-silver': 'plan-silver.png', 'plan-gold': 'plan-gold.png', furro: 'furro.png', boykisser: 'boykisser.png', hetero: 'hetero.png', femboy: 'femboy.png' };
+const ART: Record<string, string> = { 'bufi-normal': 'bufi-normal.png', 'bufi-silver': 'bufi-silver.png', 'bufi-girl': 'bufi-girl.png', 'bufi-boy': 'bufi-boy.png', 'bufi-bu': 'bufi-bu.png', 'bufi-black-friday': 'bufi-black-friday.png', 'plan-bronze': 'plan-bronze.png', 'plan-silver': 'plan-silver.png', 'plan-gold': 'plan-gold.png', furro: 'furro.png', boykisser: 'boykisser.png', hetero: 'hetero.png', femboy: 'femboy.png' };
 
 const esc = (value: string): string => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 

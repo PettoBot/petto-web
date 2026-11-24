@@ -26,7 +26,7 @@ export const POST: APIRoute = async (astro) => {
     if (bytes.byteLength > 1_048_576) return json({ ok: false, error: 'too_big' }, 413);
     const done = await sendPettoUpload(astro, session.userId, bytes);
     if (done.down) return json({ ok: false, error: 'down' }, 503);
-    return json({ ok: done.ok, error: done.data?.error }, done.ok ? 200 : 400);
+    return json({ ok: done.ok, error: done.data?.error, reasons: done.data?.reasons }, done.ok ? 200 : 400);
   }
   if (action === 'use') {
     const state = await callPettoCeramos(astro, session.userId, 'rank-card');
