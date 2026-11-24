@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getDashboardSession } from '../../utils/dashAuth';
 import { getEnv } from '../../utils/env';
+import { isPettoOwner } from '../../utils/premiumAdmin';
 import { createCoinCheckout } from '../../utils/premium';
 
 // The checkout of a pack of ceramos, from the page "Buy ceramos": the person accepted the terms in the dialog, so this signs them in with Discord if they are not (and comes
@@ -22,6 +23,9 @@ export const GET: APIRoute = async (context) => {
     return redirect(authorize, 302);
   }
 
-  const checkoutUrl = await createCoinCheckout(context, session.userId, pack, new Date().toISOString());
-  return redirect(checkoutUrl ?? '/dash/buy-ceramos?error=checkout_unavailable', checkoutUrl ? 303 : 302);
+  const result = await createCoinCheckout(context, session.userId, pack, new Date().toISOString());
+  if (result.url) return redirect(result.url, 303);
+  // Only the owner is told what Polar answered; everybody else gets the plain message.
+  const why = isPettoOwner(context, session.userId) && result.why ? `&why=${encodeURIComponent(result.why)}` : '';
+  return redirect(`/dash/buy-ceramos?error=checkout_unavailable${why}`, 302);
 };

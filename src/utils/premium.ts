@@ -238,10 +238,51 @@ export async function createPremiumCheckout(astro: any, userId: string, plan: st
   }
 }
 
+
+/** What Polar answered to the request of a checkout: the address to send the person to, or why there is none (shown to the owner, never to everybody). */
+export interface CheckoutResult { url: string | null; why: string | null }
+
+/**
+ * Asks Polar for a checkout. Polar's own words are kept (status and message, never the token) so the owner can see why a product was refused (a product of
+ * another organization, one archived, one of the sandbox...), instead of a page that just reloads.
+ */
+async function askPolarCheckout(astro: any, token: string, body: Record<string, unknown>): Promise<CheckoutResult> {
+  try {
+    const response = await fetch(`${polarApiBase(astro)}/v1/checkouts`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const data: any = await response.json();
+        detail = typeof data?.detail === 'string' ? data.detail : Array.isArray(data?.detail) ? data.detail.map((item: any) => `${(item?.loc ?? []).slice(1).join('.')} ${item?.msg ?? ''}`.trim()).join('; ') : String(data?.error_description ?? data?.error ?? '');
+      } catch { /* Polar answered with something that is not JSON. */ }
+      const why = `Polar ${response.status}${detail ? `: ${detail}` : ''}`.slice(0, 220);
+      console.error('[polar-checkout]', why);
+      return { url: null, why };
+    }
+    const data: any = await response.json();
+    return typeof data?.url === 'string' ? { url: data.url, why: null } : { url: null, why: 'Polar answered without an address' };
+  } catch (error) {
+    console.error('[polar-checkout]', error);
+    return { url: null, why: 'Polar could not be reached' };
+  }
+}
+
 /** The Polar product of a plan of a person (Bronze, Silver or Gold): `POLAR_PRODUCT_PLAN_BRONZE`, `..._SILVER` and `..._GOLD`. */
 export function planProductId(astro: any, plan: string): string | null {
   if (!['bronze', 'silver', 'gold'].includes(plan)) return null;
-  return getEnv(astro, `POLAR_PRODUCT_PLAN_${plan.toUpperCase()}`) || null;
+  return getEnv(astro, `POLAR_PRODUCT_PLAN_${plan.toUpperCase()}`)?.trim() || null;
+}
+
+/** The plan of a person that is active now (a person has one at a time), or null. It also counts a plan the team gave. */
+export async function activeUserPlan(astro: any, userId: string): Promise<{ plan: string; endsAt: string | null } | null> {
+  const rows = await read<{ plan: string; ends_at: string | null }>(astro, 'user_plans', `user_id=eq.${encodeURIComponent(userId)}&select=plan,ends_at`);
+  const row = rows[0];
+  if (!row || (row.ends_at && new Date(row.ends_at).getTime() <= Date.now())) return null;
+  return { plan: row.plan, endsAt: row.ends_at };
 }
 
 /** Which plans of a person can be bought now: the access token of Polar is set and the product of the plan is too. */
@@ -251,29 +292,18 @@ export function planCheckoutReady(astro: any): Record<'bronze' | 'silver' | 'gol
 }
 
 /** Creates a short-lived Polar checkout of a plan of a person (Bronze, Silver or Gold), tied to this Discord user. */
-export async function createPlanCheckout(astro: any, userId: string, plan: string, termsAcceptedAt?: string): Promise<string | null> {
-  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
+export async function createPlanCheckout(astro: any, userId: string, plan: string, termsAcceptedAt?: string): Promise<CheckoutResult> {
+  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN')?.trim();
   const productId = planProductId(astro, plan);
-  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return null;
+  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return { url: null, why: !token ? 'POLAR_ACCESS_TOKEN is not set' : !productId ? `POLAR_PRODUCT_PLAN_${plan.toUpperCase()} is not set` : 'The user id is not valid' };
   const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
-  try {
-    const response = await fetch(`${polarApiBase(astro)}/v1/checkouts`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        products: [productId],
-        external_customer_id: userId,
-        metadata: { kind: 'user_plan', plan, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
-        success_url: `${origin}/dash/plan?checkout_id={CHECKOUT_ID}`,
-        return_url: `${origin}/dash/plans`,
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return typeof data.url === 'string' ? data.url : null;
-  } catch {
-    return null;
-  }
+  return askPolarCheckout(astro, token, {
+    products: [productId],
+    external_customer_id: userId,
+    metadata: { kind: 'user_plan', plan, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
+    success_url: `${origin}/dash/plan?checkout_id={CHECKOUT_ID}`,
+    return_url: `${origin}/dash/plans`,
+  });
 }
 
 /** Creates a short-lived hosted Polar Customer Portal session for this Discord user. */
@@ -317,24 +347,29 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
   if (!settings || !/^\d{15,22}$/.test(userId) || !/^\d{15,22}$/.test(guildId)) return false;
 
   try {
-    const entitlements = await read<Pick<PremiumEntitlement, 'id' | 'provider' | 'slot_limit' | 'current_period_end'>>(
+    // A person may have several purchases at once (two plans of 5 servers make 10 places): every active one counts, and a server goes to the one that has room.
+    const owned = await read<Pick<PremiumEntitlement, 'id' | 'provider' | 'slot_limit' | 'current_period_end'>>(
       astro,
       'premium_entitlements',
-      `user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id,provider,slot_limit,current_period_end&order=updated_at.desc&limit=1`,
+      `user_id=eq.${encodeURIComponent(userId)}&status=eq.active&select=id,provider,slot_limit,current_period_end&order=updated_at.desc`,
     );
-    const entitlement = entitlements[0];
-    const entitlementIsActive = Boolean(entitlement && (!entitlement.current_period_end || new Date(entitlement.current_period_end).getTime() > Date.now()));
+    const live = owned.filter((candidate) => !candidate.current_period_end || new Date(candidate.current_period_end).getTime() > Date.now());
+    // The ones that never end first, then the one that ends last: a server is not put where it would lose its place first.
+    live.sort((left, right) => (left.current_period_end ? new Date(left.current_period_end).getTime() : Infinity) < (right.current_period_end ? new Date(right.current_period_end).getTime() : Infinity) ? 1 : -1);
 
     // An active entitlement is authoritative for both paid and manual grants.
     // Selecting a server after activation should take effect immediately; only
     // selections made before billing is confirmed remain pending.
-    if (entitlementIsActive && entitlement) {
-      const activeAssignments = await read<{ id: number; user_id: string; guild_id: string }>(
-        astro,
-        'premium_slot_assignments',
-        `entitlement_id=eq.${entitlement.id}&status=eq.active&select=id,user_id,guild_id`,
-      );
-      if (activeAssignments.some((assignment) => assignment.guild_id === guildId)) return true;
+    if (live.length) {
+      const assignmentsOf = new Map<number, { id: number; user_id: string; guild_id: string }[]>();
+      for (const candidate of live) {
+        assignmentsOf.set(candidate.id, await read<{ id: number; user_id: string; guild_id: string }>(
+          astro,
+          'premium_slot_assignments',
+          `entitlement_id=eq.${candidate.id}&status=eq.active&select=id,user_id,guild_id`,
+        ));
+      }
+      if ([...assignmentsOf.values()].some((rows) => rows.some((assignment) => assignment.guild_id === guildId))) return true;
 
       const serverAssignments = await read<{ id: number; user_id: string }>(
         astro,
@@ -342,7 +377,8 @@ export async function requestPremiumServer(astro: any, userId: string, guildId: 
         `guild_id=eq.${encodeURIComponent(guildId)}&status=eq.active&select=id,user_id`,
       );
       if (serverAssignments.some((assignment) => assignment.user_id !== userId)) return false;
-      if (activeAssignments.length >= Math.max(0, entitlement.slot_limit)) return false;
+      const entitlement = live.find((candidate) => (assignmentsOf.get(candidate.id)?.length ?? 0) < Math.max(0, candidate.slot_limit));
+      if (!entitlement) return false;
 
       // Move an old assignment from a previous entitlement onto the current
       // one instead of leaving the server attached to stale billing data.
@@ -502,7 +538,7 @@ async function resetNameStyle(settings: { url: string; key: string }, botToken: 
 /** The id of the Polar product of a pack of ceramos (`POLAR_PRODUCT_COINS_PILE`, `..._SMALL_BAG`, `..._BIG_BAG`, `..._CHEST`), or null. */
 export function coinPackProductId(astro: any, packId: string): string | null {
   if (!/^[a-z0-9][a-z0-9-]{2,30}$/.test(packId)) return null;
-  return getEnv(astro, `POLAR_PRODUCT_COINS_${packId.toUpperCase().replace(/-/g, '_')}`) || null;
+  return getEnv(astro, `POLAR_PRODUCT_COINS_${packId.toUpperCase().replace(/-/g, '_')}`)?.trim() || null;
 }
 
 /** Which packs of ceramos can be bought now: the access token of Polar is set and the product of the pack is too. */
@@ -512,27 +548,16 @@ export function coinCheckoutReady(astro: any, packIds: string[]): Record<string,
 }
 
 /** Creates a short-lived Polar checkout of a pack of ceramos, tied to this Discord user (the ceramos arrive when the webhook says the order is paid). */
-export async function createCoinCheckout(astro: any, userId: string, packId: string, termsAcceptedAt?: string): Promise<string | null> {
-  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
+export async function createCoinCheckout(astro: any, userId: string, packId: string, termsAcceptedAt?: string): Promise<CheckoutResult> {
+  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN')?.trim();
   const productId = coinPackProductId(astro, packId);
-  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return null;
+  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return { url: null, why: !token ? 'POLAR_ACCESS_TOKEN is not set' : !productId ? `POLAR_PRODUCT_COINS_${packId.toUpperCase().replace(/-/g, '_')} is not set` : 'The user id is not valid' };
   const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
-  try {
-    const response = await fetch(`${polarApiBase(astro)}/v1/checkouts`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        products: [productId],
-        external_customer_id: userId,
-        metadata: { kind: 'ceramos_pack', pack: packId, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
-        success_url: `${origin}/dash/buy-ceramos?paid=1`,
-        return_url: `${origin}/dash/buy-ceramos`,
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return typeof data.url === 'string' ? data.url : null;
-  } catch {
-    return null;
-  }
+  return askPolarCheckout(astro, token, {
+    products: [productId],
+    external_customer_id: userId,
+    metadata: { kind: 'ceramos_pack', pack: packId, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
+    success_url: `${origin}/dash/buy-ceramos?paid=1`,
+    return_url: `${origin}/dash/buy-ceramos`,
+  });
 }

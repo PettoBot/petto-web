@@ -32,12 +32,19 @@ function validDiscordId(value: string): boolean {
   return /^\d{15,22}$/.test(value);
 }
 
+// PETTO_OWNER_ID may hold one id or several, separated by commas, spaces or semicolons; quotes or a mention around an id are not part of it. The first one is "the owner"
+// (the one that is shown or used as the default), and every one of them is an owner.
+function ownerIds(astro: any): string[] {
+  const listed = String(getEnv(astro, 'PETTO_OWNER_ID') ?? '').split(/[\s,;]+/).map((part) => part.replace(/\D/g, '')).filter(validDiscordId);
+  return listed.length ? [...new Set(listed)] : [PETTO_OWNER_ID];
+}
+
 function ownerId(astro: any): string {
-  return getEnv(astro, 'PETTO_OWNER_ID') || PETTO_OWNER_ID;
+  return ownerIds(astro)[0];
 }
 
 export function isPettoOwner(astro: any, userId: string): boolean {
-  return validDiscordId(userId) && userId === ownerId(astro);
+  return validDiscordId(userId) && ownerIds(astro).includes(userId);
 }
 
 async function read<T>(astro: any, table: string, query: string): Promise<T[]> {

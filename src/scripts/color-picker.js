@@ -285,4 +285,11 @@ function bindColorPickers(root) {
   });
 }
 
-export { bindColorPickers };
+// Sets the color of a picker from a script: the hidden field alone would leave the swatch and the square showing the old color.
+function setColorPicker(input, hex) {
+  var wrap = input && input.closest ? input.closest('[data-colorpicker]') : null;
+  if (wrap) wrap.dispatchEvent(new CustomEvent('cp-set', { detail: hex || '' }));
+  else if (input) input.value = hex || '';
+}
+
+export { bindColorPickers, setColorPicker };

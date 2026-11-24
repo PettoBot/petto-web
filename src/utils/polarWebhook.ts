@@ -174,6 +174,12 @@ async function syncUserPlan(astro: any, config: { url: string; key: string }, in
   const status = statusFor(input.type, input.status, input.periodEnd, input.cancelAtPeriodEnd);
   const periodValid = !input.periodEnd || new Date(input.periodEnd).getTime() > Date.now();
   const active = status === 'active' && periodValid;
+  // The end of one subscription must not switch off the plan of another one that is active (a person has one plan at a time).
+  if (!active) {
+    const current = await fetch(`${config.url}/rest/v1/user_plans?user_id=eq.${encodeURIComponent(input.userId)}&select=plan,ends_at`, { headers: apiHeaders(config.key) }).then((reply) => (reply.ok ? reply.json() : [])).catch(() => []);
+    const held = Array.isArray(current) ? current[0] : null;
+    if (held && held.plan !== input.plan && (!held.ends_at || new Date(held.ends_at).getTime() > Date.now())) return true;
+  }
   const row = {
     user_id: input.userId, plan: input.plan, source: 'payment', granted_by: null, note: null,
     ends_at: active ? input.periodEnd : new Date().toISOString(),
