@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { getDashboardSession } from '../../utils/dashAuth';
 import { getEnv } from '../../utils/env';
 import { isPettoOwner } from '../../utils/premiumAdmin';
-import { createPlanCheckout } from '../../utils/premium';
+import { activeUserPlan, createPlanCheckout } from '../../utils/premium';
 
 // The checkout of a plan of a person (Bronze, Silver or Gold), from the page of plans: the person accepted the terms in the dialog, so this signs them in with Discord
 // if they are not (and comes back here), and sends them to Polar.
@@ -22,6 +22,10 @@ export const GET: APIRoute = async (context) => {
     const authorize = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(`${url.origin}/dash/callback`)}&response_type=code&scope=${encodeURIComponent('identify guilds')}`;
     return redirect(authorize, 302);
   }
+
+  // A person has one plan at a time: a second subscription would be charged and only one of them could be kept. To change plan, the first one is cancelled and the new
+  // one is bought when it ends.
+  if (await activeUserPlan(context, session.userId)) return redirect('/dash/plans?error=has_plan', 302);
 
   const result = await createPlanCheckout(context, session.userId, plan, new Date().toISOString());
   if (result.url) return redirect(result.url, 303);
