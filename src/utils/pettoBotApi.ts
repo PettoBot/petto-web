@@ -903,11 +903,11 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
  * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
  */
 export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'upload-state' | 'upload-policy' | 'admin/uploads' | 'admin/upload-review' | 'missions' | 'summary' | 'missions-claim' | 'api-keys' | 'api-key-create' | 'api-key-remove' | 'admin/grant' | 'admin/grant-settings' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
-  | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'credit-pack' | 'credit-refund' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
+  | 'own-badge-state' | 'own-badge-remove' | 'admin/own-badges' | 'admin/own-badge-review' | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'credit-pack' | 'credit-refund' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
 export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
   const { baseUrl, secret } = apiConfig(context);
   if (!baseUrl || !secret) return { ok: false, data: null, down: true };
-  const read = route === 'catalog' || route === 'state' || route === 'rank-card' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans' || route === 'upload-state' || route === 'admin/uploads' || route === 'missions' || route === 'summary' || route === 'api-keys' || (route === 'admin/grant' && !body);
+  const read = route === 'catalog' || route === 'state' || route === 'rank-card' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans' || route === 'upload-state' || route === 'admin/uploads' || route === 'own-badge-state' || route === 'admin/own-badges' || route === 'missions' || route === 'summary' || route === 'api-keys' || (route === 'admin/grant' && !body);
   const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
   const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
   const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
@@ -921,6 +921,26 @@ export async function sendPettoUpload(context: AstroContext, userId: string, byt
   const url = `${baseUrl}/api/dashboard/ceramos/upload-submit?user_id=${encodeURIComponent(userId)}`;
   const call = await botFetch(url, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
   return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** Sends an own badge to the bot (it waits for review): the picture is the body, the slot and the name go in the address. */
+export async function sendPettoOwnBadge(context: AstroContext, userId: string, slot: string, name: string, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const url = `${baseUrl}/api/dashboard/ceramos/own-badge-submit?user_id=${encodeURIComponent(userId)}&slot=${encodeURIComponent(slot)}&name=${encodeURIComponent(name)}`;
+  const call = await botFetch(url, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** The picture of an own badge waiting for review (only the owner may ask; the bot checks it). */
+export async function fetchPettoPendingBadge(context: AstroContext, ownerId: string, person: string, slot: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^\d{15,25}$/.test(person) || !/^[1-4]$/.test(slot)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/admin/own-badge-file?user_id=${encodeURIComponent(ownerId)}&person=${encodeURIComponent(person)}&slot=${slot}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/png' };
+  } catch { return null; }
 }
 
 /** The picture of a person waiting for review, as the bot has it (only the owner may ask; the bot checks it). */
