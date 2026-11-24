@@ -32,8 +32,10 @@ function validDiscordId(value: string): boolean {
   return /^\d{15,22}$/.test(value);
 }
 
+// The id as it was saved in the settings of the host: quotes, spaces or a mention (`<@123>`) around it are not part of it, so the owner is still the owner.
 function ownerId(astro: any): string {
-  return getEnv(astro, 'PETTO_OWNER_ID') || PETTO_OWNER_ID;
+  const saved = String(getEnv(astro, 'PETTO_OWNER_ID') ?? '').replace(/\D/g, '');
+  return validDiscordId(saved) ? saved : PETTO_OWNER_ID;
 }
 
 export function isPettoOwner(astro: any, userId: string): boolean {

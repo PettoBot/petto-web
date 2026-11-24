@@ -238,10 +238,43 @@ export async function createPremiumCheckout(astro: any, userId: string, plan: st
   }
 }
 
+
+/** What Polar answered to the request of a checkout: the address to send the person to, or why there is none (shown to the owner, never to everybody). */
+export interface CheckoutResult { url: string | null; why: string | null }
+
+/**
+ * Asks Polar for a checkout. Polar's own words are kept (status and message, never the token) so the owner can see why a product was refused (a product of
+ * another organization, one archived, one of the sandbox...), instead of a page that just reloads.
+ */
+async function askPolarCheckout(astro: any, token: string, body: Record<string, unknown>): Promise<CheckoutResult> {
+  try {
+    const response = await fetch(`${polarApiBase(astro)}/v1/checkouts`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const data: any = await response.json();
+        detail = typeof data?.detail === 'string' ? data.detail : Array.isArray(data?.detail) ? data.detail.map((item: any) => `${(item?.loc ?? []).slice(1).join('.')} ${item?.msg ?? ''}`.trim()).join('; ') : String(data?.error_description ?? data?.error ?? '');
+      } catch { /* Polar answered with something that is not JSON. */ }
+      const why = `Polar ${response.status}${detail ? `: ${detail}` : ''}`.slice(0, 220);
+      console.error('[polar-checkout]', why);
+      return { url: null, why };
+    }
+    const data: any = await response.json();
+    return typeof data?.url === 'string' ? { url: data.url, why: null } : { url: null, why: 'Polar answered without an address' };
+  } catch (error) {
+    console.error('[polar-checkout]', error);
+    return { url: null, why: 'Polar could not be reached' };
+  }
+}
+
 /** The Polar product of a plan of a person (Bronze, Silver or Gold): `POLAR_PRODUCT_PLAN_BRONZE`, `..._SILVER` and `..._GOLD`. */
 export function planProductId(astro: any, plan: string): string | null {
   if (!['bronze', 'silver', 'gold'].includes(plan)) return null;
-  return getEnv(astro, `POLAR_PRODUCT_PLAN_${plan.toUpperCase()}`) || null;
+  return getEnv(astro, `POLAR_PRODUCT_PLAN_${plan.toUpperCase()}`)?.trim() || null;
 }
 
 /** Which plans of a person can be bought now: the access token of Polar is set and the product of the plan is too. */
@@ -251,29 +284,18 @@ export function planCheckoutReady(astro: any): Record<'bronze' | 'silver' | 'gol
 }
 
 /** Creates a short-lived Polar checkout of a plan of a person (Bronze, Silver or Gold), tied to this Discord user. */
-export async function createPlanCheckout(astro: any, userId: string, plan: string, termsAcceptedAt?: string): Promise<string | null> {
-  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
+export async function createPlanCheckout(astro: any, userId: string, plan: string, termsAcceptedAt?: string): Promise<CheckoutResult> {
+  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN')?.trim();
   const productId = planProductId(astro, plan);
-  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return null;
+  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return { url: null, why: !token ? 'POLAR_ACCESS_TOKEN is not set' : !productId ? `POLAR_PRODUCT_PLAN_${plan.toUpperCase()} is not set` : 'The user id is not valid' };
   const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
-  try {
-    const response = await fetch(`${polarApiBase(astro)}/v1/checkouts`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        products: [productId],
-        external_customer_id: userId,
-        metadata: { kind: 'user_plan', plan, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
-        success_url: `${origin}/dash/plan?checkout_id={CHECKOUT_ID}`,
-        return_url: `${origin}/dash/plans`,
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return typeof data.url === 'string' ? data.url : null;
-  } catch {
-    return null;
-  }
+  return askPolarCheckout(astro, token, {
+    products: [productId],
+    external_customer_id: userId,
+    metadata: { kind: 'user_plan', plan, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
+    success_url: `${origin}/dash/plan?checkout_id={CHECKOUT_ID}`,
+    return_url: `${origin}/dash/plans`,
+  });
 }
 
 /** Creates a short-lived hosted Polar Customer Portal session for this Discord user. */
@@ -502,7 +524,7 @@ async function resetNameStyle(settings: { url: string; key: string }, botToken: 
 /** The id of the Polar product of a pack of ceramos (`POLAR_PRODUCT_COINS_PILE`, `..._SMALL_BAG`, `..._BIG_BAG`, `..._CHEST`), or null. */
 export function coinPackProductId(astro: any, packId: string): string | null {
   if (!/^[a-z0-9][a-z0-9-]{2,30}$/.test(packId)) return null;
-  return getEnv(astro, `POLAR_PRODUCT_COINS_${packId.toUpperCase().replace(/-/g, '_')}`) || null;
+  return getEnv(astro, `POLAR_PRODUCT_COINS_${packId.toUpperCase().replace(/-/g, '_')}`)?.trim() || null;
 }
 
 /** Which packs of ceramos can be bought now: the access token of Polar is set and the product of the pack is too. */
@@ -512,27 +534,16 @@ export function coinCheckoutReady(astro: any, packIds: string[]): Record<string,
 }
 
 /** Creates a short-lived Polar checkout of a pack of ceramos, tied to this Discord user (the ceramos arrive when the webhook says the order is paid). */
-export async function createCoinCheckout(astro: any, userId: string, packId: string, termsAcceptedAt?: string): Promise<string | null> {
-  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN');
+export async function createCoinCheckout(astro: any, userId: string, packId: string, termsAcceptedAt?: string): Promise<CheckoutResult> {
+  const token = getEnv(astro, 'POLAR_ACCESS_TOKEN')?.trim();
   const productId = coinPackProductId(astro, packId);
-  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return null;
+  if (!token || !productId || !/^\d{15,22}$/.test(userId)) return { url: null, why: !token ? 'POLAR_ACCESS_TOKEN is not set' : !productId ? `POLAR_PRODUCT_COINS_${packId.toUpperCase().replace(/-/g, '_')} is not set` : 'The user id is not valid' };
   const origin = astro.url?.origin || getEnv(astro, 'PUBLIC_SITE_URL') || 'https://petto.sbs';
-  try {
-    const response = await fetch(`${polarApiBase(astro)}/v1/checkouts`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        products: [productId],
-        external_customer_id: userId,
-        metadata: { kind: 'ceramos_pack', pack: packId, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
-        success_url: `${origin}/dash/buy-ceramos?paid=1`,
-        return_url: `${origin}/dash/buy-ceramos`,
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return typeof data.url === 'string' ? data.url : null;
-  } catch {
-    return null;
-  }
+  return askPolarCheckout(astro, token, {
+    products: [productId],
+    external_customer_id: userId,
+    metadata: { kind: 'ceramos_pack', pack: packId, discord_user_id: userId, ...(termsAcceptedAt ? { terms_accepted_at: termsAcceptedAt } : {}) },
+    success_url: `${origin}/dash/buy-ceramos?paid=1`,
+    return_url: `${origin}/dash/buy-ceramos`,
+  });
 }
