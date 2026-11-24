@@ -1,0 +1,377 @@
+---
+// The page "Rank card" of the account area (/dash/rank): a person designs the rank card that every server without its own design shows for them. The preview is drawn by the same
+// card engine as the editors of the servers (so what is seen is what the bot draws); the choices are the background (game backgrounds, landscapes, designs of Petto, the banner
+// of the profile), the colors and font of the bar and the text, the theme and the layout. Lo básico es gratis; the two-color bar costs ceramos once, charged when it is saved.
+// The bot checks and saves everything (the page only asks), so the website and Discord can never disagree.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashCeramosNote from './DashCeramosNote.astro';
+import DashShopShared from './DashShopShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+import { BAR_COLORS, TEXT_COLORS, GRADIENT_PRICE } from '../utils/userRankCard';
+
+type Names = Record<string, string>;
+interface Item { kind: string; id: string; names: Names; pack: string | null; rarity: string; price: number; version: string; hasFile: boolean; credit: string | null; onSale: boolean }
+interface Pack { id: string; free: boolean; pieces: string[] }
+interface Props { user: Session; rank: any | null; catalog: { items: Item[]; packs: Pack[] } | null; state: { balance: number; items: { kind: string; id: string }[]; active: { banner: string | null } } | null }
+const { user, rank, catalog, state } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const ready = Boolean(rank && catalog && state);
+const nameOf = (names: Names): string => names[lang] ?? names[lang.split('-')[0]] ?? names.en;
+const freePieces = new Set((catalog?.packs ?? []).filter((pack) => pack.free).flatMap((pack) => pack.pieces));
+const banners = (catalog?.items ?? []).filter((item) => item.kind === 'banner' && item.hasFile).map((item) => ({
+  id: item.id, name: nameOf(item.names), price: item.price, version: item.version, credit: item.credit, free: item.price === 0 || freePieces.has(`banner:${item.id}`), onSale: item.onSale, rarity: item.rarity,
+}));
+const designs = (rank?.designs?.designs ?? []).map((design: any) => ({ id: design.id, family: design.family, name: design.names?.[lang] ?? design.names?.[lang.split('-')[0]] ?? design.names?.en ?? design.id }));
+const families = (rank?.designs?.families ?? []).map((family: any) => ({ id: family.id, name: family.names?.[lang] ?? family.names?.[lang.split('-')[0]] ?? family.names?.en ?? family.id }));
+const avatar = user.avatar ? `https://cdn.discordapp.com/avatars/${user.userId}/${user.avatar}.png?size=256` : '';
+const ui = {
+  free: dt('Free'), owned: dt('Yours'), inUse: dt('In use'), paid: dt('Costs ceramos'),
+  total: dt('Total to pay when you save:'), have: dt('you have'), ceramos: dt('ceramos'), saved: dt('Saved. Your card is ready in every server.'), nothing: dt('Nothing to pay'),
+  poor: dt('You do not have enough ceramos for the two-color bar.'), down: dt('Petto did not answer. Try again in a moment.'), failed: dt('That did not work. Try again in a moment.'),
+  locked: dt('That background costs {price} ceramos. Get it in Customize profile and it will be here.'), lockedLink: dt('Open Customize profile'), claimFail: dt('That background could not be taken. Try again.'),
+  noBanner: dt('You have no banner on in your profile yet.'), defaultName: dt('Default'), profileBanner: dt('My profile banner'),
+  resetDone: dt('Your card is back to the default one.'), working: dt('Saving...'), saveLabel: dt('Save'),
+  removeGradient: dt('Remove'), useGradient: dt('Use it'), activate: dt('Activate'),
+};
+const boot = ready ? JSON.stringify({
+  lang, ui, me: user.username, avatar, rank: { settings: rank.settings, gradientPaid: rank.gradientPaid, balance: rank.balance, fonts: rank.fonts, hasBanner: rank.hasBanner },
+  banners, designs, families, owned: state!.items.filter((row) => row.kind === 'banner').map((row) => row.id), activeBanner: state!.active.banner,
+  barColors: BAR_COLORS, textColors: TEXT_COLORS, gradientPrice: GRADIENT_PRICE,
+}).replace(/</g, '\\u003c') : '';
+---
+<DashMeLayout user={user} active="rank" pageTitle="Rank card">
+  <DashShopShared />
+  <DashPanelHead title={dt('Rank card')} eyebrow={dt('Profile')} icon="ph:identification-card-fill" back={false}>
+    {ready && state && <div class="bd-wallet"><span class="bd-bal"><i class="bd-coin"></i><b id="rk-balance">{rank.balance}</b></span><a class="btn" href="/dash/buy-ceramos">{dt('Get ceramos')}</a></div>}
+  </DashPanelHead>
+  <DashCeramosNote />
+  <p class="rk-lead">{dt('It is the card every server shows for you when it has not designed its own. The basics are free; the two-color bar costs ceramos once.')}</p>
+  {!ready && <p class="bd-down" role="alert">{ui.down}</p>}
+  {ready && (
+    <div class="rk" id="rk" data-boot={boot}>
+      <div class="bd-card rk-preview">
+        <canvas id="rk-canvas" width="1024" height="320" aria-label={dt('Preview of your rank card')}></canvas>
+        <p class="bd-hint">{dt('Live preview. What costs ceramos is charged when you save.')}</p>
+      </div>
+
+      <div class="rk-tabs" role="tablist">
+        <button type="button" role="tab" class="bd-tab active" data-tab="bg" aria-selected="true">{dt('Backgrounds')}</button>
+        <button type="button" role="tab" class="bd-tab" data-tab="bar" aria-selected="false">{dt('Bar and text')}</button>
+        <button type="button" role="tab" class="bd-tab" data-tab="look" aria-selected="false">{dt('Theme and layout')}</button>
+      </div>
+
+      <div class="rk-panel" data-panel="bg" id="rk-bg" data-free-title={dt('Game backgrounds · free for everybody')} data-paid-title={dt('Paid backgrounds · with ceramos')} data-credits={dt('Pictures of their owners and of their photographers or artists, used without profit and with credit. Petto is not affiliated with or endorsed by them.')}></div>
+
+      <div class="rk-panel" data-panel="bar" hidden>
+        <div class="bd-card rk-grid2">
+          <div>
+            <h3>{dt('Progress bar')}</h3>
+            <div class="rk-row"><div><b>{dt('Solid color')}</b><small>{dt('Pick a color')}</small></div><div class="rk-sw" id="rk-bar-sw"></div></div>
+            <div class="rk-row"><div><b>{dt('Own gradient')}</b><small>{dt('A second color for the end of the bar. Paid once, yours for good.')}</small></div>
+              <div class="rk-actions"><span class="bd-price" id="rk-grad-price"><i class="bd-coin"></i>{GRADIENT_PRICE}</span><button type="button" class="btn" id="rk-grad-toggle"></button></div></div>
+            <div class="rk-row" id="rk-grad-row" hidden><div><b>{dt('Second color')}</b></div><div class="rk-sw" id="rk-bar2-sw"></div></div>
+            <div class="rk-gradbar" id="rk-gradbar" hidden></div>
+          </div>
+          <div>
+            <h3>{dt('Text')}</h3>
+            <div class="rk-row rk-col"><div><b>{dt('Font')}</b></div><div class="rk-fonts" id="rk-fonts"></div></div>
+            <div class="rk-row"><div><b>{dt('Text color')}</b><small>{dt('Of the name and the numbers')}</small></div><div class="rk-sw" id="rk-text-sw"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rk-panel" data-panel="look" hidden>
+        <div class="bd-card rk-grid2">
+          <div>
+            <h3>{dt('Theme')}</h3>
+            <div class="rk-seg" id="rk-theme" role="group"><button type="button" data-v="dark">{dt('Dark')}</button><button type="button" data-v="light">{dt('Light')}</button></div>
+            <h3 class="rk-gap">{dt('Layout')}</h3>
+            <div class="rk-seg" id="rk-layout" role="group"><button type="button" data-v="side">{dt('Name beside the avatar')}</button><button type="button" data-v="below">{dt('Bar across the card')}</button></div>
+          </div>
+          <div>
+            <h3>{dt('Avatar shape')}</h3>
+            <div class="rk-seg" id="rk-shape" role="group"><button type="button" data-v="circle">{dt('Circle')}</button><button type="button" data-v="rounded">{dt('Rounded')}</button><button type="button" data-v="square">{dt('Square')}</button></div>
+          </div>
+        </div>
+      </div>
+
+      <p class="rk-msg" id="rk-msg" role="status" hidden></p>
+      <div class="bd-card rk-foot">
+        <div class="rk-total" id="rk-total"></div>
+        <div class="rk-foot-actions">
+          <button type="button" class="btn" id="rk-reset">{dt('Back to default')}</button>
+          <button type="button" class="btn" id="rk-discard">{dt('Discard')}</button>
+          <button type="button" class="btn rk-save" id="rk-save">{dt('Save')}</button>
+        </div>
+      </div>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .rk-lead { margin: -4px 0 16px; color: var(--text-muted); max-width: 70ch; }
+  .rk { display: flex; flex-direction: column; gap: 16px; }
+  .rk-preview { position: sticky; top: 8px; z-index: 5; background: var(--card, #17141f); }
+  .rk-preview canvas { width: 100%; max-width: 760px; height: auto; aspect-ratio: 1024 / 320; border-radius: 14px; display: block; background: #120c1a; margin: 0 auto; }
+  @media (max-width: 760px) { .rk-preview { padding: 8px; } .rk-preview .bd-hint { display: none; } }
+  .rk-tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--border-soft); }
+  .rk-tabs .bd-tab { border-radius: 10px 10px 0 0; }
+  .rk-tabs .bd-tab.active { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 -2px 0 var(--green); }
+  .rk-panel[hidden], .rk [hidden] { display: none !important; }
+  .rk-group { margin: 0 0 22px; }
+  .rk-group h3 { margin: 0 0 4px; font-size: 15px; }
+  .rk-group > p { margin: 0 0 10px; color: var(--text-muted); font-size: 13px; }
+  .rk-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .rk-tile { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 14px; border: 1px solid transparent; background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+  .rk-tile:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .rk-tile.is-on { border-color: var(--green); background: var(--green-soft); }
+  .rk-tile.is-locked .rk-thumb { filter: saturate(.6) brightness(.8); }
+  .rk-thumb { aspect-ratio: 1024 / 320; border-radius: 10px; background: #17141f center / cover; display: grid; place-items: center; color: var(--text-muted); font-size: 13px; }
+  .rk-tile b { font-size: 13.5px; padding: 0 4px; }
+  .rk-tile small { padding: 0 4px 4px; color: var(--text-muted); font-size: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .rk-tile small.rk-credit { font-size: 11.5px; opacity: .8; }
+  .rk-note { margin: 0 0 16px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--blue, #7cb7ff) 12%, transparent); color: var(--text-muted); font-size: 13px; }
+  .rk-lock { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: var(--yellow-soft, color-mix(in srgb, #ffd23f 14%, transparent)); font-size: 13.5px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .rk-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+  .rk-grid2 h3 { margin: 0 0 10px; font-size: 16px; }
+  .rk-gap { margin-top: 20px !important; }
+  .rk-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--border-soft); flex-wrap: wrap; }
+  .rk-row:first-of-type { border-top: 0; }
+  .rk-row.rk-col { flex-direction: column; align-items: stretch; }
+  .rk-row b { display: block; font-weight: 600; font-size: 14.5px; } .rk-row small { display: block; color: var(--text-muted); font-size: 12.5px; margin-top: 2px; max-width: 34ch; }
+  .rk-actions { display: inline-flex; align-items: center; gap: 10px; }
+  .rk-sw { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rk-sw button { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+  .rk-sw button.is-on { border-color: var(--text); outline: 2px solid var(--green); outline-offset: 1px; }
+  .rk-sw label { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; position: relative; cursor: pointer; background: conic-gradient(#ff6b8a, #ffd23f, #a5ea7a, #7cb7ff, #c4a5ff, #ff6b8a); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+  .rk-sw label input { position: absolute; inset: -6px; width: 44px; height: 44px; opacity: 0; cursor: pointer; }
+  .rk-sw label.is-on { outline: 2px solid var(--green); outline-offset: 1px; }
+  .rk-gradbar { height: 28px; border-radius: 999px; margin-top: 4px; }
+  .rk-fonts { display: flex; flex-wrap: wrap; gap: 6px; max-height: 188px; overflow: auto; padding: 2px; }
+  .rk-fonts button, .rk-seg button { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; }
+  .rk-fonts button.is-on, .rk-seg button.is-on { border-color: var(--green); background: var(--green-soft); color: var(--green-text); }
+  .rk-seg { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .rk-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .rk-total { font-size: 14.5px; color: var(--text-muted); } .rk-total b { color: var(--text); }
+  .rk-foot-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+  .rk-save:not(:disabled) { background: var(--green); color: var(--green-ink); border-color: transparent; }
+  .rk-save:disabled, #rk-discard:disabled { opacity: .5; cursor: default; }
+  .rk-msg { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--green-soft); color: var(--green-text); font-size: 14px; }
+  .rk-msg.is-bad { background: var(--red-soft); color: var(--red-text); }
+  @media (max-width: 760px) { .rk-grid2 { grid-template-columns: minmax(0, 1fr); gap: 22px; } .rk-tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } .rk-foot-actions { width: 100%; } .rk-foot-actions .btn { flex: 1; justify-content: center; } }
+</style>
+
+<script>
+  import { drawCard, withDefaults } from '../react/cards/cardCanvas';
+  import { buildBasicLayers } from '../react/cards/basicLayers';
+  import type { CardData } from '../react/cards/cardTypes';
+  import { sampleContext } from '../utils/variableSamples';
+  import { toBasic, costOf, isHex, DEFAULTS, type RankCardSettings } from '../utils/userRankCard';
+
+  const root = document.getElementById('rk');
+  if (root?.dataset.boot) {
+    interface Banner { id: string; name: string; price: number; version: string; credit: string | null; free: boolean; onSale: boolean; rarity: string }
+    interface Design { id: string; family: string; name: string }
+    const boot = JSON.parse(root.dataset.boot) as {
+      lang: string; ui: Record<string, string>; me: string; avatar: string;
+      rank: { settings: RankCardSettings; gradientPaid: boolean; balance: number; fonts: string[]; hasBanner: boolean };
+      banners: Banner[]; designs: Design[]; families: { id: string; name: string }[]; owned: string[]; activeBanner: string | null; barColors: string[]; textColors: string[]; gradientPrice: number;
+    };
+    const { ui } = boot;
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const fill = (text: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((out, [key, value]) => out.replaceAll(`{${key}}`, String(value)), text);
+    const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+    const same = (a: RankCardSettings, b: RankCardSettings) => JSON.stringify(a) === JSON.stringify(b);
+    const normalize = (raw: Partial<RankCardSettings>): RankCardSettings => ({ ...DEFAULTS, ...raw });
+
+    let saved = normalize(boot.rank.settings);
+    let work = { ...saved };
+    let gradientPaid = boot.rank.gradientPaid;
+    let balance = boot.rank.balance;
+    let owned = new Set(boot.owned);
+    let busy = false;
+    const bannerOf = (id: string) => boot.banners.find((banner) => banner.id === id);
+    const bannerUrl = (banner: Banner) => `/dash/item-file/banner/${banner.id}?v=${encodeURIComponent(banner.version)}`;
+    const canUse = (banner: Banner) => owned.has(banner.id) || banner.free;
+
+    // ---- the preview: the same engine as the editors of the servers ----
+    const canvas = $<HTMLCanvasElement>('rk-canvas');
+    let drawId = 0;
+    function backgroundOf(): { src: string | null; banner: string | null } {
+      const value = work.background;
+      if (value.startsWith('design:')) return { src: `petto:${value.slice(7)}`, banner: null };
+      if (value.startsWith('shop:')) { const banner = bannerOf(value.slice(5)); return banner && canUse(banner) ? { src: 'petto:user-banner', banner: bannerUrl(banner) } : { src: 'petto:rank-default', banner: null }; }
+      if (value === 'banner' || value === 'default') {
+        const active = boot.activeBanner ? bannerOf(boot.activeBanner) : null;
+        if (active && owned.has(active.id)) return { src: 'petto:user-banner', banner: bannerUrl(active) };
+      }
+      return { src: 'petto:rank-default', banner: null };
+    }
+    function paint() {
+      const bg = backgroundOf();
+      const card: CardData = {
+        kind: 'rank', mode: 'basic', width: 1024, height: 320,
+        background: { color: '#120c1a', gradient: null, image: { src: bg.src ?? 'petto:rank-default', fit: 'cover', blur: 0 }, overlay: bg.banner ? { color: '#0b0814', opacity: 0.42 } : null },
+        basic: { ...toBasic(work), title: 'LEVEL {level}', name: '{user.display_name}', subtitle: '{level_xp_current} / {level_xp_needed} XP', extra: 'RANK #{level_rank}' } as any,
+        layers: [],
+      };
+      card.layers = withDefaults(buildBasicLayers(card.basic ?? {}, 1024, 320, 'rank'));
+      const mine = (drawId += 1);
+      void drawCard(canvas, card, {
+        context: { ...sampleContext, userName: boot.me }, avatarUrl: boot.avatar, serverIconUrl: '', assetUrl: () => '',
+        designUrl: (id) => (id === 'user-banner' && bg.banner ? bg.banner : `/dash/rank-design/${id}/full`),
+      }, () => mine === drawId);
+    }
+
+    // ---- the backgrounds ----
+    const tile = (value: string, thumb: string, name: string, meta: string, locked = false, credit = '') => `<button type="button" class="rk-tile${work.background === value ? ' is-on' : ''}${locked ? ' is-locked' : ''}" data-bg="${esc(value)}"><span class="rk-thumb" style="${thumb}"></span><b>${esc(name)}</b><small>${meta}</small>${credit ? `<small class="rk-credit">${esc(credit)}</small>` : ''}</button>`;
+    const check = '<svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.7 77.7l-128 128a8 8 0 0 1-11.4 0l-56-56a8 8 0 0 1 11.4-11.4L96 188.7l122.3-122.4a8 8 0 0 1 11.4 11.4z"/></svg>';
+    const priceMeta = (banner: Banner) => (canUse(banner) ? (owned.has(banner.id) ? `${check} ${esc(ui.owned)}` : `${check} ${esc(ui.free)}`) : `<span class="bd-price"><i class="bd-coin"></i>${banner.price}</span>`);
+    function renderBackgrounds() {
+      const host = $('rk-bg');
+      const active = boot.activeBanner ? bannerOf(boot.activeBanner) : null;
+      const base = [
+        tile('default', 'background-image:url(/dash/rank-design/rank-default/thumb)', ui.defaultName, work.background === 'default' ? `${check} ${esc(ui.inUse)}` : ''),
+        active ? tile('banner', `background-image:url('${bannerUrl(active)}')`, ui.profileBanner, work.background === 'banner' ? `${check} ${esc(ui.inUse)}` : esc(active.name)) : '',
+      ].join('');
+      const free = boot.banners.filter((banner) => banner.free);
+      const paid = boot.banners.filter((banner) => !banner.free);
+      const fams = boot.families.map((family) => ({ family, list: boot.designs.filter((design) => design.family === family.id && design.id !== 'rank-default') })).filter((entry) => entry.list.length);
+      host.innerHTML = `
+        <div class="rk-group"><div class="rk-tiles">${base}</div></div>
+        <div id="rk-lock" class="rk-lock" hidden></div>
+        ${free.length ? `<div class="rk-group"><h3>${esc(host.dataset.freeTitle ?? '')}</h3><div class="rk-tiles">${free.map((banner) => tile(`shop:${banner.id}`, `background-image:url('${bannerUrl(banner)}')`, banner.name, priceMeta(banner), false, banner.credit ?? '')).join('')}</div></div>
+          <p class="rk-note">${esc(host.dataset.credits ?? '')}</p>` : ''}
+        ${paid.length ? `<div class="rk-group"><h3>${esc(host.dataset.paidTitle ?? '')}</h3><div class="rk-tiles">${paid.map((banner) => tile(`shop:${banner.id}`, `background-image:url('${bannerUrl(banner)}')`, banner.name, priceMeta(banner), !canUse(banner), banner.credit ?? '')).join('')}</div></div>` : ''}
+        ${fams.map(({ family, list }) => `<div class="rk-group"><h3>${esc(family.name)}</h3><div class="rk-tiles">${list.map((design) => tile(`design:${design.id}`, `background-image:url(/dash/rank-design/${design.id}/thumb)`, design.name, work.background === `design:${design.id}` ? `${check} ${esc(ui.inUse)}` : esc(ui.free))).join('')}</div></div>`).join('')}`;
+    }
+    $('rk-bg').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-bg]');
+      if (!button) return;
+      const value = button.dataset.bg ?? 'default';
+      const lock = $('rk-lock');
+      if (value.startsWith('shop:')) {
+        const banner = bannerOf(value.slice(5));
+        if (banner && !canUse(banner)) {
+          lock.hidden = false;
+          lock.innerHTML = `<span>${esc(fill(ui.locked, { price: banner.price }))}</span><a class="btn" href="/dash/banners">${esc(ui.lockedLink)}</a>`;
+          return;
+        }
+      }
+      lock.hidden = true;
+      work = { ...work, background: value };
+      renderBackgrounds(); refresh();
+    });
+
+    // ---- bar and text ----
+    function swatches(host: HTMLElement, colors: string[], current: string | null, onPick: (color: string) => void) {
+      const custom = current && !colors.includes(current);
+      host.innerHTML = `${colors.map((color) => `<button type="button" style="background:${color}" data-c="${color}" aria-label="${color}" class="${color === current ? 'is-on' : ''}"></button>`).join('')}<label class="${custom ? 'is-on' : ''}" ${custom ? `style="background:${current}"` : ''}><input type="color" value="${custom ? current : colors[0]}" aria-label="custom" /></label>`;
+      host.querySelectorAll<HTMLButtonElement>('button[data-c]').forEach((b) => b.addEventListener('click', () => onPick(b.dataset.c as string)));
+      host.querySelector<HTMLInputElement>('input[type=color]')?.addEventListener('input', (event) => { const value = (event.target as HTMLInputElement).value; if (isHex(value)) onPick(value.toLowerCase()); });
+    }
+    function renderBar() {
+      swatches($('rk-bar-sw'), boot.barColors, work.barColor, (color) => { work = { ...work, barColor: color }; renderBar(); refresh(); });
+      const on = Boolean(work.barColor2);
+      $('rk-grad-row').hidden = !on; $('rk-gradbar').hidden = !on;
+      const toggle = $<HTMLButtonElement>('rk-grad-toggle');
+      toggle.textContent = on ? ui.removeGradient : (gradientPaid ? ui.useGradient : ui.activate);
+      $('rk-grad-price').hidden = gradientPaid;
+      if (on) {
+        swatches($('rk-bar2-sw'), boot.barColors, work.barColor2, (color) => { work = { ...work, barColor2: color }; renderBar(); refresh(); });
+        $('rk-gradbar').style.background = `linear-gradient(90deg, ${work.barColor}, ${work.barColor2})`;
+      }
+      swatches($('rk-text-sw'), boot.textColors, work.textColor ?? (work.theme === 'light' ? '#111827' : '#ffffff'), (color) => { work = { ...work, textColor: color }; renderBar(); refresh(); });
+      $('rk-fonts').innerHTML = boot.rank.fonts.map((font) => `<button type="button" data-f="${esc(font)}" class="${font === work.font ? 'is-on' : ''}">${esc(font)}</button>`).join('');
+    }
+    $('rk-grad-toggle').addEventListener('click', () => {
+      work = work.barColor2 ? { ...work, barColor2: null } : { ...work, barColor2: '#c4a5ff' };
+      renderBar(); refresh();
+    });
+    $('rk-fonts').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-f]');
+      if (!button) return;
+      work = { ...work, font: button.dataset.f as string }; renderBar(); refresh();
+    });
+
+    // ---- theme and layout ----
+    function segment(id: string, key: 'theme' | 'layout' | 'avatarShape') {
+      const host = $(id);
+      host.querySelectorAll<HTMLButtonElement>('button').forEach((button) => button.classList.toggle('is-on', button.dataset.v === work[key]));
+    }
+    for (const [id, key] of [['rk-theme', 'theme'], ['rk-layout', 'layout'], ['rk-shape', 'avatarShape']] as const) {
+      $(id).addEventListener('click', (event) => {
+        const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-v]');
+        if (!button) return;
+        work = { ...work, [key]: button.dataset.v } as RankCardSettings;
+        // The text color follows the theme until the person picks one.
+        if (key === 'theme') work.textColor = null;
+        renderBar(); refresh();
+      });
+    }
+
+    // ---- tabs, total, save ----
+    document.querySelectorAll<HTMLButtonElement>('.rk-tabs [data-tab]').forEach((tab) => tab.addEventListener('click', () => {
+      document.querySelectorAll('.rk-tabs [data-tab]').forEach((other) => { other.classList.toggle('active', other === tab); other.setAttribute('aria-selected', String(other === tab)); });
+      document.querySelectorAll<HTMLElement>('.rk-panel').forEach((panel) => { panel.hidden = panel.dataset.panel !== tab.dataset.tab; });
+    }));
+
+    const message = (text: string, bad = false) => { const el = $('rk-msg'); el.hidden = !text; el.textContent = text; el.classList.toggle('is-bad', bad); };
+    function refresh() {
+      const dirty = !same(work, saved);
+      const cost = costOf(work, gradientPaid);
+      $('rk-total').innerHTML = cost ? `${esc(ui.total)} <b>${cost} ${esc(ui.ceramos)}</b> · ${esc(ui.have)} ${balance}` : `${esc(ui.total)} <b>${esc(ui.nothing)}</b> · ${esc(ui.have)} ${balance}`;
+      $<HTMLButtonElement>('rk-save').disabled = !dirty || busy || cost > balance;
+      $<HTMLButtonElement>('rk-discard').disabled = !dirty || busy;
+      $('rk-balance').textContent = String(balance);
+      segment('rk-theme', 'theme'); segment('rk-layout', 'layout'); segment('rk-shape', 'avatarShape');
+      paint();
+    }
+    $('rk-discard').addEventListener('click', () => { work = { ...saved }; message(''); renderBackgrounds(); renderBar(); refresh(); });
+
+    async function call(body: Record<string, unknown>): Promise<any> {
+      try {
+        const response = await fetch('/dash/rank-act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        return await response.json();
+      } catch { return { ok: false, error: 'down' }; }
+    }
+    function adopt(state: any) {
+      if (!state) return;
+      saved = normalize(state.settings); work = { ...saved }; gradientPaid = state.gradientPaid; balance = state.balance;
+      renderBackgrounds(); renderBar(); refresh();
+    }
+    $('rk-save').addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; message(''); $<HTMLButtonElement>('rk-save').textContent = ui.working; refresh();
+      try {
+        // A free banner of the shop has to be taken before it can be the background (the bot only draws the ones the person has).
+        if (work.background.startsWith('shop:')) {
+          const id = work.background.slice(5);
+          if (!owned.has(id)) {
+            const claimed = await call({ action: 'claim', id });
+            if (!claimed.ok || !claimed.result?.ok) { message(ui.claimFail, true); return; }
+            owned.add(id);
+          }
+        }
+        const done = await call({ action: 'save', settings: work });
+        if (done.error === 'down') { message(ui.down, true); return; }
+        if (!done.ok) { message(ui.failed, true); return; }
+        if (done.result?.ok === false) { message(done.result.reason === 'noCeramos' ? ui.poor : ui.failed, true); return; }
+        adopt(done.state); message(ui.saved);
+      } finally { busy = false; $<HTMLButtonElement>('rk-save').textContent = ui.saveLabel; refresh(); }
+    });
+    $('rk-reset').addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; refresh();
+      const done = await call({ action: 'reset' });
+      busy = false;
+      if (!done.ok) { message(ui.failed, true); refresh(); return; }
+      adopt(done.state); message(ui.resetDone);
+    });
+
+    renderBackgrounds(); renderBar(); refresh();
+  }
+</script>

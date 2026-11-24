@@ -254,6 +254,18 @@ export async function callPettoGiveaway(context: AstroContext, guildId: string, 
   }
 }
 
+/** The best streaks of a server (the bot works them out and adds the names and pictures of the members). `kind` is the current streak or the longest ever. */
+export async function callPettoStreakBoard(context: AstroContext, guildId: string, kind: 'current' | 'longest'): Promise<{ id: string; name: string | null; avatar: string | null; current: number; best: number }[] | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/guild/${encodeURIComponent(guildId)}/streak-board?kind=${kind}`, { headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    const payload: any = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok || !Array.isArray(payload.entries)) return null;
+    return payload.entries.map((entry: any) => ({ id: String(entry.userId), name: entry.name ?? null, avatar: entry.avatar ?? null, current: Number(entry.current), best: Number(entry.best) }));
+  } catch { return null; }
+}
+
 /** Sends the quest method of a server now (the newest active quest, or the one given), as the person who manages the server. */
 export async function callPettoQuestMethod(context: AstroContext, guildId: string, userId: string, questId?: string): Promise<{ ok: boolean; message: string }> {
   const { baseUrl, secret } = apiConfig(context);
@@ -884,4 +896,120 @@ export async function callPettoRuleTest(context: AstroContext, guildId: string, 
   } catch {
     return null;
   }
+}
+
+/**
+ * One call to the badges and ceramos API of the bot (`/api/dashboard/ceramos/<route>`) for the person who is logged in: the catalog, their state, and the actions
+ * (daily, buy, upgrade, identity, showcase). The user id always comes from the session, never from the page. `down` is true when the bot did not answer.
+ */
+export type CeramosRoute = 'catalog' | 'state' | 'ledger' | 'admin/plans' | 'upload-state' | 'upload-policy' | 'admin/uploads' | 'admin/upload-review' | 'missions' | 'summary' | 'missions-claim' | 'api-keys' | 'api-key-create' | 'api-key-remove' | 'admin/grant' | 'admin/grant-settings' | 'admin/plan-grant' | 'admin/plan-end' | 'daily' | 'buy' | 'upgrade' | 'identity' | 'showcase' | 'buy-item' | 'buy-pack' | 'wear' | 'admin/badges' | 'admin/badge' | 'admin/badge-active'
+  | 'own-badge-state' | 'own-badge-remove' | 'admin/own-badges' | 'admin/own-badge-review' | 'rank-card' | 'rank-card-save' | 'rank-card-reset' | 'credit-pack' | 'credit-refund' | 'admin/shop' | 'admin/pack' | 'admin/pack-active' | 'admin/item' | 'admin/item-active' | 'admin/override' | 'admin/override-reset';
+export async function callPettoCeramos(context: AstroContext, userId: string, route: CeramosRoute, body?: Record<string, unknown>): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const read = route === 'catalog' || route === 'state' || route === 'rank-card' || route === 'ledger' || route === 'admin/badges' || route === 'admin/shop' || route === 'admin/plans' || route === 'upload-state' || route === 'admin/uploads' || route === 'own-badge-state' || route === 'admin/own-badges' || route === 'missions' || route === 'summary' || route === 'api-keys' || (route === 'admin/grant' && !body);
+  const headers = { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', ...(read ? {} : { 'Content-Type': 'application/json' }) };
+  const url = `${baseUrl}/api/dashboard/ceramos/${route}${read ? `?user_id=${encodeURIComponent(userId)}` : ''}`;
+  const call = await botFetch(url, read ? { headers } : { method: 'POST', headers, body: JSON.stringify({ ...(body ?? {}), user_id: userId }) }, { timeoutMs: 8_000, mode: read ? 'read' : 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** Sends an own picture to the bot (it waits for review). The bot checks the plan, the policy, the block and the picture itself. */
+export async function sendPettoUpload(context: AstroContext, userId: string, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const url = `${baseUrl}/api/dashboard/ceramos/upload-submit?user_id=${encodeURIComponent(userId)}`;
+  const call = await botFetch(url, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** Sends an own badge to the bot (it waits for review): the picture is the body, the slot and the name go in the address. */
+export async function sendPettoOwnBadge(context: AstroContext, userId: string, slot: string, name: string, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const url = `${baseUrl}/api/dashboard/ceramos/own-badge-submit?user_id=${encodeURIComponent(userId)}&slot=${encodeURIComponent(slot)}&name=${encodeURIComponent(name)}`;
+  const call = await botFetch(url, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** The picture of an own badge waiting for review (only the owner may ask; the bot checks it). */
+export async function fetchPettoPendingBadge(context: AstroContext, ownerId: string, person: string, slot: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^\d{15,25}$/.test(person) || !/^[1-4]$/.test(slot)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/admin/own-badge-file?user_id=${encodeURIComponent(ownerId)}&person=${encodeURIComponent(person)}&slot=${slot}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/png' };
+  } catch { return null; }
+}
+
+/** The picture of a person waiting for review, as the bot has it (only the owner may ask; the bot checks it). */
+export async function fetchPettoPendingUpload(context: AstroContext, ownerId: string, person: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^\d{15,25}$/.test(person)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/admin/upload-file?user_id=${encodeURIComponent(ownerId)}&person=${encodeURIComponent(person)}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/webp' };
+  } catch { return null; }
+}
+
+/** The read-only API: what a key reads (`me`, `movements`) or what anyone reads (`info`). The key says who; the bot checks it, limits it to 60 reads a minute and never changes anything. */
+export async function callPettoPublic(context: AstroContext, what: 'me' | 'movements' | 'info', key?: string): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const url = `${baseUrl}/api/dashboard/ceramos/public/${what}`;
+  const call = await botFetch(url, what === 'info' ? { headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json' } } : { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) }, { timeoutMs: 8_000, mode: what === 'info' ? 'read' : 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** One of the designs that come with Petto (a background of the rank card), as the bot has it, or null. `size` is `thumb` or `full`. */
+export async function fetchPettoDesignFile(context: AstroContext, id: string, size: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^[a-z0-9-]{3,30}$/.test(id) || !/^(thumb|full)$/.test(size)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/design-file/${id}/${size}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/webp' };
+  } catch { return null; }
+}
+
+/** Sends the picture of a badge of the editor to the bot (the owner only: the bot checks it again). */
+export async function sendPettoBadgeImage(context: AstroContext, userId: string, badgeId: string, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const url = `${baseUrl}/api/dashboard/ceramos/admin/badge-image?user_id=${encodeURIComponent(userId)}&id=${encodeURIComponent(badgeId)}`;
+  const call = await botFetch(url, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 12_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** The picture of a badge of the editor, as the bot has it (null when there is none). */
+export async function fetchPettoBadgeArt(context: AstroContext, badgeId: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^[a-z0-9-]{1,40}$/.test(badgeId)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/badge-art/${badgeId}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'image/png' };
+  } catch { return null; }
+}
+
+/** Sends a file of the editor of the shop to the bot (a banner, a name font, or a picture for a badge of the code): the owner only, and the bot checks it again and checks the file by its first bytes. */
+export async function sendPettoShopFile(context: AstroContext, userId: string, route: 'admin/item-file' | 'admin/override-image', query: Record<string, string>, bytes: ArrayBuffer): Promise<{ ok: boolean; data: any; down: boolean }> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret) return { ok: false, data: null, down: true };
+  const params = new URLSearchParams({ user_id: userId, ...query });
+  const call = await botFetch(`${baseUrl}/api/dashboard/ceramos/${route}?${params}`, { method: 'POST', headers: { 'X-Petto-Dashboard-Key': secret, Accept: 'application/json', 'Content-Type': 'application/octet-stream' }, body: bytes }, { timeoutMs: 15_000, mode: 'change' });
+  return { ok: Boolean(call.response?.ok && call.data?.ok), data: call.data, down: call.down };
+}
+
+/** The file of a banner or a name font of the shop, as the bot has it (null when there is none). */
+export async function fetchPettoItemFile(context: AstroContext, kind: string, id: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const { baseUrl, secret } = apiConfig(context);
+  if (!baseUrl || !secret || !/^(banner|font)$/.test(kind) || !/^[a-z0-9-]{1,40}$/.test(id)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/api/dashboard/ceramos/item-file/${kind}/${id}`, { headers: { 'X-Petto-Dashboard-Key': secret }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return null;
+    return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? 'application/octet-stream' };
+  } catch { return null; }
 }

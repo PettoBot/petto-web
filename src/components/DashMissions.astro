@@ -1,0 +1,92 @@
+---
+// Missions (/dash/missions): what to do today and this week (messages, minutes in voice) and the ceramos each one pays. The bot counts the progress and pays once for each period;
+// this page shows it and asks to claim.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopShared from './DashShopShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface Mission { id: string; period: 'day' | 'week'; kind: 'messages' | 'voice'; target: number; reward: number; progress: number; complete: boolean; claimed: boolean }
+interface Props { user: Session; data: { missions: Mission[]; resets: { day: string; week: string } } | null; balance: number | null }
+const { user, data, balance } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const number = new Intl.NumberFormat(lang);
+const when = new Intl.DateTimeFormat(lang, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const groups = data ? [['day', dt('Today'), data.resets.day], ['week', dt('This week'), data.resets.week]] as const : [];
+const ready = data ? data.missions.filter((mission) => mission.complete && !mission.claimed) : [];
+const boot = JSON.stringify({ ui: { working: dt('Working…'), down: dt('Petto did not answer. Try again in a moment.'), failed: dt('It could not be done. Try again in a moment.'), nothing: dt('No mission is ready to claim yet.') } }).replace(/</g, '\\u003c');
+---
+<DashMeLayout user={user} active="missions" pageTitle="Missions">
+  <DashShopShared />
+  <DashPanelHead title={dt('Missions')} eyebrow={dt('Ceramos')} icon="ph:target-fill" back={false}>
+    {balance !== null && <div class="bd-wallet"><span class="bd-bal"><i class="bd-coin"></i><b>{balance}</b></span></div>}
+  </DashPanelHead>
+  {!data && <p class="bd-down" role="alert">{dt('Petto did not answer. Try again in a moment.')}</p>}
+  {data && (
+    <div class="ms" id="ms" data-boot={boot}>
+      <p class="ms-lead">{dt('Chat and join voice channels to fill your missions and earn ceramos. The count is the activity of every server where Petto counts it.')}</p>
+      <p class="ms-msg" id="ms-msg" role="status" hidden></p>
+      <div class="ms-top"><button type="button" class="btn ms-claim" id="ms-claim" data-ready={ready.length} disabled={ready.length === 0}>{ready.length ? dt('Claim {n} ready', { n: String(ready.length) }) : dt('Nothing to claim yet')}</button></div>
+      <div class="ms-groups">
+        {groups.map(([period, title, resets]) => (
+          <section class="bd-card ms-card" aria-label={title}>
+            <header><h2>{title}</h2><span>{dt('Resets {when}', { when: when.format(new Date(resets)) })}</span></header>
+            {data.missions.filter((mission) => mission.period === period).map((mission) => (
+              <article class:list={['ms-row', { 'is-done': mission.claimed }]}>
+                <div class="ms-info">
+                  <strong>{mission.kind === 'messages' ? dt('Send {n} messages', { n: number.format(mission.target) }) : dt('Spend {n} minutes in voice', { n: number.format(mission.target) })}</strong>
+                  <div class="ms-bar" role="progressbar" aria-valuemin="0" aria-valuemax={mission.target} aria-valuenow={mission.progress}><i style={`width:${Math.round((mission.progress / mission.target) * 100)}%`}></i></div>
+                  <span class="ms-count">{number.format(mission.progress)} / {number.format(mission.target)}</span>
+                </div>
+                <div class="ms-reward"><i class="bd-coin"></i><b>+{mission.reward}</b></div>
+                {mission.claimed
+                  ? <span class="ms-state">{dt('Claimed')}</span>
+                  : <button type="button" class="btn ms-one" data-id={mission.id} disabled={!mission.complete}>{mission.complete ? dt('Claim') : dt('In progress')}</button>}
+              </article>
+            ))}
+          </section>
+        ))}
+      </div>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .ms { display: flex; flex-direction: column; gap: 14px; }
+  .ms-lead { margin: -4px 0 0; color: var(--text-muted); max-width: 70ch; }
+  .ms-msg { margin: 0; padding: 12px 16px; border-radius: 12px; background: var(--green-soft); color: var(--green-text); font-size: 14.5px; } .ms-msg.is-bad { background: var(--red-soft); color: var(--red-text); }
+  .ms-claim { background: var(--green); color: var(--green-ink); border-color: transparent; } .ms-claim:disabled { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text-muted); cursor: default; }
+  .ms-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (min-width: 1000px) { .ms-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .ms-card { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .ms-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; } .ms-card h2 { margin: 0; font-size: 18px; } .ms-card header span { color: var(--text-muted); font-size: 13px; }
+  .ms-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 14px; background: color-mix(in srgb, var(--text) 3%, transparent); }
+  .ms-row.is-done { opacity: .6; }
+  .ms-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; } .ms-info strong { font-size: 15px; }
+  .ms-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; } .ms-bar i { display: block; height: 100%; border-radius: 999px; background: var(--green); }
+  .ms-count { font-size: 12.5px; color: var(--text-muted); }
+  .ms-reward { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; }
+  .ms-one { background: var(--green); color: var(--green-ink); border-color: transparent; min-width: 104px; justify-content: center; } .ms-one:disabled { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text-muted); cursor: default; }
+  .ms-state { min-width: 104px; text-align: center; color: var(--text-muted); font-size: 13.5px; }
+  @media (max-width: 520px) { .ms-row { grid-template-columns: minmax(0, 1fr) auto; } .ms-one, .ms-state { grid-column: 1 / -1; width: 100%; } }
+</style>
+
+<script>
+  const root = document.getElementById('ms');
+  if (root?.dataset.boot) {
+    const { ui } = JSON.parse(root.dataset.boot) as { ui: any };
+    const msg = document.getElementById('ms-msg') as HTMLElement;
+    const say = (text: string, bad = false) => { msg.hidden = false; msg.textContent = text; msg.className = `ms-msg${bad ? ' is-bad' : ''}`; };
+    const claim = async (id?: string) => {
+      say(ui.working);
+      const response = await fetch('/dash/missions-act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(id ? { id } : {}) });
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.ok) { say(`+${data.total}`); setTimeout(() => location.reload(), 900); return; }
+      say(data?.error === 'down' ? ui.down : data?.error === 'nothing_to_claim' || data?.error === 'not_ready' ? ui.nothing : ui.failed, true);
+    };
+    document.getElementById('ms-claim')?.addEventListener('click', () => claim());
+    document.querySelectorAll<HTMLButtonElement>('.ms-one[data-id]').forEach((button) => button.addEventListener('click', () => claim(button.dataset.id)));
+  }
+</script>

@@ -137,7 +137,9 @@ for (const field of ['handle', 'banner', 'accentColor']) {
   check(`session declares ${field}`, new RegExp(`${field}\\?: `).test(session));
   check(`session validates ${field}`, new RegExp(`session\\.${field} === undefined \\|\\| session\\.${field} === null \\|\\| typeof session\\.${field} === '`).test(session));
 }
-check('session still has no email or locale', !/email|locale/i.test(session));
+// The only email in the session is `discordEmail`: it lives in the encrypted cookie and is saved only when the person presses the button in Preferences. No locale.
+check('session has no locale and no email but discordEmail', !/locale/i.test(session) && !/email/i.test(session.replace(/discordEmail/g, '').replace(/^\s*\/\*\*.*discordEmail.*$/gm, '').replace(/The email of the Discord account[^*]*\*\//g, '')));
+check('discordEmail is never saved by the login', !/contact|user_contact/i.test(read('src/pages/dash/callback.ts')));
 check('the login keeps the profile fields', /\.\.\.profileFromUser\(user\)/.test(read('src/pages/dash/callback.ts')));
 const auth = read('src/utils/dashAuth.ts');
 check('old sessions are refreshed for the profile fields', /session\.handle !== undefined && session\.banner !== undefined && session\.accentColor !== undefined/.test(auth) && /\.\.\.profileFromUser\(user\)/.test(auth));

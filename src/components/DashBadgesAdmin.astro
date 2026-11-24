@@ -1,0 +1,160 @@
+---
+// The editor of badges (/dash/badges-admin, only the owner): the badges that are made by hand (a Christmas badge, a badge for partners...) with their picture, their words in
+// three languages, the tab, the rarity, the price (0 is free), the days of the sale, the plan they ask for and the rule that gives them by itself. A badge whose sale ended
+// or was taken off stays with the people who have it. The bot checks and saves; this page asks.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopTabs from './DashShopTabs.astro';
+import DashShopAdminShared from './DashShopAdminShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface Row { id: string; names: Record<string, string>; category: string; rarity: string; price: number; color: string; hasImage: boolean; saleFrom: string | null; saleUntil: string | null; planMin: string | null; grantRule: string | null; active: boolean; updatedAt: string; status: 'live' | 'scheduled' | 'ended' | 'retired' | 'rule'; owners: number; packId: string | null }
+interface Props { user: Session; badges: Row[] | null; packs?: { id: string; names: Record<string, string> }[] }
+const { user, badges, packs = [] } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const date = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', year: 'numeric' });
+const statusLabel = { live: dt('On sale'), scheduled: dt('Planned'), ended: dt('Sale ended'), retired: dt('Off sale'), rule: dt('Automatic') };
+const ui = {
+  saved: dt('Saved.'), saving: dt('Saving…'), down: dt('Petto did not answer. Try again in a moment.'),
+  errors: {
+    bad_id: dt('The id is 3 to 40 letters, numbers or dashes, and it cannot start like a country or a language.'), bad_name: dt('The English name is needed (40 characters at most).'),
+    bad_price: dt('The price is a whole number from 0 to 100000.'), bad_date: dt('One of the dates is not a date.'), bad_dates: dt('The sale has to end after it starts.'),
+    bad_pack: dt('That pack does not exist.'), bad_plan: dt('That plan does not exist.'), bad_rule: dt('That rule does not exist.'), rule_and_price: dt('A badge that is given by itself has no price.'),
+    image_too_big: dt('The picture is over 256 KB.'), bad_image: dt('The picture has to be a PNG, JPEG, GIF or WebP.'), image_required: dt('Choose a picture.'), forbidden: dt('Only the owner can do this.'), failed: dt('That did not work. Try again in a moment.'),
+  },
+  noImage: dt('The badge was saved, but it has no picture yet.'),
+};
+const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c');
+---
+<DashMeLayout user={user} active="staff-badges" pageTitle="Shop editor">
+  <DashPanelHead title={dt('Editor of the shop')} eyebrow={dt('Staff')} icon="ph:medal-fill" back={false} />
+  <DashShopAdminShared />
+  <DashShopTabs active="badges" />
+  {!badges && <p class="be-down" role="alert">{ui.down}</p>}
+  {badges && (
+    <div class="be" id="be" data-boot={boot}>
+      <p class="be-intro">{dt('Make badges for the shop: free or paid, for a plan, given by themselves, or for a season. When a sale ends, the people who have the badge keep it for good; the rest can never get it again.')}</p>
+
+      <div class="be-list" id="be-list">
+        {badges.length === 0 && <p class="be-empty">{dt('No badge made yet. Make the first one below.')}</p>}
+        {badges.map((row) => (
+          <article class="be-row" data-id={row.id}>
+            <span class="be-hex" style={`--c:${row.color}`}>{row.hasImage ? <img src={`/dash/badge-art/${row.id}?v=${encodeURIComponent(row.updatedAt)}`} alt="" width="52" height="52" /> : <b>?</b>}</span>
+            <div class="be-info">
+              <strong>{row.names.en}</strong>
+              <span class="be-meta">
+                <i class={`be-chip be-${row.status}`}>{statusLabel[row.status]}</i>
+                <span>{row.grantRule ? dt('Given by itself') : row.price === 0 ? dt('Free') : `${row.price} ${dt('ceramos')}`}</span>
+                <span>{dt('{n} people have it', { n: row.owners })}</span>
+                {row.saleFrom && <span>{dt('From {date}', { date: date.format(new Date(row.saleFrom)) })}</span>}
+                {row.saleUntil && <span>{dt('Until {date}', { date: date.format(new Date(row.saleUntil)) })}</span>}
+                {!row.hasImage && <span class="be-warn">{dt('No picture')}</span>}
+              </span>
+            </div>
+            <div class="be-actions">
+              <button type="button" class="btn" data-edit={row.id}>{dt('Edit')}</button>
+              {row.active
+                ? <button type="button" class="btn be-off" data-active={row.id} data-value="false">{dt('Take off sale')}</button>
+                : <button type="button" class="btn be-on" data-active={row.id} data-value="true">{dt('Put back on sale')}</button>}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <form class="be-form" id="be-form" autocomplete="off">
+        <h2 id="be-title">{dt('New badge')}</h2>
+        <div class="be-grid">
+          <label>{dt('Id (letters, numbers, dashes)')}<input name="id" required minlength="3" maxlength="40" pattern="[a-z0-9][a-z0-9\-]{2,39}" placeholder="christmas-2026" /></label>
+          <label>{dt('Name in English')}<input name="name_en" required maxlength="40" /></label>
+          <label>{dt('Name in Spanish')}<input name="name_es" maxlength="40" /></label>
+          <label>{dt('Name in Portuguese')}<input name="name_pt" maxlength="40" /></label>
+          <label>{dt('Tab')}
+            <select name="category"><option value="special">{dt('Special')}</option><option value="status">{dt('Status')}</option><option value="fablo">{dt('Fablo pack')}</option><option value="country">{dt('Countries')}</option><option value="language">{dt('Languages')}</option></select>
+          </label>
+          <label>{dt('Rarity')}
+            <select name="rarity"><option value="common">{dt('Common')}</option><option value="rare">{dt('Rare')}</option><option value="epic">{dt('Epic')}</option><option value="legendary">{dt('Legendary')}</option></select>
+          </label>
+          <label>{dt('Price in ceramos (0 is free)')}<input name="price" type="number" min="0" max="100000" step="1" value="20" /></label>
+          <label>{dt('Colour behind the picture')}<input name="color" type="color" value="#8f7bd6" /></label>
+          <label>{dt('Pack')}<select name="packId"><option value="">{dt('No pack')}</option>{packs.map((pack) => <option value={pack.id}>{pack.names[lang] ?? pack.names.en}</option>)}</select></label>
+          <label>{dt('On sale from')}<input name="saleFrom" type="datetime-local" /></label>
+          <label>{dt('On sale until')}<input name="saleUntil" type="datetime-local" /></label>
+          <label>{dt('Only for this plan or a better one')}
+            <select name="planMin"><option value="">{dt('Everybody')}</option><option value="bronze">{dt('Bronze')}</option><option value="silver">{dt('Silver')}</option><option value="gold">{dt('Gold')}</option></select>
+          </label>
+          <label>{dt('Given by itself when the person is…')}
+            <select name="grantRule"><option value="">{dt('Nothing: it is bought')}</option><option value="voter">{dt('A voter (voted in the last 30 days)')}</option><option value="booster">{dt('A booster of the support server')}</option><option value="partner" disabled>{dt('A partner (not connected yet)')}</option><option value="server_boost" disabled>{dt('A server booster (not connected yet)')}</option></select>
+          </label>
+          <label class="be-file">{dt('Picture (PNG, JPEG, GIF or WebP, 256 KB at most)')}<input name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" /></label>
+        </div>
+        <p class="be-msg" id="be-msg" role="status" hidden></p>
+        <div class="be-buttons">
+          <button type="submit" class="btn be-save" id="be-save">{dt('Save badge')}</button>
+          <button type="button" class="btn" id="be-reset">{dt('Clear the form')}</button>
+        </div>
+      </form>
+    </div>
+  )}
+</DashMeLayout>
+
+
+
+<script>
+  const root = document.getElementById('be');
+  if (root?.dataset.boot) {
+    const boot = JSON.parse(root.dataset.boot) as { ui: any; badges: any[] };
+    const ui = boot.ui;
+    const form = document.getElementById('be-form') as HTMLFormElement;
+    const msg = document.getElementById('be-msg') as HTMLElement;
+    const say = (text: string, kind: 'ok' | 'error') => { msg.hidden = false; msg.textContent = text; msg.className = `be-msg is-${kind}`; };
+    const local = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+    const send = async (action: string, body: unknown, query = '', raw = false) => {
+      const response = await fetch(`/dash/badges-admin-act?action=${action}${query}`, { method: 'POST', headers: raw ? {} : { 'content-type': 'application/json' }, body: raw ? (body as ArrayBuffer) : JSON.stringify(body) });
+      const data = await response.json().catch(() => null);
+      return { ok: response.ok && data?.ok, error: data?.error as string | undefined };
+    };
+    const why = (code?: string) => ui.errors[code ?? 'failed'] ?? ui.errors.failed;
+
+    document.getElementById('be-list')!.addEventListener('click', async (event) => {
+      const target = event.target as HTMLElement;
+      const edit = target.closest<HTMLElement>('[data-edit]');
+      if (edit) {
+        const row = boot.badges.find((each) => each.id === edit.dataset.edit); if (!row) return;
+        field('id').value = row.id; field('id').readOnly = true;
+        field('name_en').value = row.names.en ?? ''; field('name_es').value = row.names.es ?? ''; field('name_pt').value = row.names['pt-BR'] ?? '';
+        field('category').value = row.category; field('rarity').value = row.rarity; field('price').value = String(row.price); field('color').value = row.color;
+        field('saleFrom').value = local(row.saleFrom); field('saleUntil').value = local(row.saleUntil); field('planMin').value = row.planMin ?? ''; field('grantRule').value = row.grantRule ?? ''; field('packId').value = row.packId ?? '';
+        document.getElementById('be-title')!.textContent = row.names.en;
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      const toggle = target.closest<HTMLButtonElement>('[data-active]');
+      if (toggle) {
+        toggle.disabled = true;
+        const out = await send('active', { id: toggle.dataset.active, active: toggle.dataset.value === 'true' });
+        if (out.ok) location.reload(); else { toggle.disabled = false; say(why(out.error), 'error'); }
+      }
+    });
+    document.getElementById('be-reset')!.addEventListener('click', () => { form.reset(); field('id').readOnly = false; document.getElementById('be-title')!.textContent = 'New badge'; msg.hidden = true; });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = document.getElementById('be-save') as HTMLButtonElement; button.disabled = true; say(ui.saving, 'ok');
+      const when = (name: string) => (field(name).value ? new Date(field(name).value).toISOString() : null);
+      const body = {
+        id: field('id').value, names: { en: field('name_en').value, es: field('name_es').value, 'pt-BR': field('name_pt').value }, category: field('category').value, rarity: field('rarity').value,
+        price: Number(field('price').value), color: field('color').value, saleFrom: when('saleFrom'), saleUntil: when('saleUntil'), planMin: field('planMin').value || null, grantRule: field('grantRule').value || null, packId: field('packId').value || null,
+      };
+      const out = await send('save', body);
+      if (!out.ok) { button.disabled = false; say(why(out.error), 'error'); return; }
+      const file = field('image').files?.[0];
+      if (file) {
+        const upload = await send('image', await file.arrayBuffer(), `&id=${encodeURIComponent(body.id.trim().toLowerCase())}`, true);
+        if (!upload.ok) { button.disabled = false; say(why(upload.error), 'error'); return; }
+      } else if (!boot.badges.some((each) => each.id === body.id.trim().toLowerCase() && each.hasImage)) say(ui.noImage, 'ok');
+      location.reload();
+    });
+  }
+</script>

@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { loginScope, supportChoice } from '../src/utils/dashLogin.mjs';
 
-assert.equal(loginScope(false), 'identify guilds', 'the normal login asks for nothing more');
-assert.equal(loginScope(true), 'identify guilds guilds.join', 'a yes adds the permission to join');
+assert.equal(loginScope(false), 'identify guilds email', 'the normal login asks who you are, your servers and your email (to offer it as the contact email)');
+assert.equal(loginScope(true), 'identify guilds email guilds.join', 'a yes adds the permission to join');
 
 assert.deepEqual(supportChoice(), { ask: true, join: false, remember: false }, 'the first time: ask');
 assert.deepEqual(supportChoice({ answer: 'yes' }), { ask: false, join: true, remember: true });

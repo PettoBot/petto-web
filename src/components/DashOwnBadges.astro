@@ -1,0 +1,152 @@
+---
+// Own badges (/dash/own-badges): a plan lets a person make badges of their own (Bronze 1, Silver 2, Gold 4): a name and a picture. The user policy is accepted first and the team
+// approves every badge before anybody sees it; an approved one is the person's alone (it is not sold) and can go in the showcase of the profile. The bot checks all of that.
+import { Icon } from 'astro-icon/components';
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopShared from './DashShopShared.astro';
+import DashConfirm from './DashConfirm.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface Item { slot: number; locked: boolean; approved: { id: string; name: string } | null; pending: { name: string } | null }
+interface Data { slots: number; policyAccepted: boolean; blocked: boolean; items: Item[] }
+interface Props { user: Session; data: Data | null }
+const { user, data } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const MAX = 4;
+const slotsShown = data ? Array.from({ length: MAX }, (_, i) => i + 1).map((slot) => ({ slot, item: data.items.find((row) => row.slot === slot) ?? null, free: slot <= data.slots })) : [];
+const ui = {
+  working: dt('Working…'), down: dt('Petto did not answer. Try again in a moment.'), sent: dt('Sent. It waits for the team to review it: nobody sees it until it is approved.'), removed: dt('Removed.'),
+  confirmRemove: dt('Remove this badge?'),
+  errors: {
+    blocked: dt('You cannot upload pictures any more.'), premium_required: dt('Your plan does not allow own badges.'), slot_locked: dt('Your plan does not have that slot.'), policy_required: dt('Accept the user policy first.'),
+    bad_name: dt('The name needs 2 to 24 letters or numbers (spaces and . _ \' ! & - are fine).'), bad_file: dt('That is not a picture Petto can read (PNG, JPEG or WebP).'), too_big: dt('The picture is too big.'),
+    file_too_small: dt('The picture is too small: it needs at least 64 x 64 pixels.'), detector: dt('This picture was not accepted: it looks like it breaks the user policy (sexual, violent or hateful content). Choose another one.'),
+    failed: dt('It could not be done. Try again in a moment.'),
+  },
+};
+const boot = JSON.stringify({ ui }).replace(/</g, '\\u003c');
+---
+<DashMeLayout user={user} active="own-badges" pageTitle="Own badges">
+  <DashShopShared />
+  <DashConfirm />
+  <DashPanelHead title={dt('Own badges')} eyebrow={dt('Personalization')} icon="ph:medal-fill" back={false} />
+  {!data && <p class="bd-down" role="alert">{dt('Petto did not answer. Try again in a moment.')}</p>}
+  {data && (
+    <div class="ob" id="ob" data-boot={boot}>
+      <p class="ob-lead">{dt('Make badges of your own with a name and a picture. Bronze has 1, Silver 2 and Gold 4. The team reviews every badge before it is shown.')}</p>
+      {data.blocked && <p class="ob-note is-bad" role="alert">{dt('You cannot upload pictures any more. If you think it is a mistake, write to us in the support server.')}</p>}
+      {!data.blocked && data.slots === 0 && data.items.length === 0 && (
+        <section class="bd-card ob-card ob-lock">
+          <h2>{dt('Your plan does not include own badges')}</h2>
+          <p>{dt('Own badges come with the Bronze, Silver and Gold plans.')}</p>
+          <a class="btn ob-go" href="/dash/plans">{dt('See the plans')}</a>
+        </section>
+      )}
+      {!data.blocked && data.slots > 0 && !data.policyAccepted && (
+        <section class="bd-card ob-card" id="ob-policy">
+          <h2>{dt('User policy')}</h2>
+          <p class="ob-sub">{dt('Before you upload your own content, read and accept this.')}</p>
+          <p class="ob-sub">{dt('Everything you upload you upload by your own decision, and you declare you have the right to use it. We review every badge: sexual, minor-related, violent, hateful or illegal content is not allowed, and the feature can be suspended.')} <a href="/terms">{dt('Terms of use')}</a></p>
+          <label class="ob-check"><input type="checkbox" id="ob-agree" /> {dt('I have read the policy and I agree. I understand I answer for what I upload.')}</label>
+          <p class="ob-msg" id="ob-msg" role="status" hidden></p>
+          <div class="ob-actions"><button type="button" class="btn ob-go" id="ob-accept" disabled>{dt('I agree')}</button></div>
+        </section>
+      )}
+      {!data.blocked && (data.slots > 0 ? data.policyAccepted : data.items.length > 0) && (
+        <div class="ob-grid">
+          {slotsShown.map(({ slot, item, free }) => (
+            <section class="bd-card ob-card ob-slot" data-slot={slot}>
+              <header><h2>{dt('Badge {n}', { n: String(slot) })}</h2>{!free && <span class="ob-tag">{dt('Not in your plan')}</span>}</header>
+              <div class="ob-hex">
+                <Icon name="ph:medal-fill" width="38" height="38" />
+                {item?.approved && <img class="ob-art" src={`/dash/badge-art/${item.approved.id}`} alt="" width="96" height="96" loading="lazy" />}
+              </div>
+              {item?.approved && <p class="ob-name"><b>{item.approved.name}</b><span>{dt('Approved: it is yours alone.')}</span></p>}
+              {item?.pending && <p class="ob-note is-wait">{dt('Waiting for review: {name}.', { name: item.pending.name })}</p>}
+              {free && data.policyAccepted && !item?.pending && (
+                <form class="ob-form" autocomplete="off">
+                  <input type="text" class="ob-text" maxlength="24" minlength="2" placeholder={dt('Name of the badge')} aria-label={dt('Name of the badge')} required />
+                  <input type="file" class="ob-file" accept="image/png,image/jpeg,image/webp" />
+                  <p class="ob-hint">{dt('PNG, JPEG or WebP, up to 512 KB and at least 64 x 64 pixels. It is cut to a square.')}</p>
+                  <div class="ob-actions"><button type="submit" class="btn ob-go" disabled>{dt('Send for review')}</button></div>
+                </form>
+              )}
+              {(item?.approved || item?.pending) && <div class="ob-actions"><button type="button" class="btn ob-del" data-remove={slot} data-confirm={dt('Remove this badge?')}>{dt('Remove')}</button></div>}
+              <p class="ob-msg" role="status" hidden></p>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .ob { display: flex; flex-direction: column; gap: 14px; }
+  .ob-lead { margin: -4px 0 0; color: var(--text-muted); }
+  .ob-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; } @media (min-width: 760px) { .ob-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+  .ob-card { padding: 20px; display: flex; flex-direction: column; gap: 12px; } .ob-card h2 { margin: 0; font-size: 18px; }
+  .ob-slot header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ob-tag { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text-muted); }
+  .ob-hex { position: relative; width: 96px; height: 96px; align-self: center; display: grid; place-items: center; border-radius: 22px; background: color-mix(in srgb, var(--text) 6%, transparent); border: 1px solid var(--border-soft); color: var(--text-muted); overflow: hidden; } .ob-hex .ob-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: var(--surface, #1a1a1a); }
+  .ob-name { margin: 0; display: flex; flex-direction: column; gap: 2px; text-align: center; } .ob-name span { color: var(--text-muted); font-size: 13px; }
+  .ob-form { display: flex; flex-direction: column; gap: 10px; }
+  .ob-text { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; width: 100%; box-sizing: border-box; }
+  .ob-hint { margin: 0; color: var(--text-muted); font-size: 12.5px; }
+  .ob-sub { margin: 0; color: var(--text-muted); font-size: 14px; } .ob-sub a { color: var(--accent); } .ob-lock { align-items: flex-start; } .ob-lock p { margin: 0; color: var(--text-muted); }
+  .ob-check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; } .ob-check input { margin-top: 3px; accent-color: var(--green); width: 18px; height: 18px; }
+  .ob-actions { display: flex; gap: 10px; flex-wrap: wrap; } .ob-actions .btn { flex: 1 1 140px; justify-content: center; }
+  .ob-go { background: var(--green); color: var(--green-ink); border-color: transparent; } .ob-go:disabled { cursor: default; background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--text-muted); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
+  .ob-del { background: transparent; color: var(--red-text); border: 1px solid color-mix(in srgb, var(--red) 55%, transparent); } .ob-del:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
+  .ob-note { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--green-soft); color: var(--green-text); font-size: 14px; } .ob-note.is-bad { background: var(--red-soft); color: var(--red-text); } .ob-note.is-wait { background: color-mix(in srgb, var(--yellow) 14%, transparent); color: var(--yellow-text); }
+  .ob-msg { margin: 0; font-size: 14px; padding: 10px 14px; border-radius: 12px; background: var(--green-soft); color: var(--green-text); } .ob-msg.is-bad { background: var(--red-soft); color: var(--red-text); }
+</style>
+
+<script>
+  const root = document.getElementById('ob');
+  if (root?.dataset.boot) {
+    const { ui } = JSON.parse(root.dataset.boot) as { ui: any };
+    const say = (box: HTMLElement | null, text: string, bad = false) => { if (!box) return; box.hidden = false; box.textContent = text; box.className = `ob-msg${bad ? ' is-bad' : ''}`; };
+    const why = (data: any) => (data?.error === 'down' ? ui.down : (ui.errors[data?.error ?? 'failed'] ?? ui.errors.failed));
+    const post = async (query: string, body?: BodyInit) => {
+      const response = await fetch(`/dash/own-badges-act?${query}`, { method: 'POST', headers: body ? { 'content-type': 'application/octet-stream' } : { 'content-type': 'application/json' }, body: body ?? '{}' });
+      const data = await response.json().catch(() => null);
+      return { ok: Boolean(response.ok && data?.ok), data };
+    };
+    // A picture that cannot be had leaves the medal that is under it.
+    document.querySelectorAll<HTMLImageElement>('.ob-art').forEach((img) => img.addEventListener('error', () => img.remove()));
+    const agree = document.getElementById('ob-agree') as HTMLInputElement | null;
+    const accept = document.getElementById('ob-accept') as HTMLButtonElement | null;
+    const policyMsg = document.getElementById('ob-msg');
+    agree?.addEventListener('change', () => { if (accept) accept.disabled = !agree.checked; });
+    accept?.addEventListener('click', async () => { accept.disabled = true; say(policyMsg, ui.working); const out = await post('action=policy'); if (out.ok) location.reload(); else { accept.disabled = false; say(policyMsg, why(out.data), true); } });
+    document.querySelectorAll<HTMLElement>('.ob-slot').forEach((card) => {
+      const slot = card.dataset.slot as string;
+      const msg = card.querySelector<HTMLElement>('.ob-msg');
+      const form = card.querySelector<HTMLFormElement>('.ob-form');
+      if (form) {
+        const text = form.querySelector<HTMLInputElement>('.ob-text') as HTMLInputElement;
+        const file = form.querySelector<HTMLInputElement>('.ob-file') as HTMLInputElement;
+        const go = form.querySelector<HTMLButtonElement>('button[type=submit]') as HTMLButtonElement;
+        const refresh = () => { go.disabled = text.value.trim().length < 2 || !file.files?.length; };
+        text.addEventListener('input', refresh); file.addEventListener('change', refresh);
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const chosen = file.files?.[0]; if (!chosen) return;
+          go.disabled = true; say(msg, ui.working);
+          const out = await post(`action=submit&slot=${slot}&name=${encodeURIComponent(text.value.trim())}`, chosen);
+          if (out.ok) { say(msg, ui.sent); setTimeout(() => location.reload(), 1500); } else { refresh(); say(msg, why(out.data), true); }
+        });
+      }
+      card.querySelector<HTMLButtonElement>('[data-remove]')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget as HTMLButtonElement;
+        button.disabled = true; say(msg, ui.working);
+        const out = await post(`action=remove&slot=${slot}`);
+        if (out.ok) location.reload(); else { button.disabled = false; say(msg, why(out.data), true); }
+      });
+    });
+  }
+</script>

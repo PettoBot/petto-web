@@ -1,0 +1,22 @@
+---
+export const prerender = false;
+import DashUploadsAdmin from '../../components/DashUploadsAdmin.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { isPettoOwner } from '../../utils/premiumAdmin';
+import { callPettoCeramos } from '../../utils/pettoBotApi';
+import { read } from '../../utils/premium';
+
+const session = await getDashboardSession(Astro);
+if (!session) {
+  Astro.cookies.set('petto_after_login', `${Astro.url.pathname}${Astro.url.search}`, { httpOnly: true, secure: Astro.url.protocol === 'https:', sameSite: 'lax', path: '/', maxAge: 10 * 60 });
+  return Astro.redirect('/dash');
+}
+// Only the owner; anybody else sees a plain 404, as with the other staff pages.
+if (!isPettoOwner(Astro, session.userId)) return new Response('Not found', { status: 404 });
+const [queue, badgeQueue] = await Promise.all([callPettoCeramos(Astro, session.userId, 'admin/uploads'), callPettoCeramos(Astro, session.userId, 'admin/own-badges')]);
+// The contact email of the people in the lists, when they saved one in Preferences (only the owner sees this page): so the team can write to somebody about a picture.
+const ids = [...new Set([...(queue.ok ? queue.data.pending : []), ...(queue.ok ? queue.data.blocked : []), ...(badgeQueue.ok ? badgeQueue.data.pending : [])].map((row: { userId: string }) => row.userId).filter((id: string) => /^\d{15,25}$/.test(id)))];
+const contacts: Record<string, string> = {};
+if (ids.length) for (const row of await read<{ user_id: string; email: string }>(Astro, 'user_contact', `user_id=in.(${ids.join(',')})&select=user_id,email`)) contacts[row.user_id] = row.email;
+---
+<DashUploadsAdmin user={session} data={queue.ok ? { ...queue.data, badges: badgeQueue.ok ? badgeQueue.data.pending : [] } : null} contacts={contacts} />

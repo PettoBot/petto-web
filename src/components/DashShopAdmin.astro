@@ -1,0 +1,301 @@
+---
+// The rest of the editor of the shop (/dash/shop-admin, only the owner): the badges of the code (countries, languages and the Fablo ones) with what the team changed in each
+// (its words, colour, rarity, price, picture and pack), the packs (a named group of badges, banners or name fonts: free, for a plan, for some days, or sold whole), the
+// banners and the name fonts, each with its file. Nothing is saved here: the bot checks and saves; this page asks.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopTabs from './DashShopTabs.astro';
+import DashShopAdminShared from './DashShopAdminShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+type Names = Record<string, string>;
+interface Pack { id: string; kind: 'badge' | 'banner' | 'font'; names: Names; color: string; price: number | null; free: boolean; saleFrom: string | null; saleUntil: string | null; planMin: string | null; active: boolean; status: string }
+interface Item { kind: 'banner' | 'font'; id: string; packId: string | null; names: Names; rarity: string; price: number | null; hasFile: boolean; saleFrom: string | null; saleUntil: string | null; planMin: string | null; active: boolean; updatedAt: string; status: string; owners: number }
+interface BuiltIn { id: string; region: string | null; language: string | null; unlock: string; color: string; rarity: string | null; price: number; names: Names | null; pack: string | null; hasImage: boolean; changed: boolean; retired: boolean; owners: number }
+interface Data { packs: Pack[]; items: Item[]; builtIn: BuiltIn[] }
+interface Props { user: Session; data: Data | null; tab: 'builtin' | 'packs' | 'banners' | 'fonts' }
+const { user, data, tab } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const date = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', year: 'numeric' });
+const regions = (() => { try { return new Intl.DisplayNames([lang], { type: 'region' }); } catch { return null; } })();
+const languages = (() => { try { return new Intl.DisplayNames([lang], { type: 'language' }); } catch { return null; } })();
+const nameOf = (badge: BuiltIn): string => (badge.names ? (badge.names[lang] ?? badge.names.en) : null) ?? (badge.region ? regions?.of(badge.region) : badge.language ? languages?.of(badge.language) : null) ?? FIXED[badge.id] ?? badge.id;
+const FIXED: Record<string, string> = { furro: dt('Furry'), boykisser: dt('Boykisser'), hetero: dt('Straight'), femboy: dt('Femboy') };
+const packName = (pack: Pack): string => pack.names[lang] ?? pack.names.en;
+const statusLabel: Record<string, string> = { live: dt('On sale'), scheduled: dt('Planned'), ended: dt('Sale ended'), retired: dt('Off sale') };
+const kindLabel = { badge: dt('Badges'), banner: dt('Banners'), font: dt('Name fonts') };
+const rarityLabel = { common: dt('Common'), rare: dt('Rare'), epic: dt('Epic'), legendary: dt('Legendary') } as Record<string, string>;
+const artOf = (badge: BuiltIn): string | null => (badge.hasImage ? `/dash/badge-art/${badge.id}` : badge.region ? `/assets/country-flags/${badge.region.toLowerCase()}.svg` : ['furro', 'boykisser', 'hetero', 'femboy'].includes(badge.id) ? `/assets/badges/${badge.id}.png` : null);
+const items = (kind: 'banner' | 'font') => (data?.items ?? []).filter((item) => item.kind === kind);
+const packsOf = (kind: string) => (data?.packs ?? []).filter((pack) => pack.kind === kind);
+const countIn = (packId: string): number => (data?.items ?? []).filter((item) => item.packId === packId).length + (data?.builtIn ?? []).filter((badge) => badge.pack === packId).length;
+const ui = {
+  saved: dt('Saved.'), saving: dt('Saving…'), down: dt('Petto did not answer. Try again in a moment.'), newPack: dt('New pack'), newBanner: dt('New banner'), newFont: dt('New name font'), reset: dt('Back to the code?'),
+  errors: {
+    bad_id: dt('The id is 3 to 40 letters, numbers or dashes.'), bad_kind: dt('Choose what it is.'), bad_name: dt('The English name is needed (40 characters at most).'),
+    bad_price: dt('The price is a whole number from 0 up.'), free_and_price: dt('A free pack has no price.'), bad_date: dt('One of the dates is not a date.'), bad_dates: dt('The sale has to end after it starts.'),
+    bad_plan: dt('That plan does not exist.'), bad_pack: dt('That pack does not exist or is not of this kind.'), bad_rarity: dt('That rarity does not exist.'), bad_color: dt('The colour has to look like #aabbcc.'),
+    kind_locked: dt('That id is used by a pack of another kind.'), file_too_big: dt('The file is over 768 KB.'), file_required: dt('Choose a file.'), bad_file: dt('That file is not one of the kinds that are accepted.'),
+    not_found: dt('That does not exist yet: save it first.'), forbidden: dt('Only the owner can do this.'), failed: dt('That did not work. Try again in a moment.'),
+    file_too_small: dt('The picture is too small: it needs to be at least 800 x 200.'), image_too_big: dt('The picture is over 256 KB.'), bad_image: dt('The picture has to be a PNG, JPEG, GIF or WebP.'),
+  },
+  noFile: dt('Saved, but it has no file yet: it is not in the shop until it has one.'),
+};
+const boot = JSON.stringify({ ui, tab, packs: data?.packs ?? [], items: data?.items ?? [], builtIn: (data?.builtIn ?? []).map((badge) => ({ ...badge, label: nameOf(badge) })) }).replace(/</g, '\\u003c');
+const fontCss = items('font').filter((item) => item.hasFile).map((item) => `@font-face{font-family:"shop-${item.id}";src:url(/dash/item-file/font/${item.id}?v=${encodeURIComponent(item.updatedAt)});font-display:swap}`).join('');
+---
+<DashMeLayout user={user} active="staff-badges" pageTitle="Shop editor">
+  <DashPanelHead title={dt('Editor of the shop')} eyebrow={dt('Staff')} icon="ph:medal-fill" back={false} />
+  <DashShopAdminShared />
+  <DashShopTabs active={tab === 'builtin' ? 'builtin' : tab === 'packs' ? 'packs' : tab === 'banners' ? 'banners' : 'fonts'} />
+  {!data && <p class="be-down" role="alert">{ui.down}</p>}
+  {data && (
+    <div class="be" id="be" data-boot={boot}>
+      {fontCss && <style set:html={fontCss}></style>}
+
+      {tab === 'builtin' && (<>
+        <p class="be-intro">{dt('The badges that come with the bot: change their words, colour, rarity, price, picture or pack. What you leave empty stays as the code has it, and the stars of the plans never change.')}</p>
+        <input class="be-search" id="be-search" type="search" placeholder={dt('Search badges')} aria-label={dt('Search badges')} />
+        <div class="be-list be-compact" id="be-list">
+          {data.builtIn.map((badge) => {
+            const art = artOf(badge);
+            return (
+              <article class="be-row" data-id={badge.id} data-name={`${nameOf(badge)} ${badge.id}`.toLowerCase()}>
+                <span class="be-hex" style={`--c:${badge.color}`}>{art ? <img src={art} alt="" width="40" height="40" loading="lazy" decoding="async" /> : <b>{(badge.language ?? '').toUpperCase()}</b>}</span>
+                <div class="be-info">
+                  <strong>{nameOf(badge)}</strong>
+                  <span class="be-meta">
+                    {badge.changed && <i class="be-chip be-scheduled">{dt('Changed')}</i>}
+                    {badge.retired && <i class="be-chip be-retired">{dt('Off sale')}</i>}
+                    {badge.unlock === 'shop' ? <span>{badge.price === 0 ? dt('Free') : `${badge.price} ${dt('ceramos')}`}</span> : <span>{dt('Free to turn on')}</span>}
+                    {badge.pack && <span>{dt('Pack')}: {badge.pack}</span>}
+                    {badge.owners > 0 && <span>{dt('{n} people have it', { n: badge.owners })}</span>}
+                  </span>
+                </div>
+                <button type="button" class="btn" data-edit={badge.id}>{dt('Edit')}</button>
+              </article>
+            );
+          })}
+        </div>
+        <form class="be-form" id="be-form" data-form="builtin" autocomplete="off" hidden>
+          <h2 id="be-title">{dt('Change a badge')}</h2>
+          <div class="be-grid">
+            <label>{dt('Id')}<input name="id" readonly /></label>
+            <label>{dt('Name in English')}<input name="name_en" maxlength="40" /></label>
+            <label>{dt('Name in Spanish')}<input name="name_es" maxlength="40" /></label>
+            <label>{dt('Name in Portuguese')}<input name="name_pt" maxlength="40" /></label>
+            <label>{dt('Rarity')}<select name="rarity"><option value="">{dt('As the code has it')}</option><option value="common">{dt('Common')}</option><option value="rare">{dt('Rare')}</option><option value="epic">{dt('Epic')}</option><option value="legendary">{dt('Legendary')}</option></select></label>
+            <label>{dt('Price in ceramos (empty: as the code has it)')}<input name="price" type="number" min="0" max="100000" step="1" /></label>
+            <label>{dt('Colour behind the picture')}<span class="be-colorrow"><input name="color" type="color" value="#8f7bd6" /><button type="button" class="btn" id="be-nocolor">{dt('As the code has it')}</button></span></label>
+            <label>{dt('Pack')}<select name="packId"><option value="">{dt('As the code has it')}</option>{packsOf('badge').map((pack) => <option value={pack.id}>{packName(pack)}</option>)}</select></label>
+            <label class="be-check"><input name="active" type="checkbox" checked /> {dt('On sale')}</label>
+            <label class="be-file">{dt('Picture (PNG, JPEG, GIF or WebP, 256 KB at most)')}<input name="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" /></label>
+          </div>
+          <p class="be-msg" id="be-msg" role="status" hidden></p>
+          <div class="be-buttons"><button type="submit" class="btn be-save" id="be-save">{dt('Save changes')}</button><button type="button" class="btn be-off" id="be-back">{dt('Back to the code')}</button><button type="button" class="btn" id="be-close">{dt('Close')}</button></div>
+        </form>
+      </>)}
+
+      {tab === 'packs' && (<>
+        <p class="be-intro">{dt('A pack groups badges, banners or name fonts under a name. It can be free, for a plan, for some days only, or sold whole for one price (never dearer than the pieces). Its days and its plan count for every piece inside.')}</p>
+        <div class="be-list" id="be-list">
+          {data.packs.length === 0 && <p class="be-empty">{dt('No pack yet.')}</p>}
+          {data.packs.map((pack) => (
+            <article class="be-row" data-id={pack.id}>
+              <span class="be-hex" style={`--c:${pack.color}`}><b>{kindLabel[pack.kind].slice(0, 1)}</b></span>
+              <div class="be-info">
+                <strong>{packName(pack)}</strong>
+                <span class="be-meta">
+                  <i class={`be-chip be-${pack.status === 'live' ? 'live' : pack.status}`}>{statusLabel[pack.status]}</i>
+                  <span>{kindLabel[pack.kind]}</span>
+                  <span>{pack.free ? dt('Free') : pack.price === null ? dt('Price of the pieces') : `${pack.price} ${dt('ceramos')}`}</span>
+                  <span>{dt('{n} pieces', { n: countIn(pack.id) })}</span>
+                  {pack.planMin && <span>{dt('Needs a plan')}</span>}
+                  {pack.saleFrom && <span>{dt('From {date}', { date: date.format(new Date(pack.saleFrom)) })}</span>}
+                  {pack.saleUntil && <span>{dt('Until {date}', { date: date.format(new Date(pack.saleUntil)) })}</span>}
+                </span>
+              </div>
+              <div class="be-actions">
+                <button type="button" class="btn" data-edit={pack.id}>{dt('Edit')}</button>
+                {pack.active ? <button type="button" class="btn be-off" data-active={pack.id} data-value="false">{dt('Take off sale')}</button> : <button type="button" class="btn be-on" data-active={pack.id} data-value="true">{dt('Put back on sale')}</button>}
+              </div>
+            </article>
+          ))}
+        </div>
+        <form class="be-form" id="be-form" data-form="pack" autocomplete="off">
+          <h2 id="be-title">{ui.newPack}</h2>
+          <div class="be-grid">
+            <label>{dt('Id (letters, numbers, dashes)')}<input name="id" required minlength="3" maxlength="40" pattern="[a-z0-9][a-z0-9\-]{2,39}" placeholder="winter-pack" /></label>
+            <label>{dt('What it holds')}<select name="kind"><option value="badge">{dt('Badges')}</option><option value="banner">{dt('Banners')}</option><option value="font">{dt('Name fonts')}</option></select></label>
+            <label>{dt('Name in English')}<input name="name_en" required maxlength="40" /></label>
+            <label>{dt('Name in Spanish')}<input name="name_es" maxlength="40" /></label>
+            <label>{dt('Name in Portuguese')}<input name="name_pt" maxlength="40" /></label>
+            <label>{dt('Colour of the pack')}<input name="color" type="color" value="#8f7bd6" /></label>
+            <label>{dt('Price of the whole pack (empty: the sum of the pieces)')}<input name="price" type="number" min="0" max="1000000" step="1" /></label>
+            <label class="be-check"><input name="free" type="checkbox" /> {dt('Free: every piece costs nothing')}</label>
+            <label>{dt('On sale from')}<input name="saleFrom" type="datetime-local" /></label>
+            <label>{dt('On sale until')}<input name="saleUntil" type="datetime-local" /></label>
+            <label>{dt('Only for this plan or a better one')}<select name="planMin"><option value="">{dt('Everybody')}</option><option value="bronze">{dt('Bronze')}</option><option value="silver">{dt('Silver')}</option><option value="gold">{dt('Gold')}</option></select></label>
+          </div>
+          <p class="be-msg" id="be-msg" role="status" hidden></p>
+          <div class="be-buttons"><button type="submit" class="btn be-save" id="be-save">{dt('Save pack')}</button><button type="button" class="btn" id="be-reset">{dt('Clear the form')}</button></div>
+        </form>
+      </>)}
+
+      {(tab === 'banners' || tab === 'fonts') && (<>
+        <p class="be-intro">{tab === 'banners' ? dt('Banners are the picture behind the profile picture and the rank card. Every banner is cut to 1024 x 320 (the middle of the picture, never stretched). A person buys one with ceramos, keeps it for good and puts it on with /profile banner or from Customize profile.') : dt('Name fonts change how the name is drawn on the profile picture. The shop starts with the fonts of Vetox; add your own (TTF, OTF or WOFF2).')}</p>
+        <div class="be-list" id="be-list">
+          {items(tab === 'banners' ? 'banner' : 'font').length === 0 && <p class="be-empty">{dt('Nothing yet.')}</p>}
+          {items(tab === 'banners' ? 'banner' : 'font').map((item) => (
+            <article class="be-row" data-id={item.id}>
+              {item.kind === 'banner'
+                ? <span class="be-banner">{item.hasFile ? <img src={`/dash/item-file/banner/${item.id}?v=${encodeURIComponent(item.updatedAt)}`} alt="" width="120" height="50" loading="lazy" decoding="async" /> : <b>?</b>}</span>
+                : <span class="be-sample" style={item.hasFile ? `font-family:'shop-${item.id}',sans-serif` : ''}>{item.hasFile ? 'liam' : '?'}</span>}
+              <div class="be-info">
+                <strong>{item.names[lang] ?? item.names.en}</strong>
+                <span class="be-meta">
+                  <i class={`be-chip be-${item.status}`}>{statusLabel[item.status]}</i>
+                  <span>{item.price === null ? rarityLabel[item.rarity] : item.price === 0 ? dt('Free') : `${item.price} ${dt('ceramos')}`}</span>
+                  <span>{dt('{n} people have it', { n: item.owners })}</span>
+                  {item.packId && <span>{dt('Pack')}: {item.packId}</span>}
+                  {!item.hasFile && <span class="be-warn">{dt('No file')}</span>}
+                </span>
+              </div>
+              <div class="be-actions">
+                <button type="button" class="btn" data-edit={item.id}>{dt('Edit')}</button>
+                {item.active ? <button type="button" class="btn be-off" data-active={item.id} data-value="false">{dt('Take off sale')}</button> : <button type="button" class="btn be-on" data-active={item.id} data-value="true">{dt('Put back on sale')}</button>}
+              </div>
+            </article>
+          ))}
+        </div>
+        <form class="be-form" id="be-form" data-form="item" data-kind={tab === 'banners' ? 'banner' : 'font'} autocomplete="off">
+          <h2 id="be-title">{tab === 'banners' ? ui.newBanner : ui.newFont}</h2>
+          <div class="be-grid">
+            <label>{dt('Id (letters, numbers, dashes)')}<input name="id" required minlength="3" maxlength="40" pattern="[a-z0-9][a-z0-9\-]{2,39}" /></label>
+            <label>{dt('Name in English')}<input name="name_en" required maxlength="40" /></label>
+            <label>{dt('Name in Spanish')}<input name="name_es" maxlength="40" /></label>
+            <label>{dt('Name in Portuguese')}<input name="name_pt" maxlength="40" /></label>
+            <label>{dt('Rarity')}<select name="rarity"><option value="common">{dt('Common')}</option><option value="rare">{dt('Rare')}</option><option value="epic">{dt('Epic')}</option><option value="legendary">{dt('Legendary')}</option></select></label>
+            <label>{dt('Price in ceramos (empty: the one of its rarity)')}<input name="price" type="number" min="0" max="100000" step="1" /></label>
+            <label>{dt('Pack')}<select name="packId"><option value="">{dt('No pack')}</option>{packsOf(tab === 'banners' ? 'banner' : 'font').map((pack) => <option value={pack.id}>{packName(pack)}</option>)}</select></label>
+            <label>{dt('On sale from')}<input name="saleFrom" type="datetime-local" /></label>
+            <label>{dt('On sale until')}<input name="saleUntil" type="datetime-local" /></label>
+            <label>{dt('Only for this plan or a better one')}<select name="planMin"><option value="">{dt('Everybody')}</option><option value="bronze">{dt('Bronze')}</option><option value="silver">{dt('Silver')}</option><option value="gold">{dt('Gold')}</option></select></label>
+            <label class="be-file">{tab === 'banners' ? dt('Banner (PNG, JPEG or WebP, 768 KB at most; it is cut to 1024 x 320, so use a picture that wide)') : dt('Font file (TTF, OTF or WOFF2, 768 KB at most)')}<input name="file" type="file" accept={tab === 'banners' ? 'image/png,image/jpeg,image/webp' : '.ttf,.otf,.woff2,font/ttf,font/otf,font/woff2'} /></label>
+          </div>
+          <p class="be-msg" id="be-msg" role="status" hidden></p>
+          <div class="be-buttons"><button type="submit" class="btn be-save" id="be-save">{tab === 'banners' ? dt('Save banner') : dt('Save font')}</button><button type="button" class="btn" id="be-reset">{dt('Clear the form')}</button></div>
+        </form>
+      </>)}
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .be-search { width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); font: inherit; }
+  .be-compact .be-row { padding: 8px 12px; } .be-compact .be-hex { width: 40px; height: 46px; } .be-compact .be-hex b { font-size: 12px; }
+  .be-banner { flex: none; width: 160px; aspect-ratio: 1024 / 320; border-radius: 10px; overflow: hidden; display: grid; place-items: center; background: #17141f; color: #fff; }
+  .be-banner img { width: 100%; height: 100%; object-fit: cover; }
+  .be-sample { flex: none; width: 120px; height: 50px; border-radius: 10px; display: grid; place-items: center; background: #17141f; color: #fff; font-size: 28px; line-height: 1; overflow: hidden; }
+  .be-check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+  .be-colorrow { display: flex; gap: 8px; align-items: center; } .be-colorrow input { flex: 1; min-width: 0; }
+  .be-row[hidden] { display: none; }
+</style>
+
+<script>
+  const root = document.getElementById('be');
+  const form = document.getElementById('be-form') as HTMLFormElement | null;
+  if (root?.dataset.boot && form) {
+    const boot = JSON.parse(root.dataset.boot) as { ui: any; tab: string; packs: any[]; items: any[]; builtIn: any[] };
+    const ui = boot.ui;
+    const kind = form.dataset.form;
+    const msg = document.getElementById('be-msg') as HTMLElement;
+    const say = (text: string, level: 'ok' | 'error') => { msg.hidden = false; msg.textContent = text; msg.className = `be-msg is-${level}`; };
+    const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
+    const local = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const when = (name: string) => (field(name)?.value ? new Date(field(name).value).toISOString() : null);
+    const why = (code?: string) => ui.errors[code ?? 'failed'] ?? ui.errors.failed;
+    const send = async (action: string, body: unknown, query = '', raw = false) => {
+      const response = await fetch(`/dash/shop-admin-act?action=${action}${query}`, { method: 'POST', headers: raw ? {} : { 'content-type': 'application/json' }, body: raw ? (body as ArrayBuffer) : JSON.stringify(body) });
+      const data = await response.json().catch(() => null);
+      return { ok: Boolean(response.ok && data?.ok), error: data?.error as string | undefined };
+    };
+    const names = () => ({ en: field('name_en').value, es: field('name_es').value, 'pt-BR': field('name_pt').value });
+    const fillNames = (row: any) => { field('name_en').value = row.names?.en ?? ''; field('name_es').value = row.names?.es ?? ''; field('name_pt').value = row.names?.['pt-BR'] ?? ''; };
+    const open = (title: string) => { form.hidden = false; document.getElementById('be-title')!.textContent = title; form.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+
+    // Search in the badges of the code (there are almost three hundred).
+    document.getElementById('be-search')?.addEventListener('input', (event) => {
+      const q = (event.target as HTMLInputElement).value.trim().toLowerCase();
+      document.querySelectorAll<HTMLElement>('#be-list .be-row').forEach((row) => { row.hidden = Boolean(q) && !(row.dataset.name ?? '').includes(q); });
+    });
+
+    document.getElementById('be-list')!.addEventListener('click', async (event) => {
+      const target = event.target as HTMLElement;
+      const edit = target.closest<HTMLElement>('[data-edit]');
+      if (edit) {
+        const id = edit.dataset.edit;
+        if (kind === 'pack') {
+          const row = boot.packs.find((each) => each.id === id); if (!row) return;
+          field('id').value = row.id; field('id').readOnly = true; field('kind').value = row.kind; (field('kind') as unknown as HTMLSelectElement).disabled = true; fillNames(row);
+          field('color').value = row.color; field('price').value = row.price === null ? '' : String(row.price); field('free').checked = row.free;
+          field('saleFrom').value = local(row.saleFrom); field('saleUntil').value = local(row.saleUntil); field('planMin').value = row.planMin ?? '';
+          open(row.names.en);
+        } else if (kind === 'item') {
+          const row = boot.items.find((each) => each.id === id && each.kind === form.dataset.kind); if (!row) return;
+          field('id').value = row.id; field('id').readOnly = true; fillNames(row); field('rarity').value = row.rarity; field('price').value = row.price === null ? '' : String(row.price);
+          field('packId').value = row.packId ?? ''; field('saleFrom').value = local(row.saleFrom); field('saleUntil').value = local(row.saleUntil); field('planMin').value = row.planMin ?? '';
+          open(row.names.en);
+        } else {
+          const row = boot.builtIn.find((each) => each.id === id); if (!row) return;
+          form.reset(); field('id').value = row.id; fillNames({ names: row.changed ? row.names : null }); field('name_en').placeholder = row.label;
+          field('rarity').value = row.changed ? (row.rarity ?? '') : ''; field('price').value = ''; field('packId').value = row.pack ?? ''; field('active').checked = !row.retired;
+          field('color').value = row.color; field('color').dataset.set = '';
+          document.getElementById('be-back')!.hidden = !row.changed;
+          open(row.label);
+        }
+        return;
+      }
+      const toggle = target.closest<HTMLButtonElement>('[data-active]');
+      if (toggle) {
+        toggle.disabled = true;
+        const active = toggle.dataset.value === 'true';
+        const out = kind === 'pack' ? await send('pack-active', { id: toggle.dataset.active, active }) : await send('item-active', { kind: form.dataset.kind, id: toggle.dataset.active, active });
+        if (out.ok) location.reload(); else { toggle.disabled = false; say(why(out.error), 'error'); }
+      }
+    });
+
+    document.getElementById('be-reset')?.addEventListener('click', () => { form.reset(); field('id').readOnly = false; const k = form.elements.namedItem('kind') as HTMLSelectElement | null; if (k) k.disabled = false; msg.hidden = true; });
+    document.getElementById('be-close')?.addEventListener('click', () => { form.hidden = true; });
+    field('color')?.addEventListener('input', () => { field('color').dataset.set = '1'; });
+    document.getElementById('be-nocolor')?.addEventListener('click', () => { field('color').dataset.set = ''; });
+    document.getElementById('be-back')?.addEventListener('click', async () => {
+      const out = await send('override-reset', { id: field('id').value });
+      if (out.ok) location.reload(); else say(why(out.error), 'error');
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = document.getElementById('be-save') as HTMLButtonElement; button.disabled = true; say(ui.saving, 'ok');
+      const price = field('price').value === '' ? null : Number(field('price').value);
+      const file = field('file')?.files?.[0];
+      let out: { ok: boolean; error?: string };
+      let id = field('id').value.trim().toLowerCase();
+      if (kind === 'pack') {
+        out = await send('pack', { id, kind: (field('kind') as unknown as HTMLSelectElement).value, names: names(), color: field('color').value, price, free: field('free').checked, saleFrom: when('saleFrom'), saleUntil: when('saleUntil'), planMin: field('planMin').value || null });
+      } else if (kind === 'item') {
+        out = await send('item', { kind: form.dataset.kind, id, names: names(), rarity: field('rarity').value, price, packId: field('packId').value || null, saleFrom: when('saleFrom'), saleUntil: when('saleUntil'), planMin: field('planMin').value || null });
+      } else {
+        out = await send('override', { id, names: field('name_en').value ? names() : null, color: field('color').dataset.set ? field('color').value : null, rarity: field('rarity').value || null, price, packId: field('packId').value || null, active: field('active').checked });
+      }
+      if (!out.ok) { button.disabled = false; say(why(out.error), 'error'); return; }
+      if (file && kind !== 'pack') {
+        const upload = kind === 'item' ? await send('item-file', await file.arrayBuffer(), `&kind=${form.dataset.kind}&id=${encodeURIComponent(id)}`, true) : await send('override-image', await file.arrayBuffer(), `&id=${encodeURIComponent(id)}`, true);
+        if (!upload.ok) { button.disabled = false; say(why(upload.error), 'error'); return; }
+      } else if (kind === 'item' && !boot.items.some((each) => each.id === id && each.kind === form.dataset.kind && each.hasFile)) say(ui.noFile, 'ok');
+      location.reload();
+    });
+  }
+</script>

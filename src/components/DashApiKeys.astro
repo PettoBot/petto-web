@@ -1,0 +1,100 @@
+---
+// API keys (/dash/api): a person makes up to three keys for the read-only API and removes them. A key is shown once, when it is made; only its hash is kept. A key reads only
+// the ceramos and the plan of its own person, and changes nothing.
+import DashMeLayout from './DashMeLayout.astro';
+import DashPanelHead from './DashPanelHead.astro';
+import DashShopAdminShared from './DashShopAdminShared.astro';
+import { getDashLang, makeT } from '../i18n/dash';
+import type { Session } from '../utils/session';
+
+interface KeyRow { id: number; label: string; createdAt: string; lastUsed: string | null }
+interface Props { user: Session; data: { keys: KeyRow[]; max: number } | null; origin: string }
+const { user, data, origin } = Astro.props;
+const lang = getDashLang(Astro);
+const dt = makeT(lang);
+const date = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', year: 'numeric' });
+const ui = {
+  down: dt('Petto did not answer. Try again in a moment.'), working: dt('Working…'),
+  errors: { too_many: dt('You already have the most keys. Remove one first.'), failed: dt('It could not be done. Try again in a moment.') },
+};
+const boot = JSON.stringify({ ui }).replace(/</g, '\\u003c');
+---
+<DashMeLayout user={user} active="api" pageTitle="API keys">
+  <DashShopAdminShared />
+  <DashPanelHead title={dt('API keys')} eyebrow={dt('Account')} icon="ph:key-fill" back={false} />
+  {!data && <p class="be-down" role="alert">{ui.down}</p>}
+  {data && (
+    <div class="be" id="be" data-boot={boot}>
+      <p class="be-intro">{dt('Use a key to read your ceramos and your plan from your own programs. It can only read: it cannot change anything, and it only sees your own data. Treat it like a password.')}</p>
+      <div class="be-list">
+        {data.keys.length === 0 && <p class="be-empty">{dt('You have no keys yet.')}</p>}
+        {data.keys.map((row) => (
+          <article class="be-row">
+            <div class="be-info">
+              <strong>{row.label || dt('Key {n}', { n: String(row.id) })}</strong>
+              <span class="be-meta"><span>{dt('Made {date}', { date: date.format(new Date(row.createdAt)) })}</span><span>{row.lastUsed ? dt('Last used {date}', { date: date.format(new Date(row.lastUsed)) }) : dt('Never used')}</span></span>
+            </div>
+            <div class="be-actions"><button type="button" class="btn be-off" data-remove={row.id}>{dt('Remove')}</button></div>
+          </article>
+        ))}
+      </div>
+      <form class="be-form" id="be-form" autocomplete="off">
+        <h2>{dt('Make a key')}</h2>
+        <div class="be-grid">
+          <label class="be-wide">{dt('Name (to remember what it is for)')}<input name="label" maxlength="40" /></label>
+        </div>
+        <div class="ak-new" id="ak-new" hidden>
+          <p>{dt('This is your key. Copy it now: it is shown only once.')}</p>
+          <code id="ak-key"></code>
+        </div>
+        <p class="be-msg" id="be-msg" role="status" hidden></p>
+        <div class="be-buttons"><button type="submit" class="btn be-save" id="be-save" disabled={data.keys.length >= data.max}>{dt('Make key')}</button></div>
+        <p class="be-empty">{dt('You can have up to {max} keys.', { max: String(data.max) })}</p>
+      </form>
+      <div class="be-form">
+        <h2>{dt('How to use it')}</h2>
+        <pre class="ak-code">{`curl ${origin}/api/v1/me \\\n  -H "Authorization: Bearer YOUR_KEY"`}</pre>
+        <p class="be-empty">{dt('Endpoints: /api/v1/me (ceramos and plan), /api/v1/movements (the last 50 movements) and /api/v1/packs (the packs of ceramos, no key needed). 60 reads a minute for each key.')}</p>
+      </div>
+    </div>
+  )}
+</DashMeLayout>
+
+<style is:global>
+  .be-grid .be-wide { grid-column: 1 / -1; }
+  .ak-new { margin: 14px 0 0; padding: 14px 16px; border-radius: 12px; background: var(--green-soft); color: var(--green-text); }
+  .ak-new p { margin: 0 0 8px; font-size: 14px; }
+  .ak-new code { display: block; word-break: break-all; user-select: all; font-size: 13px; color: var(--text); }
+  .ak-code { margin: 0 0 10px; padding: 12px 14px; border-radius: 10px; overflow-x: auto; background: color-mix(in srgb, var(--text) 6%, transparent); font-size: 13px; }
+</style>
+
+<script>
+  const root = document.getElementById('be');
+  const form = document.getElementById('be-form') as HTMLFormElement | null;
+  if (root?.dataset.boot && form) {
+    const { ui } = JSON.parse(root.dataset.boot) as { ui: any };
+    const msg = document.getElementById('be-msg') as HTMLElement;
+    const say = (text: string, level: 'ok' | 'error') => { msg.hidden = false; msg.textContent = text; msg.className = `be-msg is-${level}`; };
+    const send = async (action: string, body: unknown) => {
+      const response = await fetch(`/dash/api-act?action=${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await response.json().catch(() => null);
+      return { ok: Boolean(response.ok && data?.ok), data };
+    };
+    const why = (data: any) => (data?.error === 'down' ? ui.down : (ui.errors[data?.error ?? 'failed'] ?? ui.errors.failed));
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = document.getElementById('be-save') as HTMLButtonElement; button.disabled = true; say(ui.working, 'ok');
+      const out = await send('create', { label: (form.elements.namedItem('label') as HTMLInputElement).value });
+      if (out.ok && out.data?.key) {
+        msg.hidden = true;
+        (document.getElementById('ak-key') as HTMLElement).textContent = out.data.key;
+        (document.getElementById('ak-new') as HTMLElement).hidden = false;
+      } else { button.disabled = false; say(why(out.data), 'error'); }
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-remove]').forEach((button) => button.addEventListener('click', async () => {
+      button.disabled = true;
+      const out = await send('remove', { id: Number(button.dataset.remove) });
+      if (out.ok) location.reload(); else { button.disabled = false; say(why(out.data), 'error'); }
+    }));
+  }
+</script>
