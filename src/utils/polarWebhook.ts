@@ -94,8 +94,10 @@ function iso(value: unknown): string | null {
 }
 
 function userIdFrom(subscription: any, metadata: Record<string, any>): string | null {
-  const value = subscription.customer?.external_id
-    ?? metadata.discord_user_id
+  // The id Petto wrote when it made the checkout comes first: Polar keeps one customer for each email, so the customer can carry the id of another
+  // account that once bought with the same email.
+  const value = metadata.discord_user_id
+    ?? subscription.customer?.external_id
     ?? metadata.discordUserId
     ?? metadata.user_id;
   const id = String(value ?? '').trim();
@@ -363,7 +365,7 @@ export async function creditCoinPack(astro: any, event: any): Promise<boolean> {
   const pack = coinPackOf(astro, order, metadata);
   // What the webhook decided is written in the log of the host (ids only), so a purchase whose ceramos did not arrive can be followed.
   if (!pack) { console.info(`[polar] order.paid ${String(order.id ?? '')} is not a pack of ceramos: product ${String(order.product_id ?? order.product?.id ?? 'none')}, kind ${String(metadata.kind ?? 'none')}`); return false; }
-  const userId = String(order.customer?.external_id ?? order.customer_external_id ?? metadata.discord_user_id ?? '');
+  const userId = String(metadata.discord_user_id ?? order.customer?.external_id ?? order.customer_external_id ?? '');
   const orderId = String(order.id ?? '');
   if (!/^\d{15,22}$/.test(userId) || !orderId) { console.warn(`[polar] order.paid ${orderId} for the pack ${pack} has no valid Discord id (${userId || 'none'})`); return true; }
   const done = await callPettoCeramos(astro, userId, 'credit-pack', { pack, order: orderId });
@@ -381,7 +383,7 @@ export async function refundCoinPack(astro: any, event: any): Promise<boolean> {
   const order = event.data ?? {};
   const metadata = { ...(order.product?.metadata ?? {}), ...(order.metadata ?? {}) };
   if (!coinPackOf(astro, order, metadata)) return false;
-  const userId = String(order.customer?.external_id ?? order.customer_external_id ?? metadata.discord_user_id ?? '');
+  const userId = String(metadata.discord_user_id ?? order.customer?.external_id ?? order.customer_external_id ?? '');
   const orderId = String(order.id ?? '');
   if (!/^\d{15,22}$/.test(userId) || !orderId) return true;
   const done = await callPettoCeramos(astro, userId, 'credit-refund', { order: orderId });
