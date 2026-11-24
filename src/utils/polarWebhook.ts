@@ -1,5 +1,6 @@
 import { getEnv } from './env';
 import { resetGuildPremiumCustomization } from './premium';
+import { callPettoCeramos } from './pettoBotApi';
 
 const SUBSCRIPTION_EVENTS = new Set([
   'subscription.created',
@@ -333,4 +334,32 @@ export async function postActivePremium(astro: any): Promise<{ ok: true; count: 
     }
   } catch { return { ok: false, error: 'discord' }; }
   return { ok: true, count: active.length };
+}
+
+/** The pack of ceramos an order is for, or null: from the product ids of the environment, or from the metadata of the checkout (`kind: ceramos_pack`, `pack`). */
+export function coinPackOf(astro: any, order: any, metadata: Record<string, any>): string | null {
+  const productId = String(order.product_id ?? order.product?.id ?? '');
+  for (const id of ['pile', 'small-bag', 'big-bag', 'chest']) {
+    if (productId && productId === getEnv(astro, `POLAR_PRODUCT_COINS_${id.toUpperCase().replace(/-/g, '_')}`)) return id;
+  }
+  const named = String(metadata.pack ?? '');
+  return metadata.kind === 'ceramos_pack' && /^[a-z0-9][a-z0-9-]{2,30}$/.test(named) ? named : null;
+}
+
+/**
+ * A paid order of a pack of ceramos: the bot gives the ceramos once for each order id (so Polar sending the event again changes nothing). A failure throws, so the webhook answers
+ * with an error and Polar tries again. Returns whether the event was one of these orders.
+ */
+export async function creditCoinPack(astro: any, event: any): Promise<boolean> {
+  if (!event || event.type !== 'order.paid') return false;
+  const order = event.data ?? {};
+  const metadata = { ...(order.product?.metadata ?? {}), ...(order.metadata ?? {}) };
+  const pack = coinPackOf(astro, order, metadata);
+  if (!pack) return false;
+  const userId = String(order.customer?.external_id ?? order.customer_external_id ?? metadata.discord_user_id ?? '');
+  const orderId = String(order.id ?? '');
+  if (!/^\d{15,22}$/.test(userId) || !orderId) return true;
+  const done = await callPettoCeramos(astro, userId, 'credit-pack', { pack, order: orderId });
+  if (!done.ok) throw new Error(`The ceramos of order ${orderId} could not be given.`);
+  return true;
 }
