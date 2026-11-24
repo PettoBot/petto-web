@@ -1,0 +1,21 @@
+---
+export const prerender = false;
+import DashSummary from '../../components/DashSummary.astro';
+import { getDashboardSession } from '../../utils/dashAuth';
+import { callPettoCeramos } from '../../utils/pettoBotApi';
+import { getEnv } from '../../utils/env';
+import { getGuildInfo } from '../../utils/discord';
+
+const session = await getDashboardSession(Astro);
+if (!session) {
+  Astro.cookies.set('petto_after_login', `${Astro.url.pathname}${Astro.url.search}`, { httpOnly: true, secure: Astro.url.protocol === 'https:', sameSite: 'lax', path: '/', maxAge: 10 * 60 });
+  return Astro.redirect('/dash');
+}
+const [summary, state] = await Promise.all([callPettoCeramos(Astro, session.userId, 'summary'), callPettoCeramos(Astro, session.userId, 'state')]);
+// The names and pictures of the servers of the streaks (the bot only sends the ids).
+const botToken = getEnv(Astro, 'DISCORD_TOKEN');
+const servers: any[] = summary.ok ? summary.data.servers : [];
+const infos = botToken ? await Promise.all(servers.map((entry) => getGuildInfo(entry.guildId, botToken).catch(() => null))) : [];
+const rows = servers.map((entry, index) => ({ ...entry, name: infos[index]?.name ?? null, icon: infos[index]?.icon ?? null })).sort((a, b) => b.current - a.current);
+---
+<DashSummary user={session} data={summary.ok ? { ...summary.data, servers: rows } : null} state={state.ok ? state.data : null} />
