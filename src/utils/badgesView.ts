@@ -12,7 +12,7 @@ export interface CatalogBadge {
   onSale: boolean; retired: boolean; hasArt: boolean; dbArt?: boolean; version: string | null;
 }
 export interface Catalog { badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }
-export interface State { balance: number; plan: string | null; daily: { canClaim: boolean; nextAt: string; amount: number }; slots: number; owned: { id: string; frame: string }[]; showcase: string[] }
+export interface State { balance: number; plan: string | null; daily: { canClaim: boolean; nextAt: string; amount: number }; slots: number; owned: { id: string; frame: string; unlocked?: string }[]; showcase: string[] }
 
 /** The words the page needs, already in the language of the person (the page gives them; this file has no text of its own). */
 export interface Words {
@@ -104,16 +104,20 @@ export type Action = { kind: 'buy'; price: number; canAfford: boolean } | { kind
 
 const PLAN_ORDER = ['bronze', 'silver', 'gold'];
 
-export function actionsFor(badge: CatalogBadge, owned: boolean, state: State, catalog: Catalog): { primary: Action; upgrade: { cost: number; next: string; canAfford: boolean } | null; show: 'add' | 'remove' | 'full' | null } {
+export function actionsFor(badge: CatalogBadge, owned: boolean, state: State, catalog: Catalog): { primary: Action; upgrade: { cost: number; next: string; canAfford: boolean } | null; show: 'add' | 'remove' | 'full' | null; frames: string[] } {
   const planOk = !badge.planMin || (state.plan !== null && PLAN_ORDER.indexOf(state.plan) >= PLAN_ORDER.indexOf(badge.planMin));
   const primary: Action = badge.unlock === 'shop' && !owned
     ? (!badge.onSale && badge.custom ? { kind: 'closed' } : !planOk ? { kind: 'plan', plan: badge.planMin as string } : { kind: 'buy', price: badge.price, canAfford: state.balance >= badge.price })
     : badge.unlock === 'self' ? { kind: 'identity', on: owned }
     : badge.unlock === 'status' && !owned ? { kind: 'auto' } : { kind: 'none' };
-  const frame = state.owned.find((row) => row.id === badge.id)?.frame ?? 'normal';
+  // The frame that shows can be a lower one than the best the badge has: the next purchase builds on the best.
+  const row = state.owned.find((each) => each.id === badge.id);
+  const frame = row?.unlocked ?? row?.frame ?? 'normal';
   const index = catalog.frames.findIndex((each) => each.id === frame);
   const next = owned && badge.unlock !== 'plan' ? catalog.frames[index + 1] : undefined;
   const inShowcase = state.showcase.includes(badge.id);
   const show = !owned ? null : inShowcase ? 'remove' : state.showcase.length < state.slots ? 'add' : 'full';
-  return { primary, upgrade: next ? { cost: next.cost, next: next.id, canAfford: state.balance >= next.cost } : null, show };
+  // The frames the person can choose to show: the best the badge has and the ones below it (only worth a choice when there are two or more).
+  const frames = owned && badge.unlock !== 'plan' && index > 0 ? catalog.frames.slice(0, index + 1).map((each) => each.id) : [];
+  return { primary, upgrade: next ? { cost: next.cost, next: next.id, canAfford: state.balance >= next.cost } : null, show, frames };
 }
