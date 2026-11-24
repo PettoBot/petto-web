@@ -76,6 +76,7 @@ export const GET: APIRoute = async ({ url, redirect: plainRedirect, cookies, loc
       avatar: user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64` : null,
       ...cosmeticsFromUser(user),
       ...profileFromUser(user),
+      discordEmail: user.verified === true && typeof user.email === 'string' && user.email.length <= 254 ? user.email.trim().toLowerCase() : null,
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
       expiresAt: Date.now() + token.expires_in * 1000,

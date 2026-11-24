@@ -55,7 +55,7 @@ export default defineConfig({
           'clock-fill', 'code-fill', 'command-fill', 'copy-bold', 'caret-up-down-bold', 'crown-fill', 'cube-fill', 'database-fill', 'detective-fill', 'identification-card-fill',
           'cloud-slash-fill', 'door-fill', 'door-open-fill', 'download-simple-bold', 'envelope-simple-fill', 'eye-fill', 'eye-slash-fill',
           'file-arrow-up-fill', 'file-code-bold', 'file-code-fill', 'flag-fill', 'flask-fill', 'floppy-disk-fill', 'folder-fill',
-          'funnel-fill', 'gauge-fill', 'gavel-fill', 'gear-fill', 'gear-six-fill', 'gift-fill', 'user-check-fill', 'medal', 'clock-counter-clockwise', 'palette-fill', 'broom-fill', 'sparkle', 'link-bold', 'globe', 'globe-fill', 'cake-fill', 'trophy-fill',
+          'funnel-fill', 'discord-logo-fill', 'gauge-fill', 'gavel-fill', 'gear-fill', 'gear-six-fill', 'gift-fill', 'user-check-fill', 'medal', 'clock-counter-clockwise', 'palette-fill', 'broom-fill', 'sparkle', 'link-bold', 'globe', 'globe-fill', 'cake-fill', 'trophy-fill',
           'globe-hemisphere-west-fill', 'hand-fill', 'hand-waving-fill', 'handshake-fill', 'hard-drives-fill', 'image-fill', 'hash', 'hash-fill', 'headphones-fill',
           'headset-fill', 'heart-fill', 'identification-badge-fill', 'info-fill', 'key-fill', 'keyhole-fill',
           'lightbulb-fill', 'link-fill', 'link-simple', 'list', 'list-checks-fill', 'list-dashes-fill', 'lock-open-fill', 'lock-simple-fill', 'magic-wand-fill', 'magnifying-glass', 'user', 'clock', 'image', 'image-broken', 'text-t', 'users', 'shield-check',

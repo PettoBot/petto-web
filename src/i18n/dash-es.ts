@@ -7460,4 +7460,8 @@ export const dashEs: Record<string, string> = {
   "All but these": "Todos menos estos",
   "With \"Only\", the list needs at least one channel or role; an empty list means everywhere.": "Con \"Solo estos\", la lista necesita al menos un canal o rol; una lista vacía significa en todas partes.",
   "A reaction counts as a message": "Una reacción cuenta como mensaje",
+  "Members keep a streak by being active every day. Choose what an active day is, what a streak earns, and how many freezes save a missed day. Days are counted in Colombia time (GMT-5), like everything Petto counts.": "Los miembros mantienen una racha siendo activos cada día. Elige qué es un día activo, qué da una racha y cuántas congelaciones salvan un día perdido. Los días se cuentan en hora de Colombia (GMT-5), como todo lo que cuenta Petto.",
+  "For this long after midnight (GMT-5) the day that just ended still counts, so a streak is not lost the moment the day changes.": "Durante este tiempo después de medianoche (GMT-5) el día que acaba de terminar todavía cuenta, así una racha no se pierde en el momento en que cambia el día.",
+  "Discord did not give a verified email. Type one instead.": "Discord no dio un correo verificado. Escribe uno.",
+  "Use the email of my Discord account": "Usar el correo de mi cuenta de Discord",
 };

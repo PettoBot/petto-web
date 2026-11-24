@@ -65,9 +65,9 @@ export function homeHref(lang) {
 // asks Discord for that scope only when the answer is yes. The question is asked once per browser (a cookie remembers that it was asked, not the
 // answer: a person who left the server is never added again without being asked).
 
-/** The scopes of the login: who you are and your servers, and, only when the visitor said yes, joining the support server. @param {boolean} joinSupport */
+/** The scopes of the login: who you are, your servers and the email of your Discord account (so you can choose to use it as your contact email: it is never saved without a click), and, only when the visitor said yes, joining the support server. @param {boolean} joinSupport */
 export function loginScope(joinSupport) {
-  return joinSupport ? 'identify guilds guilds.join' : 'identify guilds';
+  return joinSupport ? 'identify guilds email guilds.join' : 'identify guilds email';
 }
 
 /**

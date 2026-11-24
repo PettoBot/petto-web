@@ -24,6 +24,8 @@ export interface Session {
   handle?: string | null;
   banner?: string | null;
   accentColor?: number | null;
+  /** The email of the Discord account when Discord says it is verified (kept only in the cookie of the session, never saved by itself: the Preferences page offers it as the contact email). */
+  discordEmail?: string | null;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
