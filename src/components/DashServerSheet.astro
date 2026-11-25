@@ -82,7 +82,7 @@ const dt = makeT(getDashLang(Astro));
             <li class="ds-row ds-row-invite">
               {g.icon ? <img src={g.icon} alt="" width="40" height="40" loading="lazy" class="ds-icon" referrerpolicy="no-referrer" /> : <span class="ds-icon ds-icon-fallback" style={guildLetterStyle(g.name)}>{guildLetter(g.name)}</span>}
               <span class="ds-name">{g.name}</span>
-              <a class="ds-plus" href={g.href} target="_blank" rel="noopener noreferrer" aria-label={dt('Add Petto to {a}', { a: g.name })} title={dt('Add Petto')}><Icon name="ph:plus-bold" width="15" height="15" /></a>
+              <a class="ds-plus" href={g.href} target="_blank" rel="noopener noreferrer" data-bot-invite={g.id} aria-label={dt('Add Petto to {a}', { a: g.name })} title={dt('Add Petto')}><Icon name="ph:plus-bold" width="15" height="15" /></a>
             </li>
           ))}
         </ul>
@@ -90,6 +90,56 @@ const dt = makeT(getDashLang(Astro));
     )}
   </div>
 </div>
+
+<script is:inline>
+  // After an invite button was pressed (data-bot-invite), the page asks every few seconds whether Petto joined that server, and opens the dashboard of the server when it did
+  // (the list of servers the page shows is kept for minutes, so waiting for it made "manage" appear late). It also looks when the person comes back to this tab.
+  (function () {
+    if (window.__petto_invite_watch) return;
+    window.__petto_invite_watch = true;
+    var KEY = 'petto-invite-wait';
+    var timer = 0;
+    var tries = 0;
+    function stop() { if (timer) clearInterval(timer); timer = 0; }
+    function check(id) {
+      fetch('/dash/manage/bot-status?id=' + encodeURIComponent(id), { headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (!data || !data.active) return;
+          stop();
+          try { sessionStorage.removeItem(KEY); } catch (e) { /* the page is leaving anyway */ }
+          window.location.assign('/dash/guild/' + id + '/overview');
+        })
+        .catch(function () { /* the next look tries again */ });
+    }
+    function start(id) {
+      stop();
+      tries = 0;
+      try { sessionStorage.setItem(KEY, JSON.stringify({ id: id, at: Date.now() })); } catch (e) { /* the page keeps looking without it */ }
+      timer = setInterval(function () {
+        tries += 1;
+        if (tries > 150) { stop(); return; }
+        if (!document.hidden) check(id);
+      }, 2500);
+    }
+    function waiting() {
+      try {
+        var saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+        return saved && saved.id && Date.now() - saved.at < 10 * 60 * 1000 ? saved.id : null;
+      } catch (e) { return null; }
+    }
+    document.addEventListener('click', function (event) {
+      var link = event.target && event.target.closest ? event.target.closest('[data-bot-invite]') : null;
+      if (link) start(link.getAttribute('data-bot-invite'));
+    });
+    document.addEventListener('visibilitychange', function () {
+      var id = waiting();
+      if (!document.hidden && id) check(id);
+    });
+    var pending = waiting();
+    if (pending) start(pending);
+  })();
+</script>
 
 <script is:inline>
   (function () {

@@ -27,9 +27,9 @@ export function splitServers(guilds, botIds, { canManage, iconOf, memberCounts =
   return { mine: mine.slice(0, limit), invite: invite.slice(0, limit), total: { mine: mine.length, invite: invite.length } };
 }
 
-/** The address that adds Petto to one server (the same invite the server picker uses). @param {string} clientId @param {string} guildId */
+/** The address that adds Petto to one server: the install link of the application (the same one petto.sbs/invite goes to), so it asks for the permissions the application is set up with and not for Administrator, with the server already chosen. @param {string} clientId @param {string} guildId */
 export function botInviteUrl(clientId, guildId) {
-  return `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&permissions=8&scope=${encodeURIComponent('bot applications.commands')}&guild_id=${encodeURIComponent(guildId)}&disable_guild_select=true`;
+  return `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&guild_id=${encodeURIComponent(guildId)}&disable_guild_select=true`;
 }
 
 /** How many servers one page of the owner's list holds (and the most it can ask for). */

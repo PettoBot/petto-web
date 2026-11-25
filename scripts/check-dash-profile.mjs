@@ -98,8 +98,8 @@ same('no servers', splitServers([], bot, { canManage, iconOf }).mine, []);
 const many = Array.from({ length: SWITCHER_LIMIT + 30 }, (_, i) => guild(String(200000000000000000 + i), `S${String(i).padStart(3, '0')}`, String(MANAGE)));
 const capped = splitServers(many, new Set(), { canManage, iconOf });
 same('invite list is capped, the total is not', [capped.invite.length, capped.total.invite], [SWITCHER_LIMIT, SWITCHER_LIMIT + 30]);
-// The invite is the one the server picker uses.
-same('invite address', botInviteUrl('1489326875498119168', '100000000000000006'), 'https://discord.com/api/oauth2/authorize?client_id=1489326875498119168&permissions=8&scope=bot%20applications.commands&guild_id=100000000000000006&disable_guild_select=true');
+// The invite is the install link of the application, like petto.sbs/invite: no Administrator permission asked, the server already chosen.
+same('invite address', botInviteUrl('1489326875498119168', '100000000000000006'), 'https://discord.com/oauth2/authorize?client_id=1489326875498119168&guild_id=100000000000000006&disable_guild_select=true');
 
 // --- the profile overview: only what exists ---
 const full = profileOverview({
