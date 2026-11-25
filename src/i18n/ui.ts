@@ -815,7 +815,7 @@ export const ui = {
     },
     credits: {
       title: 'Credits',
-      disclaimer: "These are the tools and services actually used to build and run Petto. This is credit, not sponsorship: none of these companies are affiliated with Petto, endorse it, or have any say over it.",
+      disclaimer: "These are the tools and services actually used to build and run Petto. CubePath and Discloud sponsor Petto's hosting, and we are very grateful to them. The other companies are only credited: they are not affiliated with Petto, do not endorse it, and have no say over it.",
       items: [
         { slug: 'discord', name: 'Discord' },
         { slug: 'cloudflare', name: 'Cloudflare' },
@@ -2533,7 +2533,7 @@ export const ui = {
     },
     credits: {
       title: 'Créditos',
-      disclaimer: 'Estas son las herramientas y servicios que de verdad se usan para construir y hacer correr a Petto. Es crédito, no auspicio: ninguna de estas empresas está afiliada a Petto, lo respalda, ni tiene ninguna injerencia sobre él.',
+      disclaimer: 'Estas son las herramientas y servicios que de verdad se usan para construir y hacer correr a Petto. CubePath y Discloud patrocinan el alojamiento de Petto y les estamos muy agradecidos. Las demás empresas solo se mencionan como crédito: no están afiliadas a Petto, no lo respaldan ni tienen ninguna injerencia sobre él.',
       items: [
         { slug: 'discord', name: 'Discord' },
         { slug: 'cloudflare', name: 'Cloudflare' },
@@ -4251,7 +4251,7 @@ export const ui = {
     },
     credits: {
       title: 'Créditos',
-      disclaimer: 'Essas são as ferramentas e serviços realmente usados para construir e rodar o Petto. Isso é crédito, não patrocínio: nenhuma dessas empresas é afiliada ao Petto, o endossa, ou tem qualquer palavra sobre ele.',
+      disclaimer: 'Essas são as ferramentas e serviços realmente usados para construir e rodar o Petto. CubePath e Discloud patrocinam a hospedagem do Petto e somos muito gratos a eles. As demais empresas são apenas creditadas: não são afiliadas ao Petto, não o endossam e não têm qualquer palavra sobre ele.',
       items: [
         { slug: 'discord', name: 'Discord' },
         { slug: 'cloudflare', name: 'Cloudflare' },
