@@ -55,4 +55,8 @@ for (const file of ['dash-es.ts', 'dash-pt.ts']) {
   const text = readFileSync(path.join(root, 'src/i18n', file), 'utf8');
   for (const word of words) assert.ok(text.includes(`  ${JSON.stringify(word)}:`), `${file} has "${word}"`);
 }
+// A fold of the dashboard fades in once: the base stylesheet animation of its content is off inside the dashboard (the script adds .is-opening), so the content does not restart.
+const layout = readFileSync(path.join(root, 'src/components/DashGuildLayout.astro'), 'utf8');
+assert.match(layout, /\.dgl-content details:not\(\[data-no-anim\]\) > \*:not\(summary\) \{ animation: none; \}/, 'the content of a fold of the dashboard does not run the base fade as well');
+assert.ok(layout.indexOf('.dgl-content details:not([data-no-anim]) > *:not(summary) { animation: none; }') < layout.indexOf('.dgl-content details.is-opening > *:not(summary)'), 'the base animation is turned off before .is-opening sets its own');
 console.log('Checked where a custom command works: the form, the saved options, the page, the fields and the words in three languages.');
