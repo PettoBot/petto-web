@@ -66,10 +66,30 @@ const languageHref = (target: Locale) => {
   return `${localePath[target]}${currentRoute === '/' ? '/' : currentRoute}`;
 };
 const isExternal = (href: string) => /^https?:\/\//.test(href);
-// The footer keeps the main links only (the full lists are in the menus at the top): the rest of the site is one click from there.
-const FOOTER_PRODUCT = ['/features', '/commands', '/dash', '/embed-builder', 'https://code.petto.sbs'];
-const FOOTER_COMMUNITY = ['https://petto.sbs/support', '/team', '/history', '/status', '/changelog', '/blog', '/faq'];
-const inFooter = (list: string[]) => (it: { href?: string }) => Boolean(it.href) && list.includes(String(it.href));
+// The footer has three groups of links (the full lists are in the menus at the top): Product (everything that works today, in alphabetical order; AM, BMO and Nelu are
+// left out until they are public), Support (help, status and numbers) and Team (the people and the story). Titles come from the menus, so they follow the language.
+type FooterLink = { title: string; href: string; badge: string; premium?: boolean };
+const menuLinks = new Map<string, FooterLink>();
+for (const it of [...t.nav.menu.product.items, ...t.nav.menu.community.items]) {
+  const href = String(it.href ?? '');
+  if (href && href !== '#' && !menuLinks.has(href)) menuLinks.set(href, { title: it.title, href, badge: badgeOf(it) });
+}
+const extraLink = (title: string, href: string, premium = false): FooterLink => ({ title, href, badge: '', premium });
+const linksOf = (hrefs: string[]) => hrefs.map((h) => menuLinks.get(h)).filter((l): l is FooterLink => Boolean(l));
+const NOT_PUBLIC_YET = ['/nelu', '/am', '/bmo'];
+const FOOTER_PRODUCT: FooterLink[] = [
+  ...t.nav.menu.product.items.map((it) => menuLinks.get(String(it.href ?? ''))).filter((l): l is FooterLink => Boolean(l) && !NOT_PUBLIC_YET.includes(l!.href)),
+  ...linksOf(['/changelog', '/blog', '/roadmap', '/timestamp', '/snowflake', '/embed-code']),
+  extraLink(t.footer.partners, '/partners'),
+  extraLink(t.nav.premium, '/premium', true),
+].sort((a, b) => a.title.localeCompare(b.title, lang));
+const FOOTER_SUPPORT: FooterLink[] = [
+  ...linksOf(['https://petto.sbs/support', '/status', '/stats', '/faq', '/feedback', 'https://youtube.com/@pettotutos']),
+];
+const FOOTER_TEAM: FooterLink[] = [
+  ...linksOf(['/team', '/history', '/apply']),
+  extraLink(t.footer.credits, '/credits'),
+];
 // Links to the other public pages are fetched while the pointer rests on them (Astro prefetch), so they open at once.
 // The dashboard and outside links are left alone.
 const prefetchFor = (href: string) => (isExternal(href) || /(?:^|\/)dash(?:[/?#]|$)/.test(href) ? undefined : 'hover');
@@ -794,7 +814,9 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     .sec-head p { color: var(--text-muted); font-size: 16px; max-width: 54ch; }
 
     footer { border-top: 1px solid var(--border-soft); padding: 60px 0 34px; }
-    .foot-grid { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 40px; margin-bottom: 46px; }
+    .foot-grid { display: grid; grid-template-columns: 1.3fr 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 46px; }
+    .foot-list { column-count: 2; column-gap: 28px; }
+    .foot-list a { break-inside: avoid; }
     .foot-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; font-family: var(--serif); font-size: 17px; font-weight: 600; }
     .foot-brand img { height: 22px; width: 22px; object-fit: contain; }
     .foot-desc { font-size: 13.5px; color: var(--text-dim); max-width: 30ch; }
@@ -879,6 +901,7 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
       /* The shine button brings its own display rule; the bar's version (specific, and !important) wins whichever stylesheet loads last, so Add to Discord never shows in the phone bar (it is in the menu). */
       header.nav .nav-actions .nav-desktop-only { display: none !important; }
       .foot-grid { grid-template-columns: 1fr 1fr; }
+      .foot-grid > :first-child, .foot-col-wide { grid-column: 1 / -1; }
     }
     @media (max-width: 560px) {
       body.public-body header.nav .nav-inner { padding: 9px 14px; gap: 10px; }
@@ -1287,28 +1310,31 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
           <div class="foot-brand"><img src="/assets/mascot-icon.webp" alt="" />Petto</div>
           <p class="foot-desc">{t.footer.desc}</p>
         </div>
-        <div class="foot-col">
+        <div class="foot-col foot-col-wide">
           <div class="ft">{t.footer.product}</div>
-          {t.nav.menu.product.items.filter(inFooter(FOOTER_PRODUCT)).map((it) => (
-            it.href && String(it.href) !== '#' ? (
-              <a href={hrefFor(it.href)} data-astro-prefetch={prefetchFor(hrefFor(it.href))} target={isExternal(it.href) ? '_blank' : undefined} rel={isExternal(it.href) ? 'noopener' : undefined}>{it.title}{badgeOf(it) && <em class="foot-badge">{badgeOf(it)}</em>}</a>
-            ) : (
-              <span class="foot-disabled">{it.title}{badgeOf(it) && <em class="foot-badge">{badgeOf(it)}</em>}</span>
-            )
-          ))}
-          <a href={`${base}/premium`} class="foot-premium-link" data-astro-prefetch="hover">
-            <InlineIcon name="ph:crown-fill" width="14" height="14" />
-            <span class="premium-shine">{t.nav.premium}</span>
-          </a>
+          <div class="foot-list">
+            {FOOTER_PRODUCT.map((it) => (
+              it.premium ? (
+                <a href={`${base}${it.href}`} class="foot-premium-link" data-astro-prefetch="hover">
+                  <InlineIcon name="ph:crown-fill" width="14" height="14" />
+                  <span class="premium-shine">{it.title}</span>
+                </a>
+              ) : (
+                <a href={hrefFor(it.href)} data-astro-prefetch={prefetchFor(hrefFor(it.href))} target={isExternal(it.href) ? '_blank' : undefined} rel={isExternal(it.href) ? 'noopener' : undefined}>{it.title}{it.badge && <em class="foot-badge">{it.badge}</em>}</a>
+              )
+            ))}
+          </div>
         </div>
         <div class="foot-col">
-          <div class="ft">{t.footer.community}</div>
-          {t.nav.menu.community.items.filter(inFooter(FOOTER_COMMUNITY)).map((it) => (
-            it.href && String(it.href) !== '#' ? (
-              <a href={hrefFor(it.href)} data-astro-prefetch={prefetchFor(hrefFor(it.href))} target={isExternal(it.href) ? '_blank' : undefined} rel={isExternal(it.href) ? 'noopener' : undefined}>{it.title}{badgeOf(it) && <em class="foot-badge">{badgeOf(it)}</em>}</a>
-            ) : (
-              <span class="foot-disabled">{it.title}{badgeOf(it) && <em class="foot-badge">{badgeOf(it)}</em>}</span>
-            )
+          <div class="ft">{t.footer.supportTitle}</div>
+          {FOOTER_SUPPORT.map((it) => (
+            <a href={hrefFor(it.href)} data-astro-prefetch={prefetchFor(hrefFor(it.href))} target={isExternal(it.href) ? '_blank' : undefined} rel={isExternal(it.href) ? 'noopener' : undefined}>{it.title}{it.badge && <em class="foot-badge">{it.badge}</em>}</a>
+          ))}
+        </div>
+        <div class="foot-col">
+          <div class="ft">{t.footer.team}</div>
+          {FOOTER_TEAM.map((it) => (
+            <a href={hrefFor(it.href)} data-astro-prefetch={prefetchFor(hrefFor(it.href))} target={isExternal(it.href) ? '_blank' : undefined} rel={isExternal(it.href) ? 'noopener' : undefined}>{it.title}{it.badge && <em class="foot-badge">{it.badge}</em>}</a>
           ))}
         </div>
         <div class="foot-col">

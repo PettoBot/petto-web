@@ -44,7 +44,7 @@ for (const [file, lang] of [['src/pages/history.astro', 'en'], ['src/pages/es/hi
 }
 const ui = read('src/i18n/ui.ts');
 assert.equal((ui.match(/href: '\/history'/g) ?? []).length, 3, 'the menu of the three languages links to the page');
-assert.match(read('src/layouts/Base.astro'), /FOOTER_COMMUNITY = \[[^\]]*'\/history'/, 'the footer links to it');
+assert.match(read('src/layouts/Base.astro'), /FOOTER_TEAM: FooterLink\[\] = \[[^\]]*'\/history'/, 'the footer links to it');
 const page = read('src/components/History.astro');
 assert.match(page, /skin="ash"/, 'it has the look of the public pages');
 assert.match(page, /\{c\.prologue\}/, 'the page shows its opening paragraph');
