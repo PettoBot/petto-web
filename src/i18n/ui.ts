@@ -165,6 +165,25 @@ export const ui = {
       rssDescription: 'Every version of Petto, the Discord bot: what changed and when.',
       entries: [
         {
+          version: '0.7.12',
+          display: '0.7.12',
+          name: 'Cheesecake',
+          date: "November 25, 2026",
+          items: [
+            "Ceramos: a wallet with `/daily`, `/ceramos` and `/ceramos top`, missions that pay ceramos for your messages and voice time every day and every week, and packs of 500, 850, 1,200 and 2,000 you can buy on the website. The ceramos page of the website shows your balance, your movements and your plan.",
+            "Badges: a shop with 253 country flags, 20 languages, rarities, the six Bufis (Normal, Silver, Girl, Boy, Bu and Black Friday), and packs of banners and name fonts, with a showcase and a badges page on the website. With a plan you can make badges of your own (1 with Bronze, 2 with Silver, 4 with Gold) and the team reviews them.",
+            "The frames of the badges are three real frames: iron, gold and mithril. They are drawn bigger than the badge, and on the badges page you choose which frame each badge shows (normal, golden or divine) among the ones you have. A pack opens with its cover and the pieces it holds.",
+            "`/profile` is a picture: avatar, banner, name with the star of your plan, level, rank, messages and voice time. Your plan (Bronze, Silver or Gold) sets your daily ceramos, the places of your showcase, your streak freezes, the questions a day of `/ask` and the reminders you can have waiting.",
+            "Your own rank card: colors of the bar and the text, font, layout, avatar shape, theme and background, with 21 backgrounds in the shop or your own picture (with a Silver or Gold plan, animated with Gold), checked by a detector and by the team. `/rank` has a button to customize it, and it shows in every server.",
+            "Streaks: days in a row with activity in a server, counted in Colombia time. Each server chooses what counts as a message, announces milestones, gives reward roles, adds freezes and a grace period, sends reminders and can show the streak in the nickname. Members see theirs with `/streak`.",
+            "Custom commands: in the commands page you choose where each one works. Allowed and blocked channels and roles (blocked wins), an NSFW switch, and a Restricted switch that answers a member who is not a moderator in another channel. A command that is not allowed stays silent.",
+            "Moderation rules made in the dashboard: rulesets with triggers, conditions and effects, strikes and heat, a join gate with a raid detector, lists of words and domains, and a tester. Quick Setup sets up the main modules in seven steps, and a Roles page has message roles and aged roles.",
+            "`/247` keeps Petto in a voice channel for good, and Petto can be installed on a person: `/action`, `/avatar`, `/banner`, `/userinfo` and `/birthday` work in any server, in direct messages and in group chats. The welcome, goodbye and boost messages can have up to 25 versions each.",
+            "Website: the footer is in three groups (Product with every product in alphabetical order and the new Partners link, Support, and Team), the Currently log looks at the web every two minutes, and the team has a changelog editor in the dashboard. Backups are a Premium feature, and the AI assistant of the tickets is gone for good.",
+            "Fixes: streaks used UTC and now use Colombia time, `/247` from the dashboard joins within 20 seconds, a Premium given from the dashboard is the person's and gets its role at once, lists of channels and roles load in every page, and a channel Petto cannot see is no longer shown as deleted.",
+          ],
+        },
+        {
           version: '0.7.11',
           display: '0.7.11',
           name: 'Brownie',
@@ -1854,6 +1873,25 @@ export const ui = {
       rssDescription: 'Cada versión de Petto, el bot de Discord: qué cambió y cuándo.',
       entries: [
         {
+          version: '0.7.12',
+          display: '0.7.12',
+          name: 'Cheesecake',
+          date: "25 de noviembre de 2026",
+          items: [
+            "Céramos: una billetera con `/daily`, `/ceramos` y `/ceramos top`, misiones que pagan céramos por tus mensajes y tu tiempo en voz cada día y cada semana, y paquetes de 500, 850, 1,200 y 2,000 que puedes comprar en la web. La página de céramos muestra tu saldo, tus movimientos y tu plan.",
+            "Insignias: una tienda con 253 banderas de países, 20 idiomas, rarezas, los seis Bufis (Normal, Silver, Girl, Boy, Bu y Black Friday), y paquetes de banners y de fuentes de nombre, con una vitrina y una página de insignias en la web. Con un plan puedes hacer insignias propias (1 con Bronce, 2 con Plata, 4 con Oro) y el equipo las revisa.",
+            "Los marcos de las insignias son tres marcos reales: hierro, oro y mithril. Se dibujan más grandes que la insignia, y en la página de insignias eliges qué marco muestra cada una (normal, dorado o divino) entre los que tienes. Un paquete se abre con su portada y las piezas que trae.",
+            "`/profile` es una imagen: avatar, banner, nombre con la estrella de tu plan, nivel, rango, mensajes y tiempo en voz. Tu plan (Bronce, Plata u Oro) define tus céramos diarios, los lugares de tu vitrina, tus congelaciones de racha, las preguntas al día de `/ask` y los recordatorios que puedes tener esperando.",
+            "Tu propia tarjeta de rango: colores de la barra y del texto, fuente, diseño, forma del avatar, tema y fondo, con 21 fondos en la tienda o tu propia imagen (con un plan Plata u Oro, animada con Oro), revisada por un detector y por el equipo. `/rank` tiene un botón para personalizarla, y se ve en todos los servidores.",
+            "Rachas: días seguidos con actividad en un servidor, contados en hora de Colombia. Cada servidor elige qué cuenta como mensaje, anuncia hitos, da roles de recompensa, añade congelaciones y un periodo de gracia, envía recordatorios y puede mostrar la racha en el apodo. Los miembros ven la suya con `/streak`.",
+            "Comandos personalizados: en la página de comandos eliges dónde funciona cada uno. Canales y roles permitidos y bloqueados (bloqueado gana), un interruptor NSFW, y uno Restringido que responde a un miembro que no es moderador en otro canal. Un comando que no está permitido se queda en silencio.",
+            "Reglas de moderación hechas en el dashboard: conjuntos de reglas con disparadores, condiciones y efectos, strikes y heat, una puerta de entrada con detector de raids, listas de palabras y dominios, y un probador. Quick Setup configura los módulos principales en siete pasos, y una página de Roles tiene roles por mensajes y roles por antigüedad.",
+            "`/247` mantiene a Petto en un canal de voz, y Petto se puede instalar en una persona: `/action`, `/avatar`, `/banner`, `/userinfo` y `/birthday` funcionan en cualquier servidor, en mensajes directos y en chats de grupo. Los mensajes de bienvenida, despedida y boost pueden tener hasta 25 versiones cada uno.",
+            "Web: el footer está en tres grupos (Producto con todos los productos en orden alfabético y el nuevo enlace de Partners, Soporte y Equipo), el Currently log mira la web cada dos minutos, y el equipo tiene un editor del changelog en el dashboard. Los backups son una función Premium, y el asistente de IA de los tickets se eliminó para siempre.",
+            "Arreglos: las rachas usaban UTC y ahora usan la hora de Colombia, `/247` desde el dashboard entra en 20 segundos, un Premium dado desde el dashboard es de la persona y recibe su rol al instante, las listas de canales y roles cargan en todas las páginas, y un canal que Petto no puede ver ya no se muestra como borrado.",
+          ],
+        },
+        {
           version: '0.7.11',
           display: '0.7.11',
           name: 'Brownie',
@@ -3542,6 +3580,25 @@ export const ui = {
       rssTitle: 'Novidades do Petto',
       rssDescription: 'Cada versão do Petto, o bot do Discord: o que mudou e quando.',
       entries: [
+        {
+          version: '0.7.12',
+          display: '0.7.12',
+          name: 'Cheesecake',
+          date: "25 de novembro de 2026",
+          items: [
+            "Cerâmos: uma carteira com `/daily`, `/ceramos` e `/ceramos top`, missões que pagam cerâmos pelas suas mensagens e seu tempo em voz todo dia e toda semana, e pacotes de 500, 850, 1,200 e 2,000 que você pode comprar no site. A página de cerâmos mostra seu saldo, seus movimentos e seu plano.",
+            "Insígnias: uma loja com 253 bandeiras de países, 20 idiomas, raridades, os seis Bufis (Normal, Silver, Girl, Boy, Bu e Black Friday), e pacotes de banners e de fontes de nome, com uma vitrine e uma página de insígnias no site. Com um plano você pode fazer insígnias próprias (1 com Bronze, 2 com Prata, 4 com Ouro) e a equipe as revisa.",
+            "As molduras das insígnias são três molduras reais: ferro, ouro e mithril. São desenhadas maiores que a insígnia, e na página de insígnias você escolhe qual moldura cada uma mostra (normal, dourada ou divina) entre as que você tem. Um pacote abre com a sua capa e as peças que traz.",
+            "`/profile` é uma imagem: avatar, banner, nome com a estrela do seu plano, nível, rank, mensagens e tempo em voz. Seu plano (Bronze, Prata ou Ouro) define seus cerâmos diários, os lugares da sua vitrine, seus congelamentos de sequência, as perguntas por dia do `/ask` e os lembretes que você pode ter esperando.",
+            "Seu próprio cartão de rank: cores da barra e do texto, fonte, layout, forma do avatar, tema e fundo, com 21 fundos na loja ou sua própria imagem (com um plano Prata ou Ouro, animada com Ouro), verificada por um detector e pela equipe. `/rank` tem um botão para personalizá-lo, e aparece em todos os servidores.",
+            "Sequências: dias seguidos com atividade em um servidor, contados no horário da Colômbia. Cada servidor escolhe o que conta como mensagem, anuncia marcos, dá cargos de recompensa, adiciona congelamentos e um período de tolerância, envia lembretes e pode mostrar a sequência no apelido. Os membros veem a sua com `/streak`.",
+            "Comandos personalizados: na página de comandos você escolhe onde cada um funciona. Canais e cargos permitidos e bloqueados (bloqueado ganha), um interruptor NSFW, e um Restrito que responde a um membro que não é moderador em outro canal. Um comando que não é permitido fica em silêncio.",
+            "Regras de moderação feitas no dashboard: conjuntos de regras com gatilhos, condições e efeitos, strikes e heat, uma porta de entrada com detector de raids, listas de palavras e domínios, e um testador. O Quick Setup configura os módulos principais em sete passos, e uma página de Cargos tem cargos por mensagens e cargos por tempo no servidor.",
+            "`/247` mantém o Petto em um canal de voz, e o Petto pode ser instalado em uma pessoa: `/action`, `/avatar`, `/banner`, `/userinfo` e `/birthday` funcionam em qualquer servidor, em mensagens diretas e em chats de grupo. As mensagens de boas-vindas, despedida e boost podem ter até 25 versões cada uma.",
+            "Site: o rodapé está em três grupos (Produto com todos os produtos em ordem alfabética e o novo link de Partners, Suporte e Equipe), o Currently log olha o site a cada dois minutos, e a equipe tem um editor do changelog no dashboard. Os backups são um recurso Premium, e o assistente de IA dos tickets foi removido para sempre.",
+            "Correções: as sequências usavam UTC e agora usam o horário da Colômbia, `/247` pelo dashboard entra em 20 segundos, um Premium dado pelo dashboard é da pessoa e recebe o cargo na hora, as listas de canais e cargos carregam em todas as páginas, e um canal que o Petto não pode ver não aparece mais como apagado.",
+          ],
+        },
         {
           version: '0.7.11',
           display: '0.7.11',
