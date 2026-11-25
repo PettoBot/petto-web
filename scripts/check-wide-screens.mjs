@@ -13,4 +13,11 @@ assert.match(base, /\.nav-inner \{[^}]*max-width: var\(--site-w\)/, 'the top bar
 assert.match(base, /:is\(\.dgl-content, \.dme-content\) > :not\([^)]*\) \{ max-width: min\(100%, var\(--dash-page-w\)\) !important; \}/, 'the pages of both dashboards take one width');
 assert.match(base, /@media \(min-width: 2100px\) \{\s*:is\(\.dgl-content, \.dme-content\) > :not\([^)]*\) \{ margin-inline: auto !important; \}/, 'on a very wide window the page stays in the middle of the area');
 for (const piece of ['h1.headline', '.hero-laptop', '.sec-head h2']) assert.ok(home.split('\n').some((line) => line.includes(piece) && line.includes('var(--wide, 1)')), `${piece} grows with --wide`);
+// The top bar: three columns (logo, links, buttons) so the links sit in the middle, every button the same size, bigger with --wide, and a point of light that is measured on the bar itself.
+assert.match(base, /header\.nav \.nav-inner \{ display: grid; grid-template-columns: minmax\(max-content, 1fr\) auto minmax\(max-content, 1fr\)/, 'the links of the bar are in the middle');
+assert.match(base, /header\.nav \.nav-actions \.theme-toggle \{ width: 38px; height: 38px; border-radius: 11px; \}/, 'the language and theme buttons are as big as the others of the bar');
+assert.match(base, /body header\.nav \.nav-actions \.specular-button--sm \{ min-height: calc\(38px \* var\(--wide\)\)/, 'the buttons of the bar grow with --wide');
+const glass = readFileSync('src/components/LiquidGlass.astro', 'utf8');
+assert.match(glass, /getBoundingClientRect\(\)[\s\S]{0,200}clientX - box\.left/, 'the light is placed from the left edge of each bar');
+assert.doesNotMatch(glass, /event\.clientX \/ window\.innerWidth/, 'the light is not a share of the window');
 console.log('wide screens: ok');
