@@ -815,7 +815,7 @@ export const ui = {
     },
     credits: {
       title: 'Credits',
-      disclaimer: "These are the tools and services actually used to build and run Petto. This is credit, not sponsorship: none of these companies are affiliated with Petto, endorse it, or have any say over it.",
+      disclaimer: "These are the tools and services actually used to build and run Petto. CubePath and Discloud sponsor Petto's hosting, and we are very grateful to them. The other companies are only credited: they are not affiliated with Petto, do not endorse it, and have no say over it.",
       items: [
         { slug: 'discord', name: 'Discord' },
         { slug: 'cloudflare', name: 'Cloudflare' },
@@ -861,6 +861,8 @@ export const ui = {
       partners: 'Partners',
       credits: 'Credits',
       copy: '© 2017–2026 Petto. All rights reserved. Not affiliated with Discord.',
+      poweredBy: 'Powered by',
+      poweredAnd: 'and',
     },
     toolsPage: {
       timestamp: {
@@ -1346,6 +1348,13 @@ export const ui = {
         guildsCol: 'Servers',
         totalServers: 'Total servers',
         pingCol: 'Ping',
+        membersCol: 'Members',
+        clusterLabel: 'Cluster',
+        legendTitle: 'Colors of the shards by ping',
+        tierGood: 'Up to 50 ms',
+        tierWarn: '51 to 150 ms',
+        tierSlow: '151 to 300 ms',
+        tierDown: 'Over 300 ms or offline',
         statusCol: 'Status',
         shardOperational: 'Operational',
         shardOffline: 'Offline',
@@ -2524,7 +2533,7 @@ export const ui = {
     },
     credits: {
       title: 'Créditos',
-      disclaimer: 'Estas son las herramientas y servicios que de verdad se usan para construir y hacer correr a Petto. Es crédito, no auspicio: ninguna de estas empresas está afiliada a Petto, lo respalda, ni tiene ninguna injerencia sobre él.',
+      disclaimer: 'Estas son las herramientas y servicios que de verdad se usan para construir y hacer correr a Petto. CubePath y Discloud patrocinan el alojamiento de Petto y les estamos muy agradecidos. Las demás empresas solo se mencionan como crédito: no están afiliadas a Petto, no lo respaldan ni tienen ninguna injerencia sobre él.',
       items: [
         { slug: 'discord', name: 'Discord' },
         { slug: 'cloudflare', name: 'Cloudflare' },
@@ -2570,6 +2579,8 @@ export const ui = {
       partners: 'Partners',
       credits: 'Créditos',
       copy: '© 2017–2026 Petto. Todos los derechos reservados. No afiliado con Discord.',
+      poweredBy: 'Con la tecnología de',
+      poweredAnd: 'y',
     },
     toolsPage: {
       timestamp: {
@@ -3055,6 +3066,13 @@ export const ui = {
         guildsCol: 'Servidores',
         totalServers: 'Servidores en total',
         pingCol: 'Ping',
+        membersCol: 'Miembros',
+        clusterLabel: 'Clúster',
+        legendTitle: 'Colores de los shards según el ping',
+        tierGood: 'Hasta 50 ms',
+        tierWarn: 'De 51 a 150 ms',
+        tierSlow: 'De 151 a 300 ms',
+        tierDown: 'Más de 300 ms o sin conexión',
         statusCol: 'Estado',
         shardOperational: 'Operativo',
         shardOffline: 'Fuera de línea',
@@ -4233,7 +4251,7 @@ export const ui = {
     },
     credits: {
       title: 'Créditos',
-      disclaimer: 'Essas são as ferramentas e serviços realmente usados para construir e rodar o Petto. Isso é crédito, não patrocínio: nenhuma dessas empresas é afiliada ao Petto, o endossa, ou tem qualquer palavra sobre ele.',
+      disclaimer: 'Essas são as ferramentas e serviços realmente usados para construir e rodar o Petto. CubePath e Discloud patrocinam a hospedagem do Petto e somos muito gratos a eles. As demais empresas são apenas creditadas: não são afiliadas ao Petto, não o endossam e não têm qualquer palavra sobre ele.',
       items: [
         { slug: 'discord', name: 'Discord' },
         { slug: 'cloudflare', name: 'Cloudflare' },
@@ -4279,6 +4297,8 @@ export const ui = {
       partners: 'Partners',
       credits: 'Créditos',
       copy: '© 2017–2026 Petto. Todos os direitos reservados. Não afiliado ao Discord.',
+      poweredBy: 'Com a tecnologia de',
+      poweredAnd: 'e',
     },
     toolsPage: {
       timestamp: {
@@ -4764,6 +4784,13 @@ export const ui = {
         guildsCol: 'Servidores',
         totalServers: 'Servidores no total',
         pingCol: 'Ping',
+        membersCol: 'Membros',
+        clusterLabel: 'Cluster',
+        legendTitle: 'Cores dos shards pelo ping',
+        tierGood: 'Até 50 ms',
+        tierWarn: 'De 51 a 150 ms',
+        tierSlow: 'De 151 a 300 ms',
+        tierDown: 'Mais de 300 ms ou offline',
         statusCol: 'Status',
         shardOperational: 'Operacional',
         shardOffline: 'Offline',
