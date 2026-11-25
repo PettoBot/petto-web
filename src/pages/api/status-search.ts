@@ -57,7 +57,7 @@ export const GET: APIRoute = async ({ locals, url, request, clientAddress }) => 
   try {
     const [serversRes, shardsRes] = await Promise.all([
       fetch(`${botApiUrl}/rest/v1/discord_guild_snapshots?${filter}&select=guild_id,name,icon&order=name.asc&limit=${MAX_RESULTS}`, { headers }),
-      fetch(`${botApiUrl}/rest/v1/bot_status?select=shard_id,status,updated_at,guild_count,ping_ms&order=shard_id.asc`, { headers }),
+      fetch(`${botApiUrl}/rest/v1/bot_status?select=*&order=shard_id.asc`, { headers }),
     ]);
     if (!serversRes.ok || !shardsRes.ok) return json({ error: 'status_backend_unavailable' }, 502);
     const [servers, shards] = await Promise.all([serversRes.json(), shardsRes.json()]);
@@ -83,6 +83,7 @@ export const GET: APIRoute = async ({ locals, url, request, clientAddress }) => 
         shard: shardId,
         state: row ? bucket(row.status, row.updated_at, now) : 'offline',
         ping: row?.ping_ms ?? null,
+        cluster: [row?.cluster_name, row?.cluster_location].filter(Boolean).join(' · ') || null,
       };
     });
     return json({ results });

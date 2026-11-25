@@ -96,9 +96,22 @@ const incidentList = incidentDays(history.days, history.incidents, started, 14);
 const noteOf = (inc: { note?: Record<string, string> }) => inc.note?.[lang] ?? inc.note?.en ?? '';
 const now = Date.now();
 const shardRows = await botApiGet('bot_status');
+// The colour of a shard card follows its ping (green up to 50 ms, yellow up to 150, orange up to 300, red above that or when it is offline).
+// The same rule is in the script below, which redraws the cards every 10 seconds.
+function tierOf(state: string, ping: number | null | undefined) {
+  if (state === 'offline') return 'down';
+  if (state === 'reconnecting') return 'slow';
+  if (ping === null || ping === undefined || !Number.isFinite(Number(ping))) return 'unknown';
+  return Number(ping) <= 50 ? 'good' : Number(ping) <= 150 ? 'warn' : Number(ping) <= 300 ? 'slow' : 'down';
+}
 const shards = shardRows
-  ? (shardRows as any[]).sort((a, b) => a.shard_id - b.shard_id).map((r) => ({ id: r.shard_id, guildCount: r.guild_count, ping: r.ping_ms, state: bucket(r.status, r.updated_at, now) }))
+  ? (shardRows as any[]).sort((a, b) => a.shard_id - b.shard_id).map((r) => {
+      const state = bucket(r.status, r.updated_at, now);
+      return { id: r.shard_id, guildCount: r.guild_count, members: r.member_count ?? null, ping: r.ping_ms, state, tier: tierOf(state, r.ping_ms), cluster: r.cluster_name ?? null, place: r.cluster_location ?? null };
+    })
   : null;
+const numberFormat = new Intl.NumberFormat(lang === 'pt-BR' ? 'pt-BR' : lang);
+const clusterText = (name: string | null, place: string | null) => [name, place].filter(Boolean).join(' · ');
 
 // The servers of every shard that is running now, the same count the home page shows.
 const totalServers = shards ? shards.filter((sh) => sh.state !== 'offline').reduce((total, sh) => total + (Number(sh.guildCount) || 0), 0) : null;
@@ -132,6 +145,10 @@ const stateLabel: Record<string, string> = {
           data-label-nodata={s.noShardData}
           data-label-shard={s.shardName}
           data-label-uptime={s.uptimeLabel}
+          data-label-members={s.membersCol}
+          data-label-state={s.statusCol}
+          data-label-cluster={s.clusterLabel}
+          data-locale={lang === 'pt-BR' ? 'pt-BR' : lang}
         >
           <div class="status-block-head">
             <span class="status-block-label">{s.shardsTitle}</span>
@@ -153,12 +170,19 @@ const stateLabel: Record<string, string> = {
             <ul class="status-search-results" id="statusSearchResults" aria-live="polite"></ul>
           </form>
 
+          <ul class="tier-legend" aria-label={s.legendTitle}>
+            <li><span class="tier-dot good"></span>{s.tierGood}</li>
+            <li><span class="tier-dot warn"></span>{s.tierWarn}</li>
+            <li><span class="tier-dot slow"></span>{s.tierSlow}</li>
+            <li><span class="tier-dot down"></span>{s.tierDown}</li>
+          </ul>
+
           <div id="shardsContent" class="shard-grid">
             {shards ? (
               shards.map((sh) => (
-                <div class="shard-card" data-shard-id={sh.id}>
+                <div class="shard-card" data-shard-id={sh.id} data-tier={sh.tier} tabindex="0">
                   <div class="shard-card-head">
-                    <Icon name="ph:cube-fill" class="shard-ic" />
+                    <span class="tier-dot" aria-hidden="true"></span>
                     <span class="shard-name">{s.shardName} {Number(sh.id) + 1}</span>
                     <span class:list={['status-pill', sh.state]}>{stateLabel[sh.state] ?? s.shardUnknown}</span>
                   </div>
@@ -166,6 +190,12 @@ const stateLabel: Record<string, string> = {
                     <div class="shard-stat"><span class="n">{sh.guildCount}</span><span class="l">{s.guildsCol}</span></div>
                     <div class="shard-stat"><span class="n">{sh.ping != null ? `${sh.ping}` : 'n/a'}<em>ms</em></span><span class="l">{s.pingCol}</span></div>
                   </div>
+                  <dl class="shard-tip" role="tooltip">
+                    <div><dt>{s.guildsCol}</dt><dd>{numberFormat.format(Number(sh.guildCount) || 0)}</dd></div>
+                    {sh.members != null && <div><dt>{s.membersCol}</dt><dd>{numberFormat.format(Number(sh.members) || 0)}</dd></div>}
+                    <div><dt>{s.pingCol}</dt><dd>{sh.ping != null ? `${sh.ping} ms` : 'n/a'} · {stateLabel[sh.state] ?? s.shardUnknown}</dd></div>
+                    {clusterText(sh.cluster, sh.place) && <div><dt>{s.clusterLabel}</dt><dd>{clusterText(sh.cluster, sh.place)}</dd></div>}
+                  </dl>
                 </div>
               ))
             ) : (
@@ -425,7 +455,7 @@ const stateLabel: Record<string, string> = {
           name.textContent = text(row.name);
           const meta = document.createElement('span');
           meta.className = 'status-result-meta';
-          meta.textContent = `${searchForm!.dataset.shard || 'Shard'} ${(Number.isFinite(Number(row.shard)) ? Number(row.shard) + 1 : text(row.shard))}${row.ping != null ? ` · ${text(row.ping)} ms` : ''}`;
+          meta.textContent = `${searchForm!.dataset.shard || 'Shard'} ${(Number.isFinite(Number(row.shard)) ? Number(row.shard) + 1 : text(row.shard))}${row.ping != null ? ` · ${text(row.ping)} ms` : ''}${row.cluster ? ` · ${text(row.cluster)}` : ''}`;
           const pill = document.createElement('span');
           pill.className = `status-pill ${text(row.state)}`;
           pill.textContent = labels[text(row.state)] ?? text(row.state);
@@ -457,6 +487,10 @@ const stateLabel: Record<string, string> = {
     const noDataText = block.dataset.labelNodata || '';
     const shardWord = block.dataset.labelShard || 'Shard';
     const uptimeWord = block.dataset.labelUptime || 'Uptime';
+    const colMembers = block.dataset.labelMembers || 'Members';
+    const colCluster = block.dataset.labelCluster || 'Cluster';
+    const numberFormat = new Intl.NumberFormat(block.dataset.locale || 'en');
+    const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
     const shardsContent = document.getElementById('shardsContent');
     const hostContent = document.getElementById('hostContent');
     const liveBadge = document.getElementById('liveBadge');
@@ -486,20 +520,37 @@ const stateLabel: Record<string, string> = {
       if (target) target.textContent = String(total);
     }
 
+    // The same colours as the server render: green up to 50 ms, yellow up to 150, orange up to 300, red above that or offline.
+    function tierOf(state: string, ping: unknown) {
+      if (state === 'offline') return 'down';
+      if (state === 'reconnecting') return 'slow';
+      if (ping === null || ping === undefined || !Number.isFinite(Number(ping))) return 'unknown';
+      return Number(ping) <= 50 ? 'good' : Number(ping) <= 150 ? 'warn' : Number(ping) <= 300 ? 'slow' : 'down';
+    }
+
     function renderShards(rows: any[]) {
       if (!shardsContent) return;
       if (!rows.length) {
         shardsContent.innerHTML = `<p class="no-shard-data">${noDataText}</p>`;
         return;
       }
-      shardsContent.innerHTML = rows
-        .sort((a, b) => a.shard_id - b.shard_id)
-        .map((r) => {
-          const state = bucketState(r.status, r.updated_at);
-          const ping = r.ping_ms != null ? `${r.ping_ms}` : 'n/a';
-          return `<div class="shard-card" data-shard-id="${r.shard_id}"><div class="shard-card-head"><span class="shard-name">${shardWord} ${Number(r.shard_id) + 1}</span><span class="status-pill ${state}">${labels[state] ?? state}</span></div><div class="shard-card-stats"><div class="shard-stat"><span class="n">${r.guild_count}</span><span class="l">${colServers}</span></div><div class="shard-stat"><span class="n">${ping}<em>ms</em></span><span class="l">${colPing}</span></div></div></div>`;
-        })
-        .join('');
+      const sorted = [...rows].sort((a, b) => a.shard_id - b.shard_id);
+      const cards = sorted.map((r) => {
+        const state = bucketState(r.status, r.updated_at);
+        const ping = r.ping_ms != null ? `${r.ping_ms}` : 'n/a';
+        const place = [r.cluster_name, r.cluster_location].filter(Boolean).map(escapeHtml).join(' · ');
+        const members = r.member_count != null ? `<div><dt>${colMembers}</dt><dd>${numberFormat.format(Number(r.member_count) || 0)}</dd></div>` : '';
+        const tip = `<dl class="shard-tip" role="tooltip"><div><dt>${colServers}</dt><dd>${numberFormat.format(Number(r.guild_count) || 0)}</dd></div>${members}<div><dt>${colPing}</dt><dd>${ping}${r.ping_ms != null ? ' ms' : ''} · ${labels[state] ?? state}</dd></div>${place ? `<div><dt>${colCluster}</dt><dd>${place}</dd></div>` : ''}</dl>`;
+        const inner = `<div class="shard-card-head"><span class="tier-dot" aria-hidden="true"></span><span class="shard-name">${shardWord} ${Number(r.shard_id) + 1}</span><span class="status-pill ${state}">${labels[state] ?? state}</span></div><div class="shard-card-stats"><div class="shard-stat"><span class="n">${r.guild_count}</span><span class="l">${colServers}</span></div><div class="shard-stat"><span class="n">${ping}<em>ms</em></span><span class="l">${colPing}</span></div></div>${tip}`;
+        return { id: String(r.shard_id), tier: tierOf(state, r.ping_ms), inner };
+      });
+      const shown = [...shardsContent.querySelectorAll<HTMLElement>('.shard-card')];
+      // The same shards as the last time: the cards are updated where they are, so a tooltip that is open (the mouse or the finger is on the card) does not close every 10 seconds.
+      if (shown.length === cards.length && shown.every((el, i) => el.dataset.shardId === cards[i].id)) {
+        shown.forEach((el, i) => { el.dataset.tier = cards[i].tier; el.innerHTML = cards[i].inner; });
+        return;
+      }
+      shardsContent.innerHTML = cards.map((c) => `<div class="shard-card" data-shard-id="${c.id}" data-tier="${c.tier}" tabindex="0">${c.inner}</div>`).join('');
     }
 
     function renderHost(row: any) {
@@ -603,7 +654,28 @@ const stateLabel: Record<string, string> = {
    * the first server-rendered paint and then silently stop matching the instant the first poll()
    * call (which fires immediately, not after the 10s interval) replaces that markup.
    */
-  :global(.shard-card) { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--card); }
+  /* The colour of a card is its tier (see tierOf): green up to 50 ms, yellow up to 150, orange up to 300, red above that or offline. */
+  :global(:root) { --tier-orange: #ff9a3c; }
+  :global(:root[data-theme="light"]) { --tier-orange: #b45f0b; }
+  @media (prefers-color-scheme: light) { :global(:root:not([data-theme="dark"])) { --tier-orange: #b45f0b; } }
+  :global(.shard-card), .tier-dot { --tier: var(--text-dim); }
+  :global(.shard-card[data-tier="good"]), :global(.tier-dot.good) { --tier: var(--green); }
+  :global(.shard-card[data-tier="warn"]), :global(.tier-dot.warn) { --tier: var(--yellow); }
+  :global(.shard-card[data-tier="slow"]), :global(.tier-dot.slow) { --tier: var(--tier-orange); }
+  :global(.shard-card[data-tier="down"]), :global(.tier-dot.down) { --tier: var(--red); }
+  :global(.tier-dot) { width: 10px; height: 10px; border-radius: 3px; background: var(--tier, var(--text-dim)); flex-shrink: 0; }
+  .tier-legend { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--text-dim); }
+  .tier-legend li { display: flex; align-items: center; gap: 7px; }
+  :global(.shard-card) { position: relative; border: 1px solid color-mix(in srgb, var(--tier) 45%, var(--border)); border-radius: 14px; padding: 16px 18px; background: color-mix(in srgb, var(--tier) 8%, var(--card)); outline: none; transition: border-color 0.15s ease, background 0.15s ease; }
+  :global(.shard-card:hover), :global(.shard-card:focus-visible) { border-color: var(--tier); z-index: 3; }
+  :global(.shard-card:focus-visible) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tier) 30%, transparent); }
+  :global(.shard-card .shard-stat:nth-child(2) .n) { color: var(--tier); }
+  :global(.shard-tip) { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 5; width: max-content; max-width: min(300px, 86vw); margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise, var(--bg)); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); display: grid; gap: 8px; opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s; pointer-events: none; }
+  :global(.shard-tip > div) { display: flex; justify-content: space-between; gap: 18px; font-size: 12.5px; }
+  :global(.shard-tip dt) { color: var(--text-dim); }
+  :global(.shard-tip dd) { margin: 0; color: var(--text); font-weight: 600; text-align: right; }
+  :global(.shard-card:hover .shard-tip), :global(.shard-card:focus .shard-tip), :global(.shard-card:focus-within .shard-tip) { opacity: 1; visibility: visible; transform: none; }
+  @media (prefers-reduced-motion: reduce) { :global(.shard-tip), :global(.shard-card) { transition: none; } }
   :global(.shard-card-head) { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
   :global(.shard-card .shard-ic) { width: 15px; height: 15px; color: var(--text-dim); }
   :global(.shard-name) { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
