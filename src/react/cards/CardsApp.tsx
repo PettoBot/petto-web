@@ -566,28 +566,32 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
         ) : (
           <div className="ebr-editor ebr-fade" key={selected}>
             <div className="ebr-preview-col">
-              <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
-              <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}`, ['--crd-ar' as string]: draft.width / draft.height }}>
-                {live ? <canvas ref={setCanvasEl} className={`crd-canvas${painted ? ' is-ready' : ''}`} width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
-                {live && !painted && <div className="crd-stage-shimmer" aria-hidden="true" />}
-                {live && loadingPicture && <div className="crd-stage-loading" role="status"><span className="crd-wheel" aria-hidden="true" />{t('Loading image...')}</div>}
-                {!live && previewFailed && (
-                  <div className="crd-stage-empty crd-stage-failed">
-                    <span>{t('The preview could not be drawn.')}</span>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void requestPreview(draft)}>{t('Try again')}</button>
-                  </div>
-                )}
-                {live && draft.mode === 'advanced' && draft.layers.map((l) => {
-                  const box = layerBox(l);
-                  return (
-                    <div key={l.id} className={`crd-handle${l.id === activeLayer ? ' active' : ''}`}
-                      style={{ left: `${(box.x / draft.width) * 100}%`, top: `${(box.y / draft.height) * 100}%`, width: `${(box.w / draft.width) * 100}%`, height: `${(box.h / draft.height) * 100}%` }}
-                      onPointerDown={(e) => startDrag(e, l)} title={l.id} />
-                  );
-                })}
+              <div className="crd-preview-box">
+                <div className="crd-preview-head">
+                  <div className="ebr-preview-label">{t('Preview')}{previewBusy ? ' ...' : ''}</div>
+                  <label className="ebr-check"><input type="checkbox" checked={exact} onChange={(e) => setExact(e.target.checked)} />{t('Exact preview, drawn by Petto')}</label>
+                </div>
+                <div className="crd-stage" ref={stageRef} style={{ aspectRatio: `${draft.width} / ${draft.height}`, ['--crd-ar' as string]: draft.width / draft.height }}>
+                  {live ? <canvas ref={setCanvasEl} className={`crd-canvas${painted ? ' is-ready' : ''}`} width={draft.width} height={draft.height} /> : previewUrl ? <img src={previewUrl} alt="" draggable={false} /> : previewFailed ? null : <div className="crd-stage-empty">{t('Loading...')}</div>}
+                  {live && !painted && <div className="crd-stage-shimmer" aria-hidden="true" />}
+                  {live && loadingPicture && <div className="crd-stage-loading" role="status"><span className="crd-wheel" aria-hidden="true" />{t('Loading image...')}</div>}
+                  {!live && previewFailed && (
+                    <div className="crd-stage-empty crd-stage-failed">
+                      <span>{t('The preview could not be drawn.')}</span>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void requestPreview(draft)}>{t('Try again')}</button>
+                    </div>
+                  )}
+                  {live && draft.mode === 'advanced' && draft.layers.map((l) => {
+                    const box = layerBox(l);
+                    return (
+                      <div key={l.id} className={`crd-handle${l.id === activeLayer ? ' active' : ''}`}
+                        style={{ left: `${(box.x / draft.width) * 100}%`, top: `${(box.y / draft.height) * 100}%`, width: `${(box.w / draft.width) * 100}%`, height: `${(box.h / draft.height) * 100}%` }}
+                        onPointerDown={(e) => startDrag(e, l)} title={l.id} />
+                    );
+                  })}
+                </div>
+                <p className="ebr-preview-note">{t('The preview is drawn by Petto with your name and avatar. Variables fill in when the message is sent.')}</p>
               </div>
-              <label className="ebr-check"><input type="checkbox" checked={exact} onChange={(e) => setExact(e.target.checked)} />{t('Exact preview, drawn by Petto')}</label>
-              <p className="ebr-preview-note">{t('The preview is drawn by Petto with your name and avatar. Variables fill in when the message is sent.')}</p>
               <div className="crd-assets">
                 <div className="ebr-preview-label">{t('Uploaded pictures')} <span className="ebr-count">{overview.usage.assets}/{overview.limits.assets} · {storageMb}/{storageMax} MB</span></div>
                 {assets.length === 0 && <p className="ebr-empty-note">{t('No pictures uploaded yet. Use Upload next to any picture field.')}</p>}
@@ -604,9 +608,16 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
             </div>
 
             <div className="ebr-form-col">
-              <div className="crd-mode">
-                <button type="button" className={`ebr-tab${draft.mode === 'basic' ? ' active' : ''}`} onClick={() => { if (draft.mode === 'advanced') stash.current = draft.layers; edit({ mode: 'basic' }); }}>{t('Basic')}</button>
-                <button type="button" className={`ebr-tab${draft.mode === 'advanced' ? ' active' : ''}`} onClick={() => { if (draft.mode !== 'advanced') void startAdvanced(); }}>{t('Advanced')} {!premium && <span className="crd-badge">Premium</span>}</button>
+              <div className="crd-bar">
+                <div className="crd-bar-title">
+                  <Ico d={isRank ? TROPHY_ICON : IMAGE_ICON} />
+                  <strong>{selected}</strong>
+                  <span className="crd-item-tag">{isRank ? t('Rank') : t('Welcome style')}</span>
+                </div>
+                <div className="crd-mode">
+                  <button type="button" className={`ebr-tab${draft.mode === 'basic' ? ' active' : ''}`} onClick={() => { if (draft.mode === 'advanced') stash.current = draft.layers; edit({ mode: 'basic' }); }}>{t('Basic')}</button>
+                  <button type="button" className={`ebr-tab${draft.mode === 'advanced' ? ' active' : ''}`} onClick={() => { if (draft.mode !== 'advanced') void startAdvanced(); }}>{t('Advanced')} {!premium && <span className="crd-badge">Premium</span>}</button>
+                </div>
               </div>
               {lockedNote && !premium && (
                 <div className="ebr-premium-limit">

@@ -7500,4 +7500,9 @@ export const dashPt: Record<string, string> = {
   "For this long after midnight (GMT-5) the day that just ended still counts, so a streak is not lost the moment the day changes.": "Durante este tempo depois da meia-noite (GMT-5) o dia que acabou de terminar ainda conta, assim uma sequência não se perde no momento em que o dia muda.",
   "Discord did not give a verified email. Type one instead.": "O Discord não deu um e-mail verificado. Digite um.",
   "Use the email of my Discord account": "Usar o e-mail da minha conta do Discord",
+  "Help and resources": "Ajuda e recursos",
+  "Documentation": "Documentação",
+  "Toggle theme": "Alternar tema",
+  "Account and settings": "Conta e configurações",
+  "Your profile": "Seu perfil",
 };
