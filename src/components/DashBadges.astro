@@ -9,7 +9,7 @@ import DashCeramosNote from './DashCeramosNote.astro';
 import DashShopShared from './DashShopShared.astro';
 import CeramosBalance from './CeramosBalance.astro';
 import { getDashLang, makeT } from '../i18n/dash';
-import { slotsHtml, tileHtml, tilesFor, TABS, type Catalog, type State, type CatalogBadge, type Category } from '../utils/badgesView';
+import { slotsHtml, tileHtml, tilesFor, badgePacksOf, TABS, type Catalog, type State, type CatalogBadge, type Category, type TabKey } from '../utils/badgesView';
 import type { Session } from '../utils/session';
 
 interface Props { user: Session; catalog: Catalog | null; state: State | null; unavailable?: boolean }
@@ -38,11 +38,12 @@ const tabLabel: Record<Category, string> = { country: dt('Countries'), language:
 const ui = {
   places: dt('{n} of {m} places'), ownedCount: dt('{n} of {m} owned'),
   buy: dt('Buy for {price}'), poor: dt('Not enough ceramos'), show: dt('Show in the showcase'), hide: dt('Take out of the showcase'), full: dt('The showcase is full'),
+  buyPack: dt('Buy the whole pack for {price}'), takePack: dt('Take the whole pack (free)'), packLeft: dt('{n} pieces you do not have'), packAll: dt('You have every piece'),
   upgrade: dt('Frame {frame}: {cost}'), on: dt('Turn on'), off: dt('Turn off'), close: dt('Close'),
   frame: { normal: dt('Normal'), bright: dt('Golden'), divine: dt('Divine') }, chooseFrame: dt('Frame it shows'),
   claim: dt('Claim {n} ceramos'), next: dt('Next daily in {time}'), claimed: dt('You claimed {n} ceramos.'),
   down: dt('Petto did not answer. Try again in a moment.'), failed: dt('That did not work. Try again in a moment.'),
-  results: { closed: dt('That badge is not on sale now.'), plan: dt('That badge is for people with a better plan.'), poor: dt('You do not have enough ceramos.'), owned: dt('You already have that badge.'), unknown: dt('That badge is not for sale.'), max: dt('It already has the best frame.'), notYours: dt('That badge is not one you can turn on yourself.'), notYet: dt('That frame is not unlocked yet.'), noFrame: dt('That badge has no frames.') },
+  results: { closed: dt('That badge is not on sale now.'), plan: dt('That badge is for people with a better plan.'), poor: dt('You do not have enough ceramos.'), owned: dt('You already have that badge.'), unknown: dt('That badge is not for sale.'), nothing: dt('You already have every piece.'), max: dt('It already has the best frame.'), notYours: dt('That badge is not one you can turn on yourself.'), notYet: dt('That frame is not unlocked yet.'), noFrame: dt('That badge has no frames.') },
   untilT: dt('Until {date}'), auto: dt('Automatic'), closed: dt('Not on sale now'), planNeeded: dt('Needs the {plan} plan or a better one'), autoHint: dt('Given by itself while you are what it says.'),
   plans: { bronze: dt('Bronze'), silver: dt('Silver'), gold: dt('Gold') },
   statusEmpty: dt('The badges that follow what you are (partner, voter, booster, server boost) are coming soon.'),
@@ -52,12 +53,19 @@ const ui = {
 const ready = Boolean(catalog && state);
 const badgeOf = (id: string) => catalog?.badges.find((badge) => badge.id === id);
 const frameOf = (id: string) => state?.owned.find((row) => row.id === id)?.frame ?? 'normal';
-const total = (tab: Category) => catalog ? catalog.badges.filter((badge) => (badge.category === 'plan' ? 'status' : badge.category) === tab).length : 0;
-const ownedIn = (tab: Category) => (catalog && state) ? tilesFor(catalog, state, words, { tab, query: '', owned: true }).length : 0;
+const badgePacks = (catalog && state) ? badgePacksOf(catalog, state) : [];
+const packNameOf = (names: Record<string, string>) => names[lang] ?? names[lang.split('-')[0]] ?? names.en;
+const allTabs: { key: TabKey; label: string; color?: string }[] = [
+  ...TABS.slice(0, 3).map((tab) => ({ key: tab as TabKey, label: tabLabel[tab] })),
+  ...badgePacks.map((pack) => ({ key: `pack:${pack.id}` as TabKey, label: packNameOf(pack.names), color: pack.color })),
+  ...TABS.slice(3).map((tab) => ({ key: tab as TabKey, label: tabLabel[tab] })),
+];
+const total = (tab: TabKey) => (catalog && state) ? tilesFor(catalog, state, words, { tab, query: '', owned: false }).length : 0;
+const ownedIn = (tab: TabKey) => (catalog && state) ? tilesFor(catalog, state, words, { tab, query: '', owned: true }).length : 0;
 const firstTiles = (catalog && state) ? tilesFor(catalog, state, words, { tab: 'country', query: '', owned: false }) : [];
 const name = user.username;
 const avatar = sessionAvatar(user, 128);
-const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fromEntries(TABS.map((tab) => [tab, tabLabel[tab]])), words: { rarity: words.rarity, owned: words.owned, free: words.free, auto: words.auto }, names: Object.fromEntries(catalog!.badges.map((badge) => [badge.id, nameOf(badge)])) }).replace(/</g, '\\u003c') : '';
+const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fromEntries(allTabs.map((tab) => [tab.key, tab.label])), packNames: Object.fromEntries(badgePacks.map((pack) => [pack.id, packNameOf(pack.names)])), words: { rarity: words.rarity, owned: words.owned, free: words.free, auto: words.auto }, names: Object.fromEntries(catalog!.badges.map((badge) => [badge.id, nameOf(badge)])) }).replace(/</g, '\\u003c') : '';
 ---
 <DashMeLayout user={user} active="badges" pageTitle="Badges">
   <DashShopShared />
@@ -94,11 +102,12 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
         </div>
         <div class="bd-tools">
           <div class="bd-tabs" role="tablist">
-            {TABS.map((tab, index) => (
-              <button type="button" role="tab" class:list={['bd-tab', { active: index === 0 }]} data-tab={tab} aria-selected={index === 0}>{tabLabel[tab]}<i>{ownedIn(tab)}</i></button>
+            {allTabs.map((tab, index) => (
+              <button type="button" role="tab" class:list={['bd-tab', { active: index === 0, 'bd-tab-pack': Boolean(tab.color) }]} data-tab={tab.key} aria-selected={index === 0} style={tab.color ? `--pc:${tab.color}` : undefined}>{tab.label}<i>{ownedIn(tab.key)}</i></button>
             ))}
           </div>
         </div>
+        <div class="bd-packbar" id="bd-packbar" hidden></div>
         <div class="bd-find">
           <label class="bd-search"><input type="search" id="bd-q" placeholder={dt('Search badges')} autocomplete="off" /></label>
           <div class="bd-filter" role="group">
@@ -142,6 +151,8 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
   .bd-hex-in img { width: 100%; height: 100%; object-fit: cover; }
   .bd-hex.bd-bare .bd-hex-in { background: none; clip-path: none; box-shadow: none; }
   .bd-hex.bd-bare .bd-hex-in img { object-fit: contain; }
+  .bd-hex.bd-nobg .bd-hex-in { background: transparent; }
+  .bd-hex.bd-nobg .bd-hex-in img { object-fit: contain; }
   .bd-hex-in b { color: #fff; font-size: calc(var(--s) * .3); letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
   .bd-hex-in.bd-plus { background: rgba(255,255,255,.07); color: rgba(255,255,255,.6); font-size: 24px; }
   .bd-hex-in.bd-lock { background: rgba(255,255,255,.05); }
@@ -166,6 +177,14 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
   .bd-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
   .bd-tab i { font-style: normal; font-size: 12px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, transparent); }
   .bd-tab.active { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .bd-packbar[hidden] { display: none; }
+  .bd-packbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-radius: 16px; border: 1px solid var(--border-soft); background: color-mix(in srgb, var(--text) 3%, transparent); }
+  .bd-packbar-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .bd-packbar-info strong { font-size: 15px; color: var(--text); }
+  .bd-packbar-info span { font-size: 13px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bd-packbar-info s { color: var(--text-dim); }
+  .bd-packbar-act { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bd-packbar-err { width: 100%; margin: 2px 0 0; font-size: 12.5px; color: var(--red, #f87171); }
   .bd-progress { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: 13px; }
   .bd-bar { flex: 1; height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
   .bd-bar i { display: block; height: 100%; background: var(--green); border-radius: inherit; transition: width .3s; }
@@ -179,10 +198,10 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
 </style>
 
 <script>
-  import { hexHtml, slotsHtml, tileHtml, tilesFor, actionsFor, type Catalog, type State, type Category, type Words } from '../utils/badgesView';
+  import { hexHtml, slotsHtml, tileHtml, tilesFor, actionsFor, type Catalog, type State, type TabKey, type Words } from '../utils/badgesView';
   const root = document.getElementById('bd');
   if (root?.dataset.boot) {
-    const boot = JSON.parse(root.dataset.boot) as { lang: string; catalog: Catalog; state: State; ui: Record<string, any>; tabs: Record<string, string>; words: { rarity: Words['rarity']; owned: string; free: string; auto: string }; names: Record<string, string> };
+    const boot = JSON.parse(root.dataset.boot) as { lang: string; catalog: Catalog; state: State; ui: Record<string, any>; tabs: Record<string, string>; packNames?: Record<string, string>; words: { rarity: Words['rarity']; owned: string; free: string; auto: string }; names: Record<string, string> };
     const { catalog } = boot;
     let state = boot.state;
     const ui = boot.ui;
@@ -190,12 +209,54 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
     const words: Words = { ...boot.words, name: (badge) => boot.names[badge.id] ?? badge.id, until: (iso) => ui.untilT.replace('{date}', dateText.format(new Date(iso))) };
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
     const fill = (text: string, vars: Record<string, string | number>) => Object.entries(vars).reduce((out, [key, value]) => out.replaceAll(`{${key}}`, String(value)), text);
-    let tab: Category = 'country'; let onlyOwned = false; let query = '';
+    const esc = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+    const PLAN_ORDER = ['bronze', 'silver', 'gold'];
+    let tab: TabKey = 'country'; let onlyOwned = false; let query = ''; let packErr = '';
     const badgeOf = (id: string) => catalog.badges.find((badge) => badge.id === id);
     const frameOf = (id: string) => state.owned.find((row) => row.id === id)?.frame ?? 'normal';
     const timeLeft = (iso: string) => { const m = Math.max(1, Math.ceil((new Date(iso).getTime() - Date.now()) / 60000)); return m >= 60 ? fill(ui.hours, { h: Math.floor(m / 60), m: m % 60 }) : fill(ui.minutes, { m }); };
 
+    function drawPackBar() {
+      const bar = $('bd-packbar');
+      if (!tab.startsWith('pack:')) { bar.hidden = true; bar.innerHTML = ''; return; }
+      const packId = tab.slice(5);
+      const pack = (catalog.packs ?? []).find((each) => each.id === packId);
+      if (!pack) { bar.hidden = true; bar.innerHTML = ''; return; }
+      const owned = new Set(state.owned.map((row) => row.id));
+      const members = catalog.badges.filter((badge) => badge.pack === packId && badge.unlock === 'shop' && !badge.retired && badge.onSale);
+      const missing = members.filter((badge) => !owned.has(badge.id));
+      const fullMissing = missing.reduce((sum, badge) => sum + badge.price, 0);
+      const ownedSome = missing.length < members.length;
+      const price = pack.free ? 0 : pack.price === null ? fullMissing : (ownedSome && fullMissing > 0 ? Math.min(pack.price, fullMissing) : pack.price);
+      const planOk = !pack.planMin || (state.plan !== null && PLAN_ORDER.indexOf(state.plan) >= PLAN_ORDER.indexOf(pack.planMin));
+      const title = boot.packNames?.[pack.id] ?? pack.names?.[boot.lang] ?? pack.names?.en ?? pack.id;
+      const metaParts = [missing.length ? fill(ui.packLeft, { n: missing.length }) : ui.packAll];
+      if (pack.saleUntil && missing.length) metaParts.push(fill(ui.untilT, { date: dateText.format(new Date(pack.saleUntil)) }));
+      let btnHtml = '';
+      if (!missing.length) btnHtml = `<button type="button" class="btn" disabled>${esc(ui.packAll)}</button>`;
+      else if (!pack.onSale || pack.retired) btnHtml = `<button type="button" class="btn" disabled>${esc(ui.closed)}</button>`;
+      else if (!planOk) btnHtml = `<button type="button" class="btn" disabled>${esc(fill(ui.planNeeded, { plan: ui.plans[pack.planMin as string] ?? pack.planMin }))}</button>`;
+      else {
+        const canAfford = state.balance >= price;
+        const label = price === 0 ? ui.takePack : canAfford ? fill(ui.buyPack, { price }) : ui.poor;
+        btnHtml = `<button type="button" class="btn bd-d-go" id="bd-buy-pack" data-pack="${esc(pack.id)}"${canAfford ? '' : ' disabled'}>${esc(label)}</button>`;
+      }
+      const discount = missing.length && fullMissing > price ? `<s>${fullMissing}</s>` : '';
+      bar.style.setProperty('--pc', pack.color);
+      bar.hidden = false;
+      bar.innerHTML = `<div class="bd-packbar-info"><strong>${esc(title)}</strong><span>${esc(metaParts.join(' · '))}${discount}</span></div><div class="bd-packbar-act">${btnHtml}</div>${packErr ? `<p class="bd-packbar-err" role="alert">${esc(packErr)}</p>` : ''}`;
+      const buyBtn = document.getElementById('bd-buy-pack') as HTMLButtonElement | null;
+      buyBtn?.addEventListener('click', async () => {
+        buyBtn.disabled = true; packErr = '';
+        const out = await act({ action: 'buy-pack', id: pack.id });
+        const reason = out.result && out.result.ok === false ? (ui.results[out.result.reason] ?? ui.failed) : '';
+        packErr = out.ok ? reason : (out.error ?? ui.failed);
+        draw();
+      });
+    }
+
     function draw() {
+      drawPackBar();
       const tiles = tilesFor(catalog, state, words, { tab, query, owned: onlyOwned });
       $('bd-grid').innerHTML = tiles.map((tile) => tileHtml(tile, words)).join('');
       const empty = $('bd-empty');
@@ -210,7 +271,7 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
       $('bd-balance').textContent = String(state.balance);
       ($('bd-banner') as HTMLElement).hidden = state.slots >= 6;
       for (const button of document.querySelectorAll<HTMLElement>('.bd-tab')) {
-        const t = button.dataset.tab as Category;
+        const t = button.dataset.tab as TabKey;
         button.querySelector('i')!.textContent = String(tilesFor(catalog, state, words, { tab: t, query: '', owned: true }).length);
       }
       const daily = $('bd-daily') as HTMLButtonElement;
@@ -280,7 +341,7 @@ const boot = ready ? JSON.stringify({ lang, catalog, state, ui, tabs: Object.fro
     dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
     $('bd-q').addEventListener('input', (event) => { query = (event.target as HTMLInputElement).value; draw(); });
     for (const button of document.querySelectorAll<HTMLElement>('.bd-tab')) button.addEventListener('click', () => {
-      tab = button.dataset.tab as Category;
+      tab = button.dataset.tab as TabKey; packErr = '';
       for (const other of document.querySelectorAll<HTMLElement>('.bd-tab')) { other.classList.toggle('active', other === button); other.setAttribute('aria-selected', String(other === button)); }
       draw();
     });

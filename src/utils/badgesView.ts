@@ -11,7 +11,12 @@ export interface CatalogBadge {
   custom: boolean; names: Record<string, string> | null; saleFrom: string | null; saleUntil: string | null; planMin: string | null; grantRule: string | null;
   onSale: boolean; retired: boolean; hasArt: boolean; dbArt?: boolean; version: string | null;
 }
-export interface Catalog { badges: CatalogBadge[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }
+export interface CatalogPack {
+  id: string; kind: 'badge' | 'banner' | 'font'; names: Record<string, string>; color: string; free: boolean;
+  price: number | null; fullPrice: number; saleFrom: string | null; saleUntil: string | null;
+  planMin: string | null; onSale: boolean; retired: boolean; pieces: string[];
+}
+export interface Catalog { badges: CatalogBadge[]; packs?: CatalogPack[]; frames: { id: string; cost: number }[]; rarityPrice: Record<string, number>; daily: Record<string, number>; slots: Record<string, number> }
 export interface State { balance: number; plan: string | null; daily: { canClaim: boolean; nextAt: string; amount: number }; slots: number; owned: { id: string; frame: string; unlocked?: string }[]; showcase: string[] }
 
 /** The words the page needs, already in the language of the person (the page gives them; this file has no text of its own). */
@@ -49,20 +54,46 @@ export function hexHtml(badge: CatalogBadge, frame = 'normal', size: 'sm' | 'md'
   const inner = url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" width="64" height="64">` : `<b>${esc(codeOf(badge))}</b>`;
   // The stars of the plans are drawn alone, with no colored hexagon behind them.
   const bare = badge.category === 'plan' || badge.unlock === 'plan' ? ' bd-bare' : '';
-  return `<span class="bd-hex${bare} bd-${size} bd-f-${esc(frame)}" style="--c:${esc(badge.color)}"><span class="bd-hex-in">${inner}</span></span>`;
+  const noBg = badge.color === 'none' || badge.color === 'transparent';
+  const style = noBg ? '--c:transparent' : `--c:${esc(badge.color)}`;
+  return `<span class="bd-hex${bare}${noBg ? ' bd-nobg' : ''} bd-${size} bd-f-${esc(frame)}" style="${style}"><span class="bd-hex-in">${inner}</span></span>`;
 }
 
 export interface Tile { badge: CatalogBadge; name: string; owned: boolean; frame: string; shown: boolean }
 
+/** The tabs of a badge page: countries, languages, Fablo pack, any active badge pack (shown right next to Fablo!), Special and Status. */
+export type TabKey = Category | `pack:${string}`;
+
+/** Active badge packs that should show as their own tab right next to Fablo pack (any non-fablo badge pack that has visible badges or pieces). */
+export function badgePacksOf(catalog: Catalog, state: State): CatalogPack[] {
+  const have = new Set(state.owned.map((row) => row.id));
+  return (catalog.packs ?? []).filter((pack) => {
+    if (pack.kind !== 'badge' || pack.id === 'fablo') return false;
+    const members = catalog.badges.filter((badge) => badge.pack === pack.id);
+    if (!members.length) return false;
+    const anyOwned = members.some((badge) => have.has(badge.id));
+    if (anyOwned) return true;
+    return pack.onSale && !pack.retired && members.some((badge) => !badge.retired && (badge.onSale || !badge.custom));
+  });
+}
+
 /** The tiles of a tab: the search by name, the filter (all or owned) and the order (owned first only in the owned filter; otherwise by name). */
-export function tilesFor(catalog: Catalog, state: State, words: Words, opts: { tab: Category; query: string; owned: boolean }): Tile[] {
+export function tilesFor(catalog: Catalog, state: State, words: Words, opts: { tab: TabKey; query: string; owned: boolean }): Tile[] {
   const have = new Map(state.owned.map((row) => [row.id, row.frame]));
   const shown = new Set(state.showcase);
   const q = opts.query.trim().toLowerCase();
+  const isPackTab = opts.tab.startsWith('pack:');
+  const packId = isPackTab ? opts.tab.slice(5) : null;
   const list: Tile[] = [];
   for (const badge of catalog.badges) {
-    // The stars of the plans are shown with the badges that follow what a person is.
-    if ((badge.category === 'plan' ? 'status' : badge.category) !== opts.tab) continue;
+    if (isPackTab) {
+      if (badge.pack !== packId) continue;
+    } else {
+      // A badge that belongs to an active pack tab (other than Fablo) lives inside that pack's own tab instead of duplicating in Special.
+      if (badge.pack && badge.pack !== 'fablo' && (catalog.packs ?? []).some((p) => p.id === badge.pack && p.kind === 'badge')) continue;
+      // The stars of the plans are shown with the badges that follow what a person is.
+      if ((badge.category === 'plan' ? 'status' : badge.category) !== opts.tab) continue;
+    }
     const name = words.name(badge);
     if (q && !name.toLowerCase().includes(q) && !badge.id.includes(q)) continue;
     const owned = have.has(badge.id);

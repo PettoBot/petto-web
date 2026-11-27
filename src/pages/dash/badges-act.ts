@@ -4,7 +4,7 @@ import { getDashboardSession } from '../../utils/dashAuth';
 import { callPettoCeramos } from '../../utils/pettoBotApi';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'private, no-store' } });
-const ACTIONS = new Set(['daily', 'buy', 'upgrade', 'frame', 'identity', 'showcase']);
+const ACTIONS = new Set(['daily', 'buy', 'buy-pack', 'upgrade', 'frame', 'identity', 'showcase']);
 
 /**
  * The actions of the page of badges (/dash/badges): claim the daily ceramos, buy a badge, give it a better frame, choose which of its frames shows, turn a free badge on or off, save the showcase.
@@ -22,6 +22,7 @@ export const POST: APIRoute = async (astro) => {
   if (!ACTIONS.has(action)) return json({ ok: false, error: 'bad_request' }, 400);
   const payload: Record<string, unknown> = {};
   if (typeof body.badge === 'string') payload.badge = body.badge.slice(0, 40);
+  if (typeof body.id === 'string') payload.id = body.id.slice(0, 40);
   if (typeof body.frame === 'string') payload.frame = body.frame.slice(0, 12);
   if (typeof body.enabled === 'boolean') payload.enabled = body.enabled;
   if (Array.isArray(body.badges)) payload.badges = body.badges.filter((id: unknown) => typeof id === 'string').slice(0, 6);

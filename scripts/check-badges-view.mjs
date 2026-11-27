@@ -13,7 +13,7 @@ const source = readFileSync(path.join(root, 'src/utils/badgesView.ts'), 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const view = { exports: {} };
 new Function('module', 'exports', 'require', js)(view, view.exports, createRequire(import.meta.url));
-const { artUrl, hexHtml, tilesFor, tileHtml, slotsHtml, actionsFor, codeOf } = view.exports;
+const { artUrl, hexHtml, tilesFor, tileHtml, slotsHtml, actionsFor, codeOf, badgePacksOf } = view.exports;
 
 const badge = (id, category, extra = {}) => ({ id, category, unlock: 'shop', rarity: 'common', price: 250, color: '#e8794a', region: null, language: null, pack: null, custom: false, names: null, saleFrom: null, saleUntil: null, planMin: null, grantRule: null, onSale: false, retired: false, hasArt: false, version: null, ...extra });
 const catalog = {
@@ -145,4 +145,13 @@ for (const file of ['src/components/DashShopItems.astro', 'src/components/DashSh
     assert.ok(ptText.includes(`${key}:`), `Portuguese for: ${english}`);
   }
 }
+// Active badge packs appear as their own tabs next to Fablo pack and list the badges assigned to that pack.
+const withPack = {
+  ...catalog,
+  badges: [...catalog.badges, badge('among-us-red', 'special', { custom: true, price: 50, onSale: true, pack: 'among-us', names: { en: 'Among Us red' } })],
+  packs: [{ id: 'among-us', kind: 'badge', names: { en: 'Among Us' }, color: '#ff7070', free: false, price: 250, fullPrice: 50, saleFrom: null, saleUntil: null, planMin: null, onSale: true, retired: false, pieces: ['among-us-red'] }],
+};
+assert.deepEqual(badgePacksOf(withPack, state).map((p) => p.id), ['among-us']);
+assert.deepEqual(tilesFor(withPack, state, { ...words, name: (b) => b.names?.en ?? names[b.id] }, { tab: 'pack:among-us', query: '', owned: false }).map((t) => t.badge.id), ['among-us-red']);
+
 console.log('Checked the page of badges and the editor: tiles, tabs, sales, showcase, actions, flags, pictures and who may edit; and the pages of name fonts, banners and the shop editor.');
