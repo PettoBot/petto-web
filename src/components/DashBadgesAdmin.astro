@@ -28,6 +28,7 @@ const ui = {
     image_too_big: dt('The picture is over 256 KB.'), bad_image: dt('The picture has to be a PNG, JPEG, GIF or WebP.'), image_required: dt('Choose a picture.'), forbidden: dt('Only the owner can do this.'), failed: dt('That did not work. Try again in a moment.'),
   },
   noImage: dt('The badge was saved, but it has no picture yet.'),
+  idTaken: dt('There is already a badge with that id. Use a different id (for example, among-us-orange) or click Edit on the existing badge.'),
 };
 const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c');
 ---
@@ -44,12 +45,13 @@ const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c
         {badges.length === 0 && <p class="be-empty">{dt('No badge made yet. Make the first one below.')}</p>}
         {badges.map((row) => (
           <article class="be-row" data-id={row.id}>
-            <span class="be-hex" style={`--c:${row.color}`}>{row.hasImage ? <img src={`/dash/badge-art/${row.id}?v=${encodeURIComponent(row.updatedAt)}`} alt="" width="52" height="52" /> : <b>?</b>}</span>
+            <span class:list={['be-hex', { 'be-nobg': row.color === 'none' || row.color === 'transparent' }]} style={`--c:${row.color === 'none' || row.color === 'transparent' ? 'transparent' : row.color}`}>{row.hasImage ? <img src={`/dash/badge-art/${row.id}?v=${encodeURIComponent(row.updatedAt)}`} alt="" width="52" height="52" /> : <b>?</b>}</span>
             <div class="be-info">
               <strong>{row.names.en}</strong>
               <span class="be-meta">
                 <i class={`be-chip be-${row.status}`}>{statusLabel[row.status]}</i>
                 <span>{row.grantRule ? dt('Given by itself') : row.price === 0 ? dt('Free') : `${row.price} ${dt('ceramos')}`}</span>
+                {row.packId && <span>{dt('Pack')}: {packs.find((p) => p.id === row.packId)?.names[lang] ?? packs.find((p) => p.id === row.packId)?.names.en ?? row.packId}</span>}
                 <span>{dt('{n} people have it', { n: row.owners })}</span>
                 {row.saleFrom && <span>{dt('From {date}', { date: date.format(new Date(row.saleFrom)) })}</span>}
                 {row.saleUntil && <span>{dt('Until {date}', { date: date.format(new Date(row.saleUntil)) })}</span>}
@@ -73,14 +75,15 @@ const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c
           <label>{dt('Name in English')}<input name="name_en" required maxlength="40" /></label>
           <label>{dt('Name in Spanish')}<input name="name_es" maxlength="40" /></label>
           <label>{dt('Name in Portuguese')}<input name="name_pt" maxlength="40" /></label>
-          <label>{dt('Tab')}
+          <label id="be-cat-wrap">{dt('Tab')}
             <select name="category"><option value="special">{dt('Special')}</option><option value="status">{dt('Status')}</option><option value="fablo">{dt('Fablo pack')}</option><option value="country">{dt('Countries')}</option><option value="language">{dt('Languages')}</option></select>
           </label>
           <label>{dt('Rarity')}
             <select name="rarity"><option value="common">{dt('Common')}</option><option value="rare">{dt('Rare')}</option><option value="epic">{dt('Epic')}</option><option value="legendary">{dt('Legendary')}</option></select>
           </label>
           <label>{dt('Price in ceramos (0 is free)')}<input name="price" type="number" min="0" max="100000" step="1" value="20" /></label>
-          <div class="be-pickfield"><span>{dt('Colour behind the picture')}</span><ColorPicker name="color" value="#8f7bd6" label="" /></div>
+          <div class="be-pickfield" id="be-color-wrap"><span>{dt('Colour behind the picture')}</span><ColorPicker name="color" value="#8f7bd6" label="" /></div>
+          <label class="be-check"><input type="checkbox" name="noBg" /> {dt('No background colour (transparent)')}</label>
           <label>{dt('Pack')}<select name="packId"><option value="">{dt('No pack')}</option>{packs.map((pack) => <option value={pack.id}>{pack.names[lang] ?? pack.names.en}</option>)}</select></label>
           <label>{dt('On sale from')}<input name="saleFrom" type="datetime-local" /></label>
           <label>{dt('On sale until')}<input name="saleUntil" type="datetime-local" /></label>
@@ -94,8 +97,8 @@ const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c
         </div>
         <p class="be-msg" id="be-msg" role="status" hidden></p>
         <div class="be-buttons">
-          <button type="submit" class="btn be-save" id="be-save">{dt('Save badge')}</button>
           <button type="button" class="btn" id="be-reset">{dt('Clear the form')}</button>
+          <button type="submit" class="btn be-save" id="be-save">{dt('Save badge')}</button>
         </div>
       </form>
     </div>
@@ -123,6 +126,14 @@ const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c
     };
     const why = (code?: string) => ui.errors[code ?? 'failed'] ?? ui.errors.failed;
 
+    const colorWrap = document.getElementById('be-color-wrap');
+    const catWrap = document.getElementById('be-cat-wrap');
+    const syncNoBg = () => { colorWrap?.classList.toggle('is-muted', field('noBg').checked); };
+    const syncPack = () => { catWrap?.classList.toggle('is-muted', Boolean(field('packId').value)); };
+    field('noBg').addEventListener('change', syncNoBg);
+    field('packId').addEventListener('change', syncPack);
+    field('color').addEventListener('input', () => { if (field('noBg').checked) { field('noBg').checked = false; syncNoBg(); } });
+
     document.getElementById('be-list')!.addEventListener('click', async (event) => {
       const target = event.target as HTMLElement;
       const edit = target.closest<HTMLElement>('[data-edit]');
@@ -130,8 +141,9 @@ const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c
         const row = boot.badges.find((each) => each.id === edit.dataset.edit); if (!row) return;
         field('id').value = row.id; field('id').readOnly = true;
         field('name_en').value = row.names.en ?? ''; field('name_es').value = row.names.es ?? ''; field('name_pt').value = row.names['pt-BR'] ?? '';
-        field('category').value = row.category; field('rarity').value = row.rarity; field('price').value = String(row.price); setColorPicker(field('color'), row.color);
-        field('saleFrom').value = local(row.saleFrom); field('saleUntil').value = local(row.saleUntil); field('planMin').value = row.planMin ?? ''; field('grantRule').value = row.grantRule ?? ''; field('packId').value = row.packId ?? '';
+        const isNoBg = row.color === 'none' || row.color === 'transparent';
+        field('category').value = row.category; field('rarity').value = row.rarity; field('price').value = String(row.price); setColorPicker(field('color'), isNoBg ? '#8f7bd6' : row.color); field('noBg').checked = isNoBg; syncNoBg();
+        field('saleFrom').value = local(row.saleFrom); field('saleUntil').value = local(row.saleUntil); field('planMin').value = row.planMin ?? ''; field('grantRule').value = row.grantRule ?? ''; field('packId').value = row.packId ?? ''; syncPack();
         document.getElementById('be-title')!.textContent = row.names.en;
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
@@ -143,14 +155,21 @@ const boot = JSON.stringify({ ui, badges: badges ?? [] }).replace(/</g, '\\u003c
         if (out.ok) location.reload(); else { toggle.disabled = false; say(why(out.error), 'error'); }
       }
     });
-    document.getElementById('be-reset')!.addEventListener('click', () => { form.reset(); setColorPicker(field('color'), '#8f7bd6'); field('id').readOnly = false; document.getElementById('be-title')!.textContent = 'New badge'; msg.hidden = true; });
+    document.getElementById('be-reset')!.addEventListener('click', () => { form.reset(); setColorPicker(field('color'), '#8f7bd6'); field('noBg').checked = false; syncNoBg(); syncPack(); field('id').readOnly = false; document.getElementById('be-title')!.textContent = 'New badge'; msg.hidden = true; });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      const id = field('id').value.trim().toLowerCase();
+      if (!field('id').readOnly && boot.badges.some((each) => each.id === id)) {
+        say(ui.idTaken, 'error');
+        field('id').focus();
+        return;
+      }
       const button = document.getElementById('be-save') as HTMLButtonElement; button.disabled = true; say(ui.saving, 'ok');
       const when = (name: string) => (field(name).value ? new Date(field(name).value).toISOString() : null);
+      const rawPrice = field('price').value.trim();
       const body = {
-        id: field('id').value, names: { en: field('name_en').value, es: field('name_es').value, 'pt-BR': field('name_pt').value }, category: field('category').value, rarity: field('rarity').value,
-        price: Number(field('price').value), color: field('color').value, saleFrom: when('saleFrom'), saleUntil: when('saleUntil'), planMin: field('planMin').value || null, grantRule: field('grantRule').value || null, packId: field('packId').value || null,
+        id, names: { en: field('name_en').value, es: field('name_es').value, 'pt-BR': field('name_pt').value }, category: field('category').value, rarity: field('rarity').value,
+        price: rawPrice === '' ? 0 : Number(rawPrice), color: field('noBg').checked ? 'none' : field('color').value, saleFrom: when('saleFrom'), saleUntil: when('saleUntil'), planMin: field('planMin').value || null, grantRule: field('grantRule').value || null, packId: field('packId').value || null,
       };
       const out = await send('save', body);
       if (!out.ok) { button.disabled = false; say(why(out.error), 'error'); return; }
