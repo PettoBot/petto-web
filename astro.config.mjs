@@ -11,6 +11,9 @@ import path from 'node:path';
 // of duplicating secrets into this project. In dev this makes them available on
 // process.env for the dashboard's SSR routes too; in production those same variables need
 // to be set as Cloudflare Pages environment variables (Workers don't read .env files).
+// Loads local .env first, falling back to sibling bot .env files in dev.
+loadEnv();
+loadEnv({ path: path.resolve('../petto-bot-beta/.env') });
 loadEnv({ path: path.resolve('../petto bot 1/.env') });
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -33,6 +36,7 @@ const esRoutes = readdirSync(new URL('./src/pages/es', import.meta.url), { recur
 
 export default defineConfig({
   site: 'https://petto.sbs',
+  devToolbar: { enabled: false },
   integrations: [
     // Keep only the icons used by the UI in the Worker bundle. Without this allowlist
     // astro-icon embeds both complete Iconify collections in every SSR build.

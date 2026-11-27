@@ -7500,4 +7500,9 @@ export const dashEs: Record<string, string> = {
   "For this long after midnight (GMT-5) the day that just ended still counts, so a streak is not lost the moment the day changes.": "Durante este tiempo después de medianoche (GMT-5) el día que acaba de terminar todavía cuenta, así una racha no se pierde en el momento en que cambia el día.",
   "Discord did not give a verified email. Type one instead.": "Discord no dio un correo verificado. Escribe uno.",
   "Use the email of my Discord account": "Usar el correo de mi cuenta de Discord",
+  "Help and resources": "Ayuda y recursos",
+  "Documentation": "Documentación",
+  "Toggle theme": "Cambiar tema",
+  "Account and settings": "Cuenta y ajustes",
+  "Your profile": "Tu perfil",
 };
