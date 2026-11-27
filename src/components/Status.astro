@@ -12,13 +12,10 @@ interface Props {
 const { lang } = Astro.props;
 const t = useTranslations(lang);
 const s = t.simplePages.status;
-const localeBase = localePath[lang] ?? '';
+const base = localePath[lang] ?? '';
 
-// The status page reads the Discloud-backed primary through the private bot API.
-// Browser polling goes through the web Worker so the dashboard secret never leaves it.
 const statusEndpoint = new URL('/api/status', Astro.url).pathname;
 const searchEndpoint = new URL('/api/status-search', Astro.url).pathname;
-
 const STALE_MS = 5 * 60 * 1000;
 
 async function botApiGet(table: string) {
@@ -58,11 +55,95 @@ function formatUptime(totalSeconds: number) {
   return `${m}m`;
 }
 
-// The history of every service (90 UTC days) and what each one is doing now: read from the database at most once a minute (statusHistory.ts).
 const history: StatusHistory = await getStatusHistory(Astro).catch(() => ({ available: false, generatedAt: new Date().toISOString(), startedAt: null, days: [], services: [], incidents: [] }));
 const historyEndpoint = new URL('/api/status-history', Astro.url).pathname;
 const serviceNames: Record<string, string> = { bot: s.svcBot, site: s.svcSite, database: s.svcDatabase };
 const nowLabel: Record<string, string> = { up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown };
+
+const uiCopy = {
+  en: {
+    servicesLead: 'Services.',
+    servicesSub: 'Uptime for each over the last {n} days.',
+    grpBot: 'Discord Bot',
+    grpWeb: 'Web & Platform',
+    descBot: 'Commands, events and Discord gateway connection.',
+    descSite: 'Public website, web dashboard and API routes.',
+    descDb: 'PostgreSQL configuration database and live state.',
+    uptimeSuffix: 'uptime',
+    checkLead: 'Is my server affected?',
+    checkSub: 'Check the shard that serves it.',
+    checkBtn: 'Check',
+    calLead: 'Event calendar.',
+    calSub: 'Days with a published incident.',
+    incBtn: 'Incident history',
+    weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    ringCrit: 'Outage',
+    ringWarn: 'Degraded',
+    ringNone: 'Unmeasured',
+    ringOk: 'No impact',
+    supportBtn: 'Join support server',
+  },
+  es: {
+    servicesLead: 'Servicios.',
+    servicesSub: 'Disponibilidad de cada uno en los últimos {n} días.',
+    grpBot: 'Bot de Discord',
+    grpWeb: 'Web y Plataforma',
+    descBot: 'Comandos, eventos y conexión con el gateway de Discord.',
+    descSite: 'Sitio público, dashboard web y rutas de API.',
+    descDb: 'Base de datos PostgreSQL de configuración y estado en vivo.',
+    uptimeSuffix: 'activo',
+    checkLead: '¿Mi servidor está afectado?',
+    checkSub: 'Comprueba el shard que lo atiende.',
+    checkBtn: 'Comprobar',
+    calLead: 'Calendario de eventos.',
+    calSub: 'Días con algún incidente registrado.',
+    incBtn: 'Historial de incidentes',
+    weekdays: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+    ringCrit: 'Caída',
+    ringWarn: 'Degradado',
+    ringNone: 'Sin medir',
+    ringOk: 'Sin impacto',
+    supportBtn: 'Entrar al soporte',
+  },
+  'pt-BR': {
+    servicesLead: 'Serviços.',
+    servicesSub: 'Disponibilidade de cada um nos últimos {n} dias.',
+    grpBot: 'Bot do Discord',
+    grpWeb: 'Web e Plataforma',
+    descBot: 'Comandos, eventos e conexão com o gateway do Discord.',
+    descSite: 'Site público, dashboard web e rotas de API.',
+    descDb: 'Banco PostgreSQL de configuração e estado ao vivo.',
+    uptimeSuffix: 'ativo',
+    checkLead: 'Meu servidor foi afetado?',
+    checkSub: 'Verifique o shard que atende ele.',
+    checkBtn: 'Verificar',
+    calLead: 'Calendário de eventos.',
+    calSub: 'Dias com algum incidente registrado.',
+    incBtn: 'Histórico de incidentes',
+    weekdays: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
+    ringCrit: 'Queda',
+    ringWarn: 'Degradado',
+    ringNone: 'Sem medição',
+    ringOk: 'Sem impacto',
+    supportBtn: 'Entrar no suporte',
+  },
+}[lang];
+
+const serviceDescs: Record<string, string> = {
+  bot: uiCopy.descBot,
+  site: uiCopy.descSite,
+  database: uiCopy.descDb,
+};
+
+const calcUptimePct = (marks: { s: string; dm?: number }[]) => {
+  const measured = marks.filter((m) => m.s !== 'pre' && m.s !== 'nodata');
+  if (!measured.length) return '100.00%';
+  const totalMins = measured.length * 1440;
+  const downMins = measured.reduce((acc, m) => acc + (Number(m.dm) || 0), 0);
+  const pct = Math.max(0, Math.min(100, ((totalMins - downMins) / totalMins) * 100));
+  return `${pct.toFixed(2)}%`;
+};
+
 const overallOf = (h: StatusHistory) => {
   const states = h.services.map((svc) => svc.now);
   if (!h.available || !states.length || states.every((state) => state === 'unknown')) return 'unknown';
@@ -88,16 +169,29 @@ const barTip = (mark: { d: string; s: string; c?: number; dm?: number; um?: numb
   if (mark.c) lines.push(fill(s.tipChecks, { n: mark.c }));
   return lines.join('\n');
 };
+
+// Aggregate overall 90-day marks across all services for the hero summary card and calendar
+const fallbackDays = Array.from({ length: 90 }, (_, idx) => {
+  const d = new Date(Date.now() - (89 - idx) * 86400000).toISOString().slice(0, 10);
+  return d;
+});
+const dayKeys = history.days.length ? history.days : fallbackDays;
+const overallMarks = dayKeys.map((d, idx) => {
+  if (!history.services.length) return { d, s: 'up', dm: 0 };
+  const states = history.services.map((svc) => svc.marks[idx]?.s ?? 'pre');
+  const dm = Math.max(0, ...history.services.map((svc) => Number(svc.marks[idx]?.dm ?? 0)));
+  const state = states.includes('down') ? 'down' : states.includes('warn') ? 'warn' : states.every((x) => x === 'nodata') ? 'nodata' : states.every((x) => x === 'pre') ? 'pre' : 'up';
+  return { d, s: state, dm };
+});
+const overallPct = calcUptimePct(overallMarks);
+
 const incidentText = (inc: { kind: string; minutes: number; unconfirmed: number }) =>
   inc.kind === 'down' ? fill(s.incDown, { n: inc.minutes }) : inc.kind === 'nodata' ? s.incNone : inc.minutes && !inc.unconfirmed ? fill(s.incGap, { n: inc.minutes }) : s.incWarn;
-const clientText = { incidentNoneDay: s.incidentNoneDay, incidentNoneToday: s.incidentNoneToday, up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown, tipPre: s.tipPre, startingNote: s.startingNote, tipNone: s.tipNone, tipUp: s.tipUp, tipDown: s.tipDown, tipUnconfirmed: s.tipUnconfirmed, tipGap: s.tipGap, tipChecks: s.tipChecks, daysAgo: s.daysAgo, today: s.today, headingOk: s.heading, headingDegraded: s.headingDegraded, headingDown: s.headingDown, headingUnknown: s.headingUnknown, startedNote: s.startedNote, incDown: s.incDown, incWarn: s.incWarn, incGap: s.incGap, incNone: s.incNone, incidentsNone: s.incidentsNone, unavailable: s.histUnavailable, svcBot: s.svcBot, svcSite: s.svcSite, svcDatabase: s.svcDatabase };
-// Like "Past incidents" of Discord Status: the last 14 days, each with what happened or a line that says nothing did.
+const clientText = { incidentNoneDay: s.incidentNoneDay, incidentNoneToday: s.incidentNoneToday, up: s.shardOperational, degraded: s.nowDegraded, down: s.nowDown, unknown: s.nowUnknown, tipPre: s.tipPre, startingNote: s.startingNote, tipNone: s.tipNone, tipUp: s.tipUp, tipDown: s.tipDown, tipUnconfirmed: s.tipUnconfirmed, tipGap: s.tipGap, tipChecks: s.tipChecks, daysAgo: s.daysAgo, today: s.today, headingOk: s.heading, headingDegraded: s.headingDegraded, headingDown: s.headingDown, headingUnknown: s.headingUnknown, startedNote: s.startedNote, incDown: s.incDown, incWarn: s.incWarn, incGap: s.incGap, incNone: s.incNone, incidentsNone: s.incidentsNone, unavailable: s.histUnavailable, svcBot: s.svcBot, svcSite: s.svcSite, svcDatabase: s.svcDatabase, uptimeSuffix: uiCopy.uptimeSuffix, servicesSub: uiCopy.servicesSub };
 const incidentList = incidentDays(history.days, history.incidents, started, 14);
 const noteOf = (inc: { note?: Record<string, string> }) => inc.note?.[lang] ?? inc.note?.en ?? '';
 const now = Date.now();
 const shardRows = await botApiGet('bot_status');
-// The colour of a shard card follows its ping (green up to 50 ms, yellow up to 150, orange up to 300, red above that or when it is offline).
-// The same rule is in the script below, which redraws the cards every 10 seconds.
 function tierOf(state: string, ping: number | null | undefined) {
   if (state === 'offline') return 'down';
   if (state === 'reconnecting') return 'slow';
@@ -112,10 +206,7 @@ const shards = shardRows
   : null;
 const numberFormat = new Intl.NumberFormat(lang === 'pt-BR' ? 'pt-BR' : lang);
 const clusterText = (name: string | null, place: string | null) => [name, place].filter(Boolean).join(' · ');
-
-// The servers of every shard that is running now, the same count the home page shows.
 const totalServers = shards ? shards.filter((sh) => sh.state !== 'offline').reduce((total, sh) => total + (Number(sh.guildCount) || 0), 0) : null;
-
 const hostRows = await botApiGet('bot_host');
 const host = hostRows ? hostRows[0] : null;
 
@@ -124,145 +215,293 @@ const stateLabel: Record<string, string> = {
   offline: s.shardOffline,
   reconnecting: s.shardReconnecting,
 };
+
+const effectiveServices = history.services.length
+  ? history.services
+  : (['bot', 'site', 'database'] as const).map((id) => ({
+      id,
+      now: 'up' as const,
+      marks: overallMarks,
+    }));
+const botServices = effectiveServices.filter((svc) => svc.id === 'bot');
+const webServices = effectiveServices.filter((svc) => svc.id !== 'bot');
 ---
-<Base title={`${s.title} · Petto`} lang={lang}>
-  <main>
-    <section class="status-sec">
-      <div class="wrap status-wrap">
-        <div class="eyebrow">{s.pill}</div>
-        <h1 id="statusHeading"><span class:list={['status-hero-dot', overall]}></span><span id="statusHeadingText">{headingFor(overall)}</span></h1>
+<Base title={`${s.title} · Petto`} lang={lang} skin="ash">
+  <main
+    id="statusBlock"
+    data-status-endpoint={statusEndpoint}
+    data-stale-ms={STALE_MS}
+    data-label-operational={s.shardOperational}
+    data-label-offline={s.shardOffline}
+    data-label-reconnecting={s.shardReconnecting}
+    data-label-servers={s.guildsCol}
+    data-label-ping={s.pingCol}
+    data-label-nodata={s.noShardData}
+    data-label-shard={s.shardName}
+    data-label-uptime={s.uptimeLabel}
+    data-label-members={s.membersCol}
+    data-label-state={s.statusCol}
+    data-label-cluster={s.clusterLabel}
+    data-locale={lang === 'pt-BR' ? 'pt-BR' : lang}
+  >
+    <!-- 1. Atmospheric Night Hero -->
+    <section class="st-hero">
+      <div class="st-stars" aria-hidden="true"></div>
+      <div class="wrap st-hero-in">
+        <div class="st-hero-pill">
+          <img src="/assets/mascot-icon.webp" alt="" width="18" height="18" />
+          <span class="eyebrow">{s.pill}</span>
+          <span class="live-badge" id="liveBadge"><span class="live-dot"></span>{s.live}</span>
+        </div>
+        <h1 class="st-main-title">{s.title}</h1>
         <p class="status-desc">{s.desc}</p>
+        <div class="st-hero-actions">
+          <a class="btn btn-primary st-pill-btn" href="#services">{uiCopy.servicesLead.replace('.', '')}</a>
+          <a class="btn btn-ghost st-pill-btn" href="#calendar">{uiCopy.incBtn} <Icon name="ph:caret-right" width="13" height="13" /></a>
+        </div>
+      </div>
+    </section>
 
-        <div
-          id="statusBlock"
-          data-status-endpoint={statusEndpoint}
-          data-stale-ms={STALE_MS}
-          data-label-operational={s.shardOperational}
-          data-label-offline={s.shardOffline}
-          data-label-reconnecting={s.shardReconnecting}
-          data-label-servers={s.guildsCol}
-          data-label-ping={s.pingCol}
-          data-label-nodata={s.noShardData}
-          data-label-shard={s.shardName}
-          data-label-uptime={s.uptimeLabel}
-          data-label-members={s.membersCol}
-          data-label-state={s.statusCol}
-          data-label-cluster={s.clusterLabel}
-          data-locale={lang === 'pt-BR' ? 'pt-BR' : lang}
-        >
-          <div class="status-block-head">
-            <span class="status-block-label">{s.shardsTitle}</span>
-            <span class="live-badge" id="liveBadge"><span class="live-dot"></span>{s.live}</span>
-          </div>
-
-          <div class="status-total">
-            <span class="n" id="statusTotal">{totalServers ?? '-'}</span>
-            <span class="l">{s.totalServers}</span>
-          </div>
-
-          <form class="status-search" id="statusSearch" role="search" data-endpoint={searchEndpoint} data-short={s.searchShort} data-empty={s.searchEmpty} data-error={s.searchError} data-limited={s.searchLimited} data-offline={s.shardOffline} data-operational={s.shardOperational} data-reconnecting={s.shardReconnecting} data-shard={s.shardName}>
-            <label for="statusSearchInput" class="status-block-label">{s.searchTitle}</label>
-            <div class="status-search-row">
-              <Icon name="ph:magnifying-glass" class="status-search-ic" />
-              <input id="statusSearchInput" type="search" name="q" autocomplete="off" maxlength="100" placeholder={s.searchPlaceholder} />
+    <!-- 2. Overlapping Overall Summary Card + Collapsible 90-Day Service Groups -->
+    <section class="st-services-sec" id="services">
+      <div class="wrap st-services-wrap" id="statusHistory" data-endpoint={historyEndpoint} data-locale={dateLocale} data-text={JSON.stringify(clientText)} data-period="90" data-cal={JSON.stringify(overallMarks)}>
+        <div class="st-top-card">
+          <div class="st-top-head">
+            <h2 id="statusHeading" class="st-overall-title">
+              <span class:list={['status-hero-dot', overall]}></span>
+              <span id="statusHeadingText">{headingFor(overall)}</span>
+            </h2>
+            <div class="st-top-metrics">
+              <span class="st-uptime-pill" id="overallUptime">{overallPct} {uiCopy.uptimeSuffix}</span>
+              <span class="st-metric-chip"><b id="statusTotal">{totalServers ?? '—'}</b> {s.totalServers}</span>
+              <div id="hostContent" class="st-host-inline">
+                {host && (
+                  <>
+                    <span class="st-metric-chip"><b>{formatUptime(host.uptime_seconds)}</b> {s.uptimeLabel}</span>
+                    <span class="st-metric-chip"><b>{host.node_version}</b></span>
+                  </>
+                )}
+              </div>
             </div>
-            <p class="status-search-hint" id="statusSearchHint">{s.searchHint}</p>
-            <ul class="status-search-results" id="statusSearchResults" aria-live="polite"></ul>
-          </form>
-
-          <ul class="tier-legend" aria-label={s.legendTitle}>
-            <li><span class="tier-dot good"></span>{s.tierGood}</li>
-            <li><span class="tier-dot warn"></span>{s.tierWarn}</li>
-            <li><span class="tier-dot slow"></span>{s.tierSlow}</li>
-            <li><span class="tier-dot down"></span>{s.tierDown}</li>
-          </ul>
-
-          <div id="shardsContent" class="shard-grid">
-            {shards ? (
-              shards.map((sh) => (
-                <div class="shard-card" data-shard-id={sh.id} data-tier={sh.tier} tabindex="0">
-                  <div class="shard-card-head">
-                    <span class="tier-dot" aria-hidden="true"></span>
-                    <span class="shard-name">{s.shardName} {Number(sh.id) + 1}</span>
-                    <span class:list={['status-pill', sh.state]}>{stateLabel[sh.state] ?? s.shardUnknown}</span>
-                  </div>
-                  <div class="shard-card-stats">
-                    <div class="shard-stat"><span class="n">{sh.guildCount}</span><span class="l">{s.guildsCol}</span></div>
-                    <div class="shard-stat"><span class="n">{sh.ping != null ? `${sh.ping}` : 'n/a'}<em>ms</em></span><span class="l">{s.pingCol}</span></div>
-                  </div>
-                  <dl class="shard-tip" role="tooltip">
-                    <div><dt>{s.guildsCol}</dt><dd>{numberFormat.format(Number(sh.guildCount) || 0)}</dd></div>
-                    {sh.members != null && <div><dt>{s.membersCol}</dt><dd>{numberFormat.format(Number(sh.members) || 0)}</dd></div>}
-                    <div><dt>{s.pingCol}</dt><dd>{sh.ping != null ? `${sh.ping} ms` : 'n/a'} · {stateLabel[sh.state] ?? s.shardUnknown}</dd></div>
-                    {clusterText(sh.cluster, sh.place) && <div><dt>{s.clusterLabel}</dt><dd>{clusterText(sh.cluster, sh.place)}</dd></div>}
-                  </dl>
-                </div>
-              ))
-            ) : (
-              <p class="no-shard-data">{s.noShardData}</p>
-            )}
           </div>
-
-          <div class="status-block-label host-label">{s.hostTitle}</div>
-          <div id="hostContent" class="host-card">
-            {host ? (
-              <>
-                <div class="shard-stat"><span class="n">{formatUptime(host.uptime_seconds)}</span><span class="l">{s.uptimeLabel}</span></div>
-                <div class="shard-stat"><span class="n">{host.node_version}</span><span class="l">{s.nodeLabel}</span></div>
-              </>
-            ) : (
-              <p class="no-shard-data">{s.noShardData}</p>
-            )}
+          <div class="bars st-overall-bars" id="overallBars" aria-hidden="true">
+            {overallMarks.map((mark) => <i class={`b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`} data-d={mark.d} data-tip={barTip(mark)}></i>)}
           </div>
+          <div class="bars-axis"><span data-axis-start>{fill(s.daysAgo, { n: 90 })}</span><span>{s.today}</span></div>
         </div>
 
-        <div class="hist" id="statusHistory" data-endpoint={historyEndpoint} data-locale={dateLocale} data-text={JSON.stringify(clientText)} data-period="90">
-          <div class="hist-head">
-            <h2 class="hist-title">{s.histTitle}</h2>
-            <label class="hist-period">
-              <span class="sr-only">{s.periodLabel}</span>
-              <select id="histPeriod" aria-label={s.periodLabel}>
-                <option value="90" selected>{s.period90}</option>
-                <option value="60">{s.period60}</option>
-                <option value="30">{s.period30}</option>
-              </select>
-            </label>
+        <div class="hist-head">
+          <div class="st-sec-head st-two-tone">
+            <h2 class="st-two-h2"><b>{uiCopy.servicesLead}</b> <span id="stServicesSub">{fill(uiCopy.servicesSub, { n: 90 })}</span></h2>
           </div>
-          {!history.available && <p class="hist-problem" role="status">{s.histUnavailable}</p>}
-          <div class="hist-cards" id="histCards">
-            {history.services.map((svc) => (
-              <article class="hist-card" data-svc={svc.id}>
-                <header class="hist-card-head">
-                  <h3>{serviceNames[svc.id]}</h3>
-                  <span class={`hist-now ${svc.now}`}>{nowLabel[svc.now]}</span>
-                </header>
-                <div class="bars" role="img" aria-label={fill(s.serviceHistory, { n: 90 })}>
-                  {svc.marks.map((mark) => <i class={`b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`} data-d={mark.d} data-tip={barTip(mark)}></i>)}
+          <label class="hist-period">
+            <span class="sr-only">{s.periodLabel}</span>
+            <select id="histPeriod" data-dash-menu aria-label={s.periodLabel}>
+              <option value="90" selected>{s.period90}</option>
+              <option value="60">{s.period60}</option>
+              <option value="30">{s.period30}</option>
+            </select>
+          </label>
+        </div>
+
+        {!history.available && <p class="hist-problem" role="status">{s.histUnavailable}</p>}
+
+        <div class="st-groups" id="histCards">
+          <!-- Group 1: Discord Bot + Gateway Shards -->
+          <details class="st-group" open>
+            <summary class="st-group-head">
+              <span class="st-group-title"><Icon name="ph:robot-fill" width="16" height="16" /> {uiCopy.grpBot}</span>
+              <Icon name="ph:caret-down-bold" width="13" height="13" class="st-group-caret" />
+            </summary>
+            <div class="st-group-body">
+              {botServices.map((svc) => (
+                <article class="hist-card" data-svc={svc.id} data-marks={JSON.stringify(svc.marks)}>
+                  <header class="hist-card-head">
+                    <div class="st-svc-left">
+                      <span class={`st-svc-ic ${svc.now}`}><Icon name={svc.now === 'down' ? 'ph:x-circle-fill' : svc.now === 'degraded' ? 'ph:warning-fill' : 'ph:check-circle-fill'} width="18" height="18" /></span>
+                      <div>
+                        <h3>{serviceNames[svc.id]}</h3>
+                        <p class="st-svc-desc">{serviceDescs[svc.id]}</p>
+                      </div>
+                    </div>
+                    <div class="st-svc-right">
+                      <span class="st-svc-pct" data-svc-pct>{calcUptimePct(svc.marks)} {uiCopy.uptimeSuffix}</span>
+                      <span class={`hist-now ${svc.now}`}>{nowLabel[svc.now]}</span>
+                    </div>
+                  </header>
+                  <div class="bars" role="img" aria-label={fill(s.serviceHistory, { n: 90 })}>
+                    {svc.marks.map((mark) => <i class={`b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`} data-d={mark.d} data-tip={barTip(mark)}></i>)}
+                  </div>
+                  <div class="bars-axis"><span data-axis-start>{fill(s.daysAgo, { n: 90 })}</span><span>{s.today}</span></div>
+                </article>
+              ))}
+
+              <div class="st-shards-sub">
+                <div class="st-shards-bar">
+                  <span class="status-block-label">{s.shardsTitle}</span>
+                  <ul class="tier-legend" aria-label={s.legendTitle}>
+                    <li><span class="tier-dot good"></span>{s.tierGood}</li>
+                    <li><span class="tier-dot warn"></span>{s.tierWarn}</li>
+                    <li><span class="tier-dot slow"></span>{s.tierSlow}</li>
+                    <li><span class="tier-dot down"></span>{s.tierDown}</li>
+                  </ul>
                 </div>
-                <div class="bars-axis"><span data-axis-start>{fill(s.daysAgo, { n: 90 })}</span><span>{s.today}</span></div>
-              </article>
-            ))}
-          </div>
-          <div class="hist-tip" id="histTip" role="tooltip" hidden></div>
+                <div id="shardsContent" class="shard-grid">
+                  {shards ? (
+                    shards.map((sh) => (
+                      <div class="shard-card" data-shard-id={sh.id} data-tier={sh.tier} tabindex="0">
+                        <div class="shard-card-head">
+                          <span class="tier-dot" aria-hidden="true"></span>
+                          <span class="shard-name">{s.shardName} {Number(sh.id) + 1}</span>
+                          <span class:list={['status-pill', sh.state]}>{stateLabel[sh.state] ?? s.shardUnknown}</span>
+                        </div>
+                        <div class="shard-card-stats">
+                          <div class="shard-stat"><span class="n">{sh.guildCount}</span><span class="l">{s.guildsCol}</span></div>
+                          <div class="shard-stat"><span class="n">{sh.ping != null ? `${sh.ping}` : 'n/a'}<em>ms</em></span><span class="l">{s.pingCol}</span></div>
+                        </div>
+                        <dl class="shard-tip" role="tooltip">
+                          <div><dt>{s.guildsCol}</dt><dd>{numberFormat.format(Number(sh.guildCount) || 0)}</dd></div>
+                          {sh.members != null && <div><dt>{s.membersCol}</dt><dd>{numberFormat.format(Number(sh.members) || 0)}</dd></div>}
+                          <div><dt>{s.pingCol}</dt><dd>{sh.ping != null ? `${sh.ping} ms` : 'n/a'} · {stateLabel[sh.state] ?? s.shardUnknown}</dd></div>
+                          {clusterText(sh.cluster, sh.place) && <div><dt>{s.clusterLabel}</dt><dd>{clusterText(sh.cluster, sh.place)}</dd></div>}
+                        </dl>
+                      </div>
+                    ))
+                  ) : (
+                    <p class="no-shard-data">{s.noShardData}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Group 2: Web & Platform -->
+          <details class="st-group" open>
+            <summary class="st-group-head">
+              <span class="st-group-title"><Icon name="ph:globe-fill" width="16" height="16" /> {uiCopy.grpWeb}</span>
+              <Icon name="ph:caret-down-bold" width="13" height="13" class="st-group-caret" />
+            </summary>
+            <div class="st-group-body">
+              {webServices.map((svc) => (
+                <article class="hist-card" data-svc={svc.id} data-marks={JSON.stringify(svc.marks)}>
+                  <header class="hist-card-head">
+                    <div class="st-svc-left">
+                      <span class={`st-svc-ic ${svc.now}`}><Icon name={svc.now === 'down' ? 'ph:x-circle-fill' : svc.now === 'degraded' ? 'ph:warning-fill' : 'ph:check-circle-fill'} width="18" height="18" /></span>
+                      <div>
+                        <h3 class="st-svc-title-row">
+                          {serviceNames[svc.id]}
+                          {svc.id === 'site' && <a href={`${base}/`} class="st-svc-ext" aria-label={serviceNames[svc.id]}><Icon name="ph:arrow-up-right" width="13" height="13" /></a>}
+                        </h3>
+                        <p class="st-svc-desc">{serviceDescs[svc.id]}</p>
+                      </div>
+                    </div>
+                    <div class="st-svc-right">
+                      <span class="st-svc-pct" data-svc-pct>{calcUptimePct(svc.marks)} {uiCopy.uptimeSuffix}</span>
+                      <span class={`hist-now ${svc.now}`}>{nowLabel[svc.now]}</span>
+                    </div>
+                  </header>
+                  <div class="bars" role="img" aria-label={fill(s.serviceHistory, { n: 90 })}>
+                    {svc.marks.map((mark) => <i class={`b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`} data-d={mark.d} data-tip={barTip(mark)}></i>)}
+                  </div>
+                  <div class="bars-axis"><span data-axis-start>{fill(s.daysAgo, { n: 90 })}</span><span>{s.today}</span></div>
+                </article>
+              ))}
+            </div>
+          </details>
+        </div>
+
+        <div class="hist-tip" id="histTip" role="tooltip" hidden></div>
+        <div class="st-hist-foot">
           <ul class="hist-legend">
             <li><i class="b up"></i>{s.legendUp}</li>
             <li><i class="b warn"></i>{s.legendWarn}</li>
             <li><i class="b down"></i>{s.legendDown}</li>
             <li><i class="b none"></i>{s.legendNone}</li>
           </ul>
-          <p class="hist-note">{s.histNote}</p>
           <p class="hist-meta"><span>{s.everyTwo}</span>{history.available && <span id="histStarted"> · {started ? fill(s.startedNote, { date: dayLabel(started) }) : s.startingNote}</span>}</p>
-          <h2 class="hist-title hist-incidents-title">{s.incidentsTitle}</h2>
-          <div class="hist-incidents" id="histIncidents">
-            {history.available && incidentList.map((entry) => (
-              <div class="inc-day">
-                <h3>{dayLabel(entry.day)}</h3>
-                {entry.incidents.length === 0
-                  ? <p class="inc-none">{entry.today ? s.incidentNoneToday : s.incidentNoneDay}</p>
-                  : <ul>{entry.incidents.map((inc) => <li class={inc.kind}><i class={`b ${barClass(inc.kind)}`}></i><div><b>{serviceNames[inc.service]}</b><em>{incidentText(inc)}</em>{noteOf(inc) && <p>{noteOf(inc)}</p>}</div></li>)}</ul>}
-              </div>
-            ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Two-Column Shard Checker (1:1 Vetox split with center 1px vertical rail) -->
+    <section class="st-check-sec">
+      <div class="wrap st-check-wrap">
+        <form class="st-check-grid" id="statusSearch" role="search" data-endpoint={searchEndpoint} data-short={s.searchShort} data-empty={s.searchEmpty} data-error={s.searchError} data-limited={s.searchLimited} data-offline={s.shardOffline} data-operational={s.shardOperational} data-reconnecting={s.shardReconnecting} data-shard={s.shardName}>
+          <div class="st-check-left">
+            <div class="st-sec-head st-two-tone">
+              <label for="statusSearchInput" class="st-two-h2"><b>{uiCopy.checkLead}</b> <span>{uiCopy.checkSub}</span></label>
+            </div>
+            <p class="status-search-hint" id="statusSearchHint">{s.searchHint}</p>
           </div>
+          <div class="st-check-right">
+            <div class="st-pill-bar">
+              <span class="st-pill-badge" aria-hidden="true"><Icon name="ph:squares-four-fill" width="16" height="16" /></span>
+              <input id="statusSearchInput" type="search" name="q" autocomplete="off" maxlength="100" placeholder={s.searchPlaceholder} />
+              <button type="submit" class="st-pill-submit">{uiCopy.checkBtn}</button>
+            </div>
+            <ul class="status-search-results" id="statusSearchResults" aria-live="polite"></ul>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- 4. Event Calendar + Incident Feed -->
+    <section class="st-cal-sec" id="calendar">
+      <div class="wrap st-cal-wrap">
+        <div class="st-cal-top">
+          <div class="st-sec-head st-two-tone">
+            <h2 class="st-two-h2"><b>{uiCopy.calLead}</b> <span>{uiCopy.calSub}</span></h2>
+          </div>
+          <a class="btn btn-ghost btn-sm st-inc-jump" href="#incidents">{s.incidentsTitle} <Icon name="ph:caret-right" width="12" height="12" /></a>
+        </div>
+
+        <div class="st-cal-split" id="incidents">
+          <div class="st-cal-card" id="stCalendar" data-weekdays={JSON.stringify(uiCopy.weekdays)} data-locale={dateLocale}>
+            <div class="st-cal-nav">
+              <button type="button" class="st-cal-btn" id="stCalPrev" aria-label="Previous month"><Icon name="ph:caret-left-bold" width="13" height="13" /></button>
+              <strong id="stCalTitle"></strong>
+              <button type="button" class="st-cal-btn" id="stCalNext" aria-label="Next month"><Icon name="ph:caret-right-bold" width="13" height="13" /></button>
+            </div>
+            <div class="st-cal-weekdays">
+              {uiCopy.weekdays.map((wd) => <span>{wd}</span>)}
+            </div>
+            <div class="st-cal-days" id="stCalDays"></div>
+            <ul class="st-cal-legend">
+              <li><i class="ring down"></i>{uiCopy.ringCrit}</li>
+              <li><i class="ring warn"></i>{uiCopy.ringWarn}</li>
+              <li><i class="ring none"></i>{uiCopy.ringNone}</li>
+              <li><i class="ring up"></i>{uiCopy.ringOk}</li>
+            </ul>
+          </div>
+
+          <div class="st-inc-card">
+            <div class="st-inc-head">
+              <h3>{s.incidentsTitle}</h3>
+              <span class="st-inc-sub">14d</span>
+            </div>
+            <div class="hist-incidents" id="histIncidents">
+              {history.available ? incidentList.map((entry) => (
+                <div class="inc-day">
+                  <h3>{dayLabel(entry.day)}</h3>
+                  {entry.incidents.length === 0
+                    ? <p class="inc-none">{entry.today ? s.incidentNoneToday : s.incidentNoneDay}</p>
+                    : <ul>{entry.incidents.map((inc) => <li class={inc.kind}><i class={`b ${barClass(inc.kind)}`}></i><div><b>{serviceNames[inc.service]}</b><em>{incidentText(inc)}</em>{noteOf(inc) && <p>{noteOf(inc)}</p>}</div></li>)}</ul>}
+                </div>
+              )) : <p class="inc-none">{s.histUnavailable}</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Final CTA Band -->
+    <section class="cta-band st-cta">
+      <div class="wrap">
+        <h2>{t.cta.title}</h2>
+        <p>{t.cta.desc}</p>
+        <div class="st-cta-btns">
+          <a class="btn btn-primary st-pill-btn" href="https://petto.sbs/invite" target="_blank" rel="noopener">{t.cta.button}</a>
+          <a class="btn btn-ghost st-pill-btn" href="https://petto.sbs/support" target="_blank" rel="noopener">{uiCopy.supportBtn}</a>
         </div>
       </div>
     </section>
@@ -271,19 +510,28 @@ const stateLabel: Record<string, string> = {
 
 <script>
   import { incidentDays } from '../utils/statusDays.mjs';
-  // The history follows the real state: it asks again every minute (the answer is kept a minute on the server), changes the cards, the bars,
-  // the heading and the incidents, and the period selector shows the last 30, 60 or 90 days. Everything is written as text, never as HTML.
   const hist = document.getElementById('statusHistory');
   if (hist) {
     const text: Record<string, string> = JSON.parse(hist.dataset.text || '{}');
     const locale = hist.dataset.locale || 'en';
     const tip = document.getElementById('histTip')!;
     const cards = document.getElementById('histCards')!;
+    const overallBars = document.getElementById('overallBars');
+    const overallUptime = document.getElementById('overallUptime');
     const select = document.getElementById('histPeriod') as HTMLSelectElement;
     const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
     const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
     const barClass = (state: string) => (state === 'down' ? 'down' : state === 'warn' ? 'warn' : state === 'nodata' ? 'none' : 'up');
     let started: string | null = null;
+    let calMarks: { d: string; s: string; dm?: number }[] = JSON.parse(hist.dataset.cal || '[]');
+
+    const calcPct = (marks: { s: string; dm?: number }[]) => {
+      const measured = marks.filter((m) => m.s !== 'pre' && m.s !== 'nodata');
+      if (!measured.length) return '100.00%';
+      const totalMins = measured.length * 1440;
+      const downMins = measured.reduce((acc, m) => acc + (Number(m.dm) || 0), 0);
+      return `${Math.max(0, Math.min(100, ((totalMins - downMins) / totalMins) * 100)).toFixed(2)}%`;
+    };
 
     function tipFor(mark: any) {
       const lines = [dayLabel(mark.d)];
@@ -299,15 +547,75 @@ const stateLabel: Record<string, string> = {
       return lines.join('\n');
     }
 
+    const svcMarksMap = new Map<string, { d: string; s: string; dm?: number }[]>();
+    cards.querySelectorAll<HTMLElement>('[data-svc]').forEach((card) => {
+      try { svcMarksMap.set(card.dataset.svc!, JSON.parse(card.dataset.marks || '[]')); } catch { /* ignore */ }
+    });
+
     function applyPeriod() {
       const n = Number(select.value) || 90;
       hist!.dataset.period = String(n);
-      cards.querySelectorAll('.bars').forEach((bars) => {
+      hist!.querySelectorAll('.bars').forEach((bars) => {
         const items = Array.from(bars.children) as HTMLElement[];
         items.forEach((bar, index) => { bar.hidden = index < items.length - n; });
       });
-      cards.querySelectorAll('[data-axis-start]').forEach((label) => { label.textContent = fill(text.daysAgo, { n }); });
+      hist!.querySelectorAll('[data-axis-start]').forEach((label) => { label.textContent = fill(text.daysAgo, { n }); });
+      const subEl = document.getElementById('stServicesSub');
+      if (subEl && text.servicesSub) subEl.textContent = fill(text.servicesSub, { n });
+      if (overallUptime && calMarks.length) {
+        overallUptime.textContent = `${calcPct(calMarks.slice(-n))} ${text.uptimeSuffix ?? 'uptime'}`;
+      }
+      cards.querySelectorAll<HTMLElement>('[data-svc]').forEach((card) => {
+        const m = svcMarksMap.get(card.dataset.svc || '');
+        const pctEl = card.querySelector('[data-svc-pct]');
+        if (pctEl && m && m.length) pctEl.textContent = `${calcPct(m.slice(-n))} ${text.uptimeSuffix ?? 'uptime'}`;
+      });
     }
+
+    // Event Calendar renderer
+    const calRoot = document.getElementById('stCalendar');
+    const calTitle = document.getElementById('stCalTitle');
+    const calDays = document.getElementById('stCalDays');
+    const calPrev = document.getElementById('stCalPrev') as HTMLButtonElement | null;
+    const calNext = document.getElementById('stCalNext') as HTMLButtonElement | null;
+    let monthOffset = 0;
+
+    function renderCalendar() {
+      if (!calRoot || !calTitle || !calDays) return;
+      const byDay = new Map(calMarks.map((m) => [m.d, m]));
+      const refDate = calMarks.length ? new Date(`${calMarks[calMarks.length - 1].d}T00:00:00Z`) : new Date();
+      const view = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + monthOffset, 1));
+      const y = view.getUTCFullYear();
+      const m = view.getUTCMonth();
+      calTitle.textContent = view.toLocaleDateString(locale, { timeZone: 'UTC', month: 'long', year: 'numeric' });
+      if (calNext) calNext.disabled = monthOffset >= 0;
+      if (calPrev) calPrev.disabled = monthOffset <= -3;
+
+      const firstDow = (view.getUTCDay() + 6) % 7; // Monday = 0
+      const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < firstDow; i++) {
+        const pad = document.createElement('span');
+        pad.className = 'st-cal-empty';
+        frag.appendChild(pad);
+      }
+      const todayKey = new Date().toISOString().slice(0, 10);
+      for (let d = 1; d <= daysInMonth; d++) {
+        const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const mark = byDay.get(iso);
+        const cell = document.createElement('span');
+        const tone = iso > todayKey ? 'future' : !mark || mark.s === 'pre' || mark.s === 'nodata' ? 'none' : barClass(mark.s);
+        cell.className = `st-cal-day ${tone}${iso === todayKey ? ' is-today' : ''}`;
+        cell.textContent = String(d);
+        if (mark && iso <= todayKey) cell.title = tipFor(mark);
+        frag.appendChild(cell);
+      }
+      calDays.replaceChildren(frag);
+    }
+
+    calPrev?.addEventListener('click', () => { if (monthOffset > -3) { monthOffset -= 1; renderCalendar(); } });
+    calNext?.addEventListener('click', () => { if (monthOffset < 0) { monthOffset += 1; renderCalendar(); } });
+    renderCalendar();
 
     function render(data: any) {
       if (!Array.isArray(data?.services)) return;
@@ -317,8 +625,9 @@ const stateLabel: Record<string, string> = {
         const card = cards.querySelector<HTMLElement>(`[data-svc="${svc.id}"]`);
         if (!card) continue;
         states.push(svc.now);
-        const now = card.querySelector('.hist-now');
-        if (now) { now.className = `hist-now ${svc.now}`; now.textContent = text[svc.now] ?? ''; }
+        const nowEl = card.querySelector('.hist-now');
+        if (nowEl) { nowEl.className = `hist-now ${svc.now}`; nowEl.textContent = text[svc.now] ?? ''; }
+        if (Array.isArray(svc.marks)) svcMarksMap.set(svc.id, svc.marks);
         const bars = card.querySelector('.bars')!;
         const fragment = document.createDocumentFragment();
         for (const mark of svc.marks) {
@@ -330,6 +639,29 @@ const stateLabel: Record<string, string> = {
         }
         bars.replaceChildren(fragment);
       }
+
+      if (Array.isArray(data.days) && data.days.length && data.services.length) {
+        calMarks = data.days.map((d: string, idx: number) => {
+          const sList = data.services.map((svc: any) => svc.marks?.[idx]?.s ?? 'pre');
+          const dm = Math.max(0, ...data.services.map((svc: any) => Number(svc.marks?.[idx]?.dm ?? 0)));
+          const st = sList.includes('down') ? 'down' : sList.includes('warn') ? 'warn' : sList.every((x: string) => x === 'nodata') ? 'nodata' : sList.every((x: string) => x === 'pre') ? 'pre' : 'up';
+          return { d, s: st, dm };
+        });
+        if (overallBars) {
+          const frag = document.createDocumentFragment();
+          for (const mark of calMarks) {
+            const bar = document.createElement('i');
+            bar.className = `b ${barClass(mark.s)}${mark.s === 'pre' ? ' pre' : ''}`;
+            bar.dataset.d = mark.d;
+            bar.dataset.tip = tipFor(mark);
+            frag.appendChild(bar);
+          }
+          overallBars.replaceChildren(frag);
+        }
+        if (overallUptime) overallUptime.textContent = `${calcPct(calMarks)} ${text.uptimeSuffix ?? 'uptime'}`;
+        renderCalendar();
+      }
+
       const overall = !data.available || !states.length || states.every((state) => state === 'unknown') ? 'unknown' : states.includes('down') ? 'down' : states.includes('degraded') ? 'degraded' : 'up';
       const headingText = document.getElementById('statusHeadingText');
       const dot = document.querySelector('#statusHeading .status-hero-dot');
@@ -389,21 +721,20 @@ const stateLabel: Record<string, string> = {
       tip.style.top = `${rect.top - box.top - tip.offsetHeight - 8}px`;
     }
     const hideTip = () => { tip.hidden = true; current = null; };
-    cards.addEventListener('pointerover', (event) => { const bar = (event.target as HTMLElement).closest<HTMLElement>('.b'); if (bar && (event as PointerEvent).pointerType !== 'touch') showTip(bar); });
-    cards.addEventListener('pointerleave', hideTip);
-    cards.addEventListener('click', (event) => { const bar = (event.target as HTMLElement).closest<HTMLElement>('.b'); if (!bar) return hideTip(); if (current === bar) hideTip(); else showTip(bar); });
-    document.addEventListener('click', (event) => { if (!(event.target as HTMLElement).closest('#histCards')) hideTip(); });
+    hist.addEventListener('pointerover', (event) => { const bar = (event.target as HTMLElement).closest<HTMLElement>('.b'); if (bar && bar.closest('.bars') && (event as PointerEvent).pointerType !== 'touch') showTip(bar); });
+    hist.addEventListener('pointerleave', hideTip);
+    hist.addEventListener('click', (event) => { const bar = (event.target as HTMLElement).closest<HTMLElement>('.b'); if (!bar || !bar.closest('.bars')) return hideTip(); if (current === bar) hideTip(); else showTip(bar); });
+    document.addEventListener('click', (event) => { if (!(event.target as HTMLElement).closest('#statusHistory')) hideTip(); });
     select.addEventListener('change', () => { hideTip(); applyPeriod(); });
 
     async function refresh() {
       try {
         const response = await fetch(hist!.dataset.endpoint!, { headers: { Accept: 'application/json' } });
         if (response.ok) render(await response.json());
-      } catch { /* the last values stay on the screen */ }
+      } catch { /* keep last values */ }
     }
     applyPeriod();
     window.setInterval(refresh, 60_000);
-    // The server paints the first state; the tooltips of that first paint were written there with the date of the first check.
     refresh();
   }
 </script>
@@ -517,10 +848,9 @@ const stateLabel: Record<string, string> = {
         .filter((r) => bucketState(r.status, r.updated_at) !== 'offline')
         .reduce((sum, r) => sum + (Number(r.guild_count) || 0), 0);
       const target = document.getElementById('statusTotal');
-      if (target) target.textContent = String(total);
+      if (target) target.textContent = numberFormat.format(total);
     }
 
-    // The same colours as the server render: green up to 50 ms, yellow up to 150, orange up to 300, red above that or offline.
     function tierOf(state: string, ping: unknown) {
       if (state === 'offline') return 'down';
       if (state === 'reconnecting') return 'slow';
@@ -534,8 +864,7 @@ const stateLabel: Record<string, string> = {
         shardsContent.innerHTML = `<p class="no-shard-data">${noDataText}</p>`;
         return;
       }
-      const sorted = [...rows].sort((a, b) => a.shard_id - b.shard_id);
-      const cards = sorted.map((r) => {
+      const cards = rows.sort((a, b) => a.shard_id - b.shard_id).map((r) => {
         const state = bucketState(r.status, r.updated_at);
         const ping = r.ping_ms != null ? `${r.ping_ms}` : 'n/a';
         const place = [r.cluster_name, r.cluster_location].filter(Boolean).map(escapeHtml).join(' · ');
@@ -545,7 +874,6 @@ const stateLabel: Record<string, string> = {
         return { id: String(r.shard_id), tier: tierOf(state, r.ping_ms), inner };
       });
       const shown = [...shardsContent.querySelectorAll<HTMLElement>('.shard-card')];
-      // The same shards as the last time: the cards are updated where they are, so a tooltip that is open (the mouse or the finger is on the card) does not close every 10 seconds.
       if (shown.length === cards.length && shown.every((el, i) => el.dataset.shardId === cards[i].id)) {
         shown.forEach((el, i) => { el.dataset.tier = cards[i].tier; el.innerHTML = cards[i].inner; });
         return;
@@ -555,7 +883,7 @@ const stateLabel: Record<string, string> = {
 
     function renderHost(row: any) {
       if (!hostContent || !row) return;
-      hostContent.innerHTML = `<div class="shard-stat"><span class="n">${formatUptime(row.uptime_seconds)}</span><span class="l">${uptimeWord}</span></div><div class="shard-stat"><span class="n">${row.node_version ?? ''}</span><span class="l">Node.js</span></div>`;
+      hostContent.innerHTML = `<span class="st-metric-chip"><b>${formatUptime(row.uptime_seconds)}</b> ${uptimeWord}</span><span class="st-metric-chip"><b>${escapeHtml(row.node_version ?? '')}</b></span>`;
     }
 
     async function poll() {
@@ -567,9 +895,7 @@ const stateLabel: Record<string, string> = {
         if (Array.isArray(payload.shards)) { renderShards(payload.shards); renderTotal(payload.shards); }
         if (payload.host) renderHost(payload.host);
         liveBadge?.classList.add('on');
-      } catch {
-        // Silently keep whatever was last rendered; the next poll retries.
-      }
+      } catch { /* retry next poll */ }
     }
 
     poll();
@@ -578,83 +904,268 @@ const stateLabel: Record<string, string> = {
 </script>
 
 <style>
-  .svc-label { margin-top: 28px; }
-  .svc-label.first { margin-top: 8px; }
-  .status-hero-dot.degraded { background: var(--yellow); box-shadow: 0 0 0 5px var(--yellow-soft); }
-  .status-hero-dot.down { background: var(--red); box-shadow: 0 0 0 5px var(--red-soft); }
-  .status-hero-dot.unknown { background: var(--text-dim); box-shadow: 0 0 0 5px var(--border-soft); }
-
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-  .hist { position: relative; margin: 6px 0 0; }
-  #statusBlock { margin: 6px 0 40px; } /* the servers, the search and the ping come first; the history of the bars is below */
-  .hist-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-  .hist-title { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: 0; }
-  .hist-period select { appearance: none; border: 1px solid var(--border); border-radius: 10px; background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2379756d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 12px center; color: var(--text); font: inherit; font-size: 13.5px; padding: 8px 32px 8px 12px; cursor: pointer; }
-  .hist-problem { margin: 0 0 12px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-muted); font-size: 13.5px; line-height: 1.5; }
-  .hist-cards { display: grid; gap: 12px; }
-  .hist-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 16px 12px; background: var(--card); }
-  .hist-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
-  .hist-card-head h3 { font-size: 15px; font-weight: 650; margin: 0; line-height: 1.3; }
-  .hist-now { flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--green); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-  .hist-now::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
-  .hist-now.degraded { color: var(--yellow); }
-  .hist-now.down { color: var(--red); }
-  .hist-now.unknown { color: var(--text-dim); }
-  .bars { display: flex; gap: 2px; height: 34px; align-items: stretch; }
-  .hist :global(.b) { display: block; flex: 1 1 0; min-width: 0; border-radius: 2px; background: var(--border); cursor: default; transition: transform 0.12s ease, filter 0.12s ease; }
-  .bars :global(.b):hover { transform: scaleY(1.12); filter: brightness(1.15); }
-  .hist :global(.b.up) { background: var(--green); }
-  .hist :global(.b.pre) { opacity: 0.8; }
-  .hist :global(.b.warn) { background: var(--yellow); }
-  .hist :global(.b.down) { background: var(--red); }
-  .hist :global(.b.none) { background: color-mix(in srgb, var(--text-dim) 55%, var(--border)); }
-  .bars :global(.b[hidden]) { display: none; }
-  .bars-axis { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11.5px; color: var(--text-dim); }
-  .hist-tip { position: absolute; z-index: 5; width: max-content; max-width: min(260px, 100%); padding: 8px 11px; border-radius: 10px; background: var(--card-hover); border: 1px solid var(--border); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35); font-size: 12.5px; line-height: 1.45; white-space: pre-line; pointer-events: none; }
-  .hist-tip[hidden] { display: none; }
-  .hist-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 16px 2px 0; padding: 0; font-size: 12.5px; color: var(--text-muted); }
-  .hist-legend li { display: inline-flex; align-items: center; gap: 7px; }
-  .hist-legend :global(.b) { flex: none; width: 5px; height: 14px; }
-  .hist-note { margin: 12px 2px 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
-  .hist-meta { margin: 6px 2px 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
-  .hist-incidents-title { margin-top: 28px; }
-  .hist-incidents { margin: 12px 0 0; display: grid; gap: 22px; }
-  .hist-incidents :global(.inc-day) { display: grid; gap: 10px; }
-  .hist-incidents :global(.inc-day h3) { margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 650; }
-  .hist-incidents :global(.inc-none) { margin: 0; font-size: 13.5px; color: var(--text-dim); }
-  .hist-incidents :global(ul) { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .hist-incidents :global(li) { display: grid; grid-template-columns: auto 1fr; align-items: stretch; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--card); font-size: 13.5px; }
-  .hist-incidents :global(.b) { flex: none; width: 5px; min-height: 34px; align-self: stretch; }
-  .hist-incidents :global(li > div) { display: grid; gap: 2px; align-content: center; }
-  .hist-incidents :global(li b) { font-weight: 650; }
-  .hist-incidents :global(li em) { font-style: normal; color: var(--text-muted); font-size: 13px; }
-  .hist-incidents :global(li p) { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
-  @media (min-width: 560px) { .bars { gap: 3px; height: 40px; } }
 
-  .status-sec { padding: 90px 0 120px; }
-  .status-wrap { max-width: 760px; }
-  .status-sec h1 { font-size: 30px; margin: 14px 0 12px; display: flex; align-items: center; gap: 12px; }
-  .status-hero-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px var(--green-soft); flex-shrink: 0; }
-  .status-desc { color: var(--text-muted); font-size: 15px; line-height: 1.6; max-width: 54ch; margin-bottom: 34px; }
-  .status-block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  /* 1. Atmospheric Night Hero */
+  .st-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    padding: 54px 0 88px;
+    text-align: center;
+    background:
+      radial-gradient(56% 70% at 50% 18%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+      radial-gradient(40% 55% at 65% 40%, color-mix(in srgb, var(--green) 11%, transparent), transparent 72%);
+  }
+  .st-stars {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.35;
+    background-image:
+      radial-gradient(1px 1px at 14% 22%, var(--text) 90%, transparent),
+      radial-gradient(1.5px 1.5px at 29% 38%, var(--accent) 90%, transparent),
+      radial-gradient(1px 1px at 47% 16%, var(--text) 90%, transparent),
+      radial-gradient(1.5px 1.5px at 68% 28%, var(--green) 90%, transparent),
+      radial-gradient(1px 1px at 83% 19%, var(--text) 90%, transparent),
+      radial-gradient(1px 1px at 76% 54%, var(--text) 90%, transparent),
+      radial-gradient(1px 1px at 21% 62%, var(--text) 90%, transparent);
+    pointer-events: none;
+  }
+  .st-hero-in { display: flex; flex-direction: column; align-items: center; }
+  .st-hero-pill {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 5px 13px 5px 8px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: color-mix(in srgb, var(--card) 85%, transparent);
+    margin-bottom: 16px;
+  }
+  .st-hero-pill img { border-radius: 50%; object-fit: contain; }
+  .st-main-title { font-size: clamp(32px, 4.2vw, 44px); line-height: 1.08; margin: 0 0 12px; letter-spacing: -0.02em; }
+  .status-desc { color: var(--text-muted); font-size: 15.5px; line-height: 1.6; max-width: 52ch; margin: 0 auto 22px; }
+  .st-hero-actions { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .st-pill-btn { border-radius: 999px !important; padding: 9px 18px; font-size: 13.5px; }
+
+  /* 2. Overlapping Summary Card + Two-Tone Section Headings */
+  .st-services-sec { padding: 0; }
+  .st-services-wrap { position: relative; padding-block: 0 48px; }
+  .st-top-card {
+    position: relative; z-index: 3;
+    margin: -46px 0 40px;
+    padding: 20px 24px 16px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    box-shadow: 0 22px 44px -26px rgba(0, 0, 0, 0.75);
+  }
+  .st-top-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; margin-bottom: 16px; }
+  .st-overall-title { font-family: var(--sans); font-size: 17px; font-weight: 700; margin: 0; display: inline-flex; align-items: center; gap: 11px; letter-spacing: -0.01em; }
+  .status-hero-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); flex-shrink: 0; }
+  .status-hero-dot.degraded { background: var(--yellow); box-shadow: 0 0 0 4px var(--yellow-soft); }
+  .status-hero-dot.down { background: var(--red); box-shadow: 0 0 0 4px var(--red-soft); }
+  .status-hero-dot.unknown { background: var(--text-dim); box-shadow: 0 0 0 4px var(--border-soft); }
+
+  .st-top-metrics { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .st-host-inline { display: contents; }
+  .st-uptime-pill { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--green); background: var(--green-soft); padding: 4px 10px; border-radius: 999px; }
+  :global(.st-metric-chip) { font-size: 12.5px; color: var(--text-muted); background: var(--bg-raise); border: 1px solid var(--border-soft); padding: 4px 10px; border-radius: 999px; }
+  :global(.st-metric-chip b) { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .st-overall-bars { height: 28px !important; }
+
+  /* Vetox Two-Tone Heading: Bold White Lead + Muted Secondary Phrase */
+  .st-two-h2 {
+    display: block;
+    font-family: var(--sans) !important;
+    font-size: clamp(21px, 2.4vw, 26px) !important;
+    font-weight: 500 !important;
+    line-height: 1.28 !important;
+    letter-spacing: -0.02em !important;
+    margin: 0 !important;
+    max-width: 34ch;
+  }
+  .st-two-h2 b { color: var(--text); font-weight: 700; }
+  .st-two-h2 span { color: var(--text-dim); font-weight: 500; }
+
+  .hist-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .hist-head .st-sec-head { margin-bottom: 0 !important; }
+  .hist-period select { appearance: none; -webkit-appearance: none; }
+  .hist-problem { margin: 0 0 14px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-muted); font-size: 13.5px; }
+
+  /* Collapsible Service Group Panels (1:1 Vetox Services) */
+  .st-groups { display: flex; flex-direction: column; gap: 14px; }
+  .st-group { border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; }
+  .st-group-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 20px; cursor: pointer; list-style: none;
+    background: color-mix(in srgb, var(--bg-raise) 65%, var(--card));
+    font-size: 14px; font-weight: 600; color: var(--text);
+    transition: background-color 0.15s ease;
+  }
+  .st-group-head:hover { background: var(--card-hover); }
+  .st-group-head::-webkit-details-marker { display: none; }
+  .st-group-title { display: inline-flex; align-items: center; gap: 9px; }
+  .st-group-title :global(svg) { color: var(--accent); }
+  .st-group-caret { color: var(--text-dim); transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+  .st-group[open] > .st-group-head { border-bottom: 1px solid var(--border-soft); }
+  .st-group[open] > .st-group-head .st-group-caret { transform: rotate(180deg); }
+
+  .st-group-body { display: flex; flex-direction: column; }
+  .hist-card { padding: 18px 20px; background: transparent; }
+  .hist-card + .hist-card { border-top: 1px solid var(--border-soft); }
+  .hist-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .st-svc-left { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+  .st-svc-ic { display: inline-flex; margin-top: 1px; color: var(--green); flex-shrink: 0; }
+  .st-svc-ic.degraded { color: var(--yellow); }
+  .st-svc-ic.down { color: var(--red); }
+  .st-svc-ic.unknown { color: var(--text-dim); }
+  .hist-card-head h3 { font-family: var(--sans); font-size: 14.5px; font-weight: 600; margin: 0; color: var(--text); line-height: 1.3; }
+  .st-svc-title-row { display: inline-flex; align-items: center; gap: 6px; }
+  .st-svc-ext { display: inline-flex; color: var(--text-dim); text-decoration: none; transition: color 0.15s ease; }
+  .st-svc-ext:hover { color: var(--accent); }
+  .st-svc-desc { margin: 2px 0 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+
+  .st-svc-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .st-svc-pct { font-family: var(--mono); font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .hist-now { font-size: 12px; font-weight: 600; color: var(--green); display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; background: var(--green-soft); white-space: nowrap; }
+  .hist-now.degraded { color: var(--yellow); background: var(--yellow-soft); }
+  .hist-now.down { color: var(--red); background: var(--red-soft); }
+  .hist-now.unknown { color: var(--text-dim); background: var(--border-soft); }
+
+  .bars { display: flex; gap: 3px; height: 28px; align-items: stretch; }
+  @media (max-width: 560px) { .bars { gap: 2px; height: 24px; } }
+  #statusHistory :global(.b) { display: block; flex: 1 1 0; min-width: 0; border-radius: 2px; background: var(--border); transition: transform 0.12s ease, filter 0.12s ease; }
+  .bars :global(.b):hover { transform: scaleY(1.14); filter: brightness(1.15); }
+  #statusHistory :global(.b.up) { background: var(--green); }
+  #statusHistory :global(.b.pre) { opacity: 0.78; }
+  #statusHistory :global(.b.warn) { background: var(--yellow); }
+  #statusHistory :global(.b.down) { background: var(--red); }
+  #statusHistory :global(.b.none) { background: color-mix(in srgb, var(--text-dim) 55%, var(--border)); }
+  #statusHistory .bars :global(.b[hidden]) { display: none !important; }
+  .bars-axis { display: flex; justify-content: space-between; margin-top: 7px; font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .hist-tip { position: absolute; z-index: 15; width: max-content; max-width: min(260px, 100%); padding: 8px 11px; border-radius: 10px; background: var(--card-hover); border: 1px solid var(--border); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); font-size: 12px; line-height: 1.45; white-space: pre-line; pointer-events: none; }
+  .hist-tip[hidden] { display: none; }
+
+  .st-hist-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap; margin-top: 14px; }
+  .hist-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; padding: 0; font-size: 12px; color: var(--text-muted); }
+  .hist-legend li { display: inline-flex; align-items: center; gap: 6px; }
+  .hist-legend :global(.b) { flex: none; width: 5px; height: 13px; }
+  .hist-meta { margin: 0; font-size: 12px; color: var(--text-dim); }
+
+  /* Shards sub-section inside Bot group */
+  .st-shards-sub { border-top: 1px solid var(--border-soft); padding: 16px 20px 20px; background: color-mix(in srgb, var(--bg) 35%, transparent); }
+  .st-shards-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 12px; }
   .status-block-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
-  .status-block-label.host-label { margin: 28px 0 10px; }
-  .live-badge { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); opacity: 0.4; transition: opacity 0.2s ease; }
+  .shard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap: 10px; }
+
+  .live-badge { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); opacity: 0.55; transition: opacity 0.2s ease; }
   .live-badge.on { opacity: 1; color: var(--green); }
   .live-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .live-badge.on .live-dot { animation: livePulse 1.6s ease-in-out infinite; }
   @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-  .shard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 12px; margin-bottom: 8px; }
+  /* 3. Two-Column Shard Checker (1:1 Vetox with center 1px vertical divider) */
+  .st-check-sec { padding: 0; }
+  .st-check-wrap { padding-block: 0 !important; }
+  .st-check-grid { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr); margin: 0; }
+  .st-check-left { padding: 44px 32px 44px 0; border-right: 1px solid var(--rail-border, var(--border-soft)); }
+  .st-check-left .st-sec-head { margin-bottom: 10px !important; }
+  .st-check-right { padding: 44px 0 44px 36px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  .st-pill-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 6px 6px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+  .st-pill-bar:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .st-pill-badge { width: 34px; height: 34px; border-radius: 50%; background: var(--green-soft); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .st-pill-bar input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 14px; padding: 4px 2px; }
+  .st-pill-submit {
+    border: 1px solid color-mix(in srgb, var(--text) 14%, var(--border)); border-radius: 999px; padding: 8px 18px;
+    background: var(--bg-raise);
+    color: var(--text); font: 600 13px var(--sans); cursor: pointer; flex-shrink: 0;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  }
+  .st-pill-submit:hover { background: var(--green); border-color: var(--green); color: var(--green-ink); }
+  .status-search-hint { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+  .status-search-hint.problem { color: var(--red); }
+  .status-search-results { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  .status-search-results:empty { display: none; }
+  @media (max-width: 820px) {
+    .st-check-grid { grid-template-columns: 1fr; }
+    .st-check-left { padding: 32px 0 16px; border-right: 0; }
+    .st-check-right { padding: 0 0 36px; }
+  }
 
-  /*
-   * Everything below is :global() on purpose. The live status script (see the <script> tag)
-   * rewrites #shardsContent/#hostContent via innerHTML every poll, and elements created that way
-   * never get Astro's scoped data-astro-cid attribute, so a normal scoped rule would only style
-   * the first server-rendered paint and then silently stop matching the instant the first poll()
-   * call (which fires immediately, not after the 10s interval) replaces that markup.
-   */
-  /* The colour of a card is its tier (see tierOf): green up to 50 ms, yellow up to 150, orange up to 300, red above that or offline. */
+  /* 4. Event Calendar + Incident History */
+  .st-cal-sec { padding: 0; }
+  .st-cal-wrap { padding-block: 44px 52px; }
+  .st-cal-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+  .st-cal-top .st-sec-head { margin-bottom: 0 !important; }
+  .st-inc-jump { border-radius: 999px; }
+
+  .st-cal-split { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 20px; align-items: stretch; }
+  @media (max-width: 860px) { .st-cal-split { grid-template-columns: 1fr; } }
+
+  .st-cal-card, .st-inc-card {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+  }
+  .st-cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .st-cal-nav strong { font-family: var(--sans); font-size: 14.5px; font-weight: 600; text-transform: capitalize; color: var(--text); }
+  .st-cal-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raise); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease; }
+  .st-cal-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-dim); }
+  .st-cal-btn:disabled { opacity: 0.35; cursor: default; }
+
+  .st-cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+  .st-cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; flex: 1; align-content: start; }
+  :global(.st-cal-day), :global(.st-cal-empty) { aspect-ratio: 1; max-height: 38px; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-variant-numeric: tabular-nums; border-radius: 50%; margin-inline: auto; width: 34px; height: 34px; }
+  :global(.st-cal-day) { color: var(--text); border: 2px solid transparent; background: var(--bg-raise); }
+  :global(.st-cal-day.up) { border-color: color-mix(in srgb, var(--green) 65%, transparent); }
+  :global(.st-cal-day.warn) { border-color: var(--yellow); background: var(--yellow-soft); color: var(--yellow); font-weight: 600; }
+  :global(.st-cal-day.down) { border-color: var(--red); background: var(--red-soft); color: var(--red); font-weight: 700; }
+  :global(.st-cal-day.none), :global(.st-cal-day.future) { color: var(--text-dim); opacity: 0.45; background: transparent; border-color: var(--border-soft); }
+  :global(.st-cal-day.is-today) { box-shadow: 0 0 0 2px var(--accent); font-weight: 700; }
+
+  .st-cal-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 16px 0 0; padding: 14px 0 0; border-top: 1px solid var(--border-soft); font-size: 11.5px; color: var(--text-muted); }
+  .st-cal-legend li { display: inline-flex; align-items: center; gap: 6px; }
+  .ring { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border); display: inline-block; }
+  .ring.up { border-color: var(--green); }
+  .ring.warn { border-color: var(--yellow); }
+  .ring.down { border-color: var(--red); }
+  .ring.none { border-color: var(--text-dim); opacity: 0.6; }
+
+  .st-inc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+  .st-inc-head h3 { font-family: var(--sans); font-size: 14.5px; font-weight: 600; margin: 0; }
+  .st-inc-sub { font-family: var(--mono); font-size: 11px; color: var(--text-dim); padding: 2px 8px; border-radius: 999px; background: var(--bg-raise); }
+  .hist-incidents { display: flex; flex-direction: column; gap: 14px; max-height: 310px; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 18%, transparent) transparent; }
+  .hist-incidents :global(.inc-day) { display: grid; gap: 6px; }
+  .hist-incidents :global(.inc-day h3) { margin: 0; font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); }
+  .hist-incidents :global(.inc-none) { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+  .hist-incidents :global(ul) { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .hist-incidents :global(li) { display: grid; grid-template-columns: auto 1fr; align-items: stretch; gap: 10px; border: 1px solid var(--border-soft); border-radius: 10px; padding: 9px 12px; background: var(--bg-raise); font-size: 13px; }
+  .hist-incidents :global(.b) { flex: none; width: 4px; border-radius: 2px; min-height: 26px; align-self: stretch; background: var(--border); }
+  .hist-incidents :global(.b.up) { background: var(--green); }
+  .hist-incidents :global(.b.warn) { background: var(--yellow); }
+  .hist-incidents :global(.b.down) { background: var(--red); }
+  .hist-incidents :global(li > div) { display: grid; gap: 2px; align-content: center; }
+  .hist-incidents :global(li b) { font-weight: 600; }
+  .hist-incidents :global(li em) { font-style: normal; color: var(--text-muted); font-size: 12.5px; }
+  .hist-incidents :global(li p) { margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-dim); }
+
+  /* 5. Closing CTA */
+  .st-cta { text-align: center; padding: 68px 0 76px; position: relative; isolation: isolate; overflow: hidden; }
+  .st-cta::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(55% 75% at 50% 85%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 72%); }
+  .st-cta h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 0 0 10px; }
+  .st-cta p { color: var(--text-muted); font-size: 15px; max-width: 48ch; margin: 0 auto 22px; }
+  .st-cta-btns { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+  /* Global dynamic shard & search result rules */
   :global(:root) { --tier-orange: #ff9a3c; }
   :global(:root[data-theme="light"]) { --tier-orange: #b45f0b; }
   @media (prefers-color-scheme: light) { :global(:root:not([data-theme="dark"])) { --tier-orange: #b45f0b; } }
@@ -663,59 +1174,33 @@ const stateLabel: Record<string, string> = {
   :global(.shard-card[data-tier="warn"]), :global(.tier-dot.warn) { --tier: var(--yellow); }
   :global(.shard-card[data-tier="slow"]), :global(.tier-dot.slow) { --tier: var(--tier-orange); }
   :global(.shard-card[data-tier="down"]), :global(.tier-dot.down) { --tier: var(--red); }
-  :global(.tier-dot) { width: 10px; height: 10px; border-radius: 3px; background: var(--tier, var(--text-dim)); flex-shrink: 0; }
-  .tier-legend { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--text-dim); }
-  .tier-legend li { display: flex; align-items: center; gap: 7px; }
-  :global(.shard-card) { position: relative; border: 1px solid color-mix(in srgb, var(--tier) 45%, var(--border)); border-radius: 14px; padding: 16px 18px; background: color-mix(in srgb, var(--tier) 8%, var(--card)); outline: none; transition: border-color 0.15s ease, background 0.15s ease; }
+  :global(.tier-dot) { width: 9px; height: 9px; border-radius: 3px; background: var(--tier, var(--text-dim)); flex-shrink: 0; }
+  .tier-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-dim); }
+  .tier-legend li { display: flex; align-items: center; gap: 6px; }
+  :global(.shard-card) { position: relative; border: 1px solid color-mix(in srgb, var(--tier) 42%, var(--border)); border-radius: 12px; padding: 13px 15px; background: color-mix(in srgb, var(--tier) 7%, var(--card)); outline: none; transition: border-color 0.15s ease, background 0.15s ease; }
   :global(.shard-card:hover), :global(.shard-card:focus-visible) { border-color: var(--tier); z-index: 3; }
-  :global(.shard-card:focus-visible) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--tier) 30%, transparent); }
   :global(.shard-card .shard-stat:nth-child(2) .n) { color: var(--tier); }
-  :global(.shard-tip) { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 5; width: max-content; max-width: min(300px, 86vw); margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raise, var(--bg)); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); display: grid; gap: 8px; opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s; pointer-events: none; }
-  :global(.shard-tip > div) { display: flex; justify-content: space-between; gap: 18px; font-size: 12.5px; }
+  :global(.shard-tip) { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 10; width: max-content; max-width: min(280px, 86vw); margin: 0; padding: 10px 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-raise, var(--bg)); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); display: grid; gap: 6px; opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s; pointer-events: none; }
+  :global(.shard-tip > div) { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
   :global(.shard-tip dt) { color: var(--text-dim); }
   :global(.shard-tip dd) { margin: 0; color: var(--text); font-weight: 600; text-align: right; }
   :global(.shard-card:hover .shard-tip), :global(.shard-card:focus .shard-tip), :global(.shard-card:focus-within .shard-tip) { opacity: 1; visibility: visible; transform: none; }
-  @media (prefers-reduced-motion: reduce) { :global(.shard-tip), :global(.shard-card) { transition: none; } }
-  :global(.shard-card-head) { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-  :global(.shard-card .shard-ic) { width: 15px; height: 15px; color: var(--text-dim); }
-  :global(.shard-name) { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
-  :global(.shard-card-stats) { display: flex; gap: 22px; }
-  :global(.shard-stat) { display: flex; flex-direction: column; gap: 3px; }
-  :global(.shard-stat .n) { font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--text); }
-  :global(.shard-stat .n em) { font-family: var(--sans); font-style: normal; font-size: 12px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
-  :global(.shard-stat .l) { font-size: 11.5px; color: var(--text-dim); }
+  :global(.shard-card-head) { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  :global(.shard-name) { font-size: 13.5px; font-weight: 600; color: var(--text); flex: 1; }
+  :global(.shard-card-stats) { display: flex; gap: 20px; }
+  :global(.shard-stat) { display: flex; flex-direction: column; gap: 2px; }
+  :global(.shard-stat .n) { font-family: var(--serif); font-size: 18px; font-weight: 600; color: var(--text); }
+  :global(.shard-stat .n em) { font-family: var(--sans); font-style: normal; font-size: 11.5px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+  :global(.shard-stat .l) { font-size: 11px; color: var(--text-dim); }
 
-  .status-search { margin: 4px 0 24px; }
-  .status-search-row { position: relative; margin-top: 8px; }
-  .status-search-row :global(.status-search-ic) { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-dim); pointer-events: none; }
-  .status-search input { width: 100%; box-sizing: border-box; padding: 11px 14px 11px 38px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); font: inherit; font-size: 14.5px; }
-  .status-search input:focus { outline: none; border-color: var(--accent); }
-  .status-search-hint { margin: 8px 2px 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
-  .status-search-hint.problem { color: var(--red); }
-  .status-search-results { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
   :global(.status-result) { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--card); }
-  :global(.status-result-icon) { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; background: var(--border-soft); display: grid; place-items: center; font-weight: 600; color: var(--text-dim); flex-shrink: 0; }
+  :global(.status-result-icon) { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; background: var(--border-soft); display: grid; place-items: center; font-weight: 600; color: var(--text-dim); flex-shrink: 0; }
   :global(.status-result-icon img) { width: 100%; height: 100%; object-fit: cover; }
-  :global(.status-result-name) { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.status-result-name) { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.status-result-meta) { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
-  @media (max-width: 480px) { :global(.status-result) { flex-wrap: wrap; } :global(.status-result-meta) { order: 4; width: 100%; } }
-
-  .status-total { display: flex; flex-direction: column; gap: 3px; margin-bottom: 14px; }
-  .status-total .n { font-family: var(--serif); font-size: 30px; font-weight: 600; color: var(--text); }
-  .status-total .l { font-size: 12px; color: var(--text-dim); }
-  .host-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--card); display: flex; gap: 28px; margin-bottom: 28px; }
-
-  .status-list { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 28px; }
-  .status-row { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; font-size: 14.5px; }
-  .status-row:not(:last-child) { border-bottom: 1px solid var(--border-soft); }
-  :global(.status-pill) { font-family: var(--mono); font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: var(--text-dim); background: var(--border-soft); }
+  :global(.status-pill) { font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: var(--text-dim); background: var(--border-soft); }
   :global(.status-pill.ok), :global(.status-pill.operational) { color: var(--green); background: var(--green-soft); }
   :global(.status-pill.reconnecting) { color: var(--yellow); background: var(--yellow-soft); }
   :global(.status-pill.offline) { color: var(--red); background: var(--red-soft); }
-  :global(.no-shard-data) { grid-column: 1 / -1; font-size: 14px; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 14px; padding: 16px 18px; margin: 0; line-height: 1.55; }
-
-  @media (max-width: 480px) {
-    .shard-grid { grid-template-columns: 1fr; }
-    .host-card { flex-wrap: wrap; gap: 20px; }
-  }
+  :global(.no-shard-data) { grid-column: 1 / -1; font-size: 13.5px; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 12px; padding: 14px 16px; margin: 0; }
 </style>
