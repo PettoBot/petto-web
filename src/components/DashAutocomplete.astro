@@ -13,9 +13,10 @@ const dt = makeT(lang);
 // The descriptions in the language of the dashboard (the /commands page has them in every language).
 const commands = JSON.stringify(getAllCommands(lang).map((command) => [command.name, command.desc.length > 90 ? `${command.desc.slice(0, 88).trimEnd()}…` : command.desc])).replace(/</g, '\\u003c');
 const words = JSON.stringify({
-  roles: dt('Roles'), channels: dt('Channels'), vars: dt('Variables'), commands: dt('Commands'), emojis: dt('Emojis'),
+  roles: dt('Roles & Members'), channels: dt('Channels'), vars: dt('Variables'), commands: dt('Commands'), emojis: dt('Emojis'),
   everyone: dt('Notifies everyone in the server'), here: dt('Notifies everyone who is online'), none: dt('No matches.'),
-  hint: dt('↑↓ to move, Enter to pick, Esc to close'), voice: dt('Voice'), noRoles: dt('This page has no roles to suggest.'),
+  hint: dt('↑↓ to move, Enter to pick, Esc to close'), voice: dt('Voice'), category: dt('Category'), forum: dt('Forum'), news: dt('Announcement'),
+  serverEmojis: dt('Server'), defaultEmojis: dt('Default'), member: dt('Member'), noRoles: dt('This page has no roles to suggest.'),
 }).replace(/</g, '\\u003c');
 ---
 <script type="application/json" id="dgl-ac-commands" set:html={commands}></script>
@@ -34,7 +35,36 @@ const words = JSON.stringify({
     var state = null;     // { field, kind, start, query, items, index }
     var unicode = null;   // the standard emojis, loaded on the first ":"
     var unicodeLoading = null;
+    var emojiTab = 'server'; // 'server' | 'default'
+    var memberCache = {};    // query -> member[]
+    var memberTimer = 0;
+    var memberPending = false;
     var dataCache = { key: null, value: null };
+
+    function guildIdOfPage() {
+      var match = /^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)/.exec(location.pathname);
+      return match ? match[1] : null;
+    }
+    function fetchMembers(q, field) {
+      var gid = guildIdOfPage();
+      if (!gid) return;
+      var key = (q || '').toLowerCase();
+      if (memberCache[key]) return;
+      clearTimeout(memberTimer);
+      memberPending = true;
+      memberTimer = setTimeout(function () {
+        fetch('/dash/guild/' + gid + '/members-search?q=' + encodeURIComponent(key), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (res) { return res.ok ? res.json() : { members: [] }; })
+          .then(function (body) {
+            memberCache[key] = Array.isArray(body && body.members) ? body.members.slice(0, 10) : [];
+          })
+          .catch(function () { memberCache[key] = []; })
+          .finally(function () {
+            memberPending = false;
+            if (state && state.field === field && state.kind === 'roles') refresh(field);
+          });
+      }, 140);
+    }
 
     function esc(text) { return String(text == null ? '' : text).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function json(node, fallback) { try { return node ? JSON.parse(node.textContent || '') : fallback; } catch (e) { return fallback; } }
@@ -119,8 +149,8 @@ const words = JSON.stringify({
       channels: /(^|[^\w<&#])#([^\s#<>@{}]{0,32})$/,
       vars: /\{([\w.:\-|]{0,40})$/,
       commands: /(^|\s)\/([\w-]{0,32})$/,
-      // ":dan" and also ":dance:" (the name closed with its colon still offers it, first).
-      emojis: /(^|[^\w<:]):([\w~+-]{2,32}):?$/,
+      // ":" immediately opens the emoji picker (with Server / Default tabs).
+      emojis: /(^|[^\w<:]):([\w~+-]{0,32}):?$/,
     };
     function detect(field) {
       if (field.selectionStart !== field.selectionEnd) return null;
@@ -156,15 +186,26 @@ const words = JSON.stringify({
     function itemsFor(kind, q, data) {
       if (kind === 'roles') {
         var special = [{ special: 'everyone', name: 'everyone', desc: words.everyone }, { special: 'here', name: 'here', desc: words.here }];
-        return rank(special.concat(data.roles), q, function (r) { return r.name; }).map(function (r) {
+        var roleItems = rank(special.concat(data.roles), q, function (r) { return r.name; }).map(function (r) {
           if (r.special) return { html: '<span class="dgl-ac-ico">@</span><span class="dgl-ac-main">@' + esc(r.name) + '</span><span class="dgl-ac-desc">' + esc(r.desc) + '</span>', text: '@' + r.name + ' ' };
-          return { html: '<span class="dgl-ac-dot" style="--c:' + esc(r.color || 'var(--text-dim)') + '"></span><span class="dgl-ac-main">@' + esc(r.name) + '</span>', text: '<@&' + r.id + '> ' };
+          return { html: '<span class="dgl-ac-dot" style="--c:' + esc(r.color || 'var(--text-dim)') + '"></span><span class="dgl-ac-main" style="' + (r.color ? 'color:' + esc(r.color) : '') + '">@' + esc(r.name) + '</span>', text: '<@&' + r.id + '> ' };
         });
+        var key = (q || '').toLowerCase();
+        var members = memberCache[key] || [];
+        var memberItems = members.slice(0, 10).map(function (m) {
+          var label = m.displayName || m.username || m.id;
+          var avatar = m.avatar ? '<img class="dgl-ac-avatar" src="' + esc(m.avatar) + '" alt="" loading="lazy">' : '<span class="dgl-ac-ico">@</span>';
+          var sub = m.username && m.username !== label ? '@' + m.username : words.member;
+          return { html: avatar + '<span class="dgl-ac-main">' + esc(label) + '</span><span class="dgl-ac-desc">' + esc(sub) + '</span>', text: '<@' + m.id + '> ' };
+        });
+        return roleItems.concat(memberItems).slice(0, LIMIT);
       }
       if (kind === 'channels') {
         return rank(data.channels, q, function (c) { return c.name; }).map(function (c) {
-          var voice = c.type === 2 || c.type === 13;
-          return { html: '<span class="dgl-ac-ico">' + (voice ? '🔊' : '#') + '</span><span class="dgl-ac-main">' + esc(c.name) + '</span>' + (voice ? '<span class="dgl-ac-desc">' + esc(words.voice) + '</span>' : ''), text: '<#' + c.id + '> ' };
+          var t = Number(c.type) || 0;
+          var ico = t === 2 || t === 13 ? '🔊' : t === 4 ? '📁' : t === 15 || t === 16 ? '💬' : t === 5 ? '📢' : '#';
+          var tag = t === 2 || t === 13 ? words.voice : t === 4 ? words.category : t === 15 || t === 16 ? words.forum : t === 5 ? words.news : '';
+          return { html: '<span class="dgl-ac-ico">' + ico + '</span><span class="dgl-ac-main">' + esc(c.name) + '</span>' + (tag ? '<span class="dgl-ac-desc">' + esc(tag) + '</span>' : ''), text: '<#' + c.id + '> ' };
         });
       }
       if (kind === 'vars') {
@@ -177,13 +218,15 @@ const words = JSON.stringify({
           return { html: '<span class="dgl-ac-ico">/</span><span class="dgl-ac-main">' + esc(c.name) + '</span><span class="dgl-ac-desc">' + esc(c.desc) + '</span>', text: '/' + c.name + ' ' };
         });
       }
-      var custom = rank(data.emojis, q, function (e) { return e.name; }).map(function (e) {
-        return { html: '<img class="dgl-ac-emoji" src="https://cdn.discordapp.com/emojis/' + esc(e.id) + '.' + (e.animated ? 'gif' : 'webp') + '?size=32" alt="" loading="lazy"><span class="dgl-ac-main">:' + esc(e.name) + ':</span>', text: '<' + (e.animated ? 'a' : '') + ':' + e.name + ':' + e.id + '> ' };
-      });
+      if (emojiTab === 'server' && data.emojis.length) {
+        return rank(data.emojis, q, function (e) { return e.name; }).map(function (e) {
+          return { html: '<img class="dgl-ac-emoji" src="https://cdn.discordapp.com/emojis/' + esc(e.id) + '.' + (e.animated ? 'gif' : 'webp') + '?size=32" alt="" loading="lazy"><span class="dgl-ac-main">:' + esc(e.name) + ':</span>', text: '<' + (e.animated ? 'a' : '') + ':' + e.name + ':' + e.id + '> ' };
+        });
+      }
       var standard = unicode ? rank(unicode, q, function (e) { return e.name; }).map(function (e) {
         return { html: '<span class="dgl-ac-ico dgl-ac-uni">' + e.char + '</span><span class="dgl-ac-main">:' + esc(e.name) + ':</span>', text: e.char };
       }) : [];
-      return custom.concat(standard).slice(0, LIMIT);
+      return standard.slice(0, LIMIT);
     }
 
     // Where the caret is on screen: a hidden copy of the field with the same text and style, measured up to the caret.
@@ -242,9 +285,19 @@ const words = JSON.stringify({
 
     function render() {
       var list = menu.querySelector('.dgl-ac-list');
+      var tabs = menu.querySelector('.dgl-ac-tabs');
+      if (tabs) {
+        var showTabs = state.kind === 'emojis';
+        tabs.hidden = !showTabs;
+        if (showTabs) {
+          tabs.querySelectorAll('button').forEach(function (btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-ac-etab') === emojiTab);
+          });
+        }
+      }
       var items = state.items;
       if (!items.length) {
-        list.innerHTML = '<div class="dgl-ac-empty">' + esc(state.kind === 'roles' && !pageData().roles.length ? words.noRoles : words.none) + '</div>';
+        list.innerHTML = '<div class="dgl-ac-empty">' + esc(words.none) + '</div>';
       } else {
         var html = '';
         for (var i = 0; i < items.length; i++) html += '<div class="dgl-ac-opt' + (i === state.index ? ' on' : '') + '" role="option" id="dgl-ac-o' + i + '" data-i="' + i + '" aria-selected="' + (i === state.index) + '">' + items[i].html + '</div>';
@@ -272,10 +325,22 @@ const words = JSON.stringify({
         menu.className = 'dgl-ac';
         menu.id = 'dgl-ac';
         menu.setAttribute('role', 'listbox');
-        menu.innerHTML = '<div class="dgl-ac-head"><b></b><span>' + esc(words.hint) + '</span></div><div class="dgl-ac-list"></div>';
+        menu.innerHTML = '<div class="dgl-ac-head"><b></b><span>' + esc(words.hint) + '</span></div>'
+          + '<div class="dgl-ac-tabs" hidden><button type="button" data-ac-etab="server">' + esc(words.serverEmojis) + '</button><button type="button" data-ac-etab="default">' + esc(words.defaultEmojis) + '</button></div>'
+          + '<div class="dgl-ac-list"></div>';
         // The field keeps the focus (and the phone its keyboard): a press on the menu never moves it.
         menu.addEventListener('mousedown', function (e) { e.preventDefault(); });
-        menu.addEventListener('click', function (e) { var opt = e.target.closest && e.target.closest('.dgl-ac-opt'); if (opt) pick(Number(opt.getAttribute('data-i'))); });
+        menu.addEventListener('click', function (e) {
+          var tabBtn = e.target.closest && e.target.closest('[data-ac-etab]');
+          if (tabBtn && state) {
+            emojiTab = tabBtn.getAttribute('data-ac-etab') || 'server';
+            if (emojiTab === 'default' && !unicode) loadUnicode().then(function () { if (state && state.kind === 'emojis') refresh(state.field); });
+            refresh(state.field);
+            return;
+          }
+          var opt = e.target.closest && e.target.closest('.dgl-ac-opt');
+          if (opt) pick(Number(opt.getAttribute('data-i')));
+        });
         var touch = null;
         menu.addEventListener('touchstart', function (e) { var t = e.touches[0]; touch = t ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
         menu.addEventListener('touchend', function (e) {
@@ -295,8 +360,17 @@ const words = JSON.stringify({
     function open(field, found) {
       var data = pageData();
       if (found.kind !== 'vars' && found.kind !== 'commands' && !server && needsServerData()) loadServerData();
-      if (found.kind === 'emojis' && !unicode) loadUnicode().then(function () { if (state && state.field === field && state.kind === 'emojis') refresh(field); });
+      if (found.kind === 'roles') fetchMembers(found.query, field);
+      if (found.kind === 'emojis') {
+        if (!data.emojis.length && emojiTab === 'server') emojiTab = 'default';
+        if (!unicode) loadUnicode().then(function () { if (state && state.field === field && state.kind === 'emojis') refresh(field); });
+      }
       var items = itemsFor(found.kind, found.query, data);
+      // Hide cleanly when nothing matches (e.g. @ft8d with 0 roles/members) unless waiting on an in-flight search or switching emoji tabs.
+      if (!items.length && found.kind !== 'emojis' && !(found.kind === 'roles' && memberPending)) {
+        if (state) close();
+        return;
+      }
       var same = state && state.field === field && state.kind === found.kind && state.start === found.start;
       state = { field: field, kind: found.kind, query: found.query, start: found.start, end: found.end, items: items, index: same ? Math.min(state.index, Math.max(0, items.length - 1)) : 0 };
       ensureMenu(field);
@@ -378,8 +452,16 @@ const words = JSON.stringify({
 </script>
 
 <style is:global>
-  .dgl-ac { position: fixed; z-index: 1100; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .6); animation: m-pop-in var(--m-base, .2s) var(--m-out, ease-out) both; transform-origin: top left; }
-  .dgl-ac.up { animation-name: m-pop-in-up; transform-origin: bottom left; }
+  .dgl-ac { position: fixed; z-index: 1100; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--card) 96%, transparent); backdrop-filter: blur(12px); box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .6); animation: dglAcIn .22s cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: top left; }
+  .dgl-ac.up { animation-name: dglAcInUp; transform-origin: bottom left; }
+  @keyframes dglAcIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes dglAcInUp { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+  .dgl-ac-tabs { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-soft); }
+  .dgl-ac-tabs[hidden] { display: none; }
+  .dgl-ac-tabs button { flex: 1; border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color .16s ease, color .16s ease, border-color .16s ease; }
+  .dgl-ac-tabs button:hover { color: var(--text); background: var(--card-hover); }
+  .dgl-ac-tabs button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .dgl-ac-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
   .dgl-ac-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 9px 12px 6px; border-bottom: 1px solid var(--border-soft); }
   .dgl-ac-head b { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
   .dgl-ac-head span { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

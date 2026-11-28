@@ -872,7 +872,6 @@ export default function CardsApp({ guildId, premiumUrl, initialSelected, userId,
               )}
 
               <div className="ebr-actions">
-                <button type="button" className="btn btn-accent btn-sm" onClick={(ev) => { ev.currentTarget.style.minWidth = `${ev.currentTarget.offsetWidth}px`; handleSave(); }} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
                 <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete}>{t('Delete this card')}</button>
               </div>
               <p className="ebr-tools-note">{t('To use this card, open an embed template and pick it under Image card. Welcome, tickets, giveaways and the other messages use their template.')}</p>

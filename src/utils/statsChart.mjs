@@ -13,7 +13,7 @@ const DAY_MS = 86_400_000;
  * ("12K") with as few digits as keep every label different. `num` and `num1` format with 0 and 1 decimals.
  */
 export function tickLabels(ticks, { locale, num, num1, fractional = false }) {
-  const plain = ticks.map((value) => (fractional ? num1.format(value) : num.format(value)));
+  const plain = ticks.map((value) => (fractional ? num1.format(value) : (Number.isInteger(value) ? num.format(value) : '')));
   if (Math.max(...ticks.map(Math.abs)) < 10_000) return fractional ? ticks.map((value) => (Number.isInteger(value) ? num.format(value) : num1.format(value))) : plain;
   for (let digits = 0; digits <= 2; digits += 1) {
     const formatter = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: digits });
@@ -145,7 +145,7 @@ export function lineChart(o) {
     for (let k = 1; k <= flags.length; k += 1) {
       if (k < flags.length && flags[k] === flags[a]) continue;
       const piece = smoothPath(rc, a, k);
-      lines += flags[a] ? `<path d="${piece}" class="sc-line sc-line-dash"/>` : `<path d="${piece}" pathLength="1" class="sc-line"/>`;
+      lines += flags[a] ? `<path d="${piece}" class="sc-line sc-line-dash"/>` : `<path d="${piece}" pathLength="100" class="sc-line"/>`;
       a = k;
     }
     // The two ends of a run that touches a gap get a small dot, so the line is seen to stop there.
@@ -230,7 +230,7 @@ export function barChart(o) {
     const y = yOf(Math.max(item.value, 0));
     const h = Math.abs(yOf(item.value) - zero);
     const cls = ['sc-bar', item.value < 0 ? 'sc-bar-neg' : '', item.lit ? 'sc-bar-lit' : '', item.dim ? 'sc-bar-dim' : '', item.partial ? 'sc-bar-partial' : ''].filter(Boolean).join(' ');
-    const delay = Math.min(i * 18, 500);
+    const delay = Math.min(i * 10, 180);
     return `<rect x="${r4(xCenter(i) - barW / 2)}" y="${r4(item.value < 0 ? zero : y)}" width="${r4(barW)}" height="${r4(h)}" rx="${rx}" class="${cls}" style="--d:${delay}ms"/>`;
   }).join('');
 

@@ -14,16 +14,16 @@ export const SKELETON_SUBTITLE = '<span class="sk sk-line short"></span>';
 export function skeletonShape(kind) {
   switch (kind) {
     case 'stats':
-      return `<div class="sk-row">${repeat(4, '<span class="sk"></span>')}</div><span class="sk sk-block"></span><div class="sk-grid"><span class="sk sk-card"></span><span class="sk sk-card"></span></div>`;
+      return `<span class="sk sk-tabs"></span><div class="sk-row sk-row-6">${repeat(6, '<span class="sk"></span>')}</div><div class="sk-charts-2"><span class="sk sk-block"></span><span class="sk sk-block"></span></div><span class="sk sk-block"></span>`;
     case 'grid':
-      return `<div class="sk-toolbar"><span class="sk"></span></div><div class="sk-mods">${repeat(9, '<span class="sk"></span>')}</div>`;
+      return `<div class="sk-toolbar"><span class="sk"></span></div><div class="sk-mods">${repeat(12, '<span class="sk"></span>')}</div>`;
     case 'cards':
-      return `<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-grid">${repeat(6, '<span class="sk sk-card"></span>')}</div>`;
+      return `<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-grid">${repeat(8, '<span class="sk sk-card"></span>')}</div>`;
     case 'list':
-      return `<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-rows">${repeat(7, '<span class="sk"></span>')}</div>`;
+      return `<div class="sk-toolbar"><span class="sk"></span><span class="sk btn-ish"></span></div><div class="sk-rows">${repeat(9, '<span class="sk"></span>')}</div>`;
     case 'editor':
       return '<div class="sk-editor"><div class="sk-col"><span class="sk sk-field"></span><span class="sk sk-field"></span><span class="sk sk-field tall"></span><span class="sk sk-field"></span></div><div class="sk-col"><span class="sk sk-card tall"></span></div></div>';
     default:
-      return panel('<span class="sk"></span><span class="sk"></span><span class="sk wide"></span>') + panel('<span class="sk"></span><span class="sk"></span>');
+      return panel('<span class="sk"></span><span class="sk"></span><span class="sk wide"></span>') + panel('<span class="sk"></span><span class="sk"></span><span class="sk wide"></span>');
   }
 }

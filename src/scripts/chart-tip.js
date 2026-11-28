@@ -21,11 +21,11 @@
   // The numbers of the motion, in one place. The CSS in DashChartTip.astro (--ct-glide, --ct-in, --ct-out) must say the same;
   // scripts/check-chart-tip.mjs compares them.
   var TIMING = {
-    glideMs: 180, // the box, the guide and the dots move to the next point
-    fadeInMs: 120, // the box appears
-    fadeOutMs: 140, // the box goes away...
-    hideDelayMs: 100, // ...this long after the pointer left, so a brief jitter never flickers it
-    swapMs: 110, // the numbers in the box change with a very short cross-fade
+    glideMs: 220, // the box, the guide and the dots move to the next point
+    fadeInMs: 140, // the box appears
+    fadeOutMs: 160, // the box goes away...
+    hideDelayMs: 110, // ...this long after the pointer left, so a brief jitter never flickers it
+    swapMs: 140, // the numbers in the box change with a very short cross-fade
     hysteresis: 0.22, // share of the gap between two points around their middle where the pointer keeps the point it has
   };
 

@@ -28,8 +28,7 @@ export const GET: APIRoute = async (context) => {
     r: roles.filter((role) => String(role.id) !== id && role.name !== '@everyone')
       .sort((a, b) => Number(b.position) - Number(a.position))
       .map((role) => [String(role.id), String(role.name), role.color ? `#${Number(role.color).toString(16).padStart(6, '0')}` : '']),
-    // Categories (4) cannot be mentioned.
-    c: channels.filter((channel) => Number(channel.type) !== 4)
+    c: channels
       .sort((a, b) => Number(a.position) - Number(b.position))
       .map((channel) => [String(channel.id), String(channel.name), Number(channel.type) || 0]),
     e: emojis.map((emoji) => [emoji.id, emoji.name, emoji.animated ? 1 : 0]),

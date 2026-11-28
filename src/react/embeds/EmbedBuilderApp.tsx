@@ -53,10 +53,12 @@ async function api(guildId: string, apiPath: string, path: string, init?: Reques
 }
 
 const STYLE_LABELS: Record<string, string> = { blurple: 'Blurple', green: 'Green', grey: 'Grey', red: 'Red' };
+const DIRECT_MODE = '__direct__';
 
 export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarUrl, decorationUrl, nameplateUrl, guildIconUrl, initialTemplateNames, initialSelected, channels, generatorUrl, serverName, variableGroups, apiPath = 'embeds-api', maxEmbeds = 10, allowTestSend = true, allowButtonEmoji = true, maxTemplates, testSendNote }: Props) {
   const [names, setNames] = useState(initialTemplateNames);
   const [selected, setSelected] = useState(initialSelected);
+  const isDirect = selected === DIRECT_MODE;
   const [data, setData] = useState<TemplateData>(emptyTemplate());
   const [activeEmbed, setActiveEmbed] = useState(0);
   const [newName, setNewName] = useState('');
@@ -65,10 +67,13 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const [flash, setFlash] = useState<string | null>(null);
   // A template is named from the start: the editor waits (grey blocks) instead of showing an empty one for a moment first.
   const [loading, setLoading] = useState(Boolean(initialSelected));
-  const [sendTarget, setSendTarget] = useState('dm');
+  const [sendTarget, setSendTarget] = useState(channels[0]?.id ?? 'dm');
   const [sending, setSending] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ data: TemplateData; name: string } | null>(null);
   const [importText, setImportText] = useState('');
+  const [fetchRef, setFetchRef] = useState('');
+  const [fetchChannel, setFetchChannel] = useState(channels[0]?.id ?? '');
+  const [fetchingMsg, setFetchingMsg] = useState(false);
   const cardsEnabled = apiPath === 'embeds-api';
   const [cardNames, setCardNames] = useState<{ name: string; data: unknown }[]>([]);
   const [cardImage, setCardImage] = useState('');
@@ -81,7 +86,19 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const contentRef = useRef<HTMLTextAreaElement>(null);
   // The app is uncovered from the top down when it appears, like the rest of the dashboard.
   const rootRef = useRef<HTMLDivElement>(null);
+  const formColRef = useRef<HTMLDivElement>(null);
   useRevealWhen(rootRef, true, true);
+  useEffect(() => {
+    const node = formColRef.current;
+    const editor = node?.closest<HTMLElement>('.ebr-editor');
+    if (!node || !editor) return;
+    const sync = () => editor.style.setProperty('--ebr-form-h', `${Math.round(node.getBoundingClientRect().height)}px`);
+    sync();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(sync);
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, [selected, loading]);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   // The template as it was loaded or last saved: what "discard" on the dashboard's bar of unsaved changes goes back to.
@@ -95,28 +112,54 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   const remember = (key: string, value: string) => { try { sessionStorage.setItem(`${storeKey}:${key}`, value); } catch { /* the tab keeps no memory: nothing is lost */ } };
   const recall = (key: string) => { try { return sessionStorage.getItem(`${storeKey}:${key}`); } catch { return null; } };
   function pick(name: string) {
+    if (name === selected) return;
+    if (name === DIRECT_MODE) {
+      setSelected(DIRECT_MODE);
+      setLoading(false);
+      setDirty(false);
+      setData(emptyTemplate());
+      savedData.current = null;
+      setActiveEmbed(0);
+      setNewOpen(false);
+      return;
+    }
+    // Immediately switch to loading skeleton if not cached so the previous template's preview never lingers.
+    if (!cache.current[name]) setLoading(true);
     setSelected(name);
     remember('selected', name);
     if (apiPath === 'embeds-api') { try { const url = new URL(window.location.href); url.searchParams.set('name', name); window.history.replaceState(window.history.state, '', url); } catch { /* the address is a convenience */ } }
   }
-  function chooseEmbed(i: number) { setActiveEmbed(i); if (selected) remember(`embed:${selected}`, String(i)); }
+  function chooseEmbed(i: number) { setActiveEmbed(i); if (selected && !isDirect) remember(`embed:${selected}`, String(i)); }
 
   useEffect(() => {
-    if (!selected) { setData(emptyTemplate()); savedData.current = null; return; }
+    if (!selected || selected === DIRECT_MODE) {
+      if (!selected) { setData(emptyTemplate()); savedData.current = null; setLoading(false); }
+      return;
+    }
     const cached = cache.current[selected];
     const wanted = Number(recall(`embed:${selected}`) ?? 0) || 0;
-    if (cached) { setData(cached); savedData.current = cached; setDirty(false); setActiveEmbed(Math.max(0, Math.min(wanted, cached.embeds.length - 1))); } else { setLoading(true); setActiveEmbed(0); }
+    if (cached) {
+      setData(cached);
+      savedData.current = cached;
+      setDirty(false);
+      setLoading(false);
+      setActiveEmbed(Math.max(0, Math.min(wanted, Math.max(0, cached.embeds.length - 1))));
+    } else {
+      setLoading(true);
+      setActiveEmbed(0);
+    }
     let current = true;
     api(guildId, apiPath, `?name=${encodeURIComponent(selected)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((row) => {
         if (!row || !current) return;
         const loaded = normalizeTemplateData(row.data);
+        const unchanged = cached && JSON.stringify(loaded) === JSON.stringify(cached);
         cache.current[selected] = loaded;
-        // Edits made while it was refreshing win over what came back.
-        if (cached && dirtyRef.current) return;
+        // Edits made while refreshing win, and identical cached data never re-renders/flashes the preview.
+        if (unchanged || (cached && dirtyRef.current)) return;
         setData(loaded); savedData.current = loaded; setDirty(false);
-        setActiveEmbed(Math.max(0, Math.min(wanted, loaded.embeds.length - 1)));
+        setActiveEmbed(Math.max(0, Math.min(wanted, Math.max(0, loaded.embeds.length - 1))));
       })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
@@ -235,13 +278,13 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
   saveRef.current = handleSave;
   useEffect(() => {
     const w = window as unknown as { dglDirty?: (key: string, opts: object) => void; dglClean?: (key: string) => void };
-    if (!dirty || !w.dglDirty || !w.dglClean) return;
+    if (!dirty || isDirect || !w.dglDirty || !w.dglClean) return;
     w.dglDirty('embeds-editor', {
       save: () => saveRef.current(),
       discard: () => { if (savedData.current) setData(savedData.current); setDirty(false); },
     });
     return () => w.dglClean?.('embeds-editor');
-  }, [dirty]);
+  }, [dirty, isDirect]);
 
   async function handleDelete() {
     if (!selected) return;
@@ -291,13 +334,36 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
     window.open(`${generatorUrl}/#import=${encodeURIComponent(encodeShareCode(data))}`, '_blank', 'noopener');
   }
 
+  async function handleFetchMessage(intoDirect: boolean) {
+    if (!fetchRef.trim() || fetchingMsg) return;
+    setFetchingMsg(true);
+    const res = await api(guildId, apiPath, '', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'fetch_message', channel_id: fetchChannel, message_ref: fetchRef.trim() }),
+    }).catch(() => null);
+    setFetchingMsg(false);
+    if (!res) { notify(t("Couldn't fetch that message."), 'error'); return; }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.data) { notify(body.error ? t(body.error) : t("Couldn't fetch that message."), 'error'); return; }
+    const loaded = normalizeTemplateData(body.data);
+    if (intoDirect) {
+      setData(loaded);
+      setActiveEmbed(0);
+      setDirty(false);
+      notify(t('Message loaded.'));
+    } else {
+      setPendingImport({ data: loaded, name: 'imported-msg' });
+      notify(t('Message loaded. Name it to save as a template.'));
+    }
+  }
+
   async function handleSendTest() {
     setSending(true);
     const res = await api(guildId, apiPath, '', { method: 'POST', body: JSON.stringify({ action: 'test_send', data, channel_id: sendTarget }) }).catch(() => null);
     setSending(false);
-    if (!res) { notify(t("Couldn't send the test message."), 'error'); return; }
+    if (!res) { notify(t("Couldn't send the message."), 'error'); return; }
     const body = await res.json().catch(() => ({}));
-    notify(res.ok ? t('Test message sent.') : (body.error ? t(body.error) : t("Couldn't send the test message.")), res.ok ? 'ok' : 'error');
+    notify(res.ok ? (isDirect ? t('Message sent.') : t('Test message sent.')) : (body.error ? t(body.error) : t("Couldn't send the message.")), res.ok ? 'ok' : 'error');
   }
 
   function addEmbed() {
@@ -385,6 +451,11 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
 
       <div className="ebr-top">
         <div className="ebr-chips" role="tablist" aria-label={t('Templates')}>
+          {allowTestSend && apiPath === 'embeds-api' && (
+            <button type="button" role="tab" aria-selected={isDirect} className={`ebr-chip ebr-chip-direct${isDirect ? ' active' : ''}`} onClick={() => pick(DIRECT_MODE)}>
+              ✉ {t('Send message')}
+            </button>
+          )}
           {names.map((n) => (
             <button key={n} type="button" role="tab" aria-selected={n === selected} className={`ebr-chip${n === selected ? ' active' : ''}`} onClick={() => pick(n)}>{n}</button>
           ))}
@@ -420,23 +491,31 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
         <div className="ebr-skeleton" aria-hidden="true"><i /><i /><i /></div>
       ) : (
         <div className="ebr-editor ebr-fade" data-view={view} key={selected}>
-          <div className="ebr-head">
-            <div className="ebr-head-title">
-              <h2>{selected}</h2>
-              <span className={`ebr-state${dirty ? ' dirty' : ''}`}><i />{dirty ? t('Unsaved changes') : t('All changes saved')}</span>
-            </div>
-            <div className="ebr-head-actions">
-              <button type="button" className="btn btn-accent btn-sm" onClick={(ev) => { keepWidth(ev); handleSave(); }} disabled={saving || !dirty}>{saving ? t('Saving...') : t('Save changes')}</button>
-              <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete} aria-label={t('Delete this template')} title={t('Delete this template')}>{trash}<span>{t('Delete this template')}</span></button>
-            </div>
-          </div>
-
           <div className="ebr-switch" role="tablist" aria-label={t('View')}>
             <button type="button" role="tab" aria-selected={view === 'edit'} onClick={() => setView('edit')}>{t('Edit')}</button>
             <button type="button" role="tab" aria-selected={view === 'preview'} onClick={() => setView('preview')}>{t('Preview')}</button>
           </div>
 
-          <div className="ebr-form-col">
+          <div className="ebr-form-col" ref={formColRef}>
+            {isDirect && (
+              <div className="ebr-direct-bar">
+                <div className="ebr-direct-head">
+                  <strong>{t('Send a message directly')}</strong>
+                  <span>{t('Compose or load any Discord message (including embeds and forwarded messages) and send it without saving a template.')}</span>
+                </div>
+                <div className="ebr-direct-fetch">
+                  <select value={fetchChannel} onChange={(ev) => setFetchChannel(ev.target.value)} aria-label={t('Channel')}>
+                    {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                  </select>
+                  <input type="text" value={fetchRef} onChange={(ev) => setFetchRef(ev.target.value)} placeholder={t('Message ID or Discord message link...')} aria-label={t('Message ID or Discord message link')} />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleFetchMessage(true)} disabled={fetchingMsg || !fetchRef.trim()}>{fetchingMsg ? t('Loading...') : t('Load raw')}</button>
+                </div>
+                <div className="ebr-direct-mode">
+                  <button type="button" className={`btn btn-sm ${!data.v2 ? 'btn-accent' : 'btn-ghost'}`} onClick={() => data.v2 && setData(emptyTemplate())}>{t('Classic embed')}</button>
+                  <button type="button" className={`btn btn-sm ${data.v2 ? 'btn-accent' : 'btn-ghost'}`} onClick={() => !data.v2 && setData({ ...emptyTemplate(), v2: emptyV2() })}>{t('Components V2')}</button>
+                </div>
+              </div>
+            )}
             {data.v2 ? (
               <>
                 <Section title={t('Message')}>
@@ -583,30 +662,37 @@ export default function EmbedBuilderApp({ guildId, botName, botIcon, userAvatarU
             <Section title={t('Variables')} defaultOpen={false}>
               <VariablesPanel groups={variableGroups} />
             </Section>
-          </div>
 
-          <aside className="ebr-preview-col">
-            <div className="ebr-preview-card">
-              <div className="ebr-preview-label">{t('Preview')}</div>
-              {previewNode}
-            </div>
             <div className="ebr-tools">
-              <h3>{t('Test and share')}</h3>
+              <h3>{isDirect ? t('Send to Discord') : t('Test and share')}</h3>
               {allowTestSend ? (<>
                 <div className="ebr-tools-row">
-                  <select value={sendTarget} onChange={(ev) => setSendTarget(ev.target.value)} aria-label={t('Test and share')}>
+                  <select value={sendTarget} onChange={(ev) => setSendTarget(ev.target.value)} aria-label={t('Send to Discord')}>
                     <option value="dm">{t('My direct messages')}</option>
                     {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
                   </select>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={(ev) => { keepWidth(ev); handleSendTest(); }} disabled={sending || dirty}>{sending ? t('Sending...') : t('Send test')}</button>
+                  <button type="button" className={`btn btn-sm ${isDirect ? 'btn-accent' : 'btn-ghost'}`} onClick={(ev) => { keepWidth(ev); handleSendTest(); }} disabled={sending || (!isDirect && dirty)}>{sending ? t('Sending...') : (isDirect ? t('Send message') : t('Send test'))}</button>
                 </div>
-                {dirty && <p className="ebr-tools-note">{t('Save your changes first, the test sends the saved template.')}</p>}
+                {!isDirect && dirty && <p className="ebr-tools-note">{t('Save your changes first, the test sends the saved template.')}</p>}
               </>) : (testSendNote ? <p className="ebr-tools-note">{testSendNote}</p> : null)}
               <div className="ebr-tools-row">
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('code')}>{t('Copy share code')}</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleCopy('json')}>{t('Copy JSON')}</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={openInGenerator}>{t('Open in Embed Generator')}</button>
               </div>
+            </div>
+
+            {!isDirect && (
+              <div className="ebr-foot-actions">
+                <button type="button" className="btn btn-ghost btn-sm ebr-delete-btn" onClick={handleDelete} aria-label={t('Delete this template')} title={t('Delete this template')}>{trash}<span>{t('Delete this template')}</span></button>
+              </div>
+            )}
+          </div>
+
+          <aside className="ebr-preview-col">
+            <div className="ebr-preview-card">
+              <div className="ebr-preview-label">{t('Preview')}</div>
+              {previewNode}
             </div>
           </aside>
         </div>

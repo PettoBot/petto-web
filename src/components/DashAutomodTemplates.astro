@@ -212,46 +212,15 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
 </DashGuildLayout>
 
 <script is:inline>
-  if (!window.__amBound) {
-    window.__amBound = true;
-    var guild = location.pathname.replace(/^\/(es|pt-br)(?=\/)/i, '').split('/')[3];
-    // The answer is a toast at the bottom (the page is long, the button pressed may be far from the top); without it, the box at the top.
-    var msg = function (text, ok) {
-      if (window.dglToast) { window.dglToast(text, { kind: ok ? 'ok' : 'error' }); return; }
-      var box = document.querySelector('[data-am-msg]');
-      if (!box) return;
-      box.hidden = false; box.textContent = text; box.className = 'am-msg ' + (ok ? 'ok' : 'bad');
-      box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    };
-    var send = function (body, button, okText) {
-      if (button) button.disabled = true;
-      return fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data && data.ok) { msg(okText || cdt('Done.'), true); setTimeout(function () { location.reload(); }, 900); }
-          else { msg((data && data.message) || cdt('It could not be done.'), false); if (button) button.disabled = false; }
-        })
-        .catch(function () { msg(cdt('It could not be done.'), false); if (button) button.disabled = false; });
-    };
-    var settings = function () {
-      var root = document.querySelector('[data-am-settings]');
-      var val = function (k) { var el = root.querySelector('[data-s="' + k + '"]'); return el ? el.value : ''; };
-      var checked = function (name) { return Array.prototype.map.call(root.querySelectorAll('input[name="' + name + '"]:checked'), function (i) { return i.value; }); };
-      return { alertChannelId: val('alert'), timeoutMinutes: Number(val('timeout')) || 0, customMessage: val('message'), action: val('action'), muteMinutes: Number(val('mute')) || 10, exemptRoleIds: checked('am_exempt_roles'), exemptChannelIds: checked('am_exempt_channels') };
-    };
-    var options = function (tile) {
-      var out = {};
-      tile.querySelectorAll('[data-opt]').forEach(function (el) { out[el.getAttribute('data-opt')] = el.type === 'checkbox' ? el.checked : Number(el.value); });
-      return out;
-    };
-    // Discord is asked after the page is drawn, so the page does not wait for it.
+  (function () {
+    var guildOf = function () { return location.pathname.replace(/^\/(es|pt-br)(?=\/)/i, '').split('/')[3]; };
     var renderNative = function (data) {
       var list = document.querySelector('[data-native-list]');
       var empty = document.querySelector('[data-native-empty]');
       var count = document.querySelector('[data-native-count]');
       var warn = document.querySelector('[data-native-warn]');
       if (!list) return;
-      if (!data || !data.ok) { list.hidden = true; if (warn) warn.hidden = false; if (count) count.textContent = '–'; return; }
+      if (!data || !data.ok) { list.hidden = true; list.removeAttribute('aria-busy'); if (warn) warn.hidden = false; if (count) count.textContent = '–'; return; }
       if (count) count.textContent = ((data.used && data.used.keyword) || 0) + '/' + ((data.limits && data.limits.keyword) || 6);
       list.textContent = '';
       var rules = data.rules || [];
@@ -272,18 +241,56 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
         } else { var st = document.createElement('span'); st.className = 'am-tag'; st.textContent = r.enabled ? cdt('Active') : cdt('Inactive'); item.appendChild(st); }
         list.appendChild(item);
       });
-      // The rules read from Discord replace the grey rows and are uncovered from the top down.
       list.removeAttribute('aria-busy');
       if (window.dglLoad) window.dglLoad.reveal(list);
     };
-    fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'native_list' }) })
-      .then(function (r) { return r.json(); }).then(renderNative).catch(function () { renderNative(null); });
+    var loadNative = function () {
+      var list = document.querySelector('[data-native-list]');
+      if (!list) return;
+      var g = guildOf();
+      if (!g) { renderNative(null); return; }
+      fetch('/dash/guild/' + g + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'native_list' }) })
+        .then(function (r) { return r.json(); }).then(renderNative).catch(function () { renderNative(null); });
+    };
+    loadNative();
+
+    if (window.__amBound) return;
+    window.__amBound = true;
+    // The answer is a toast at the bottom (the page is long, the button pressed may be far from the top); without it, the box at the top.
+    var msg = function (text, ok) {
+      if (window.dglToast) { window.dglToast(text, { kind: ok ? 'ok' : 'error' }); return; }
+      var box = document.querySelector('[data-am-msg]');
+      if (!box) return;
+      box.hidden = false; box.textContent = text; box.className = 'am-msg ' + (ok ? 'ok' : 'bad');
+      box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    var send = function (body, button, okText) {
+      if (button) button.disabled = true;
+      return fetch('/dash/guild/' + guildOf() + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.ok) { msg(okText || cdt('Done.'), true); setTimeout(function () { location.reload(); }, 900); }
+          else { msg((data && data.message) || cdt('It could not be done.'), false); if (button) button.disabled = false; }
+        })
+        .catch(function () { msg(cdt('It could not be done.'), false); if (button) button.disabled = false; });
+    };
+    var settings = function () {
+      var root = document.querySelector('[data-am-settings]');
+      var val = function (k) { var el = root.querySelector('[data-s="' + k + '"]'); return el ? el.value : ''; };
+      var checked = function (name) { return Array.prototype.map.call(root.querySelectorAll('input[name="' + name + '"]:checked'), function (i) { return i.value; }); };
+      return { alertChannelId: val('alert'), timeoutMinutes: Number(val('timeout')) || 0, customMessage: val('message'), action: val('action'), muteMinutes: Number(val('mute')) || 10, exemptRoleIds: checked('am_exempt_roles'), exemptChannelIds: checked('am_exempt_channels') };
+    };
+    var options = function (tile) {
+      var out = {};
+      tile.querySelectorAll('[data-opt]').forEach(function (el) { out[el.getAttribute('data-opt')] = el.type === 'checkbox' ? el.checked : Number(el.value); });
+      return out;
+    };
     var saveDomains = function (btn) {
       var box = document.querySelector('[data-am-domains]');
       var area = box.querySelector('[data-domains]');
       var bad = box.querySelector('[data-domains-bad]');
       btn.disabled = true;
-      fetch('/dash/guild/' + guild + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'link_domains_save', domains: area.value }) })
+      fetch('/dash/guild/' + guildOf() + '/automod-api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'link_domains_save', domains: area.value }) })
         .then(function (r) { return r.json(); })
         .then(function (data) {
           btn.disabled = false;
@@ -337,8 +344,22 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
     window.__amNav = true;
     document.addEventListener('click', function (event) {
       var button = event.target.closest && event.target.closest('[data-am-jump]'); if (!button) return;
-      var target = document.getElementById(button.getAttribute('data-am-jump'));
-      if (target) target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      var id = button.getAttribute('data-am-jump');
+      var target = id ? document.getElementById(id) : null;
+      if (!target) return;
+      if (target.hidden) {
+        var filter = document.querySelector('[data-am-filter]');
+        if (filter) { filter.value = ''; filter.dispatchEvent(new Event('input', { bubbles: true })); }
+      }
+      document.querySelectorAll('.am-jump-btn').forEach(function (b) { b.classList.toggle('is-on', b === button); });
+      var behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      var scroller = document.getElementById('dgl-content');
+      if (scroller && scroller.scrollHeight > scroller.clientHeight + 2) {
+        var top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 16;
+        scroller.scrollTo({ top: Math.max(0, top), behavior: behavior });
+      } else {
+        target.scrollIntoView({ behavior: behavior, block: 'start' });
+      }
     });
     document.addEventListener('input', function (event) {
       var box = event.target; if (!box.matches || !box.matches('[data-am-filter]')) return;
@@ -371,12 +392,12 @@ const ruleName = (r: { id: number; name: string; template: string }) => info[r.t
   .am-where > :global(svg:first-child) { color: var(--accent); flex: none; }
   .am-warn { font-size: 13px; color: var(--yellow); margin: -6px 0 14px; }
   .am-warn[hidden] { display: none; }
-  .am-toolbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; margin: 18px 0 4px; padding: 8px 0; background: linear-gradient(180deg, var(--bg-raise, var(--card)) 70%, transparent); }
+  .am-toolbar { display: flex; align-items: center; gap: 10px; margin: 18px 0 4px; padding: 4px 0; }
   .am-jump { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
   .am-jump::-webkit-scrollbar { display: none; }
   .am-jump-btn { flex: none; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-muted); font: 500 12.5px var(--sans); padding: 6px 12px; cursor: pointer; transition: background-color .25s ease, color .25s ease, border-color .25s ease; white-space: nowrap; }
   .am-jump-btn:hover { color: var(--text); background: var(--card-hover); }
-  .am-jump-btn:active { color: var(--accent); border-color: var(--accent); }
+  .am-jump-btn:active, .am-jump-btn.is-on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   .am-search { flex: 0 0 210px; border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px; background: var(--card); color: var(--text); font: 13px var(--sans); min-width: 0; transition: border-color .25s ease, box-shadow .25s ease; }
   .am-search:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .am-h { display: flex; align-items: baseline; gap: 8px; font-size: 16px; margin: 24px 0 12px; scroll-margin-top: 64px; }

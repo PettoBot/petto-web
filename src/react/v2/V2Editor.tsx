@@ -32,7 +32,25 @@ function TextBox({ value, onChange, rows = 4, max = V2_LIMITS.text }: { value: s
   const ref = useRef<HTMLTextAreaElement>(null);
   return (
     <div className="v2e-textbox">
-      <textarea ref={ref} data-ac="" rows={rows} maxLength={max} value={value} onChange={(ev) => onChange(ev.target.value)} />
+      <textarea
+        ref={(node) => {
+          ref.current = node;
+          if (node && node.offsetWidth > 0) {
+            node.style.height = 'auto';
+            node.style.height = `${node.scrollHeight + 2}px`;
+          }
+        }}
+        className="dgl-autogrow"
+        data-ac=""
+        rows={rows}
+        maxLength={max}
+        value={value}
+        onChange={(ev) => {
+          onChange(ev.target.value);
+          ev.currentTarget.style.height = 'auto';
+          ev.currentTarget.style.height = `${ev.currentTarget.scrollHeight + 2}px`;
+        }}
+      />
       <FormatToolbar targetRef={ref} onChange={onChange} />
       <SilentHint />
     </div>
