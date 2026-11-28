@@ -73,10 +73,12 @@ for (const [name, card] of Object.entries(manifest.cards)) {
   }
 }
 
-// The Discord card of every page, built the way the layout builds it: four link buttons with an emoji, in the size Discord accepts, and a bar on its left that is the
-// SAME color as the background of the picture of the page (the table of tones is the one source: the picture is drawn with it and the bar is read from it).
+// The Open Graph preview of every page: every card resolves to a versioned WebP, carries a dark accent matching its tone,
+// and Base.astro uses clean Open Graph tags (without the old 4-button discord:component-embed payload).
 const { pageImage, pageImagePath } = await loadTs('src/data/pageImages.ts');
-const { discordEmbedJson, DOCS_URL, SUPPORT_URL, EMOJI } = await loadTs('src/data/discordEmbed.ts');
+const baseLayout = readFileSync(path.join(root, 'src/layouts/Base.astro'), 'utf8');
+if (/id="discord:component-embed"/.test(baseLayout)) problems.push('Base.astro still emits the old discord:component-embed script');
+if (!/<meta name="theme-color" content=\{embedThemeColor\}/.test(baseLayout)) problems.push('Base.astro is missing the dark theme-color meta tag for Discord embeds');
 const jobsByName = new Map(jobs.map((job) => [job.name, job]));
 for (const pageKey of Object.keys(CARD_PATHS)) {
   const base = pageKey === '/lb' ? '/lb/a-server' : pageKey;
@@ -85,19 +87,10 @@ for (const pageKey of Object.keys(CARD_PATHS)) {
     const picture = pageImage(pagePath);
     const job = jobsByName.get(picture.name);
     if (!job) { problems.push(`${pagePath}: its picture ${picture.name} is not a card`); continue; }
-    const json = discordEmbedJson(lang, { title: picture.embedTitle, description: picture.description, url: `https://petto.sbs${pagePath}`, image: { url: `https://petto.sbs${pageImagePath(picture)}`, alt: picture.alt }, accent: picture.accent });
-    const embed = JSON.parse(json.replace(/\\u003c/g, '<')).component;
     const wanted = parseInt(TONES[job.card.tone].bg.slice(1), 16);
-    if (embed.accent_color !== wanted || picture.accent !== wanted || accentNumber(job.card.tone) !== wanted) problems.push(`${pagePath}: the bar of the card is not the background color of its picture`);
+    if (picture.accent !== wanted || accentNumber(job.card.tone) !== wanted) problems.push(`${pagePath}: the bar of the card is not the accent color of its tone`);
     if (!cardHtml({ card: job.card, lang, title: job.title, tagline: job.tagline, extra: job.extra, assetsDir: path.join(root, 'scripts/og/assets'), publicDir: path.join(root, 'public') }).includes(`background: ${TONES[job.card.tone].bg}`)) problems.push(`${pagePath}: its picture is not drawn on the background of its tone`);
-    const row = embed.components.find((part) => part.type === 1)?.components ?? [];
-    const urls = [`https://petto.sbs/invite`, `https://petto.sbs/dash`, DOCS_URL[lang], SUPPORT_URL];
-    const emoji = [EMOJI.invite, EMOJI.dashboard, EMOJI.docs, EMOJI.support];
-    if (row.length !== 4 || row.some((button, i) => button.type !== 2 || button.style !== 5 || button.url !== urls[i] || button.emoji?.id !== emoji[i].id || !button.label)) problems.push(`${pagePath}: the card does not have its four link buttons with their emoji`);
     if (!/\.webp\?v=[0-9a-f]{10}$/.test(pageImagePath(picture))) problems.push(`${pagePath}: the address of the picture has no version, so Discord would keep showing the old picture after it is drawn again`);
-    if (new TextEncoder().encode(json).length > 3000) problems.push(`${pagePath}: the card is over 3,000 bytes`);
-    if (SIZE_OF_THE_BOT.test(json)) problems.push(`${pagePath}: the card counts servers or members`);
-    if (!/Petto/.test(embed.components.find((part) => part.type === 10).content.split('\n')[0])) problems.push(`${pagePath}: the title of the card does not carry the brand`);
   }
 }
 
