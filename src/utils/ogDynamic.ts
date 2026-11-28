@@ -60,11 +60,13 @@ async function loadNodeTools() {
     ]);
     const cwd = process.cwd();
     const candidates = [
-      pathMod.join(cwd, 'public'),
-      pathMod.join(cwd, 'build/client'),
+      pathMod.join(cwd, 'build/dist/client'),
       pathMod.join(cwd, 'dist/client'),
+      pathMod.join(cwd, 'build/client'),
+      pathMod.join(cwd, 'public'),
     ];
-    const publicDir = candidates.find((dir) => fsMod.existsSync(pathMod.join(dir, 'assets/petto-emblem.svg'))) ?? candidates[0];
+    const publicDir = candidates.find((dir) => fsMod.existsSync(pathMod.join(dir, 'assets/petto-emblem.svg'))) ?? null;
+    if (!publicDir) return null;
     return { sharp, path: pathMod, fs: fsMod, publicDir };
   } catch {
     return null;
@@ -94,6 +96,7 @@ export async function renderLeaderboardOg(opts: {
   bannerUrl?: string | null;
   memberCount?: number | null;
 }): Promise<Buffer | null> {
+  try {
   const tools = await loadNodeTools();
   if (!tools) return null;
   const { sharp, path: pathMod, publicDir } = tools;
@@ -177,6 +180,10 @@ export async function renderLeaderboardOg(opts: {
     .composite(layers)
     .webp({ quality: 80, effort: 4, smartSubsample: true })
     .toBuffer();
+  } catch (err) {
+    console.error('[ogDynamic] leaderboard render failed:', err);
+    return null;
+  }
 }
 
 export async function renderPartnerOg(opts: {
@@ -186,6 +193,7 @@ export async function renderPartnerOg(opts: {
   isPrimary?: boolean;
   logoUrl?: string | null;
 }): Promise<Buffer | null> {
+  try {
   const tools = await loadNodeTools();
   if (!tools) return null;
   const { sharp, path: pathMod, fs: fsMod, publicDir } = tools;
@@ -265,4 +273,8 @@ export async function renderPartnerOg(opts: {
     .composite(layers)
     .webp({ quality: 80, effort: 4, smartSubsample: true })
     .toBuffer();
+  } catch (err) {
+    console.error('[ogDynamic] partner render failed:', err);
+    return null;
+  }
 }
