@@ -34,11 +34,30 @@ export default function FormatToolbar({ targetRef, onChange }: Props) {
     });
   }
 
+  function openEmojiPicker() {
+    const el = targetRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const before = el.value.slice(0, start);
+    const pad = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+    const insert = `${pad}:`;
+    const next = before + insert + el.value.slice(end);
+    onChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + insert.length;
+      el.setSelectionRange(pos, pos);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
   return (
     <div className="ebr-toolbar">
       {WRAPS.map((w) => (
         <button key={w.label} type="button" title={w.title} onClick={() => applyWrap(w.before, w.after)}>{w.label}</button>
       ))}
+      <button type="button" title={t('Insert emoji')} aria-label={t('Insert emoji')} onClick={openEmojiPicker}>😀</button>
     </div>
   );
 }

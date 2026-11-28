@@ -67,15 +67,33 @@ const t = { ...copy[lang], ...extra[lang] };
 // The partners come from the table the team edits in the dashboard (or the original list), grouped by type.
 const { partners } = await getPartners(Astro);
 const groups = PARTNER_KINDS.map((kind) => ({ kind, items: partners.filter((partner) => partner.kind === kind) })).filter((group) => group.items.length > 0);
-// The link to one partner: /partners#part_<type>:<name>, which scrolls to its card.
-const partnerAnchor = (partner: PartnerRow) => `part_${partner.kind}:${partner.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+// The link to one partner: /partners?p=<slug> so Discord and social crawlers read it, while still supporting legacy #part_<type>:<slug> anchors.
+const partnerSlug = (partner: PartnerRow) => partner.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const partnerAnchor = (partner: PartnerRow) => `part_${partner.kind}:${partnerSlug(partner)}`;
 const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.description_es : lang === 'pt-BR' ? partner.description_pt : partner.description_en) || partner.description_en;
+
+const wantedPartner = (Astro.url.searchParams.get('p') ?? '').trim().toLowerCase();
+const selectedPartner = wantedPartner
+  ? partners.find((p) => partnerSlug(p) === wantedPartner || partnerAnchor(p) === wantedPartner) ?? null
+  : null;
 ---
 
-<Base title={`${t.eyebrow} · Petto`} lang={lang}>
+<Base
+  title={selectedPartner ? `${selectedPartner.name} · ${t.eyebrow} · Petto` : `${t.eyebrow} · Petto`}
+  description={selectedPartner ? descriptionOf(selectedPartner) : undefined}
+  ogTitle={selectedPartner ? `${selectedPartner.name} · ${t.eyebrow} · Petto` : undefined}
+  ogImage={selectedPartner ? `/api/og/partner?p=${encodeURIComponent(partnerSlug(selectedPartner))}&lang=${lang}` : undefined}
+  ogImageAlt={selectedPartner ? selectedPartner.name : undefined}
+  lang={lang}
+  preloadImages={['/assets/hero-art-4.webp']}
+>
   <main>
-    <section class="pa-hero">
-      <div class="wrap">
+    <section class="pa-hero vx-sub-hero pa-hero-tall">
+      <div class="vx-sub-bg" aria-hidden="true" style="background-image:url('/assets/hero-art-4.webp');background-size:cover;background-position:center 26%;">
+        <img src="/assets/hero-art-4.webp" alt="" loading="eager" decoding="sync" fetchpriority="high" draggable="false" />
+        <div class="vx-sub-fade"></div>
+      </div>
+      <div class="wrap pa-hero-inner">
         <div class="eyebrow reveal">{t.eyebrow}</div>
         <h1 class="reveal">{t.title}</h1>
         <p class="pa-lede reveal">{t.lede}</p>
@@ -109,7 +127,7 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
                     <a class="pa-link" href={partner.url} target="_blank" rel="noopener noreferrer">
                       {t.visitPartner(partner.name)}<Icon name="ph:arrow-up-right" width="14" height="14" />
                     </a>
-                    <button type="button" class="pa-copy" data-copy-anchor={partnerAnchor(partner)} data-copied={t.copied} title={t.copyLink} aria-label={t.copyLink}>
+                    <button type="button" class="pa-copy" data-copy-slug={partnerSlug(partner)} data-copy-anchor={partnerAnchor(partner)} data-copied={t.copied} title={t.copyLink} aria-label={t.copyLink}>
                       <Icon name="ph:link-simple-bold" width="14" height="14" /><span>{t.copyLink}</span>
                     </button>
                   </div>
@@ -132,12 +150,13 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
 </Base>
 
 <script>
-  // Copies the link to one partner (the page and #part_<type>:<name>) and, when the page is opened with one, scrolls to its card.
-  document.querySelectorAll<HTMLButtonElement>('[data-copy-anchor]').forEach((button) => {
+  // Copies a crawler-friendly link to one partner (/partners?p=<slug>) and scrolls to the card on ?p= or legacy #part_ hashes.
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-slug]').forEach((button) => {
     const label = button.querySelector('span');
     const original = label?.textContent ?? '';
     button.addEventListener('click', async () => {
-      const link = `${location.origin}${location.pathname}#${button.dataset.copyAnchor}`;
+      const slug = button.dataset.copySlug ?? '';
+      const link = `${location.origin}${location.pathname}?p=${encodeURIComponent(slug)}`;
       try { await navigator.clipboard.writeText(link); } catch {
         const box = document.createElement('textarea'); box.value = link; document.body.append(box); box.select(); document.execCommand('copy'); box.remove();
       }
@@ -145,8 +164,16 @@ const descriptionOf = (partner: PartnerRow) => (lang === 'es' ? partner.descript
     });
   });
   const open = () => {
-    const id = decodeURIComponent(location.hash.slice(1));
-    const card = id.startsWith('part_') ? document.getElementById(id) : null;
+    const params = new URLSearchParams(location.search);
+    const wanted = (params.get('p') ?? '').trim().toLowerCase();
+    const hashId = decodeURIComponent(location.hash.slice(1));
+    let card: HTMLElement | null = null;
+    if (wanted) {
+      const btn = document.querySelector<HTMLElement>(`[data-copy-slug="${CSS.escape(wanted)}"]`);
+      card = btn?.closest<HTMLElement>('.pa-card') ?? document.getElementById(wanted);
+    } else if (hashId.startsWith('part_')) {
+      card = document.getElementById(hashId);
+    }
     if (!card) return;
     card.scrollIntoView({ block: 'center', behavior: 'smooth' });
     card.classList.add('pa-target');

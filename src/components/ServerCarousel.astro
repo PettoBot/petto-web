@@ -7,21 +7,21 @@ import type { Locale } from '../i18n/ui';
 interface Props { lang: Locale }
 const { lang } = Astro.props;
 
-const WORDS: Record<Locale, { eyebrow: string; title: string; desc: string; online: string; members: string; discoverable: string; verified: string; partnered: string; community: string; boost: string }> = {
-  en: { eyebrow: 'Live', title: 'Servers that run on Petto', desc: 'The biggest communities that use Petto right now.', online: 'online', members: 'members', discoverable: 'Discoverable server', verified: 'Verified server', partnered: 'Partnered server', community: 'Community server', boost: 'Boosted server, level' },
-  es: { eyebrow: 'En vivo', title: 'Servidores que funcionan con Petto', desc: 'Las comunidades más grandes que usan Petto ahora mismo.', online: 'en línea', members: 'miembros', discoverable: 'Servidor en Descubrimiento', verified: 'Servidor verificado', partnered: 'Servidor asociado', community: 'Servidor de comunidad', boost: 'Servidor potenciado, nivel' },
-  'pt-BR': { eyebrow: 'Ao vivo', title: 'Servidores que funcionam com o Petto', desc: 'As maiores comunidades que usam o Petto agora.', online: 'online', members: 'membros', discoverable: 'Servidor no Descobrir', verified: 'Servidor verificado', partnered: 'Servidor parceiro', community: 'Servidor de comunidade', boost: 'Servidor impulsionado, nível' },
+const WORDS: Record<Locale, { eyebrowSuffix: string; title: string; descBefore: string; descAfter: string; online: string; members: string; discoverable: string; verified: string; partnered: string; community: string; boost: string }> = {
+  en: { eyebrowSuffix: '+ Servers', title: 'Servers that run on Petto', descBefore: 'Join more than ', descAfter: ' Discord servers already running on Petto right now.', online: 'online', members: 'members', discoverable: 'Discoverable server', verified: 'Verified server', partnered: 'Partnered server', community: 'Community server', boost: 'Boosted server, level' },
+  es: { eyebrowSuffix: '+ Servidores', title: 'Servidores que funcionan con Petto', descBefore: 'Únete a más de ', descAfter: ' servidores de Discord que ya usan Petto ahora mismo.', online: 'en línea', members: 'miembros', discoverable: 'Servidor en Descubrimiento', verified: 'Servidor verificado', partnered: 'Servidor asociado', community: 'Servidor de comunidad', boost: 'Servidor potenciado, nivel' },
+  'pt-BR': { eyebrowSuffix: '+ Servidores', title: 'Servidores que funcionam com o Petto', descBefore: 'Junte-se a mais de ', descAfter: ' servidores do Discord que já usam o Petto agora.', online: 'online', members: 'membros', discoverable: 'Servidor no Descobrir', verified: 'Servidor verificado', partnered: 'Servidor parceiro', community: 'Servidor de comunidade', boost: 'Servidor impulsionado, nível' },
 };
 const w = WORDS[lang];
 const locale = lang === 'pt-BR' ? 'pt-BR' : lang;
 ---
 <section class="sc-section" id="servers" data-showcase data-locale={locale} data-online={w.online} data-members={w.members}
-  data-discoverable={w.discoverable} data-verified={w.verified} data-partnered={w.partnered} data-community={w.community} data-boost={w.boost} hidden aria-label={w.title}>
+  data-discoverable={w.discoverable} data-verified={w.verified} data-partnered={w.partnered} data-community={w.community} data-boost={w.boost} aria-label={w.title}>
   <div class="wrap sc-wrap">
     <div class="sc-head">
-      <div class="eyebrow">{w.eyebrow}</div>
+      <div class="eyebrow"><span data-sc-count>23</span>{w.eyebrowSuffix}</div>
       <h2>{w.title}</h2>
-      <p>{w.desc}</p>
+      <p>{w.descBefore}<span data-sc-count>23</span>{w.descAfter}</p>
     </div>
     <div class="sc-rows" aria-hidden="true">
       <div class="sc-row" data-row="0"><div class="sc-track"></div></div>
@@ -29,6 +29,16 @@ const locale = lang === 'pt-BR' ? 'pt-BR' : lang;
     </div>
   </div>
 </section>
+<script is:inline>
+  (function () {
+    try {
+      var n = localStorage.getItem('petto-home-servers');
+      if (n && /^\d+$/.test(n)) {
+        document.querySelectorAll('[data-sc-count]').forEach(function (el) { el.textContent = n; });
+      }
+    } catch (e) {}
+  })();
+</script>
 
 <script>
   // The carousel is drawn here (the list is read from the bot every 5 minutes). Texts go in as text, never as HTML: a server chooses its own name.
@@ -113,10 +123,18 @@ const locale = lang === 'pt-BR' ? 'pt-BR' : lang;
 
     const draw = (servers: Server[]) => {
       section.hidden = servers.length === 0;
-      section.querySelectorAll<HTMLElement>('.sc-row').forEach((row, index) => {
+      const rows = Array.from(section.querySelectorAll<HTMLElement>('.sc-row'));
+      const split = servers.length >= 4;
+      const buckets: Server[][] = split
+        ? [servers.filter((_, i) => i % 2 === 0), servers.filter((_, i) => i % 2 === 1)]
+        : [servers, []];
+      rows.forEach((row, index) => {
+        const list = buckets[index] ?? [];
+        row.hidden = list.length === 0;
+        if (!list.length) return;
         const track = row.querySelector<HTMLElement>('.sc-track')!;
-        const half = fill(servers, index === 1);
-        track.replaceChildren(...half.map(card), ...(calm ? [] : half.map(card))); // twice: the loop moves one half and starts again, it never ends
+        const half = fill(list, index === 1);
+        track.replaceChildren(...half.map(card), ...(calm ? [] : half.map(card)));
         track.style.setProperty('--sc-dur', `${Math.round((half.length * CARD) / SPEED)}s`);
         track.style.setProperty('--sc-delay', `${index === 1 ? -Math.round(((half.length * CARD) / SPEED) / 3) : 0}s`);
       });
@@ -137,16 +155,24 @@ const locale = lang === 'pt-BR' ? 'pt-BR' : lang;
       });
     };
 
+    const CACHE_KEY = 'petto-showcase-servers';
+    try {
+      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+      if (Array.isArray(cached) && cached.length) update(cached as Server[]);
+    } catch {}
+
     const load = async () => {
       try {
         const response = await fetch('/api/showcase', { headers: { Accept: 'application/json' } });
         if (!response.ok) return;
         const body = await response.json();
-        if (Array.isArray(body?.servers)) update(body.servers as Server[]);
+        if (Array.isArray(body?.servers)) {
+          update(body.servers as Server[]);
+          try { localStorage.setItem(CACHE_KEY, JSON.stringify(body.servers)); } catch {}
+        }
       } catch { /* the carousel keeps what it has */ }
     };
     load();
-    setInterval(load, 5 * 60_000);
   }
 </script>
 
@@ -157,7 +183,7 @@ const locale = lang === 'pt-BR' ? 'pt-BR' : lang;
   .sc-head { text-align: center; margin: 0 auto 28px; max-width: 640px; }
   .sc-head h2 { margin: 6px 0 8px; }
   .sc-head p { margin: 0; color: var(--text-muted); }
-  .sc-rows { display: grid; gap: 14px; mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
+  .sc-rows { display: grid; gap: 14px; min-height: 152px; mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
   .sc-row { overflow: hidden; pointer-events: none; user-select: none; -webkit-user-select: none; }
   .sc-track { display: flex; gap: 14px; width: max-content; animation: sc-move var(--sc-dur, 60s) linear var(--sc-delay, 0s) infinite; will-change: transform; }
   .sc-row-back .sc-track { animation-direction: reverse; }

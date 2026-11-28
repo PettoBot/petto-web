@@ -18,7 +18,8 @@ function* files(dir) {
 }
 
 const bad = [];
-for (const path of files('src')) {
+for (const rawPath of files('src')) {
+  const path = rawPath.replace(/\\/g, '/');
   if (ALLOWED[path]) continue;
   if (path.endsWith('DashConfirm.astro')) continue;
   readFileSync(path, 'utf8').split('\n').forEach((line, index) => {

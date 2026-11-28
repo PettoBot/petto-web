@@ -131,7 +131,7 @@ check('ai page: draws the answer from the blocks, with no innerHTML of it', /par
 
 // A beta, not a new thing: the menu says Beta (and stays), and every button of the page has the look of the dashboard (btn-ghost), not the grey of the public site.
 const layoutSource = read('src/components/DashGuildLayout.astro');
-check('beta: the menu item is a beta, not new', /id: 'migrate'[^\n]*beta: true/.test(layoutSource) && !/id: 'migrate'[^\n]*isNew/.test(layoutSource) && /item\.beta && <em class="dgl-new dgl-soon"/.test(layoutSource));
+check('beta: the menu item is a beta, not new', /id: 'migrate'[^\n]*beta: true/.test(layoutSource) && !/id: 'migrate'[^\n]*isNew/.test(layoutSource) && /item\.beta && <(?:em class="dgl-new dgl-soon"|span class="vx-duck-pill vx-duck-beta")/.test(layoutSource));
 check('beta: the page says it is a beta', /class="mg-beta-tag"/.test(pageSource) && /class="mg-beta-note"/.test(pageSource));
 check('buttons: the copy and docs buttons are btn-ghost', !/class="btn btn-sm/.test(pageSource) && !/className = 'btn btn-sm/.test(pageSource) && /btn btn-ghost btn-sm mg-copy/.test(pageSource) && /btn\.className = 'btn btn-ghost btn-sm'/.test(pageSource));
 

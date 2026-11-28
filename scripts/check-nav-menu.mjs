@@ -4,7 +4,7 @@
 // Run: node scripts/check-nav-menu.mjs
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync(new URL('../src/layouts/Base.astro', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/layouts/Base.astro', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 let failed = 0;
 const check = (name, ok, detail = '') => { if (!ok) { failed += 1; console.log(`FAIL ${name}${detail ? `: ${detail}` : ''}`); } };
 

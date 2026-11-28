@@ -96,7 +96,7 @@ check('the page is noindex', /<Base[^>]*\snoindex[\s>]/.test(component));
 check('the page keeps the top bar and the footer', /<Base[^>]*\sactive="dash"/.test(component) && /<Base[^>]*\sshowFooter/.test(component));
 check('nothing of the old page is left', !/SpecularButton|dash-mock|highlight|step-card|dash-hero/.test(component));
 check('the focus does not scroll the page', /focus\(\{ preventScroll: true \}\)/.test(component));
-check('the Petto picture exists', /\/assets\/mascot-icon\.webp/.test(component) && existsSync(new URL('public/assets/mascot-icon.webp', root)));
+check('the Petto picture exists', /\/assets\/(?:mascot-icon\.webp|favicon-3d\.png)/.test(component) && existsSync(new URL('public/assets/favicon-3d.png', root)));
 check('the old component is gone', !existsSync(new URL('src/components/Dash.astro', root)));
 
 // The page: a visitor with a session goes on to the servers, anyone else gets the card.

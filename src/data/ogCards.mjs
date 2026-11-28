@@ -9,17 +9,15 @@ export const LANGS = ['en', 'es', 'pt-BR'];
 const L = (en, es, pt) => ({ en, es, 'pt-BR': pt });
 
 /**
- * The pastel of each family of pages: the background of its picture (`bg`), and the color of the faint doodles on it (`doodle`). The bar on the left of the
- * Discord card is the SAME color as the background of the picture (`accentNumber`), read from this table by the drawing and by the layout, so the two can
- * never drift. Lavender is not used on purpose.
+ * The dark atmospheric accent of each family of pages: used for the OG card tint and the dark left bar of the Discord embed.
  */
 export const TONES = {
-  butter: { name: 'Butter', bg: '#FFEFB0', doodle: '#F4DB7A' },
-  peach: { name: 'Peach', bg: '#FFD8C6', doodle: '#F5BEA6' },
-  mint: { name: 'Mint', bg: '#CDEFD9', doodle: '#ADDDBF' },
-  sky: { name: 'Sky', bg: '#CFE6FA', doodle: '#ADD0EE' },
-  pink: { name: 'Pink', bg: '#FFD3E3', doodle: '#F5B6CD' },
-  cream: { name: 'Cream', bg: '#F8EFDD', doodle: '#E8DCC2' },
+  butter: { name: 'Night', bg: '#182032', doodle: '#25314d', sky: 'home-hero-sky.webp' },
+  peach: { name: 'Dusk', bg: '#1b1d2e', doodle: '#2a2d45', sky: 'hero-art-3.webp' },
+  mint: { name: 'Deep', bg: '#15222c', doodle: '#203442', sky: 'hero-art-4.webp' },
+  sky: { name: 'Cobalt', bg: '#162136', doodle: '#223352', sky: 'hero-art-2.webp' },
+  pink: { name: 'Twilight', bg: '#1c1d30', doodle: '#2b2d47', sky: 'hero-art-4.webp' },
+  cream: { name: 'Slate', bg: '#181e2c', doodle: '#262f42', sky: 'hero-art-4.webp' },
 };
 /** The color of the accent bar of the Discord card as the number Discord asks for: the background of the picture of the same family. */
 export const accentNumber = (tone) => parseInt((TONES[tone] ?? TONES.butter).bg.slice(1), 16);

@@ -9,7 +9,6 @@ import LiquidGlass from '../components/LiquidGlass.astro';
 import NavAccount from '../components/NavAccount.astro';
 import { useTranslations, localePath, type Locale } from '../i18n/ui';
 import { getDashLang } from '../i18n/dash';
-import { discordEmbedJson } from '../data/discordEmbed';
 import { pageImage, pageImagePath } from '../data/pageImages';
 import DashLoader from '../components/DashLoader.astro';
 import TextFit from '../components/TextFit.astro';
@@ -36,6 +35,14 @@ interface Props {
   skin?: 'ash';
   /** Hides the public marketing header on full-screen dashboard shells (which draw their own top bar). */
   hideNav?: boolean;
+  /** High-priority hero artwork images to preload in <head> so pages never flash black before painting. */
+  preloadImages?: string[];
+  /** Optional custom OpenGraph image path or URL (e.g. dynamic server leaderboard or partner cards). */
+  ogImage?: string;
+  /** Optional custom OpenGraph image alt text. */
+  ogImageAlt?: string;
+  /** Optional custom OpenGraph title override. */
+  ogTitle?: string;
 }
 // One short line about the bot, for the pages that do not have their own (search results and link previews cut longer ones).
 const DEFAULT_DESCRIPTION: Record<Locale, string> = {
@@ -45,7 +52,7 @@ const DEFAULT_DESCRIPTION: Record<Locale, string> = {
 };
 // The badge of a menu or footer item ("New"): it shows only while the item is new (`since`, a day YYYY-MM-DD), so it goes by itself.
 const badgeOf = (item: { badge?: string; since?: string }): string => (item.badge && isStillNew(item.since) ? item.badge : '');
-const { title, description, active = 'home', lang: langProp, showFooter = active !== 'dash', appShell = false, feed, noindex = false, skin, hideNav = false } = Astro.props;
+const { title, description, active = 'home', lang: langProp, showFooter = active !== 'dash', appShell = false, feed, noindex = false, skin, hideNav = false, preloadImages = [], ogImage, ogImageAlt: ogImageAltProp, ogTitle } = Astro.props;
 // Dashboard pages have no locale in the URL, so their language comes from the saved choice.
 const lang: Locale = langProp ?? (active === 'dash' ? getDashLang(Astro) : 'en');
 // Dashboard pages (and the app shell) keep the header's call-to-action as plain HTML and CSS; elsewhere its shine loads when the
@@ -63,6 +70,10 @@ const langNow = langOptions.find((o) => o.code === lang) ?? langOptions[0];
 const langWord = lang === 'en' ? 'Language' : 'Idioma';
 const langLabel = `${langWord}: ${langNow.label}`;
 const currentRoute = Astro.url.pathname.replace(/^\/(?:es|pt-br)(?=\/|$)/, '') || '/';
+const OWN_HERO_ROUTES = new Set(['/', '/premium', '/commands', '/features', '/partners', '/changelog']);
+const LEGAL_ROUTES = new Set(['/terms', '/privacy', '/cookies', '/refunds']);
+const useVxBackdrop = active !== 'dash' && !OWN_HERO_ROUTES.has(currentRoute) && !LEGAL_ROUTES.has(currentRoute) && !currentRoute.startsWith('/changelog/') && !currentRoute.startsWith('/dash');
+const allPreloads = Array.from(new Set([...preloadImages, ...(useVxBackdrop ? ['/assets/hero-art-4.webp'] : [])]));
 const languageHref = (target: Locale) => {
   if (active === 'dash' || currentRoute === '/dash' || currentRoute.startsWith('/dash/')) return `/dash/lang?to=${encodeURIComponent(target)}&next=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`;
   if (target === 'en') return currentRoute;
@@ -87,15 +98,43 @@ const FOOTER_PRODUCT: FooterLink[] = [
   extraLink(t.nav.premium, '/premium', true),
 ].sort((a, b) => a.title.localeCompare(b.title, lang));
 const FOOTER_SUPPORT: FooterLink[] = [
-  ...linksOf(['https://petto.sbs/support', '/status', '/stats', '/faq', '/feedback', 'https://youtube.com/@pettotutos']),
+  extraLink(lang === 'es' ? 'Documentación' : lang === 'pt-BR' ? 'Documentação' : 'Documentation', 'https://wiki.petto.sbs'),
+  ...linksOf(['https://petto.sbs/support', '/status', '/stats', '/faq', '/feedback']),
 ];
 const FOOTER_TEAM: FooterLink[] = [
   ...linksOf(['/team', '/history', '/apply']),
   extraLink(t.footer.credits, '/credits'),
 ];
 const FOOTER_PRODUCT_COMPACT = FOOTER_PRODUCT.filter((it) =>
-  ['/features', '/commands', '/premium', '/dash', '/embed-builder', '/partners'].includes(it.href)
+  ['/features', '/commands', '/changelog', '/premium', '/dash', '/partners'].includes(it.href)
 );
+const CLOSING_CTA: Record<Locale, { title: string; desc: string; invite: string; support: string }> = {
+  en: {
+    title: 'Make your Discord powerful.',
+    desc: 'Add Petto to your server, then set everything up from the dashboard.',
+    invite: 'Add to Discord',
+    support: 'Join the support server',
+  },
+  es: {
+    title: 'Haz tu Discord más poderoso.',
+    desc: 'Añade a Petto a tu servidor y configúralo todo desde la Dash.',
+    invite: 'Añadir a Discord',
+    support: 'Unirse al servidor de soporte',
+  },
+  'pt-BR': {
+    title: 'Deixe seu Discord mais poderoso.',
+    desc: 'Adicione o Petto ao seu servidor e configure tudo pela Dash.',
+    invite: 'Adicionar ao Discord',
+    support: 'Entrar no servidor de suporte',
+  },
+};
+const closingCta = CLOSING_CTA[lang];
+const FOOTER_TOOLS_TITLE: Record<Locale, string> = { en: 'Tools', es: 'Herramientas', 'pt-BR': 'Ferramentas' };
+const FOOTER_TOOLS_ALL: Record<Locale, string> = { en: 'All tools', es: 'Todas las herramientas', 'pt-BR': 'Todas as ferramentas' };
+const FOOTER_TOOLS: FooterLink[] = [
+  extraLink(FOOTER_TOOLS_ALL[lang], '/tools'),
+  ...linksOf(['/snowflake', '/timestamp', '/embed-code', '/embed-builder']),
+];
 
 const NAV_COPY = {
   en: {
@@ -180,14 +219,13 @@ const canonicalPath = Astro.url.pathname.replace(/\/index(?:\.html)?$/, '/').rep
 const canonicalUrl = new URL(canonicalPath, SITE).toString();
 // Every page shares a picture drawn for it (src/data/ogCards.mjs): its own card, the card of the page it is under, or the home one.
 const pagePicture = pageImage(canonicalPath);
-const ogImageUrl = new URL(pageImagePath(pagePicture), SITE).toString();
-const ogImageAlt = pagePicture.alt;
-// What the preview says (the card Discord draws and the Open Graph tags). A page that has a card of its own says what that card says (src/data/previewText.mjs):
-// a title that says what the page is and carries the brand, and a description of one or two concrete sentences. Any other page keeps its own title (with the
-// brand added when it lacks it) and its own description, or the one of the card it is under.
+const ogImageUrl = new URL(ogImage || pageImagePath(pagePicture), SITE).toString();
+const ogImageAlt = ogImageAltProp || pagePicture.alt;
+// What the preview says (Open Graph tags): a custom ogTitle wins when provided, else the card's title or the page's own title with brand.
 const brandOf = (text: string) => (/Petto/.test(text) ? text : `${text} · Petto`);
-const previewTitle = pagePicture.exact ? pagePicture.embedTitle : brandOf(title);
-const metaDescription = pagePicture.exact ? pagePicture.description : (description ?? (pagePicture.description || pagePicture.tagline || DEFAULT_DESCRIPTION[lang]));
+const previewTitle = ogTitle ? brandOf(ogTitle) : (pagePicture.exact ? pagePicture.embedTitle : brandOf(title));
+const metaDescription = description ?? (pagePicture.exact ? pagePicture.description : (pagePicture.description || pagePicture.tagline || DEFAULT_DESCRIPTION[lang]));
+const embedThemeColor = `#${pagePicture.accent.toString(16).padStart(6, '0')}`;
 // The same page in the other languages, for search engines and apps (hreflang), when the page has them: the dashboard has no
 // language in the address, and a few pages exist in English only.
 const OG_LOCALE: Record<Locale, string> = { en: 'en_US', es: 'es_ES', 'pt-BR': 'pt_BR' };
@@ -248,7 +286,8 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
   <title>{title}</title>
   <meta name="description" content={metaDescription} />
   {noindex && <meta name="robots" content="noindex, follow" />}
-  <!-- The color of the browser bar and of the installed app's top bar: the color of the page itself, so the bar does not stand out. -->
+  <!-- Dark midnight accent bar for Discord OpenGraph embeds, matching the night-sky cards; browsers apply theme-specific colors below. -->
+  <meta name="theme-color" content={embedThemeColor} />
   <meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
   <script is:inline>
@@ -265,7 +304,7 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     })();
   </script>
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/assets/pwa/apple-touch-180.png" />
+  <link rel="apple-touch-icon" href="/assets/favicon-3d.png" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Petto" />
@@ -273,7 +312,9 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
   {feed && <link rel="alternate" type="application/rss+xml" title={feed.title} href={feed.href} />}
   {alternates.map((a) => <link rel="alternate" hreflang={HREFLANG[a.lang]} href={a.href} />)}
   {alternates.length > 0 && <link rel="alternate" hreflang="x-default" href={alternates[0].href} />}
-  <link rel="icon" href="/assets/mascot-icon.png" />
+  <link rel="icon" type="image/png" href="/assets/favicon-3d.png" />
+  <link rel="preload" as="image" href="/assets/favicon-3d.png" fetchpriority="high" />
+  {allPreloads.map((src) => <link rel="preload" as="image" href={src} fetchpriority="high" />)}
 
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Petto" />
@@ -292,7 +333,6 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
   <meta name="twitter:title" content={previewTitle} />
   <meta name="twitter:description" content={metaDescription} />
   <meta name="twitter:image" content={ogImageUrl} />
-  {active !== 'dash' && <script is:inline id="discord:component-embed" type="application/json" set:html={discordEmbedJson(lang, { title: previewTitle, description: metaDescription, url: canonicalUrl, image: { url: ogImageUrl, alt: ogImageAlt }, accent: pagePicture.accent })}></script>}
   <style is:global>
     @font-face {
       font-family: 'Jakarta Variable';
@@ -361,9 +401,10 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
       --text: #f2f1ed;
       --text-muted: #a8a49c;
       --text-dim: #79756d;
-      --accent: #f0a88f;
-      --accent-soft: rgba(240, 168, 143, 0.14);
-      --accent-ink: #2b1a13;
+      --accent: #c9d0db;
+      --accent-soft: rgba(201, 208, 219, 0.14);
+      --accent-ink: #14161a;
+      --accent-dim: #7c8696;
       --blue: #9bd0f5;
       --blue-soft: rgba(155, 208, 245, 0.14);
       --green: #a5ea7a;
@@ -374,7 +415,7 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
       --red: #fe6465;
       --red-soft: rgba(254, 100, 101, 0.14);
       /* The text on a soft color of its own: light (dark theme) or deep (light theme) and legible, never the bright color itself; the bright color is the mark (border, dot, icon). */
-      --green-text: #e9fbdc; --yellow-text: #fff2bf; --red-text: #ffe4e4; --accent-text: #ffe9e1;
+      --green-text: #e9fbdc; --yellow-text: #fff2bf; --red-text: #ffe4e4; --accent-text: #eef1f5;
       /* The marks of the charts (bars, lines) are calmer than the numbers: the bright green and red stay for the small figures. */
       --chart-green: #86b894; --chart-red: #c98791;
       /* One pair of faces for the whole site: Fraunces for titles, Plus Jakarta Sans for everything else. */
@@ -385,24 +426,24 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     :root[data-theme="light"] {
       --bg: #ffffff; --bg-raise: #ffffff; --card: #ffffff; --card-hover: #f7f8fa;
       --border: #e3e6eb; --border-soft: #edf0f3; --text: #20242b; --text-muted: #66707d; --text-dim: #8c96a3;
-      --accent: #bd5136; --accent-soft: rgba(189, 81, 54, 0.09); --accent-ink: #ffffff;
+      --accent: #3c4452; --accent-soft: rgba(60, 68, 82, 0.1); --accent-ink: #ffffff; --accent-dim: #737e8f;
       --blue: #2f6fa8; --blue-soft: rgba(47, 111, 168, 0.1);
       --green: #458026; --green-soft: rgba(69, 128, 38, 0.1); --green-ink: #ffffff;
       --yellow: #93720a; --yellow-soft: rgba(147, 114, 10, 0.1);
       --red: #c23c3d; --red-soft: rgba(194, 60, 61, 0.1);
-      --green-text: #1f4a0c; --yellow-text: #5a4305; --red-text: #7c1d1e; --accent-text: #6b2512;
+      --green-text: #1f4a0c; --yellow-text: #5a4305; --red-text: #7c1d1e; --accent-text: #20242b;
       --chart-green: #3f7a52; --chart-red: #a85565;
     }
     @media (prefers-color-scheme: light) {
       :root:not([data-theme="dark"]) {
         --bg: #ffffff; --bg-raise: #ffffff; --card: #ffffff; --card-hover: #f7f8fa;
         --border: #e3e6eb; --border-soft: #edf0f3; --text: #20242b; --text-muted: #66707d; --text-dim: #8c96a3;
-        --accent: #bd5136; --accent-soft: rgba(189, 81, 54, 0.09); --accent-ink: #ffffff;
+        --accent: #3c4452; --accent-soft: rgba(60, 68, 82, 0.1); --accent-ink: #ffffff; --accent-dim: #737e8f;
         --blue: #2f6fa8; --blue-soft: rgba(47, 111, 168, 0.1);
         --green: #458026; --green-soft: rgba(69, 128, 38, 0.1); --green-ink: #ffffff;
         --yellow: #93720a; --yellow-soft: rgba(147, 114, 10, 0.1);
         --red: #c23c3d; --red-soft: rgba(194, 60, 61, 0.1);
-      --green-text: #1f4a0c; --yellow-text: #5a4305; --red-text: #7c1d1e; --accent-text: #6b2512;
+      --green-text: #1f4a0c; --yellow-text: #5a4305; --red-text: #7c1d1e; --accent-text: #20242b;
         --chart-green: #3f7a52; --chart-red: #a85565;
       }
     }
@@ -453,6 +494,14 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     }
     :root[data-theme="dark"] body.public-body { --text: #f7f6f3; --text-muted: #b9b5ad; --text-dim: #9a968f; }
     img, svg { display: block; max-width: 100%; }
+    img, picture, .pr-sky-bg, .home-sky-bg, .closing-bg, .pr-vetox-hero-art, .sh-art {
+      -webkit-user-drag: none;
+      user-drag: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    img.dp-emoji { display: inline-block; width: 1.25em; height: 1.25em; vertical-align: -0.22em; object-fit: contain; }
     a { color: inherit; }
     /* The width of the public pages and of the top bar: 1120px as designed, and wider on a big window so the pages are not a narrow column in the middle of it
        (a 1920px window showed 1120px of content and an empty band at each side; one from 2560px, even less). */
@@ -491,8 +540,45 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     body.public-body code,
     body.public-body .mono { font-family: var(--mono); }
     body.public-body .btn { border-radius: 11px; }
-    body.public-body .btn-accent { box-shadow: 0 10px 24px -16px var(--accent); }
-    body.public-body .btn-accent:hover { box-shadow: 0 14px 30px -16px var(--accent); }
+    /* Global tactile 3D button bevel: crisp light highlight on top, subtle dark shade on bottom. */
+    .btn,
+    button.btn,
+    a.btn,
+    .home-cta-primary,
+    .home-cta-glass,
+    .closing-btn,
+    .pr-cta-primary,
+    .pr-cta-ghost,
+    .pr-select-srv-btn,
+    .pa-link,
+    .pa-copy {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        inset 0 -2px 0 rgba(0, 0, 0, 0.28),
+        0 4px 12px -6px rgba(0, 0, 0, 0.45);
+    }
+    .btn-primary,
+    .btn-accent,
+    .home-cta-primary,
+    .closing-btn-primary,
+    .pr-cta-primary {
+      box-shadow:
+        inset 0 1.5px 0 rgba(255, 255, 255, 0.72),
+        inset 0 -2px 0 rgba(0, 0, 0, 0.18),
+        0 8px 20px -10px rgba(0, 0, 0, 0.55);
+    }
+    .btn:active,
+    .home-cta-primary:active,
+    .home-cta-glass:active,
+    .closing-btn:active,
+    .pr-cta-primary:active,
+    .pr-cta-ghost:active,
+    .pr-select-srv-btn:active {
+      transform: translateY(1px);
+      box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.32),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    }
     body.dashboard-motion h1,
     body.dashboard-motion h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.015em; font-optical-sizing: auto; }
     /* Bold slanted serif for the part of a title that names the server: "Logging *Petto Server*". The name comes from --dgl-guild, set on the content box. */
@@ -569,10 +655,14 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     .sk-title { height: 34px; width: min(420px, 60%); margin-bottom: 16px; }
     .sk-line { height: 14px; width: 100%; margin-bottom: 10px; }
     .sk-line.short { width: 62%; }
-    .sk-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 22px; }
-    .sk-row .sk { height: 74px; border-radius: 14px; }
-    .sk-block { height: 220px; width: 100%; margin-top: 14px; border-radius: 14px; }
-    @media (max-width: 760px) { .sk-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sk-block { height: 160px; } }
+    .sk-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .sk-row.sk-row-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .sk-row .sk { height: 84px; border-radius: 14px; }
+    .sk-charts-2 { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+    .sk-charts-2 .sk-block { margin-top: 0; height: 270px; }
+    .sk-block { height: 240px; width: 100%; margin-top: 14px; border-radius: 14px; }
+    @media (max-width: 900px) { .sk-row.sk-row-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .sk-charts-2 { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 760px) { .sk-row, .sk-row.sk-row-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sk-block { height: 170px; } }
     .sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 14px; margin-top: 14px; }
     .sk-card { height: 132px; border-radius: 14px; }
     .sk-card.tall { height: 360px; }
@@ -580,6 +670,7 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     .sk-field.tall { height: 120px; }
     .sk-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; margin-top: 18px; }
     /* The shapes of the dashboard's page skeletons (DashGuildLayout picks one per page: stats, grid, list, form, editor). */
+    .dgl-sk { width: 100%; max-width: none !important; min-height: calc(100dvh - 140px); box-sizing: border-box; }
     .dgl-sk .dgl-sk-title { margin: 0 0 18px; opacity: .92; }
     .sk-tabs { height: 44px; border-radius: 14px; margin-bottom: 18px; }
     .sk-toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
@@ -849,7 +940,7 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     .theme-toggle { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .theme-toggle:hover { color: var(--text); border-color: var(--text-dim); }
     .lang-switch { position: relative; }
-    .lang-menu { display: none; position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 6px; min-width: 212px; box-shadow: 0 14px 30px -12px rgba(0,0,0,0.4); z-index: 50; }
+    .lang-menu { display: none; position: absolute; top: calc(100% + 8px); right: 0; background: color-mix(in srgb, var(--card) 68%, transparent); -webkit-backdrop-filter: blur(24px) saturate(1.65); backdrop-filter: blur(24px) saturate(1.65); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 14px; padding: 6px; min-width: 212px; box-shadow: 0 18px 38px -12px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.08) inset; z-index: 50; }
     .lang-menu.open { display: block; }
     .lang-menu a { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 10px; font-size: 14px; color: var(--text-muted); text-decoration: none; white-space: nowrap; }
     .lang-menu a:hover { background: var(--card-hover); color: var(--text); }
@@ -1118,6 +1209,43 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     #dgl-content :is(.ct-btn-danger, .cc-btn-danger, .pe-danger, .md-case-delete, .sa-delete):hover { border-color: var(--red); background: var(--red-soft); color: var(--red); }
     /* The red is the background and the mark (border, icon); the text stays light and easy to read (see --red-text). */
     #dgl-content .btn-danger { background: color-mix(in srgb, var(--red) 20%, var(--bg-raise, transparent)); color: var(--red-text); border-color: color-mix(in srgb, var(--red) 70%, var(--border)); }
+    /* Global tactile 3D button bevel (placed after all base button rules so public & dashboard share the same finish):
+       light highlight on top, subtle darker lip on bottom. */
+    :is(.btn, button.btn, a.btn, .home-cta-primary, .home-cta-glass, .closing-btn, .pr-cta-primary, .pr-cta-ghost, .pr-select-srv-btn, .pa-copy, .dl-login, #dgl-content .ct-btn, #dgl-content .cc-btn):not(:disabled) {
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.01) 50%, rgba(0, 0, 0, 0.22) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.26),
+        inset 0 -2px 0 rgba(0, 0, 0, 0.36),
+        0 4px 14px -6px rgba(0, 0, 0, 0.52);
+    }
+    :is(.btn-primary, .btn-accent, .home-cta-primary, .closing-btn-primary, .pr-cta-primary, #dgl-content .ct-btn-primary, #dgl-content .cc-btn-primary):not(:disabled) {
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.02) 52%, rgba(0, 0, 0, 0.16) 100%);
+      box-shadow:
+        inset 0 1.5px 0 rgba(255, 255, 255, 0.70),
+        inset 0 -2.5px 0 rgba(0, 0, 0, 0.26),
+        0 8px 20px -10px rgba(0, 0, 0, 0.56);
+    }
+    :is(.btn-ghost, .home-cta-glass, .pr-cta-ghost, .pa-copy):not(:disabled) {
+      background-color: color-mix(in srgb, var(--card) 74%, transparent);
+      border-color: color-mix(in srgb, var(--text) 16%, var(--border));
+    }
+    :is(.btn-ghost, .home-cta-glass, .pr-cta-ghost, .pa-copy):not(:disabled):hover {
+      background-color: color-mix(in srgb, var(--card-hover) 88%, transparent);
+      border-color: color-mix(in srgb, var(--text) 26%, var(--border));
+    }
+    :is(.btn, .home-cta-primary, .home-cta-glass, .closing-btn, .pr-cta-primary, .pr-cta-ghost, .pr-select-srv-btn, .pa-copy, .dl-login, #dgl-content .ct-btn, #dgl-content .cc-btn):not(:disabled):active {
+      transform: translateY(1px) scale(0.99);
+      box-shadow:
+        inset 0 2px 3px rgba(0, 0, 0, 0.34),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.10);
+    }
+    :root[data-theme="light"] :is(.btn-ghost, .home-cta-glass, .pr-cta-ghost, .pa-copy):not(:disabled) {
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.4) 55%, rgba(0, 0, 0, 0.05) 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        inset 0 -2px 0 rgba(0, 0, 0, 0.10),
+        0 3px 10px -6px rgba(0, 0, 0, 0.22);
+    }
     #dgl-content .btn-danger svg { color: var(--red); }
     #dgl-content .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 32%, var(--bg-raise, transparent)); border-color: var(--red); }
     /* While a switch is being saved a small ring turns inside its knob (the switch has already moved, nothing reloads): the same for every
@@ -1192,18 +1320,24 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     }
   </script>
 </head>
-<body class:list={{ 'dash-body': appShell, 'public-body': active !== 'dash', 'dashboard-motion': active === 'dash', 'skin-ash': skin === 'ash' }}>
+<body class:list={{ 'dash-body': appShell, 'public-body': active !== 'dash', 'dashboard-motion': active === 'dash', 'skin-ash': skin === 'ash', 'has-vx-backdrop': useVxBackdrop }}>
+  {useVxBackdrop && (
+    <div class="vx-page-sky" aria-hidden="true">
+      <img src="/assets/hero-art-4.webp" alt="" loading="eager" decoding="sync" fetchpriority="high" draggable="false" />
+      <div class="vx-page-sky-fade"></div>
+    </div>
+  )}
   <DashLoader />
   {active === 'dash' && !appShell && <DashPanelKit />}
   <div class="page-transition" id="pageTransition" aria-hidden="true">
-    <img class="page-transition-mascot" src="/assets/mascot-icon.webp" alt="" />
+    <img class="page-transition-mascot" src="/assets/favicon-3d.png" alt="" />
   </div>
   <LiquidGlass />
   {!hideNav && (<Fragment>
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href={`${base}/`} data-astro-prefetch="hover">
-        <img src="/assets/mascot-icon.webp" alt="" />
+        <img src="/assets/favicon-3d.png" alt="" width="24" height="24" loading="eager" decoding="sync" fetchpriority="high" />
         Petto
       </a>
       <nav class="links">
@@ -1399,24 +1533,39 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
 
   <slot />
 
+  {showFooter && active !== 'dash' && (
+    <section class="closing-scene" aria-labelledby="closing-cta-title">
+      <div class="closing-bg" aria-hidden="true">
+        <img src="/assets/premium-footer-sky.webp" alt="" class="closing-img" loading="lazy" />
+        <div class="closing-fade-top"></div>
+        <div class="closing-fade-bottom"></div>
+      </div>
+      <div class="wrap closing-inner">
+        <h2 id="closing-cta-title">{closingCta.title}</h2>
+        <p>{closingCta.desc}</p>
+        <div class="closing-actions">
+          <a class="closing-btn closing-btn-primary" href="https://petto.sbs/invite" target="_blank" rel="noopener">{closingCta.invite}</a>
+          <a class="closing-btn closing-btn-glass" href="https://petto.sbs/support" target="_blank" rel="noopener">{closingCta.support}</a>
+        </div>
+      </div>
+    </section>
+  )}
+
   {showFooter && <footer id="footer">
     <div class="wrap">
       <div class="foot-grid">
         <div>
-          <div class="foot-brand"><img src="/assets/mascot-icon.webp" alt="" />Petto</div>
+          <div class="foot-brand"><img src="/assets/favicon-3d.png" alt="" />Petto</div>
           <p class="foot-desc">{t.footer.desc}</p>
           <div class="foot-socials">
-            <a class="foot-social-btn" href="https://petto.sbs/support" target="_blank" rel="noopener" aria-label="Discord" title="Discord">
-              <InlineIcon name="simple-icons:discord" width="16" height="16" />
+            <a class="foot-social-btn foot-social-discord" href="https://petto.sbs/support" target="_blank" rel="noopener" aria-label="Discord" title="Discord">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
             </a>
-            <a class="foot-social-btn" href="https://wiki.petto.sbs" target="_blank" rel="noopener" aria-label={t.nav.docs} title={t.nav.docs}>
-              <InlineIcon name="ph:book-open-fill" width="16" height="16" />
-            </a>
-            <a class="foot-social-btn" href={`${base}/status`} data-astro-prefetch="hover" aria-label={t.nav.status} title={t.nav.status}>
-              <InlineIcon name="ph:pulse-fill" width="16" height="16" />
+            <a class="foot-social-btn foot-social-x" href="https://x.com/pettobot" target="_blank" rel="noopener" aria-label="X" title="X">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             </a>
             <button type="button" class="foot-social-btn" id="footThemeToggle" aria-label="Toggle theme" title="Toggle theme">
-              <InlineIcon name="ph:sun-fill" width="16" height="16" />
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             </button>
           </div>
         </div>
@@ -1434,6 +1583,12 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
               )
             ))}
           </div>
+        </div>
+        <div class="foot-col">
+          <div class="ft">{FOOTER_TOOLS_TITLE[lang]}</div>
+          {FOOTER_TOOLS.map((it) => (
+            <a href={hrefFor(it.href)} data-astro-prefetch={prefetchFor(hrefFor(it.href))}>{it.title}{it.badge && <em class="foot-badge">{it.badge}</em>}</a>
+          ))}
         </div>
         <div class="foot-col">
           <div class="ft">{t.footer.supportTitle}</div>
@@ -1716,6 +1871,8 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
     if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
     const url = new URL(link.href, location.href);
     if (url.origin !== location.origin || !GOING.test(url.pathname)) return;
+    // Inside the dashboard, DashLoader already shows the sleek blurred curtain for both Profile <-> Server.
+    if (document.body.classList.contains('dashboard-motion')) return;
     link.classList.add('is-going');
     document.body.classList.add('nav-going');
   });
@@ -1773,6 +1930,54 @@ const hrefFor = (href: string) => (isExternal(href) || bypassLocale(href) ? href
       })();
     </script>
   )}
+  {active !== 'dash' && (
+    <button type="button" id="backToTop" class="back-to-top" aria-label={lang === 'es' ? 'Volver arriba' : lang === 'pt-BR' ? 'Voltar ao topo' : 'Back to top'} title={lang === 'es' ? 'Volver arriba' : lang === 'pt-BR' ? 'Voltar ao topo' : 'Back to top'}>
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+    </button>
+  )}
+  <script is:inline>
+    (function () {
+      var btt = document.getElementById('backToTop');
+      if (btt) {
+        var syncBtt = function () { btt.classList.toggle('is-visible', window.scrollY > 420); };
+        syncBtt();
+        window.addEventListener('scroll', syncBtt, { passive: true });
+        btt.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      }
+      // Protect artwork and images from casual right-click save / drag-out while keeping form inputs normal.
+      document.addEventListener('contextmenu', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        if (t.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (t.closest('img, picture, .closing-scene, .pr-stage-wrap, .home-hero-stage, .pr-vetox-hero-art, .sh-art, [data-protected-art]')) {
+          e.preventDefault();
+        }
+      });
+      document.addEventListener('dragstart', function (e) {
+        var t = e.target;
+        if (t && t.closest && t.closest('img, picture, [data-protected-art]')) e.preventDefault();
+      });
+      // Warm shared public hero artwork in the browser cache while idle so navigating between Home and Premium paints instantly with zero black flash.
+      if (document.body.classList.contains('public-body')) {
+        var warmed = false;
+        var warmArtwork = function () {
+          if (warmed) return;
+          warmed = true;
+          ['/assets/home-hero-sky.webp', '/assets/premium-sky.webp', '/assets/premium-footer-sky.webp'].forEach(function (src) {
+            var img = new Image();
+            img.decoding = 'async';
+            img.src = src;
+          });
+        };
+        if ('requestIdleCallback' in window) window.requestIdleCallback(warmArtwork, { timeout: 1400 });
+        else setTimeout(warmArtwork, 500);
+        document.addEventListener('pointerenter', function (e) {
+          var a = e.target && e.target.closest ? e.target.closest('a[href*="/premium"]') : null;
+          if (a) warmArtwork();
+        }, true);
+      }
+    })();
+  </script>
   <TextFit />
   {active !== 'dash' && <PopOut />}
 </body>

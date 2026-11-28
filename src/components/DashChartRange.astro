@@ -24,10 +24,12 @@
   .cr-cell .cr-up { color: var(--green); }
   .cr-cell .cr-down { color: var(--red); }
   @media (max-width: 520px) { .cr-cells { gap: 6px; } .cr-cell { padding: 8px 9px; } .cr-cell dd { font-size: 15px; } .cr-cell dt { font-size: 11px; } }
-  /* The shade over the days outside the window. */
-  .cr-dim { position: absolute; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--bg, #000) 62%, transparent); opacity: 0; transition: opacity .25s ease-out; }
+  /* Soft desaturated veil over the days outside the selected range (Flamey-style): unselected turns muted grey, selected stays vivid. */
+  .cr-dim { position: absolute; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--card) 52%, transparent); backdrop-filter: grayscale(0.92) saturate(0.25); -webkit-backdrop-filter: grayscale(0.92) saturate(0.25); opacity: 0; transition: opacity .3s cubic-bezier(.16, 1, .3, 1); }
+  .cr-dim-l { border-right: 1.5px solid color-mix(in srgb, var(--c) 65%, transparent); }
+  .cr-dim-r { border-left: 1.5px solid color-mix(in srgb, var(--c) 65%, transparent); }
   .cr[data-cr-on] .cr-dim { opacity: 1; }
-  .cr[data-cr-full] .cr-dim { opacity: 0; }
+  .cr[data-cr-full] .cr-dim { opacity: 0; border-color: transparent; }
   /* The strip: a small copy of the chart and the window over it. */
   .cr-nav { position: relative; height: 46px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; background: color-mix(in srgb, var(--c) 4%, transparent); }
   .cr-spark { position: absolute; inset: 4px 0 0; width: 100%; height: calc(100% - 4px); display: block; overflow: visible; }
@@ -43,8 +45,6 @@
   .cr-h::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 18px; margin: -9px 0 0 -2px; border-radius: 3px; background: var(--c); }
   .cr-h-l { left: -9px; } .cr-h-r { right: -9px; }
   @media (max-width: 520px) { .cr-h { width: 26px; } .cr-h-l { left: -13px; } .cr-h-r { right: -13px; } }
-  /* A chart that has not been seen yet waits: its line is drawn and its bars grow when it comes on the screen. */
-  .sc-wait, .sc-wait * { animation-play-state: paused !important; }
   @media (prefers-reduced-motion: reduce) { .cr-dim, .cr-win { transition: none; } }
 </style>
 
@@ -58,8 +58,8 @@
 
   const MIN_DAYS = 3;
   // How fast things settle (milliseconds for the movement to cover about two thirds of what is left): the window glides, the numbers follow a little behind it.
-  const WINDOW_TAU = 55;
-  const NUMBER_TAU = 95;
+  const WINDOW_TAU = 75;
+  const NUMBER_TAU = 120;
   // The shade goes a few pixels past the plot, so the round end of a line and its dots, which stick out of it, are under the shade too.
   const SHADE_BLEED = 6;
   const reduced = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
@@ -104,13 +104,9 @@
       this.current = first;
       this.makeSlots();
       this.bind();
-      // First it shows the whole period, then the window closes onto its first stretch: the strip is seen to be alive.
+      // Start on the full period so the whole chart stays vivid until the user drags/selects a sub-range.
       root.dataset.crOn = '';
-      if (reduced()) this.set(first, false);
-      else {
-        this.set({ a: 0, b: this.points.length - 1 }, false);
-        window.setTimeout(() => this.set(first, true), 450);
-      }
+      this.set({ a: 0, b: this.points.length - 1 }, false);
     }
 
     get count() { return this.points.length; }
@@ -297,37 +293,16 @@
     new Brush(root, data);
   }
 
-  // The charts wait to be seen: a chart below the fold draws its line and grows its bars when it comes into view.
-  const seen = typeof IntersectionObserver === 'function'
-    ? new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        entry.target.classList.remove('sc-wait');
-        seen?.unobserve(entry.target);
-      }
-    }, { threshold: 0.15 })
-    : null;
-  function wait(svg: Element) {
-    if (!seen || svg.classList.contains('sc-waited')) return;
-    svg.classList.add('sc-waited');
-    const box = svg.getBoundingClientRect();
-    if (box.top < window.innerHeight * 0.9 && box.bottom > 0 && box.width > 0) return;
-    svg.classList.add('sc-wait');
-    seen.observe(svg);
-  }
-
   function scan(scope: ParentNode) {
     scope.querySelectorAll<HTMLElement>('[data-cr]').forEach(init);
-    scope.querySelectorAll('svg.sc-draw').forEach(wait);
   }
   scan(document);
-  // A chart that the page draws later (the public page redraws its chart when the range or the number changes) is picked up when it appears.
+  // A chart that the page draws later (public page redraws) is picked up for its range brush.
   new MutationObserver((records) => {
     for (const record of records) {
       record.addedNodes.forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
         if (node.matches('[data-cr]')) init(node);
-        if (node.matches('svg.sc-draw')) wait(node);
         scan(node);
       });
     }

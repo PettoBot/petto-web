@@ -4,6 +4,47 @@ import type { TokenContext } from './variableSamples';
 
 const API = 'https://discord.com/api/v10';
 
+/**
+ * Normalizes incomplete ZWJ emoji sequences (e.g. `👮‍♀` missing U+FE0F -> `👮‍♀️`) and parses custom `<a:name:id>` emojis
+ * so Discord's button/component API never rejects them with "Invalid emoji".
+ */
+export function normalizeDiscordEmoji(raw?: string | { name?: string; id?: string; animated?: boolean } | null): { name?: string; id?: string; animated?: boolean } | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'object') {
+    if (raw.id) return { id: raw.id, name: raw.name, ...(raw.animated ? { animated: true } : {}) };
+    if (!raw.name) return undefined;
+    raw = raw.name;
+  }
+  const trimmed = String(raw).trim();
+  if (!trimmed) return undefined;
+  const custom = /^<(a?):(\w+):(\d{15,25})>$/.exec(trimmed);
+  if (custom) return { id: custom[3], name: custom[2], ...(custom[1] ? { animated: true } : {}) };
+  // Append missing VS16 (\uFE0F) after ZWJ + gender/symbol codepoints that Discord requires in qualified form.
+  const fixed = trimmed.replace(/\u200D([\u2640\u2642\u2695\u2696\u2708\u2764])(?!\uFE0F)/g, '\u200D$1\uFE0F');
+  return { name: fixed };
+}
+
+function formatDiscordApiError(body: any): string {
+  if (!body || typeof body !== 'object') return '';
+  const parts: string[] = [];
+  if (typeof body.message === 'string' && body.message.trim()) parts.push(body.message.trim());
+  const walk = (node: any, path: string) => {
+    if (!node || typeof node !== 'object' || parts.length >= 4) return;
+    if (Array.isArray(node._errors)) {
+      for (const err of node._errors) {
+        if (err && typeof err.message === 'string') parts.push(path ? `${path}: ${err.message}` : err.message);
+      }
+      return;
+    }
+    for (const [key, val] of Object.entries(node)) {
+      if (key === '_errors') continue;
+      walk(val, path ? `${path}.${key}` : key);
+    }
+  };
+  if (body.errors) walk(body.errors, '');
+  return parts.join(' — ');
+}
+
 /** Fills the bot's {variable} tokens with the given user and server. Unknown tokens stay as written. */
 export function fillTokens(text: string, ctx: TokenContext): string {
   const values = tokenValues(ctx);
@@ -82,7 +123,8 @@ export function buildDiscordMessage(data: TemplateData, ctx: TokenContext, image
   const components = data.buttons
     .map((row) => row.map((b) => {
       if (!b.label) return null;
-      const emoji = b.emoji ? { emoji: { name: b.emoji } } : {};
+      const parsedEmoji = normalizeDiscordEmoji(b.emoji);
+      const emoji = parsedEmoji ? { emoji: parsedEmoji } : {};
       if (Array.isArray(b.actions) && b.actions.length) {
         const customId = actionCustomId(b.actions, roles, actionIndex);
         if (!customId) return null;
@@ -129,11 +171,12 @@ function buildV2Message(nodes: V2Node[], fill: (text: string) => string, images:
         return accessory ? { type: 9, components: texts, accessory } : texts;
       }
       case 2: {
-        const emoji = node.emoji?.name ? { emoji: node.emoji.id ? node.emoji : { name: node.emoji.name } } : {};
+        const parsedEmoji = normalizeDiscordEmoji(node.emoji);
+        const emoji = parsedEmoji ? { emoji: parsedEmoji } : {};
         if (Array.isArray(node.actions) && node.actions.length) {
           const label = text(node.label ?? '').replace(/\*\*/g, '').slice(0, 80);
           const customId = actionCustomId(node.actions, roles, actionIndex);
-          if (!customId || (!label && !node.emoji?.name)) return null;
+          if (!customId || (!label && !parsedEmoji)) return null;
           actionIndex += 1;
           const style = [1, 2, 3, 4].includes(Number(node.style)) ? Number(node.style) : ACTION_STYLE[String(node.style ?? '').toLowerCase()] ?? 2;
           return { type: 2, style, custom_id: customId, ...(label ? { label } : {}), ...emoji, ...(node.disabled ? { disabled: true } : {}) };
@@ -141,11 +184,11 @@ function buildV2Message(nodes: V2Node[], fill: (text: string) => string, images:
         // A coloured button without actions only shows something; the bot answers it without a message (petto_display, like embedV2.js).
         if ([1, 2, 3, 4].includes(Number(node.style))) {
           const label = text(node.label ?? '').replace(/\*\*/g, '').slice(0, 80);
-          if (!label && !node.emoji?.name) return null;
+          if (!label && !parsedEmoji) return null;
           displayIndex += 1;
           return { type: 2, style: Number(node.style), custom_id: `petto_display:${displayIndex}`, ...(label ? { label } : {}), ...emoji };
         }
-        const label = text(node.label ?? ''); const url = picture(node.url); return url && (label || node.emoji?.name) ? { type: 2, style: 5, ...(label ? { label: label.slice(0, 80) } : {}), url, ...(node.emoji?.name ? { emoji: node.emoji.id ? node.emoji : { name: node.emoji.name } } : {}), ...(node.disabled ? { disabled: true } : {}) } : null; }
+        const label = text(node.label ?? ''); const url = picture(node.url); return url && (label || parsedEmoji) ? { type: 2, style: 5, ...(label ? { label: label.slice(0, 80) } : {}), url, ...emoji, ...(node.disabled ? { disabled: true } : {}) } : null; }
       case 1: { const buttons = (node.components ?? []).map(walk).filter(Boolean); return buttons.length ? { type: 1, components: buttons } : null; }
       case 17: {
         const children = (node.components ?? []).flatMap((child: any) => { const built = walk(child); return Array.isArray(built) ? built : built ? [built] : []; });
@@ -185,5 +228,7 @@ export async function sendTestMessage(botToken: string, message: ReturnType<type
   if (res.ok) return { ok: true };
   if (res.status === 403) return { ok: false, error: 'Petto cannot send messages in that channel. Check its permissions there.' };
   if (res.status === 404) return { ok: false, error: 'That channel does not exist anymore.' };
-  return { ok: false, error: 'Discord rejected the message. Check the links and image addresses in the template.' };
+  const errBody = await res.json().catch(() => null);
+  const detail = formatDiscordApiError(errBody);
+  return { ok: false, error: detail ? `Discord: ${detail}` : 'Discord rejected the message. Check the links and image addresses in the template.' };
 }

@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect, useRef } from 'react';
 
 interface Props extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'onChange' | 'value'> {
   value: string;
@@ -10,14 +10,42 @@ interface Props extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 
 }
 
 /**
- * A text box that is as tall as the text in it: it grows while you type and shrinks when you delete (CSS field-sizing; the dashboard's
- * script does the same in browsers without it, see DashMotion). A one-line value uses it too, so a long title or link is never cut off.
+ * A text box that is as tall as the text in it: it grows while you type, when a template loads,
+ * or when its section expands, and shrinks when you delete.
  */
 const GrowField = forwardRef<HTMLTextAreaElement, Props>(function GrowField({ value, onChange, single = false, counter = false, className = '', onKeyDown, rows, maxLength, ...rest }, ref) {
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
+  const assignRef = (node: HTMLTextAreaElement | null) => {
+    innerRef.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  };
+
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const fit = () => {
+      if (el.offsetWidth === 0) return;
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight + 2}px`;
+    };
+    fit();
+    if (typeof ResizeObserver === 'undefined') return;
+    let lastW = el.offsetWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.offsetWidth !== lastW) {
+        lastW = el.offsetWidth;
+        fit();
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [value, single]);
+
   return (
     <div className="ebr-grow-wrap">
       <textarea
-        ref={ref}
+        ref={assignRef}
         rows={single ? 1 : rows ?? 3}
         maxLength={maxLength}
         {...rest}

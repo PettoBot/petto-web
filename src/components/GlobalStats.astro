@@ -135,6 +135,7 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
                 </div>
               </div>
             </div>
+            <div class="gs-podium" id="gsPodium" hidden></div>
             <ol class="gs-rank" id="gsRank"></ol>
           </section>
 
@@ -468,9 +469,11 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
     }
 
     function renderRanking() {
+      const podium = document.getElementById('gsPodium');
       const list = $('gsRank');
       const rows: any[] = (snapshot?.data?.ranking?.[rankPeriod]?.[rankMetric] ?? []).slice(0, 10);
       list.textContent = '';
+      if (podium) { podium.textContent = ''; podium.hidden = true; }
       if (!rows.length) {
         const empty = document.createElement('li');
         empty.className = 'gs-rank-empty';
@@ -480,7 +483,43 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
       }
       const key = rankMetric === 'voiceSeconds' ? 'voice' : rankMetric;
       const top = Math.max(1, ...rows.map((row) => Number(row.value) || 0));
-      rows.forEach((row, index) => {
+      const usePodium = Boolean(podium && rows.length >= 3);
+      if (usePodium && podium) {
+        podium.hidden = false;
+        const order = [1, 0, 2]; // #2 left, #1 center elevated, #3 right
+        order.forEach((idx) => {
+          const row = rows[idx];
+          if (!row) return;
+          const rank = idx + 1;
+          const value = Number(row.value) || 0;
+          const card = document.createElement('article');
+          card.className = `gs-pod-card gs-pod-${rank}`;
+          const badge = document.createElement('span');
+          badge.className = 'gs-pod-rank';
+          badge.textContent = `#${rank}`;
+          const av = document.createElement('div');
+          av.className = 'gs-pod-av';
+          const icon = iconUrl(row.icon);
+          if (icon) { const img = document.createElement('img'); img.src = icon; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; av.appendChild(img); }
+          else av.textContent = String(row.name || '?').slice(0, 1).toUpperCase();
+          const name = document.createElement('strong');
+          name.className = 'gs-pod-name';
+          name.textContent = String(row.name || '');
+          const meta = document.createElement('span');
+          meta.className = 'gs-pod-meta';
+          const members = Number(row.members);
+          meta.textContent = Number.isFinite(members) && members > 0 ? `${num.format(members)} ${t('membersShort')}` : '';
+          const val = document.createElement('div');
+          val.className = 'gs-pod-val';
+          val.textContent = fmt(key, key === 'voice' ? hoursOf(value) : value);
+          card.append(badge, av, name, meta, val);
+          podium.appendChild(card);
+        });
+      }
+      const listRows = usePodium ? rows.slice(3) : rows;
+      const offset = usePodium ? 3 : 0;
+      listRows.forEach((row, i) => {
+        const index = i + offset;
         const value = Number(row.value) || 0;
         const item = document.createElement('li');
         item.className = `gs-row gs-place-${index + 1}`;
@@ -614,10 +653,6 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
 
     renderAll(true);
     load();
-    setInterval(() => { if (!document.hidden) load(); }, refreshMs);
-    setInterval(() => { if (!document.hidden) renderCards(); }, 1000);
-    setInterval(() => { if (!document.hidden) loadHistory(); }, historyEveryMs);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - fetchedAt > refreshMs) load(); });
   }
 </script>
 
@@ -625,12 +660,11 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
   .gs-sec {
     padding: 90px 0 120px;
     /* One color for each number, used by the cards, the chart and the table. The same pastels as the dashboard's charts. */
-    --m-servers: #86b894; --m-members: #9bd0f5; --m-messages: #f0a88f; --m-voice: #c6a8f5; --m-reactions: #f5c26b;
-   
+    --m-servers: #86b894; --m-members: #9bd0f5; --m-messages: #c9d0db; --m-voice: #c6a8f5; --m-reactions: #f5c26b;
   }
-  :root[data-theme="light"] .gs-sec { --m-servers: #3f7a52; --m-members: #3a7fb8; --m-messages: #c4573a; --m-voice: #7b55c4; --m-reactions: #b07a0c; }
+  :root[data-theme="light"] .gs-sec { --m-servers: #3f7a52; --m-members: #3a7fb8; --m-messages: #4b5563; --m-voice: #7b55c4; --m-reactions: #b07a0c; }
   @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) .gs-sec { --m-servers: #3f7a52; --m-members: #3a7fb8; --m-messages: #c4573a; --m-voice: #7b55c4; --m-reactions: #b07a0c; }
+    :root:not([data-theme="dark"]) .gs-sec { --m-servers: #3f7a52; --m-members: #3a7fb8; --m-messages: #4b5563; --m-voice: #7b55c4; --m-reactions: #b07a0c; }
   }
   .gs-wrap { max-width: 1060px; }
   /* The head is centered like the headers of the other public pages, and the cards and panels use the same width. */
@@ -681,6 +715,29 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
   :global(.gs-sep) { display: inline-block; height: 1.18em; line-height: 1.18; padding: 0 1px; }
 
   /* The panels: history, day by day and ranking. */
+  .gs-podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; margin: 16px 0 18px; }
+  .gs-podium[hidden] { display: none; }
+  .gs-podium :global(.gs-pod-card) {
+    position: relative; display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 20px 14px 18px; border-radius: 16px; border: 1px solid var(--border); background: var(--bg-raise);
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease;
+  }
+  .gs-podium :global(.gs-pod-card:hover) { transform: translateY(-3px); }
+  .gs-podium :global(.gs-pod-1) { padding-top: 26px; padding-bottom: 22px; border-color: rgba(245, 197, 66, 0.45); background: linear-gradient(180deg, rgba(245, 197, 66, 0.1) 0%, var(--bg-raise) 55%); }
+  .gs-podium :global(.gs-pod-2) { border-color: rgba(201, 208, 219, 0.36); background: linear-gradient(180deg, rgba(201, 208, 219, 0.08) 0%, var(--bg-raise) 55%); }
+  .gs-podium :global(.gs-pod-3) { border-color: rgba(217, 138, 86, 0.36); background: linear-gradient(180deg, rgba(217, 138, 86, 0.08) 0%, var(--bg-raise) 55%); }
+  .gs-podium :global(.gs-pod-rank) { position: absolute; top: 10px; right: 12px; font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); color: var(--text-muted); }
+  .gs-podium :global(.gs-pod-1 .gs-pod-rank) { background: rgba(245, 197, 66, 0.2); color: #f5c542; }
+  .gs-podium :global(.gs-pod-2 .gs-pod-rank) { background: rgba(201, 208, 219, 0.2); color: #dce3ee; }
+  .gs-podium :global(.gs-pod-3 .gs-pod-rank) { background: rgba(217, 138, 86, 0.2); color: #e29b6b; }
+  .gs-podium :global(.gs-pod-av) { width: 52px; height: 52px; border-radius: 15px; overflow: hidden; display: grid; place-items: center; background: var(--card); border: 1px solid var(--border); font-weight: 700; font-size: 20px; color: var(--text-muted); margin-bottom: 10px; }
+  .gs-podium :global(.gs-pod-1 .gs-pod-av) { width: 60px; height: 60px; border-color: rgba(245, 197, 66, 0.5); }
+  .gs-podium :global(.gs-pod-av img) { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gs-podium :global(.gs-pod-name) { font-size: 14.5px; font-weight: 700; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gs-podium :global(.gs-pod-meta) { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; min-height: 16px; }
+  .gs-podium :global(.gs-pod-val) { margin-top: 10px; font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--accent); padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--border-soft); }
+  @media (max-width: 680px) { .gs-podium { grid-template-columns: 1fr; } .gs-podium :global(.gs-pod-1) { order: -1; } }
+
   .gs-panel { border: 1px solid var(--border); border-radius: 18px; background: var(--card); padding: 22px 22px 20px; margin-top: 14px; min-width: 0; }
   .gs-panel-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
   .gs-panel h2 { font-size: 20px; margin: 0 0 4px; }
@@ -748,7 +805,7 @@ const cardSub = (key: string) => (CARD_SUBS[lang] ?? CARD_SUBS.en)[key] ?? '';
   :global(.gs-place) { font-family: var(--mono); font-size: 13px; color: var(--text-dim); text-align: center; width: 26px; height: 26px; line-height: 26px; border-radius: 9px; }
   :global(.gs-place-1 .gs-place) { background: color-mix(in srgb, #f5c26b 62%, transparent); color: var(--text); font-weight: 700; }
   :global(.gs-place-2 .gs-place) { background: color-mix(in srgb, #9bd0f5 55%, transparent); color: var(--text); font-weight: 700; }
-  :global(.gs-place-3 .gs-place) { background: color-mix(in srgb, #f0a88f 55%, transparent); color: var(--text); font-weight: 700; }
+  :global(.gs-place-3 .gs-place) { background: color-mix(in srgb, #c9d0db 42%, transparent); color: var(--text); font-weight: 700; }
   :global(.gs-avatar) { width: 38px; height: 38px; border-radius: 12px; background: var(--border-soft); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; overflow: hidden; flex-shrink: 0; }
   :global(.gs-avatar img) { width: 100%; height: 100%; object-fit: cover; }
   :global(.gs-who) { display: flex; flex-direction: column; min-width: 0; }

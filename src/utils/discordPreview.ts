@@ -103,15 +103,19 @@ export function renderMarkdown(text: string, ctx: PreviewContext = defaultContex
   const codeBlock = /```([\s\S]*?)```/g;
   let last = 0;
   let match: RegExpExecArray | null;
-  const lines = (chunk: string) => chunk.split('\n').map((line) => {
-    const escaped = escapeHtml(line).replace(/^(\s*)[-*]\s+(?=\S)/, '$1• ');
-    const heading = escaped.match(/^(#{1,3})\s+(.*)$/);
+  const formatLine = (escaped: string): string => {
+    const bullet = escaped.replace(/^(\s*)[-*]\s+(?=\S)/, '$1• ');
+    const heading = bullet.match(/^(#{1,3})\s+(.*)$/);
     if (heading) return `<span class="dp-h${heading[1].length}">${inline(heading[2], ctx)}</span>`;
-    const small = escaped.match(/^-#\s+(.*)$/);
+    const small = bullet.match(/^-#\s+(.*)$/);
     if (small) return `<span class="dp-sub">${inline(small[1], ctx)}</span>`;
+    return inline(bullet, ctx);
+  };
+  const lines = (chunk: string) => chunk.split('\n').map((line) => {
+    const escaped = escapeHtml(line);
     const quote = escaped.match(/^&gt;\s?(.*)$/);
-    if (quote) return `<span class="dp-quote">${inline(quote[1], ctx)}</span>`;
-    return inline(escaped, ctx);
+    if (quote) return `<span class="dp-quote">${formatLine(quote[1])}</span>`;
+    return formatLine(escaped);
   }).join('<br>');
   while ((match = codeBlock.exec(text))) {
     if (match.index > last) parts.push(lines(text.slice(last, match.index)));
@@ -151,14 +155,45 @@ function renderEmbed(e: PreviewEmbed, ctx: PreviewContext): string {
   return `<div class="dp-embed" style="--dp-c:${embedColor(e.color)}">${author}<div class="dp-embed-body"><div class="dp-embed-main">${title}${description}${fields}</div>${thumb}</div>${image}${footer}</div>`;
 }
 
+const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif)(?:[?#].*)?$/i;
+const IMGUR_PAGE_RE = /^https?:\/\/(?:www\.|m\.)?imgur\.com\/([a-zA-Z0-9]{5,12})\/?$/i;
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>()]+/gi;
+
+function toPreviewImageUrl(raw: string): string | null {
+  const clean = raw.replace(/[.,!?;:]+$/, '').trim();
+  if (!/^https?:\/\//i.test(clean)) return null;
+  if (IMAGE_EXT_RE.test(clean)) return clean;
+  const imgur = IMGUR_PAGE_RE.exec(clean);
+  if (imgur) return `https://i.imgur.com/${imgur[1]}.png`;
+  return null;
+}
+
 /** A whole message: bot header, text, embeds and link buttons, as the channel would show it. */
 export function renderMessage(message: PreviewMessage, ctx: PreviewContext = defaultContext): string {
-  const content = message.content ? `<div class="dp-content">${renderMarkdown(message.content, ctx)}</div>` : '';
+  const rawContent = (message.content ?? '').trim();
+  const soloImage = rawContent && !/\s/.test(rawContent) ? toPreviewImageUrl(rawContent) : null;
+  const content = rawContent && !soloImage ? `<div class="dp-content">${renderMarkdown(message.content ?? '', ctx)}</div>` : '';
   const embeds = (message.embeds ?? []).map((e) => renderEmbed(e, ctx)).join('');
+  // Auto-render direct image links (including imgur links) found in message content, just like Discord.
+  const embeddedUrls = new Set((message.embeds ?? []).flatMap((e) => [e.image, e.thumbnail].filter(Boolean)));
+  const autoImages: string[] = [];
+  if (soloImage) {
+    if (!embeddedUrls.has(soloImage)) autoImages.push(soloImage);
+  } else if (rawContent) {
+    const matches = rawContent.match(URL_IN_TEXT_RE) ?? [];
+    for (const m of matches) {
+      const img = toPreviewImageUrl(m);
+      if (img && !embeddedUrls.has(img) && !autoImages.includes(img)) autoImages.push(img);
+      if (autoImages.length >= 4) break;
+    }
+  }
+  const autoImagesHtml = autoImages.length
+    ? `<div class="dp-auto-images">${autoImages.map((src) => `<img class="dp-embed-image" src="${safeUrl(src)}" alt="" referrerpolicy="no-referrer">`).join('')}</div>`
+    : '';
   const buttons = (message.buttons ?? []).map((row) => row.filter((b) => b.label)).filter((row) => row.length)
     .map((row) => `<div class="dp-btn-row">${row.map((b) => `<span class="dp-btn${b.style ? ` dp-btn-${escapeHtml(b.style)}` : ''}">${b.emoji ? `<span>${escapeHtml(b.emoji)}</span> ` : ''}${escapeHtml(b.label ?? '')}</span>`).join('')}</div>`).join('');
-  const empty = !content && !embeds && !buttons ? `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>` : '';
-  return `<div class="dp-msg"><img class="dp-avatar" src="${safeUrl(ctx.botIcon)}" alt=""><div class="dp-body"><div class="dp-head"><span class="dp-name">${escapeHtml(ctx.botName)}</span><span class="dp-tag">${escapeHtml(tr(ctx, 'APP'))}</span><span class="dp-time">${escapeHtml(tr(ctx, 'Today at 12:00 PM'))}</span></div>${content}${embeds}${buttons}${empty}</div></div>`;
+  const empty = !content && !autoImagesHtml && !embeds && !buttons ? `<div class="dp-empty">${escapeHtml(tr(ctx, 'Nothing set yet.'))}</div>` : '';
+  return `<div class="dp-msg"><img class="dp-avatar" src="${safeUrl(ctx.botIcon)}" alt=""><div class="dp-body"><div class="dp-head"><span class="dp-name">${escapeHtml(ctx.botName)}</span><span class="dp-tag">${escapeHtml(tr(ctx, 'APP'))}</span><span class="dp-time">${escapeHtml(tr(ctx, 'Today at 12:00 PM'))}</span></div>${content}${autoImagesHtml}${embeds}${buttons}${empty}</div></div>`;
 }
 
 // ---- Components V2 -------------------------------------------------------------------------------------------------

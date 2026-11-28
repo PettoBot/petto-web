@@ -17,6 +17,7 @@ import DashLoading from './DashLoading.astro';
 import DashBotWait from './DashBotWait.astro';
 import DashAutocomplete from './DashAutocomplete.astro';
 import DashSideHead from './DashSideHead.astro';
+import DashServerRail from './DashServerRail.astro';
 import DashTopBar from './DashTopBar.astro';
 import DashServerSheet from './DashServerSheet.astro';
 import DashGuildFooter from './DashGuildFooter.astro';
@@ -411,7 +412,8 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         <div class="dgl-layout">
           <script type="application/json" id="dgl-role-labels" set:html={roleBlockLabels}></script>
           <div class="dgl-backdrop" id="dgl-backdrop" hidden></div>
-          <aside class="dgl-side reveal" id="dgl-side">
+          <DashServerRail user={user} guilds={switcherGuilds} activeGuildId={guildId} />
+          <aside class="dgl-side" id="dgl-side">
             <div class="dgl-drawer-head">
               <button type="button" class="dgl-side-close" id="dgl-side-close" aria-label={dt('Close the menu')}><Icon name="ph:x" width="16" height="16" /></button>
             </div>
@@ -446,12 +448,12 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
                     <a href={item.href} style={item.color ? `--nav-c:${item.color}` : undefined} data-full={item.full ? '' : undefined} data-label={item.label} data-modules={navModulesOf(item.id).join(' ') || undefined} data-sk={skeletonOf[item.id] ?? 'form'} class:list={['dgl-link', { active: active === item.id, 'dgl-feature': Boolean(item.isNew || item.beta) }]} aria-current={active === item.id ? 'page' : undefined} aria-label={item.premium && !resolvedPremiumActive ? `${item.label}, Premium required` : undefined} data-premium-lock={item.lock && !resolvedPremiumActive ? item.label : undefined}>
                       {stableInlineItems.has(item.id) ? <InlineIcon name={item.icon} width="15" height="15" /> : <Icon name={item.icon} width="15" height="15" />}
                       <span class="dgl-link-text">{item.label}</span>
-                      {item.isNew && <em class="dgl-new" title={dt('New')}>{dt('New')}</em>}
-                      {item.beta && <em class="dgl-new dgl-soon" title={dt('Beta')}>{dt('Beta')}</em>}
-                      {item.isUpdated && <em class="dgl-new dgl-updated" title={dt('Updated')}>{dt('Updated')}</em>}
+                      {item.isNew && <span class="vx-duck-pill vx-duck-new" title={dt('New')}><img src="/assets/petto-emblem.svg" alt="" class="vx-duck-ico" draggable="false" /><span class="vx-duck-label">{dt('New')}</span></span>}
+                      {item.beta && <span class="vx-duck-pill vx-duck-beta" title={dt('Beta')}><img src="/assets/petto-emblem.svg" alt="" class="vx-duck-ico" draggable="false" /><span class="vx-duck-label">{dt('Beta')}</span></span>}
+                      {item.isUpdated && <span class="vx-duck-pill vx-duck-upd" title={dt('Updated')}><img src="/assets/petto-emblem.svg" alt="" class="vx-duck-ico" draggable="false" /><span class="vx-duck-label">{dt('Updated')}</span></span>}
                       {item.soon && <em class="dgl-new dgl-soon" title={dt('Soon')}>{dt('Soon')}</em>}
                       {item.maintenance && <em class="dgl-new dgl-soon dgl-badge-icon" title={dt('Maintenance')} aria-label={dt('Maintenance')} role="img"><Icon name="ph:wrench-fill" width="11" height="11" /></em>}
-                {item.premium && <InlineIcon name="ph:crown-fill" width="12" height="12" class="dgl-premium-crown" />}
+                      {item.premium && <span class="vx-duck-pill vx-duck-prem" title="Premium"><img src="/assets/petto-emblem.svg" alt="" class="vx-duck-ico" draggable="false" /><span class="vx-duck-label">Premium</span></span>}
                       {navModulesOf(item.id).length > 0 && <i class="dgl-state" aria-hidden="true"></i>}
                     </a>
                   ))}
@@ -1863,15 +1865,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         script.textContent = old.textContent;
         document.head.appendChild(script);
       });
-      // Astro puts the code that makes a React part of a page come alive (the island runtime) in a plain script of the <head>, once, before
-      // the first part. When the page we came from had no such part (the dashboard itself, say), nobody ever ran it, and a part of the new
-      // page, like the Embeds builder, stayed as its grey loading shape for good. It runs here once, when the page does not have it yet.
+      // Astro puts the code that makes a React part of a page come alive (the island runtime and self.Astro directives like .only)
+      // in plain scripts of the <head>. Run them BEFORE inserting <astro-island> into the live DOM so connectedCallback always finds
+      // self.Astro.only and hydrates React islands (like Embeds) on the first soft navigation without requiring a reload.
       freshHead.querySelectorAll('script:not([src])').forEach(function (old) {
         var type = (old.getAttribute('type') || '').toLowerCase();
         if (type && type !== 'text/javascript') return;
         var code = old.textContent || '';
-        if (code.indexOf('astro-island') === -1 && code.indexOf('self.Astro') === -1) return;
-        if (window.customElements && window.customElements.get('astro-island')) return;
+        var isIslandDef = code.indexOf('astro-island') !== -1;
+        var isDirective = code.indexOf('self.Astro') !== -1;
+        if (!isIslandDef && !isDirective) return;
+        if (isIslandDef && !isDirective && window.customElements && window.customElements.get('astro-island')) return;
         if (executedInlineModules.has(code)) return;
         executedInlineModules.add(code);
         var script = document.createElement('script');
@@ -1938,9 +1942,17 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         keepSymbols(fresh);
         // A change of page cross-fades (dglMotion in DashMotion); a save or a refresh in the background draws at once, as before.
         var apply = function () {
+        runHeadScripts(doc.head);
         current.replaceWith(fresh);
         executeScripts(fresh);
-        runHeadScripts(doc.head);
+        // Ensure any React <astro-island> swapped in via AJAX hydrates immediately without full-page reload.
+        fresh.querySelectorAll('astro-island').forEach(function (island) {
+          if (typeof island.hydrate === 'function' && !island.hasAttribute('data-hydrated')) {
+            try { island.hydrate(); } catch (e) {}
+          } else if (window.customElements && window.customElements.get('astro-island') && !island.childElementCount) {
+            try { island.replaceWith(island.cloneNode(true)); } catch (e) {}
+          }
+        });
         initContent(fresh);
         if (window.dglArrive && window.dglFindTarget) setTimeout(function () { window.dglArrive(fresh); }, 80);
         if (window.PettoLevelingInit) window.PettoLevelingInit(fresh);
@@ -2172,54 +2184,16 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
         if (pageIsIdle()) { clearInterval(idleTimer); idleTimer = 0; refreshCurrent(false); }
       }, 1000);
     }
-    var heardTimer = 0;
     function heard(version) {
       if (!isNewer(version, latestVersion)) return;
       latestVersion = version;
-      // The echo of a change made from this page: it is already on screen, so it is taken as seen and nothing is redrawn.
-      if (Date.now() < (window.__dglOwnChangeUntil || 0)) { setShownVersion(version); return; }
-      // A burst of changes (a save that touches several tables, the bot's copy right after) becomes one read.
-      clearTimeout(heardTimer);
-      heardTimer = setTimeout(function () { refreshCurrent(false); }, 400);
+      setShownVersion(version);
     }
     window.dglRefreshPage = function (force) { refreshCurrent(Boolean(force)); };
 
-    // Some pages show what changes without a stamp: statistics, leaderboards, open tickets, Discord's audit log. Such a page carries
-    // data-dash-live="<seconds>" and reads itself every that many seconds while it is on screen and nothing is being edited. The read
-    // goes through the browser's cache, so the server answers 304 at once until it has a newer copy (its ETag follows the minute), and
-    // the page is redrawn (keeping the scroll) only when what came back differs from what is shown. A hidden tab reads nothing.
+    // Automatic background refreshes (data-dash-live / data-dash-fill / visibilitychange) are disabled:
+    // pages load fresh when navigated to and only refresh when the user explicitly reloads or saves.
     var liveHtml = { href: '', body: '' };
-    var liveCheckedAt = Date.now();
-    setInterval(function () {
-      if (document.hidden) return;
-      var content = document.getElementById('dgl-content');
-      var marker = content && content.querySelector('[data-dash-live]');
-      if (!marker) { liveCheckedAt = Date.now(); return; }
-      var every = Math.max(10, Number(marker.getAttribute('data-dash-live')) || 30) * 1000;
-      if (Date.now() - liveCheckedAt < every) return;
-      liveCheckedAt = Date.now();
-      refreshCurrent(true, true);
-    }, 2000);
-    // A page drawn before something it shows arrived (the live numbers of the counters, asked from the bot) carries data-dash-fill: it is
-    // read again a moment after it is on screen, and again a little later while the answer is still missing (a few times at most).
-    var fillHref = '';
-    var fillTries = 0;
-    var fillAt = 0;
-    setInterval(function () {
-      if (document.hidden || refreshing) return;
-      var content = document.getElementById('dgl-content');
-      if (!content || !content.hasAttribute('data-dash-fill')) { fillHref = ''; return; }
-      var href = window.location.pathname + window.location.search;
-      if (fillHref !== href) { fillHref = href; fillTries = 0; fillAt = Date.now() + 600; }
-      if (fillTries >= 6 || Date.now() < fillAt) return;
-      fillTries += 1;
-      fillAt = Date.now() + 700 * fillTries;
-      refreshCurrent(true, true);
-    }, 200);
-    document.addEventListener('visibilitychange', function () {
-      // Back on a live page after a while: it checks at once.
-      if (!document.hidden && document.querySelector('#dgl-content [data-dash-live]')) liveCheckedAt = 0;
-    });
 
     (function () {
       var match = window.location.pathname.match(/^\/(?:(?:es|pt-br)\/)?dash\/guild\/(\d+)\//);
@@ -3536,7 +3510,7 @@ const dashEtag = dashPending ? '' : String((Astro.locals as Record<string, unkno
   @media (max-width:760px) { .dgl-dev-actions { width:100%; }.dgl-dev-actions .btn, .dgl-dev-actions form { flex:1 1 100%; width:100%; justify-content:center; box-sizing:border-box; } }
   .dgl-content {
     min-width: 0; border: 0; border-radius: 0; background: var(--dgl-panel-bg, var(--bg));
-    padding: 28px 36px 48px; min-height: 0;
+    padding: 28px 36px 20px; min-height: 0;
   }
   .dgl-content { scroll-padding-block: 14px; }
 

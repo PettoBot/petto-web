@@ -42,7 +42,7 @@ export function avatarPresetGroups(): PresetGroup[] {
 export function bannerPresetGroups(current: string | null): PresetGroup[] {
   const petto: Preset[] = [
     ...(current ? [{ id: 'current', label: 'Petto now', src: current }] : []),
-    local('petto', 'Petto', '/assets/dash-banner-petto.webp'),
+    local('petto', 'Petto', '/assets/banner-default.webp'),
     local('link', 'Petto dark', '/assets/petto-link-banner-min.png'),
   ];
   const colors: Preset[] = ['coral', 'blurple', 'green', 'yellow', 'red', 'pink', 'grey', 'night']
