@@ -1,0 +1,1638 @@
+export { renderers } from '../../renderers.mjs';
+
+const revision = 3;
+const version = "0.7.13";
+const entries = [
+	{
+		id: "currently-log",
+		category: "feature",
+		title: "The Currently log",
+		area: "Petto › Announcements",
+		summary: "Every change of Petto is posted in this channel when it goes live: a color for each kind of change, a short explanation, and pictures. React with the like or the dislike to tell us what you think. Red is security, yellow a new feature, green something added to a feature, blue an improvement, orange a fix, purple the web and docs, gray something removed and black a feature removed.",
+		images: [
+			"https://petto.sbs/assets/log/currently-log-colors-1.png",
+			"https://petto.sbs/assets/log/currently-log-colors-2.png"
+		],
+		docs: "https://petto.sbs/blog/currently-log"
+	},
+	{
+		id: "partner-top-lists",
+		category: "addition",
+		title: "Top lists of the best partner managers",
+		area: "Partners › Variables",
+		summary: "`{partner.top_list_day}`, `{partner.top_list_week}` and `{partner.top_list_total}` write the five best managers of the day, the week and all time, one per line with their partnerships. Use them in any partner message.",
+		images: [
+			"https://petto.sbs/assets/log/partner-top-lists.png"
+		],
+		docs: "https://wiki.petto.sbs/resources/scripting/variables"
+	},
+	{
+		id: "server-member-variables",
+		category: "addition",
+		title: "14 new server and member variables",
+		area: "Embeds › Variables",
+		summary: "Server: `{server_age_days}`, `{server_createdate_timestamp}`, `{server_emojicount}`, `{server_stickercount}`, `{server_description}`, `{server_vanity}`, `{server_banner}`, `{server_verification}`, `{server_locale}` and `{server_rules_channel}`. Member: `{user.role_count}`, `{user.top_role_mention}`, `{user.is_owner}` and `{user.joined_age_days}`.",
+		images: [
+			"https://petto.sbs/assets/log/new-variables.png"
+		],
+		docs: "https://wiki.petto.sbs/resources/scripting/variables"
+	},
+	{
+		id: "purge-all-channels",
+		category: "addition",
+		title: "Purge in every channel",
+		area: "Moderation › Purge",
+		summary: "`/purge` and `!purge` have a new option, `all_channels` (or `!purge everywhere 50 bots`). It scans every text channel where you and Petto can delete, shows how many messages it would delete in each one, and waits for a Confirm click before deleting anything.",
+		images: [
+			"https://petto.sbs/assets/log/purge-all-channels.png"
+		]
+	},
+	{
+		id: "mhistory-command",
+		category: "addition",
+		title: "New command: /mhistory",
+		area: "Moderation › Cases",
+		summary: "`/mhistory moderator:<member>` and `!mhistory <moderator>` show the cases a moderator has given. The line of `/case stats` that pointed to it now names a command that exists.",
+		images: [
+			"https://petto.sbs/assets/log/mhistory.png"
+		]
+	},
+	{
+		id: "case-icons",
+		category: "fix",
+		title: "A case shows the same icon everywhere",
+		area: "Moderation › Cases",
+		summary: "The card of a case (`/case view`, `/case edit`) and the one-line case still used the old icon of each sanction type. They now use the hammer, or the alert for a warning, like the list of cases.",
+		images: [
+			"https://petto.sbs/assets/log/case-detail.png"
+		]
+	},
+	{
+		id: "forum-outside-post",
+		category: "fix",
+		title: "/forum outside a post says why",
+		area: "Tickets › Forums",
+		summary: "Using `/forum` in a channel that is not a forum post answered with a generic error. It now tells you to use it inside a post."
+	},
+	{
+		id: "identity-menu",
+		category: "fix",
+		title: "/guildtag and /vanity show in the menu",
+		area: "Automation › Identity",
+		summary: "Discord hid both commands from members without Manage Server, so a moderator could not find them. They now show for everybody and ask for Manage Server when they run."
+	},
+	{
+		id: "short-c-case",
+		category: "improvement",
+		title: "!c opens the cases",
+		area: "Moderation › Cases",
+		summary: "`!c <member>` is now a short way of `!case`: it shows the cases of that member."
+	},
+	{
+		id: "calc-short-c",
+		category: "removal",
+		title: "!c is no longer the calculator",
+		area: "Utility › Calc",
+		summary: "`c` was a short word of the calculator, so `!c <id>` answered with a calculation. `!calc` and `!calculate` still work."
+	},
+	{
+		id: "blog-currently-log",
+		category: "web",
+		title: "New blog post: Introducing the Currently log",
+		area: "Web › Blog",
+		summary: "What the Currently log is, what each color means, how a post looks and what is in the first one. Available in English, Spanish and Portuguese.",
+		docs: "https://petto.sbs/blog/currently-log"
+	},
+	{
+		id: "sticky-posted-on-save",
+		category: "improvement",
+		title: "A sticky message is posted when you save it",
+		area: "Automation › Sticky messages",
+		summary: "Saving a sticky message in the dashboard now posts it in the channel right away, like `!stickymessage set` does, instead of waiting for somebody to write there first. If you change it, the old message is replaced."
+	},
+	{
+		id: "text-fields-fit",
+		category: "web",
+		title: "Text fields fit their text",
+		area: "Web › Dashboard",
+		summary: "Every text field of the site has the height of its text: no corner to drag, it grows as you write and shrinks as you delete, and an empty one is four lines high. Chat boxes keep their own size."
+	},
+	{
+		id: "new-label-expires",
+		category: "web",
+		title: "The \"New\" label goes away by itself",
+		area: "Web › Dashboard and menus",
+		summary: "The \"New\" label on the tabs of the dashboard, the modules, the menu and the footer now lasts ten days from the day something comes out. The ones that were still showing it after weeks are gone."
+	},
+	{
+		id: "sticky-follows-bots",
+		category: "fix",
+		title: "Sticky messages come back down for bots too",
+		area: "Automation › Sticky messages",
+		summary: "A sticky message used to ignore what bots wrote, so in a channel where bots do the talking it stayed far above. Now a message from anybody (members, bots and webhooks) brings it back to the bottom."
+	},
+	{
+		id: "ban-answers-first",
+		category: "fix",
+		title: "A ban with deleted messages answers first",
+		area: "Moderation › Ban",
+		summary: "When you ban someone and ask to delete their recent messages, Petto now sends the notice, bans, says it is done and writes the log first, and deletes the messages after. Before, a member with many messages made you wait for the deletion before seeing the answer."
+	},
+	{
+		id: "purge-threads-forums",
+		category: "fix",
+		title: "Purge in every channel also cleans threads and forum posts",
+		area: "Moderation › Purge",
+		summary: "`/purge all_channels` skipped threads and the posts of forums, so what was written there stayed. It now scans the open ones too, and they appear in the confirmation list. An archived thread is left alone: nothing can be deleted there until it is opened again."
+	},
+	{
+		id: "transcript-forwards",
+		category: "fix",
+		title: "Ticket transcripts show forwarded messages",
+		area: "Tickets › Transcripts",
+		summary: "A forwarded message used to appear in the transcript as \"No text content\", because the text lives in the original message. Now the transcript shows what was forwarded (its text, embeds, files and stickers) under a \"Forwarded\" mark, and the live view of the ticket shows it too."
+	},
+	{
+		id: "petto-code-server-tools",
+		category: "addition",
+		title: "Petto Code can now manage the server",
+		area: "Petto Code › Functions",
+		summary: "Commands written in code can now edit, delete and pin messages, read messages, users and permissions, and run a command later. From a button, a menu, a form or a reaction they can also moderate (warn, mute, kick, ban), lock channels and manage roles, threads and nicknames, always with the permissions of the member who pressed it: a typed command cannot copy what Petto already does with its own commands. There are also 30 small tools for text, numbers, lists and dates.",
+		images: [
+			"https://petto.sbs/assets/log/petto-code-panel.png",
+			"https://petto.sbs/assets/log/petto-code-report.png",
+			"https://petto.sbs/assets/log/petto-code-later.png"
+		],
+		docs: "https://code.petto.sbs/server/"
+	},
+	{
+		id: "petto-code-connect",
+		category: "addition",
+		title: "Petto Code: files, connected commands and reminders that repeat",
+		area: "Petto Code › Dashboard",
+		summary: "A command can now be written in several files: the + above the editor adds one (up to 5), and they run together as one code. A command can use another one (callCC) and give a value back, run a command of Petto as the member (runCommand), and run by itself every some time, every day or every week in a time zone. One panel under the editor sets what starts it, the commands that run after it, who can use it and where (roles and channels), what a mistake does, and the server time zone. The editor is also bigger on a phone.",
+		images: [
+			"https://petto.sbs/assets/log/petto-code-files.png",
+			"https://petto.sbs/assets/log/petto-code-settings.png",
+			"https://petto.sbs/assets/log/petto-code-mobile.png"
+		],
+		docs: "https://code.petto.sbs/connect/"
+	},
+	{
+		id: "dash-pick-roles-channels",
+		category: "improvement",
+		title: "Roles and channels are easier to pick in the dashboard",
+		area: "Dashboard › Lists of roles and channels",
+		summary: "Every list of roles and channels in the dashboard now has a box to tick in each row. Roles show their color, channels sit under their category like in Discord, and a role that Petto cannot give (above Petto, or managed) shows dark and locked with the reason. A list that only filters keeps those roles, with a small mark. On a phone the same compact menu opens, and tapping a text field closes an open list, so what you type goes to that field.",
+		images: [
+			"https://petto.sbs/assets/log/petto-code-pick-roles.png",
+			"https://petto.sbs/assets/log/petto-code-pick-channels.png",
+			"https://petto.sbs/assets/log/petto-code-pick-mobile.png"
+		]
+	},
+	{
+		id: "dash-role-colors-categories",
+		category: "improvement",
+		title: "Roles in their own color, categories with their emoji",
+		area: "Dashboard › Lists of roles and channels",
+		summary: "In every list of the dashboard a role is now written in its own color, as Discord shows it, and in the chip that stays when it is chosen. A category whose name starts with an emoji shows that emoji first in its title, in the lists and in the compact menu. Tapping a text field while a list is open now puts the phone's keyboard in that field, never in the list, and the file tabs of the code editor meet the code box with one soft outline.",
+		images: [
+			"https://petto.sbs/assets/log/petto-pick-colors.png",
+			"https://petto.sbs/assets/log/petto-pick-categories.png",
+			"https://petto.sbs/assets/log/petto-pick-menu.png"
+		]
+	},
+	{
+		id: "dash-code-savebar",
+		category: "improvement",
+		title: "One Save button for the whole Code page",
+		area: "Dashboard › Commands in code",
+		summary: "Change the options of a command, the time zone, the connected commands, the trigger or the code, and the bar at the bottom says \"You have unsaved changes\" with Discard and Save changes for all of it together. Save sends every change, one after the other; Discard puts everything back as it was.",
+		images: [
+			"https://petto.sbs/assets/log/dash-code-savebar.png"
+		]
+	},
+	{
+		id: "dash-switch-ring",
+		category: "improvement",
+		title: "A little ring turns inside a switch while it saves",
+		area: "Dashboard › Switches",
+		summary: "Every switch of the dashboard is the same green, and while a change is being saved a small ring turns inside its knob, like the ones of the quick access in the overview. The page does not reload, so it feels smoother.",
+		images: [
+			"https://petto.sbs/assets/log/dash-switch-ring.png"
+		]
+	},
+	{
+		id: "dash-green-red",
+		category: "improvement",
+		title: "Green to save and choose, red to delete",
+		area: "Dashboard › Buttons",
+		summary: "In the dashboard, the buttons that save or add are green, the ones that delete are red, and what you have chosen (options, chips, tabs and ticks) is green too. The peach stays for the menu and the links.",
+		images: [
+			"https://petto.sbs/assets/log/dash-green-red.png"
+		]
+	},
+	{
+		id: "sanction-ended-log",
+		category: "fix",
+		title: "The log of a sanction that ends shows who it was",
+		area: "Moderation › Logs",
+		summary: "When a timed mute or ban ends by itself, the log now shows the name, the ID and the avatar of the person at the top, like the log of a new sanction. Before, it only had the ID."
+	},
+	{
+		id: "level-roles-word",
+		category: "addition",
+		title: "`!level roles` shows the roles of the levels",
+		area: "Leveling › Commands",
+		summary: "`!level roles` (and `!level rewards`) is the same as `!level reward list` and `/level reward list`: the roles you get at each level. Before, it said it could not find `roles`."
+	},
+	{
+		id: "color-card-no-picture",
+		category: "fix",
+		title: "The color card says why it has no picture",
+		area: "Search › Color",
+		summary: "`/search color`, `!color` and `!hex` draw a picture of the color. Where Petto or the member cannot attach files in the channel, the picture was left out without a word; now the card says why, so you know to give Petto the Attach Files permission."
+	},
+	{
+		id: "bulk-role-roles-not-loaded",
+		category: "fix",
+		title: "A bulk role job no longer stops with an error when the server is just back",
+		area: "Moderation › Bulk roles",
+		summary: "If the roles of the server were not loaded yet (the server had just come back, or Discord was slow), a bulk role job stopped with an unexpected error. Now Petto loads the roles first, and if it still cannot read them it says so and you can start the job again."
+	},
+	{
+		id: "packages-updated",
+		category: "improvement",
+		title: "Petto's libraries are up to date",
+		area: "Petto › Under the hood",
+		summary: "Four of the libraries Petto uses were updated to their latest versions (images, settings, the request limit and the payments kit). Nothing changes for you, but it keeps Petto safe and ready for what comes."
+	},
+	{
+		id: "wiki-code-more-docs",
+		category: "web",
+		title: "The Petto Code wiki has a step by step guide, recipes and a full reference",
+		area: "Wiki › Petto Code",
+		summary: "The Petto Code wiki is much longer: a guide that goes step by step, ten recipes you can copy (a welcome, a shop, a reminder...), and a reference of every function with an example. On a phone, the tables are cards, so a long name is never cut in the middle.",
+		docs: "https://wiki.petto.sbs"
+	},
+	{
+		id: "wiki-tables-phone",
+		category: "web",
+		title: "Tables of the wiki are cards on a phone",
+		area: "Wiki › Variables",
+		summary: "On a phone, each row of a table of the wiki (like the variables) is a card, so a long variable is never cut in the middle and you do not have to scroll sideways.",
+		docs: "https://wiki.petto.sbs/resources/scripting/variables"
+	},
+	{
+		id: "code-generator-1-7",
+		category: "web",
+		title: "The Code Generator knows every function of Petto Code",
+		area: "Tools › Code Generator",
+		summary: "The Code Generator (version 1.7.0) runs the same engine as the bot again: all the new functions of Petto Code, connected commands, repeating reminders, and the mistakes it finds are written in the language of the page."
+	},
+	{
+		id: "currently-log-two-minutes",
+		category: "improvement",
+		title: "A change reaches the Currently log in two minutes",
+		area: "Petto › Currently log",
+		summary: "Petto now looks for new changes every two minutes, not every ten, so what is merged and deployed shows in this channel almost at once instead of looking like it was forgotten."
+	},
+	{
+		id: "currently-log-pictures-checked",
+		category: "fix",
+		title: "The pictures of a change are checked before it is posted",
+		area: "Petto › Currently log",
+		summary: "Petto now reads each picture of a change the way Discord does (it has to be a real image of a size Discord takes) and leaves it ready, so one of the three pictures of a change no longer shows broken. A change whose picture does not pass waits until it does."
+	},
+	{
+		id: "improvement-card-arrow",
+		category: "improvement",
+		title: "The Improvements card has an arrow that goes up",
+		area: "Petto › Currently log",
+		summary: "The card of the improvements had two circular arrows that looked like a clock. It now has an arrow that goes up."
+	},
+	{
+		id: "memory-lighter-messages",
+		category: "improvement",
+		title: "Petto uses less memory",
+		area: "Petto › Under the hood",
+		summary: "Petto used a lot of memory keeping every message it saw for an hour, even in servers that do not use the message log. Now it keeps them for ten minutes, and for an hour only in the servers that have the message log on, so the log of edited and deleted messages works as before. A lighter Petto stays fast as it grows."
+	},
+	{
+		id: "dash-stats-voice-overview",
+		category: "improvement",
+		title: "The statistics overview shows voice next to messages",
+		area: "Dashboard › Statistics",
+		summary: "The overview of the statistics now draws the voice hours per day and the busiest hours of voice right next to the messages per day and the busiest hours of messages, so you see both at a glance. The Voice tab keeps its own details."
+	},
+	{
+		id: "logs-skip-unused-events",
+		category: "improvement",
+		title: "Petto no longer works for logs a server did not turn on",
+		area: "Petto › Logs",
+		summary: "Before building a log, Petto now checks that the server has that log on. A server without the voice log or the message log no longer makes Petto ask Discord who muted, moved or disconnected someone, or build the embed for every edit and deletion. Servers with the logs on get them exactly as before."
+	},
+	{
+		id: "stats-member-cards",
+		category: "improvement",
+		title: "/stats member now comes as two picture cards",
+		area: "Petto › Statistics",
+		summary: "/stats member shows a profile card with the member's server rank for messages and voice, when the account was created and when they joined, and their messages and voice time in the last day, 7 days and 30 days. Under it, a second card has the streak, active days, best day and a chart of messages and voice hours per day. Voice time counts now, not only messages. Every /stats picture now shows the icon of your server next to its name. The pictures here show the main Petto server with made-up numbers.",
+		images: [
+			"https://petto.sbs/assets/log/stats-member-profile.png",
+			"https://petto.sbs/assets/log/stats-member-charts.png"
+		]
+	},
+	{
+		id: "hidden-channels-no-access",
+		category: "fix",
+		title: "A channel Petto cannot see is no longer called deleted",
+		area: "Dashboard › Channels",
+		summary: "Discord now shows the channels a bot cannot view only in outline. The dashboard used to call a saved choice that pointed to one of them (a log, a feed, a honeypot or a paginated list) a deleted channel. It now says No access (hidden channel), because the channel exists and Petto just cannot see it. The channel pickers still do not list those channels."
+	},
+	{
+		id: "ticket-ai-removed",
+		category: "removed-feature",
+		title: "Tickets answered by AI are removed",
+		area: "Petto › Tickets",
+		summary: "The AI assistant for tickets is gone, for good. Its answers were not reliable enough and it used more resources than it was worth. Petto no longer greets or answers in new tickets with the AI, the Talk to a person button and the AI assistant page of the dashboard are removed, and so are its settings in the server's YAML. Staff answer tickets as always. The /ask command stays."
+	},
+	{
+		id: "privacy-ask-canada",
+		category: "web",
+		title: "Privacy Policy and Terms explain /ask and follow Canadian law",
+		area: "Website › Legal",
+		summary: "The Privacy Policy and the Terms now explain how /ask works: only the question, and up to four earlier messages of a conversation, go to the AI provider; Petto stores none of it and does not use it to train AI; the provider may process it outside Canada. Petto follows the principles of Canadian privacy law (PIPEDA, and Law 25 in Québec) and names Liam as the person responsible for privacy. The Terms are governed by the laws of Colombia. The old texts about the ticket assistant are gone."
+	},
+	{
+		id: "slash-language-support",
+		category: "addition",
+		title: "/language and /support are slash commands",
+		area: "Petto › Commands",
+		summary: "/language, to see or change the language Petto speaks on your server, and the new /support, which gives you the invitation to the support server, now work as slash commands. The prefix commands !language and !support keep working too."
+	},
+	{
+		id: "setup-message-slash",
+		category: "improvement",
+		title: "The welcome message of a new server uses slash commands",
+		area: "Petto › Setup",
+		summary: "When Petto joins a server, the setup message and the guide for the owner now point to /help, /logs, /automod, /greet and /language instead of the prefix commands, and the invitation to the support server is in it. The picture next to the text is the avatar Petto has in that server, so a Christmas avatar shows up too, and every line has its icon."
+	},
+	{
+		id: "login-join-support",
+		category: "addition",
+		title: "The dashboard login asks if you want to join the support server",
+		area: "Dashboard › Login",
+		summary: "The first time you sign in to the dashboard, a question asks whether you want Petto to add you to the support server, with Yes and No. Only if you say yes does Discord ask you to allow it on its own screen. It is asked once, and nobody is added without saying yes."
+	},
+	{
+		id: "wiki-publish-fixed",
+		category: "web",
+		title: "The wiki publishes again and the Priority changelog is up to date",
+		area: "Wiki › Changelog",
+		summary: "The wiki had stopped publishing its latest changes because of an error in a file meant for the team. It is fixed, so what was written about /ask and privacy is online. The Priority changelog now shows the news of 2026-11-18 and its text no longer sits in a narrow column under the date. The Language and Statistics pages describe /language and the new /stats member pictures."
+	},
+	{
+		id: "data-deleted-in-5-minutes",
+		category: "security",
+		title: "What Petto stored for a server is deleted 5 minutes after it is removed",
+		area: "Privacy › Data retention",
+		summary: "When Petto is removed from a server, everything it stored for that server is deleted at most 5 minutes later, not after 3 days: the settings, the logs and the backups kept in its database, with no exceptions (a Premium slot in use or backups no longer make it wait). If the bot is added back inside those minutes, nothing is lost. The servers that were waiting for their 3 days are deleted now. The Privacy Policy says so in English, Spanish and Portuguese."
+	},
+	{
+		id: "dash-quick-setup",
+		category: "feature",
+		title: "Quick Setup: set up your server in seven steps from the dashboard",
+		area: "Dashboard › Quick Setup",
+		summary: "A new guided setup in the dashboard menu. Pick the modules you want (moderation log, auto moderation, welcome messages, auto role, tickets, verification), answer a few questions in each step and nothing changes in your server until the last step, when everything is applied together. Petto can make the channels and roles for you, and a step that fails does not stop the others. You can run it again any time from the sidebar.",
+		images: [
+			"https://petto.sbs/assets/log/dash-quick-setup-modules.png",
+			"https://petto.sbs/assets/log/dash-quick-setup-review.png"
+		]
+	},
+	{
+		id: "moderation-rules",
+		category: "feature",
+		title: "Moderation rules: make your own rules in the dashboard",
+		area: "Dashboard › Moderation rules",
+		summary: "A new, much more powerful way to moderate. Make rulesets with general conditions (channels, categories, roles, new accounts) and rules inside them: choose what to look for (words, links with allow and deny lists, invites, mentions, caps, emojis, repeated or too fast messages, attachments and more), who and where it applies, and what Petto does (delete, reply, DM, warn, timeout, kick, ban, give or take a role), even only after a member does it several times. There is a log of what each rule did, without the text of messages. Rules are made only in the dashboard.",
+		images: [
+			"https://petto.sbs/assets/log/moderation-rules-rule.png",
+			"https://petto.sbs/assets/log/moderation-rules-lists.png",
+			"https://petto.sbs/assets/log/moderation-rules-logs.png"
+		]
+	},
+	{
+		id: "dash-footer-info",
+		category: "web",
+		title: "Every page of the dashboard now ends with what happens to your data",
+		area: "Dashboard",
+		summary: "At the bottom of every server page there is now a short note: Petto keeps your settings while it is in your server, deletes them within 5 minutes if you remove it, and where to make a backup, export your settings, read the docs, get support or read the Privacy Policy.",
+		images: [
+			"https://petto.sbs/assets/log/dash-footer-info.png"
+		]
+	},
+	{
+		id: "moderation-rules-strikes-heat",
+		category: "feature",
+		title: "Moderation rules: strikes, heat, join gate, rule tester and more",
+		area: "Dashboard › Moderation rules",
+		summary: "Moderation rules grow. Strikes and heat: count what a member does (kept in the database, so a restart forgets nothing), and let timeouts grow each time. New triggers (busy channel, fast mentions, files or links, names, strikes, heat), conditions (bot or person, edited message, threads) and effects (delete their last messages, slowmode, alert, quarantine, lock the server). A test mode, a Try this rule panel, ready-made templates, and export and import. A join gate for avatars, new accounts and names, with a raid detector. Big lists are searched much faster.",
+		images: [
+			"https://petto.sbs/assets/log/moderation-rules-gate.png",
+			"https://petto.sbs/assets/log/moderation-rules-try.png",
+			"https://petto.sbs/assets/log/moderation-rules-settings.png"
+		]
+	},
+	{
+		id: "dash-modules-state-and-audit-pictures",
+		category: "improvement",
+		title: "Dashboard: modules on or off in the menu, clearer Overview and pictures in the Audit Log",
+		area: "Dashboard › Menu, Overview and Audit Log",
+		summary: "The dashboard looks and moves better. The side menu now shows what is on: a green dot for a module that is on and grey for the ones that are off, and a section is grey when none of its modules is on. New things carry a NEW label again (not a bare dot). The Overview cards are clearer, with a mark on the edge, a dot for the state and a button to the settings that fits a phone. Colors keep their mark (border, dot, icon) but the words stay light and easy to read. The Audit Log shows the picture of who did each change.",
+		images: [
+			"https://petto.sbs/assets/log/dash-sidebar-states.png",
+			"https://petto.sbs/assets/log/dash-overview-quick-access.png",
+			"https://petto.sbs/assets/log/dash-audit-avatars.png"
+		]
+	},
+	{
+		id: "dash-welcome-roles-sections",
+		category: "improvement",
+		title: "Dashboard: a Welcome section, a Roles section and a menu that makes sense",
+		area: "Dashboard › Menu",
+		summary: "The old Join Gate page that mixed everything is split. Welcome is now its own section: welcome messages, DM on join and ping on join. Verification stays in Security. Bump goes to Community. Roles is a new section that gathers join roles, aged roles, reaction roles, sticky roles, bulk roles, role triggers, role quotas, booster roles and vanity roles. Old links and bookmarks send you to the new pages by themselves.",
+		images: [
+			"https://petto.sbs/assets/log/dash-menu-welcome-roles.png"
+		]
+	},
+	{
+		id: "welcome-random-messages",
+		category: "feature",
+		title: "Up to 25 welcome, goodbye and boost messages: Petto picks one at random",
+		area: "Dashboard › Welcome · /greet",
+		summary: "Like other bots do: instead of one sentence for everybody, a server can have up to 25 messages for the welcome, 25 for the goodbye and 25 for the boost. Each time, Petto picks one at random and never the same one twice in a row. Add them with the button \"Add another message\" in the dashboard, or with /greet welcome add-message (also for leave and boost). Each one can be a text or a saved embed.",
+		images: [
+			"https://petto.sbs/assets/log/welcome-random-messages.png"
+		]
+	},
+	{
+		id: "aged-roles",
+		category: "feature",
+		title: "Aged roles: a role after some days in the server",
+		area: "Dashboard › Roles · /role aged",
+		summary: "Give a role to whoever has been in the server for some days, and take another one away at the same time (for example after 30 days give Regular and take New). Make as many rules as you need (up to 25), for humans, bots or everybody. Petto looks about every 30 minutes, and the members who were already in get it too. Add rules in the dashboard (Roles › Aged roles) or with /role aged add.",
+		images: [
+			"https://petto.sbs/assets/log/aged-roles-page.png"
+		]
+	},
+	{
+		id: "staff-roles-in-dash",
+		category: "feature",
+		title: "Staff roles: let a role ban or mute without the Discord permission",
+		area: "Dashboard › Moderation › Staff roles",
+		summary: "A Mod role that can ban without having Ban Members, a helper role that can only warn: for each moderation action (ban, kick, mute, warn, unban, cases, notes and more) you choose which roles may use it. It was already possible with /moderation allow; now you can see and change everything in one page of the dashboard. Only who manages the server can open it. Bulk actions stay for administrators.",
+		images: [
+			"https://petto.sbs/assets/log/staff-roles-page.png"
+		]
+	},
+	{
+		id: "dash-quests-and-rollouts-one-section",
+		category: "web",
+		title: "Quests and Rollouts are now one section in the menu",
+		area: "Dashboard › Quests and Rollouts",
+		summary: "The Quest alerts and Rollout alerts pages were each in a section of their own with a single page inside. They now share one section, Quests and Rollouts, so the menu is shorter. Nothing else changes: each page is the same and is shown only to the people who could already open it."
+	},
+	{
+		id: "levels-manage-huge-number-fix",
+		category: "fix",
+		title: "/levels manage no longer fails with a huge level or XP",
+		area: "Leveling › /levels manage",
+		summary: "Setting a level like 20 billion with /levels manage made a number too big for the database and the command failed with an error. Now Petto tells you the highest level of your server (or the most XP one member can have) and saves nothing, so nobody's level is changed by a typo. Normal changes work as before."
+	},
+	{
+		id: "blog-guides-compare-and-switch",
+		category: "web",
+		title: "New blog guides: Petto compared with other bots, and how to switch from MEE6, Carl-bot or Dyno",
+		area: "Website › Blog",
+		summary: "Four new posts, in English, Spanish and Portuguese. One puts Petto next to MEE6, Carl-bot and Dyno using what their own pages say (checked on November 18, 2026): what is free, what is paid and where Petto is behind, such as the economy it does not have. The other three are step-by-step guides to leave MEE6, Carl-bot or Dyno without a gap, with a table of where each feature lives in Petto, what does not move, and pictures of the dashboard and of Discord. The home page now pins the comparison instead of the Kobot announcement.",
+		images: [
+			"https://petto.sbs/assets/log/blog-compare-bots.png",
+			"https://petto.sbs/assets/log/blog-switch-from-mee6.png"
+		]
+	},
+	{
+		id: "web-footer-copyright-2017",
+		category: "web",
+		title: "The footer now says © 2017–2026 and all rights reserved",
+		area: "Website › Footer",
+		summary: "Petto did not start in 2026: the bot has been around since 2017. The footer of the website now says © 2017–2026, all rights reserved, and that Petto is not affiliated with Discord, in English, Spanish and Portuguese. The line at the top of the home page says Discord bot · since 2017 instead of actively developed. The covers of the new blog guides now show the icon of each bot and the default 3D avatar of Petto, with no names.",
+		images: [
+			"https://petto.sbs/assets/log/footer-copyright-2017.png"
+		]
+	},
+	{
+		id: "dash-migrate-from-another-bot",
+		category: "feature",
+		title: "New page \"Migrate from another bot\": convert your messages and follow a checklist",
+		area: "Dashboard › Migrate from another bot",
+		summary: "Moving from MEE6, Carl-bot or Dyno is easier now. Paste a welcome or any message written for the old bot and Petto rewrites its variables into Petto's, shows what changed, what has no equivalent and why, and how it will read. Below there is a checklist of what to rebuild, with a button to open the page of Petto where each thing lives; your ticks stay in your browser. A bot cannot read the settings of another one, so nothing is imported by itself. ProBot and Welcomer are listed but their variables are not checked yet, so Petto does not guess.",
+		images: [
+			"https://petto.sbs/assets/log/dash-migrate-convert.png",
+			"https://petto.sbs/assets/log/dash-migrate-checklist.png",
+			"https://petto.sbs/assets/log/dash-migrate-phone.png"
+		]
+	},
+	{
+		id: "dash-migrate-ai-helper",
+		category: "feature",
+		title: "The Migrate page has an AI helper: rewrite, plan and ask",
+		area: "Dashboard › Migrate from another bot",
+		summary: "Tags, commands and autoresponders of another bot are more than a list of variables, so the Migrate page now has an AI helper. Paste something from the old bot and it rewrites it for Petto; describe what you had and it proposes what to set up and where; or ask a question about moving. It only proposes: it never changes your server, you copy what you want. Petto checks the variables it writes and warns about any that do not exist. Only people with Manage Server can use it, there is a wait between questions, and your text is not stored.",
+		images: [
+			"https://petto.sbs/assets/log/dash-migrate-ai.png"
+		]
+	},
+	{
+		id: "wiki-migrate-guide",
+		category: "web",
+		title: "The wiki guide for moving from another bot explains the Migrate page",
+		area: "Wiki › Guides",
+		summary: "The guide Migrating From Another Bot now has a section about the new Migrate page of the dashboard, in English, Spanish and Portuguese: how the converter rewrites the variables of MEE6, Carl-bot and Dyno (with a table of the most used ones and what has no equivalent), how the checklist works, and what the AI helper does, who can use it and what happens to your text. The changelog of the wiki has it too.",
+		images: [
+			"https://petto.sbs/assets/log/wiki-migrate-guide.png"
+		]
+	},
+	{
+		id: "blog-comparison-table-cards-on-phone",
+		category: "web",
+		title: "The comparison table of the blog is easier to read on a phone",
+		area: "Website › Blog",
+		summary: "In the post that compares Petto with MEE6, Carl-bot and Dyno, the five-column table made you scroll sideways and covered the text. On a phone each row is now a card: the name of the thing on top and one line for each bot below it. On a computer the table looks the same as before."
+	},
+	{
+		id: "dash-migrate-ai-answer-formatting",
+		category: "fix",
+		title: "The answer of the AI helper shows bold, code and lists instead of asterisks",
+		area: "Dashboard › Migrate from another bot",
+		summary: "The AI helper of the Migrate page wrote its answers with markdown, and the page showed the marks as they were: **words** with asterisks and `code` with loose quotes. Now the answer is drawn with its format: bold, italics, code, titles and numbered or bulleted lists, and the parts for Petto stay in their own block with a Copy button. Nothing the AI writes can become code of the page: it is only ever shown as text.",
+		images: [
+			"https://petto.sbs/assets/log/dash-migrate-ai-format.png"
+		]
+	},
+	{
+		id: "dash-migrate-probot-nekotina",
+		category: "addition",
+		title: "The Migrate page now converts ProBot and Nekotina messages",
+		area: "Dashboard › Migrate from another bot",
+		summary: "ProBot and Nekotina join MEE6, Carl-bot and Dyno on the Migrate page. Paste a ProBot message ([user], [server], [memberCount]...) or a Nekotina one ({{user}}, {{server}}, {{members}}...) and Petto rewrites it with its own variables, and each bot has its own checklist with a button to the page of Petto for every thing it did. The variables are the ones in their official guides (docs.probot.io and nekotina.com). Welcomer still has no list: its website does not let its documentation be read, so Petto does not guess and gives your text back as you wrote it.",
+		images: [
+			"https://petto.sbs/assets/log/dash-migrate-probot-nekotina.png"
+		]
+	},
+	{
+		id: "feedback-team-delete-comments",
+		category: "feature",
+		title: "The team can delete comments on the feedback board",
+		area: "Website › Feedback",
+		summary: "Until now the team could delete a post of the feedback board but not a comment. Now every comment has a delete button for the team, with a question first (\"Delete this comment? This cannot be undone.\"). The comment count of the post and its card in Discord are updated. Only the team sees the button; members cannot delete other people's comments.",
+		images: [
+			"https://petto.sbs/assets/log/feedback-delete-comment.png"
+		]
+	},
+	{
+		id: "permissions-say-exactly-what-is-missing",
+		category: "improvement",
+		title: "Petto now says exactly which permission is missing",
+		area: "Bot › Permissions",
+		summary: "When something fails because Petto lacks a permission, it no longer says only \"I am missing a permission\". It reads the error, looks at what it really has and tells you: for example \"I am missing Ban Members in this server\" or \"I am missing Send Messages in #welcome\". If the problem is a role (it is above Petto's, or it belongs to an integration) or a member who is above Petto, it says that instead. When it cannot know, it keeps the old generic text. Works in commands, buttons and tickets."
+	},
+	{
+		id: "permission-problems-notice-and-overview-card",
+		category: "feature",
+		title: "Permission problems reach the staff: log channel and Overview",
+		area: "Bot + Dashboard › Overview",
+		summary: "When something Petto tried to do fails because of a permission, the staff now hears about it. The notice goes to the private log channel of the server (never to the owner's DMs) and says what failed, which permission is missing and where. The same problem is told once a day at most, however many times it happens. The Overview of the dashboard shows a card with every active problem, a \"Check again\" button and a dismiss button; what you fix goes away by itself. Only people with Manage Server see it.",
+		images: [
+			"https://petto.sbs/assets/log/dash-permission-alerts.png",
+			"https://petto.sbs/assets/log/dash-permission-alerts-phone.png"
+		]
+	},
+	{
+		id: "fix-quick-setup-audit-logs-forums",
+		category: "fix",
+		title: "Quick Setup could not turn on the audit logs",
+		area: "Bot › Setup",
+		summary: "The \"Audit logs\" step of the setup failed in some servers because the database did not accept the new forum log category. It is accepted now, so the setup can route every kind of log to your log channel, and the forum log can be chosen again."
+	},
+	{
+		id: "fix-automod-rules-rate-limit",
+		category: "fix",
+		title: "Official AutoMod rules: no more failures after the fifth rule",
+		area: "Bot › AutoMod",
+		summary: "Discord only lets one person create 5 AutoMod rules every 30 seconds. When Petto made all its rules at once, the ones after the fifth failed and stayed missing. Now Petto waits the time Discord says and tries again, so all the rules get created (it can take about half a minute)."
+	},
+	{
+		id: "fix-reddit-feed-not-gone",
+		category: "fix",
+		title: "Reddit feeds are no longer switched off as \"the account does not exist\"",
+		area: "Bot › Feeds",
+		summary: "Reddit sometimes answers \"Not Found\" to a request it does not like, even for subreddits that exist, and Petto believed it and switched the feed off. Now a \"not found\" from the feed address is only believed when Reddit's second way of reading (JSON) says it too; if not, the feed counts as blocked or unavailable and is tried again, never turned off for a missing account. A feed that was already switched off can be resumed in Feeds."
+	},
+	{
+		id: "notices-never-by-dm-to-the-owner",
+		category: "improvement",
+		title: "Notices for the staff no longer go to the owner's DMs",
+		area: "Bot › Notices",
+		summary: "When something needed the staff's attention (a feed switched off, a verification role that could not be given, a permission problem), Petto sent the notice to the owner by direct message if the server had no private log channel. That filled the owner's DMs with messages nobody asked for. Now these notices go only to the private log channel of the server. If there is none, nothing is sent by DM; permission problems are always in the Overview of the dashboard."
+	},
+	{
+		id: "nav-menu-works-without-the-page-script",
+		category: "fix",
+		title: "The menu and the language button of the top bar open on any phone, even in the login page",
+		area: "Website › Top bar",
+		summary: "On some phones the burger menu and the language button did nothing, for example in the page that says Login required. Both depended on the big script of the page: if a browser was too old for it, a blocker stopped it or it loaded late, nothing opened. They now run from a small separate script written in plain old JavaScript, placed right after the menu, so they open even if the rest of the page script fails. It was tested by blocking every script file of the page: before, the menu did not open; now it does.",
+		images: [
+			"https://petto.sbs/assets/log/login-menu-phone.png"
+		]
+	},
+	{
+		id: "dash-migrate-is-a-beta",
+		category: "improvement",
+		title: "Migrate from another bot is now marked as Beta",
+		area: "Dashboard › Migrate from another bot",
+		summary: "The page is not finished: more variables and more help from the AI (to set things up for you) are still to come. So the menu and the page now say Beta instead of New, with a short note. The copy buttons of the page also have the look of the rest of the dashboard now (before they were the grey ones of the public site).",
+		images: [
+			"https://petto.sbs/assets/log/dash-migrate-beta-menu.png",
+			"https://petto.sbs/assets/log/dash-migrate-beta-phone.png"
+		]
+	},
+	{
+		id: "message-roles",
+		category: "feature",
+		title: "Message roles: a role when a member reaches a number of messages",
+		area: "Bot + Dashboard › Roles",
+		summary: "New Message roles page (Roles → Message roles) and /messagerole command. Pick a role and a number: when a member reaches it, Petto gives the role right after that message. Count all the messages since you add the first rule, or only the ones of the last days, and choose to take the role away if the member falls under the number. Up to 25 rules, each with its own switch. Petto counts from the moment the first rule is added; bots never count.",
+		images: [
+			"https://petto.sbs/assets/log/dash-message-roles.png",
+			"https://petto.sbs/assets/log/dash-message-roles-phone.png"
+		]
+	},
+	{
+		id: "quest-alerts-wait-for-the-main-list",
+		category: "fix",
+		title: "Quest alerts now come with their limits and pictures",
+		area: "Bot › Quests",
+		summary: "A new quest is announced only when the main quest list has it, so the alert already shows the countries, the age limit, the decoration and the Orbs picture from the first message. Before, the first alert could come from a list that does not know the limits, and they only showed later in /quests. The other lists still fill in blanks and keep /quests complete, and if the main list has no new quest for 7 days they announce too, until it has one again."
+	},
+	{
+		id: "leveling-block-members-from-xp",
+		category: "addition",
+		title: "Block a member from XP",
+		area: "Bot + Dashboard › Leveling",
+		summary: "You can now block a member from XP: they earn none by chatting or in voice, and nobody can give them any by hand with /levels manage xp or level. Their XP stays as it is, and /levels manage block lists who is blocked. Use /levels manage block member:@someone to block or let out, or the new Members blocked from XP box in the Rules page of Leveling (up to 100 members).",
+		images: [
+			"https://petto.sbs/assets/log/dash-leveling-blocked-members.png",
+			"https://petto.sbs/assets/log/dash-leveling-blocked-members-phone.png"
+		]
+	},
+	{
+		id: "dashboard-darker-background-shorter-footer",
+		category: "web",
+		title: "A darker web, a calmer dashboard with fewer colors, and a shorter footer",
+		area: "Web › Dashboard",
+		summary: "The whole website is now dark with the footer in the same tone (the dashboard is a little darker, near black). The dashboard uses a short palette (peach, green, red, yellow and blue), the stat tiles are flat, and the purple gradient of the menu header is gone: a server without a banner shows a flat panel. The newest tabs of the menu (New and Beta) have tiny dots on them that twinkle. On Migrate, the two message boxes start at the same height. The footer keeps the main links only, and the first two sections of the menu start open."
+	},
+	{
+		id: "special-channels-own-slash-commands",
+		category: "improvement",
+		title: "Counting, live counters, image-only and link-only channels are slash commands of their own",
+		area: "Bot › Commands",
+		summary: "They were hidden inside /specialchannels (/specialchannels counting setup). Now each one is in the / menu by its own name: /counting, /counter, /imageonly and /linkonly, with the same subcommands and options as before (for example /counting setup channel:#counting). /specialchannels is not in the menu any more, but the prefix still works exactly as it did: !counting, !counter, !imgonly, !urlonly, !specialchannels counting setup and the short words like !scs."
+	},
+	{
+		id: "home-carousel-of-big-servers",
+		category: "web",
+		title: "A carousel with the biggest servers that use Petto",
+		area: "Web › Home",
+		summary: "The home page has a new carousel with the servers that use Petto and have 500 members or more: up to 15 of them, the biggest first, in two rows that never stop. Each one shows its picture (animated when it is), its name, the badge the Discord app shows next to it (partnered, verified, discoverable, community or its boost level), the members online and the members in all. When a bigger server shows up, it takes the place of the last one. A server that does not want to be here can turn off Show this server in the public ranking in its General settings in the dashboard."
+	},
+	{
+		id: "stats-category-support-server",
+		category: "addition",
+		title: "The numbers of Petto in the support server",
+		area: "Bot › Support server",
+		summary: "The support server has a new category called @ stats with two voice channels that everybody can see and nobody can join: one with the members of all the servers that use Petto and one with the number of servers, as whole numbers (12,480, not 12K). Petto updates them every 10 minutes."
+	},
+	{
+		id: "home-redesign-ash-look",
+		category: "web",
+		title: "A new home page in ash grey, with the dashboard on a laptop and on phones",
+		area: "Web › Home, Features, Premium and Commands",
+		summary: "The home page was rebuilt. Under the title there is a laptop with the real dashboard, then three phones in a fan to show that everything can be set up from a phone, three small animated drawings for the protections (anti-nuke, anti-raid and AutoMod) and Discord windows on a laptop and a phone. The home, Features, Premium and Commands now use a cooler ash grey with a silver accent instead of the peach (the light theme and the dashboard are the same). The animations stop when your device asks for less motion.",
+		images: [
+			"https://petto.sbs/assets/log/home-redesign-laptop.png",
+			"https://petto.sbs/assets/log/home-redesign-phones.png",
+			"https://petto.sbs/assets/log/home-redesign-layers.png"
+		]
+	},
+	{
+		id: "home-fixes-isometric-drawings-tap-to-open",
+		category: "web",
+		title: "Home fixes, more animated drawings and pictures that open when you tap them",
+		area: "Web › Home, Features, Premium and Commands",
+		summary: "The phones of the home page now fit the screen without being cut, and a tap on a side phone brings it to the middle (a tap on the middle one opens it bigger). The Discord windows inside the laptop and the phone are drawn at the scale of a real screen, and the laptop no longer touches the announcement. Features, Premium and Commands have a new animated isometric drawing each: the bot and its modules, the plans of 1, 3 and 5 servers, and a keyboard. Any Discord picture of the site opens bigger when you tap it, and closes with a tap outside, the X or Escape.",
+		images: [
+			"https://petto.sbs/assets/log/home-isometric-drawings.png",
+			"https://petto.sbs/assets/log/home-phones-tap.png",
+			"https://petto.sbs/assets/log/home-discord-devices.png"
+		]
+	},
+	{
+		id: "stay-in-voice-247",
+		category: "feature",
+		title: "/247: Petto stays in a voice channel for good, with a status",
+		area: "Bot › Voice",
+		summary: "New command `/247` (or `!247`): pick a voice channel with `/247 set` and Petto joins it, muted and with the sound off, and stays there for good: it comes back by itself after a restart, and if somebody moves or kicks it. It writes a status on the channel (\"Watching the server 24/7\" in the language of the server, or the text you choose; `/247 status` changes it). `/247 info` shows where it is and `/247 off` makes it leave. If music is playing in the server it waits and comes back when it ends. Petto needs View Channel and Connect in the channel, and Set Voice Channel Status to write the status."
+	},
+	{
+		id: "dash-stay-in-voice-page",
+		category: "web",
+		title: "Stay in voice in the dashboard",
+		area: "Web › Dashboard",
+		summary: "New page \"Stay in voice\" (Community): turn it on or off, pick the voice channel, write the status of the channel and choose whether Petto joins with the sound off. It saves with one button and Petto does it within a minute. It is also in the list of modules, the side menu (with the green dot when it is on) and the finder.",
+		images: [
+			"https://petto.sbs/assets/log/dash-stay-in-voice.png",
+			"https://petto.sbs/assets/log/dash-stay-in-voice-phone.png"
+		]
+	},
+	{
+		id: "user-install-commands",
+		category: "feature",
+		title: "Add Petto to your own account: /action, /avatar, /banner, /userinfo and /birthday anywhere",
+		area: "Bot › Commands",
+		summary: "People can now add Petto to their account (\"Add to my apps\") and use five commands in any server, in direct messages and in group chats, even where Petto is not a member: `/action` (hugs, pats and more, without the counters and the answer button there), `/avatar`, `/banner`, `/userinfo` (the account, without the part of the server) and `/birthday` (`set`, `view` and `remove` keep a personal birthday that only you can see). `/avatar`, `/banner`, `/userinfo` and `/birthday` are slash commands of their own now. Every other command stays only for servers. To make room, `/clearinvites`, `/pauseinvites`, `/stripstaff` and `/giveawaypreset` are registered in each server; they work the same."
+	},
+	{
+		id: "home-phones-title-badges-fix",
+		category: "web",
+		title: "Home: no more small labels, a shorter animated title and phones that do not cover the pictures",
+		area: "Web › Home",
+		summary: "After a review of the home page: the small label above the titles is gone, the long title of the phones section is now one line that changes by itself (\"Everything you can set up,\" and then \"you can set up from your phone\") so it takes less space and still says the same, and the phones show a thin bar at the top, so the notch and the rounded corners no longer cover the top of the pictures. The fan of phones also leans less and sits a little to the right, so it does not go over the text.",
+		images: [
+			"https://petto.sbs/assets/log/home-phones-title-fix.png"
+		]
+	},
+	{
+		id: "home-phones-look-used",
+		category: "web",
+		title: "The phones of the home look like a real phone that somebody is using",
+		area: "Web › Home",
+		summary: "The phones now have a status bar (time, notch, signal, wifi and battery), the line of gestures at the bottom, and a finger that touches the screen now and then, one phone after the other. The picture is shown whole between the two bars, so nothing is covered, and the Discord phone has the same look.",
+		images: [
+			"https://petto.sbs/assets/log/home-phones-real.png",
+			"https://petto.sbs/assets/log/home-phones-real-phone.png"
+		]
+	},
+	{
+		id: "commands-page-faster",
+		category: "improvement",
+		title: "The commands page opens much faster",
+		area: "Web › Commands",
+		summary: "The page of commands had every one of the 1,500 commands drawn at once (48,000 elements, 4.5 MB), so it was slow to open, above all on a phone. Now only the first category is drawn; the rest are put in when you open them, search or follow a link, and the example and the other ways to type a command are made when you open its row. It has about 5,700 elements and 2.6 MB: it is ready in about 0.35 s on a computer (it was 1.8 s) and 1.6 s on a slow phone (it was 8.5 s). Search, the slash and prefix switch, the counts and the links to a command work the same."
+	},
+	{
+		id: "profile-loading-isometric",
+		category: "web",
+		title: "An isometric drawing while your profile loads",
+		area: "Web › Dashboard",
+		summary: "When you go to your profile from any page of the site, a curtain with an isometric drawing (three blocks that go up and down) shows while it loads, and the profile comes in softly instead of just appearing. The same drawing replaces the spinning rings in the other loading curtain of the dashboard.",
+		images: [
+			"https://petto.sbs/assets/log/profile-loading-isometric.png",
+			"https://petto.sbs/assets/log/profile-loading-isometric-phone.png"
+		]
+	},
+	{
+		id: "web-titles-numbers-spacing",
+		category: "web",
+		title: "Public pages: no small labels, numbers with title and subtitle, everything centered",
+		area: "Web › Home, Features, Premium, Commands and Stats",
+		summary: "The small label above the titles is gone on every public page (one rule for all of them), the buttons under a section are centered, and the numbers of the home and of the Stats page have a title, a subtitle for each figure and the same width as the rest of the page. The head of the Stats page is centered like the others.",
+		images: [
+			"https://petto.sbs/assets/log/home-numbers-titles.png",
+			"https://petto.sbs/assets/log/home-numbers-titles-phone.png"
+		]
+	},
+	{
+		id: "charts-movable-window",
+		category: "feature",
+		title: "Statistics charts: move a window over the days and the numbers follow",
+		area: "Web › Stats page, dashboard statistics and Home",
+		summary: "Under the charts of days there is now a small strip with a window. Drag it to slide over the days, pull its edges to make it longer or shorter, or tap the strip to jump: the rest of the chart is shaded and the total, the average per day and the change against the period before count up and down as you move. It works with a finger and with the arrow keys, and 'Whole range' brings everything back. It is in the public Stats page, in every server's statistics and in a sample chart on the Home. Charts also wait until you can see them to draw their line and grow their bars.",
+		images: [
+			"https://petto.sbs/assets/log/chart-range-home.png",
+			"https://petto.sbs/assets/log/chart-range-stats.png",
+			"https://petto.sbs/assets/log/chart-range-home-phone.png"
+		]
+	},
+	{
+		id: "web-phone-page-too-wide",
+		category: "fix",
+		title: "Features, Premium and Commands no longer look zoomed out and cut on a phone",
+		area: "Web › Features, Premium, Commands and Home on phones",
+		summary: "On a phone the Features page first looked too big and then seemed cut at the right side, with the bottom bar going off the screen. The faint grid drawn behind the isometric picture went outside the page and made it wider than the screen, so the phone zoomed everything out to fit it. Nothing that is drawn outside the page can do that now, on every public page. Tried at 360, 390 and 412 px wide.",
+		images: [
+			"https://petto.sbs/assets/log/features-phone-fits.png"
+		]
+	},
+	{
+		id: "stay-in-voice-joins-faster",
+		category: "fix",
+		title: "/247 from the dashboard: Petto joins the voice channel within 20 seconds",
+		area: "Bot › Stay in voice",
+		summary: "When the 24/7 switch was turned on in the dashboard, Petto could stay out of the voice channel: the job that puts it in looked once a minute and was paused when the bot was under load. It now looks every 20 seconds, is never paused, and the log says each time why Petto is not in a channel (for example, it lacks Connect). Remember that Petto needs View Channel and Connect in that channel."
+	},
+	{
+		id: "dash-side-banner-petto-back",
+		category: "fix",
+		title: "Dashboard menu: the Petto banner is back for servers without a banner",
+		area: "Dashboard › Side menu",
+		summary: "A server that has no banner of its own shows the Petto picture at the top of the side menu again. It had been removed by mistake together with the purple gradient behind it; the gradient stays gone, the picture is back."
+	},
+	{
+		id: "charts-window-smoother",
+		category: "improvement",
+		title: "Statistics charts: a smoother window, steady numbers and no bright tip at the start of the line",
+		area: "Web › Stats page, dashboard statistics and Home",
+		summary: "The window under the charts now glides with your finger or mouse instead of jumping day by day, and the numbers follow it a moment behind. The percentage of a change (members and servers) always stays on its own line under the number, so it no longer jumps up and down. The shade over the days outside the window now covers the start of the line, which used to show a bright tip on the left.",
+		images: [
+			"https://petto.sbs/assets/log/chart-range-smooth.png"
+		]
+	},
+	{
+		id: "verify-letters-form-answered-first",
+		category: "fix",
+		title: "Verification by letters: the form is answered at once, so a busy bot no longer fails it",
+		area: "Bot › Verification inside Discord",
+		summary: "When the bot was slow, a member who typed the right letters could be verified and still get no answer, and the staff log showed \"Unknown interaction\" errors. Discord only waits three seconds for the form, and the bot used to look up the member, run the checks and give the roles first. Now it answers the form first and does the rest afterwards, so the member always sees the result. A form that still arrives too late changes nothing and the member just tries again."
+	},
+	{
+		id: "petto-history-page",
+		category: "web",
+		title: "New page: the history of Petto",
+		area: "Web › Petto History (Community menu and footer)",
+		summary: "There is a new page that tells where Petto comes from, in English, Spanish and Portuguese, in the first person of the person who leads Petto: the brand and the team began on September 18, 2017, the bot you add today was created on April 19, 2026 and this website in August 2026. It goes year by year (2017, 2019, 2021, 2022, 2023, 2024, 2025, 2026), with its hard years told as they were, and answers why the site says 2017. You find it in the Community menu and in the footer.",
+		images: [
+			"https://petto.sbs/assets/log/history-page.png",
+			"https://petto.sbs/assets/log/history-page-phone.png"
+		]
+	},
+	{
+		id: "not-found-pages-not-kept",
+		category: "fix",
+		title: "A page that was not found is no longer kept by the browser",
+		area: "Web › Every page",
+		summary: "After a new version of the site was published, someone who opened a new page a moment too early (for example the Spanish version of a page that had just been added) kept the \"404 page not found\" on their phone for hours, even when the page already existed. Now a page that was not found is never kept, so the next visit shows the page as soon as it is there."
+	},
+	{
+		id: "embed-create-long-name-fixed",
+		category: "fix",
+		title: "/embed create no longer breaks with a very long name",
+		area: "Embeds › /embed create",
+		summary: "Creating an embed with a very long name (about 60 characters or more) failed with an \"Invalid string length\" error, and the embed was saved without its editor, so it could not be opened. Now a name can have 50 characters at most: Discord stops it while you type, and Petto says the limit in your language if it still comes in, before saving anything. An embed that was saved before with a longer name tells you to delete it and create it again with a shorter one."
+	},
+	{
+		id: "user-content-and-deletion-policies",
+		category: "web",
+		title: "New: the user content policy and how to ask for your data to be deleted",
+		area: "Web › Terms of Service and Privacy Policy",
+		summary: "The Terms now have a section for content people upload to their own profile (backgrounds, GIFs, badges): what you upload is your choice and your responsibility, every image and every frame of a GIF is reviewed for content that is not allowed, and the email linked to your Discord is kept as a contact for copyright claims. The Privacy Policy now has a section to ask for what is registered about you to be deleted: ordinary data within 0 to 90 days, sensitive data (emails, real names, passwords) within 0 to 30 days, and a card number entered by mistake within 0 to 3 days. Both follow Colombian, Canadian and European (GDPR) rules, in English, Spanish and Portuguese."
+	},
+	{
+		id: "profile-picture-and-badges",
+		category: "feature",
+		title: "New: your profile is a picture, with badges you can show",
+		area: "Bot › /profile",
+		summary: "/profile and !profile now answer with a picture: your avatar and banner, your name, your level, rank, messages and voice time (with its unit) in the server, and a showcase of badges. The showcase has six hexagons: you have one place for free, and the plans open more (2 with Bronze, 4 with Silver, 6 with Gold), each with its star next to your name. You can also turn on the badges of the Fablo pack (Furro, Boykisser, Hetero and Femboy, free for everybody) with /profile badge and choose their order with /profile showcase. The old card with your rating, uploads, requests and partnerships is now /profile server.",
+		images: [
+			"https://petto.sbs/assets/log/profile-picture-gold.png",
+			"https://petto.sbs/assets/log/profile-picture-free.png"
+		]
+	},
+	{
+		id: "ceramos-and-badge-shop",
+		category: "feature",
+		title: "New: ceramos, a daily reward, and a shop of badges with frames",
+		area: "Bot › /daily and /ceramos",
+		summary: "Ceramos are the new currency of your profile. /daily gives you some every day (2 with no plan, 5, 10 or 20 with Bronze, Silver or Gold) and /ceramos shows your wallet. In /ceramos shop you can buy badges of countries and languages for 20 ceramos each: you keep them for good, no daily cost. With /ceramos upgrade you can give a badge a better frame, bright (15) or divine (40), that shows in your profile picture. Choose which of your badges to show with /profile showcase.",
+		images: [
+			"https://petto.sbs/assets/log/ceramos-wallet.png",
+			"https://petto.sbs/assets/log/ceramos-shop.png"
+		]
+	},
+	{
+		id: "badges-page",
+		category: "web",
+		title: "New: the Badges page, with every country flag, to buy and show your badges",
+		area: "Web › Dashboard › Badges",
+		summary: "Your account now has a Badges page (petto.sbs/dash/badges). It has the showcase of your profile picture and a shop with 253 countries, each with its real flag, languages and the free Fablo pack. Look for a badge by tab or by name, filter by the ones you own, and click one to buy it with ceramos, give it a better frame (bright or divine), turn a free one on or off, or put it in or take it out of your showcase. You can also claim your daily ceramos there. It works on a phone too.",
+		images: [
+			"https://petto.sbs/assets/log/badges-page.png",
+			"https://petto.sbs/assets/log/badges-buy.png",
+			"https://petto.sbs/assets/log/badges-phone.png"
+		]
+	},
+	{
+		id: "badge-editor",
+		category: "web",
+		title: "New: seasonal and special badges, made by hand, with a limited sale",
+		area: "Web › Dashboard › Badges",
+		summary: "The team can now make badges of its own: with a picture, a name in three languages, a price (free or paid), the days of the sale, a plan that is needed, or a rule that gives it by itself (a voter, a booster). A Christmas badge, for example, can be on sale from today until January 1: whoever buys it keeps it for good and can wear it whenever they want, and whoever does not can never get it again. These badges have their own Special tab in your Badges page, with the end of the sale shown.",
+		images: [
+			"https://petto.sbs/assets/log/badge-editor.png",
+			"https://petto.sbs/assets/log/badges-special.png"
+		]
+	},
+	{
+		id: "wiki-profile-badges-ceramos",
+		category: "web",
+		title: "New in the wiki: profile picture, badges and ceramos",
+		area: "Wiki › Community",
+		summary: "The wiki has two new pages, in English, Spanish and Portuguese: Profile picture and badges (the picture of /profile, the showcase by plan and how to choose what you wear) and Ceramos and the badge shop (/daily, /ceramos, prices, frames, seasonal badges and the Badges page of the dashboard), both with screenshots. Reviews and profiles now says that the card with the numbers of the server is /profile server, and the changelog has the entry of the day.",
+		images: [
+			"https://petto.sbs/assets/log/profile-picture-gold.png",
+			"https://petto.sbs/assets/log/ceramos-shop.png"
+		]
+	},
+	{
+		id: "shop-packs-banners-fonts",
+		category: "feature",
+		title: "New: banners, name fonts and packs in the shop, and every badge can be edited",
+		area: "Bot + Web › Shop of the profile",
+		summary: "Your profile picture can now have a banner and a name font that you buy with ceramos and keep for good: look at the new Customize name and Customize profile pages in your account, or use /ceramos shop (banners, name fonts, packs), /ceramos buy, /profile banner and /profile font. The shop starts with 24 name fonts, like Press Start 2P, Monoton, Cinzel or Lobster. Packs group badges, banners or fonts: free, for a plan, for some days only, or sold whole for less than the pieces. The team can edit any badge, even the countries and the Fablo pack, with a new Shop editor."
+	},
+	{
+		id: "rank-card-banner-no-ring",
+		category: "improvement",
+		title: "Your banner on your rank card, and no ring around the avatar",
+		area: "Bot › Rank card",
+		summary: "The default rank card (/levels rank) now shows the banner you put on from the shop, darkened a little so the numbers stay easy to read; a server that designed its own rank card keeps its design. Banners are cut to the same size (1024 x 320) when they are uploaded, so they look right on your profile picture, in the shop and on the rank card. The default rank and welcome cards also lose the ring around the avatar. In packs you can now buy the whole pack or one piece at a time."
+	},
+	{
+		id: "plans-and-profile-menu",
+		category: "feature",
+		title: "New: plans, My plan, daily reward and ceramos movements, in a new menu",
+		area: "Web › Dashboard › Account",
+		summary: "Your account menu is now grouped: Main (Overview, Daily reward), Subscriptions (Plans, My plan, Premium), Personalization (Badges, Customize name, Customize profile), Ceramos (Movements) and Account. The Plans page shows Bronze, Silver and Gold with the ceramos a day and the places in the showcase that each one already gives; the rest of what they will give is marked Soon. My plan shows your plan and when it ends, Daily reward lets you claim your ceramos, and Ceramos movements lists your last 50 movements. Payments are not connected yet: for now the team gives the plans by hand from a new User plans page."
+	},
+	{
+		id: "plans-polar-checkout",
+		category: "feature",
+		title: "Plans can now be bought and cancelled from the website",
+		area: "Web › Dashboard › Plans",
+		summary: "On the Plans page you can now choose Bronze, Silver or Gold and pay with Polar; your plan is switched on as soon as the payment arrives, renews by itself and ends by itself if you cancel. My plan has a Payments and cancel button that opens your Polar portal. Before paying, the page shows the refund and cancellation rules and asks you to accept them. Premium pages also say, with the same two rules, that Premium is a paid feature. The preview of Customize name and Customize profile now falls back to your Discord banner."
+	},
+	{
+		id: "rank-card-page-and-backgrounds",
+		category: "feature",
+		title: "New: design your own rank card, with 21 backgrounds in the shop",
+		area: "Web › Dashboard › Rank card",
+		images: [
+			"https://petto.sbs/assets/log/rank-card-backgrounds.png",
+			"https://petto.sbs/assets/log/rank-card-bar-text.png"
+		],
+		summary: "There is a new page, Rank card, in your account menu. Pick a background (15 free game backgrounds, 6 landscapes that cost ceramos, the designs of Petto or your profile banner), the color of the bar, the font, the color of the text, the theme and the layout, and see your card change live. It is the card every server shows for you when it has not designed its own. Everything is free except a bar with two colors, which costs 40 ceramos once. The backgrounds are also in Customize profile, each with its credit."
+	},
+	{
+		id: "rank-customize-button",
+		category: "improvement",
+		title: "/rank now has a button to customize your rank card",
+		area: "Bot › Rank",
+		summary: "Under your own rank, /rank and !rank now show a button, Customize your rank, that opens the new Rank card page of the website, where you choose your background, bar colors, font and layout. It appears in the language of the server and it is not shown under somebody else's rank."
+	},
+	{
+		id: "name-font-size-fix",
+		category: "fix",
+		title: "Name fonts from the shop now show at full size on /profile",
+		area: "Bot › Profile",
+		summary: "If you had put on a name font from the shop, your name came out tiny on the /profile picture, in the normal font, instead of in the font you bought. Now the name is drawn big in your font. The buy window of Customize name also stops showing a green button when you do not have enough ceramos: it is grey now."
+	},
+	{
+		id: "profile-card-full-banner-and-packs",
+		category: "improvement",
+		title: "Your banner now fills the whole profile picture, and the shop has 7 packs",
+		area: "Bot + Web › Profile",
+		images: [
+			"https://petto.sbs/assets/log/profile-card-full-banner.png"
+		],
+		summary: "The /profile picture now shows your banner behind everything (avatar, numbers and badges), a little darker toward the bottom so it stays easy to read, instead of a strip on top with a dark band under it. The preview in Customize name and Customize profile is the same card. The shop starts with 5 packs of banners (GTA VI, Forza Minecraft and Halo, Sanrio and Call of Duty are free; Cities and landscapes costs 800 instead of 1150) and 2 packs of name fonts (Retro and arcade for 700, Elegant letters for 400). Free packs can be taken whole with one click."
+	},
+	{
+		id: "ceramos-new-ways-notice",
+		category: "web",
+		title: "A notice about ceramos: new ways to get them are coming",
+		area: "Web › Dashboard › Ceramos",
+		summary: "Wherever you see your ceramos (Daily reward, Ceramos movements, Badges, Customize name, Customize profile and Rank card) there is now a notice: ceramos are scarce for now and come mostly with a paid plan, and we are working on new ways to get them. A new way to earn them is on its way."
+	},
+	{
+		id: "profile-preview-taller",
+		category: "fix",
+		title: "The profile preview no longer overlaps and shows more of your banner",
+		area: "Web › Dashboard › Profile",
+		summary: "In Customize name and Customize profile, on a phone the numbers (level, rank, messages, voice) used to cover the badges in the preview. The preview is now taller, lays things out one under the other so nothing overlaps, shows the numbers in two rows on narrow screens, and zooms in on your banner so more of it is seen."
+	},
+	{
+		id: "dash-layouts-filled",
+		category: "improvement",
+		title: "Customize pages, Daily reward and My plan fill the page; the Petto background shows with no banner",
+		area: "Web › Dashboard › Account",
+		summary: "Customize name and Customize profile now have the preview and the packs on the left (the packs show a few of their pieces) and the search and the pieces on the right, so no corner is left empty. When you have no banner, the preview (and your /profile picture) shows the Petto background, the one the menu shows. Daily reward now has three cards (your ceramos, the ceramos a day of each plan and your latest movements) and My plan lists what your plan gives, instead of one small card in a corner."
+	},
+	{
+		id: "buy-ceramos-packs",
+		category: "feature",
+		title: "Buy ceramos: four packs, from 500 to 2,000 ceramos",
+		area: "Web › Dashboard › Ceramos",
+		summary: "You can now buy ceramos whenever you want, besides getting them with a plan or the daily reward. Pile of coins: 500 ceramos for $2.99. Small bag: 850 for $4.99. Big bag: 1,200 for $7.99. Treasure chest: 2,000 for $11.99. They are in the new page Buy ceramos of the menu, you pay in Polar, and the ceramos arrive a few seconds after the payment and never expire. Use them for banners, name fonts, packs and badges. A pack shows as not available until its payment product is set up.",
+		images: [
+			"https://petto.sbs/assets/log/buy-ceramos-packs.png"
+		]
+	},
+	{
+		id: "economy-preview",
+		category: "web",
+		title: "Economy: a preview of the four coins and the economy of a server",
+		area: "Web › Dashboard › Economy",
+		summary: "The server dashboard has a new zone, Economy, marked Soon. It is a preview, nothing works or is saved yet: the four coins of the global economy (bronze, silver, gold and mithril), how they change (200 bronze for 1 silver, 100 silver for 1 gold, 50 gold for 1 mithril, 100 mithril for 1 ceramo), a switch to use the global economy in a server, and the economy of your own server. With the global economy a person keeps their coins and streaks everywhere, and coins can become ceramos, so ceramos can also be earned and not only bought.",
+		images: [
+			"https://petto.sbs/assets/log/economy-preview.png"
+		]
+	},
+	{
+		id: "wiki-user-section",
+		category: "web",
+		title: "Wiki: a User section under the language selector, and the verification page fixed",
+		area: "Docs › Wiki",
+		summary: "The wiki has a new selector under the language one: Server and User. In User you find your profile picture, customizing your name and profile, your rank card, ceramos, buying ceramos, plans and a preview of the economy, in English, Spanish and Portuguese, with pictures. The Verification page no longer calls it an entry filter, and now says that the email code is an optional extra inside Verification, not a separate system."
+	},
+	{
+		id: "ceramos-top",
+		category: "addition",
+		title: "/ceramos top: the ten people with the most ceramos",
+		area: "Bot › Ceramos",
+		summary: "The new command /ceramos top shows the ten people with the most ceramos, with a medal for the first three. Only their names are shown and nobody is pinged. Also, the packs of ceramos that are bought now show as Pack of ceramos bought in your movements, instead of a raw word."
+	},
+	{
+		id: "give-ceramos-dash",
+		category: "feature",
+		title: "The team can give ceramos from the dashboard, with limits the owner sets",
+		area: "Web › Dashboard › Staff",
+		summary: "There is a new staff page, Give ceramos. The owner and the people the owner lists give ceramos to a person with a note, and the gift shows in their movements as a gift from the team. The owner sets how much can be given in one gift and how much each person of the team can give in a day, can switch it off for the team, and chooses who is on the list. The owner has no daily limit. It is not available to anyone else.",
+		images: [
+			"https://petto.sbs/assets/log/ceramos-grant-dash.png"
+		]
+	},
+	{
+		id: "read-only-api",
+		category: "feature",
+		title: "A read-only API: read your ceramos, plan and movements with a key",
+		area: "Web › Dashboard › Account",
+		summary: "There is a new page, API keys, in your account menu. Make up to three keys and use them to read your ceramos, your plan and your last 50 movements from your own programs. A key can only read, only sees your own data, is shown once and allows 60 reads a minute. The packs of ceramos can also be read without a key. The wiki has a new page, API keys and the read-only API, with the endpoints, an example and the errors.",
+		images: [
+			"https://petto.sbs/assets/log/api-keys-page.png"
+		]
+	},
+	{
+		id: "missions",
+		category: "feature",
+		title: "Missions: earn ceramos with messages and minutes in voice",
+		area: "Bot + Web › Ceramos",
+		summary: "There are now missions that pay ceramos. Every day: send 25 or 100 messages (3 and 6 ceramos) or spend 30 or 120 minutes in voice (4 and 8). Every week: send 500 messages (20) or spend 10 hours in voice (25). The count is your activity in every server where Petto counts it. See them and claim them with /missions, or in the new Missions page of your account (Ceramos menu). Each mission pays once for each day or week.",
+		images: [
+			"https://petto.sbs/assets/log/missions-page.png"
+		]
+	},
+	{
+		id: "ask-plan-limits",
+		category: "improvement",
+		title: "/ask: more questions a day with a plan of a person",
+		area: "Bot › AI",
+		summary: "A plan of a person now gives more questions a day with /ask: 20 with Bronze, 60 with Silver and 150 with Gold, instead of the free limit. Premium keeps having no limit. One more of the perks that were marked Soon in the plans is now real."
+	},
+	{
+		id: "own-picture",
+		category: "feature",
+		title: "Own picture: your own background for the rank card, with a plan and a review",
+		area: "Web + Bot › Personalization",
+		summary: "With a Silver or Gold plan you can now send a picture of your own to use as the background of your rank card (Account menu, Own picture). Before the first picture you read and accept the user policy. The team reviews every picture: nobody sees it until it is approved, and a rejected one tells you why. A picture that breaks the rules (a copyright claim, sexual, violent or illegal content) is removed, and the person can be blocked from uploading. Pictures with minors are removed and block the person at once. Animated pictures are not supported yet.",
+		images: [
+			"https://petto.sbs/assets/log/own-picture-policy.png"
+		]
+	},
+	{
+		id: "streaks",
+		category: "feature",
+		title: "Streaks: activity, rewards, a safety net and a leaderboard in each server",
+		area: "Bot + Web › Community",
+		summary: "Streaks are now complete. A member keeps a streak by being active every day, and each server sets what a day is (messages, voice, either, or both) in the Streaks page. Petto announces milestones in a channel, gives reward roles, and can show the streak in the nickname (name | 7 🔥; a custom emoji needs Premium). It can remind by DM who is about to lose a streak, tell who lost one, and give a grace period after midnight. Freezes: the plan's (1 Bronze, 3 Silver, 5 Gold) plus the server's. Members turn the DMs and nickname off with /streak.",
+		images: [
+			"https://petto.sbs/assets/log/streaks-activity.png",
+			"https://petto.sbs/assets/log/streaks-rewards.png",
+			"https://petto.sbs/assets/log/streaks-safety.png"
+		]
+	},
+	{
+		id: "summary-page",
+		category: "web",
+		title: "New Summary page: your messages, voice time, streaks and Bufis",
+		area: "Web › Account",
+		summary: "There is a new Summary page in your account menu. It shows your plan, your messages and your time in voice across every server, your best streak, your streak in each server and the six Bufis (the ones you have are lit, the others are dim).",
+		images: [
+			"https://petto.sbs/assets/log/summary-page.png"
+		]
+	},
+	{
+		id: "bufis",
+		category: "addition",
+		title: "Six Bufis added to the badge shop",
+		area: "Bot › Badges",
+		summary: "Six new Bufis are in the badge shop: Normal, Silver, Girl, Boy, Bu and Black Friday. They are special badges you can buy with ceramos and show on your profile. Black Friday is only on sale until 2 December."
+	},
+	{
+		id: "plan-perks-live",
+		category: "improvement",
+		title: "My plan: uses of the AI, streak freezes and own picture now work",
+		area: "Web › Subscriptions",
+		summary: "On the My plan page, the uses of the AI a day, the streak freezes and your own picture as the background of your rank card are no longer marked as coming: they work now. Badges of your own, the animated background and the limits bonus are still on the way."
+	},
+	{
+		id: "backups-premium-vault",
+		category: "improvement",
+		title: "Backups are now Premium and are kept in their own database",
+		area: "Bot + Web › Backups",
+		summary: "Backups are now a Premium feature. Without Premium on the server, clicking Backups in the dashboard menu opens the \"Premium is required\" card instead of the page (and opening the page by its address shows the card over it), and making or scheduling a backup with the commands says it needs Premium. The backups you already have can still be listed, exported, restored and deleted with the commands, and your schedule is kept (it runs again with Premium). Backups are saved only in their own database, never in the main one, and the old ones in the main database were deleted.",
+		images: [
+			"https://petto.sbs/assets/log/backups-premium.png"
+		]
+	},
+	{
+		id: "ceramos-pack-refunds",
+		category: "improvement",
+		title: "A refunded pack of ceramos takes its ceramos back",
+		area: "Web + Bot › Ceramos",
+		summary: "When the payment service refunds a pack of ceramos, Petto now takes back the ceramos of that order, once. If you already spent some of them, only what you still have is taken (never more than the pack gave), and your movements show a refund."
+	},
+	{
+		id: "bufi-mascots",
+		category: "addition",
+		title: "The Bufis now show their real pictures",
+		area: "Profile · Bufis",
+		summary: "Each Bufi (normal, silver, girl, boy, bu and black friday) now shows its own picture in the badge shop, your summary page and your profile card, instead of a plain icon."
+	},
+	{
+		id: "contact-email",
+		category: "feature",
+		title: "Add a contact email to your account",
+		area: "Dashboard · Preferences",
+		summary: "In Preferences you can now save an email where the Petto team can reach you about your account, purchases or a report. It is optional, only the team sees it, and you can delete it whenever you want from the same card."
+	},
+	{
+		id: "own-picture-detector",
+		category: "security",
+		title: "Own pictures are checked by a detector before the team sees them",
+		area: "Rank card · Own picture",
+		summary: "When you send your own picture, Petto first runs it through an automatic detector. A picture with sexual, violent or hateful content is not accepted and you are told why. A picture with minors is never kept and blocks the account. If the detector is off or fails, the picture still waits for the team, marked as not checked. Nothing is shown to anyone until the team approves it."
+	},
+	{
+		id: "gold-animated-rank-background",
+		category: "feature",
+		title: "Gold plan: an animated picture as your rank card background",
+		area: "Rank card · Own picture",
+		summary: "With the Gold plan you can now upload a GIF as the background of your rank card and it moves when your card is shown. It goes through the same checks and review as any own picture. With Silver a GIF is used as a still picture, and if your Gold plan ends your card keeps the first picture of the animation."
+	},
+	{
+		id: "own-badges-per-plan",
+		category: "feature",
+		title: "Make your own badges with your plan",
+		area: "Dashboard · Own badges",
+		summary: "Bronze lets you make 1 badge of your own, Silver 2 and Gold 4: a name and a picture. Every badge goes through the same checks as an own picture and waits for the team, and once it is approved it is yours alone: it is not sold and you can put it in your showcase. You can remove any of yours whenever you want.",
+		images: [
+			"https://petto.sbs/assets/log/own-badges.png"
+		]
+	},
+	{
+		id: "plan-reminder-limits",
+		category: "improvement",
+		title: "More reminders at once with a plan",
+		area: "Plans · Limits",
+		summary: "With a plan you can have more reminders waiting at the same time: 25 by default, 31 with Bronze, 37 with Silver and 50 with Gold. The Plans and My plan pages now show every benefit of the plans as active."
+	},
+	{
+		id: "streak-counting-rules",
+		category: "feature",
+		title: "Choose what counts as a message for the streaks",
+		area: "Streaks · Activity",
+		summary: "In Streaks > Activity each server can now set a minimum length for a message, a cooldown between counted messages, only (or everywhere but) some channels or roles, and make a reaction count as a message. All of it is off by default; when you turn something on it applies from that day on and the days before stay as they were.",
+		images: [
+			"https://petto.sbs/assets/log/streaks-counting.png"
+		]
+	},
+	{
+		id: "own-rank-card-every-server",
+		category: "improvement",
+		title: "Your own rank card shows in every server",
+		area: "Rank card · Plans",
+		summary: "If you have your own rank card design (a plan with a custom card), Petto now shows it in every server where you use /rank, even when that server has its own card. A server's card is only used for people who have no design of their own. The animated Gold background works the same way."
+	},
+	{
+		id: "detector-checks-animation-frames",
+		category: "security",
+		title: "The detector looks at several frames of an animated picture",
+		area: "Rank card · Own picture",
+		summary: "Before this, an animated picture was checked by one frame only. Now the detector looks at up to 5 frames spread along the animation, so something hidden in the middle of a GIF is not missed. If the detector cannot answer, the picture still waits for the team marked as not checked."
+	},
+	{
+		id: "streaks-colombia-day",
+		category: "fix",
+		title: "Streaks now change day at midnight of Colombia",
+		area: "Streaks · Days",
+		summary: "Streaks counted the day with UTC time while the rest of Petto uses Colombia time (GMT-5), so a streak could break or grow at the wrong hour. Now the day changes at midnight GMT-5 everywhere: counting, the hours left to save a streak, the reset and the texts in the dashboard and the wiki."
+	},
+	{
+		id: "streak-command-shows-rules",
+		category: "improvement",
+		title: "/streak tells you what counts in the server",
+		area: "Streaks · Command",
+		summary: "When a server sets its own rules for the streaks (minimum length, cooldown, channels, roles or reactions), /streak now lists them, so nobody has to guess why a message did not count."
+	},
+	{
+		id: "contact-email-from-discord",
+		category: "improvement",
+		title: "Use the email of your Discord account as your contact email",
+		area: "Dashboard · Preferences",
+		summary: "Logging in now also asks Discord for permission to read your email. Nothing is saved on its own: only if you press \"Use the email of my Discord account\" in Preferences. The team sees the email you saved next to your pending pictures and badges, to write to you if something needs a change.",
+		images: [
+			"https://petto.sbs/assets/log/contact-email-discord.png"
+		]
+	},
+	{
+		id: "quarantine-and-fallbacks",
+		category: "improvement",
+		title: "The bot puts apart what keeps failing",
+		area: "Bot · Reliability",
+		summary: "If a part of Petto (an event, a background job or a call to an outside service such as the picture detector) fails again and again, it is now put in quarantine for a while so it cannot break the rest. After the rest one trial decides if it comes back. Commands, moderation, tickets and verification are never put apart. A rate limit is waited for once and, if it lasts, the bot keeps working with less instead of failing."
+	},
+	{
+		id: "terms-privacy-own-pictures",
+		category: "web",
+		title: "Terms and Privacy updated for own pictures, badges and streaks",
+		area: "Terms · Privacy",
+		summary: "The Privacy Policy now says what is kept about your own pictures and badges, that an outside service (OpenAI) checks only the picture (never your name or ID), when your contact email is saved, and that streaks keep a count of messages per day. The Terms have a new section on what you may upload."
+	},
+	{
+		id: "second-instance-docker",
+		category: "improvement",
+		title: "Petto can run on a second machine with Docker",
+		area: "Bot · Infrastructure",
+		summary: "Petto can now run on a second machine (a VPS, with Docker) next to the main one and hold some of the shards. The dashboard keeps working for the servers of both, the background jobs work for each one's own servers, and the second machine reaches the databases through a signed connection to the main bot, because Discloud does not accept outside connections."
+	},
+	{
+		id: "own-color-picker",
+		category: "improvement",
+		title: "A nicer color picker everywhere",
+		area: "Web · Dashboard",
+		summary: "The plain color picker of the phone or the browser is gone. The rank card, the badge and shop editors now use the dark Petto picker (a square for the shade, a bar for the color, hex and RGB boxes and quick colors), the same one the rest of the dashboard uses.",
+		images: [
+			"https://petto.sbs/assets/log/own-color-picker.png"
+		]
+	},
+	{
+		id: "premium-lock-over-menu",
+		category: "fix",
+		title: "The Premium notice no longer hides behind the menu on phones",
+		area: "Web · Dashboard",
+		summary: "When you opened a Premium page such as Backups on a phone, the side menu stayed over the notice and you had to close it to read it. Now the menu slides away by itself and the notice shows on top."
+	},
+	{
+		id: "badges-avatar-and-claim",
+		category: "fix",
+		title: "Badges: your picture shows and the daily claim sits in its place",
+		area: "Web · Badges",
+		summary: "Your profile picture was broken in the showcase of the badges, the shop and the rank card, and the box with your ceramos and the claim button was badly placed on phones. Both are fixed on every ceramos page."
+	},
+	{
+		id: "staff-pages-real-reason",
+		category: "fix",
+		title: "Staff pages say why they are empty",
+		area: "Web · Staff",
+		summary: "When a staff page (shop editor, plans, pictures to review, give ceramos) had nothing to show it always said that Petto did not answer, or showed a 404 to the owner. Now it says if the bot is away, if the bot does not know this account as the owner, or if the bot has to be restarted with the latest update."
+	},
+	{
+		id: "plan-and-pack-checkout-reasons",
+		category: "fix",
+		title: "Buying a plan or ceramos no longer fails in silence",
+		area: "Web · Payments",
+		summary: "When the payment page of a plan or a pack of ceramos could not be opened, the page just came back as if nothing happened. Now it says the payment page could not be opened, and the owner also sees what Polar answered, so a wrong product can be found at once."
+	},
+	{
+		id: "payment-roles-priority-support",
+		category: "addition",
+		title: "Plans and Premium give roles in the Petto Discord",
+		area: "Bot · Payments",
+		summary: "Paying now gives roles in the Petto server by themselves, a couple of minutes later: the plan role (Bronze, Silver or Gold), Supporter and Priority Support for the plans of a person, and Priority Support for the Premium of a server. They are taken back when it ends. The plan cards and the Premium page now say which roles you get."
+	},
+	{
+		id: "premium-thanks-message",
+		category: "fix",
+		title: "After paying for Premium the page no longer says it is waiting",
+		area: "Web · Premium",
+		summary: "After buying Premium the page kept saying it was waiting for a confirmation even when Premium was already on. Now it says Premium is active, or that the payment was received and Premium is being turned on."
+	},
+	{
+		id: "owner-id-with-quotes",
+		category: "fix",
+		title: "The owner setting accepts several IDs, with quotes or spaces",
+		area: "Web · Bot · Staff",
+		summary: "PETTO_OWNER_ID can now hold one ID or several (separated by commas), and quotes, spaces or a mention around an ID are ignored. Before, a list of two IDs matched nobody in the bot, so the staff pages (give ceramos, shop editor) refused the owner even though giving Premium worked. Every listed ID is an owner in the web and in the ceramos and Premium tools of the bot."
+	},
+	{
+		id: "one-plan-at-a-time",
+		category: "fix",
+		title: "One plan of a person at a time, no double charge",
+		area: "Web · Plans",
+		summary: "You could buy a second plan (for example Silver while you had Gold) and be charged twice while Petto kept only one. Now the plan page tells you which plan you have and blocks buying another one; to change it, cancel it in the billing portal and buy the new one when it ends. Ending one subscription can no longer switch off a plan that is still paid."
+	},
+	{
+		id: "premium-purchases-add-up",
+		category: "fix",
+		title: "Several Premium purchases add up their servers",
+		area: "Web · Premium",
+		summary: "If you buy Premium more than once (two plans of 5 servers), the page already showed 10 places but a server could only be put in the purchase updated last. Now every active purchase counts and each server goes to one that has room."
+	},
+	{
+		id: "checkout-terms-dialog-stays-open",
+		category: "fix",
+		title: "The terms window of a purchase no longer disappears",
+		area: "Web · Payments",
+		summary: "Choosing a plan or a pack of ceramos opened the window to accept the terms, and a moment later the page reloaded and took it away, so nobody could reach the payment. The window now stays, both boxes can be ticked and Continue goes on to the payment."
+	},
+	{
+		id: "vault-backups-without-ssl",
+		category: "fix",
+		title: "Server backups work with the Discloud database",
+		area: "Bot · Backups",
+		summary: "The backup job failed with \"The server does not support SSL connections\" because it always asked for an encrypted connection. It now connects the way the address says: plain by default, encrypted when the address asks for it, or when PETTO_VAULT_DATABASE_SSL is set to true."
+	},
+	{
+		id: "ceramos-balance-clear",
+		category: "improvement",
+		title: "Your ceramos balance is clearer and on the left",
+		area: "Web · Ceramos",
+		summary: "The balance of ceramos was a small number in the middle of a wide box. Now every page of the account area shows it the same way: the words \"Your balance\" and the number with the coin, bigger and aligned to the left."
+	},
+	{
+		id: "ceramos-pack-order-log",
+		category: "improvement",
+		title: "A paid pack of ceramos leaves a trace in the log",
+		area: "Web · Payments",
+		summary: "When Polar tells the website that a pack of ceramos was paid, the log of the host now says which order it was, which pack, for whom, and whether the ceramos were given or already given. This makes a purchase whose ceramos did not arrive easy to follow."
+	},
+	{
+		id: "purchases-go-to-the-buyer",
+		category: "fix",
+		title: "Purchases go to the account that bought, even with a shared email",
+		area: "Web · Payments",
+		summary: "Polar keeps one customer for each email, so a person who bought for two Discord accounts with the same email could see the second purchase (ceramos or a plan) land on the first account. Now a purchase goes to the Discord account that started the checkout on the website."
+	},
+	{
+		id: "language-badges-with-flags",
+		category: "improvement",
+		title: "Language badges now have a flag",
+		area: "Web · Bot · Badges",
+		summary: "The badges of languages were drawn only with their letters (ES, EN...). Each of the 20 languages now carries the flag of a country that stands for it (Spanish, Spain; English, United Kingdom; Portuguese, Brazil...), in the shop, in the account area and in the profile picture. The team can still give any badge its own picture in the shop editor."
+	},
+	{
+		id: "plan-stars-without-background",
+		category: "improvement",
+		title: "The stars of the plans have no colored hexagon behind them",
+		area: "Web · Badges and plans",
+		summary: "The Bronze, Silver and Gold stars were drawn inside a colored hexagon, on the badges page and in the staff list of plans. Now only the star shows, with nothing behind it."
+	},
+	{
+		id: "badge-frames-iron-gold-mithril",
+		category: "improvement",
+		title: "New frames for badges: iron, gold and mithril",
+		area: "Web · Bot · Badges",
+		summary: "The frames of the badges were only a color gradient. Now they are three real frames: iron for the normal one, gold for the bright one and mithril for the divine one. They show on the badges page, in the showcase, on the picture of /profile and on the picture of the shop. The stars of the plans stay alone, with no frame.",
+		images: [
+			"https://petto.sbs/assets/log/badge-frames-profile.png",
+			"https://petto.sbs/assets/log/badge-frames-web.png"
+		]
+	},
+	{
+		id: "custom-commands-where-they-work",
+		category: "feature",
+		title: "Choose where each custom command works",
+		area: "Web · Bot · Custom commands",
+		summary: "Every custom command can now be allowed only in some channels or for some roles, or blocked from others. It can also work only in NSFW channels, or be restricted: when somebody who is not a moderator uses it, the answer goes to the channel you choose. Without any of this, a command works everywhere for everybody, as before. If a member cannot use it where they tried, Petto stays quiet.",
+		images: [
+			"https://petto.sbs/assets/log/custom-command-scope.png"
+		]
+	},
+	{
+		id: "badge-frames-bigger",
+		category: "improvement",
+		title: "Badge frames are bigger and the pictures inside look bigger",
+		area: "Web · Bot · Badges",
+		summary: "The frame of a badge was the same size as the badge, so the flag or picture inside looked small. Now the frame is a little bigger and the picture keeps its whole size. It shows on the badges page, on the picture of /profile and on the picture of the shop.",
+		images: [
+			"https://petto.sbs/assets/log/badge-frames-bigger.png"
+		]
+	},
+	{
+		id: "custom-commands-lists-fixed",
+		category: "fix",
+		title: "The channel and role lists of custom commands work",
+		area: "Web · Custom commands",
+		summary: "In \"Where it works\" the lists of channels and roles opened empty (\"No matches\"), because the page did not load them. Now they show every channel and role of the server. The command card also no longer lifts or shrinks while you tap or type inside it, which made the fields and their lists jump."
+	},
+	{
+		id: "pack-window-shows-pieces",
+		category: "fix",
+		title: "The window of a pack shows its pieces",
+		area: "Web · Shop",
+		summary: "When you opened a pack of banners or name fonts to buy it, the top of the window was only a color gradient. Now a pack of banners opens with its first banner as a whole cover and the next ones as small pictures along the bottom, and a pack of name fonts shows your name written in its fonts."
+	},
+	{
+		id: "badge-frame-choice",
+		category: "feature",
+		title: "Choose which frame each badge shows",
+		area: "Web · Bot · Badges",
+		summary: "A badge that has a better frame can now show any frame it has: normal, golden or divine. Open the badge on the badges page and pick one; it also changes on the picture of /profile. The best frame is never lost (buying the next one still builds on it), and a frame you buy shows itself. The old Bright frame is now called Golden.",
+		images: [
+			"https://petto.sbs/assets/log/badge-frame-choice.png"
+		]
+	},
+	{
+		id: "footer-product-support-team",
+		category: "web",
+		title: "New website footer: Product, Support and Team",
+		area: "Web · Footer",
+		summary: "The footer of the website is now in three clear groups. Product lists everything that works today in alphabetical order (the Code Generator, Petto Code docs, commands, dashboard, embed builder, changelog, blog, roadmap, tools, Premium and the new Partners link). Support has the support server, status, stats, FAQ, feedback and YouTube. Team has the team, Petto history, apply and credits. It is the same in English, Spanish and Portuguese.",
+		images: [
+			"https://petto.sbs/assets/log/footer-product-support-team.png"
+		]
+	},
+	{
+		id: "release-0-7-12-cheesecake",
+		category: "web",
+		title: "Petto 0.7.12 · Cheesecake is out",
+		area: "Web · Bot · Changelog",
+		summary: "The new version of Petto is on the changelog page of the website and in !version: ceramos and a shop of badges with real frames, your own rank card, streaks per server, strong moderation rules made in the dashboard, Petto installed on a person, and custom commands you can limit to some channels and roles. From now on this log is at version 0.7.13."
+	},
+	{
+		id: "fold-opens-once",
+		category: "fix",
+		title: "A fold of the dashboard fades in once, not twice",
+		area: "Web · Dashboard · Custom commands",
+		summary: "When you opened a fold of the dashboard, like Where it works in the custom commands (channels, roles, NSFW, Restricted), its content faded in and, a moment later, did it again. Now it fades in once, in every fold of the dashboard. The website is at version 0.5.10."
+	},
+	{
+		id: "purchase-command",
+		category: "feature",
+		title: "/purchase: where to buy Premium, a plan or ceramos",
+		area: "Bot · Purchases",
+		summary: "A new command, /purchase (and !purchase), answers with a card and three buttons: Premium for a server, Plans for you (Bronze, Silver or Gold) and Ceramos. The buttons open the website, where you sign in with Discord, accept the terms and go on to the payment."
+	},
+	{
+		id: "wide-screens-fill",
+		category: "improvement",
+		title: "The website uses the whole screen on a big window",
+		area: "Web · Dashboard · Home",
+		summary: "On a PC screen (1920 or 2560 pixels wide) the pages of the dashboard filled only half of the area and the home page looked small. Now the pages of the dashboard (the servers and your account) share one width that grows with the window and stay in the middle on a very wide one, the public pages and the top bar are wider, and the title and the picture of the home are drawn bigger. Phones and small windows look as before."
+	},
+	{
+		id: "dash-menu-embed-invite",
+		category: "fix",
+		title: "Dashboard: one Summary, Manage premium, a bigger embed preview and a better invite",
+		area: "Web · Dashboard",
+		summary: "In your account area the menu had two entries called Summary: the second one is now called My activity, and Premium is now Manage premium. The preview of the Embed editor is now as wide as the editor itself (it was a small message beside a wide form) and grows on a big window. Adding Petto to a server from the dashboard now opens the same invite as petto.sbs/invite, with the permissions of the bot and not Administrator, and once Petto joins the dashboard notices it within seconds and opens the server to manage."
+	},
+	{
+		id: "top-bar-centered",
+		category: "fix",
+		title: "Top bar: centered links, equal buttons and a light that follows the mouse",
+		area: "Web · Top bar",
+		summary: "The links of the top bar (Product, Community, Docs, Premium) were pushed to the left because the buttons on the right take much more room than the logo; now they sit in the middle of the bar. The language and theme buttons are the same size as Login and Add to Discord, and on a big window the whole bar is drawn bigger (and a bit wider) with the page instead of staying small. The point of light of the glass used to be placed by the width of the window, so on a wide screen it was far from the pointer; now it is measured on the bar and glides after the mouse."
+	},
+	{
+		id: "status-shard-colors",
+		category: "web",
+		title: "Status page: every shard in color, with its details when you point at it",
+		area: "Web · Status",
+		summary: "Each shard card of the status page now has the color of its ping: green up to 50 ms, yellow from 51 to 150, orange from 151 to 300, and red above that or when the shard is offline. A small legend sits above the cards. Point at a card (or tap it on a phone) to see its servers, its members, its ping and state, and the name and place of the instance that holds it. The search of a server also says which instance has it.",
+		images: [
+			"https://petto.sbs/assets/log/status-shard-colors.png"
+		]
+	},
+	{
+		id: "footer-powered-by",
+		category: "web",
+		title: "Footer: Powered by CubePath and Discloud",
+		area: "Web · Footer",
+		summary: "The bottom of every page of the site now says that Petto runs on CubePath and Discloud, with a link to each one, in English, Spanish and Portuguese. They are the two places where the bot lives now.",
+		images: [
+			"https://petto.sbs/assets/log/footer-powered-by.png"
+		]
+	},
+	{
+		id: "status-all-shards",
+		category: "fix",
+		title: "Status, totals and the @ stats channels now count every shard",
+		area: "Petto › Status and numbers",
+		summary: "Petto now runs in three places with six shards, and some numbers only saw the first one: the status page said the other shards were offline and counted 86 servers, and the channels of servers and members in the support server said 87. Now every instance reports its own shards (with their members and the name of the instance), and the status page, the public totals, the ranking and the carousel of the home page, the channels of @ stats, /bot info and the verify page count all of the servers. /ping now says the real shard of your server. The cleanup of servers Petto left can no longer take a server of another shard for one that was left."
+	},
+	{
+		id: "about-command",
+		category: "feature",
+		title: "/about: who Petto is, in one card",
+		area: "Petto › Commands",
+		summary: "The new /about command (and !about) shows the bot (its version, how long it has been online, the servers and members of all its shards and how many clusters run them), the server where you used it (owner, members, channels, roles, when it was created, and the shard and instance that look after it), where Petto is hosted (CubePath and Discloud, with a link to each) and five buttons: website, support server, status, add Petto and Premium. It speaks English, Spanish and Portuguese."
+	},
+	{
+		id: "credits-sponsors",
+		category: "web",
+		title: "Credits: CubePath and Discloud are named as sponsors",
+		area: "Web · Credits",
+		summary: "The credits text no longer says that none of the companies is a sponsor: it now says that CubePath and Discloud sponsor the hosting of Petto, with our thanks, and that the other companies are only credited. It is in English, Spanish and Portuguese. In the bot, /bot info no longer has a button to GitHub, because the code is not open anymore: it has the support server instead."
+	},
+	{
+		id: "status-messages-all-shards",
+		category: "fix",
+		title: "The status messages of the team channels now show every shard",
+		area: "Petto › Status",
+		summary: "The messages of the status channels still showed only the two shards of the first host, with its own servers and cached members (104 servers, 22,988 members). Now, with the three instances running, they list all six shards with their state, servers, ping and the name and place of the instance that holds each one, and the servers and members of the whole bot. A shard that stops reporting for five minutes is shown as down, and the public status only says that everything is fine when all the shards are running."
+	},
+	{
+		id: "remote-shard-alerts",
+		category: "improvement",
+		title: "Alerts when a shard of another server of Petto goes down",
+		area: "Petto › Status",
+		summary: "Petto now runs in three places, and the status channel only heard the first one. Now every minute Petto checks what each place reports: if a shard stops being ready, or its whole host goes silent for two minutes, the channel says which shard it is, where it runs and how many servers it holds, and it says again when it is back and what is still down. A short reconnect of a few seconds is not announced, and while one is down the public status shows a partial outage."
+	},
+	{
+		id: "members-total-fix",
+		category: "fix",
+		title: "The member count of Petto no longer drops and bounces",
+		area: "Petto › Stats",
+		summary: "The members of the whole bot showed about 90,000 instead of about 135,000, and the number jumped up and down. No server was lost: Petto is still in the same 281. It was a counting mistake after the bot started running in three places. Now each place reports its own numbers every few seconds and they are added up, so the count matches the status page and stays steady. The warning about the servers cleanup is also said once instead of every minute, and the servers carousel logs what it reads from the other places."
+	},
+	{
+		id: "servers-count-fix",
+		category: "fix",
+		title: "The server count and the home carousel show the right servers again",
+		area: "Petto › Stats",
+		summary: "For a while the number of servers climbed by itself (281, 287, 299...) although Petto had not joined any new one, and the carousel of servers on the home page only showed the ones of the first host, leaving out the big servers of the other two. Petto was keeping empty copies of those servers in memory while it read their online members. Now it asks Discord without keeping them and ignores any server that does not belong to its own shards, so the count goes back to the real one and the carousel lists the biggest servers of all the hosts."
+	},
+	{
+		id: "dashboard-vetox-shell-and-bar",
+		category: "web",
+		title: "Lighter dark palette, roomier sidebar, larger previews and a dedicated top bar in the dashboard",
+		area: "Web · Dashboard",
+		summary: "Both the server dashboard and your account pages now use softer charcoal greys instead of pitch black, with a wider full-height sidebar, larger menu items, bigger stat and design cards, and much wider live previews in Customize, Image cards and every editor. At the top, the public site bar gives way to a dedicated dashboard bar with your current path, a central search bar (/ or Ctrl K) and smooth pop-up menus for language, help links, theme and your account."
+	},
+	{
+		id: "public-site-rail-layout",
+		category: "web",
+		title: "Refined public layout, Vetox-style essential bar, static pill buttons and restructured Status page",
+		area: "Web · Public site",
+		summary: "The home page, Features, Commands, Premium and Status now share a clean 1150px column with single-line section dividers, a streamlined floating pill navbar (Resources with a 2x3 frosted menu, Premium, Commands and Status, plus a clean solid pill CTA instead of the spinning border button), left-accented section headings, an asymmetric bento feature grid, a tabbed command showcase, a two-column FAQ, a five-column footer with a language menu and dashboard-styled dropdowns across every select, and a restructured Status page with an overlapping summary card, collapsible 90/60/30-day uptime bars, an event calendar and a two-column server checker."
+	},
+	{
+		id: "shop-badge-packs-tabs-and-fixes",
+		category: "fix",
+		title: "Badge packs now show as their own tabs next to Fablo pack, with accurate piece counts and prices",
+		area: "Web · Badges & Shop",
+		summary: "Active badge packs created in the Shop editor now appear as their own tabs right next to the Fablo pack on the Badges page, with a banner to buy the whole pack at its bundle price. The Shop editor now counts custom badges inside each pack (instead of showing 0 pieces), and pack prices across badges, banners and name fonts now correctly respect free packs, remaining unowned pieces and plan-gated packs."
+	}
+];
+const log = {
+	revision: revision,
+	version: version,
+	entries: entries
+};
+
+const prerender = false;
+const GET = () => new Response(JSON.stringify(log), {
+  headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=60, s-maxage=60", "Access-Control-Allow-Origin": "*" }
+});
+
+const _page = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  GET,
+  prerender
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const page = () => _page;
+
+export { page };

@@ -1,0 +1,6462 @@
+const en = [
+	{
+		id: "user",
+		label: "User dot notation",
+		availability: "always",
+		vars: [
+			{
+				tok: "{user}",
+				desc: "Mentions the user"
+			},
+			{
+				tok: "{user.mention}",
+				desc: "Mentions the user (same as {user})"
+			},
+			{
+				tok: "{user.name}",
+				desc: "Username"
+			},
+			{
+				tok: "{user.id}",
+				desc: "User ID"
+			},
+			{
+				tok: "{user.avatar}",
+				desc: "Global avatar image URL"
+			},
+			{
+				tok: "{user.display_avatar}",
+				desc: "Server avatar, falls back to global"
+			},
+			{
+				tok: "{user.avatar_decoration}",
+				desc: "Picture of the avatar decoration of the person, empty if none"
+			},
+			{
+				tok: "{user.nameplate}",
+				desc: "Picture of the nameplate of the person, empty if none"
+			},
+			{
+				tok: "{user.server_tag}",
+				desc: "The server tag the person shows (up to 4 letters), empty if none"
+			},
+			{
+				tok: "{user.server_tag_badge}",
+				desc: "Picture of the badge of that server tag, empty if none"
+			},
+			{
+				tok: "{user.display_name}",
+				desc: "Server nickname, or username if none"
+			},
+			{
+				tok: "{user.joined_at}",
+				desc: "Date they joined this server"
+			},
+			{
+				tok: "{user.joined_at_timestamp}",
+				desc: "Unix timestamp of that join date"
+			},
+			{
+				tok: "{user.created_at}",
+				desc: "Date the account was created"
+			},
+			{
+				tok: "{user.created_at_timestamp}",
+				desc: "Unix timestamp of account creation"
+			},
+			{
+				tok: "{user.account_age}",
+				desc: "How old the account is (3 years, 5 days)"
+			},
+			{
+				tok: "{user.account_age_days}",
+				desc: "How old the account is, in days (a number)"
+			},
+			{
+				tok: "{user.joined_age}",
+				desc: "How long the member has been in the server (2 months)"
+			},
+			{
+				tok: "{user.boost}",
+				desc: "\"Yes\" or \"No\", are they boosting"
+			},
+			{
+				tok: "{user.boost_since}",
+				desc: "Date they started boosting, or \"Not boosting\""
+			},
+			{
+				tok: "{user.boost_since_timestamp}",
+				desc: "Unix timestamp of boost start"
+			},
+			{
+				tok: "{user.color}",
+				desc: "Highest role color as hex"
+			},
+			{
+				tok: "{user.top_role}",
+				desc: "Their highest role name"
+			},
+			{
+				tok: "{user.role_list}",
+				desc: "All their roles, mentioned"
+			},
+			{
+				tok: "{user.bot}",
+				desc: "\"Yes\" or \"No\", is it a bot account"
+			},
+			{
+				tok: "{user.role_count}",
+				desc: "How many roles they have (not counting @everyone)"
+			},
+			{
+				tok: "{user.top_role_mention}",
+				desc: "Their highest role, mentioned"
+			},
+			{
+				tok: "{user.is_owner}",
+				desc: "\"Yes\" or \"No\", are they the owner of the server"
+			},
+			{
+				tok: "{user.joined_age_days}",
+				desc: "Days since they joined the server"
+			},
+			{
+				tok: "{user.join_position}",
+				desc: "Which member number they were"
+			},
+			{
+				tok: "{user.join_position_suffix}",
+				desc: "Join position with suffix (1st, 2nd...)"
+			}
+		]
+	},
+	{
+		id: "user_legacy",
+		label: "User (legacy)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{user_tag}",
+				desc: "Username (same as {user.name})"
+			},
+			{
+				tok: "{user_name}",
+				desc: "Username"
+			},
+			{
+				tok: "{user_avatar}",
+				desc: "Avatar image URL"
+			},
+			{
+				tok: "{user_id}",
+				desc: "User ID"
+			},
+			{
+				tok: "{user_discrim}",
+				desc: "Discriminator, mostly empty on new usernames"
+			},
+			{
+				tok: "{user_nick}",
+				desc: "Server nickname, or username if none"
+			},
+			{
+				tok: "{user_joindate}",
+				desc: "Date they joined this server"
+			},
+			{
+				tok: "{user_createdate}",
+				desc: "Date the account was created"
+			},
+			{
+				tok: "{user_displaycolor}",
+				desc: "Highest role color as hex"
+			},
+			{
+				tok: "{user_boostsince}",
+				desc: "Date they started boosting, or \"Not boosting\""
+			}
+		]
+	},
+	{
+		id: "server",
+		label: "Server",
+		availability: "always",
+		vars: [
+			{
+				tok: "{server_name}",
+				desc: "Server name"
+			},
+			{
+				tok: "{server_id}",
+				desc: "Server ID"
+			},
+			{
+				tok: "{server_prefix}",
+				desc: "The server's configured prefix"
+			},
+			{
+				tok: "{server_membercount}",
+				desc: "Total member count"
+			},
+			{
+				tok: "{server_membercount_ordinal}",
+				desc: "Member count with suffix (1st, 2nd...)"
+			},
+			{
+				tok: "{server_membercount_nobots}",
+				desc: "Member count excluding bots"
+			},
+			{
+				tok: "{server_membercount_nobots_ordinal}",
+				desc: "That count, with suffix"
+			},
+			{
+				tok: "{server_botcount}",
+				desc: "Number of bots in the server"
+			},
+			{
+				tok: "{server_botcount_ordinal}",
+				desc: "Bot count, with suffix"
+			},
+			{
+				tok: "{server_icon}",
+				desc: "Server icon URL"
+			},
+			{
+				tok: "{server_rolecount}",
+				desc: "Number of roles"
+			},
+			{
+				tok: "{server_channelcount}",
+				desc: "Number of channels"
+			},
+			{
+				tok: "{server_randommember}",
+				desc: "Mentions a random member"
+			},
+			{
+				tok: "{server_randommember_tag}",
+				desc: "Username of a random member"
+			},
+			{
+				tok: "{server_randommember_nobots}",
+				desc: "Mentions a random non-bot member"
+			},
+			{
+				tok: "{server_owner}",
+				desc: "Mentions the server owner"
+			},
+			{
+				tok: "{server_owner_id}",
+				desc: "Server owner's user ID"
+			},
+			{
+				tok: "{server_createdate}",
+				desc: "Date the server was created"
+			},
+			{
+				tok: "{server_createdate_timestamp}",
+				desc: "Unix timestamp of the day the server was created"
+			},
+			{
+				tok: "{server_age_days}",
+				desc: "Days since the server was created"
+			},
+			{
+				tok: "{server_emojicount}",
+				desc: "How many custom emojis the server has"
+			},
+			{
+				tok: "{server_stickercount}",
+				desc: "How many stickers the server has"
+			},
+			{
+				tok: "{server_description}",
+				desc: "The description of the server (empty when it has none)"
+			},
+			{
+				tok: "{server_vanity}",
+				desc: "The vanity invite link of the server (empty when it has none)"
+			},
+			{
+				tok: "{server_banner}",
+				desc: "Banner image URL (empty when it has none)"
+			},
+			{
+				tok: "{server_verification}",
+				desc: "Verification level of the server (None, Low, Medium, High, Very high)"
+			},
+			{
+				tok: "{server_locale}",
+				desc: "Preferred language of the server (for example en-US)"
+			},
+			{
+				tok: "{server_rules_channel}",
+				desc: "The rules channel, mentioned (empty when it has none)"
+			},
+			{
+				tok: "{server_boostlevel}",
+				desc: "Current boost level (0-3)"
+			},
+			{
+				tok: "{server_boostcount}",
+				desc: "Total boost count"
+			},
+			{
+				tok: "{server_nextboostlevel}",
+				desc: "The next boost level (1-3)"
+			},
+			{
+				tok: "{server_nextboostlevel_required}",
+				desc: "Boosts required to reach it"
+			},
+			{
+				tok: "{server_nextboostlevel_until_required}",
+				desc: "Boosts still needed to reach it"
+			}
+		]
+	},
+	{
+		id: "guild",
+		label: "Guild dot notation",
+		availability: "always",
+		vars: [
+			{
+				tok: "{guild.name}",
+				desc: "Server name"
+			},
+			{
+				tok: "{guild.id}",
+				desc: "Server ID"
+			},
+			{
+				tok: "{guild.count}",
+				desc: "Total member count"
+			},
+			{
+				tok: "{guild.icon}",
+				desc: "Server icon URL"
+			},
+			{
+				tok: "{guild.banner}",
+				desc: "Server banner URL"
+			},
+			{
+				tok: "{guild.owner_id}",
+				desc: "Server owner's user ID"
+			},
+			{
+				tok: "{guild.created_at}",
+				desc: "Date the server was created"
+			},
+			{
+				tok: "{guild.created_at_timestamp}",
+				desc: "Unix timestamp of server creation"
+			},
+			{
+				tok: "{guild.emoji_count}",
+				desc: "Number of custom emojis"
+			},
+			{
+				tok: "{guild.role_count}",
+				desc: "Number of roles"
+			},
+			{
+				tok: "{guild.boost_count}",
+				desc: "Total boost count"
+			},
+			{
+				tok: "{guild.boost_tier}",
+				desc: "Boost tier, e.g. \"Level 2\" or \"No Level\""
+			},
+			{
+				tok: "{guild.channels_count}",
+				desc: "Number of channels"
+			},
+			{
+				tok: "{guild.vanity}",
+				desc: "Vanity invite URL, if the server has one"
+			},
+			{
+				tok: "{guild.region}",
+				desc: "Server's preferred locale"
+			},
+			{
+				tok: "{guild.max_members}",
+				desc: "Max member capacity"
+			}
+		]
+	},
+	{
+		id: "channel",
+		label: "Channel",
+		availability: "always",
+		vars: [
+			{
+				tok: "{channel}",
+				desc: "Mentions the current channel"
+			},
+			{
+				tok: "{channel.mention}",
+				desc: "Mentions the current channel"
+			},
+			{
+				tok: "{channel.name}",
+				desc: "Channel name"
+			},
+			{
+				tok: "{channel.id}",
+				desc: "Channel ID"
+			},
+			{
+				tok: "{channel.topic}",
+				desc: "Channel topic"
+			},
+			{
+				tok: "{channel_name}",
+				desc: "Channel name (legacy)"
+			},
+			{
+				tok: "{channel_createdate}",
+				desc: "Date the channel was created (legacy)"
+			}
+		]
+	},
+	{
+		id: "message",
+		label: "Message",
+		availability: "message",
+		vars: [
+			{
+				tok: "{message_link}",
+				desc: "Only where a triggering message exists (e.g. autoresponders)"
+			},
+			{
+				tok: "{message_id}",
+				desc: "ID of the triggering message"
+			},
+			{
+				tok: "{message_content}",
+				desc: "Text of the triggering message"
+			}
+		]
+	},
+	{
+		id: "leveling",
+		label: "Leveling",
+		availability: "leveling",
+		vars: [
+			{
+				tok: "{level}",
+				desc: "In the level-up message and the rank card: the level"
+			},
+			{
+				tok: "{level_next}",
+				desc: "The next level"
+			},
+			{
+				tok: "{level_xp}",
+				desc: "Total XP"
+			},
+			{
+				tok: "{level_xp_current}",
+				desc: "XP earned in the current level"
+			},
+			{
+				tok: "{level_xp_needed}",
+				desc: "XP needed to go from this level to the next"
+			},
+			{
+				tok: "{level_xp_to_next}",
+				desc: "XP still missing for the next level"
+			},
+			{
+				tok: "{level_progress}",
+				desc: "Progress to the next level, 0 to 100"
+			},
+			{
+				tok: "{level_rank}",
+				desc: "Leaderboard position"
+			},
+			{
+				tok: "{level_rank_total}",
+				desc: "Members on the leaderboard"
+			},
+			{
+				tok: "{level_top_percent}",
+				desc: "Where the person is in the ranking, as a percent (Top 2.1%)"
+			},
+			{
+				tok: "{level_streak}",
+				desc: "Days in a row with activity"
+			},
+			{
+				tok: "{level_messages}",
+				desc: "Messages counted"
+			},
+			{
+				tok: "{level_voice_minutes}",
+				desc: "Minutes in voice counted"
+			},
+			{
+				tok: "{level_type}",
+				desc: "text or voice"
+			},
+			{
+				tok: "{level_bar}",
+				desc: "The progress bar to the next level"
+			},
+			{
+				tok: "{level_vote_boost}",
+				desc: "The vote boost of the person, such as +10% XP · 3h 20m left (empty when they have none)"
+			},
+			{
+				tok: "{level_previous}",
+				desc: "The level before this one"
+			},
+			{
+				tok: "{level_role}",
+				desc: "In the level-up message: the reward role the member just earned, as a mention (empty when there is none)"
+			},
+			{
+				tok: "{level_role_name}",
+				desc: "The name of that reward role"
+			}
+		]
+	},
+	{
+		id: "giveaway",
+		label: "Giveaway",
+		availability: "giveaway",
+		vars: [
+			{
+				tok: "{gw.prize}",
+				desc: "The prize"
+			},
+			{
+				tok: "{gw.winners}",
+				desc: "Number of winners"
+			},
+			{
+				tok: "{gw.entries}",
+				desc: "Current number of entries"
+			},
+			{
+				tok: "{gw.host}",
+				desc: "Mentions whoever started it"
+			},
+			{
+				tok: "{gw.host_name}",
+				desc: "The host's username"
+			},
+			{
+				tok: "{gw.host_avatar}",
+				desc: "The host's avatar image URL"
+			},
+			{
+				tok: "{gw.duration}",
+				desc: "End time, as a raw unix timestamp"
+			},
+			{
+				tok: "{gw.timestamp}",
+				desc: "End time, as a relative Discord timestamp"
+			},
+			{
+				tok: "{gw.ends}",
+				desc: "End time as a relative Discord timestamp"
+			},
+			{
+				tok: "{gw.claim_time}",
+				desc: "How long winners have to claim"
+			},
+			{
+				tok: "{gw.reaction}",
+				desc: "The entry emoji, if using reaction mode"
+			},
+			{
+				tok: "{gw.entry_mode}",
+				desc: "\"react with\" or \"click on\", matches entry mode"
+			},
+			{
+				tok: "{gw.entry_text}",
+				desc: "Entry instruction, based on the selected method"
+			},
+			{
+				tok: "{gw.winner_text}",
+				desc: "Winner-count text used by the giveaway"
+			},
+			{
+				tok: "{gw.status}",
+				desc: "Active or Ended"
+			},
+			{
+				tok: "{gw.preset}",
+				desc: "The bonus-entry roles list, if a preset is used"
+			}
+		]
+	},
+	{
+		id: "command",
+		label: "Custom Commands",
+		availability: "command",
+		vars: [
+			{
+				tok: "{args}",
+				desc: "All text after the command name"
+			},
+			{
+				tok: "{arguments}",
+				desc: "Alias for {args}"
+			},
+			{
+				tok: "{args_raw}",
+				desc: "Alias for {args}; keeps the full argument text"
+			},
+			{
+				tok: "{arg1}",
+				desc: "First argument"
+			},
+			{
+				tok: "{arg2}",
+				desc: "Second argument"
+			},
+			{
+				tok: "{arg3}",
+				desc: "Third argument"
+			},
+			{
+				tok: "{arg4}",
+				desc: "Fourth argument"
+			},
+			{
+				tok: "{arg5}",
+				desc: "Fifth argument"
+			},
+			{
+				tok: "{arg6}",
+				desc: "Sixth argument"
+			},
+			{
+				tok: "{arg7}",
+				desc: "Seventh argument"
+			},
+			{
+				tok: "{arg8}",
+				desc: "Eighth argument"
+			},
+			{
+				tok: "{arg9}",
+				desc: "Ninth argument"
+			},
+			{
+				tok: "{arg10}",
+				desc: "Tenth argument"
+			},
+			{
+				tok: "{args_from:2}",
+				desc: "All arguments starting at the given position"
+			},
+			{
+				tok: "{arg_count}",
+				desc: "Number of arguments supplied"
+			},
+			{
+				tok: "{command_name}",
+				desc: "The command name that was used"
+			},
+			{
+				tok: "{prefix}",
+				desc: "The prefix that was used"
+			},
+			{
+				tok: "{imgcard:name}",
+				desc: "Puts the image card with that name in the message (made in Image cards). {imgcard:name|attachment} sends the picture on its own instead of inside the first embed."
+			},
+			{
+				tok: "{reactreply:emoji}",
+				desc: "Response flag: reacts to the sent message with this emoji; repeat it for more reactions"
+			}
+		]
+	},
+	{
+		id: "sanction",
+		label: "Sanction",
+		availability: "sanction",
+		vars: [
+			{
+				tok: "{case.id}",
+				desc: "The case number (not in the message sent to the member before a ban, kick or similar)"
+			},
+			{
+				tok: "{case.type}",
+				desc: "ban, tempban, softban, unban, kick, mute, tempmute, unmute, warn, jail or unjail"
+			},
+			{
+				tok: "{case.action}",
+				desc: "The action in words, such as \"banned from\" or \"warned in\""
+			},
+			{
+				tok: "{case.emoji}",
+				desc: "The icon of the action"
+			},
+			{
+				tok: "{case.reason}",
+				desc: "The reason"
+			},
+			{
+				tok: "{case.duration}",
+				desc: "How long it lasts, or Permanent"
+			},
+			{
+				tok: "{case.expires}",
+				desc: "When it ends, as a relative time, or Never"
+			},
+			{
+				tok: "{case.expires_at}",
+				desc: "When it ends, as a date and time, or Never"
+			},
+			{
+				tok: "{case.source}",
+				desc: "Who applied it: a moderator, automod, the honeypot, warn escalation or an automatic expiry"
+			},
+			{
+				tok: "{case.moderator}",
+				desc: "Mentions the moderator"
+			},
+			{
+				tok: "{case.moderator_name}",
+				desc: "Name of the moderator"
+			},
+			{
+				tok: "{case.moderator_id}",
+				desc: "ID of the moderator"
+			},
+			{
+				tok: "{case.moderator_avatar}",
+				desc: "Avatar of the moderator"
+			},
+			{
+				tok: "{case.user}",
+				desc: "Mentions the sanctioned member"
+			},
+			{
+				tok: "{case.user_name}",
+				desc: "Name of the sanctioned member"
+			},
+			{
+				tok: "{case.user_id}",
+				desc: "ID of the sanctioned member"
+			},
+			{
+				tok: "{case.user_avatar}",
+				desc: "Avatar of the sanctioned member"
+			},
+			{
+				tok: "{case.appeal}",
+				desc: "The link where the member can appeal this sanction, empty when the server has appeals off or this kind of sanction cannot be appealed"
+			}
+		]
+	},
+	{
+		id: "identity",
+		label: "Vanity and Server Tag",
+		availability: "identity",
+		vars: [
+			{
+				tok: "{rule.name}",
+				desc: "Name of the rule that matched"
+			},
+			{
+				tok: "{rule.source}",
+				desc: "Which kind of rule it is: vanity or guildtag"
+			},
+			{
+				tok: "{rule.value}",
+				desc: "The text or server ID the rule looks for"
+			},
+			{
+				tok: "{rule.condition}",
+				desc: "The condition of the rule"
+			},
+			{
+				tok: "{rule.reason}",
+				desc: "Why the rule matched"
+			},
+			{
+				tok: "{rule.role}",
+				desc: "Mentions the role of the rule"
+			},
+			{
+				tok: "{rule.role_id}",
+				desc: "ID of the role of the rule"
+			},
+			{
+				tok: "{rule.action}",
+				desc: "add_role or remove_role"
+			},
+			{
+				tok: "{rule.action_text}",
+				desc: "add or remove"
+			},
+			{
+				tok: "{rule.result}",
+				desc: "completed or error"
+			},
+			{
+				tok: "{rule.error}",
+				desc: "The error, when the role could not be changed"
+			},
+			{
+				tok: "{rule.matched_value}",
+				desc: "What the member has that matched"
+			},
+			{
+				tok: "{rule.event}",
+				desc: "Name of the event, for example vanity_add"
+			},
+			{
+				tok: "{rule.event_title}",
+				desc: "Title of the event"
+			},
+			{
+				tok: "{vanity.rule}",
+				desc: "Name of the Vanity rule"
+			},
+			{
+				tok: "{vanity.word}",
+				desc: "The text the Vanity rule looks for"
+			},
+			{
+				tok: "{vanity.source}",
+				desc: "Where it looks: custom_status, username..."
+			},
+			{
+				tok: "{vanity.value}",
+				desc: "What the member has set, such as their Custom Status"
+			},
+			{
+				tok: "{vanity.role}",
+				desc: "Mentions the role of the Vanity rule"
+			},
+			{
+				tok: "{tag}",
+				desc: "The Server Tag text of the member"
+			},
+			{
+				tok: "{tag.rule}",
+				desc: "Name of the Server Tag rule"
+			},
+			{
+				tok: "{tag.condition}",
+				desc: "Condition of the Server Tag rule"
+			},
+			{
+				tok: "{tag.rule_value}",
+				desc: "The value the Server Tag rule compares"
+			},
+			{
+				tok: "{tag.guild_id}",
+				desc: "ID of the server the tag belongs to"
+			},
+			{
+				tok: "{tag.enabled}",
+				desc: "true or false, whether the member shows the tag"
+			},
+			{
+				tok: "{tag.badge}",
+				desc: "Badge of the tag"
+			},
+			{
+				tok: "{tag.role}",
+				desc: "Mentions the role of the Server Tag rule"
+			}
+		]
+	},
+	{
+		id: "suggestions",
+		label: "Suggestions",
+		availability: "suggestions",
+		vars: [
+			{
+				tok: "{suggestion.id}",
+				desc: "The ID of the suggestion (like si2tr-foytm)"
+			},
+			{
+				tok: "{suggestion.number}",
+				desc: "The number of the suggestion in this server"
+			},
+			{
+				tok: "{suggestion.content}",
+				desc: "The text of the suggestion"
+			},
+			{
+				tok: "{suggestion.status}",
+				desc: "pending, approved, denied, considering or implemented"
+			},
+			{
+				tok: "{suggestion.status_label}",
+				desc: "The status written out (Approved, Denied...), empty while it is pending"
+			},
+			{
+				tok: "{suggestion.reason}",
+				desc: "The reason the staff gave when they answered"
+			},
+			{
+				tok: "{suggestion.staff}",
+				desc: "Mentions the staff member who answered"
+			},
+			{
+				tok: "{suggestion.staff_name}",
+				desc: "Name of the staff member who answered"
+			},
+			{
+				tok: "{suggestion.author}",
+				desc: "Mentions who made the suggestion"
+			},
+			{
+				tok: "{suggestion.author_name}",
+				desc: "Name of who made it"
+			},
+			{
+				tok: "{suggestion.author_id}",
+				desc: "ID of who made it"
+			},
+			{
+				tok: "{suggestion.author_avatar}",
+				desc: "Avatar of who made it"
+			},
+			{
+				tok: "{suggestion.up}",
+				desc: "Votes in favor"
+			},
+			{
+				tok: "{suggestion.down}",
+				desc: "Votes against"
+			},
+			{
+				tok: "{suggestion.up_emoji}",
+				desc: "The emoji of the votes in favor"
+			},
+			{
+				tok: "{suggestion.down_emoji}",
+				desc: "The emoji of the votes against"
+			},
+			{
+				tok: "{suggestion.score}",
+				desc: "Votes in favor minus votes against"
+			},
+			{
+				tok: "{suggestion.percent}",
+				desc: "Percent of the votes that are in favor (0 to 100)"
+			},
+			{
+				tok: "{suggestion.image}",
+				desc: "Link of the picture of the suggestion, empty if none"
+			},
+			{
+				tok: "{suggestion.link}",
+				desc: "Link to the suggestion message"
+			},
+			{
+				tok: "{suggestion.channel}",
+				desc: "Mentions the channel of the suggestion"
+			},
+			{
+				tok: "{suggestion.thread}",
+				desc: "Mentions the thread of the suggestion, empty if none"
+			},
+			{
+				tok: "{suggestion.created}",
+				desc: "When it was made, as a relative time (5 days ago)"
+			},
+			{
+				tok: "{suggestion.created_time}",
+				desc: "When it was made, as a date and time"
+			}
+		]
+	},
+	{
+		id: "confessions",
+		label: "Confessions",
+		availability: "confessions",
+		vars: [
+			{
+				tok: "{confession.id}",
+				desc: "The ID of the confession (like si2tr-foytm)"
+			},
+			{
+				tok: "{confession.number}",
+				desc: "The number of the confession in this server"
+			},
+			{
+				tok: "{confession.content}",
+				desc: "The text of the confession"
+			},
+			{
+				tok: "{confession.image}",
+				desc: "Link of the picture of the confession, empty if none"
+			},
+			{
+				tok: "{confession.link}",
+				desc: "Link to the confession message"
+			},
+			{
+				tok: "{confession.channel}",
+				desc: "Mentions the channel of the confession"
+			},
+			{
+				tok: "{confession.created}",
+				desc: "When it was made, as a relative time (5 days ago)"
+			},
+			{
+				tok: "{confession.created_time}",
+				desc: "When it was made, as a date and time"
+			}
+		]
+	},
+	{
+		id: "starboard",
+		label: "Starboard",
+		availability: "starboard",
+		vars: [
+			{
+				tok: "{star.count}",
+				desc: "Number of stars"
+			},
+			{
+				tok: "{star.emoji}",
+				desc: "The starboard emoji"
+			},
+			{
+				tok: "{star.channel}",
+				desc: "Mentions the channel of the message"
+			},
+			{
+				tok: "{star.channel_name}",
+				desc: "Name of that channel"
+			},
+			{
+				tok: "{star.link}",
+				desc: "Link to the starred message"
+			},
+			{
+				tok: "{star.message_id}",
+				desc: "ID of the starred message"
+			},
+			{
+				tok: "{star.author}",
+				desc: "Mentions the author of the message"
+			},
+			{
+				tok: "{star.author_name}",
+				desc: "Name of the author"
+			},
+			{
+				tok: "{star.author_id}",
+				desc: "ID of the author"
+			},
+			{
+				tok: "{star.author_avatar}",
+				desc: "Avatar of the author"
+			},
+			{
+				tok: "{star.content}",
+				desc: "Text of the message"
+			},
+			{
+				tok: "{star.image}",
+				desc: "Link of the first image of the message, empty if none"
+			},
+			{
+				tok: "{star.attachments}",
+				desc: "Links to the other files of the message"
+			},
+			{
+				tok: "{star.time}",
+				desc: "When the message was sent"
+			}
+		]
+	},
+	{
+		id: "monkeyboard",
+		label: "Monkeyboard",
+		availability: "monkeyboard",
+		vars: [
+			{
+				tok: "{monkey.count}",
+				desc: "Number of monkeys"
+			},
+			{
+				tok: "{monkey.emoji}",
+				desc: "The monkeyboard emoji"
+			},
+			{
+				tok: "{monkey.channel}",
+				desc: "Mentions the channel of the message"
+			},
+			{
+				tok: "{monkey.channel_name}",
+				desc: "Name of that channel"
+			},
+			{
+				tok: "{monkey.link}",
+				desc: "Link to the monkeyed message"
+			},
+			{
+				tok: "{monkey.message_id}",
+				desc: "ID of the monkeyed message"
+			},
+			{
+				tok: "{monkey.author}",
+				desc: "Mentions the author of the message"
+			},
+			{
+				tok: "{monkey.author_name}",
+				desc: "Name of the author"
+			},
+			{
+				tok: "{monkey.author_id}",
+				desc: "ID of the author"
+			},
+			{
+				tok: "{monkey.author_avatar}",
+				desc: "Avatar of the author"
+			},
+			{
+				tok: "{monkey.content}",
+				desc: "Text of the message"
+			},
+			{
+				tok: "{monkey.image}",
+				desc: "Link of the first image of the message, empty if none"
+			},
+			{
+				tok: "{monkey.attachments}",
+				desc: "Links to the other files of the message"
+			},
+			{
+				tok: "{monkey.time}",
+				desc: "When the message was sent"
+			}
+		]
+	},
+	{
+		id: "clownboard",
+		label: "Clownboard",
+		availability: "clownboard",
+		vars: [
+			{
+				tok: "{clown.count}",
+				desc: "Number of clowns"
+			},
+			{
+				tok: "{clown.emoji}",
+				desc: "The clownboard emoji"
+			},
+			{
+				tok: "{clown.channel}",
+				desc: "Mentions the channel of the message"
+			},
+			{
+				tok: "{clown.channel_name}",
+				desc: "Name of that channel"
+			},
+			{
+				tok: "{clown.link}",
+				desc: "Link to the clowned message"
+			},
+			{
+				tok: "{clown.message_id}",
+				desc: "ID of the clowned message"
+			},
+			{
+				tok: "{clown.author}",
+				desc: "Mentions the author of the message"
+			},
+			{
+				tok: "{clown.author_name}",
+				desc: "Name of the author"
+			},
+			{
+				tok: "{clown.author_id}",
+				desc: "ID of the author"
+			},
+			{
+				tok: "{clown.author_avatar}",
+				desc: "Avatar of the author"
+			},
+			{
+				tok: "{clown.content}",
+				desc: "Text of the message"
+			},
+			{
+				tok: "{clown.image}",
+				desc: "Link of the first image of the message, empty if none"
+			},
+			{
+				tok: "{clown.attachments}",
+				desc: "Links to the other files of the message"
+			},
+			{
+				tok: "{clown.time}",
+				desc: "When the message was sent"
+			}
+		]
+	},
+	{
+		id: "verification",
+		label: "Verification",
+		availability: "verification",
+		vars: [
+			{
+				tok: "{verify.link}",
+				desc: "Only in the verification message: the link the member opens to verify"
+			}
+		]
+	},
+	{
+		id: "honeypot",
+		label: "Honeypot",
+		availability: "honeypot",
+		vars: [
+			{
+				tok: "{honeypot.action}",
+				desc: "What happens to who posts there, such as a softban"
+			},
+			{
+				tok: "{honeypot.count}",
+				desc: "Members caught so far"
+			},
+			{
+				tok: "{honeypot.channel}",
+				desc: "Mention of the bait channel"
+			}
+		]
+	},
+	{
+		id: "counter",
+		label: "Counter milestones",
+		availability: "counter",
+		vars: [
+			{
+				tok: "{counter.count}",
+				desc: "Members of the server now"
+			},
+			{
+				tok: "{counter.goal}",
+				desc: "The member number reached (the goal, or the multiple of every N)"
+			},
+			{
+				tok: "{counter.server}",
+				desc: "Name of the server"
+			}
+		]
+	},
+	{
+		id: "request",
+		label: "Requests",
+		availability: "request",
+		vars: [
+			{
+				tok: "{request.number}",
+				desc: "Number of the request"
+			},
+			{
+				tok: "{request.text}",
+				desc: "What was asked for"
+			},
+			{
+				tok: "{request.link}",
+				desc: "Link to the card of the request"
+			},
+			{
+				tok: "{request.channel}",
+				desc: "Channel where the staff sees the request"
+			},
+			{
+				tok: "{request.status}",
+				desc: "State of the request"
+			}
+		]
+	},
+	{
+		id: "form",
+		label: "Forms",
+		availability: "form",
+		vars: [
+			{
+				tok: "{form.name}",
+				desc: "Short name of the form"
+			},
+			{
+				tok: "{form.title}",
+				desc: "Title of the form"
+			},
+			{
+				tok: "{form.number}",
+				desc: "Number of the submission"
+			},
+			{
+				tok: "{form.status}",
+				desc: "State of the submission"
+			},
+			{
+				tok: "{form.reason}",
+				desc: "Reason the reviewer gave"
+			}
+		]
+	},
+	{
+		id: "poll",
+		label: "Polls",
+		availability: "poll",
+		vars: [
+			{
+				tok: "{poll.question}",
+				desc: "The question"
+			},
+			{
+				tok: "{poll.options}",
+				desc: "The options, one per line, with their letters"
+			},
+			{
+				tok: "{poll.results}",
+				desc: "The options with a bar, the percentage and the votes of each"
+			},
+			{
+				tok: "{poll.votes}",
+				desc: "Number of people who voted"
+			},
+			{
+				tok: "{poll.votes_text}",
+				desc: "The votes as text, like \"3 votes\""
+			},
+			{
+				tok: "{poll.type}",
+				desc: "Single choice or multiple choice"
+			},
+			{
+				tok: "{poll.status}",
+				desc: "Open or Closed"
+			},
+			{
+				tok: "{poll.ends}",
+				desc: "When it closes, as a relative Discord timestamp (empty if it never closes)"
+			},
+			{
+				tok: "{poll.image}",
+				desc: "The image of the poll, if it has one"
+			},
+			{
+				tok: "{poll.host}",
+				desc: "Mentions whoever started the poll"
+			},
+			{
+				tok: "{poll.winner}",
+				desc: "The option with the most votes (empty on a tie or without votes)"
+			}
+		]
+	},
+	{
+		id: "partner",
+		label: "Partners",
+		availability: "partner",
+		vars: [
+			{
+				tok: "{partner.name}",
+				desc: "Name of the partner server"
+			},
+			{
+				tok: "{partner.id}",
+				desc: "ID of the partner server"
+			},
+			{
+				tok: "{partner.members}",
+				desc: "Members of the partner server"
+			},
+			{
+				tok: "{partner.invite}",
+				desc: "The invite that was posted"
+			},
+			{
+				tok: "{partner.manager}",
+				desc: "Mention of the Partner Manager"
+			},
+			{
+				tok: "{partner.manager_name}",
+				desc: "Name of the Partner Manager"
+			},
+			{
+				tok: "{partner.count_day}",
+				desc: "Partnerships of the manager today"
+			},
+			{
+				tok: "{partner.count_week}",
+				desc: "Partnerships of the manager this week"
+			},
+			{
+				tok: "{partner.count_total}",
+				desc: "Partnerships of the manager in total"
+			},
+			{
+				tok: "{partner.min_members}",
+				desc: "Members a partner server needs"
+			},
+			{
+				tok: "{partner.min_age_days}",
+				desc: "Days old a partner server needs to be"
+			},
+			{
+				tok: "{partner.cooldown_days}",
+				desc: "Days before the same server can partner again"
+			},
+			{
+				tok: "{partner.cooldown_ends}",
+				desc: "When the cooldown with that server ends"
+			},
+			{
+				tok: "{partner.cooldown}",
+				desc: "The cooldown as text, such as 3d 4h"
+			},
+			{
+				tok: "{partner.rank_week}",
+				desc: "Place of the manager this week"
+			},
+			{
+				tok: "{partner.rank_total}",
+				desc: "Place of the manager in total"
+			},
+			{
+				tok: "{partner.top_week}",
+				desc: "Mention of the best manager this week"
+			},
+			{
+				tok: "{partner.top_week_count}",
+				desc: "Partnerships of the best manager this week"
+			},
+			{
+				tok: "{partner.top_total}",
+				desc: "Mention of the best manager in total"
+			},
+			{
+				tok: "{partner.top_total_count}",
+				desc: "Partnerships of the best manager in total"
+			},
+			{
+				tok: "{partner.top_list_day}",
+				desc: "The five best managers today, one per line (place, mention, partnerships)"
+			},
+			{
+				tok: "{partner.top_list_week}",
+				desc: "The five best managers this week, one per line (place, mention, partnerships)"
+			},
+			{
+				tok: "{partner.top_list_total}",
+				desc: "The five best managers in total, one per line (place, mention, partnerships)"
+			},
+			{
+				tok: "{partner.server_day}",
+				desc: "Partnerships of the whole server today"
+			},
+			{
+				tok: "{partner.server_week}",
+				desc: "Partnerships of the whole server this week"
+			},
+			{
+				tok: "{partner.server_total}",
+				desc: "Partnerships of the whole server in total"
+			}
+		]
+	},
+	{
+		id: "rollout",
+		label: "Rollouts",
+		availability: "rollout",
+		vars: [
+			{
+				tok: "{rollout.name}",
+				desc: "Name of the experiment"
+			},
+			{
+				tok: "{rollout.id}",
+				desc: "ID of the experiment"
+			},
+			{
+				tok: "{rollout.kind}",
+				desc: "Users experiment, Servers experiment..."
+			},
+			{
+				tok: "{rollout.type}",
+				desc: "New experiment, Rollout increased, Rollout decreased or Status changed"
+			},
+			{
+				tok: "{rollout.status}",
+				desc: "Rolling out, Fully rolled out, A/B test..."
+			},
+			{
+				tok: "{rollout.percent}",
+				desc: "Share of Discord that has it now, such as 50%"
+			},
+			{
+				tok: "{rollout.from}",
+				desc: "The share before the change, empty for a new one"
+			},
+			{
+				tok: "{rollout.to}",
+				desc: "The share now"
+			},
+			{
+				tok: "{rollout.change}",
+				desc: "The change, such as +12.5%, empty for a new one"
+			},
+			{
+				tok: "{rollout.badge}",
+				desc: "The short text of the card button, such as +12.5% (50%)"
+			},
+			{
+				tok: "{rollout.kind_icon}",
+				desc: "Petto's icon for the kind of experiment (a person for users, the gear for servers...)"
+			},
+			{
+				tok: "{rollout.event_icon}",
+				desc: "Petto's icon for the event (new, plus, minus or reload)"
+			},
+			{
+				tok: "{rollout.variants}",
+				desc: "One line per variant with its change"
+			},
+			{
+				tok: "{rollout.ranges}",
+				desc: "The ranges of each variant"
+			},
+			{
+				tok: "{rollout.platforms}",
+				desc: "Where it applies: android, desktop..."
+			},
+			{
+				tok: "{rollout.filters}",
+				desc: "The filters of the experiment, if any"
+			},
+			{
+				tok: "{rollout.source}",
+				desc: "The list the data comes from"
+			}
+		]
+	},
+	{
+		id: "quest",
+		label: "Quests",
+		availability: "quest",
+		vars: [
+			{
+				tok: "{quest.name}",
+				desc: "Name of the quest"
+			},
+			{
+				tok: "{quest.game}",
+				desc: "The game or brand"
+			},
+			{
+				tok: "{quest.publisher}",
+				desc: "Who published it"
+			},
+			{
+				tok: "{quest.id}",
+				desc: "ID of the quest"
+			},
+			{
+				tok: "{quest.url}",
+				desc: "Link to accept the quest in Discord"
+			},
+			{
+				tok: "{quest.link}",
+				desc: "Link to the game or brand page, empty if none"
+			},
+			{
+				tok: "{quest.image}",
+				desc: "Banner picture of the quest, empty if none"
+			},
+			{
+				tok: "{quest.logo}",
+				desc: "Logo of the game, empty if none"
+			},
+			{
+				tok: "{quest.color}",
+				desc: "Main color of the quest as hex"
+			},
+			{
+				tok: "{quest.reward}",
+				desc: "The rewards, with their type"
+			},
+			{
+				tok: "{quest.reward_type}",
+				desc: "Type of the first reward: Orbs, Collectible, Code..."
+			},
+			{
+				tok: "{quest.reward_amount}",
+				desc: "Number of Orbs, empty if the reward is not Orbs"
+			},
+			{
+				tok: "{quest.reward_image}",
+				desc: "Picture of the first reward, empty if none"
+			},
+			{
+				tok: "{quest.task}",
+				desc: "The first task, such as Watch a video"
+			},
+			{
+				tok: "{quest.task_minutes}",
+				desc: "Minutes the first task takes"
+			},
+			{
+				tok: "{quest.tasks}",
+				desc: "All the tasks with their time"
+			},
+			{
+				tok: "{quest.platforms}",
+				desc: "Where it can be done: Desktop, Mobile, Xbox..."
+			},
+			{
+				tok: "{quest.starts}",
+				desc: "When it starts, as a relative time"
+			},
+			{
+				tok: "{quest.starts_at}",
+				desc: "When it starts, as a date and time"
+			},
+			{
+				tok: "{quest.expires}",
+				desc: "When it ends, as a relative time"
+			},
+			{
+				tok: "{quest.expires_at}",
+				desc: "When it ends, as a date and time"
+			},
+			{
+				tok: "{quest.limits}",
+				desc: "Region and age limits, or None"
+			},
+			{
+				tok: "{quest.age_gate}",
+				desc: "18+ when it has an age limit, otherwise empty"
+			},
+			{
+				tok: "{quest.status}",
+				desc: "New quest, or Ending soon"
+			},
+			{
+				tok: "{quest.source}",
+				desc: "discordquest.com"
+			},
+			{
+				tok: "{quest.starts.relative}",
+				desc: "When it starts, as relative, such as \"2 days ago\" or \"in 5 hours\" (it keeps updating)"
+			},
+			{
+				tok: "{quest.starts.short_time}",
+				desc: "When it starts, as time, such as 5:00 PM"
+			},
+			{
+				tok: "{quest.starts.long_time}",
+				desc: "When it starts, as time with seconds, such as 5:00:30 PM"
+			},
+			{
+				tok: "{quest.starts.short_date}",
+				desc: "When it starts, as short date, such as 10/01/2026"
+			},
+			{
+				tok: "{quest.starts.long_date}",
+				desc: "When it starts, as long date, such as October 1, 2026"
+			},
+			{
+				tok: "{quest.starts.full}",
+				desc: "When it starts, as date and time, such as October 1, 2026 5:00 PM"
+			},
+			{
+				tok: "{quest.starts.full_long}",
+				desc: "When it starts, as weekday, date and time"
+			},
+			{
+				tok: "{quest.starts.short_datetime}",
+				desc: "When it starts, as short date and short time"
+			},
+			{
+				tok: "{quest.starts.medium_datetime}",
+				desc: "When it starts, as short date and time with seconds"
+			},
+			{
+				tok: "{quest.starts.unix}",
+				desc: "When it starts, as the unix time in seconds, for your own style: <t:{quest.starts.unix}:R>"
+			},
+			{
+				tok: "{quest.expires.relative}",
+				desc: "When it ends, as relative, such as \"2 days ago\" or \"in 5 hours\" (it keeps updating)"
+			},
+			{
+				tok: "{quest.expires.short_time}",
+				desc: "When it ends, as time, such as 5:00 PM"
+			},
+			{
+				tok: "{quest.expires.long_time}",
+				desc: "When it ends, as time with seconds, such as 5:00:30 PM"
+			},
+			{
+				tok: "{quest.expires.short_date}",
+				desc: "When it ends, as short date, such as 10/01/2026"
+			},
+			{
+				tok: "{quest.expires.long_date}",
+				desc: "When it ends, as long date, such as October 1, 2026"
+			},
+			{
+				tok: "{quest.expires.full}",
+				desc: "When it ends, as date and time, such as October 1, 2026 5:00 PM"
+			},
+			{
+				tok: "{quest.expires.full_long}",
+				desc: "When it ends, as weekday, date and time"
+			},
+			{
+				tok: "{quest.expires.short_datetime}",
+				desc: "When it ends, as short date and short time"
+			},
+			{
+				tok: "{quest.expires.medium_datetime}",
+				desc: "When it ends, as short date and time with seconds"
+			},
+			{
+				tok: "{quest.expires.unix}",
+				desc: "When it ends, as the unix time in seconds, for your own style: <t:{quest.starts.unix}:R>"
+			},
+			{
+				tok: "{quest.starts_ago}",
+				desc: "When it started in plain words, such as 2 days ago, in 3 hours or now (works in titles and footers)"
+			},
+			{
+				tok: "{quest.expires_in}",
+				desc: "When it ends in plain words, such as in 5 days, or ended 1 day ago (works in titles and footers)"
+			},
+			{
+				tok: "{quest.starts_date}",
+				desc: "Start date in plain text, such as Oct 1, 2026 (GMT-5)"
+			},
+			{
+				tok: "{quest.expires_date}",
+				desc: "End date in plain text, such as Oct 8, 2026 (GMT-5)"
+			},
+			{
+				tok: "{quest.starts_datetime}",
+				desc: "Start date and time in plain text, in GMT-5 (Colombia)"
+			},
+			{
+				tok: "{quest.expires_datetime}",
+				desc: "End date and time in plain text, in GMT-5 (Colombia)"
+			},
+			{
+				tok: "{quest.duration}",
+				desc: "How long the quest lasts, such as 7 days"
+			},
+			{
+				tok: "{quest.time_left}",
+				desc: "How long is left, such as 5 days 3 hours, or Ended"
+			},
+			{
+				tok: "{quest.days_left}",
+				desc: "Whole days left, as a number"
+			},
+			{
+				tok: "{quest.hours_left}",
+				desc: "Whole hours left, as a number"
+			},
+			{
+				tok: "{quest.reward_name}",
+				desc: "Name of the first reward"
+			},
+			{
+				tok: "{quest.rewards_count}",
+				desc: "How many rewards it has"
+			},
+			{
+				tok: "{quest.reward_nitro_amount}",
+				desc: "Orbs a Nitro member gets, empty if none"
+			},
+			{
+				tok: "{quest.reward_expires}",
+				desc: "When the first reward that expires does so, as a relative time, empty if none"
+			},
+			{
+				tok: "{quest.task_type}",
+				desc: "Kind of the first task: video, play, stream or activity"
+			},
+			{
+				tok: "{quest.task_seconds}",
+				desc: "Seconds the first task takes"
+			},
+			{
+				tok: "{quest.task_time}",
+				desc: "Time of the first task, such as 2 min"
+			},
+			{
+				tok: "{quest.countries}",
+				desc: "Country codes it is only for, empty if none"
+			},
+			{
+				tok: "{quest.excluded_countries}",
+				desc: "Country codes where it is not available, empty if none"
+			},
+			{
+				tok: "{quest.orbs.name}",
+				desc: "The orbs reward of the quest: its name. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.orbs.type}",
+				desc: "The orbs reward of the quest: its type (Virtual currency, Collectible, Code...). Empty when the quest has none"
+			},
+			{
+				tok: "{quest.orbs.image}",
+				desc: "The orbs reward of the quest: its picture, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.orbs.amount}",
+				desc: "The orbs reward of the quest: its number of Orbs, empty if it is not Orbs. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.orbs.nitro_amount}",
+				desc: "The orbs reward of the quest: its Orbs a Nitro member gets, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.orbs.expires}",
+				desc: "The orbs reward of the quest: its when it expires, as a relative time, empty if never. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.decoration.name}",
+				desc: "The decoration reward of the quest: its name. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.decoration.type}",
+				desc: "The decoration reward of the quest: its type (Virtual currency, Collectible, Code...). Empty when the quest has none"
+			},
+			{
+				tok: "{quest.decoration.image}",
+				desc: "The decoration reward of the quest: its picture, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.decoration.amount}",
+				desc: "The decoration reward of the quest: its number of Orbs, empty if it is not Orbs. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.decoration.nitro_amount}",
+				desc: "The decoration reward of the quest: its Orbs a Nitro member gets, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.decoration.expires}",
+				desc: "The decoration reward of the quest: its when it expires, as a relative time, empty if never. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.code.name}",
+				desc: "The code reward of the quest: its name. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.code.type}",
+				desc: "The code reward of the quest: its type (Virtual currency, Collectible, Code...). Empty when the quest has none"
+			},
+			{
+				tok: "{quest.code.image}",
+				desc: "The code reward of the quest: its picture, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.code.amount}",
+				desc: "The code reward of the quest: its number of Orbs, empty if it is not Orbs. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.code.nitro_amount}",
+				desc: "The code reward of the quest: its Orbs a Nitro member gets, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.code.expires}",
+				desc: "The code reward of the quest: its when it expires, as a relative time, empty if never. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.ingame.name}",
+				desc: "The ingame reward of the quest: its name. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.ingame.type}",
+				desc: "The ingame reward of the quest: its type (Virtual currency, Collectible, Code...). Empty when the quest has none"
+			},
+			{
+				tok: "{quest.ingame.image}",
+				desc: "The ingame reward of the quest: its picture, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.ingame.amount}",
+				desc: "The ingame reward of the quest: its number of Orbs, empty if it is not Orbs. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.ingame.nitro_amount}",
+				desc: "The ingame reward of the quest: its Orbs a Nitro member gets, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.ingame.expires}",
+				desc: "The ingame reward of the quest: its when it expires, as a relative time, empty if never. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.nitro.name}",
+				desc: "The nitro reward of the quest: its name. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.nitro.type}",
+				desc: "The nitro reward of the quest: its type (Virtual currency, Collectible, Code...). Empty when the quest has none"
+			},
+			{
+				tok: "{quest.nitro.image}",
+				desc: "The nitro reward of the quest: its picture, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.nitro.amount}",
+				desc: "The nitro reward of the quest: its number of Orbs, empty if it is not Orbs. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.nitro.nitro_amount}",
+				desc: "The nitro reward of the quest: its Orbs a Nitro member gets, empty if none. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.nitro.expires}",
+				desc: "The nitro reward of the quest: its when it expires, as a relative time, empty if never. Empty when the quest has none"
+			},
+			{
+				tok: "{quest.reward1.name}",
+				desc: "Reward number 1: its name. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward1.type}",
+				desc: "Reward number 1: its type (Virtual currency, Collectible, Code...). Empty when there is none"
+			},
+			{
+				tok: "{quest.reward1.image}",
+				desc: "Reward number 1: its picture, empty if none. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward1.amount}",
+				desc: "Reward number 1: its number of Orbs, empty if it is not Orbs. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward1.nitro_amount}",
+				desc: "Reward number 1: its Orbs a Nitro member gets, empty if none. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward1.expires}",
+				desc: "Reward number 1: its when it expires, as a relative time, empty if never. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward2.name}",
+				desc: "Reward number 2: its name. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward2.type}",
+				desc: "Reward number 2: its type (Virtual currency, Collectible, Code...). Empty when there is none"
+			},
+			{
+				tok: "{quest.reward2.image}",
+				desc: "Reward number 2: its picture, empty if none. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward2.amount}",
+				desc: "Reward number 2: its number of Orbs, empty if it is not Orbs. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward2.nitro_amount}",
+				desc: "Reward number 2: its Orbs a Nitro member gets, empty if none. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward2.expires}",
+				desc: "Reward number 2: its when it expires, as a relative time, empty if never. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward3.name}",
+				desc: "Reward number 3: its name. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward3.type}",
+				desc: "Reward number 3: its type (Virtual currency, Collectible, Code...). Empty when there is none"
+			},
+			{
+				tok: "{quest.reward3.image}",
+				desc: "Reward number 3: its picture, empty if none. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward3.amount}",
+				desc: "Reward number 3: its number of Orbs, empty if it is not Orbs. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward3.nitro_amount}",
+				desc: "Reward number 3: its Orbs a Nitro member gets, empty if none. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward3.expires}",
+				desc: "Reward number 3: its when it expires, as a relative time, empty if never. Empty when there is none"
+			},
+			{
+				tok: "{quest.reward_types}",
+				desc: "The kinds of reward of the quest, such as Virtual currency, Collectible"
+			}
+		]
+	},
+	{
+		id: "bump",
+		label: "Bump",
+		availability: "bump",
+		vars: [
+			{
+				tok: "{user.mention}",
+				desc: "Only in bump messages: mentions whoever bumped"
+			},
+			{
+				tok: "{nextBump}",
+				desc: "Only in bump messages: relative time until the next bump is allowed"
+			}
+		]
+	},
+	{
+		id: "invites",
+		label: "Invites",
+		availability: "always",
+		vars: [
+			{
+				tok: "{inviter}",
+				desc: "Welcome messages: mentions who invited the member, or Unknown"
+			},
+			{
+				tok: "{inviter.name}",
+				desc: "Welcome messages: the name of who invited the member"
+			},
+			{
+				tok: "{inviter.id}",
+				desc: "Welcome messages: the ID of who invited the member"
+			},
+			{
+				tok: "{inviter.invites}",
+				desc: "Welcome messages: how many invites that person has now"
+			},
+			{
+				tok: "{invite.code}",
+				desc: "Welcome messages: the code of the invite that was used"
+			}
+		]
+	},
+	{
+		id: "date",
+		label: "Date",
+		availability: "always",
+		vars: [
+			{
+				tok: "{date}",
+				desc: "Today's date, GMT-5 (Colombia)"
+			},
+			{
+				tok: "{date.now}",
+				desc: "Today's date, GMT-5 (Colombia)"
+			},
+			{
+				tok: "{date.utc_now}",
+				desc: "Current date and time, UTC"
+			},
+			{
+				tok: "{date.utc_timestamp}",
+				desc: "Current unix timestamp"
+			},
+			{
+				tok: "{timestamp}",
+				desc: "Right now, as a Discord timestamp in each reader's own time zone"
+			},
+			{
+				tok: "{timestamp.unix}",
+				desc: "Right now as a plain unix number (for your own <t:…> timestamps)"
+			},
+			{
+				tok: "{timestamp.short_time}",
+				desc: "Right now: hour and minutes (16:20)"
+			},
+			{
+				tok: "{timestamp.long_time}",
+				desc: "Right now: hour, minutes and seconds (16:20:30)"
+			},
+			{
+				tok: "{timestamp.short_date}",
+				desc: "Today: short date (20/04/2026)"
+			},
+			{
+				tok: "{timestamp.long_date}",
+				desc: "Today: long date (20 April 2026)"
+			},
+			{
+				tok: "{timestamp.full}",
+				desc: "Right now: date and time (20 April 2026 16:20)"
+			},
+			{
+				tok: "{timestamp.full_long}",
+				desc: "Right now: weekday, date and time"
+			},
+			{
+				tok: "{timestamp.short_datetime}",
+				desc: "Right now: short date and short time (20/04/2026, 16:20)"
+			},
+			{
+				tok: "{timestamp.medium_datetime}",
+				desc: "Right now: short date and time with seconds (20/04/2026, 16:20:30)"
+			},
+			{
+				tok: "{timestamp.relative}",
+				desc: "Right now, as \"just now\" that keeps counting"
+			},
+			{
+				tok: "{timestamp:in 2h|R}",
+				desc: "Any moment written in words: \"in 2h\", \"3d 4h\", \"tomorrow 8pm\", \"2026-10-12 18:00\". After | the style: short_time, long_time, short_date, long_date, full, full_long, short_datetime, medium_datetime or relative"
+			}
+		]
+	},
+	{
+		id: "functions",
+		label: "Functions",
+		availability: "always",
+		vars: [
+			{
+				tok: "{choose:a|b|c}",
+				desc: "Picks one option at random each time"
+			},
+			{
+				tok: "{range:1-100}",
+				desc: "A random whole number in that range"
+			},
+			{
+				tok: "{newline}",
+				desc: "Forces a line break"
+			},
+			{
+				tok: "{separator}",
+				desc: "A decorative divider line"
+			}
+		]
+	},
+	{
+		id: "actions",
+		label: "Actions",
+		availability: "always",
+		vars: [
+			{
+				tok: "{reactreply:emoji}",
+				desc: "Reacts to the sent message with this emoji. If the response contains only this flag, it reacts to the triggering message instead."
+			}
+		]
+	}
+];
+const es = [
+	{
+		id: "user",
+		label: "Usuario (notación con punto)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{user}",
+				desc: "Menciona al usuario"
+			},
+			{
+				tok: "{user.mention}",
+				desc: "Menciona al usuario (igual que {user})"
+			},
+			{
+				tok: "{user.name}",
+				desc: "Nombre de usuario"
+			},
+			{
+				tok: "{user.id}",
+				desc: "ID del usuario"
+			},
+			{
+				tok: "{user.avatar}",
+				desc: "URL de la imagen del avatar global"
+			},
+			{
+				tok: "{user.display_avatar}",
+				desc: "Avatar del servidor; si no hay, el global"
+			},
+			{
+				tok: "{user.avatar_decoration}",
+				desc: "Imagen de la decoración del avatar de la persona, vacío si no tiene"
+			},
+			{
+				tok: "{user.nameplate}",
+				desc: "Imagen de la placa del nombre de la persona, vacío si no tiene"
+			},
+			{
+				tok: "{user.server_tag}",
+				desc: "La etiqueta de servidor que muestra la persona (hasta 4 letras), vacío si no tiene"
+			},
+			{
+				tok: "{user.server_tag_badge}",
+				desc: "Imagen del ícono de esa etiqueta de servidor, vacío si no tiene"
+			},
+			{
+				tok: "{user.display_name}",
+				desc: "Apodo en el servidor, o el nombre de usuario si no tiene"
+			},
+			{
+				tok: "{user.joined_at}",
+				desc: "Fecha en que entró a este servidor"
+			},
+			{
+				tok: "{user.joined_at_timestamp}",
+				desc: "Marca de tiempo Unix de esa fecha de ingreso"
+			},
+			{
+				tok: "{user.created_at}",
+				desc: "Fecha en que se creó la cuenta"
+			},
+			{
+				tok: "{user.created_at_timestamp}",
+				desc: "Marca de tiempo Unix de la creación de la cuenta"
+			},
+			{
+				tok: "{user.account_age}",
+				desc: "Antigüedad de la cuenta (3 años, 5 días)"
+			},
+			{
+				tok: "{user.account_age_days}",
+				desc: "Antigüedad de la cuenta, en días (un número)"
+			},
+			{
+				tok: "{user.joined_age}",
+				desc: "Cuánto tiempo lleva la persona en el servidor (2 meses)"
+			},
+			{
+				tok: "{user.boost}",
+				desc: "\"Sí\" o \"No\": si da boost al servidor"
+			},
+			{
+				tok: "{user.boost_since}",
+				desc: "Fecha en que empezó a dar boost, o \"Sin boost\""
+			},
+			{
+				tok: "{user.boost_since_timestamp}",
+				desc: "Marca de tiempo Unix del inicio del boost"
+			},
+			{
+				tok: "{user.color}",
+				desc: "Color del rol más alto en hex"
+			},
+			{
+				tok: "{user.top_role}",
+				desc: "Nombre de su rol más alto"
+			},
+			{
+				tok: "{user.role_list}",
+				desc: "Todos sus roles, mencionados"
+			},
+			{
+				tok: "{user.bot}",
+				desc: "\"Sí\" o \"No\": si es una cuenta de bot"
+			},
+			{
+				tok: "{user.role_count}",
+				desc: "Cuántos roles tiene (sin contar @everyone)"
+			},
+			{
+				tok: "{user.top_role_mention}",
+				desc: "Su rol más alto, mencionado"
+			},
+			{
+				tok: "{user.is_owner}",
+				desc: "\"Sí\" o \"No\": si es el dueño del servidor"
+			},
+			{
+				tok: "{user.joined_age_days}",
+				desc: "Días desde que entró al servidor"
+			},
+			{
+				tok: "{user.join_position}",
+				desc: "Qué número de miembro fue"
+			},
+			{
+				tok: "{user.join_position_suffix}",
+				desc: "Posición de ingreso como ordinal (1.º, 2.º...)"
+			}
+		]
+	},
+	{
+		id: "user_legacy",
+		label: "Usuario (antiguas)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{user_tag}",
+				desc: "Nombre de usuario (igual que {user.name})"
+			},
+			{
+				tok: "{user_name}",
+				desc: "Nombre de usuario"
+			},
+			{
+				tok: "{user_avatar}",
+				desc: "URL de la imagen del avatar"
+			},
+			{
+				tok: "{user_id}",
+				desc: "ID del usuario"
+			},
+			{
+				tok: "{user_discrim}",
+				desc: "Discriminador; casi siempre vacío en los nombres de usuario nuevos"
+			},
+			{
+				tok: "{user_nick}",
+				desc: "Apodo en el servidor, o el nombre de usuario si no tiene"
+			},
+			{
+				tok: "{user_joindate}",
+				desc: "Fecha en que entró a este servidor"
+			},
+			{
+				tok: "{user_createdate}",
+				desc: "Fecha en que se creó la cuenta"
+			},
+			{
+				tok: "{user_displaycolor}",
+				desc: "Color del rol más alto en hex"
+			},
+			{
+				tok: "{user_boostsince}",
+				desc: "Fecha en que empezó a dar boost, o \"Sin boost\""
+			}
+		]
+	},
+	{
+		id: "server",
+		label: "Servidor",
+		availability: "always",
+		vars: [
+			{
+				tok: "{server_name}",
+				desc: "Nombre del servidor"
+			},
+			{
+				tok: "{server_id}",
+				desc: "ID del servidor"
+			},
+			{
+				tok: "{server_prefix}",
+				desc: "El prefijo configurado del servidor"
+			},
+			{
+				tok: "{server_membercount}",
+				desc: "Cantidad total de miembros"
+			},
+			{
+				tok: "{server_membercount_ordinal}",
+				desc: "Cantidad de miembros como ordinal (1.º, 2.º...)"
+			},
+			{
+				tok: "{server_membercount_nobots}",
+				desc: "Cantidad de miembros sin contar bots"
+			},
+			{
+				tok: "{server_membercount_nobots_ordinal}",
+				desc: "Esa cantidad, como ordinal"
+			},
+			{
+				tok: "{server_botcount}",
+				desc: "Cantidad de bots en el servidor"
+			},
+			{
+				tok: "{server_botcount_ordinal}",
+				desc: "Cantidad de bots, como ordinal"
+			},
+			{
+				tok: "{server_icon}",
+				desc: "URL del ícono del servidor"
+			},
+			{
+				tok: "{server_rolecount}",
+				desc: "Cantidad de roles"
+			},
+			{
+				tok: "{server_channelcount}",
+				desc: "Cantidad de canales"
+			},
+			{
+				tok: "{server_randommember}",
+				desc: "Menciona a un miembro al azar"
+			},
+			{
+				tok: "{server_randommember_tag}",
+				desc: "Nombre de usuario de un miembro al azar"
+			},
+			{
+				tok: "{server_randommember_nobots}",
+				desc: "Menciona a un miembro al azar que no sea bot"
+			},
+			{
+				tok: "{server_owner}",
+				desc: "Menciona al dueño del servidor"
+			},
+			{
+				tok: "{server_owner_id}",
+				desc: "ID de usuario del dueño del servidor"
+			},
+			{
+				tok: "{server_createdate}",
+				desc: "Fecha en que se creó el servidor"
+			},
+			{
+				tok: "{server_createdate_timestamp}",
+				desc: "Marca de tiempo Unix del día en que se creó el servidor"
+			},
+			{
+				tok: "{server_age_days}",
+				desc: "Días desde que se creó el servidor"
+			},
+			{
+				tok: "{server_emojicount}",
+				desc: "Cuántos emojis personalizados tiene el servidor"
+			},
+			{
+				tok: "{server_stickercount}",
+				desc: "Cuántos stickers tiene el servidor"
+			},
+			{
+				tok: "{server_description}",
+				desc: "La descripción del servidor (vacía si no tiene)"
+			},
+			{
+				tok: "{server_vanity}",
+				desc: "El enlace de invitación personalizado del servidor (vacío si no tiene)"
+			},
+			{
+				tok: "{server_banner}",
+				desc: "URL de la imagen del banner (vacía si no tiene)"
+			},
+			{
+				tok: "{server_verification}",
+				desc: "Nivel de verificación del servidor (Ninguno, Bajo, Medio, Alto, Muy alto)"
+			},
+			{
+				tok: "{server_locale}",
+				desc: "Idioma preferido del servidor (por ejemplo es-ES)"
+			},
+			{
+				tok: "{server_rules_channel}",
+				desc: "El canal de reglas, mencionado (vacío si no tiene)"
+			},
+			{
+				tok: "{server_boostlevel}",
+				desc: "Nivel de boost actual (0-3)"
+			},
+			{
+				tok: "{server_boostcount}",
+				desc: "Cantidad total de boosts"
+			},
+			{
+				tok: "{server_nextboostlevel}",
+				desc: "El siguiente nivel de boost (1-3)"
+			},
+			{
+				tok: "{server_nextboostlevel_required}",
+				desc: "Boosts necesarios para alcanzarlo"
+			},
+			{
+				tok: "{server_nextboostlevel_until_required}",
+				desc: "Boosts que todavía faltan para alcanzarlo"
+			}
+		]
+	},
+	{
+		id: "guild",
+		label: "Guild (notación con punto)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{guild.name}",
+				desc: "Nombre del servidor"
+			},
+			{
+				tok: "{guild.id}",
+				desc: "ID del servidor"
+			},
+			{
+				tok: "{guild.count}",
+				desc: "Cantidad total de miembros"
+			},
+			{
+				tok: "{guild.icon}",
+				desc: "URL del ícono del servidor"
+			},
+			{
+				tok: "{guild.banner}",
+				desc: "URL del banner del servidor"
+			},
+			{
+				tok: "{guild.owner_id}",
+				desc: "ID de usuario del dueño del servidor"
+			},
+			{
+				tok: "{guild.created_at}",
+				desc: "Fecha en que se creó el servidor"
+			},
+			{
+				tok: "{guild.created_at_timestamp}",
+				desc: "Marca de tiempo Unix de la creación del servidor"
+			},
+			{
+				tok: "{guild.emoji_count}",
+				desc: "Cantidad de emojis personalizados"
+			},
+			{
+				tok: "{guild.role_count}",
+				desc: "Cantidad de roles"
+			},
+			{
+				tok: "{guild.boost_count}",
+				desc: "Cantidad total de boosts"
+			},
+			{
+				tok: "{guild.boost_tier}",
+				desc: "Nivel de boost, p. ej., \"Nivel 2\" o \"Sin nivel\""
+			},
+			{
+				tok: "{guild.channels_count}",
+				desc: "Cantidad de canales"
+			},
+			{
+				tok: "{guild.vanity}",
+				desc: "URL de invitación personalizada, si el servidor tiene una"
+			},
+			{
+				tok: "{guild.region}",
+				desc: "Idioma preferido del servidor"
+			},
+			{
+				tok: "{guild.max_members}",
+				desc: "Capacidad máxima de miembros"
+			}
+		]
+	},
+	{
+		id: "channel",
+		label: "Canal",
+		availability: "always",
+		vars: [
+			{
+				tok: "{channel}",
+				desc: "Menciona el canal actual"
+			},
+			{
+				tok: "{channel.mention}",
+				desc: "Menciona el canal actual"
+			},
+			{
+				tok: "{channel.name}",
+				desc: "Nombre del canal"
+			},
+			{
+				tok: "{channel.id}",
+				desc: "ID del canal"
+			},
+			{
+				tok: "{channel.topic}",
+				desc: "Tema del canal"
+			},
+			{
+				tok: "{channel_name}",
+				desc: "Nombre del canal (antigua)"
+			},
+			{
+				tok: "{channel_createdate}",
+				desc: "Fecha en que se creó el canal (antigua)"
+			}
+		]
+	},
+	{
+		id: "message",
+		label: "Mensaje",
+		availability: "message",
+		vars: [
+			{
+				tok: "{message_link}",
+				desc: "Solo donde hay un mensaje que lo activa (p. ej., respuestas automáticas)"
+			},
+			{
+				tok: "{message_id}",
+				desc: "ID del mensaje que lo activó"
+			},
+			{
+				tok: "{message_content}",
+				desc: "Texto del mensaje que lo activó"
+			}
+		]
+	},
+	{
+		id: "leveling",
+		label: "Niveles",
+		availability: "leveling",
+		vars: [
+			{
+				tok: "{level}",
+				desc: "En el mensaje de subida de nivel y la tarjeta de rango: el nivel"
+			},
+			{
+				tok: "{level_next}",
+				desc: "El siguiente nivel"
+			},
+			{
+				tok: "{level_xp}",
+				desc: "XP total"
+			},
+			{
+				tok: "{level_xp_current}",
+				desc: "XP ganada en el nivel actual"
+			},
+			{
+				tok: "{level_xp_needed}",
+				desc: "XP necesaria para pasar de este nivel al siguiente"
+			},
+			{
+				tok: "{level_xp_to_next}",
+				desc: "XP que todavía falta para el siguiente nivel"
+			},
+			{
+				tok: "{level_progress}",
+				desc: "Progreso hacia el siguiente nivel, de 0 a 100"
+			},
+			{
+				tok: "{level_rank}",
+				desc: "Posición en la tabla de clasificación"
+			},
+			{
+				tok: "{level_rank_total}",
+				desc: "Miembros en la tabla de clasificación"
+			},
+			{
+				tok: "{level_top_percent}",
+				desc: "En qué lugar de la clasificación está la persona, en porcentaje (Top 2,1%)"
+			},
+			{
+				tok: "{level_streak}",
+				desc: "Días seguidos con actividad"
+			},
+			{
+				tok: "{level_messages}",
+				desc: "Mensajes contados"
+			},
+			{
+				tok: "{level_voice_minutes}",
+				desc: "Minutos en voz contados"
+			},
+			{
+				tok: "{level_type}",
+				desc: "text o voice"
+			},
+			{
+				tok: "{level_bar}",
+				desc: "La barra de progreso hacia el siguiente nivel"
+			},
+			{
+				tok: "{level_vote_boost}",
+				desc: "El bonus por voto de la persona, como +10% XP · quedan 3h 20m (vacío si no tiene)"
+			},
+			{
+				tok: "{level_previous}",
+				desc: "El nivel anterior a este"
+			},
+			{
+				tok: "{level_role}",
+				desc: "En el mensaje de subida de nivel: el rol de recompensa que el miembro acaba de ganar, como mención (vacío si no hay)"
+			},
+			{
+				tok: "{level_role_name}",
+				desc: "El nombre de ese rol de recompensa"
+			}
+		]
+	},
+	{
+		id: "giveaway",
+		label: "Sorteo",
+		availability: "giveaway",
+		vars: [
+			{
+				tok: "{gw.prize}",
+				desc: "El premio"
+			},
+			{
+				tok: "{gw.winners}",
+				desc: "Cantidad de ganadores"
+			},
+			{
+				tok: "{gw.entries}",
+				desc: "Cantidad actual de participaciones"
+			},
+			{
+				tok: "{gw.host}",
+				desc: "Menciona a quien lo inició"
+			},
+			{
+				tok: "{gw.host_name}",
+				desc: "El nombre de usuario del anfitrión"
+			},
+			{
+				tok: "{gw.host_avatar}",
+				desc: "La URL de la imagen del avatar del anfitrión"
+			},
+			{
+				tok: "{gw.duration}",
+				desc: "Hora de fin, como marca de tiempo Unix sin formato"
+			},
+			{
+				tok: "{gw.timestamp}",
+				desc: "Hora de fin, como marca de tiempo relativa de Discord"
+			},
+			{
+				tok: "{gw.ends}",
+				desc: "Hora de fin como marca de tiempo relativa de Discord"
+			},
+			{
+				tok: "{gw.claim_time}",
+				desc: "Cuánto tiempo tienen los ganadores para reclamar"
+			},
+			{
+				tok: "{gw.reaction}",
+				desc: "El emoji para participar, si se usa el modo de reacción"
+			},
+			{
+				tok: "{gw.entry_mode}",
+				desc: "\"reacciona con\" o \"haz clic en\", según el modo de participación"
+			},
+			{
+				tok: "{gw.entry_text}",
+				desc: "Instrucción para participar, según el método elegido"
+			},
+			{
+				tok: "{gw.winner_text}",
+				desc: "Texto con la cantidad de ganadores que usa el sorteo"
+			},
+			{
+				tok: "{gw.status}",
+				desc: "Activo o Terminado"
+			},
+			{
+				tok: "{gw.preset}",
+				desc: "La lista de roles con participaciones extra, si se usa un preset"
+			}
+		]
+	},
+	{
+		id: "command",
+		label: "Comandos personalizados",
+		availability: "command",
+		vars: [
+			{
+				tok: "{args}",
+				desc: "Todo el texto después del nombre del comando"
+			},
+			{
+				tok: "{arguments}",
+				desc: "Alias de {args}"
+			},
+			{
+				tok: "{args_raw}",
+				desc: "Alias de {args}; conserva el texto completo de los argumentos"
+			},
+			{
+				tok: "{arg1}",
+				desc: "Primer argumento"
+			},
+			{
+				tok: "{arg2}",
+				desc: "Segundo argumento"
+			},
+			{
+				tok: "{arg3}",
+				desc: "Tercer argumento"
+			},
+			{
+				tok: "{arg4}",
+				desc: "Cuarto argumento"
+			},
+			{
+				tok: "{arg5}",
+				desc: "Quinto argumento"
+			},
+			{
+				tok: "{arg6}",
+				desc: "Sexto argumento"
+			},
+			{
+				tok: "{arg7}",
+				desc: "Séptimo argumento"
+			},
+			{
+				tok: "{arg8}",
+				desc: "Octavo argumento"
+			},
+			{
+				tok: "{arg9}",
+				desc: "Noveno argumento"
+			},
+			{
+				tok: "{arg10}",
+				desc: "Décimo argumento"
+			},
+			{
+				tok: "{args_from:2}",
+				desc: "Todos los argumentos a partir de la posición indicada"
+			},
+			{
+				tok: "{arg_count}",
+				desc: "Cantidad de argumentos recibidos"
+			},
+			{
+				tok: "{command_name}",
+				desc: "El nombre del comando que se usó"
+			},
+			{
+				tok: "{prefix}",
+				desc: "El prefijo que se usó"
+			},
+			{
+				tok: "{imgcard:name}",
+				desc: "Pone en el mensaje la tarjeta de imagen con ese nombre (hecha en Tarjetas de imagen). {imgcard:name|attachment} envía la imagen sola en vez de dentro del primer embed."
+			},
+			{
+				tok: "{reactreply:emoji}",
+				desc: "Indicador de respuesta: reacciona al mensaje enviado con este emoji; repítelo para más reacciones"
+			}
+		]
+	},
+	{
+		id: "sanction",
+		label: "Sanción",
+		availability: "sanction",
+		vars: [
+			{
+				tok: "{case.id}",
+				desc: "El número del caso (no está en el mensaje que se envía al miembro antes de un baneo, una expulsión o algo similar)"
+			},
+			{
+				tok: "{case.type}",
+				desc: "ban, tempban, softban, unban, kick, mute, tempmute, unmute, warn, jail o unjail"
+			},
+			{
+				tok: "{case.action}",
+				desc: "La acción en palabras, como \"baneado de\" o \"advertido en\""
+			},
+			{
+				tok: "{case.emoji}",
+				desc: "El ícono de la acción"
+			},
+			{
+				tok: "{case.reason}",
+				desc: "La razón"
+			},
+			{
+				tok: "{case.duration}",
+				desc: "Cuánto dura, o Permanente"
+			},
+			{
+				tok: "{case.expires}",
+				desc: "Cuándo termina, como tiempo relativo, o Nunca"
+			},
+			{
+				tok: "{case.expires_at}",
+				desc: "Cuándo termina, como fecha y hora, o Nunca"
+			},
+			{
+				tok: "{case.source}",
+				desc: "Quién la aplicó: un moderador, el AutoMod, el honeypot, la escalada de advertencias o un vencimiento automático"
+			},
+			{
+				tok: "{case.moderator}",
+				desc: "Menciona al moderador"
+			},
+			{
+				tok: "{case.moderator_name}",
+				desc: "Nombre del moderador"
+			},
+			{
+				tok: "{case.moderator_id}",
+				desc: "ID del moderador"
+			},
+			{
+				tok: "{case.moderator_avatar}",
+				desc: "Avatar del moderador"
+			},
+			{
+				tok: "{case.user}",
+				desc: "Menciona al miembro sancionado"
+			},
+			{
+				tok: "{case.user_name}",
+				desc: "Nombre del miembro sancionado"
+			},
+			{
+				tok: "{case.user_id}",
+				desc: "ID del miembro sancionado"
+			},
+			{
+				tok: "{case.user_avatar}",
+				desc: "Avatar del miembro sancionado"
+			},
+			{
+				tok: "{case.appeal}",
+				desc: "El enlace donde el miembro puede apelar esta sanción, vacío si el servidor tiene las apelaciones apagadas o esa sanción no se puede apelar"
+			}
+		]
+	},
+	{
+		id: "identity",
+		label: "Vanity y Server Tag",
+		availability: "identity",
+		vars: [
+			{
+				tok: "{rule.name}",
+				desc: "Nombre de la regla que coincidió"
+			},
+			{
+				tok: "{rule.source}",
+				desc: "Qué tipo de regla es: vanity o guildtag"
+			},
+			{
+				tok: "{rule.value}",
+				desc: "El texto o el ID de servidor que busca la regla"
+			},
+			{
+				tok: "{rule.condition}",
+				desc: "La condición de la regla"
+			},
+			{
+				tok: "{rule.reason}",
+				desc: "Por qué coincidió la regla"
+			},
+			{
+				tok: "{rule.role}",
+				desc: "Menciona el rol de la regla"
+			},
+			{
+				tok: "{rule.role_id}",
+				desc: "ID del rol de la regla"
+			},
+			{
+				tok: "{rule.action}",
+				desc: "add_role o remove_role"
+			},
+			{
+				tok: "{rule.action_text}",
+				desc: "add o remove"
+			},
+			{
+				tok: "{rule.result}",
+				desc: "completed o error"
+			},
+			{
+				tok: "{rule.error}",
+				desc: "El error, cuando no se pudo cambiar el rol"
+			},
+			{
+				tok: "{rule.matched_value}",
+				desc: "Lo que tiene el miembro que coincidió"
+			},
+			{
+				tok: "{rule.event}",
+				desc: "Nombre del evento, por ejemplo vanity_add"
+			},
+			{
+				tok: "{rule.event_title}",
+				desc: "Título del evento"
+			},
+			{
+				tok: "{vanity.rule}",
+				desc: "Nombre de la regla de Vanity"
+			},
+			{
+				tok: "{vanity.word}",
+				desc: "El texto que busca la regla de Vanity"
+			},
+			{
+				tok: "{vanity.source}",
+				desc: "Dónde busca: custom_status, username..."
+			},
+			{
+				tok: "{vanity.value}",
+				desc: "Lo que el miembro tiene puesto, como su estado personalizado"
+			},
+			{
+				tok: "{vanity.role}",
+				desc: "Menciona el rol de la regla de Vanity"
+			},
+			{
+				tok: "{tag}",
+				desc: "El texto del Server Tag del miembro"
+			},
+			{
+				tok: "{tag.rule}",
+				desc: "Nombre de la regla de Server Tag"
+			},
+			{
+				tok: "{tag.condition}",
+				desc: "Condición de la regla de Server Tag"
+			},
+			{
+				tok: "{tag.rule_value}",
+				desc: "El valor que compara la regla de Server Tag"
+			},
+			{
+				tok: "{tag.guild_id}",
+				desc: "ID del servidor al que pertenece la etiqueta"
+			},
+			{
+				tok: "{tag.enabled}",
+				desc: "true o false: si el miembro muestra la etiqueta"
+			},
+			{
+				tok: "{tag.badge}",
+				desc: "Insignia de la etiqueta"
+			},
+			{
+				tok: "{tag.role}",
+				desc: "Menciona el rol de la regla de Server Tag"
+			}
+		]
+	},
+	{
+		id: "suggestions",
+		label: "Sugerencias",
+		availability: "suggestions",
+		vars: [
+			{
+				tok: "{suggestion.id}",
+				desc: "El ID de la sugerencia (como si2tr-foytm)"
+			},
+			{
+				tok: "{suggestion.number}",
+				desc: "El número de la sugerencia en este servidor"
+			},
+			{
+				tok: "{suggestion.content}",
+				desc: "El texto de la sugerencia"
+			},
+			{
+				tok: "{suggestion.status}",
+				desc: "pending, approved, denied, considering o implemented"
+			},
+			{
+				tok: "{suggestion.status_label}",
+				desc: "El estado escrito (Aprobada, Rechazada...), vacío mientras está pendiente"
+			},
+			{
+				tok: "{suggestion.reason}",
+				desc: "La razón que dio el staff al responder"
+			},
+			{
+				tok: "{suggestion.staff}",
+				desc: "Menciona al miembro del staff que respondió"
+			},
+			{
+				tok: "{suggestion.staff_name}",
+				desc: "Nombre del miembro del staff que respondió"
+			},
+			{
+				tok: "{suggestion.author}",
+				desc: "Menciona a quien hizo la sugerencia"
+			},
+			{
+				tok: "{suggestion.author_name}",
+				desc: "Nombre de quien la hizo"
+			},
+			{
+				tok: "{suggestion.author_id}",
+				desc: "ID de quien la hizo"
+			},
+			{
+				tok: "{suggestion.author_avatar}",
+				desc: "Avatar de quien la hizo"
+			},
+			{
+				tok: "{suggestion.up}",
+				desc: "Votos a favor"
+			},
+			{
+				tok: "{suggestion.down}",
+				desc: "Votos en contra"
+			},
+			{
+				tok: "{suggestion.up_emoji}",
+				desc: "El emoji de los votos a favor"
+			},
+			{
+				tok: "{suggestion.down_emoji}",
+				desc: "El emoji de los votos en contra"
+			},
+			{
+				tok: "{suggestion.score}",
+				desc: "Votos a favor menos votos en contra"
+			},
+			{
+				tok: "{suggestion.percent}",
+				desc: "Porcentaje de votos a favor (0 a 100)"
+			},
+			{
+				tok: "{suggestion.image}",
+				desc: "Enlace de la imagen de la sugerencia; vacío si no hay"
+			},
+			{
+				tok: "{suggestion.link}",
+				desc: "Enlace al mensaje de la sugerencia"
+			},
+			{
+				tok: "{suggestion.channel}",
+				desc: "Menciona el canal de la sugerencia"
+			},
+			{
+				tok: "{suggestion.thread}",
+				desc: "Menciona el hilo de la sugerencia; vacío si no hay"
+			},
+			{
+				tok: "{suggestion.created}",
+				desc: "Cuándo se hizo, como tiempo relativo (hace 5 días)"
+			},
+			{
+				tok: "{suggestion.created_time}",
+				desc: "Cuándo se hizo, como fecha y hora"
+			}
+		]
+	},
+	{
+		id: "confessions",
+		label: "Confesiones",
+		availability: "confessions",
+		vars: [
+			{
+				tok: "{confession.id}",
+				desc: "El ID de la confesión (como si2tr-foytm)"
+			},
+			{
+				tok: "{confession.number}",
+				desc: "El número de la confesión en este servidor"
+			},
+			{
+				tok: "{confession.content}",
+				desc: "El texto de la confesión"
+			},
+			{
+				tok: "{confession.image}",
+				desc: "Enlace de la imagen de la confesión; vacío si no hay"
+			},
+			{
+				tok: "{confession.link}",
+				desc: "Enlace al mensaje de la confesión"
+			},
+			{
+				tok: "{confession.channel}",
+				desc: "Menciona el canal de la confesión"
+			},
+			{
+				tok: "{confession.created}",
+				desc: "Cuándo se hizo, como tiempo relativo (hace 5 días)"
+			},
+			{
+				tok: "{confession.created_time}",
+				desc: "Cuándo se hizo, como fecha y hora"
+			}
+		]
+	},
+	{
+		id: "starboard",
+		label: "Starboard",
+		availability: "starboard",
+		vars: [
+			{
+				tok: "{star.count}",
+				desc: "Cantidad de estrellas"
+			},
+			{
+				tok: "{star.emoji}",
+				desc: "El emoji del starboard"
+			},
+			{
+				tok: "{star.channel}",
+				desc: "Menciona el canal del mensaje"
+			},
+			{
+				tok: "{star.channel_name}",
+				desc: "Nombre de ese canal"
+			},
+			{
+				tok: "{star.link}",
+				desc: "Enlace al mensaje destacado"
+			},
+			{
+				tok: "{star.message_id}",
+				desc: "ID del mensaje destacado"
+			},
+			{
+				tok: "{star.author}",
+				desc: "Menciona al autor del mensaje"
+			},
+			{
+				tok: "{star.author_name}",
+				desc: "Nombre del autor"
+			},
+			{
+				tok: "{star.author_id}",
+				desc: "ID del autor"
+			},
+			{
+				tok: "{star.author_avatar}",
+				desc: "Avatar del autor"
+			},
+			{
+				tok: "{star.content}",
+				desc: "Texto del mensaje"
+			},
+			{
+				tok: "{star.image}",
+				desc: "Enlace de la primera imagen del mensaje; vacío si no hay"
+			},
+			{
+				tok: "{star.attachments}",
+				desc: "Enlaces a los demás archivos del mensaje"
+			},
+			{
+				tok: "{star.time}",
+				desc: "Cuándo se envió el mensaje"
+			}
+		]
+	},
+	{
+		id: "monkeyboard",
+		label: "Monkeyboard",
+		availability: "monkeyboard",
+		vars: [
+			{
+				tok: "{monkey.count}",
+				desc: "Cantidad de monos"
+			},
+			{
+				tok: "{monkey.emoji}",
+				desc: "El emoji del monkeyboard"
+			},
+			{
+				tok: "{monkey.channel}",
+				desc: "Menciona el canal del mensaje"
+			},
+			{
+				tok: "{monkey.channel_name}",
+				desc: "Nombre de ese canal"
+			},
+			{
+				tok: "{monkey.link}",
+				desc: "Enlace al mensaje con monos"
+			},
+			{
+				tok: "{monkey.message_id}",
+				desc: "ID del mensaje con monos"
+			},
+			{
+				tok: "{monkey.author}",
+				desc: "Menciona al autor del mensaje"
+			},
+			{
+				tok: "{monkey.author_name}",
+				desc: "Nombre del autor"
+			},
+			{
+				tok: "{monkey.author_id}",
+				desc: "ID del autor"
+			},
+			{
+				tok: "{monkey.author_avatar}",
+				desc: "Avatar del autor"
+			},
+			{
+				tok: "{monkey.content}",
+				desc: "Texto del mensaje"
+			},
+			{
+				tok: "{monkey.image}",
+				desc: "Enlace de la primera imagen del mensaje; vacío si no hay"
+			},
+			{
+				tok: "{monkey.attachments}",
+				desc: "Enlaces a los demás archivos del mensaje"
+			},
+			{
+				tok: "{monkey.time}",
+				desc: "Cuándo se envió el mensaje"
+			}
+		]
+	},
+	{
+		id: "clownboard",
+		label: "Clownboard",
+		availability: "clownboard",
+		vars: [
+			{
+				tok: "{clown.count}",
+				desc: "Cantidad de payasos"
+			},
+			{
+				tok: "{clown.emoji}",
+				desc: "El emoji del clownboard"
+			},
+			{
+				tok: "{clown.channel}",
+				desc: "Menciona el canal del mensaje"
+			},
+			{
+				tok: "{clown.channel_name}",
+				desc: "Nombre de ese canal"
+			},
+			{
+				tok: "{clown.link}",
+				desc: "Enlace al mensaje con payasos"
+			},
+			{
+				tok: "{clown.message_id}",
+				desc: "ID del mensaje con payasos"
+			},
+			{
+				tok: "{clown.author}",
+				desc: "Menciona al autor del mensaje"
+			},
+			{
+				tok: "{clown.author_name}",
+				desc: "Nombre del autor"
+			},
+			{
+				tok: "{clown.author_id}",
+				desc: "ID del autor"
+			},
+			{
+				tok: "{clown.author_avatar}",
+				desc: "Avatar del autor"
+			},
+			{
+				tok: "{clown.content}",
+				desc: "Texto del mensaje"
+			},
+			{
+				tok: "{clown.image}",
+				desc: "Enlace de la primera imagen del mensaje; vacío si no hay"
+			},
+			{
+				tok: "{clown.attachments}",
+				desc: "Enlaces a los demás archivos del mensaje"
+			},
+			{
+				tok: "{clown.time}",
+				desc: "Cuándo se envió el mensaje"
+			}
+		]
+	},
+	{
+		id: "verification",
+		label: "Verificación",
+		availability: "verification",
+		vars: [
+			{
+				tok: "{verify.link}",
+				desc: "Solo en el mensaje de verificación: el enlace que abre el miembro para verificarse"
+			}
+		]
+	},
+	{
+		id: "honeypot",
+		label: "Honeypot",
+		availability: "honeypot",
+		vars: [
+			{
+				tok: "{honeypot.action}",
+				desc: "Qué le pasa a quien escribe ahí, como un softban"
+			},
+			{
+				tok: "{honeypot.count}",
+				desc: "Miembros atrapados hasta ahora"
+			},
+			{
+				tok: "{honeypot.channel}",
+				desc: "Mención del canal trampa"
+			}
+		]
+	},
+	{
+		id: "counter",
+		label: "Metas de contadores",
+		availability: "counter",
+		vars: [
+			{
+				tok: "{counter.count}",
+				desc: "Miembros del servidor ahora"
+			},
+			{
+				tok: "{counter.goal}",
+				desc: "El número de miembros alcanzado (la meta, o el múltiplo de cada N)"
+			},
+			{
+				tok: "{counter.server}",
+				desc: "Nombre del servidor"
+			}
+		]
+	},
+	{
+		id: "request",
+		label: "Solicitudes",
+		availability: "request",
+		vars: [
+			{
+				tok: "{request.number}",
+				desc: "Número de la solicitud"
+			},
+			{
+				tok: "{request.text}",
+				desc: "Lo que se pidió"
+			},
+			{
+				tok: "{request.link}",
+				desc: "Enlace a la tarjeta de la solicitud"
+			},
+			{
+				tok: "{request.channel}",
+				desc: "Canal donde el staff ve la solicitud"
+			},
+			{
+				tok: "{request.status}",
+				desc: "Estado de la solicitud"
+			}
+		]
+	},
+	{
+		id: "form",
+		label: "Formularios",
+		availability: "form",
+		vars: [
+			{
+				tok: "{form.name}",
+				desc: "Nombre corto del formulario"
+			},
+			{
+				tok: "{form.title}",
+				desc: "Título del formulario"
+			},
+			{
+				tok: "{form.number}",
+				desc: "Número de la respuesta"
+			},
+			{
+				tok: "{form.status}",
+				desc: "Estado de la respuesta"
+			},
+			{
+				tok: "{form.reason}",
+				desc: "Motivo que dio quien revisó"
+			}
+		]
+	},
+	{
+		id: "poll",
+		label: "Encuestas",
+		availability: "poll",
+		vars: [
+			{
+				tok: "{poll.question}",
+				desc: "La pregunta"
+			},
+			{
+				tok: "{poll.options}",
+				desc: "Las opciones, una por línea, con sus letras"
+			},
+			{
+				tok: "{poll.results}",
+				desc: "Las opciones con una barra, el porcentaje y los votos de cada una"
+			},
+			{
+				tok: "{poll.votes}",
+				desc: "Cantidad de personas que votaron"
+			},
+			{
+				tok: "{poll.votes_text}",
+				desc: "Los votos como texto, como \"3 votos\""
+			},
+			{
+				tok: "{poll.type}",
+				desc: "Opción única u opción múltiple"
+			},
+			{
+				tok: "{poll.status}",
+				desc: "Abierta o Cerrada"
+			},
+			{
+				tok: "{poll.ends}",
+				desc: "Cuándo cierra, como marca de tiempo relativa de Discord (vacío si nunca cierra)"
+			},
+			{
+				tok: "{poll.image}",
+				desc: "La imagen de la encuesta, si tiene una"
+			},
+			{
+				tok: "{poll.host}",
+				desc: "Menciona a quien inició la encuesta"
+			},
+			{
+				tok: "{poll.winner}",
+				desc: "La opción con más votos (vacío si hay empate o no hay votos)"
+			}
+		]
+	},
+	{
+		id: "partner",
+		label: "Partners",
+		availability: "partner",
+		vars: [
+			{
+				tok: "{partner.name}",
+				desc: "Nombre del servidor partner"
+			},
+			{
+				tok: "{partner.id}",
+				desc: "ID del servidor partner"
+			},
+			{
+				tok: "{partner.members}",
+				desc: "Miembros del servidor partner"
+			},
+			{
+				tok: "{partner.invite}",
+				desc: "La invitación que se publicó"
+			},
+			{
+				tok: "{partner.manager}",
+				desc: "Mención del Partner Manager"
+			},
+			{
+				tok: "{partner.manager_name}",
+				desc: "Nombre del Partner Manager"
+			},
+			{
+				tok: "{partner.count_day}",
+				desc: "Alianzas del manager hoy"
+			},
+			{
+				tok: "{partner.count_week}",
+				desc: "Alianzas del manager esta semana"
+			},
+			{
+				tok: "{partner.count_total}",
+				desc: "Alianzas del manager en total"
+			},
+			{
+				tok: "{partner.min_members}",
+				desc: "Miembros que necesita un servidor partner"
+			},
+			{
+				tok: "{partner.min_age_days}",
+				desc: "Días de antigüedad que necesita un servidor partner"
+			},
+			{
+				tok: "{partner.cooldown_days}",
+				desc: "Días antes de que el mismo servidor pueda aliarse de nuevo"
+			},
+			{
+				tok: "{partner.cooldown_ends}",
+				desc: "Cuándo termina la espera con ese servidor"
+			},
+			{
+				tok: "{partner.cooldown}",
+				desc: "La espera como texto, como 3d 4h"
+			},
+			{
+				tok: "{partner.rank_week}",
+				desc: "Puesto del manager esta semana"
+			},
+			{
+				tok: "{partner.rank_total}",
+				desc: "Puesto del manager en total"
+			},
+			{
+				tok: "{partner.top_week}",
+				desc: "Mención del mejor manager de esta semana"
+			},
+			{
+				tok: "{partner.top_week_count}",
+				desc: "Alianzas del mejor manager de esta semana"
+			},
+			{
+				tok: "{partner.top_total}",
+				desc: "Mención del mejor manager en total"
+			},
+			{
+				tok: "{partner.top_total_count}",
+				desc: "Alianzas del mejor manager en total"
+			},
+			{
+				tok: "{partner.top_list_day}",
+				desc: "Los cinco mejores managers de hoy, uno por línea (puesto, mención, partnerships)"
+			},
+			{
+				tok: "{partner.top_list_week}",
+				desc: "Los cinco mejores managers de esta semana, uno por línea (puesto, mención, partnerships)"
+			},
+			{
+				tok: "{partner.top_list_total}",
+				desc: "Los cinco mejores managers en total, uno por línea (puesto, mención, partnerships)"
+			},
+			{
+				tok: "{partner.server_day}",
+				desc: "Alianzas de todo el servidor hoy"
+			},
+			{
+				tok: "{partner.server_week}",
+				desc: "Alianzas de todo el servidor esta semana"
+			},
+			{
+				tok: "{partner.server_total}",
+				desc: "Alianzas de todo el servidor en total"
+			}
+		]
+	},
+	{
+		id: "rollout",
+		label: "Rollouts",
+		availability: "rollout",
+		vars: [
+			{
+				tok: "{rollout.name}",
+				desc: "Nombre del experimento"
+			},
+			{
+				tok: "{rollout.id}",
+				desc: "ID del experimento"
+			},
+			{
+				tok: "{rollout.kind}",
+				desc: "Experimento de usuarios, Experimento de servidores..."
+			},
+			{
+				tok: "{rollout.type}",
+				desc: "Experimento nuevo, Rollout aumentado, Rollout reducido o Estado cambiado"
+			},
+			{
+				tok: "{rollout.status}",
+				desc: "En despliegue, Desplegado por completo, Prueba A/B..."
+			},
+			{
+				tok: "{rollout.percent}",
+				desc: "Parte de Discord que lo tiene ahora, como 50%"
+			},
+			{
+				tok: "{rollout.from}",
+				desc: "La parte antes del cambio; vacío si es nuevo"
+			},
+			{
+				tok: "{rollout.to}",
+				desc: "La parte actual"
+			},
+			{
+				tok: "{rollout.change}",
+				desc: "El cambio, como +12.5%; vacío si es nuevo"
+			},
+			{
+				tok: "{rollout.badge}",
+				desc: "El texto corto del botón de la tarjeta, como +12.5% (50%)"
+			},
+			{
+				tok: "{rollout.kind_icon}",
+				desc: "El ícono de Petto para el tipo de experimento (una persona para usuarios, el engranaje para servidores...)"
+			},
+			{
+				tok: "{rollout.event_icon}",
+				desc: "El ícono de Petto para el evento (nuevo, más, menos o recarga)"
+			},
+			{
+				tok: "{rollout.variants}",
+				desc: "Una línea por variante con su cambio"
+			},
+			{
+				tok: "{rollout.ranges}",
+				desc: "Los rangos de cada variante"
+			},
+			{
+				tok: "{rollout.platforms}",
+				desc: "Dónde aplica: android, desktop..."
+			},
+			{
+				tok: "{rollout.filters}",
+				desc: "Los filtros del experimento, si tiene"
+			},
+			{
+				tok: "{rollout.source}",
+				desc: "La lista de la que vienen los datos"
+			}
+		]
+	},
+	{
+		id: "quest",
+		label: "Misiones",
+		availability: "quest",
+		vars: [
+			{
+				tok: "{quest.name}",
+				desc: "Nombre de la misión"
+			},
+			{
+				tok: "{quest.game}",
+				desc: "El juego o la marca"
+			},
+			{
+				tok: "{quest.publisher}",
+				desc: "Quién la publicó"
+			},
+			{
+				tok: "{quest.id}",
+				desc: "ID de la misión"
+			},
+			{
+				tok: "{quest.url}",
+				desc: "Enlace para aceptar la misión en Discord"
+			},
+			{
+				tok: "{quest.link}",
+				desc: "Enlace a la página del juego o la marca; vacío si no hay"
+			},
+			{
+				tok: "{quest.image}",
+				desc: "Imagen de portada de la misión; vacío si no hay"
+			},
+			{
+				tok: "{quest.logo}",
+				desc: "Logo del juego; vacío si no hay"
+			},
+			{
+				tok: "{quest.color}",
+				desc: "Color principal de la misión en hex"
+			},
+			{
+				tok: "{quest.reward}",
+				desc: "Las recompensas, con su tipo"
+			},
+			{
+				tok: "{quest.reward_type}",
+				desc: "Tipo de la primera recompensa: Orbs, Coleccionable, Código..."
+			},
+			{
+				tok: "{quest.reward_amount}",
+				desc: "Cantidad de Orbs; vacío si la recompensa no son Orbs"
+			},
+			{
+				tok: "{quest.reward_image}",
+				desc: "Imagen de la primera recompensa; vacío si no hay"
+			},
+			{
+				tok: "{quest.task}",
+				desc: "La primera tarea, como Ver un video"
+			},
+			{
+				tok: "{quest.task_minutes}",
+				desc: "Minutos que toma la primera tarea"
+			},
+			{
+				tok: "{quest.tasks}",
+				desc: "Todas las tareas con su tiempo"
+			},
+			{
+				tok: "{quest.platforms}",
+				desc: "Dónde se puede hacer: Desktop, Mobile, Xbox..."
+			},
+			{
+				tok: "{quest.starts}",
+				desc: "Cuándo empieza, como tiempo relativo"
+			},
+			{
+				tok: "{quest.starts_at}",
+				desc: "Cuándo empieza, como fecha y hora"
+			},
+			{
+				tok: "{quest.expires}",
+				desc: "Cuándo termina, como tiempo relativo"
+			},
+			{
+				tok: "{quest.expires_at}",
+				desc: "Cuándo termina, como fecha y hora"
+			},
+			{
+				tok: "{quest.limits}",
+				desc: "Límites de región y edad, o Ninguno"
+			},
+			{
+				tok: "{quest.age_gate}",
+				desc: "18+ cuando tiene límite de edad; si no, vacío"
+			},
+			{
+				tok: "{quest.status}",
+				desc: "Misión nueva, o Termina pronto"
+			},
+			{
+				tok: "{quest.source}",
+				desc: "discordquest.com"
+			},
+			{
+				tok: "{quest.starts.relative}",
+				desc: "Cuándo empieza, como relativa, como \"hace 2 días\" o \"en 5 horas\" (se va actualizando)"
+			},
+			{
+				tok: "{quest.starts.short_time}",
+				desc: "Cuándo empieza, como hora, como 17:00"
+			},
+			{
+				tok: "{quest.starts.long_time}",
+				desc: "Cuándo empieza, como hora con segundos, como 17:00:30"
+			},
+			{
+				tok: "{quest.starts.short_date}",
+				desc: "Cuándo empieza, como fecha corta, como 01/10/2026"
+			},
+			{
+				tok: "{quest.starts.long_date}",
+				desc: "Cuándo empieza, como fecha larga, como 1 de octubre de 2026"
+			},
+			{
+				tok: "{quest.starts.full}",
+				desc: "Cuándo empieza, como fecha y hora, como 1 de octubre de 2026 17:00"
+			},
+			{
+				tok: "{quest.starts.full_long}",
+				desc: "Cuándo empieza, como día de la semana, fecha y hora"
+			},
+			{
+				tok: "{quest.starts.short_datetime}",
+				desc: "Cuándo empieza, como fecha corta y hora corta"
+			},
+			{
+				tok: "{quest.starts.medium_datetime}",
+				desc: "Cuándo empieza, como fecha corta y hora con segundos"
+			},
+			{
+				tok: "{quest.starts.unix}",
+				desc: "Cuándo empieza, como el tiempo unix en segundos, para tu propio estilo: <t:{quest.starts.unix}:R>"
+			},
+			{
+				tok: "{quest.expires.relative}",
+				desc: "Cuándo termina, como relativa, como \"hace 2 días\" o \"en 5 horas\" (se va actualizando)"
+			},
+			{
+				tok: "{quest.expires.short_time}",
+				desc: "Cuándo termina, como hora, como 17:00"
+			},
+			{
+				tok: "{quest.expires.long_time}",
+				desc: "Cuándo termina, como hora con segundos, como 17:00:30"
+			},
+			{
+				tok: "{quest.expires.short_date}",
+				desc: "Cuándo termina, como fecha corta, como 01/10/2026"
+			},
+			{
+				tok: "{quest.expires.long_date}",
+				desc: "Cuándo termina, como fecha larga, como 1 de octubre de 2026"
+			},
+			{
+				tok: "{quest.expires.full}",
+				desc: "Cuándo termina, como fecha y hora, como 1 de octubre de 2026 17:00"
+			},
+			{
+				tok: "{quest.expires.full_long}",
+				desc: "Cuándo termina, como día de la semana, fecha y hora"
+			},
+			{
+				tok: "{quest.expires.short_datetime}",
+				desc: "Cuándo termina, como fecha corta y hora corta"
+			},
+			{
+				tok: "{quest.expires.medium_datetime}",
+				desc: "Cuándo termina, como fecha corta y hora con segundos"
+			},
+			{
+				tok: "{quest.expires.unix}",
+				desc: "Cuándo termina, como el tiempo unix en segundos, para tu propio estilo: <t:{quest.starts.unix}:R>"
+			},
+			{
+				tok: "{quest.starts_ago}",
+				desc: "Cuándo empezó en palabras, como hace 2 días, en 3 horas o ahora (funciona en títulos y pies de página)"
+			},
+			{
+				tok: "{quest.expires_in}",
+				desc: "Cuándo termina en palabras, como en 5 días, o terminó hace 1 día (funciona en títulos y pies de página)"
+			},
+			{
+				tok: "{quest.starts_date}",
+				desc: "Fecha de inicio en texto, como 1 oct 2026 (GMT-5)"
+			},
+			{
+				tok: "{quest.expires_date}",
+				desc: "Fecha de fin en texto, como 8 oct 2026 (GMT-5)"
+			},
+			{
+				tok: "{quest.starts_datetime}",
+				desc: "Fecha y hora de inicio en texto, en GMT-5 (Colombia)"
+			},
+			{
+				tok: "{quest.expires_datetime}",
+				desc: "Fecha y hora de fin en texto, en GMT-5 (Colombia)"
+			},
+			{
+				tok: "{quest.duration}",
+				desc: "Cuánto dura la misión, como 7 días"
+			},
+			{
+				tok: "{quest.time_left}",
+				desc: "Cuánto falta, como 5 días 3 horas, o Terminada"
+			},
+			{
+				tok: "{quest.days_left}",
+				desc: "Días completos que faltan, como número"
+			},
+			{
+				tok: "{quest.hours_left}",
+				desc: "Horas completas que faltan, como número"
+			},
+			{
+				tok: "{quest.reward_name}",
+				desc: "Nombre de la primera recompensa"
+			},
+			{
+				tok: "{quest.rewards_count}",
+				desc: "Cuántas recompensas tiene"
+			},
+			{
+				tok: "{quest.reward_nitro_amount}",
+				desc: "Orbes que recibe un miembro con Nitro, vacío si no hay"
+			},
+			{
+				tok: "{quest.reward_expires}",
+				desc: "Cuándo vence la primera recompensa que vence, como tiempo relativo, vacío si no hay"
+			},
+			{
+				tok: "{quest.task_type}",
+				desc: "Tipo de la primera tarea: video, play, stream o activity"
+			},
+			{
+				tok: "{quest.task_seconds}",
+				desc: "Segundos que toma la primera tarea"
+			},
+			{
+				tok: "{quest.task_time}",
+				desc: "Tiempo de la primera tarea, como 2 min"
+			},
+			{
+				tok: "{quest.countries}",
+				desc: "Códigos de los únicos países donde está, vacío si no hay"
+			},
+			{
+				tok: "{quest.excluded_countries}",
+				desc: "Códigos de los países donde no está disponible, vacío si no hay"
+			},
+			{
+				tok: "{quest.orbs.name}",
+				desc: "La recompensa orbs de la misión, nombre. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.orbs.type}",
+				desc: "La recompensa orbs de la misión, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.orbs.image}",
+				desc: "La recompensa orbs de la misión, imagen, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.orbs.amount}",
+				desc: "La recompensa orbs de la misión, cantidad de Orbes, vacío si no son Orbes. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.orbs.nitro_amount}",
+				desc: "La recompensa orbs de la misión, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.orbs.expires}",
+				desc: "La recompensa orbs de la misión, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.decoration.name}",
+				desc: "La recompensa decoration de la misión, nombre. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.decoration.type}",
+				desc: "La recompensa decoration de la misión, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.decoration.image}",
+				desc: "La recompensa decoration de la misión, imagen, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.decoration.amount}",
+				desc: "La recompensa decoration de la misión, cantidad de Orbes, vacío si no son Orbes. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.decoration.nitro_amount}",
+				desc: "La recompensa decoration de la misión, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.decoration.expires}",
+				desc: "La recompensa decoration de la misión, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.code.name}",
+				desc: "La recompensa code de la misión, nombre. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.code.type}",
+				desc: "La recompensa code de la misión, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.code.image}",
+				desc: "La recompensa code de la misión, imagen, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.code.amount}",
+				desc: "La recompensa code de la misión, cantidad de Orbes, vacío si no son Orbes. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.code.nitro_amount}",
+				desc: "La recompensa code de la misión, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.code.expires}",
+				desc: "La recompensa code de la misión, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.ingame.name}",
+				desc: "La recompensa ingame de la misión, nombre. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.ingame.type}",
+				desc: "La recompensa ingame de la misión, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.ingame.image}",
+				desc: "La recompensa ingame de la misión, imagen, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.ingame.amount}",
+				desc: "La recompensa ingame de la misión, cantidad de Orbes, vacío si no son Orbes. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.ingame.nitro_amount}",
+				desc: "La recompensa ingame de la misión, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.ingame.expires}",
+				desc: "La recompensa ingame de la misión, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.nitro.name}",
+				desc: "La recompensa nitro de la misión, nombre. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.nitro.type}",
+				desc: "La recompensa nitro de la misión, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.nitro.image}",
+				desc: "La recompensa nitro de la misión, imagen, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.nitro.amount}",
+				desc: "La recompensa nitro de la misión, cantidad de Orbes, vacío si no son Orbes. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.nitro.nitro_amount}",
+				desc: "La recompensa nitro de la misión, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.nitro.expires}",
+				desc: "La recompensa nitro de la misión, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando la misión no la tiene"
+			},
+			{
+				tok: "{quest.reward1.name}",
+				desc: "Recompensa número 1, nombre. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward1.type}",
+				desc: "Recompensa número 1, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward1.image}",
+				desc: "Recompensa número 1, imagen, vacío si no hay. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward1.amount}",
+				desc: "Recompensa número 1, cantidad de Orbes, vacío si no son Orbes. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward1.nitro_amount}",
+				desc: "Recompensa número 1, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward1.expires}",
+				desc: "Recompensa número 1, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward2.name}",
+				desc: "Recompensa número 2, nombre. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward2.type}",
+				desc: "Recompensa número 2, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward2.image}",
+				desc: "Recompensa número 2, imagen, vacío si no hay. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward2.amount}",
+				desc: "Recompensa número 2, cantidad de Orbes, vacío si no son Orbes. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward2.nitro_amount}",
+				desc: "Recompensa número 2, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward2.expires}",
+				desc: "Recompensa número 2, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward3.name}",
+				desc: "Recompensa número 3, nombre. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward3.type}",
+				desc: "Recompensa número 3, tipo (Moneda virtual, Coleccionable, Código...). Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward3.image}",
+				desc: "Recompensa número 3, imagen, vacío si no hay. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward3.amount}",
+				desc: "Recompensa número 3, cantidad de Orbes, vacío si no son Orbes. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward3.nitro_amount}",
+				desc: "Recompensa número 3, Orbes que recibe un miembro con Nitro, vacío si no hay. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward3.expires}",
+				desc: "Recompensa número 3, cuándo vence, como tiempo relativo, vacío si nunca. Vacío cuando no existe"
+			},
+			{
+				tok: "{quest.reward_types}",
+				desc: "Los tipos de recompensa de la misión, como Moneda virtual, Coleccionable"
+			}
+		]
+	},
+	{
+		id: "bump",
+		label: "Bump",
+		availability: "bump",
+		vars: [
+			{
+				tok: "{user.mention}",
+				desc: "Solo en los mensajes de bump: menciona a quien hizo el bump"
+			},
+			{
+				tok: "{nextBump}",
+				desc: "Solo en los mensajes de bump: tiempo relativo hasta que se pueda hacer el siguiente bump"
+			}
+		]
+	},
+	{
+		id: "invites",
+		label: "Invitaciones",
+		availability: "always",
+		vars: [
+			{
+				tok: "{inviter}",
+				desc: "Mensajes de bienvenida: menciona a quien invitó al miembro, o Desconocido"
+			},
+			{
+				tok: "{inviter.name}",
+				desc: "Mensajes de bienvenida: el nombre de quien invitó al miembro"
+			},
+			{
+				tok: "{inviter.id}",
+				desc: "Mensajes de bienvenida: el ID de quien invitó al miembro"
+			},
+			{
+				tok: "{inviter.invites}",
+				desc: "Mensajes de bienvenida: cuántas invitaciones tiene ahora esa persona"
+			},
+			{
+				tok: "{invite.code}",
+				desc: "Mensajes de bienvenida: el código de la invitación que se usó"
+			}
+		]
+	},
+	{
+		id: "date",
+		label: "Fecha",
+		availability: "always",
+		vars: [
+			{
+				tok: "{date}",
+				desc: "Fecha de hoy, GMT-5 (Colombia)"
+			},
+			{
+				tok: "{date.now}",
+				desc: "Fecha de hoy, GMT-5 (Colombia)"
+			},
+			{
+				tok: "{date.utc_now}",
+				desc: "Fecha y hora actuales, UTC"
+			},
+			{
+				tok: "{date.utc_timestamp}",
+				desc: "Marca de tiempo Unix actual"
+			},
+			{
+				tok: "{timestamp}",
+				desc: "Ahora mismo, como marca de tiempo de Discord en la zona horaria de cada lector"
+			},
+			{
+				tok: "{timestamp.unix}",
+				desc: "Ahora mismo como número Unix simple (para tus propias marcas <t:…>)"
+			},
+			{
+				tok: "{timestamp.short_time}",
+				desc: "Ahora mismo: hora y minutos (16:20)"
+			},
+			{
+				tok: "{timestamp.long_time}",
+				desc: "Ahora mismo: hora, minutos y segundos (16:20:30)"
+			},
+			{
+				tok: "{timestamp.short_date}",
+				desc: "Hoy: fecha corta (20/04/2026)"
+			},
+			{
+				tok: "{timestamp.long_date}",
+				desc: "Hoy: fecha larga (20 de abril de 2026)"
+			},
+			{
+				tok: "{timestamp.full}",
+				desc: "Ahora mismo: fecha y hora (20 de abril de 2026 16:20)"
+			},
+			{
+				tok: "{timestamp.full_long}",
+				desc: "Ahora mismo: día de la semana, fecha y hora"
+			},
+			{
+				tok: "{timestamp.short_datetime}",
+				desc: "Ahora mismo: fecha corta y hora corta (20/04/2026, 16:20)"
+			},
+			{
+				tok: "{timestamp.medium_datetime}",
+				desc: "Ahora mismo: fecha corta y hora con segundos (20/04/2026, 16:20:30)"
+			},
+			{
+				tok: "{timestamp.relative}",
+				desc: "Ahora mismo, como \"justo ahora\", que sigue contando"
+			},
+			{
+				tok: "{timestamp:in 2h|R}",
+				desc: "Cualquier momento escrito en palabras: \"in 2h\", \"3d 4h\", \"mañana 20:00\", \"2026-10-12 18:00\". Después de | va el estilo: short_time, long_time, short_date, long_date, full, full_long, short_datetime, medium_datetime o relative"
+			}
+		]
+	},
+	{
+		id: "functions",
+		label: "Funciones",
+		availability: "always",
+		vars: [
+			{
+				tok: "{choose:a|b|c}",
+				desc: "Elige una opción al azar cada vez"
+			},
+			{
+				tok: "{range:1-100}",
+				desc: "Un número entero al azar en ese rango"
+			},
+			{
+				tok: "{newline}",
+				desc: "Fuerza un salto de línea"
+			},
+			{
+				tok: "{separator}",
+				desc: "Una línea divisoria decorativa"
+			}
+		]
+	},
+	{
+		id: "actions",
+		label: "Acciones",
+		availability: "always",
+		vars: [
+			{
+				tok: "{reactreply:emoji}",
+				desc: "Reacciona al mensaje enviado con este emoji. Si la respuesta solo tiene este indicador, reacciona al mensaje que la activó."
+			}
+		]
+	}
+];
+const variables = {
+	en: en,
+	es: es,
+	"pt-BR": [
+	{
+		id: "user",
+		label: "Usuário (notação com ponto)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{user}",
+				desc: "Menciona o usuário"
+			},
+			{
+				tok: "{user.mention}",
+				desc: "Menciona o usuário (o mesmo que {user})"
+			},
+			{
+				tok: "{user.name}",
+				desc: "Nome de usuário"
+			},
+			{
+				tok: "{user.id}",
+				desc: "ID do usuário"
+			},
+			{
+				tok: "{user.avatar}",
+				desc: "URL da imagem do avatar global"
+			},
+			{
+				tok: "{user.display_avatar}",
+				desc: "Avatar do servidor; se não houver, o global"
+			},
+			{
+				tok: "{user.avatar_decoration}",
+				desc: "Imagem da decoração do avatar da pessoa, vazio se não tiver"
+			},
+			{
+				tok: "{user.nameplate}",
+				desc: "Imagem da placa do nome da pessoa, vazio se não tiver"
+			},
+			{
+				tok: "{user.server_tag}",
+				desc: "A tag de servidor que a pessoa mostra (até 4 letras), vazio se não tiver"
+			},
+			{
+				tok: "{user.server_tag_badge}",
+				desc: "Imagem do ícone dessa tag de servidor, vazio se não tiver"
+			},
+			{
+				tok: "{user.display_name}",
+				desc: "Apelido no servidor, ou o nome de usuário se não tiver"
+			},
+			{
+				tok: "{user.joined_at}",
+				desc: "Data em que entrou neste servidor"
+			},
+			{
+				tok: "{user.joined_at_timestamp}",
+				desc: "Timestamp Unix dessa data de entrada"
+			},
+			{
+				tok: "{user.created_at}",
+				desc: "Data em que a conta foi criada"
+			},
+			{
+				tok: "{user.created_at_timestamp}",
+				desc: "Timestamp Unix da criação da conta"
+			},
+			{
+				tok: "{user.account_age}",
+				desc: "Idade da conta (3 anos, 5 dias)"
+			},
+			{
+				tok: "{user.account_age_days}",
+				desc: "Idade da conta, em dias (um número)"
+			},
+			{
+				tok: "{user.joined_age}",
+				desc: "Há quanto tempo o membro está no servidor (2 meses)"
+			},
+			{
+				tok: "{user.boost}",
+				desc: "\"Sim\" ou \"Não\": se impulsiona o servidor"
+			},
+			{
+				tok: "{user.boost_since}",
+				desc: "Data em que começou a impulsionar, ou \"Sem impulso\""
+			},
+			{
+				tok: "{user.boost_since_timestamp}",
+				desc: "Timestamp Unix do início do impulso"
+			},
+			{
+				tok: "{user.color}",
+				desc: "Cor do cargo mais alto em hex"
+			},
+			{
+				tok: "{user.top_role}",
+				desc: "Nome do cargo mais alto"
+			},
+			{
+				tok: "{user.role_list}",
+				desc: "Todos os cargos, mencionados"
+			},
+			{
+				tok: "{user.bot}",
+				desc: "\"Sim\" ou \"Não\": se é uma conta de bot"
+			},
+			{
+				tok: "{user.role_count}",
+				desc: "Quantos cargos tem (sem contar @everyone)"
+			},
+			{
+				tok: "{user.top_role_mention}",
+				desc: "Seu cargo mais alto, mencionado"
+			},
+			{
+				tok: "{user.is_owner}",
+				desc: "\"Sim\" ou \"Não\": se é o dono do servidor"
+			},
+			{
+				tok: "{user.joined_age_days}",
+				desc: "Dias desde que entrou no servidor"
+			},
+			{
+				tok: "{user.join_position}",
+				desc: "Qual número de membro foi"
+			},
+			{
+				tok: "{user.join_position_suffix}",
+				desc: "Posição de entrada como ordinal (1º, 2º...)"
+			}
+		]
+	},
+	{
+		id: "user_legacy",
+		label: "Usuário (antigas)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{user_tag}",
+				desc: "Nome de usuário (o mesmo que {user.name})"
+			},
+			{
+				tok: "{user_name}",
+				desc: "Nome de usuário"
+			},
+			{
+				tok: "{user_avatar}",
+				desc: "URL da imagem do avatar"
+			},
+			{
+				tok: "{user_id}",
+				desc: "ID do usuário"
+			},
+			{
+				tok: "{user_discrim}",
+				desc: "Discriminador; quase sempre vazio nos nomes de usuário novos"
+			},
+			{
+				tok: "{user_nick}",
+				desc: "Apelido no servidor, ou o nome de usuário se não tiver"
+			},
+			{
+				tok: "{user_joindate}",
+				desc: "Data em que entrou neste servidor"
+			},
+			{
+				tok: "{user_createdate}",
+				desc: "Data em que a conta foi criada"
+			},
+			{
+				tok: "{user_displaycolor}",
+				desc: "Cor do cargo mais alto em hex"
+			},
+			{
+				tok: "{user_boostsince}",
+				desc: "Data em que começou a impulsionar, ou \"Sem impulso\""
+			}
+		]
+	},
+	{
+		id: "server",
+		label: "Servidor",
+		availability: "always",
+		vars: [
+			{
+				tok: "{server_name}",
+				desc: "Nome do servidor"
+			},
+			{
+				tok: "{server_id}",
+				desc: "ID do servidor"
+			},
+			{
+				tok: "{server_prefix}",
+				desc: "O prefixo configurado do servidor"
+			},
+			{
+				tok: "{server_membercount}",
+				desc: "Total de membros"
+			},
+			{
+				tok: "{server_membercount_ordinal}",
+				desc: "Total de membros como ordinal (1º, 2º...)"
+			},
+			{
+				tok: "{server_membercount_nobots}",
+				desc: "Total de membros sem contar bots"
+			},
+			{
+				tok: "{server_membercount_nobots_ordinal}",
+				desc: "Esse total, como ordinal"
+			},
+			{
+				tok: "{server_botcount}",
+				desc: "Número de bots no servidor"
+			},
+			{
+				tok: "{server_botcount_ordinal}",
+				desc: "Número de bots, como ordinal"
+			},
+			{
+				tok: "{server_icon}",
+				desc: "URL do ícone do servidor"
+			},
+			{
+				tok: "{server_rolecount}",
+				desc: "Número de cargos"
+			},
+			{
+				tok: "{server_channelcount}",
+				desc: "Número de canais"
+			},
+			{
+				tok: "{server_randommember}",
+				desc: "Menciona um membro aleatório"
+			},
+			{
+				tok: "{server_randommember_tag}",
+				desc: "Nome de usuário de um membro aleatório"
+			},
+			{
+				tok: "{server_randommember_nobots}",
+				desc: "Menciona um membro aleatório que não seja bot"
+			},
+			{
+				tok: "{server_owner}",
+				desc: "Menciona o dono do servidor"
+			},
+			{
+				tok: "{server_owner_id}",
+				desc: "ID de usuário do dono do servidor"
+			},
+			{
+				tok: "{server_createdate}",
+				desc: "Data em que o servidor foi criado"
+			},
+			{
+				tok: "{server_createdate_timestamp}",
+				desc: "Timestamp Unix do dia em que o servidor foi criado"
+			},
+			{
+				tok: "{server_age_days}",
+				desc: "Dias desde que o servidor foi criado"
+			},
+			{
+				tok: "{server_emojicount}",
+				desc: "Quantos emojis personalizados o servidor tem"
+			},
+			{
+				tok: "{server_stickercount}",
+				desc: "Quantas figurinhas o servidor tem"
+			},
+			{
+				tok: "{server_description}",
+				desc: "A descrição do servidor (vazia se não tiver)"
+			},
+			{
+				tok: "{server_vanity}",
+				desc: "O link de convite personalizado do servidor (vazio se não tiver)"
+			},
+			{
+				tok: "{server_banner}",
+				desc: "URL da imagem do banner (vazia se não tiver)"
+			},
+			{
+				tok: "{server_verification}",
+				desc: "Nível de verificação do servidor (Nenhum, Baixo, Médio, Alto, Muito alto)"
+			},
+			{
+				tok: "{server_locale}",
+				desc: "Idioma preferido do servidor (por exemplo pt-BR)"
+			},
+			{
+				tok: "{server_rules_channel}",
+				desc: "O canal de regras, mencionado (vazio se não tiver)"
+			},
+			{
+				tok: "{server_boostlevel}",
+				desc: "Nível de impulso atual (0-3)"
+			},
+			{
+				tok: "{server_boostcount}",
+				desc: "Total de impulsos"
+			},
+			{
+				tok: "{server_nextboostlevel}",
+				desc: "O próximo nível de impulso (1-3)"
+			},
+			{
+				tok: "{server_nextboostlevel_required}",
+				desc: "Impulsos necessários para alcançá-lo"
+			},
+			{
+				tok: "{server_nextboostlevel_until_required}",
+				desc: "Impulsos que ainda faltam para alcançá-lo"
+			}
+		]
+	},
+	{
+		id: "guild",
+		label: "Guild (notação com ponto)",
+		availability: "always",
+		vars: [
+			{
+				tok: "{guild.name}",
+				desc: "Nome do servidor"
+			},
+			{
+				tok: "{guild.id}",
+				desc: "ID do servidor"
+			},
+			{
+				tok: "{guild.count}",
+				desc: "Total de membros"
+			},
+			{
+				tok: "{guild.icon}",
+				desc: "URL do ícone do servidor"
+			},
+			{
+				tok: "{guild.banner}",
+				desc: "URL do banner do servidor"
+			},
+			{
+				tok: "{guild.owner_id}",
+				desc: "ID de usuário do dono do servidor"
+			},
+			{
+				tok: "{guild.created_at}",
+				desc: "Data em que o servidor foi criado"
+			},
+			{
+				tok: "{guild.created_at_timestamp}",
+				desc: "Timestamp Unix da criação do servidor"
+			},
+			{
+				tok: "{guild.emoji_count}",
+				desc: "Número de emojis personalizados"
+			},
+			{
+				tok: "{guild.role_count}",
+				desc: "Número de cargos"
+			},
+			{
+				tok: "{guild.boost_count}",
+				desc: "Total de impulsos"
+			},
+			{
+				tok: "{guild.boost_tier}",
+				desc: "Nível de impulso, ex.: \"Nível 2\" ou \"Sem nível\""
+			},
+			{
+				tok: "{guild.channels_count}",
+				desc: "Número de canais"
+			},
+			{
+				tok: "{guild.vanity}",
+				desc: "URL de convite personalizada, se o servidor tiver uma"
+			},
+			{
+				tok: "{guild.region}",
+				desc: "Idioma preferido do servidor"
+			},
+			{
+				tok: "{guild.max_members}",
+				desc: "Capacidade máxima de membros"
+			}
+		]
+	},
+	{
+		id: "channel",
+		label: "Canal",
+		availability: "always",
+		vars: [
+			{
+				tok: "{channel}",
+				desc: "Menciona o canal atual"
+			},
+			{
+				tok: "{channel.mention}",
+				desc: "Menciona o canal atual"
+			},
+			{
+				tok: "{channel.name}",
+				desc: "Nome do canal"
+			},
+			{
+				tok: "{channel.id}",
+				desc: "ID do canal"
+			},
+			{
+				tok: "{channel.topic}",
+				desc: "Tópico do canal"
+			},
+			{
+				tok: "{channel_name}",
+				desc: "Nome do canal (antiga)"
+			},
+			{
+				tok: "{channel_createdate}",
+				desc: "Data em que o canal foi criado (antiga)"
+			}
+		]
+	},
+	{
+		id: "message",
+		label: "Mensagem",
+		availability: "message",
+		vars: [
+			{
+				tok: "{message_link}",
+				desc: "Só onde existe uma mensagem que aciona (ex.: respostas automáticas)"
+			},
+			{
+				tok: "{message_id}",
+				desc: "ID da mensagem que acionou"
+			},
+			{
+				tok: "{message_content}",
+				desc: "Texto da mensagem que acionou"
+			}
+		]
+	},
+	{
+		id: "leveling",
+		label: "Níveis",
+		availability: "leveling",
+		vars: [
+			{
+				tok: "{level}",
+				desc: "Na mensagem de subida de nível e no cartão de rank: o nível"
+			},
+			{
+				tok: "{level_next}",
+				desc: "O próximo nível"
+			},
+			{
+				tok: "{level_xp}",
+				desc: "XP total"
+			},
+			{
+				tok: "{level_xp_current}",
+				desc: "XP ganho no nível atual"
+			},
+			{
+				tok: "{level_xp_needed}",
+				desc: "XP necessário para ir deste nível ao próximo"
+			},
+			{
+				tok: "{level_xp_to_next}",
+				desc: "XP que ainda falta para o próximo nível"
+			},
+			{
+				tok: "{level_progress}",
+				desc: "Progresso até o próximo nível, de 0 a 100"
+			},
+			{
+				tok: "{level_rank}",
+				desc: "Posição no ranking"
+			},
+			{
+				tok: "{level_rank_total}",
+				desc: "Membros no ranking"
+			},
+			{
+				tok: "{level_top_percent}",
+				desc: "Em que posição do ranking a pessoa está, em porcentagem (Top 2,1%)"
+			},
+			{
+				tok: "{level_streak}",
+				desc: "Dias seguidos com atividade"
+			},
+			{
+				tok: "{level_messages}",
+				desc: "Mensagens contadas"
+			},
+			{
+				tok: "{level_voice_minutes}",
+				desc: "Minutos em voz contados"
+			},
+			{
+				tok: "{level_type}",
+				desc: "text ou voice"
+			},
+			{
+				tok: "{level_bar}",
+				desc: "A barra de progresso até o próximo nível"
+			},
+			{
+				tok: "{level_vote_boost}",
+				desc: "O bônus de voto da pessoa, como +10% de XP · restam 3h 20m (vazio se não tiver)"
+			},
+			{
+				tok: "{level_previous}",
+				desc: "O nível anterior a este"
+			},
+			{
+				tok: "{level_role}",
+				desc: "Na mensagem de subida de nível: o cargo de recompensa que o membro acabou de ganhar, como menção (vazio se não houver)"
+			},
+			{
+				tok: "{level_role_name}",
+				desc: "O nome desse cargo de recompensa"
+			}
+		]
+	},
+	{
+		id: "giveaway",
+		label: "Sorteio",
+		availability: "giveaway",
+		vars: [
+			{
+				tok: "{gw.prize}",
+				desc: "O prêmio"
+			},
+			{
+				tok: "{gw.winners}",
+				desc: "Número de vencedores"
+			},
+			{
+				tok: "{gw.entries}",
+				desc: "Número atual de participações"
+			},
+			{
+				tok: "{gw.host}",
+				desc: "Menciona quem o iniciou"
+			},
+			{
+				tok: "{gw.host_name}",
+				desc: "O nome de usuário de quem organiza"
+			},
+			{
+				tok: "{gw.host_avatar}",
+				desc: "A URL da imagem do avatar de quem organiza"
+			},
+			{
+				tok: "{gw.duration}",
+				desc: "Horário de término, como timestamp Unix sem formatação"
+			},
+			{
+				tok: "{gw.timestamp}",
+				desc: "Horário de término, como timestamp relativo do Discord"
+			},
+			{
+				tok: "{gw.ends}",
+				desc: "Horário de término como timestamp relativo do Discord"
+			},
+			{
+				tok: "{gw.claim_time}",
+				desc: "Quanto tempo os vencedores têm para resgatar"
+			},
+			{
+				tok: "{gw.reaction}",
+				desc: "O emoji de participação, se o modo de reação for usado"
+			},
+			{
+				tok: "{gw.entry_mode}",
+				desc: "\"reaja com\" ou \"clique em\", conforme o modo de participação"
+			},
+			{
+				tok: "{gw.entry_text}",
+				desc: "Instrução de participação, conforme o método escolhido"
+			},
+			{
+				tok: "{gw.winner_text}",
+				desc: "Texto com o número de vencedores usado pelo sorteio"
+			},
+			{
+				tok: "{gw.status}",
+				desc: "Ativo ou Encerrado"
+			},
+			{
+				tok: "{gw.preset}",
+				desc: "A lista de cargos com participações extras, se um preset for usado"
+			}
+		]
+	},
+	{
+		id: "command",
+		label: "Comandos personalizados",
+		availability: "command",
+		vars: [
+			{
+				tok: "{args}",
+				desc: "Todo o texto depois do nome do comando"
+			},
+			{
+				tok: "{arguments}",
+				desc: "Alias de {args}"
+			},
+			{
+				tok: "{args_raw}",
+				desc: "Alias de {args}; mantém o texto completo dos argumentos"
+			},
+			{
+				tok: "{arg1}",
+				desc: "Primeiro argumento"
+			},
+			{
+				tok: "{arg2}",
+				desc: "Segundo argumento"
+			},
+			{
+				tok: "{arg3}",
+				desc: "Terceiro argumento"
+			},
+			{
+				tok: "{arg4}",
+				desc: "Quarto argumento"
+			},
+			{
+				tok: "{arg5}",
+				desc: "Quinto argumento"
+			},
+			{
+				tok: "{arg6}",
+				desc: "Sexto argumento"
+			},
+			{
+				tok: "{arg7}",
+				desc: "Sétimo argumento"
+			},
+			{
+				tok: "{arg8}",
+				desc: "Oitavo argumento"
+			},
+			{
+				tok: "{arg9}",
+				desc: "Nono argumento"
+			},
+			{
+				tok: "{arg10}",
+				desc: "Décimo argumento"
+			},
+			{
+				tok: "{args_from:2}",
+				desc: "Todos os argumentos a partir da posição indicada"
+			},
+			{
+				tok: "{arg_count}",
+				desc: "Número de argumentos recebidos"
+			},
+			{
+				tok: "{command_name}",
+				desc: "O nome do comando que foi usado"
+			},
+			{
+				tok: "{prefix}",
+				desc: "O prefixo que foi usado"
+			},
+			{
+				tok: "{imgcard:name}",
+				desc: "Coloca na mensagem o cartão de imagem com esse nome (feito em Cartões de imagem). {imgcard:name|attachment} envia a imagem sozinha em vez de dentro do primeiro embed."
+			},
+			{
+				tok: "{reactreply:emoji}",
+				desc: "Indicador de resposta: reage à mensagem enviada com este emoji; repita para mais reações"
+			}
+		]
+	},
+	{
+		id: "sanction",
+		label: "Sanção",
+		availability: "sanction",
+		vars: [
+			{
+				tok: "{case.id}",
+				desc: "O número do caso (não aparece na mensagem enviada ao membro antes de um banimento, uma expulsão ou algo parecido)"
+			},
+			{
+				tok: "{case.type}",
+				desc: "ban, tempban, softban, unban, kick, mute, tempmute, unmute, warn, jail ou unjail"
+			},
+			{
+				tok: "{case.action}",
+				desc: "A ação em palavras, como \"banido de\" ou \"advertido em\""
+			},
+			{
+				tok: "{case.emoji}",
+				desc: "O ícone da ação"
+			},
+			{
+				tok: "{case.reason}",
+				desc: "O motivo"
+			},
+			{
+				tok: "{case.duration}",
+				desc: "Quanto tempo dura, ou Permanente"
+			},
+			{
+				tok: "{case.expires}",
+				desc: "Quando termina, como tempo relativo, ou Nunca"
+			},
+			{
+				tok: "{case.expires_at}",
+				desc: "Quando termina, como data e hora, ou Nunca"
+			},
+			{
+				tok: "{case.source}",
+				desc: "Quem aplicou: um moderador, o AutoMod, o honeypot, a escalada de advertências ou uma expiração automática"
+			},
+			{
+				tok: "{case.moderator}",
+				desc: "Menciona o moderador"
+			},
+			{
+				tok: "{case.moderator_name}",
+				desc: "Nome do moderador"
+			},
+			{
+				tok: "{case.moderator_id}",
+				desc: "ID do moderador"
+			},
+			{
+				tok: "{case.moderator_avatar}",
+				desc: "Avatar do moderador"
+			},
+			{
+				tok: "{case.user}",
+				desc: "Menciona o membro punido"
+			},
+			{
+				tok: "{case.user_name}",
+				desc: "Nome do membro punido"
+			},
+			{
+				tok: "{case.user_id}",
+				desc: "ID do membro punido"
+			},
+			{
+				tok: "{case.user_avatar}",
+				desc: "Avatar do membro punido"
+			},
+			{
+				tok: "{case.appeal}",
+				desc: "O link onde o membro pode apelar esta punição, vazio se o servidor está com as apelações desligadas ou se essa punição não pode ser apelada"
+			}
+		]
+	},
+	{
+		id: "identity",
+		label: "Vanity e Server Tag",
+		availability: "identity",
+		vars: [
+			{
+				tok: "{rule.name}",
+				desc: "Nome da regra que coincidiu"
+			},
+			{
+				tok: "{rule.source}",
+				desc: "Que tipo de regra é: vanity ou guildtag"
+			},
+			{
+				tok: "{rule.value}",
+				desc: "O texto ou o ID de servidor que a regra procura"
+			},
+			{
+				tok: "{rule.condition}",
+				desc: "A condição da regra"
+			},
+			{
+				tok: "{rule.reason}",
+				desc: "Por que a regra coincidiu"
+			},
+			{
+				tok: "{rule.role}",
+				desc: "Menciona o cargo da regra"
+			},
+			{
+				tok: "{rule.role_id}",
+				desc: "ID do cargo da regra"
+			},
+			{
+				tok: "{rule.action}",
+				desc: "add_role ou remove_role"
+			},
+			{
+				tok: "{rule.action_text}",
+				desc: "add ou remove"
+			},
+			{
+				tok: "{rule.result}",
+				desc: "completed ou error"
+			},
+			{
+				tok: "{rule.error}",
+				desc: "O erro, quando o cargo não pôde ser alterado"
+			},
+			{
+				tok: "{rule.matched_value}",
+				desc: "O que o membro tem que coincidiu"
+			},
+			{
+				tok: "{rule.event}",
+				desc: "Nome do evento, por exemplo vanity_add"
+			},
+			{
+				tok: "{rule.event_title}",
+				desc: "Título do evento"
+			},
+			{
+				tok: "{vanity.rule}",
+				desc: "Nome da regra de Vanity"
+			},
+			{
+				tok: "{vanity.word}",
+				desc: "O texto que a regra de Vanity procura"
+			},
+			{
+				tok: "{vanity.source}",
+				desc: "Onde procura: custom_status, username..."
+			},
+			{
+				tok: "{vanity.value}",
+				desc: "O que o membro definiu, como o status personalizado"
+			},
+			{
+				tok: "{vanity.role}",
+				desc: "Menciona o cargo da regra de Vanity"
+			},
+			{
+				tok: "{tag}",
+				desc: "O texto do Server Tag do membro"
+			},
+			{
+				tok: "{tag.rule}",
+				desc: "Nome da regra de Server Tag"
+			},
+			{
+				tok: "{tag.condition}",
+				desc: "Condição da regra de Server Tag"
+			},
+			{
+				tok: "{tag.rule_value}",
+				desc: "O valor que a regra de Server Tag compara"
+			},
+			{
+				tok: "{tag.guild_id}",
+				desc: "ID do servidor ao qual a tag pertence"
+			},
+			{
+				tok: "{tag.enabled}",
+				desc: "true ou false: se o membro exibe a tag"
+			},
+			{
+				tok: "{tag.badge}",
+				desc: "Insígnia da tag"
+			},
+			{
+				tok: "{tag.role}",
+				desc: "Menciona o cargo da regra de Server Tag"
+			}
+		]
+	},
+	{
+		id: "suggestions",
+		label: "Sugestões",
+		availability: "suggestions",
+		vars: [
+			{
+				tok: "{suggestion.id}",
+				desc: "O ID da sugestão (como si2tr-foytm)"
+			},
+			{
+				tok: "{suggestion.number}",
+				desc: "O número da sugestão neste servidor"
+			},
+			{
+				tok: "{suggestion.content}",
+				desc: "O texto da sugestão"
+			},
+			{
+				tok: "{suggestion.status}",
+				desc: "pending, approved, denied, considering ou implemented"
+			},
+			{
+				tok: "{suggestion.status_label}",
+				desc: "O status por extenso (Aprovada, Recusada...), vazio enquanto está pendente"
+			},
+			{
+				tok: "{suggestion.reason}",
+				desc: "O motivo que a equipe deu ao responder"
+			},
+			{
+				tok: "{suggestion.staff}",
+				desc: "Menciona o membro da equipe que respondeu"
+			},
+			{
+				tok: "{suggestion.staff_name}",
+				desc: "Nome do membro da equipe que respondeu"
+			},
+			{
+				tok: "{suggestion.author}",
+				desc: "Menciona quem fez a sugestão"
+			},
+			{
+				tok: "{suggestion.author_name}",
+				desc: "Nome de quem a fez"
+			},
+			{
+				tok: "{suggestion.author_id}",
+				desc: "ID de quem a fez"
+			},
+			{
+				tok: "{suggestion.author_avatar}",
+				desc: "Avatar de quem a fez"
+			},
+			{
+				tok: "{suggestion.up}",
+				desc: "Votos a favor"
+			},
+			{
+				tok: "{suggestion.down}",
+				desc: "Votos contra"
+			},
+			{
+				tok: "{suggestion.up_emoji}",
+				desc: "O emoji dos votos a favor"
+			},
+			{
+				tok: "{suggestion.down_emoji}",
+				desc: "O emoji dos votos contra"
+			},
+			{
+				tok: "{suggestion.score}",
+				desc: "Votos a favor menos votos contra"
+			},
+			{
+				tok: "{suggestion.percent}",
+				desc: "Porcentagem dos votos que são a favor (0 a 100)"
+			},
+			{
+				tok: "{suggestion.image}",
+				desc: "Link da imagem da sugestão; vazio se não houver"
+			},
+			{
+				tok: "{suggestion.link}",
+				desc: "Link para a mensagem da sugestão"
+			},
+			{
+				tok: "{suggestion.channel}",
+				desc: "Menciona o canal da sugestão"
+			},
+			{
+				tok: "{suggestion.thread}",
+				desc: "Menciona o tópico da sugestão; vazio se não houver"
+			},
+			{
+				tok: "{suggestion.created}",
+				desc: "Quando foi feita, como tempo relativo (há 5 dias)"
+			},
+			{
+				tok: "{suggestion.created_time}",
+				desc: "Quando foi feita, como data e hora"
+			}
+		]
+	},
+	{
+		id: "confessions",
+		label: "Confissões",
+		availability: "confessions",
+		vars: [
+			{
+				tok: "{confession.id}",
+				desc: "O ID da confissão (como si2tr-foytm)"
+			},
+			{
+				tok: "{confession.number}",
+				desc: "O número da confissão neste servidor"
+			},
+			{
+				tok: "{confession.content}",
+				desc: "O texto da confissão"
+			},
+			{
+				tok: "{confession.image}",
+				desc: "Link da imagem da confissão; vazio se não houver"
+			},
+			{
+				tok: "{confession.link}",
+				desc: "Link para a mensagem da confissão"
+			},
+			{
+				tok: "{confession.channel}",
+				desc: "Menciona o canal da confissão"
+			},
+			{
+				tok: "{confession.created}",
+				desc: "Quando foi feita, como tempo relativo (há 5 dias)"
+			},
+			{
+				tok: "{confession.created_time}",
+				desc: "Quando foi feita, como data e hora"
+			}
+		]
+	},
+	{
+		id: "starboard",
+		label: "Starboard",
+		availability: "starboard",
+		vars: [
+			{
+				tok: "{star.count}",
+				desc: "Número de estrelas"
+			},
+			{
+				tok: "{star.emoji}",
+				desc: "O emoji do starboard"
+			},
+			{
+				tok: "{star.channel}",
+				desc: "Menciona o canal da mensagem"
+			},
+			{
+				tok: "{star.channel_name}",
+				desc: "Nome desse canal"
+			},
+			{
+				tok: "{star.link}",
+				desc: "Link para a mensagem destacada"
+			},
+			{
+				tok: "{star.message_id}",
+				desc: "ID da mensagem destacada"
+			},
+			{
+				tok: "{star.author}",
+				desc: "Menciona o autor da mensagem"
+			},
+			{
+				tok: "{star.author_name}",
+				desc: "Nome do autor"
+			},
+			{
+				tok: "{star.author_id}",
+				desc: "ID do autor"
+			},
+			{
+				tok: "{star.author_avatar}",
+				desc: "Avatar do autor"
+			},
+			{
+				tok: "{star.content}",
+				desc: "Texto da mensagem"
+			},
+			{
+				tok: "{star.image}",
+				desc: "Link da primeira imagem da mensagem; vazio se não houver"
+			},
+			{
+				tok: "{star.attachments}",
+				desc: "Links para os outros arquivos da mensagem"
+			},
+			{
+				tok: "{star.time}",
+				desc: "Quando a mensagem foi enviada"
+			}
+		]
+	},
+	{
+		id: "monkeyboard",
+		label: "Monkeyboard",
+		availability: "monkeyboard",
+		vars: [
+			{
+				tok: "{monkey.count}",
+				desc: "Número de macacos"
+			},
+			{
+				tok: "{monkey.emoji}",
+				desc: "O emoji do monkeyboard"
+			},
+			{
+				tok: "{monkey.channel}",
+				desc: "Menciona o canal da mensagem"
+			},
+			{
+				tok: "{monkey.channel_name}",
+				desc: "Nome desse canal"
+			},
+			{
+				tok: "{monkey.link}",
+				desc: "Link para a mensagem com macacos"
+			},
+			{
+				tok: "{monkey.message_id}",
+				desc: "ID da mensagem com macacos"
+			},
+			{
+				tok: "{monkey.author}",
+				desc: "Menciona o autor da mensagem"
+			},
+			{
+				tok: "{monkey.author_name}",
+				desc: "Nome do autor"
+			},
+			{
+				tok: "{monkey.author_id}",
+				desc: "ID do autor"
+			},
+			{
+				tok: "{monkey.author_avatar}",
+				desc: "Avatar do autor"
+			},
+			{
+				tok: "{monkey.content}",
+				desc: "Texto da mensagem"
+			},
+			{
+				tok: "{monkey.image}",
+				desc: "Link da primeira imagem da mensagem; vazio se não houver"
+			},
+			{
+				tok: "{monkey.attachments}",
+				desc: "Links para os outros arquivos da mensagem"
+			},
+			{
+				tok: "{monkey.time}",
+				desc: "Quando a mensagem foi enviada"
+			}
+		]
+	},
+	{
+		id: "clownboard",
+		label: "Clownboard",
+		availability: "clownboard",
+		vars: [
+			{
+				tok: "{clown.count}",
+				desc: "Número de palhaços"
+			},
+			{
+				tok: "{clown.emoji}",
+				desc: "O emoji do clownboard"
+			},
+			{
+				tok: "{clown.channel}",
+				desc: "Menciona o canal da mensagem"
+			},
+			{
+				tok: "{clown.channel_name}",
+				desc: "Nome desse canal"
+			},
+			{
+				tok: "{clown.link}",
+				desc: "Link para a mensagem com palhaços"
+			},
+			{
+				tok: "{clown.message_id}",
+				desc: "ID da mensagem com palhaços"
+			},
+			{
+				tok: "{clown.author}",
+				desc: "Menciona o autor da mensagem"
+			},
+			{
+				tok: "{clown.author_name}",
+				desc: "Nome do autor"
+			},
+			{
+				tok: "{clown.author_id}",
+				desc: "ID do autor"
+			},
+			{
+				tok: "{clown.author_avatar}",
+				desc: "Avatar do autor"
+			},
+			{
+				tok: "{clown.content}",
+				desc: "Texto da mensagem"
+			},
+			{
+				tok: "{clown.image}",
+				desc: "Link da primeira imagem da mensagem; vazio se não houver"
+			},
+			{
+				tok: "{clown.attachments}",
+				desc: "Links para os outros arquivos da mensagem"
+			},
+			{
+				tok: "{clown.time}",
+				desc: "Quando a mensagem foi enviada"
+			}
+		]
+	},
+	{
+		id: "verification",
+		label: "Verificação",
+		availability: "verification",
+		vars: [
+			{
+				tok: "{verify.link}",
+				desc: "Só na mensagem de verificação: o link que o membro abre para se verificar"
+			}
+		]
+	},
+	{
+		id: "honeypot",
+		label: "Honeypot",
+		availability: "honeypot",
+		vars: [
+			{
+				tok: "{honeypot.action}",
+				desc: "O que acontece com quem posta ali, como um softban"
+			},
+			{
+				tok: "{honeypot.count}",
+				desc: "Membros pegos até agora"
+			},
+			{
+				tok: "{honeypot.channel}",
+				desc: "Menção do canal isca"
+			}
+		]
+	},
+	{
+		id: "counter",
+		label: "Metas de contadores",
+		availability: "counter",
+		vars: [
+			{
+				tok: "{counter.count}",
+				desc: "Membros do servidor agora"
+			},
+			{
+				tok: "{counter.goal}",
+				desc: "O número de membros alcançado (a meta, ou o múltiplo de cada N)"
+			},
+			{
+				tok: "{counter.server}",
+				desc: "Nome do servidor"
+			}
+		]
+	},
+	{
+		id: "request",
+		label: "Pedidos",
+		availability: "request",
+		vars: [
+			{
+				tok: "{request.number}",
+				desc: "Número do pedido"
+			},
+			{
+				tok: "{request.text}",
+				desc: "O que foi pedido"
+			},
+			{
+				tok: "{request.link}",
+				desc: "Link para o cartão do pedido"
+			},
+			{
+				tok: "{request.channel}",
+				desc: "Canal onde a equipe vê o pedido"
+			},
+			{
+				tok: "{request.status}",
+				desc: "Estado do pedido"
+			}
+		]
+	},
+	{
+		id: "form",
+		label: "Formulários",
+		availability: "form",
+		vars: [
+			{
+				tok: "{form.name}",
+				desc: "Nome curto do formulário"
+			},
+			{
+				tok: "{form.title}",
+				desc: "Título do formulário"
+			},
+			{
+				tok: "{form.number}",
+				desc: "Número da resposta"
+			},
+			{
+				tok: "{form.status}",
+				desc: "Estado da resposta"
+			},
+			{
+				tok: "{form.reason}",
+				desc: "Motivo que quem revisou deu"
+			}
+		]
+	},
+	{
+		id: "poll",
+		label: "Enquetes",
+		availability: "poll",
+		vars: [
+			{
+				tok: "{poll.question}",
+				desc: "A pergunta"
+			},
+			{
+				tok: "{poll.options}",
+				desc: "As opções, uma por linha, com suas letras"
+			},
+			{
+				tok: "{poll.results}",
+				desc: "As opções com uma barra, a porcentagem e os votos de cada uma"
+			},
+			{
+				tok: "{poll.votes}",
+				desc: "Número de pessoas que votaram"
+			},
+			{
+				tok: "{poll.votes_text}",
+				desc: "Os votos como texto, como \"3 votos\""
+			},
+			{
+				tok: "{poll.type}",
+				desc: "Escolha única ou múltipla escolha"
+			},
+			{
+				tok: "{poll.status}",
+				desc: "Aberta ou Encerrada"
+			},
+			{
+				tok: "{poll.ends}",
+				desc: "Quando encerra, como timestamp relativo do Discord (vazio se nunca encerra)"
+			},
+			{
+				tok: "{poll.image}",
+				desc: "A imagem da enquete, se tiver uma"
+			},
+			{
+				tok: "{poll.host}",
+				desc: "Menciona quem iniciou a enquete"
+			},
+			{
+				tok: "{poll.winner}",
+				desc: "A opção com mais votos (vazio em caso de empate ou sem votos)"
+			}
+		]
+	},
+	{
+		id: "partner",
+		label: "Parcerias",
+		availability: "partner",
+		vars: [
+			{
+				tok: "{partner.name}",
+				desc: "Nome do servidor parceiro"
+			},
+			{
+				tok: "{partner.id}",
+				desc: "ID do servidor parceiro"
+			},
+			{
+				tok: "{partner.members}",
+				desc: "Membros do servidor parceiro"
+			},
+			{
+				tok: "{partner.invite}",
+				desc: "O convite que foi postado"
+			},
+			{
+				tok: "{partner.manager}",
+				desc: "Menção do Partner Manager"
+			},
+			{
+				tok: "{partner.manager_name}",
+				desc: "Nome do Partner Manager"
+			},
+			{
+				tok: "{partner.count_day}",
+				desc: "Parcerias do manager hoje"
+			},
+			{
+				tok: "{partner.count_week}",
+				desc: "Parcerias do manager nesta semana"
+			},
+			{
+				tok: "{partner.count_total}",
+				desc: "Parcerias do manager no total"
+			},
+			{
+				tok: "{partner.min_members}",
+				desc: "Membros que um servidor parceiro precisa ter"
+			},
+			{
+				tok: "{partner.min_age_days}",
+				desc: "Dias de existência que um servidor parceiro precisa ter"
+			},
+			{
+				tok: "{partner.cooldown_days}",
+				desc: "Dias até o mesmo servidor poder fazer parceria de novo"
+			},
+			{
+				tok: "{partner.cooldown_ends}",
+				desc: "Quando termina a espera com esse servidor"
+			},
+			{
+				tok: "{partner.cooldown}",
+				desc: "A espera como texto, como 3d 4h"
+			},
+			{
+				tok: "{partner.rank_week}",
+				desc: "Posição do manager nesta semana"
+			},
+			{
+				tok: "{partner.rank_total}",
+				desc: "Posição do manager no total"
+			},
+			{
+				tok: "{partner.top_week}",
+				desc: "Menção do melhor manager da semana"
+			},
+			{
+				tok: "{partner.top_week_count}",
+				desc: "Parcerias do melhor manager da semana"
+			},
+			{
+				tok: "{partner.top_total}",
+				desc: "Menção do melhor manager no total"
+			},
+			{
+				tok: "{partner.top_total_count}",
+				desc: "Parcerias do melhor manager no total"
+			},
+			{
+				tok: "{partner.top_list_day}",
+				desc: "Os cinco melhores managers de hoje, um por linha (posição, menção, parcerias)"
+			},
+			{
+				tok: "{partner.top_list_week}",
+				desc: "Os cinco melhores managers da semana, um por linha (posição, menção, parcerias)"
+			},
+			{
+				tok: "{partner.top_list_total}",
+				desc: "Os cinco melhores managers no total, um por linha (posição, menção, parcerias)"
+			},
+			{
+				tok: "{partner.server_day}",
+				desc: "Parcerias do servidor inteiro hoje"
+			},
+			{
+				tok: "{partner.server_week}",
+				desc: "Parcerias do servidor inteiro nesta semana"
+			},
+			{
+				tok: "{partner.server_total}",
+				desc: "Parcerias do servidor inteiro no total"
+			}
+		]
+	},
+	{
+		id: "rollout",
+		label: "Rollouts",
+		availability: "rollout",
+		vars: [
+			{
+				tok: "{rollout.name}",
+				desc: "Nome do experimento"
+			},
+			{
+				tok: "{rollout.id}",
+				desc: "ID do experimento"
+			},
+			{
+				tok: "{rollout.kind}",
+				desc: "Experimento de usuários, Experimento de servidores..."
+			},
+			{
+				tok: "{rollout.type}",
+				desc: "Novo experimento, Rollout aumentado, Rollout reduzido ou Status alterado"
+			},
+			{
+				tok: "{rollout.status}",
+				desc: "Em implantação, Totalmente implantado, Teste A/B..."
+			},
+			{
+				tok: "{rollout.percent}",
+				desc: "Parcela do Discord que tem agora, como 50%"
+			},
+			{
+				tok: "{rollout.from}",
+				desc: "A parcela antes da mudança; vazio se for novo"
+			},
+			{
+				tok: "{rollout.to}",
+				desc: "A parcela agora"
+			},
+			{
+				tok: "{rollout.change}",
+				desc: "A mudança, como +12.5%; vazio se for novo"
+			},
+			{
+				tok: "{rollout.badge}",
+				desc: "O texto curto do botão do cartão, como +12.5% (50%)"
+			},
+			{
+				tok: "{rollout.kind_icon}",
+				desc: "O ícone do Petto para o tipo de experimento (uma pessoa para usuários, a engrenagem para servidores...)"
+			},
+			{
+				tok: "{rollout.event_icon}",
+				desc: "O ícone do Petto para o evento (novo, mais, menos ou recarregar)"
+			},
+			{
+				tok: "{rollout.variants}",
+				desc: "Uma linha por variante com a sua mudança"
+			},
+			{
+				tok: "{rollout.ranges}",
+				desc: "Os intervalos de cada variante"
+			},
+			{
+				tok: "{rollout.platforms}",
+				desc: "Onde se aplica: android, desktop..."
+			},
+			{
+				tok: "{rollout.filters}",
+				desc: "Os filtros do experimento, se houver"
+			},
+			{
+				tok: "{rollout.source}",
+				desc: "A lista de onde vêm os dados"
+			}
+		]
+	},
+	{
+		id: "quest",
+		label: "Missões",
+		availability: "quest",
+		vars: [
+			{
+				tok: "{quest.name}",
+				desc: "Nome da missão"
+			},
+			{
+				tok: "{quest.game}",
+				desc: "O jogo ou a marca"
+			},
+			{
+				tok: "{quest.publisher}",
+				desc: "Quem a publicou"
+			},
+			{
+				tok: "{quest.id}",
+				desc: "ID da missão"
+			},
+			{
+				tok: "{quest.url}",
+				desc: "Link para aceitar a missão no Discord"
+			},
+			{
+				tok: "{quest.link}",
+				desc: "Link para a página do jogo ou da marca; vazio se não houver"
+			},
+			{
+				tok: "{quest.image}",
+				desc: "Imagem de capa da missão; vazio se não houver"
+			},
+			{
+				tok: "{quest.logo}",
+				desc: "Logo do jogo; vazio se não houver"
+			},
+			{
+				tok: "{quest.color}",
+				desc: "Cor principal da missão em hex"
+			},
+			{
+				tok: "{quest.reward}",
+				desc: "As recompensas, com o tipo de cada uma"
+			},
+			{
+				tok: "{quest.reward_type}",
+				desc: "Tipo da primeira recompensa: Orbs, Colecionável, Código..."
+			},
+			{
+				tok: "{quest.reward_amount}",
+				desc: "Número de Orbs; vazio se a recompensa não for Orbs"
+			},
+			{
+				tok: "{quest.reward_image}",
+				desc: "Imagem da primeira recompensa; vazio se não houver"
+			},
+			{
+				tok: "{quest.task}",
+				desc: "A primeira tarefa, como Assistir a um vídeo"
+			},
+			{
+				tok: "{quest.task_minutes}",
+				desc: "Minutos que a primeira tarefa leva"
+			},
+			{
+				tok: "{quest.tasks}",
+				desc: "Todas as tarefas com o tempo de cada uma"
+			},
+			{
+				tok: "{quest.platforms}",
+				desc: "Onde pode ser feita: Desktop, Mobile, Xbox..."
+			},
+			{
+				tok: "{quest.starts}",
+				desc: "Quando começa, como tempo relativo"
+			},
+			{
+				tok: "{quest.starts_at}",
+				desc: "Quando começa, como data e hora"
+			},
+			{
+				tok: "{quest.expires}",
+				desc: "Quando termina, como tempo relativo"
+			},
+			{
+				tok: "{quest.expires_at}",
+				desc: "Quando termina, como data e hora"
+			},
+			{
+				tok: "{quest.limits}",
+				desc: "Limites de região e idade, ou Nenhum"
+			},
+			{
+				tok: "{quest.age_gate}",
+				desc: "18+ quando tem limite de idade; caso contrário, vazio"
+			},
+			{
+				tok: "{quest.status}",
+				desc: "Nova missão, ou Termina em breve"
+			},
+			{
+				tok: "{quest.source}",
+				desc: "discordquest.com"
+			},
+			{
+				tok: "{quest.starts.relative}",
+				desc: "Quando começa, como relativa, como \"há 2 dias\" ou \"em 5 horas\" (vai se atualizando)"
+			},
+			{
+				tok: "{quest.starts.short_time}",
+				desc: "Quando começa, como hora, como 17:00"
+			},
+			{
+				tok: "{quest.starts.long_time}",
+				desc: "Quando começa, como hora com segundos, como 17:00:30"
+			},
+			{
+				tok: "{quest.starts.short_date}",
+				desc: "Quando começa, como data curta, como 01/10/2026"
+			},
+			{
+				tok: "{quest.starts.long_date}",
+				desc: "Quando começa, como data longa, como 1 de outubro de 2026"
+			},
+			{
+				tok: "{quest.starts.full}",
+				desc: "Quando começa, como data e hora, como 1 de outubro de 2026 17:00"
+			},
+			{
+				tok: "{quest.starts.full_long}",
+				desc: "Quando começa, como dia da semana, data e hora"
+			},
+			{
+				tok: "{quest.starts.short_datetime}",
+				desc: "Quando começa, como data curta e hora curta"
+			},
+			{
+				tok: "{quest.starts.medium_datetime}",
+				desc: "Quando começa, como data curta e hora com segundos"
+			},
+			{
+				tok: "{quest.starts.unix}",
+				desc: "Quando começa, como o tempo unix em segundos, para o seu próprio estilo: <t:{quest.starts.unix}:R>"
+			},
+			{
+				tok: "{quest.expires.relative}",
+				desc: "Quando termina, como relativa, como \"há 2 dias\" ou \"em 5 horas\" (vai se atualizando)"
+			},
+			{
+				tok: "{quest.expires.short_time}",
+				desc: "Quando termina, como hora, como 17:00"
+			},
+			{
+				tok: "{quest.expires.long_time}",
+				desc: "Quando termina, como hora com segundos, como 17:00:30"
+			},
+			{
+				tok: "{quest.expires.short_date}",
+				desc: "Quando termina, como data curta, como 01/10/2026"
+			},
+			{
+				tok: "{quest.expires.long_date}",
+				desc: "Quando termina, como data longa, como 1 de outubro de 2026"
+			},
+			{
+				tok: "{quest.expires.full}",
+				desc: "Quando termina, como data e hora, como 1 de outubro de 2026 17:00"
+			},
+			{
+				tok: "{quest.expires.full_long}",
+				desc: "Quando termina, como dia da semana, data e hora"
+			},
+			{
+				tok: "{quest.expires.short_datetime}",
+				desc: "Quando termina, como data curta e hora curta"
+			},
+			{
+				tok: "{quest.expires.medium_datetime}",
+				desc: "Quando termina, como data curta e hora com segundos"
+			},
+			{
+				tok: "{quest.expires.unix}",
+				desc: "Quando termina, como o tempo unix em segundos, para o seu próprio estilo: <t:{quest.starts.unix}:R>"
+			},
+			{
+				tok: "{quest.starts_ago}",
+				desc: "Quando começou em palavras, como há 2 dias, em 3 horas ou agora (funciona em títulos e rodapés)"
+			},
+			{
+				tok: "{quest.expires_in}",
+				desc: "Quando termina em palavras, como em 5 dias, ou terminou há 1 dia (funciona em títulos e rodapés)"
+			},
+			{
+				tok: "{quest.starts_date}",
+				desc: "Data de início em texto, como 1 de out. de 2026 (GMT-5)"
+			},
+			{
+				tok: "{quest.expires_date}",
+				desc: "Data de fim em texto, como 8 de out. de 2026 (GMT-5)"
+			},
+			{
+				tok: "{quest.starts_datetime}",
+				desc: "Data e hora de início em texto, em GMT-5 (Colômbia)"
+			},
+			{
+				tok: "{quest.expires_datetime}",
+				desc: "Data e hora de fim em texto, em GMT-5 (Colômbia)"
+			},
+			{
+				tok: "{quest.duration}",
+				desc: "Quanto a missão dura, como 7 dias"
+			},
+			{
+				tok: "{quest.time_left}",
+				desc: "Quanto falta, como 5 dias 3 horas, ou Encerrada"
+			},
+			{
+				tok: "{quest.days_left}",
+				desc: "Dias inteiros que faltam, como número"
+			},
+			{
+				tok: "{quest.hours_left}",
+				desc: "Horas inteiras que faltam, como número"
+			},
+			{
+				tok: "{quest.reward_name}",
+				desc: "Nome da primeira recompensa"
+			},
+			{
+				tok: "{quest.rewards_count}",
+				desc: "Quantas recompensas ela tem"
+			},
+			{
+				tok: "{quest.reward_nitro_amount}",
+				desc: "Orbes que um membro com Nitro recebe, vazio se não houver"
+			},
+			{
+				tok: "{quest.reward_expires}",
+				desc: "Quando vence a primeira recompensa que vence, como tempo relativo, vazio se não houver"
+			},
+			{
+				tok: "{quest.task_type}",
+				desc: "Tipo da primeira tarefa: video, play, stream ou activity"
+			},
+			{
+				tok: "{quest.task_seconds}",
+				desc: "Segundos que a primeira tarefa leva"
+			},
+			{
+				tok: "{quest.task_time}",
+				desc: "Tempo da primeira tarefa, como 2 min"
+			},
+			{
+				tok: "{quest.countries}",
+				desc: "Códigos dos únicos países onde ela está, vazio se não houver"
+			},
+			{
+				tok: "{quest.excluded_countries}",
+				desc: "Códigos dos países onde ela não está disponível, vazio se não houver"
+			},
+			{
+				tok: "{quest.orbs.name}",
+				desc: "A recompensa orbs da missão, nome. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.orbs.type}",
+				desc: "A recompensa orbs da missão, tipo (Moeda virtual, Colecionável, Código...). Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.orbs.image}",
+				desc: "A recompensa orbs da missão, imagem, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.orbs.amount}",
+				desc: "A recompensa orbs da missão, quantidade de Orbes, vazio se não forem Orbes. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.orbs.nitro_amount}",
+				desc: "A recompensa orbs da missão, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.orbs.expires}",
+				desc: "A recompensa orbs da missão, quando vence, como tempo relativo, vazio se nunca. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.decoration.name}",
+				desc: "A recompensa decoration da missão, nome. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.decoration.type}",
+				desc: "A recompensa decoration da missão, tipo (Moeda virtual, Colecionável, Código...). Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.decoration.image}",
+				desc: "A recompensa decoration da missão, imagem, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.decoration.amount}",
+				desc: "A recompensa decoration da missão, quantidade de Orbes, vazio se não forem Orbes. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.decoration.nitro_amount}",
+				desc: "A recompensa decoration da missão, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.decoration.expires}",
+				desc: "A recompensa decoration da missão, quando vence, como tempo relativo, vazio se nunca. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.code.name}",
+				desc: "A recompensa code da missão, nome. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.code.type}",
+				desc: "A recompensa code da missão, tipo (Moeda virtual, Colecionável, Código...). Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.code.image}",
+				desc: "A recompensa code da missão, imagem, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.code.amount}",
+				desc: "A recompensa code da missão, quantidade de Orbes, vazio se não forem Orbes. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.code.nitro_amount}",
+				desc: "A recompensa code da missão, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.code.expires}",
+				desc: "A recompensa code da missão, quando vence, como tempo relativo, vazio se nunca. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.ingame.name}",
+				desc: "A recompensa ingame da missão, nome. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.ingame.type}",
+				desc: "A recompensa ingame da missão, tipo (Moeda virtual, Colecionável, Código...). Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.ingame.image}",
+				desc: "A recompensa ingame da missão, imagem, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.ingame.amount}",
+				desc: "A recompensa ingame da missão, quantidade de Orbes, vazio se não forem Orbes. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.ingame.nitro_amount}",
+				desc: "A recompensa ingame da missão, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.ingame.expires}",
+				desc: "A recompensa ingame da missão, quando vence, como tempo relativo, vazio se nunca. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.nitro.name}",
+				desc: "A recompensa nitro da missão, nome. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.nitro.type}",
+				desc: "A recompensa nitro da missão, tipo (Moeda virtual, Colecionável, Código...). Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.nitro.image}",
+				desc: "A recompensa nitro da missão, imagem, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.nitro.amount}",
+				desc: "A recompensa nitro da missão, quantidade de Orbes, vazio se não forem Orbes. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.nitro.nitro_amount}",
+				desc: "A recompensa nitro da missão, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.nitro.expires}",
+				desc: "A recompensa nitro da missão, quando vence, como tempo relativo, vazio se nunca. Vazio quando a missão não tem"
+			},
+			{
+				tok: "{quest.reward1.name}",
+				desc: "Recompensa número 1, nome. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward1.type}",
+				desc: "Recompensa número 1, tipo (Moeda virtual, Colecionável, Código...). Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward1.image}",
+				desc: "Recompensa número 1, imagem, vazio se não houver. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward1.amount}",
+				desc: "Recompensa número 1, quantidade de Orbes, vazio se não forem Orbes. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward1.nitro_amount}",
+				desc: "Recompensa número 1, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward1.expires}",
+				desc: "Recompensa número 1, quando vence, como tempo relativo, vazio se nunca. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward2.name}",
+				desc: "Recompensa número 2, nome. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward2.type}",
+				desc: "Recompensa número 2, tipo (Moeda virtual, Colecionável, Código...). Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward2.image}",
+				desc: "Recompensa número 2, imagem, vazio se não houver. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward2.amount}",
+				desc: "Recompensa número 2, quantidade de Orbes, vazio se não forem Orbes. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward2.nitro_amount}",
+				desc: "Recompensa número 2, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward2.expires}",
+				desc: "Recompensa número 2, quando vence, como tempo relativo, vazio se nunca. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward3.name}",
+				desc: "Recompensa número 3, nome. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward3.type}",
+				desc: "Recompensa número 3, tipo (Moeda virtual, Colecionável, Código...). Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward3.image}",
+				desc: "Recompensa número 3, imagem, vazio se não houver. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward3.amount}",
+				desc: "Recompensa número 3, quantidade de Orbes, vazio se não forem Orbes. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward3.nitro_amount}",
+				desc: "Recompensa número 3, Orbes que um membro com Nitro recebe, vazio se não houver. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward3.expires}",
+				desc: "Recompensa número 3, quando vence, como tempo relativo, vazio se nunca. Vazio quando não existe"
+			},
+			{
+				tok: "{quest.reward_types}",
+				desc: "Os tipos de recompensa da missão, como Moeda virtual, Colecionável"
+			}
+		]
+	},
+	{
+		id: "bump",
+		label: "Bump",
+		availability: "bump",
+		vars: [
+			{
+				tok: "{user.mention}",
+				desc: "Só nas mensagens de bump: menciona quem deu o bump"
+			},
+			{
+				tok: "{nextBump}",
+				desc: "Só nas mensagens de bump: tempo relativo até o próximo bump ser permitido"
+			}
+		]
+	},
+	{
+		id: "invites",
+		label: "Convites",
+		availability: "always",
+		vars: [
+			{
+				tok: "{inviter}",
+				desc: "Mensagens de boas-vindas: menciona quem convidou o membro, ou Desconhecido"
+			},
+			{
+				tok: "{inviter.name}",
+				desc: "Mensagens de boas-vindas: o nome de quem convidou o membro"
+			},
+			{
+				tok: "{inviter.id}",
+				desc: "Mensagens de boas-vindas: o ID de quem convidou o membro"
+			},
+			{
+				tok: "{inviter.invites}",
+				desc: "Mensagens de boas-vindas: quantos convites essa pessoa tem agora"
+			},
+			{
+				tok: "{invite.code}",
+				desc: "Mensagens de boas-vindas: o código do convite que foi usado"
+			}
+		]
+	},
+	{
+		id: "date",
+		label: "Data",
+		availability: "always",
+		vars: [
+			{
+				tok: "{date}",
+				desc: "Data de hoje, GMT-5 (Colômbia)"
+			},
+			{
+				tok: "{date.now}",
+				desc: "Data de hoje, GMT-5 (Colômbia)"
+			},
+			{
+				tok: "{date.utc_now}",
+				desc: "Data e hora atuais, UTC"
+			},
+			{
+				tok: "{date.utc_timestamp}",
+				desc: "Timestamp Unix atual"
+			},
+			{
+				tok: "{timestamp}",
+				desc: "Agora, como timestamp do Discord no fuso horário de cada leitor"
+			},
+			{
+				tok: "{timestamp.unix}",
+				desc: "Agora como número Unix simples (para os seus próprios timestamps <t:…>)"
+			},
+			{
+				tok: "{timestamp.short_time}",
+				desc: "Agora: hora e minutos (16:20)"
+			},
+			{
+				tok: "{timestamp.long_time}",
+				desc: "Agora: hora, minutos e segundos (16:20:30)"
+			},
+			{
+				tok: "{timestamp.short_date}",
+				desc: "Hoje: data curta (20/04/2026)"
+			},
+			{
+				tok: "{timestamp.long_date}",
+				desc: "Hoje: data longa (20 de abril de 2026)"
+			},
+			{
+				tok: "{timestamp.full}",
+				desc: "Agora: data e hora (20 de abril de 2026 16:20)"
+			},
+			{
+				tok: "{timestamp.full_long}",
+				desc: "Agora: dia da semana, data e hora"
+			},
+			{
+				tok: "{timestamp.short_datetime}",
+				desc: "Agora: data curta e hora curta (20/04/2026, 16:20)"
+			},
+			{
+				tok: "{timestamp.medium_datetime}",
+				desc: "Agora: data curta e hora com segundos (20/04/2026, 16:20:30)"
+			},
+			{
+				tok: "{timestamp.relative}",
+				desc: "Agora, como \"agora mesmo\", que continua contando"
+			},
+			{
+				tok: "{timestamp:in 2h|R}",
+				desc: "Qualquer momento escrito em palavras: \"in 2h\", \"3d 4h\", \"tomorrow 8pm\", \"2026-10-12 18:00\". Depois de | vem o estilo: short_time, long_time, short_date, long_date, full, full_long, short_datetime, medium_datetime ou relative"
+			}
+		]
+	},
+	{
+		id: "functions",
+		label: "Funções",
+		availability: "always",
+		vars: [
+			{
+				tok: "{choose:a|b|c}",
+				desc: "Escolhe uma opção aleatória a cada vez"
+			},
+			{
+				tok: "{range:1-100}",
+				desc: "Um número inteiro aleatório nesse intervalo"
+			},
+			{
+				tok: "{newline}",
+				desc: "Força uma quebra de linha"
+			},
+			{
+				tok: "{separator}",
+				desc: "Uma linha divisória decorativa"
+			}
+		]
+	},
+	{
+		id: "actions",
+		label: "Ações",
+		availability: "always",
+		vars: [
+			{
+				tok: "{reactreply:emoji}",
+				desc: "Reage à mensagem enviada com este emoji. Se a resposta tiver só este indicador, reage à mensagem que a acionou."
+			}
+		]
+	}
+]
+};
+
+export { variables as v };

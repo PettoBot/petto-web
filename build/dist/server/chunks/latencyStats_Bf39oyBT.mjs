@@ -1,0 +1,96 @@
+const REDIS_KEY = "petto:web:latency";
+const SAVE_EVERY_MS = 6e4;
+const KEEP_DAYS_S = 7 * 24 * 3600;
+const PARTS = ["auth", "db", "discord", "bot", "layout", "render"];
+function store() {
+  return globalThis.__pettoLatency ?? null;
+}
+let started = false;
+let savedTotal = -1;
+function startLatencyKeeping() {
+  if (started || false) return;
+  started = true;
+  const kept = store();
+  if (!kept) return;
+  const redis = import('./redisClient_LTb0mKe8.mjs').catch(() => null) ;
+  void redis.then(async (module) => {
+    if (!module?.redisConfigured()) return;
+    await new Promise((resolve) => setTimeout(resolve, 2e3));
+    const raw = await module.redisRun((client) => client.get(REDIS_KEY), null);
+    if (raw && !kept.restored) {
+      try {
+        const old = JSON.parse(raw);
+        if (Array.isArray(old)) {
+          kept.entries.unshift(...old.filter((entry) => entry && typeof entry.t === "number").slice(-kept.max));
+          if (kept.entries.length > kept.max) kept.entries.splice(0, kept.entries.length - kept.max);
+        }
+      } catch {
+      }
+    }
+    kept.restored = true;
+    const timer = setInterval(() => {
+      if (kept.total === savedTotal) return;
+      savedTotal = kept.total;
+      const text = JSON.stringify(kept.entries.slice(-kept.max));
+      void module.redisRun(async (client) => {
+        await client.set(REDIS_KEY, text, { EX: KEEP_DAYS_S });
+        return true;
+      }, false);
+    }, SAVE_EVERY_MS);
+    timer.unref?.();
+  });
+}
+function parts(header) {
+  const found = {};
+  for (const part of header.split(",")) {
+    const match = /^\s*([\w-]+)\s*;.*?dur=([\d.]+)/.exec(part);
+    if (match) found[match[1]] = Number(match[2]);
+  }
+  return found;
+}
+function percentile(sorted, p) {
+  if (!sorted.length) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p / 100 * sorted.length) - 1))];
+}
+function group(path, entries) {
+  const times = entries.map((entry) => entry.t).sort((a, b) => a - b);
+  const sums = {};
+  const counts = {};
+  for (const entry of entries) {
+    for (const [name, value] of Object.entries(parts(entry.st))) {
+      sums[name] = (sums[name] ?? 0) + value;
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+  }
+  const averages = {};
+  for (const name of PARTS) averages[name] = counts[name] ? Math.round(sums[name] / counts[name] * 10) / 10 : 0;
+  return {
+    path,
+    count: entries.length,
+    avg: Math.round(times.reduce((sum, value) => sum + value, 0) / Math.max(1, times.length)),
+    p50: percentile(times, 50),
+    p95: percentile(times, 95),
+    max: times[times.length - 1] ?? 0,
+    notModified: entries.filter((entry) => entry.s === 304).length,
+    parts: averages
+  };
+}
+function latencyReport() {
+  const kept = store();
+  if (!kept) return { available: false, count: 0, since: null, overall: null, slowest: [], pages: [], partNames: PARTS, failures: [], changes: [] };
+  const entries = kept.entries.slice();
+  const byPath = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const list = byPath.get(entry.p);
+    if (list) list.push(entry);
+    else byPath.set(entry.p, [entry]);
+  }
+  const pages = [...byPath].map(([path, list]) => group(path, list)).sort((a, b) => b.count - a.count);
+  const slowest = [...pages].sort((a, b) => b.p95 - a.p95 || b.avg - a.avg).slice(0, 10);
+  const recent = (entry) => ({ at: entry.at, method: entry.m, status: entry.s, path: entry.u ?? entry.p, ms: entry.t, bytes: entry.cl ?? -1 });
+  const failures = entries.filter((entry) => entry.s >= 400).slice(-40).reverse().map(recent);
+  const changes = entries.filter((entry) => !["GET", "HEAD"].includes(entry.m)).slice(-25).reverse().map(recent);
+  return { available: true, count: entries.length, since: entries[0]?.at ?? null, overall: entries.length ? group("*", entries) : null, slowest, pages, partNames: PARTS, failures, changes };
+}
+
+export { latencyReport as l, startLatencyKeeping as s };

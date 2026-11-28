@@ -1,0 +1,1 @@
+import"./hoisted.972BY2g3.js";import"./hoisted.DDYejK3f.js";const t=location.hash;t.startsWith("#import=")?document.querySelectorAll("[data-imp-link]").forEach(e=>{e.href+=t}):document.querySelector("[data-imp-nomsg]")?.removeAttribute("hidden");

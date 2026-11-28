@@ -1,0 +1,27 @@
+import { c as createAstro, a as createComponent } from '../../../chunks/astro/server_Dl3UQKOP.mjs';
+import 'kleur/colors';
+import 'clsx';
+export { renderers } from '../../../renderers.mjs';
+
+const $$Astro = createAstro("https://petto.sbs");
+const prerender = false;
+const $$Vanity = createComponent(($$result, $$props, $$slots) => {
+  const Astro2 = $$result.createAstro($$Astro, $$props, $$slots);
+  Astro2.self = $$Vanity;
+  return Astro2.redirect("/pt-br/status", 301);
+}, "/home/runner/work/petto-web/petto-web/src/pages/pt-br/status/vanity.astro", void 0);
+
+const $$file = "/home/runner/work/petto-web/petto-web/src/pages/pt-br/status/vanity.astro";
+const $$url = "/pt-br/status/vanity";
+
+const _page = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+	__proto__: null,
+	default: $$Vanity,
+	file: $$file,
+	prerender,
+	url: $$url
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const page = () => _page;
+
+export { page };

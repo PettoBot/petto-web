@@ -1,0 +1,1 @@
+import"./hoisted.972BY2g3.js";import"./hoisted.DDYejK3f.js";const t=document.querySelector(".give-form"),e=t?.querySelector('input[name="target_id"]'),r=()=>{if(!t||!e)return;const n=t.querySelector('input[name="target_type"][value="server"]')?.checked;e.placeholder=(n?e.dataset.phServer:e.dataset.phUser)??""};t?.addEventListener("change",r);r();
