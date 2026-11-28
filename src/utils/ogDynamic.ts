@@ -47,13 +47,16 @@ async function fetchRemoteBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
+declare const __NODE_TARGET__: boolean;
+
 async function loadNodeTools() {
-  if (typeof process === 'undefined' || !process.versions?.node) return null;
+  if (!__NODE_TARGET__ || typeof process === 'undefined' || !process.versions?.node) return null;
   try {
+    const dynImport = (specifier: string) => import(/* @vite-ignore */ specifier);
     const [{ default: sharp }, pathMod, fsMod] = await Promise.all([
-      import('sharp'),
-      import('node:path'),
-      import('node:fs'),
+      dynImport('sharp'),
+      dynImport('node:path'),
+      dynImport('node:fs'),
     ]);
     const cwd = process.cwd();
     const candidates = [
